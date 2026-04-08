@@ -227,12 +227,18 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  fallback_name text;
+  requested_display_name text;
 begin
+  fallback_name := split_part(new.email, '@', 1);
+  requested_display_name := nullif(trim(coalesce(new.raw_user_meta_data ->> 'display_name', '')), '');
+
   insert into public.profiles (id, username, display_name)
   values (
     new.id,
-    split_part(new.email, '@', 1),
-    split_part(new.email, '@', 1)
+    fallback_name,
+    coalesce(requested_display_name, fallback_name)
   )
   on conflict (id) do nothing;
   return new;

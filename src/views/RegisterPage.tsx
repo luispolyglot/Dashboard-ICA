@@ -136,14 +136,14 @@ export function RegisterPage() {
             </div>
 
             <label className='block text-sm'>
-              <span className='mb-1 block text-slate-300'>Nickname</span>
+              <span className='mb-1 block text-slate-300'>Nombre</span>
               <input
                 type='text'
                 required
                 maxLength={40}
                 value={nickname}
                 onChange={(event) => setNickname(event.target.value)}
-                placeholder='Ej: Nahuel_ICA'
+                placeholder='Ej: Tu nombre o un apodo'
                 className='w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 outline-none'
               />
             </label>

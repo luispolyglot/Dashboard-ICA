@@ -67,12 +67,19 @@ export function AuthProvider({ children }: PropsWithChildren) {
       },
       signUp: async (email, password, nickname) => {
         if (!supabase) throw new Error('Falta configurar Supabase')
-        const { data, error } = await supabase.auth.signUp({ email: normalizeEmail(email), password })
+        const cleanNickname = nickname.trim()
+        const { data, error } = await supabase.auth.signUp({
+          email: normalizeEmail(email),
+          password,
+          options: {
+            data: cleanNickname ? { display_name: cleanNickname } : undefined,
+          },
+        })
         if (error) throw error
 
         const userId = data.user?.id
-        const cleanNickname = nickname.trim()
-        if (userId && cleanNickname) {
+        const hasActiveSession = Boolean(data.session)
+        if (userId && cleanNickname && hasActiveSession) {
           const { error: profileError } = await supabase
             .from('profiles')
             .upsert({ id: userId, display_name: cleanNickname }, { onConflict: 'id' })
