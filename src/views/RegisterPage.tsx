@@ -75,7 +75,7 @@ export function RegisterPage() {
     try {
       await signUp(normalizeEmail(email), password, nickname)
       setSuccess(
-        'Cuenta creada. Si tienes confirmacion por email, revisa tu bandeja antes de iniciar sesion.',
+        'Cuenta creada. En breve recibirás un correo con un enlace para confirmar tu email. Revísalo (y la carpeta de spam) antes de iniciar sesión.',
       )
       window.setTimeout(() => navigate('/login', { replace: true }), 1200)
     } catch (err) {
