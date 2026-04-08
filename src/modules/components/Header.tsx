@@ -72,7 +72,7 @@ export function Header({ view, setView, totalCards, config, onEditLang, onManage
             onClick={() => onLogout()}
             className='rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-300'
           >
-            Cerrar sesion
+            Cerrar sesión
           </button>
         </div>
       )}

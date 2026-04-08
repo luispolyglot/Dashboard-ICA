@@ -14,10 +14,10 @@ export function PrivateRoute() {
   const location = useLocation()
 
   if (!hasSupabaseConfig) {
-    return <FullscreenMessage message='Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY para habilitar autenticacion.' />
+    return <FullscreenMessage message='Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY para habilitar autenticación.' />
   }
 
-  if (loading) return <FullscreenMessage message='Cargando sesion...' />
+  if (loading) return <FullscreenMessage message='Cargando sesión...' />
   if (!user) return <Navigate to='/login' state={{ from: location }} replace />
   return <Outlet />
 }
@@ -29,7 +29,7 @@ export function PublicOnlyRoute() {
     return <Outlet />
   }
 
-  if (loading) return <FullscreenMessage message='Cargando sesion...' />
+  if (loading) return <FullscreenMessage message='Cargando sesión...' />
   if (user) return <Navigate to='/app' replace />
   return <Outlet />
 }

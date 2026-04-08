@@ -83,7 +83,7 @@ export function HomeView({
       icon: '🧠',
       accent: 'blue',
       view: 'review',
-      stat: cardCount > 0 ? 'Empezar sesion' : 'Añade palabras primero',
+      stat: cardCount > 0 ? 'Empezar sesión' : 'Añade palabras primero',
       disabled: cardCount === 0,
     },
     {

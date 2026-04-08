@@ -36,7 +36,7 @@ export function RegisterPage() {
         return
       }
       setStep('password')
-      setSuccess('Email validado. Ahora crea tu contrasena.')
+      setSuccess('Email validado. Ahora crea tu contraseña.')
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'No se pudo validar tu email'
@@ -62,7 +62,7 @@ export function RegisterPage() {
     }
 
     if (password !== confirmPassword) {
-      setError('Las contrasenas no coinciden')
+      setError('Las contraseñas no coinciden')
       return
     }
 
@@ -149,7 +149,7 @@ export function RegisterPage() {
             </label>
 
             <label className='block text-sm'>
-              <span className='mb-1 block text-slate-300'>Contrasena</span>
+              <span className='mb-1 block text-slate-300'>Contraseña</span>
               <input
                 type='password'
                 required
@@ -161,9 +161,7 @@ export function RegisterPage() {
             </label>
 
             <label className='block text-sm'>
-              <span className='mb-1 block text-slate-300'>
-                Confirmar contrasena
-              </span>
+              <span className='mb-1 block text-slate-300'>Confirmar contraseña</span>
               <input
                 type='password'
                 required
@@ -206,7 +204,7 @@ export function RegisterPage() {
         <p className='mt-4 text-sm text-slate-400'>
           Ya tienes cuenta?{' '}
           <Link to='/login' className='font-semibold text-blue-400'>
-            Inicia sesion
+            Iniciá sesión
           </Link>
         </p>
       </section>

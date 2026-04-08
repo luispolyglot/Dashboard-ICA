@@ -34,7 +34,7 @@ export function LoginPage() {
       await signIn(email.trim(), password)
       navigate(redirectTo, { replace: true })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'No se pudo iniciar sesion'
+      const message = err instanceof Error ? err.message : 'No se pudo iniciar sesión'
       setError(message)
     } finally {
       setBusy(false)
@@ -42,7 +42,7 @@ export function LoginPage() {
   }
 
   return (
-    <AuthShell title='Bienvenido de nuevo' subtitle='Inicia sesion para continuar tu progreso en Icademy.'>
+    <AuthShell title='Bienvenido de nuevo' subtitle='Iniciá sesión para continuar tu progreso en Icademy.'>
       {!hasSupabaseConfig && (
         <div className='mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300'>
           Faltan variables de entorno de Supabase.
@@ -62,7 +62,7 @@ export function LoginPage() {
         </label>
 
         <label className='block text-sm'>
-          <span className='mb-1 block text-slate-300'>Contrasena</span>
+          <span className='mb-1 block text-slate-300'>Contraseña</span>
           <input
             type='password'
             required
@@ -87,7 +87,7 @@ export function LoginPage() {
       <p className='mt-4 text-sm text-slate-400'>
         No tienes cuenta?{' '}
         <Link to='/register' className='font-semibold text-blue-400'>
-          Registrate
+          Regístrate
         </Link>
       </p>
     </AuthShell>
