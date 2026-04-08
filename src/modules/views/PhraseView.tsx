@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { ComponentType } from 'react'
 import { getImportance } from '../constants'
 import { fetchActivationPhrase } from '../services/anthropic'
+import { recordPhraseGeneratedEvent } from '../services/gamification'
 import { speakNatural, stopTTS } from '../services/tts'
 import type { ActivationPhraseResult, AppConfig, CEFRLevel, Lexicard } from '../types'
 
@@ -39,6 +40,15 @@ export function PhraseView({ cards, config, onPhraseGenerated, LevelBadge }: Phr
     setLoading(false)
     if (response) {
       await onPhraseGenerated()
+      try {
+        await recordPhraseGeneratedEvent({
+          words: selectedWords.map((word) => word.target),
+          phrase: response.phrase,
+          translation: response.translation,
+        })
+      } catch (error) {
+        console.error(error)
+      }
     }
   }
 

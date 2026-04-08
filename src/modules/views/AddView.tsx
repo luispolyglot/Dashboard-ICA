@@ -7,6 +7,7 @@ import {
   getTodayProgress,
 } from '../constants'
 import { fetchTranslation } from '../services/anthropic'
+import { recordWordAddedEvent } from '../services/gamification'
 import { saveData } from '../services/storage'
 import { generateId } from '../utils'
 import { TranslationSuggestion } from '../components/TranslationSuggestion'
@@ -129,6 +130,11 @@ export function AddView({
     setCards(nextCards)
     await saveData('dashboard-ICA-words', nextCards)
     await onWordAdded()
+    try {
+      await recordWordAddedEvent()
+    } catch (error) {
+      console.error(error)
+    }
 
     setTarget('')
     setNative('')

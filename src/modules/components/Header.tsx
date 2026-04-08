@@ -8,9 +8,11 @@ type HeaderProps = {
   config: AppConfig | null
   onEditLang: () => void
   onManage: () => void
+  onPhrases: () => void
+  onLogout: () => Promise<void>
 }
 
-export function Header({ view, setView, totalCards, config, onEditLang, onManage }: HeaderProps) {
+export function Header({ view, setView, totalCards, config, onEditLang, onManage, onPhrases, onLogout }: HeaderProps) {
   return (
     <header className='flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-gradient-to-r from-slate-950 to-slate-900 px-5 py-3'>
       <button
@@ -51,6 +53,26 @@ export function Header({ view, setView, totalCards, config, onEditLang, onManage
                 {totalCards}
               </span>
             )}
+          </button>
+
+          <button
+            type='button'
+            onClick={onPhrases}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
+              view === 'phrases'
+                ? 'border-amber-500 text-amber-400'
+                : 'border-slate-800 text-slate-400'
+            } bg-slate-900`}
+          >
+            ⚡ Mis Frases
+          </button>
+
+          <button
+            type='button'
+            onClick={() => onLogout()}
+            className='rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-300'
+          >
+            Cerrar sesion
           </button>
         </div>
       )}

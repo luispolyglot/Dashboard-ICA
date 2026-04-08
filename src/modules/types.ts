@@ -7,7 +7,7 @@ export type ImportanceKey =
 
 export type CEFRLevel = '0' | 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2'
 
-export type AppView = 'home' | 'add' | 'review' | 'manage' | 'phrase'
+export type AppView = 'home' | 'add' | 'review' | 'manage' | 'phrase' | 'phrases'
 
 export type CalendarTab = 'review' | 'creation'
 
@@ -30,6 +30,23 @@ export interface Lexicard {
   streak: number
   lastReviewed: number | null
   createdAt: number
+}
+
+export interface LeaderboardEntry {
+  rank: number
+  user_id: string
+  username: string
+  display_name: string
+  score: number
+}
+
+export interface PhraseGenerationEntry {
+  id: string
+  source_words: string[]
+  generated_phrase: string | null
+  translation: string | null
+  model: string | null
+  created_at: string
 }
 
 export interface DailyProgressEntry {

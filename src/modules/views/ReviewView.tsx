@@ -4,6 +4,7 @@ import { GOAL, IMPORTANCE_ORDER, getImportance } from '../constants'
 import { ProgressBar } from '../components/ProgressBar'
 import { SpeakButton } from '../components/SpeakButton'
 import { saveData } from '../services/storage'
+import { recordReviewEvent } from '../services/reviewTracking'
 import { stopTTS } from '../services/tts'
 import {
   getStreak,
@@ -66,6 +67,7 @@ export function ReviewView({
     )
     setCards(nextCards)
     await saveData('dashboard-ICA-words', nextCards)
+    await recordReviewEvent({ previousCard: currentCard, nextCard: updated, knew })
 
     const nextCorrect = knew ? correct + 1 : correct
     setCorrect(nextCorrect)

@@ -9,9 +9,14 @@ import { AddView } from './views/AddView'
 import { ReviewView } from './views/ReviewView'
 import { ManageView } from './views/ManageView'
 import { PhraseView } from './views/PhraseView'
+import { PhraseHistoryView } from './views/PhraseHistoryView'
 import { LanguageSetup } from './views/LanguageSetup'
 
-export default function DashboardICA() {
+type DashboardICAProps = {
+  onLogout: () => Promise<void>
+}
+
+export default function DashboardICA({ onLogout }: DashboardICAProps) {
   const {
     view,
     setView,
@@ -52,6 +57,8 @@ export default function DashboardICA() {
         config={config}
         onEditLang={() => setShowLangModal(true)}
         onManage={() => setView('manage')}
+        onPhrases={() => setView('phrases')}
+        onLogout={onLogout}
       />
 
       {showLangModal && config && (
@@ -116,6 +123,8 @@ export default function DashboardICA() {
               LevelBadge={LevelBadge}
             />
           )}
+
+          {view === 'phrases' && <PhraseHistoryView />}
 
           <StreakFab
             completedDays={completedDays}
