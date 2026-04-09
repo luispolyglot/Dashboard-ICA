@@ -203,13 +203,10 @@ export function HomeView({
                     </span>
                     <div>
                       <div className='text-sm font-semibold text-slate-100'>
-                        {row.display_name || row.username}
+                        {row.display_name || 'Usuario'}
                         {row.user_id === user?.id && (
                           <div className='ml-2 inline-flex bg-green-300 size-2 rounded-full'></div>
                         )}
-                      </div>
-                      <div className='text-xs text-slate-500'>
-                        @{row.username}
                       </div>
                     </div>
                   </div>
