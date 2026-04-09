@@ -204,6 +204,9 @@ export function HomeView({
                     <div>
                       <div className='text-sm font-semibold text-slate-100'>
                         {row.display_name || row.username}
+                        {row.user_id === user?.id && (
+                          <div className='ml-2 inline-flex bg-green-300 size-2 rounded-full'></div>
+                        )}
                       </div>
                       <div className='text-xs text-slate-500'>
                         @{row.username}
@@ -212,9 +215,6 @@ export function HomeView({
                   </div>
                   <span className='text-sm font-bold text-blue-400'>
                     {row.score}
-                    {row.user_id === user?.id && (
-                      <span className='ml-1 text-[10px] text-blue-300'>TU</span>
-                    )}
                   </span>
                 </div>
               ))}

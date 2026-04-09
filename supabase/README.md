@@ -11,6 +11,35 @@ VITE_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
+## Edge Function para Anthropic
+
+La app ya no llama Anthropic desde el frontend. Ahora usa la function `anthropic-proxy`, para que la API key quede solo del lado servidor.
+
+1. Instala y autentica Supabase CLI.
+2. Linkea el proyecto:
+
+```bash
+supabase link --project-ref <tu-project-ref>
+```
+
+3. Configura secrets (en Supabase, no en `.env` del frontend):
+
+```bash
+supabase secrets set ANTHROPIC_API_KEY=<tu_api_key>
+supabase secrets set ANTHROPIC_MODEL=claude-sonnet-4-20250514
+supabase secrets set ANTHROPIC_BASE_URL=https://api.anthropic.com
+```
+
+4. Deploy de la function:
+
+```bash
+supabase functions deploy anthropic-proxy
+```
+
+5. Verifica que en Network ya no aparezca `x-api-key` ni requests directos a `api.anthropic.com`.
+
+La function exige usuario autenticado (Bearer token de Supabase), evitando uso anónimo del endpoint.
+
 La app ya persiste el dashboard en tablas normalizadas:
 - `lexicards`
 - `user_settings`

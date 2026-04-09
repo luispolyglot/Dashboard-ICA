@@ -44,19 +44,34 @@ export function speakNatural(text: string, langName: string, onEnd?: () => void)
   const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${lang}&client=tw-ob`
   const audio = new Audio(url)
   ttsAudio = audio
+  let finished = false
+  let started = false
 
   const done = () => {
+    if (finished) return
+    finished = true
     ttsAudio = null
     if (onEnd) onEnd()
   }
 
-  audio.onended = done
-  audio.onerror = () => {
+  const fallback = () => {
+    if (finished) return
+    finished = true
     ttsAudio = null
     speakFallback(text, code, onEnd)
   }
-  audio.play().catch(() => {
-    ttsAudio = null
-    speakFallback(text, code, onEnd)
-  })
+
+  audio.onplaying = () => {
+    started = true
+  }
+
+  audio.onended = done
+  audio.onerror = () => {
+    if (started || audio.currentTime > 0) {
+      done()
+      return
+    }
+    fallback()
+  }
+  audio.play().catch(fallback)
 }
