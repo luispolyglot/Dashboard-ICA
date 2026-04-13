@@ -25,6 +25,11 @@ type AnthropicResponse = {
   content?: AnthropicTextBlock[]
 }
 
+type TranslationCandidate = {
+  translation: string | null
+  confidence: number
+}
+
 type TranslatePayload = {
   action: 'translate'
   text: string
@@ -92,7 +97,11 @@ async function requireUser(req: Request): Promise<{ ok: true } | { ok: false; re
   return { ok: true }
 }
 
-async function callAnthropic(system: string, userPrompt: string): Promise<string | null> {
+async function callAnthropic(
+  system: string,
+  userPrompt: string,
+  options?: { maxTokens?: number; temperature?: number },
+): Promise<string | null> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
   const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-20250514'
   const baseUrl = Deno.env.get('ANTHROPIC_BASE_URL') || 'https://api.anthropic.com'
@@ -110,7 +119,8 @@ async function callAnthropic(system: string, userPrompt: string): Promise<string
     },
     body: JSON.stringify({
       model,
-      max_tokens: 1000,
+      max_tokens: options?.maxTokens ?? 1000,
+      temperature: options?.temperature ?? 0.2,
       system,
       messages: [{ role: 'user', content: userPrompt }],
     }),
@@ -122,6 +132,35 @@ async function callAnthropic(system: string, userPrompt: string): Promise<string
 
   const data = (await response.json()) as AnthropicResponse
   return readTextBlocks(data)
+}
+
+function parseTranslationCandidate(raw: string | null): TranslationCandidate {
+  if (!raw) return { translation: null, confidence: 0 }
+
+  try {
+    const cleaned = raw.replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(cleaned) as {
+      translation?: unknown
+      confidence?: unknown
+    }
+
+    const translation = typeof parsed.translation === 'string' ? parsed.translation.trim() : ''
+    const confidence = typeof parsed.confidence === 'number'
+      ? Math.min(1, Math.max(0, parsed.confidence))
+      : 0
+
+    if (!translation || translation === '—') {
+      return { translation: null, confidence }
+    }
+
+    return { translation, confidence }
+  } catch {
+    const fallback = raw.trim()
+    if (!fallback || fallback === '—') {
+      return { translation: null, confidence: 0 }
+    }
+    return { translation: fallback, confidence: 0.5 }
+  }
 }
 
 function parseActivationPhrase(raw: string | null): { phrase: string; translation: string; words_used?: string[] } | null {
@@ -167,13 +206,24 @@ Deno.serve(async (req) => {
 
   try {
     if (payload.action === 'translate') {
-      const translated = await callAnthropic(
-        `You are a translator. Translate from ${payload.fromLang} to ${payload.toLang}. Reply ONLY with the translation. No quotes, no explanation. If you cannot translate, reply: —`,
+      const translatedRaw = await callAnthropic(
+        [
+          'You are a cautious bilingual dictionary assistant.',
+          `Translate from ${payload.fromLang} to ${payload.toLang}.`,
+          'If the input is misspelled, unknown, or too ambiguous, do not guess.',
+          'Reply ONLY valid JSON with this exact shape:',
+          '{"translation":"... or —","confidence":0.0}',
+          'confidence must be a number between 0 and 1.',
+        ].join(' '),
         payload.text,
+        { maxTokens: 120, temperature: 0 },
       )
 
+      const parsed = parseTranslationCandidate(translatedRaw)
+      const accepted = parsed.translation && parsed.confidence >= 0.72
+
       return jsonResponse(200, {
-        translation: translated && translated !== '—' ? translated : null,
+        translation: accepted ? parsed.translation : null,
       })
     }
 

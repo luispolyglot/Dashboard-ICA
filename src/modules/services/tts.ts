@@ -2,6 +2,17 @@ import { LANG_CODES } from '../constants'
 
 let ttsAudio: HTMLAudioElement | null = null
 
+function isIOSLikeDevice(): boolean {
+  const userAgent = window.navigator.userAgent
+  const platform = window.navigator.platform
+  const maxTouchPoints = window.navigator.maxTouchPoints || 0
+
+  const isiPhoneOrIPad = /iPad|iPhone|iPod/.test(userAgent)
+  const isIPadOSDesktopUA = platform === 'MacIntel' && maxTouchPoints > 1
+
+  return isiPhoneOrIPad || isIPadOSDesktopUA
+}
+
 export function stopTTS(): void {
   if (ttsAudio) {
     ttsAudio.pause()
@@ -26,6 +37,13 @@ function getBestVoice(langCode: string): SpeechSynthesisVoice | null {
 }
 
 function speakFallback(text: string, langCode: string, onEnd?: () => void): void {
+  if (!window.speechSynthesis) {
+    if (onEnd) onEnd()
+    return
+  }
+
+  window.speechSynthesis.cancel()
+
   const u = new SpeechSynthesisUtterance(text)
   u.lang = langCode
   u.rate = 0.85
@@ -40,6 +58,12 @@ function speakFallback(text: string, langCode: string, onEnd?: () => void): void
 export function speakNatural(text: string, langName: string, onEnd?: () => void): void {
   stopTTS()
   const code = LANG_CODES[langName] || 'en-US'
+
+  if (isIOSLikeDevice()) {
+    speakFallback(text, code, onEnd)
+    return
+  }
+
   const lang = code.split('-')[0]
   const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${lang}&client=tw-ob`
   const audio = new Audio(url)

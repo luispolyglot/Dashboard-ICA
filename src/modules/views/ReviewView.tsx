@@ -60,39 +60,43 @@ export function ReviewView({
 
     setBusy(true)
     stopTTS()
+    setFlipped(false)
 
     const updated = updateCardAfterReview(currentCard, knew)
     const nextCards = cards.map((card) =>
       card.id === updated.id ? updated : card,
     )
-    setCards(nextCards)
-    await saveData('dashboard-ICA-words', nextCards)
-    await recordReviewEvent({ previousCard: currentCard, nextCard: updated, knew })
 
     const nextCorrect = knew ? correct + 1 : correct
     setCorrect(nextCorrect)
 
-    if (nextCorrect >= GOAL) {
-      const dayKey = todayKey()
-      if (!completedDays.includes(dayKey)) {
-        const nextCompletedDays = [...completedDays, dayKey]
-        setCompletedDays(nextCompletedDays)
-        await saveData('dashboard-ICA-completed', nextCompletedDays)
-      }
+    setCards(nextCards)
 
-      setFlipped(false)
-      window.setTimeout(() => setCompleted(true), 250)
-      setBusy(false)
-      return
+    if (nextCorrect < GOAL) {
+      const reordered = sortByPriority(nextCards)
+      setSorted(reordered)
+      setCurrentIndex(
+        reordered.length > 0 ? (currentIndex + 1) % reordered.length : 0,
+      )
     }
 
-    const reordered = sortByPriority(nextCards)
-    setSorted(reordered)
-    setFlipped(false)
-    setCurrentIndex((prev) =>
-      reordered.length > 0 ? (prev + 1) % reordered.length : 0,
-    )
-    setBusy(false)
+    try {
+      await saveData('dashboard-ICA-words', nextCards)
+      await recordReviewEvent({ previousCard: currentCard, nextCard: updated, knew })
+
+      if (nextCorrect >= GOAL) {
+        const dayKey = todayKey()
+        if (!completedDays.includes(dayKey)) {
+          const nextCompletedDays = [...completedDays, dayKey]
+          setCompletedDays(nextCompletedDays)
+          await saveData('dashboard-ICA-completed', nextCompletedDays)
+        }
+
+        window.setTimeout(() => setCompleted(true), 250)
+      }
+    } finally {
+      setBusy(false)
+    }
   }
 
   if (!currentCard && !completed) {

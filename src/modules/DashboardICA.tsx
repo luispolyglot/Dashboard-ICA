@@ -124,7 +124,7 @@ export default function DashboardICA({ onLogout }: DashboardICAProps) {
             />
           )}
 
-          {view === 'phrases' && <PhraseHistoryView />}
+          {view === 'phrases' && <PhraseHistoryView targetLang={config.targetLang} />}
 
           <StreakFab
             completedDays={completedDays}

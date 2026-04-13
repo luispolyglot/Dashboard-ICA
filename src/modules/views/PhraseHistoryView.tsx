@@ -1,11 +1,22 @@
 import { useEffect, useState } from 'react'
-import { fetchPhraseHistory } from '../services/phraseHistory'
+import { SpeakButton } from '../components/SpeakButton'
+import {
+  deletePhraseHistoryEntry,
+  fetchPhraseHistory,
+} from '../services/phraseHistory'
+import { stopTTS } from '../services/tts'
 import type { PhraseGenerationEntry } from '../types'
 
-export function PhraseHistoryView() {
+type PhraseHistoryViewProps = {
+  targetLang: string
+}
+
+export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
   const [items, setItems] = useState<PhraseGenerationEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   useEffect(() => {
     fetchPhraseHistory(40)
@@ -19,7 +30,26 @@ export function PhraseHistoryView() {
       .finally(() => {
         setLoading(false)
       })
+
+    return () => {
+      stopTTS()
+    }
   }, [])
+
+  const handleDelete = async (id: string): Promise<void> => {
+    if (deletingId) return
+
+    setDeletingId(id)
+    try {
+      await deletePhraseHistoryEntry(id)
+      setItems((prev) => prev.filter((item) => item.id !== id))
+      setConfirmDeleteId(null)
+    } catch {
+      setError('No se pudo eliminar la frase')
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   return (
     <section className='mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-5 py-8'>
@@ -56,6 +86,16 @@ export function PhraseHistoryView() {
             </p>
             <p className='mt-2 text-sm text-slate-300'>{item.translation || 'Sin traduccion registrada'}</p>
 
+            {item.generated_phrase && (
+              <div className='mt-3'>
+                <SpeakButton
+                  text={item.generated_phrase}
+                  langName={targetLang}
+                  color='#EAB308'
+                />
+              </div>
+            )}
+
             <div className='mt-3 flex flex-wrap gap-1.5'>
               {(item.source_words || []).map((word) => (
                 <span key={`${item.id}-${word}`} className='rounded-md bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-400'>
@@ -63,6 +103,40 @@ export function PhraseHistoryView() {
                 </span>
               ))}
             </div>
+
+            {confirmDeleteId === item.id ? (
+              <div className='mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-red-500/20 pt-3'>
+                <span className='text-sm text-red-400'>¿Eliminar esta frase?</span>
+                <div className='flex gap-2'>
+                  <button
+                    type='button'
+                    onClick={() => handleDelete(item.id)}
+                    disabled={deletingId === item.id}
+                    className='rounded-md bg-red-500 px-4 py-1.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50'
+                  >
+                    {deletingId === item.id ? 'Eliminando...' : 'Si, eliminar'}
+                  </button>
+                  <button
+                    type='button'
+                    onClick={() => setConfirmDeleteId(null)}
+                    disabled={deletingId === item.id}
+                    className='rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-400 disabled:cursor-not-allowed disabled:opacity-50'
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className='mt-4 border-t border-slate-800 pt-3'>
+                <button
+                  type='button'
+                  onClick={() => setConfirmDeleteId(item.id)}
+                  className='rounded-md border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-red-400'
+                >
+                  Eliminar frase
+                </button>
+              </div>
+            )}
           </article>
         ))}
       </div>

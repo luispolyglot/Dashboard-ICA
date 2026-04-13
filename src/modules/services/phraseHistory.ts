@@ -17,3 +17,16 @@ export async function fetchPhraseHistory(limit = 30): Promise<PhraseGenerationEn
 
   return (data || []) as PhraseGenerationEntry[]
 }
+
+export async function deletePhraseHistoryEntry(id: string): Promise<void> {
+  if (!supabase) return
+
+  const { error } = await supabase
+    .from('phrase_generations')
+    .delete()
+    .eq('id', id)
+
+  if (error) {
+    throw error
+  }
+}
