@@ -164,12 +164,12 @@ export function HomeView({
           ))}
         </div>
 
-        <article className='h-fit w-full lg:max-w-90 overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-5 lg:sticky lg:top-5 lg:justify-self-end  mb-14 lg:mb-0'>
+        <article className='h-fit w-full lg:max-w-96 overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-5 lg:sticky lg:top-5 lg:justify-self-end  mb-14 lg:mb-0'>
           <div className='mb-3 flex items-center justify-between'>
             <h3 className='font-serif text-xl font-bold text-slate-100'>
               Leaderboard mensual
             </h3>
-            <span className='rounded-md border border-slate-700 bg-slate-900 px-2 py-0.5 text-xs text-slate-400'>
+            <span className='rounded-md whitespace-nowrap border border-slate-700 bg-slate-900 px-2 py-0.5 text-xs text-slate-400'>
               Media rachas
             </span>
           </div>
@@ -185,8 +185,8 @@ export function HomeView({
           )}
 
           {!leaderboardError && leaderboard.length > 0 && (
-              <div className='space-y-2'>
-                {leaderboard.map((row) => (
+            <div className='space-y-2'>
+              {leaderboard.map((row) => (
                 <div
                   key={row.user_id}
                   className={`flex items-center justify-between rounded-lg border px-3 py-2 ${

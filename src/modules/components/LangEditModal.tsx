@@ -7,7 +7,11 @@ type LangEditModalProps = {
   onClose: () => void
 }
 
-export function LangEditModal({ config, setConfig, onClose }: LangEditModalProps) {
+export function LangEditModal({
+  config,
+  setConfig,
+  onClose,
+}: LangEditModalProps) {
   const baseSelectClass =
     'w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none'
 
@@ -20,7 +24,9 @@ export function LangEditModal({ config, setConfig, onClose }: LangEditModalProps
         onClick={(e) => e.stopPropagation()}
         className='w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-6'
       >
-        <h3 className='mb-5 font-serif text-2xl text-slate-100'>Cambiar idiomas</h3>
+        <h3 className='mb-5 font-serif text-2xl text-slate-100'>
+          Cambiar idiomas
+        </h3>
 
         <div className='mb-4'>
           <label className='mb-1.5 block text-[11px] uppercase tracking-wider text-slate-400'>
@@ -28,7 +34,9 @@ export function LangEditModal({ config, setConfig, onClose }: LangEditModalProps
           </label>
           <select
             value={config.nativeLang}
-            onChange={(e) => setConfig({ ...config, nativeLang: e.target.value })}
+            onChange={(e) =>
+              setConfig({ ...config, nativeLang: e.target.value })
+            }
             className={baseSelectClass}
           >
             {LANGUAGES.map((l) => (
@@ -44,8 +52,10 @@ export function LangEditModal({ config, setConfig, onClose }: LangEditModalProps
           <div className='flex gap-2.5'>
             <select
               value={config.targetLang}
-              onChange={(e) => setConfig({ ...config, targetLang: e.target.value })}
-              className={`${baseSelectClass} flex-1`}
+              onChange={(e) =>
+                setConfig({ ...config, targetLang: e.target.value })
+              }
+              className={`${baseSelectClass} w-full`}
             >
               {LANGUAGES.filter((l) => l !== config.nativeLang).map((l) => (
                 <option key={l}>{l}</option>
@@ -57,7 +67,7 @@ export function LangEditModal({ config, setConfig, onClose }: LangEditModalProps
               onChange={(e) =>
                 setConfig({ ...config, level: e.target.value as CEFRLevel })
               }
-              className={`${baseSelectClass} w-24 text-center`}
+              className={`${baseSelectClass} w-24! text-center`}
             >
               {LEVELS.map((l) => (
                 <option key={l} value={l}>

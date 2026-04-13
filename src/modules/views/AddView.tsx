@@ -57,6 +57,7 @@ export function AddView({
   const [native, setNative] = useState('')
   const [importance, setImportance] = useState<ImportanceKey | null>(null)
   const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [suggestionNative, setSuggestionNative] = useState<string | null>(null)
   const [suggestionTarget, setSuggestionTarget] = useState<string | null>(null)
   const [loadingNative, setLoadingNative] = useState(false)
@@ -161,10 +162,11 @@ export function AddView({
     }, 900)
   }
 
-  const canSave = target.trim() && native.trim() && importance
+  const canSave = target.trim() && native.trim() && importance && !saving
 
   const handleSave = async (): Promise<void> => {
     if (!canSave || !importance) return
+    setSaving(true)
 
     if (targetDebounceRef.current !== null) {
       window.clearTimeout(targetDebounceRef.current)
@@ -217,20 +219,24 @@ export function AddView({
       },
     ]
 
-    setCards(nextCards)
-    await saveData('dashboard-ICA-words', nextCards)
-    await onWordAdded()
     try {
-      await recordWordAddedEvent()
-    } catch (error) {
-      console.error(error)
-    }
+      setCards(nextCards)
+      await saveData('dashboard-ICA-words', nextCards)
+      await onWordAdded()
+      try {
+        await recordWordAddedEvent()
+      } catch (error) {
+        console.error(error)
+      }
 
-    setTarget('')
-    setNative('')
-    setImportance(null)
-    setSaved(true)
-    window.setTimeout(() => setSaved(false), 2000)
+      setTarget('')
+      setNative('')
+      setImportance(null)
+      setSaved(true)
+      window.setTimeout(() => setSaved(false), 2000)
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -270,8 +276,9 @@ export function AddView({
         <input
           value={target}
           onChange={(e) => handleTargetChange(e.target.value)}
+          disabled={saving}
           placeholder={`Escribe en ${config.targetLang}...`}
-          className='w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-base text-slate-100 outline-none'
+          className='w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-base text-slate-100 outline-none disabled:cursor-not-allowed disabled:opacity-60'
         />
         {(checkingSpelling || spellingSuggestion) && (
           <div className='mt-1.5 flex items-center gap-2 text-xs'>
@@ -320,8 +327,9 @@ export function AddView({
         <input
           value={native}
           onChange={(e) => handleNativeChange(e.target.value)}
+          disabled={saving}
           placeholder={`Escribe en ${config.nativeLang}...`}
-          className='w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-base text-slate-100 outline-none'
+          className='w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-base text-slate-100 outline-none disabled:cursor-not-allowed disabled:opacity-60'
         />
         <TranslationSuggestion
           suggestion={suggestionTarget}
@@ -347,12 +355,13 @@ export function AddView({
               <button
                 key={level.key}
                 type='button'
-                onClick={() => setImportance(level.key)}
+                onClick={() => !saving && setImportance(level.key)}
+                disabled={saving}
                 className={`min-w-[90px] flex-1 rounded-xl border-2 px-2 py-2.5 text-center transition ${
                   selected
                     ? IMPORTANCE_TONE[level.key]
                     : 'border-slate-800 bg-slate-950 text-slate-500'
-                }`}
+                } disabled:cursor-not-allowed disabled:opacity-60`}
               >
                 <div className='mb-1 text-xs font-semibold'>{level.label}</div>
                 <div className='text-[10px]'>{level.desc}</div>
@@ -372,7 +381,7 @@ export function AddView({
             : 'cursor-not-allowed bg-slate-800 text-slate-600'
         }`}
       >
-        {saved ? '✓ ¡Guardada!' : 'Guardar palabra'}
+        {saving ? 'Guardando...' : saved ? '✓ ¡Guardada!' : 'Guardar palabra'}
       </button>
 
       {recent.length > 0 && (
