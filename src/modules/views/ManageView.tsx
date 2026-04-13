@@ -31,6 +31,8 @@ export function ManageView({ cards, setCards }: ManageViewProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draftTarget, setDraftTarget] = useState('')
   const [draftNative, setDraftNative] = useState('')
+  const [draftExamplePhrase, setDraftExamplePhrase] = useState('')
+  const [draftExampleTranslation, setDraftExampleTranslation] = useState('')
   const [draftImportance, setDraftImportance] = useState<ImportanceKey>('vital')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [busyExport, setBusyExport] = useState<null | 'copy' | 'docx' | 'pdf'>(
@@ -95,6 +97,8 @@ export function ManageView({ cards, setCards }: ManageViewProps) {
     setEditingId(card.id)
     setDraftTarget(card.target)
     setDraftNative(card.native)
+    setDraftExamplePhrase(card.examplePhrase || '')
+    setDraftExampleTranslation(card.exampleTranslation || '')
     setDraftImportance(card.importance)
     setConfirmDeleteId(null)
   }
@@ -111,6 +115,8 @@ export function ManageView({ cards, setCards }: ManageViewProps) {
         ...card,
         target: draftTarget.trim() || card.target,
         native: draftNative.trim() || card.native,
+        examplePhrase: draftExamplePhrase.trim() || null,
+        exampleTranslation: draftExampleTranslation.trim() || null,
         importance: draftImportance,
       }
     })
@@ -286,6 +292,23 @@ export function ManageView({ cards, setCards }: ManageViewProps) {
                   <input
                     value={draftNative}
                     onChange={(event) => setDraftNative(event.target.value)}
+                    className='rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100'
+                  />
+                </div>
+
+                <div className='grid gap-2'>
+                  <input
+                    value={draftExamplePhrase}
+                    onChange={(event) => setDraftExamplePhrase(event.target.value)}
+                    placeholder='Ejemplo (idioma objetivo)'
+                    className='rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100'
+                  />
+                  <input
+                    value={draftExampleTranslation}
+                    onChange={(event) =>
+                      setDraftExampleTranslation(event.target.value)
+                    }
+                    placeholder='Traduccion del ejemplo'
                     className='rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100'
                   />
                 </div>

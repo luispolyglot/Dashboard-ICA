@@ -35,6 +35,8 @@ export function PhraseView({ cards, config, onPhraseGenerated, LevelBadge }: Phr
     ? recentWords.filter((word) => customSelectedIds.includes(word.id))
     : recentWords.slice(0, wordCount)
 
+  const minWordsRequired = 3
+
   const toggleCustomWord = (id: string): void => {
     setCustomSelectedIds((prev) => {
       if (prev.includes(id)) {
@@ -58,8 +60,7 @@ export function PhraseView({ cards, config, onPhraseGenerated, LevelBadge }: Phr
   }
 
   const handleGenerate = async (): Promise<void> => {
-    if (customMode && selectedWords.length < 3) return
-    if (!customMode && selectedWords.length < wordCount) return
+    if (selectedWords.length < minWordsRequired) return
     setLoading(true)
     setResult(null)
     const response = await fetchActivationPhrase(selectedWords, config.targetLang, config.nativeLang, level)
@@ -90,6 +91,19 @@ export function PhraseView({ cards, config, onPhraseGenerated, LevelBadge }: Phr
 
     setSpeaking(true)
     speakNatural(result.phrase, config.targetLang, () => setSpeaking(false))
+  }
+
+  const removeSelectedWord = (id: string): void => {
+    if (customMode) {
+      setCustomSelectedIds((prev) => prev.filter((item) => item !== id))
+      return
+    }
+
+    const nextIds = selectedWords
+      .map((word) => word.id)
+      .filter((wordId) => wordId !== id)
+    setCustomSelectedIds(nextIds)
+    setCustomMode(true)
   }
 
   return (
@@ -188,6 +202,13 @@ export function PhraseView({ cards, config, onPhraseGenerated, LevelBadge }: Phr
                 <span className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importance.key]}`} />
                 <span className='text-sm font-semibold text-slate-100'>{word.target}</span>
                 <span className='text-xs text-slate-500'>({word.native})</span>
+                <button
+                  type='button'
+                  onClick={() => removeSelectedWord(word.id)}
+                  className='ml-1 rounded-md border border-slate-700 px-1.5 py-0.5 text-[10px] font-bold text-slate-400'
+                >
+                  x
+                </button>
               </div>
             )
           })}
@@ -197,9 +218,9 @@ export function PhraseView({ cards, config, onPhraseGenerated, LevelBadge }: Phr
       <button
         type='button'
         onClick={handleGenerate}
-        disabled={loading || (customMode ? selectedWords.length < 3 : selectedWords.length < wordCount)}
+        disabled={loading || selectedWords.length < minWordsRequired}
         className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-base font-bold ${
-          loading || (customMode ? selectedWords.length < 3 : selectedWords.length < wordCount)
+          loading || selectedWords.length < minWordsRequired
             ? 'cursor-not-allowed bg-slate-800 text-slate-500'
             : 'bg-gradient-to-r from-amber-500 to-orange-600 text-black'
         }`}

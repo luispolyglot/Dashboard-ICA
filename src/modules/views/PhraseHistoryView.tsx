@@ -13,6 +13,7 @@ type PhraseHistoryViewProps = {
 
 export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
   const [items, setItems] = useState<PhraseGenerationEntry[]>([])
+  const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -51,20 +52,41 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
     }
   }
 
+  const visibleItems = items.filter((item) => {
+    const q = query.trim().toLowerCase()
+    if (!q) return true
+
+    const phrase = (item.generated_phrase || '').toLowerCase()
+    const translation = (item.translation || '').toLowerCase()
+    const sourceWords = (item.source_words || []).join(' ').toLowerCase()
+
+    return phrase.includes(q) || translation.includes(q) || sourceWords.includes(q)
+  })
+
   return (
     <section className='mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-5 py-8'>
       <h2 className='mb-1 font-serif text-3xl font-bold text-slate-100'>⚡ Mis Frases de Activacion</h2>
       <p className='mb-6 text-sm text-slate-500'>Historial con frase, traduccion, palabras usadas y metadata.</p>
 
+      <div className='mb-5 relative'>
+        <span className='pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500'>🔎</span>
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder='Buscar por palabra o frase...'
+          className='w-full rounded-lg border border-slate-800 bg-slate-950 py-2 pl-9 pr-3 text-sm text-slate-100 outline-none'
+        />
+      </div>
+
       {loading && <p className='text-sm text-slate-500'>Cargando historial...</p>}
       {error && <p className='text-sm text-red-400'>{error}</p>}
 
-      {!loading && !error && items.length === 0 && (
+      {!loading && !error && visibleItems.length === 0 && (
         <p className='text-sm text-slate-500'>Todavia no generaste frases.</p>
       )}
 
       <div className='space-y-3'>
-        {items.map((item) => (
+        {visibleItems.map((item) => (
           <article key={item.id} className='rounded-2xl border border-slate-800 bg-slate-950 p-4'>
             <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
               <span className='text-xs text-slate-500'>
