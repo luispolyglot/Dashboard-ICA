@@ -22,6 +22,7 @@ type ReviewViewProps = {
   setCompletedDays: Dispatch<SetStateAction<string[]>>
   reviewSession: number
   startReviewSession: () => Promise<void>
+  onFinishPractice: () => void
 }
 
 const IMPORTANCE_DOT = {
@@ -40,6 +41,7 @@ export function ReviewView({
   setCompletedDays,
   reviewSession,
   startReviewSession,
+  onFinishPractice,
 }: ReviewViewProps) {
   const [sorted, setSorted] = useState<Lexicard[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -137,19 +139,28 @@ export function ReviewView({
           {streak !== 1 ? 's' : ''}! 🔥
         </p>
         <ProgressBar correct={GOAL} />
-        <button
-          type='button'
-          onClick={() => {
-            setCorrect(0)
-            setCompleted(false)
-            setCurrentIndex(0)
-            setSorted(sortByPriority(cards, reviewSession))
-            startReviewSession().catch(() => undefined)
-          }}
-          className='mt-4 rounded-xl bg-gradient-to-r from-blue-500 to-blue-700 px-6 py-3 text-sm font-semibold text-white'
-        >
-          Otra ronda
-        </button>
+        <div className='mt-4 flex flex-wrap justify-center gap-2'>
+          <button
+            type='button'
+            onClick={() => {
+              setCorrect(0)
+              setCompleted(false)
+              setCurrentIndex(0)
+              setSorted(sortByPriority(cards, reviewSession))
+              startReviewSession().catch(() => undefined)
+            }}
+            className='rounded-xl bg-gradient-to-r from-blue-500 to-blue-700 px-6 py-3 text-sm font-semibold text-white'
+          >
+            Otra ronda
+          </button>
+          <button
+            type='button'
+            onClick={onFinishPractice}
+            className='rounded-xl border border-slate-700 bg-slate-900 px-6 py-3 text-sm font-semibold text-slate-300'
+          >
+            Finalizar practica
+          </button>
+        </div>
       </section>
     )
   }

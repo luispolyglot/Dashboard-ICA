@@ -29,11 +29,11 @@ export function Header({ view, setView, totalCards, config, onEditLang, onManage
           <button
             type='button'
             onClick={onEditLang}
-            className='inline-flex items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm'
+            className='inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900 px-3 py-1.5'
           >
-            <span className='text-slate-400'>{config.nativeLang}</span>
+            <span className='text-sm font-medium text-slate-300'>{config.nativeLang}</span>
             <span className='font-bold text-blue-400'>→</span>
-            <span className='font-semibold text-slate-100'>{config.targetLang}</span>
+            <span className='text-sm font-semibold text-slate-100'>{config.targetLang}</span>
             <LevelBadge level={config.level || 'A2'} size='small' />
             <span className='text-xs'>✏️</span>
           </button>

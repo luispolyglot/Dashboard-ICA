@@ -59,7 +59,7 @@ export function LanguageSetup({ onSave }: LanguageSetupProps) {
             <select
               value={targetLang}
               onChange={(e) => setTargetLang(e.target.value)}
-              className='w-full flex-1 rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-base text-slate-100 outline-none'
+              className='w-full flex-1 rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-base font-semibold text-slate-100 outline-none'
             >
               {LANGUAGES.filter((language) => language !== nativeLang).map((language) => (
                 <option key={language}>{language}</option>
@@ -69,7 +69,7 @@ export function LanguageSetup({ onSave }: LanguageSetupProps) {
             <select
               value={level}
               onChange={(e) => setLevel(e.target.value as CEFRLevel)}
-              className='w-24 rounded-xl border border-slate-800 bg-slate-950 px-2 py-3 text-center text-base text-slate-100 outline-none'
+              className='w-20 rounded-xl border border-slate-800 bg-slate-950 px-2 py-3 text-center text-sm text-slate-300 outline-none'
             >
               {LEVELS.map((currentLevel) => (
                 <option key={currentLevel} value={currentLevel}>
@@ -81,13 +81,13 @@ export function LanguageSetup({ onSave }: LanguageSetupProps) {
         </div>
 
         <div className='mb-8 text-left'>
-          <div className='flex flex-wrap gap-1.5'>
+          <div className='grid grid-cols-4 gap-1.5 sm:grid-cols-7'>
             {LEVELS.map((currentLevel) => (
               <button
                 key={currentLevel}
                 type='button'
                 onClick={() => setLevel(currentLevel)}
-                className={`flex-1 rounded-lg border-2 px-3 py-2 text-sm font-semibold transition ${
+                className={`rounded-lg border px-2 py-1.5 text-xs font-semibold transition ${
                   level === currentLevel
                     ? LEVEL_CLASS[currentLevel]
                     : 'border-slate-800 bg-slate-950 text-slate-500'

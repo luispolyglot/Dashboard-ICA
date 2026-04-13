@@ -1,7 +1,13 @@
 import { useState } from 'react'
+import { useAuth } from '../../auth/AuthContext'
 import type { Dispatch, SetStateAction } from 'react'
 import { IMPORTANCE_LEVELS, getImportance } from '../constants'
 import { saveData } from '../services/storage'
+import {
+  copyWordsToClipboard,
+  downloadWordsAsDocx,
+  downloadWordsAsPdf,
+} from '../services/wordExport'
 import { sortChronological } from '../utils'
 import type { ImportanceKey, Lexicard } from '../types'
 
@@ -19,16 +25,63 @@ const TONE_CLASS: Record<ImportanceKey, string> = {
 }
 
 export function ManageView({ cards, setCards }: ManageViewProps) {
+  const { user } = useAuth()
   const [filter, setFilter] = useState<ImportanceKey | 'all'>('all')
+  const [query, setQuery] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draftTarget, setDraftTarget] = useState('')
   const [draftNative, setDraftNative] = useState('')
   const [draftImportance, setDraftImportance] = useState<ImportanceKey>('vital')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [busyExport, setBusyExport] = useState<null | 'copy' | 'docx' | 'pdf'>(
+    null,
+  )
 
-  const filtered =
+  const filteredByImportance =
     filter === 'all' ? cards : cards.filter((c) => c.importance === filter)
+  const filtered = filteredByImportance.filter((card) => {
+    const q = query.trim().toLowerCase()
+    if (!q) return true
+    return (
+      card.target.toLowerCase().includes(q)
+      || card.native.toLowerCase().includes(q)
+    )
+  })
   const sorted = sortChronological(filtered)
+  const ownerName =
+    user?.user_metadata?.display_name
+    || user?.email?.split('@')[0]
+    || 'Usuario'
+
+  const handleCopyWords = async (): Promise<void> => {
+    if (busyExport) return
+    setBusyExport('copy')
+    try {
+      await copyWordsToClipboard(ownerName, sorted)
+    } finally {
+      setBusyExport(null)
+    }
+  }
+
+  const handleDownloadDocx = async (): Promise<void> => {
+    if (busyExport) return
+    setBusyExport('docx')
+    try {
+      await downloadWordsAsDocx(ownerName, sorted)
+    } finally {
+      setBusyExport(null)
+    }
+  }
+
+  const handleDownloadPdf = async (): Promise<void> => {
+    if (busyExport) return
+    setBusyExport('pdf')
+    try {
+      await downloadWordsAsPdf(ownerName, sorted)
+    } finally {
+      setBusyExport(null)
+    }
+  }
 
   const handleDelete = async (id: string): Promise<void> => {
     const nextCards = cards.filter((c) => c.id !== id)
@@ -77,6 +130,45 @@ export function ManageView({ cards, setCards }: ManageViewProps) {
         primero
       </p>
 
+      <div className='mb-4 flex flex-wrap items-center gap-2'>
+        <div className='relative min-w-[240px] flex-1'>
+          <span className='pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500'>
+            🔎
+          </span>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder='Buscar palabra...'
+            className='w-full rounded-lg border border-slate-800 bg-slate-950 py-2 pl-9 pr-3 text-sm text-slate-100 outline-none'
+          />
+        </div>
+
+        <button
+          type='button'
+          onClick={() => handleCopyWords()}
+          disabled={sorted.length === 0 || busyExport !== null}
+          className='rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-300 disabled:cursor-not-allowed disabled:opacity-50'
+        >
+          {busyExport === 'copy' ? 'Copiando...' : 'Copiar'}
+        </button>
+        <button
+          type='button'
+          onClick={() => handleDownloadDocx()}
+          disabled={sorted.length === 0 || busyExport !== null}
+          className='rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-300 disabled:cursor-not-allowed disabled:opacity-50'
+        >
+          {busyExport === 'docx' ? 'Generando...' : 'Descargar DOCX'}
+        </button>
+        <button
+          type='button'
+          onClick={() => handleDownloadPdf()}
+          disabled={sorted.length === 0 || busyExport !== null}
+          className='rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-300 disabled:cursor-not-allowed disabled:opacity-50'
+        >
+          {busyExport === 'pdf' ? 'Generando...' : 'Descargar PDF'}
+        </button>
+      </div>
+
       <div className='mb-6 flex flex-wrap gap-1.5'>
         <button
           type='button'
@@ -115,7 +207,7 @@ export function ManageView({ cards, setCards }: ManageViewProps) {
 
       {sorted.length === 0 && (
         <p className='mt-10 text-center text-sm text-slate-600'>
-          No hay palabras.
+          No hay palabras con ese filtro.
         </p>
       )}
 

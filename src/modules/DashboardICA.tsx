@@ -112,6 +112,7 @@ export default function DashboardICA({ onLogout }: DashboardICAProps) {
               setCompletedDays={setCompletedDays}
               reviewSession={reviewSession}
               startReviewSession={startReviewSession}
+              onFinishPractice={() => setView('home')}
             />
           )}
 
