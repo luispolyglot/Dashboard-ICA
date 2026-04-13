@@ -33,11 +33,13 @@ export default function DashboardICA({ onLogout }: DashboardICAProps) {
     showCalendar,
     setShowCalendar,
     calendarTab,
+    reviewSession,
     handleWordAdded,
     handlePhraseGenerated,
     handleSetup,
     handleConfigChange,
     openCalendar,
+    startReviewSession,
   } = useDashboardICA()
 
   if (loading) {
@@ -108,6 +110,8 @@ export default function DashboardICA({ onLogout }: DashboardICAProps) {
               config={config}
               completedDays={completedDays}
               setCompletedDays={setCompletedDays}
+              reviewSession={reviewSession}
+              startReviewSession={startReviewSession}
             />
           )}
 

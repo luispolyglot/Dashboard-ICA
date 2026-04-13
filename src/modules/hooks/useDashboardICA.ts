@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { CREATION_WORDS_GOAL } from '../constants'
 import { loadData, saveData } from '../services/storage'
 import { todayKey } from '../utils'
@@ -21,6 +21,7 @@ export function useDashboardICA() {
   const [dailyProgress, setDailyProgress] = useState<DailyProgressMap>({})
   const [showCalendar, setShowCalendar] = useState(false)
   const [calendarTab, setCalendarTab] = useState<CalendarTab>('review')
+  const [reviewSession, setReviewSession] = useState(0)
 
   useEffect(() => {
     Promise.all([
@@ -29,12 +30,21 @@ export function useDashboardICA() {
       loadData('dashboard-ICA-completed', [] as string[]),
       loadData('dashboard-ICA-creation-days', [] as string[]),
       loadData('dashboard-ICA-daily-progress', {} as DailyProgressMap),
-    ]).then(([loadedCards, loadedConfig, loadedCompletedDays, loadedCreationDays, loadedDailyProgress]) => {
+      loadData('dashboard-ICA-review-session', 0 as number),
+    ]).then(([
+      loadedCards,
+      loadedConfig,
+      loadedCompletedDays,
+      loadedCreationDays,
+      loadedDailyProgress,
+      loadedReviewSession,
+    ]) => {
       setCards(loadedCards)
       setConfig(loadedConfig)
       setCompletedDays(loadedCompletedDays || [])
       setCreationDays(loadedCreationDays || [])
       setDailyProgress(loadedDailyProgress || {})
+      setReviewSession(typeof loadedReviewSession === 'number' ? loadedReviewSession : 0)
       setLoading(false)
     })
 
@@ -93,6 +103,15 @@ export function useDashboardICA() {
     setShowCalendar(true)
   }
 
+  const startReviewSession = useCallback(async (): Promise<void> => {
+    let next = 0
+    setReviewSession((prev) => {
+      next = prev + 1
+      return next
+    })
+    await saveData('dashboard-ICA-review-session', next)
+  }, [])
+
   return {
     view,
     setView,
@@ -109,10 +128,12 @@ export function useDashboardICA() {
     showCalendar,
     setShowCalendar,
     calendarTab,
+    reviewSession,
     handleWordAdded,
     handlePhraseGenerated,
     handleSetup,
     handleConfigChange,
     openCalendar,
+    startReviewSession,
   }
 }

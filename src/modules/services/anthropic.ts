@@ -52,11 +52,13 @@ export async function fetchActivationPhrase(
   if (!supabase) return null
 
   try {
-    const sourceWords = words.map((word) => word.target)
     const { data, error } = await supabase.functions.invoke<ActivationPhraseResponse>('anthropic-proxy', {
       body: {
         action: 'activation_phrase',
-        words: sourceWords,
+        words: words.map((word) => ({
+          target: word.target,
+          native: word.native,
+        })),
         targetLang,
         nativeLang,
         level,

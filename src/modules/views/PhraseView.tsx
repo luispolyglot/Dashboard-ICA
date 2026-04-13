@@ -23,16 +23,43 @@ const IMPORTANCE_DOT = {
 
 export function PhraseView({ cards, config, onPhraseGenerated, LevelBadge }: PhraseViewProps) {
   const [wordCount, setWordCount] = useState(5)
+  const [customMode, setCustomMode] = useState(false)
+  const [customSelectedIds, setCustomSelectedIds] = useState<string[]>([])
   const [result, setResult] = useState<ActivationPhraseResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [speaking, setSpeaking] = useState(false)
 
   const level = config.level || 'A2'
   const recentWords = cards.slice(-8).reverse()
-  const selectedWords = recentWords.slice(0, wordCount)
+  const selectedWords = customMode
+    ? recentWords.filter((word) => customSelectedIds.includes(word.id))
+    : recentWords.slice(0, wordCount)
+
+  const toggleCustomWord = (id: string): void => {
+    setCustomSelectedIds((prev) => {
+      if (prev.includes(id)) {
+        return prev.filter((item) => item !== id)
+      }
+      if (prev.length >= 8) {
+        return prev
+      }
+      return [...prev, id]
+    })
+  }
+
+  const toggleCustomMode = (): void => {
+    setCustomMode((prev) => {
+      const next = !prev
+      if (next && customSelectedIds.length === 0) {
+        setCustomSelectedIds(recentWords.slice(0, wordCount).map((word) => word.id))
+      }
+      return next
+    })
+  }
 
   const handleGenerate = async (): Promise<void> => {
-    if (selectedWords.length < wordCount) return
+    if (customMode && selectedWords.length < 3) return
+    if (!customMode && selectedWords.length < wordCount) return
     setLoading(true)
     setResult(null)
     const response = await fetchActivationPhrase(selectedWords, config.targetLang, config.nativeLang, level)
@@ -105,6 +132,46 @@ export function PhraseView({ cards, config, onPhraseGenerated, LevelBadge }: Phr
         </div>
       </div>
 
+      <div className='mb-5'>
+        <button
+          type='button'
+          onClick={toggleCustomMode}
+          className='text-xs font-semibold text-amber-400 underline decoration-amber-700 underline-offset-2'
+        >
+          {customMode
+            ? 'Usar seleccion automatica (principal)'
+            : 'Crear frase activacion personalizada'}
+        </button>
+      </div>
+
+      {customMode && (
+        <div className='mb-6 rounded-xl border border-slate-800 bg-slate-900/40 p-3.5'>
+          <label className='mb-2 block text-[11px] uppercase tracking-wider text-slate-400'>Selecciona palabras (3-8)</label>
+          <div className='flex flex-wrap gap-1.5'>
+            {recentWords.map((word) => {
+              const active = customSelectedIds.includes(word.id)
+              const importance = getImportance(word.importance)
+              return (
+                <button
+                  key={word.id}
+                  type='button'
+                  onClick={() => toggleCustomWord(word.id)}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs ${active
+                    ? 'border-amber-500 bg-amber-500/10 text-amber-300'
+                    : 'border-slate-700 bg-slate-950 text-slate-400'}`}
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importance.key]}`} />
+                  {word.target}
+                </button>
+              )
+            })}
+          </div>
+          <p className='mt-2 text-[11px] text-slate-500'>
+            Seleccionadas: {selectedWords.length}/8
+          </p>
+        </div>
+      )}
+
       <div className='mb-6'>
         <label className='mb-2 block text-[11px] uppercase tracking-wider text-slate-400'>Palabras seleccionadas</label>
         <div className='flex flex-wrap gap-1.5'>
@@ -127,9 +194,9 @@ export function PhraseView({ cards, config, onPhraseGenerated, LevelBadge }: Phr
       <button
         type='button'
         onClick={handleGenerate}
-        disabled={loading || selectedWords.length < wordCount}
+        disabled={loading || (customMode ? selectedWords.length < 3 : selectedWords.length < wordCount)}
         className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-base font-bold ${
-          loading || selectedWords.length < wordCount
+          loading || (customMode ? selectedWords.length < 3 : selectedWords.length < wordCount)
             ? 'cursor-not-allowed bg-slate-800 text-slate-500'
             : 'bg-gradient-to-r from-amber-500 to-orange-600 text-black'
         }`}

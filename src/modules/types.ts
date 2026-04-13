@@ -29,6 +29,7 @@ export interface Lexicard {
   easeFactor: number
   streak: number
   lastReviewed: number | null
+  lastSeenSession?: number
   createdAt: number
 }
 

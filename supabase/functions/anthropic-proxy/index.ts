@@ -39,7 +39,7 @@ type TranslatePayload = {
 
 type ActivationPhrasePayload = {
   action: 'activation_phrase'
-  words: string[]
+  words: Array<string | { target?: string; native?: string }>
   targetLang: string
   nativeLang: string
   level: string
@@ -228,13 +228,47 @@ Deno.serve(async (req) => {
     }
 
     if (payload.action === 'activation_phrase') {
-      const words = payload.words.filter((word) => typeof word === 'string' && word.trim().length > 0)
+      const normalizedWords = payload.words
+        .map((word) => {
+          if (typeof word === 'string') {
+            const cleaned = word.trim()
+            if (!cleaned) return null
+            return { target: cleaned, native: null as string | null }
+          }
+
+          const target = typeof word.target === 'string' ? word.target.trim() : ''
+          const native = typeof word.native === 'string' ? word.native.trim() : ''
+          if (!target) return null
+          return { target, native: native || null }
+        })
+        .filter((word): word is { target: string; native: string | null } => Boolean(word))
+
+      const words = normalizedWords.map((word) => word.target)
       if (!words.length) {
         return jsonResponse(400, { error: 'Words are required' })
       }
 
       const levelDescription = LEVEL_DESCRIPTIONS[payload.level] || LEVEL_DESCRIPTIONS.A2
-      const prompt = `Generate a sentence in ${payload.targetLang} including ALL words: ${words.join(', ')}\nRules:\n- CEFR ${payload.level} level. Description: ${levelDescription}\n- 20-28 words long\n- Natural, native-sounding\n- Translate to ${payload.nativeLang}\nReply ONLY:\n{"phrase":"<sentence>","translation":"<translation>","words_used":["w1","w2"]}`
+      const intendedMeanings = normalizedWords
+        .filter((word) => word.native)
+        .map((word) => `${word.target} = ${word.native}`)
+
+      const prompt = [
+        `Generate one sentence in ${payload.targetLang} including ALL words: ${words.join(', ')}.`,
+        'Rules:',
+        `- CEFR ${payload.level} level. Description: ${levelDescription}`,
+        '- 20-28 words long',
+        '- Natural, native-sounding',
+        '- Respect the intended meanings from the learner; do not switch to another sense if a word is polysemous.',
+        intendedMeanings.length
+          ? `- Intended meanings (${payload.targetLang} -> ${payload.nativeLang}): ${intendedMeanings.join('; ')}`
+          : '',
+        `- Translate to ${payload.nativeLang}`,
+        'Reply ONLY:',
+        '{"phrase":"<sentence>","translation":"<translation>","words_used":["w1","w2"]}',
+      ]
+        .filter(Boolean)
+        .join('\n')
 
       const raw = await callAnthropic(
         'You generate natural sentences for language learners. Reply ONLY in JSON. No markdown, no backticks.',

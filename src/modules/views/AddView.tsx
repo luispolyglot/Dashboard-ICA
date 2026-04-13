@@ -59,6 +59,8 @@ export function AddView({
   const [loadingTarget, setLoadingTarget] = useState(false)
   const targetDebounceRef = useRef<number | null>(null)
   const nativeDebounceRef = useRef<number | null>(null)
+  const targetRequestRef = useRef(0)
+  const nativeRequestRef = useRef(0)
 
   const recent = cards.slice(-5).reverse()
   const todayProgress = getTodayProgress(dailyProgress)
@@ -66,13 +68,18 @@ export function AddView({
   const handleTargetChange = (value: string): void => {
     setTarget(value)
     setSuggestionNative(null)
+    targetRequestRef.current += 1
 
     if (targetDebounceRef.current !== null) {
       window.clearTimeout(targetDebounceRef.current)
     }
 
-    if (value.trim().length < 2) return
+    if (value.trim().length < 2) {
+      setLoadingNative(false)
+      return
+    }
 
+    const requestId = targetRequestRef.current
     targetDebounceRef.current = window.setTimeout(async () => {
       setLoadingNative(true)
       const result = await fetchTranslation(
@@ -80,6 +87,7 @@ export function AddView({
         config.targetLang,
         config.nativeLang,
       )
+      if (requestId !== targetRequestRef.current) return
       setSuggestionNative(result)
       setLoadingNative(false)
     }, 900)
@@ -88,13 +96,18 @@ export function AddView({
   const handleNativeChange = (value: string): void => {
     setNative(value)
     setSuggestionTarget(null)
+    nativeRequestRef.current += 1
 
     if (nativeDebounceRef.current !== null) {
       window.clearTimeout(nativeDebounceRef.current)
     }
 
-    if (value.trim().length < 2) return
+    if (value.trim().length < 2) {
+      setLoadingTarget(false)
+      return
+    }
 
+    const requestId = nativeRequestRef.current
     nativeDebounceRef.current = window.setTimeout(async () => {
       setLoadingTarget(true)
       const result = await fetchTranslation(
@@ -102,6 +115,7 @@ export function AddView({
         config.nativeLang,
         config.targetLang,
       )
+      if (requestId !== nativeRequestRef.current) return
       setSuggestionTarget(result)
       setLoadingTarget(false)
     }, 900)
@@ -111,6 +125,21 @@ export function AddView({
 
   const handleSave = async (): Promise<void> => {
     if (!canSave || !importance) return
+
+    if (targetDebounceRef.current !== null) {
+      window.clearTimeout(targetDebounceRef.current)
+      targetDebounceRef.current = null
+    }
+    if (nativeDebounceRef.current !== null) {
+      window.clearTimeout(nativeDebounceRef.current)
+      nativeDebounceRef.current = null
+    }
+    targetRequestRef.current += 1
+    nativeRequestRef.current += 1
+    setLoadingNative(false)
+    setLoadingTarget(false)
+    setSuggestionNative(null)
+    setSuggestionTarget(null)
 
     const nextCards: Lexicard[] = [
       ...cards,
@@ -139,8 +168,6 @@ export function AddView({
     setTarget('')
     setNative('')
     setImportance(null)
-    setSuggestionNative(null)
-    setSuggestionTarget(null)
     setSaved(true)
     window.setTimeout(() => setSaved(false), 2000)
   }

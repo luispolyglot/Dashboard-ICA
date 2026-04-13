@@ -20,6 +20,8 @@ type ReviewViewProps = {
   config: AppConfig
   completedDays: string[]
   setCompletedDays: Dispatch<SetStateAction<string[]>>
+  reviewSession: number
+  startReviewSession: () => Promise<void>
 }
 
 const IMPORTANCE_DOT = {
@@ -36,6 +38,8 @@ export function ReviewView({
   config,
   completedDays,
   setCompletedDays,
+  reviewSession,
+  startReviewSession,
 }: ReviewViewProps) {
   const [sorted, setSorted] = useState<Lexicard[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -45,11 +49,15 @@ export function ReviewView({
   const [completed, setCompleted] = useState(false)
 
   useEffect(() => {
-    setSorted(sortByPriority(cards))
+    setSorted(sortByPriority(cards, reviewSession))
     if (window.speechSynthesis) {
       window.speechSynthesis.getVoices()
     }
-  }, [cards])
+  }, [cards, reviewSession])
+
+  useEffect(() => {
+    startReviewSession().catch(() => undefined)
+  }, [startReviewSession])
 
   const currentCard = sorted[currentIndex]
   const importance = currentCard ? getImportance(currentCard.importance) : null
@@ -62,7 +70,7 @@ export function ReviewView({
     stopTTS()
     setFlipped(false)
 
-    const updated = updateCardAfterReview(currentCard, knew)
+    const updated = updateCardAfterReview(currentCard, knew, reviewSession)
     const nextCards = cards.map((card) =>
       card.id === updated.id ? updated : card,
     )
@@ -73,7 +81,7 @@ export function ReviewView({
     setCards(nextCards)
 
     if (nextCorrect < GOAL) {
-      const reordered = sortByPriority(nextCards)
+      const reordered = sortByPriority(nextCards, reviewSession)
       setSorted(reordered)
       setCurrentIndex(
         reordered.length > 0 ? (currentIndex + 1) % reordered.length : 0,
@@ -104,7 +112,7 @@ export function ReviewView({
       <section className='flex flex-1 items-center justify-center px-5 py-10 text-center'>
         <div>
           <div className='mb-3 text-5xl'>📝</div>
-          <p className='text-sm text-slate-500'>Añade palabras primero.</p>
+          <p className='text-sm text-slate-500'>No hay tarjetas pendientes por ahora.</p>
         </div>
       </section>
     )
@@ -129,7 +137,8 @@ export function ReviewView({
             setCorrect(0)
             setCompleted(false)
             setCurrentIndex(0)
-            setSorted(sortByPriority(cards))
+            setSorted(sortByPriority(cards, reviewSession))
+            startReviewSession().catch(() => undefined)
           }}
           className='mt-4 rounded-xl bg-gradient-to-r from-blue-500 to-blue-700 px-6 py-3 text-sm font-semibold text-white'
         >
