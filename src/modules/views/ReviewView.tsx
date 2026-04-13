@@ -47,6 +47,7 @@ export function ReviewView({
   const [correct, setCorrect] = useState(0)
   const [busy, setBusy] = useState(false)
   const [completed, setCompleted] = useState(false)
+  const [showExample, setShowExample] = useState(false)
 
   useEffect(() => {
     setSorted(sortByPriority(cards, reviewSession))
@@ -54,6 +55,10 @@ export function ReviewView({
       window.speechSynthesis.getVoices()
     }
   }, [cards, reviewSession])
+
+  useEffect(() => {
+    setShowExample(false)
+  }, [currentIndex, flipped])
 
   useEffect(() => {
     startReviewSession().catch(() => undefined)
@@ -69,6 +74,7 @@ export function ReviewView({
     setBusy(true)
     stopTTS()
     setFlipped(false)
+    setShowExample(false)
 
     const updated = updateCardAfterReview(currentCard, knew, reviewSession)
     const nextCards = cards.map((card) =>
@@ -202,11 +208,50 @@ export function ReviewView({
         </p>
 
         {flipped && (
-          <SpeakButton
-            text={currentCard.target}
-            langName={config.targetLang || 'Inglés'}
-            color={importance.color}
-          />
+          <>
+            <SpeakButton
+              text={currentCard.target}
+              langName={config.targetLang || 'Inglés'}
+              color={importance.color}
+            />
+
+            <button
+              type='button'
+              onClick={(event) => {
+                event.stopPropagation()
+                setShowExample((prev) => !prev)
+              }}
+              className='mt-2 inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-5 py-2 text-sm font-semibold text-slate-300'
+            >
+              {showExample ? 'Ocultar ejemplo' : 'Ejemplo'}
+            </button>
+
+            {showExample && (
+              <div className='mt-3 rounded-xl border border-slate-800 bg-slate-900 p-3 text-left'>
+                {currentCard.examplePhrase && currentCard.exampleTranslation ? (
+                  <>
+                    <p className='text-sm font-semibold text-slate-100'>
+                      {currentCard.examplePhrase}
+                    </p>
+                    <p className='mt-1 text-xs text-slate-400'>
+                      {currentCard.exampleTranslation}
+                    </p>
+                    <div className='mt-1'>
+                      <SpeakButton
+                        text={currentCard.examplePhrase}
+                        langName={config.targetLang || 'Inglés'}
+                        color={importance.color}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <p className='text-xs text-slate-500'>
+                    Esta palabra no tiene ejemplo guardado todavia.
+                  </p>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
 

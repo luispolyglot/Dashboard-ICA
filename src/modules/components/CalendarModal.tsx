@@ -73,6 +73,16 @@ export function CalendarModal({ completedDays, creationDays, onClose, activeTab 
           </button>
         </div>
 
+        <div className='mb-3'>
+          <button
+            type='button'
+            onClick={onClose}
+            className='rounded-md border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300'
+          >
+            ← Volver
+          </button>
+        </div>
+
         <div className='mb-5 flex items-center justify-between'>
           <button type='button' onClick={prevMonth} className='h-9 w-9 rounded-lg border border-slate-800 text-slate-400'>
             ‹

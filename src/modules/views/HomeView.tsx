@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../../auth/AuthContext'
 import { CREATION_WORDS_GOAL, getTodayProgress } from '../constants'
-import { fetchWeeklyLeaderboard } from '../services/leaderboard'
+import { fetchMonthlyStreakLeaderboard } from '../services/leaderboard'
 import type { AppConfig, AppView, DailyProgressMap } from '../types'
 import type { LeaderboardEntry } from '../types'
 
@@ -50,13 +50,13 @@ export function HomeView({
   const [leaderboardError, setLeaderboardError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchWeeklyLeaderboard(8)
+    fetchMonthlyStreakLeaderboard(8)
       .then((rows) => {
         setLeaderboard(rows)
         setLeaderboardError(null)
       })
       .catch(() => {
-        setLeaderboardError('No se pudo cargar el ranking semanal')
+        setLeaderboardError('No se pudo cargar el ranking mensual')
       })
   }, [])
 
@@ -167,10 +167,10 @@ export function HomeView({
         <article className='h-fit w-full lg:max-w-90 overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-5 lg:sticky lg:top-5 lg:justify-self-end  mb-14 lg:mb-0'>
           <div className='mb-3 flex items-center justify-between'>
             <h3 className='font-serif text-xl font-bold text-slate-100'>
-              Leaderboard semanal
+              Leaderboard mensual
             </h3>
             <span className='rounded-md border border-slate-700 bg-slate-900 px-2 py-0.5 text-xs text-slate-400'>
-              XP
+              Media rachas
             </span>
           </div>
 
@@ -180,13 +180,13 @@ export function HomeView({
 
           {!leaderboardError && leaderboard.length === 0 && (
             <p className='text-sm text-slate-500'>
-              Todavia no hay puntajes esta semana.
+              Todavia no hay datos suficientes este mes.
             </p>
           )}
 
           {!leaderboardError && leaderboard.length > 0 && (
-            <div className='space-y-2'>
-              {leaderboard.map((row) => (
+              <div className='space-y-2'>
+                {leaderboard.map((row) => (
                 <div
                   key={row.user_id}
                   className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
@@ -211,7 +211,7 @@ export function HomeView({
                     </div>
                   </div>
                   <span className='text-sm font-bold text-blue-400'>
-                    {row.score}
+                    {Math.round(row.avg_percent || 0)}%
                   </span>
                 </div>
               ))}

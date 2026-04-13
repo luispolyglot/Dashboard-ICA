@@ -20,7 +20,11 @@ const TONE_CLASS: Record<ImportanceKey, string> = {
 
 export function ManageView({ cards, setCards }: ManageViewProps) {
   const [filter, setFilter] = useState<ImportanceKey | 'all'>('all')
-  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draftTarget, setDraftTarget] = useState('')
+  const [draftNative, setDraftNative] = useState('')
+  const [draftImportance, setDraftImportance] = useState<ImportanceKey>('vital')
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const filtered =
     filter === 'all' ? cards : cards.filter((c) => c.importance === filter)
@@ -30,7 +34,37 @@ export function ManageView({ cards, setCards }: ManageViewProps) {
     const nextCards = cards.filter((c) => c.id !== id)
     setCards(nextCards)
     await saveData('dashboard-ICA-words', nextCards)
-    setConfirmId(null)
+    setEditingId(null)
+    setConfirmDeleteId(null)
+  }
+
+  const openEditor = (card: Lexicard): void => {
+    setEditingId(card.id)
+    setDraftTarget(card.target)
+    setDraftNative(card.native)
+    setDraftImportance(card.importance)
+    setConfirmDeleteId(null)
+  }
+
+  const closeEditor = (): void => {
+    setEditingId(null)
+    setConfirmDeleteId(null)
+  }
+
+  const handleSaveEdit = async (id: string): Promise<void> => {
+    const nextCards = cards.map((card) => {
+      if (card.id !== id) return card
+      return {
+        ...card,
+        target: draftTarget.trim() || card.target,
+        native: draftNative.trim() || card.native,
+        importance: draftImportance,
+      }
+    })
+
+    setCards(nextCards)
+    await saveData('dashboard-ICA-words', nextCards)
+    closeEditor()
   }
 
   return (
@@ -88,7 +122,7 @@ export function ManageView({ cards, setCards }: ManageViewProps) {
       {sorted.map((card) => {
         const importance = getImportance(card.importance)
         const isFailed = (card.streak || 0) === 0
-        const isConfirming = confirmId === card.id
+        const isEditing = editingId === card.id
         const dateStr = card.createdAt
           ? new Date(card.createdAt).toLocaleDateString('es-ES', {
               day: 'numeric',
@@ -100,7 +134,7 @@ export function ManageView({ cards, setCards }: ManageViewProps) {
           <article
             key={card.id}
             className={`mb-2.5 rounded-xl border p-3.5 ${
-              isConfirming
+              isEditing
                 ? 'border-red-500/30 bg-red-950/20'
                 : 'border-slate-800 bg-slate-950'
             }`}
@@ -138,35 +172,96 @@ export function ManageView({ cards, setCards }: ManageViewProps) {
                 </div>
               </div>
 
-              {!isConfirming && (
+              {!isEditing && (
                 <button
                   type='button'
-                  onClick={() => setConfirmId(card.id)}
-                  className='rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-red-400'
+                  onClick={() => openEditor(card)}
+                  className='rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-blue-300'
                 >
-                  Eliminar
+                  Editar
                 </button>
               )}
             </div>
 
-            {isConfirming && (
-              <div className='mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-red-500/20 pt-3'>
-                <span className='text-sm text-red-400'>¿Seguro?</span>
-                <div className='flex gap-2'>
-                  <button
-                    type='button'
-                    onClick={() => handleDelete(card.id)}
-                    className='rounded-md bg-red-500 px-4 py-1.5 text-sm font-semibold text-white'
-                  >
-                    Si, eliminar
-                  </button>
-                  <button
-                    type='button'
-                    onClick={() => setConfirmId(null)}
-                    className='rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-400'
-                  >
-                    Cancelar
-                  </button>
+            {isEditing && (
+              <div className='mt-3 space-y-3 border-t border-red-500/20 pt-3'>
+                <div className='grid gap-2 sm:grid-cols-2'>
+                  <input
+                    value={draftTarget}
+                    onChange={(event) => setDraftTarget(event.target.value)}
+                    className='rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100'
+                  />
+                  <input
+                    value={draftNative}
+                    onChange={(event) => setDraftNative(event.target.value)}
+                    className='rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100'
+                  />
+                </div>
+
+                <div className='flex flex-wrap gap-1.5'>
+                  {IMPORTANCE_LEVELS.map((level) => (
+                    <button
+                      key={level.key}
+                      type='button'
+                      onClick={() => setDraftImportance(level.key)}
+                      className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${
+                        draftImportance === level.key
+                          ? `border-current ${TONE_CLASS[level.key]} bg-slate-900`
+                          : 'border-slate-700 text-slate-500'
+                      }`}
+                    >
+                      {level.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className='flex flex-wrap items-center justify-between gap-2'>
+                  {confirmDeleteId === card.id ? (
+                    <>
+                      <span className='text-sm text-red-400'>¿Eliminar esta palabra?</span>
+                      <div className='flex gap-2'>
+                        <button
+                          type='button'
+                          onClick={() => handleDelete(card.id)}
+                          className='rounded-md bg-red-500 px-4 py-1.5 text-sm font-semibold text-white'
+                        >
+                          Si, eliminar
+                        </button>
+                        <button
+                          type='button'
+                          onClick={() => setConfirmDeleteId(null)}
+                          className='rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-400'
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <button
+                      type='button'
+                      onClick={() => setConfirmDeleteId(card.id)}
+                      className='rounded-md border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-400'
+                    >
+                      Eliminar
+                    </button>
+                  )}
+
+                  <div className='ml-auto flex gap-2'>
+                    <button
+                      type='button'
+                      onClick={closeEditor}
+                      className='rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-400'
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type='button'
+                      onClick={() => handleSaveEdit(card.id)}
+                      className='rounded-md bg-blue-500 px-4 py-1.5 text-sm font-semibold text-white'
+                    >
+                      Guardar cambios
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

@@ -98,6 +98,9 @@ export function PhraseView({ cards, config, onPhraseGenerated, LevelBadge }: Phr
       <p className='mb-1 text-sm text-slate-500'>
         Genera una frase natural en {config.targetLang} usando tus palabras ICA.
       </p>
+      <p className='mb-4 text-xs text-slate-600'>
+        Se usan las ultimas palabras añadidas (las mas recientes).
+      </p>
 
       <div className='mb-6 flex items-center gap-2'>
         <LevelBadge level={level} />

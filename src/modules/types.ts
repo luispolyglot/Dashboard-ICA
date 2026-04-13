@@ -24,6 +24,10 @@ export interface Lexicard {
   id: string
   target: string
   native: string
+  targetLang?: string
+  nativeLang?: string
+  examplePhrase?: string | null
+  exampleTranslation?: string | null
   importance: ImportanceKey
   interval: number
   easeFactor: number
@@ -38,7 +42,10 @@ export interface LeaderboardEntry {
   user_id: string
   username: string
   display_name: string
-  score: number
+  score?: number
+  avg_percent?: number
+  review_percent?: number
+  creation_percent?: number
 }
 
 export interface PhraseGenerationEntry {

@@ -45,7 +45,26 @@ type ActivationPhrasePayload = {
   level: string
 }
 
-type RequestPayload = TranslatePayload | ActivationPhrasePayload
+type SpellcheckPayload = {
+  action: 'spellcheck'
+  text: string
+  lang: string
+}
+
+type WordExamplePayload = {
+  action: 'word_example'
+  targetWord: string
+  nativeMeaning: string
+  targetLang: string
+  nativeLang: string
+  level: string
+}
+
+type RequestPayload =
+  | TranslatePayload
+  | ActivationPhrasePayload
+  | SpellcheckPayload
+  | WordExamplePayload
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -185,6 +204,22 @@ function parseActivationPhrase(raw: string | null): { phrase: string; translatio
   }
 }
 
+function parseSpellcheckSuggestion(raw: string | null): string | null {
+  if (!raw) return null
+
+  try {
+    const cleaned = raw.replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(cleaned) as { suggestion?: unknown }
+    const suggestion = typeof parsed.suggestion === 'string' ? parsed.suggestion.trim() : ''
+    if (!suggestion || suggestion === '—') return null
+    return suggestion
+  } catch {
+    const fallback = raw.trim()
+    if (!fallback || fallback === '—') return null
+    return fallback
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
@@ -277,6 +312,61 @@ Deno.serve(async (req) => {
 
       return jsonResponse(200, {
         result: parseActivationPhrase(raw),
+      })
+    }
+
+    if (payload.action === 'word_example') {
+      const targetWord = payload.targetWord.trim()
+      const nativeMeaning = payload.nativeMeaning.trim()
+      if (!targetWord || !nativeMeaning) {
+        return jsonResponse(400, { error: 'targetWord and nativeMeaning are required' })
+      }
+
+      const levelDescription = LEVEL_DESCRIPTIONS[payload.level] || LEVEL_DESCRIPTIONS.A2
+      const prompt = [
+        `Create one short natural example sentence in ${payload.targetLang} using this exact word: ${targetWord}.`,
+        `The word must keep this intended meaning in ${payload.nativeLang}: ${nativeMeaning}.`,
+        'Rules:',
+        `- CEFR ${payload.level}. Description: ${levelDescription}`,
+        '- 8-14 words',
+        '- Keep wording practical and learner-friendly',
+        `- Provide translation in ${payload.nativeLang}`,
+        'Reply ONLY:',
+        '{"phrase":"<sentence>","translation":"<translation>"}',
+      ].join('\n')
+
+      const raw = await callAnthropic(
+        'You generate high-quality learner examples. Reply ONLY in JSON. No markdown, no backticks.',
+        prompt,
+        { maxTokens: 180, temperature: 0.1 },
+      )
+
+      return jsonResponse(200, {
+        result: parseActivationPhrase(raw),
+      })
+    }
+
+    if (payload.action === 'spellcheck') {
+      const text = payload.text.trim()
+      if (!text) {
+        return jsonResponse(200, { suggestion: null })
+      }
+
+      const raw = await callAnthropic(
+        [
+          'You are a strict single-word spelling checker.',
+          `Language: ${payload.lang}.`,
+          'If the word is correct, return suggestion as —.',
+          'If there is a likely typo, return the corrected word only.',
+          'Do not translate.',
+          'Reply ONLY valid JSON: {"suggestion":"... or —"}',
+        ].join(' '),
+        text,
+        { maxTokens: 60, temperature: 0 },
+      )
+
+      return jsonResponse(200, {
+        suggestion: parseSpellcheckSuggestion(raw),
       })
     }
 

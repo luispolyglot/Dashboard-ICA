@@ -6,7 +6,11 @@ import {
   getImportance,
   getTodayProgress,
 } from '../constants'
-import { fetchTranslation } from '../services/anthropic'
+import {
+  fetchSpellingSuggestion,
+  fetchTranslation,
+  fetchWordExample,
+} from '../services/anthropic'
 import { recordWordAddedEvent } from '../services/gamification'
 import { saveData } from '../services/storage'
 import { generateId } from '../utils'
@@ -57,10 +61,14 @@ export function AddView({
   const [suggestionTarget, setSuggestionTarget] = useState<string | null>(null)
   const [loadingNative, setLoadingNative] = useState(false)
   const [loadingTarget, setLoadingTarget] = useState(false)
+  const [spellingSuggestion, setSpellingSuggestion] = useState<string | null>(null)
+  const [checkingSpelling, setCheckingSpelling] = useState(false)
   const targetDebounceRef = useRef<number | null>(null)
   const nativeDebounceRef = useRef<number | null>(null)
+  const spellingDebounceRef = useRef<number | null>(null)
   const targetRequestRef = useRef(0)
   const nativeRequestRef = useRef(0)
+  const spellingRequestRef = useRef(0)
 
   const recent = cards.slice(-5).reverse()
   const todayProgress = getTodayProgress(dailyProgress)
@@ -68,14 +76,20 @@ export function AddView({
   const handleTargetChange = (value: string): void => {
     setTarget(value)
     setSuggestionNative(null)
+    setSpellingSuggestion(null)
     targetRequestRef.current += 1
+    spellingRequestRef.current += 1
 
     if (targetDebounceRef.current !== null) {
       window.clearTimeout(targetDebounceRef.current)
     }
+    if (spellingDebounceRef.current !== null) {
+      window.clearTimeout(spellingDebounceRef.current)
+    }
 
     if (value.trim().length < 2) {
       setLoadingNative(false)
+      setCheckingSpelling(false)
       return
     }
 
@@ -91,6 +105,32 @@ export function AddView({
       setSuggestionNative(result)
       setLoadingNative(false)
     }, 900)
+
+    const spellingCandidate = value.trim()
+    const looksLikeSingleWord = !spellingCandidate.includes(' ')
+    if (!looksLikeSingleWord || spellingCandidate.length < 4) {
+      setCheckingSpelling(false)
+      return
+    }
+
+    const spellRequestId = spellingRequestRef.current
+    spellingDebounceRef.current = window.setTimeout(async () => {
+      setCheckingSpelling(true)
+      const suggestion = await fetchSpellingSuggestion(
+        spellingCandidate,
+        config.targetLang,
+      )
+      if (spellRequestId !== spellingRequestRef.current) return
+
+      const normalizedInput = spellingCandidate.toLowerCase()
+      const normalizedSuggestion = suggestion?.toLowerCase() || ''
+      setSpellingSuggestion(
+        normalizedSuggestion && normalizedSuggestion !== normalizedInput
+          ? suggestion
+          : null,
+      )
+      setCheckingSpelling(false)
+    }, 650)
   }
 
   const handleNativeChange = (value: string): void => {
@@ -130,23 +170,44 @@ export function AddView({
       window.clearTimeout(targetDebounceRef.current)
       targetDebounceRef.current = null
     }
+    if (spellingDebounceRef.current !== null) {
+      window.clearTimeout(spellingDebounceRef.current)
+      spellingDebounceRef.current = null
+    }
     if (nativeDebounceRef.current !== null) {
       window.clearTimeout(nativeDebounceRef.current)
       nativeDebounceRef.current = null
     }
     targetRequestRef.current += 1
     nativeRequestRef.current += 1
+    spellingRequestRef.current += 1
     setLoadingNative(false)
     setLoadingTarget(false)
+    setCheckingSpelling(false)
     setSuggestionNative(null)
     setSuggestionTarget(null)
+    setSpellingSuggestion(null)
+
+    const trimmedTarget = target.trim()
+    const trimmedNative = native.trim()
+    const example = await fetchWordExample(
+      trimmedTarget,
+      trimmedNative,
+      config.targetLang,
+      config.nativeLang,
+      config.level || 'A2',
+    )
 
     const nextCards: Lexicard[] = [
       ...cards,
       {
         id: generateId(),
-        target: target.trim(),
-        native: native.trim(),
+        target: trimmedTarget,
+        native: trimmedNative,
+        targetLang: config.targetLang,
+        nativeLang: config.nativeLang,
+        examplePhrase: example?.phrase || null,
+        exampleTranslation: example?.translation || null,
         importance,
         interval: 1,
         easeFactor: 2.5,
@@ -212,6 +273,30 @@ export function AddView({
           placeholder={`Escribe en ${config.targetLang}...`}
           className='w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-base text-slate-100 outline-none'
         />
+        {(checkingSpelling || spellingSuggestion) && (
+          <div className='mt-1.5 flex items-center gap-2 text-xs'>
+            {checkingSpelling && (
+              <span className='text-slate-500'>Revisando ortografia...</span>
+            )}
+            {!checkingSpelling && spellingSuggestion && (
+              <>
+                <span className='text-slate-500'>
+                  *quizas querias escribir "{spellingSuggestion}"*
+                </span>
+                <button
+                  type='button'
+                  onClick={() => {
+                    handleTargetChange(spellingSuggestion)
+                    setSpellingSuggestion(null)
+                  }}
+                  className='rounded-md border border-slate-700 px-2 py-0.5 text-[11px] font-semibold text-slate-300'
+                >
+                  Usar
+                </button>
+              </>
+            )}
+          </div>
+        )}
         <TranslationSuggestion
           suggestion={suggestionNative}
           loading={loadingNative}

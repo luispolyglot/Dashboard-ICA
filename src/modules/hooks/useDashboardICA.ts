@@ -95,7 +95,12 @@ export function useDashboardICA() {
 
   const handleConfigChange = (nextConfig: AppConfig): void => {
     setConfig(nextConfig)
-    saveData('dashboard-ICA-config', nextConfig)
+    setCards([])
+    void (async () => {
+      await saveData('dashboard-ICA-config', nextConfig)
+      const scopedCards = await loadData('dashboard-ICA-words', [] as Lexicard[])
+      setCards(scopedCards)
+    })()
   }
 
   const openCalendar = (tab: CalendarTab): void => {
