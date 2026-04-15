@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "qa:test-language-scope": "node scripts/qa-language-scope.mjs",
     "whitelist:generate-sql": "node whitelist/generate-whitelist-sql.mjs"
   },
   "dependencies": {

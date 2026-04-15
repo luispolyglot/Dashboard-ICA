@@ -159,6 +159,15 @@ async function loadWords(userId: string): Promise<Lexicard[]> {
 async function saveWords(userId: string, cards: Lexicard[]): Promise<void> {
   if (!supabase) return
 
+  const { data: settings } = await supabase
+    .from('user_settings')
+    .select('native_lang, target_lang')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  const scopedNative = settings?.native_lang || cards[0]?.nativeLang || null
+  const scopedTarget = settings?.target_lang || cards[0]?.targetLang || null
+
   const payload = cards.map((card) => ({
     id: card.id,
     user_id: userId,
@@ -199,10 +208,22 @@ async function saveWords(userId: string, cards: Lexicard[]): Promise<void> {
     }
   }
 
-  const { data: existingRows, error: existingError } = await supabase
+  let existingRowsQuery = supabase
     .from('lexicards')
     .select('id')
     .eq('user_id', userId)
+
+  if (scopedNative && scopedTarget) {
+    existingRowsQuery = existingRowsQuery
+      .eq('native_lang', scopedNative)
+      .eq('target_lang', scopedTarget)
+  } else {
+    existingRowsQuery = existingRowsQuery
+      .is('native_lang', null)
+      .is('target_lang', null)
+  }
+
+  const { data: existingRows, error: existingError } = await existingRowsQuery
 
   if (existingError) throw existingError
 
@@ -212,11 +233,22 @@ async function saveWords(userId: string, cards: Lexicard[]): Promise<void> {
     .filter((id) => !nextIds.has(id))
 
   if (idsToDelete.length > 0) {
-    const { error } = await supabase
+    let deleteQuery = supabase
       .from('lexicards')
       .delete()
       .eq('user_id', userId)
-      .in('id', idsToDelete)
+
+    if (scopedNative && scopedTarget) {
+      deleteQuery = deleteQuery
+        .eq('native_lang', scopedNative)
+        .eq('target_lang', scopedTarget)
+    } else {
+      deleteQuery = deleteQuery
+        .is('native_lang', null)
+        .is('target_lang', null)
+    }
+
+    const { error } = await deleteQuery.in('id', idsToDelete)
     if (error) throw error
   }
 }
