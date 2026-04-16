@@ -54,6 +54,8 @@ export interface PhraseGenerationEntry {
   generated_phrase: string | null
   translation: string | null
   model: string | null
+  target_lang?: string | null
+  native_lang?: string | null
   created_at: string
 }
 

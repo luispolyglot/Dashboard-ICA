@@ -17,19 +17,19 @@ export function ProgressBar({ correct }: ProgressBarProps) {
   return (
     <div className='mb-5 w-full max-w-[420px]'>
       <div className='mb-2 flex items-center justify-between'>
-        <span className='text-sm font-semibold text-slate-400'>
+        <span className='text-sm font-semibold text-muted-foreground'>
           {correct < GOAL
             ? `${correct} / ${GOAL} correctas`
             : '¡Objetivo cumplido!'}
         </span>
-        <span className='text-xs text-slate-500'>{correct < GOAL ? `Faltan ${GOAL - correct}` : '🎉'}</span>
+        <span className='text-xs text-muted-foreground'>{correct < GOAL ? `Faltan ${GOAL - correct}` : '🎉'}</span>
       </div>
-      <div className='grid grid-cols-10 gap-1 rounded-lg bg-slate-800 p-1'>
+      <div className='grid grid-cols-10 gap-1 rounded-lg bg-muted p-1'>
         {Array.from({ length: GOAL }, (_, i) => (
           <div
             key={i}
             className={`h-2 rounded-full transition-all ${
-              i < correct ? activeDotClass : 'border border-slate-700 bg-slate-900'
+              i < correct ? activeDotClass : 'border border-border bg-background'
             } ${i === correct - 1 && correct > 0 ? 'scale-110' : ''}`}
           />
         ))}

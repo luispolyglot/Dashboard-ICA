@@ -333,7 +333,7 @@ as $$
       else true
     end as allowed,
     case
-      when w.email is null then 'Este email no pertenece a la comunidad habilitada.'
+      when w.email is null then 'Este email no pertence a Icademy.'
       when w.can_register is false then 'El registro para este email esta deshabilitado por el administrador.'
       else 'Email habilitado para registro.'
     end as reason

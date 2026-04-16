@@ -1,16 +1,22 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
+import React from 'react'
+import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
-import { App } from "./App";
+import { App } from './App'
 import { AuthProvider } from './auth/AuthContext'
-import "./index.css";
+import { TooltipProvider } from './components/ui/tooltip'
+import { ThemeProvider } from './theme/ThemeContext'
+import './index.css'
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      <ThemeProvider>
+        <TooltipProvider disableHoverableContent delayDuration={200}>
+          <AuthProvider>
+            <App />
+          </AuthProvider>
+        </TooltipProvider>
+      </ThemeProvider>
     </BrowserRouter>
   </React.StrictMode>,
-);
+)

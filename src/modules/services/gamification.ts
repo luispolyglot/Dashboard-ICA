@@ -37,16 +37,21 @@ async function getDailyMetrics(userId: string, day: string): Promise<DailyMetric
   }
 }
 
-export async function recordWordAddedEvent(): Promise<void> {
+type WordAddedEventParams = {
+  wordsAdded: number
+  phraseGenerated: boolean
+}
+
+export async function recordWordAddedEvent(params: WordAddedEventParams): Promise<void> {
   if (!supabase) return
   const userId = await getCurrentUserId()
   if (!userId) return
 
   const day = todayKey()
   const metric = await getDailyMetrics(userId, day)
-  const nextWords = metric.words_added + 1
+  const nextWords = params.wordsAdded
   const nextXp = metric.xp_earned + WORD_ADD_POINTS
-  const creationCompleted = nextWords >= CREATION_WORDS_GOAL && metric.phrase_generated
+  const creationCompleted = nextWords >= CREATION_WORDS_GOAL && params.phraseGenerated
 
   const { error: xpError } = await supabase.from('xp_events').insert({
     user_id: userId,
@@ -61,7 +66,7 @@ export async function recordWordAddedEvent(): Promise<void> {
       user_id: userId,
       day,
       words_added: nextWords,
-      phrase_generated: metric.phrase_generated,
+      phrase_generated: params.phraseGenerated,
       xp_earned: nextXp,
       creation_goal_completed: creationCompleted,
     },
@@ -89,6 +94,9 @@ type PhraseEventParams = {
   words: string[]
   phrase: string
   translation: string
+  wordsAdded: number
+  targetLang: string
+  nativeLang: string
 }
 
 export async function recordPhraseGeneratedEvent(params: PhraseEventParams): Promise<void> {
@@ -99,16 +107,32 @@ export async function recordPhraseGeneratedEvent(params: PhraseEventParams): Pro
   const day = todayKey()
   const metric = await getDailyMetrics(userId, day)
   const nextXp = metric.xp_earned + PHRASE_POINTS
-  const creationCompleted = metric.words_added >= CREATION_WORDS_GOAL
+  const creationCompleted = params.wordsAdded >= CREATION_WORDS_GOAL
 
-  const { error: phraseError } = await supabase.from('phrase_generations').insert({
+  const phrasePayload = {
     user_id: userId,
     source_words: params.words,
     generated_phrase: params.phrase,
     translation: params.translation,
     model: import.meta.env.VITE_ANTHROPIC_MODEL || null,
     success: true,
-  })
+    target_lang: params.targetLang,
+    native_lang: params.nativeLang,
+  }
+
+  let phraseError: Error | null = null
+  const insertWithLang = await supabase.from('phrase_generations').insert(phrasePayload)
+  if (insertWithLang.error) {
+    const insertLegacy = await supabase.from('phrase_generations').insert({
+      user_id: userId,
+      source_words: params.words,
+      generated_phrase: params.phrase,
+      translation: params.translation,
+      model: import.meta.env.VITE_ANTHROPIC_MODEL || null,
+      success: true,
+    })
+    phraseError = insertLegacy.error
+  }
   if (phraseError) throw phraseError
 
   const { error: xpError } = await supabase.from('xp_events').insert({
@@ -126,7 +150,7 @@ export async function recordPhraseGeneratedEvent(params: PhraseEventParams): Pro
     {
       user_id: userId,
       day,
-      words_added: metric.words_added,
+      words_added: params.wordsAdded,
       phrase_generated: true,
       xp_earned: nextXp,
       creation_goal_completed: creationCompleted,
@@ -141,7 +165,7 @@ export async function recordPhraseGeneratedEvent(params: PhraseEventParams): Pro
       day,
       goal_type: 'creation_goal',
       completed: creationCompleted,
-      progress_value: metric.words_added,
+      progress_value: params.wordsAdded,
       target_value: CREATION_WORDS_GOAL,
     },
     { onConflict: 'user_id,day,goal_type' },

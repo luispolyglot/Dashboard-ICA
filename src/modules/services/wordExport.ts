@@ -50,29 +50,94 @@ export async function downloadWordsAsDocx(ownerName: string, cards: Lexicard[]):
 export async function downloadWordsAsPdf(ownerName: string, cards: Lexicard[]): Promise<void> {
   const { jsPDF } = await import('jspdf')
 
-  const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
-  const left = 50
-  let y = 60
+  const scale = 2
+  const pageWidthPx = Math.floor(794 * scale)
+  const pageHeightPx = Math.floor(1123 * scale)
+  const marginPx = Math.floor(48 * scale)
+  const lineHeightPx = Math.floor(24 * scale)
 
-  pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(14)
-  pdf.text(`PALABRAS ICA [${ownerName}]`, left, y)
-  y += 28
+  const canvas = document.createElement('canvas')
+  const context = canvas.getContext('2d')
+  if (!context) {
+    throw new Error('No se pudo crear el contexto del PDF')
+  }
 
-  pdf.setFont('helvetica', 'normal')
-  pdf.setFontSize(12)
+  const fontFamily = '"Nunito Sans Variable", "Figtree Variable", system-ui, sans-serif'
+  const bodyFont = `${Math.floor(16 * scale)}px ${fontFamily}`
+  const titleFont = `700 ${Math.floor(28 * scale)}px ${fontFamily}`
 
+  const maxTextWidth = pageWidthPx - marginPx * 2
+  context.font = bodyFont
+
+  const wrapLine = (text: string): string[] => {
+    const words = text.split(' ')
+    const lines: string[] = []
+    let current = ''
+
+    words.forEach((word) => {
+      const candidate = current ? `${current} ${word}` : word
+      if (context.measureText(candidate).width <= maxTextWidth) {
+        current = candidate
+        return
+      }
+
+      if (current) lines.push(current)
+      current = word
+    })
+
+    if (current) lines.push(current)
+    return lines.length ? lines : ['']
+  }
+
+  const lines: string[] = []
   cards.forEach((card, index) => {
-    const line = `${index + 1}. ${card.target} = ${card.native}`
-    const wrapped = pdf.splitTextToSize(line, 500)
+    const rawLine = `${index + 1}. ${card.target} = ${card.native}`
+    lines.push(...wrapLine(rawLine))
+  })
 
-    if (y > 780) {
-      pdf.addPage()
-      y = 60
+  const titleHeight = Math.floor(42 * scale)
+  const maxBodyLinesPerPage = Math.floor(
+    (pageHeightPx - marginPx * 2 - titleHeight) / lineHeightPx,
+  )
+
+  const pages: HTMLCanvasElement[] = []
+  let cursor = 0
+  while (cursor < lines.length || pages.length === 0) {
+    const pageCanvas = document.createElement('canvas')
+    pageCanvas.width = pageWidthPx
+    pageCanvas.height = pageHeightPx
+    const pageContext = pageCanvas.getContext('2d')
+    if (!pageContext) break
+
+    pageContext.fillStyle = '#ffffff'
+    pageContext.fillRect(0, 0, pageWidthPx, pageHeightPx)
+    pageContext.textBaseline = 'top'
+    pageContext.fillStyle = '#111827'
+
+    if (pages.length === 0) {
+      pageContext.font = titleFont
+      pageContext.fillText(`PALABRAS ICA [${ownerName}]`, marginPx, marginPx)
     }
 
-    pdf.text(wrapped, left, y)
-    y += wrapped.length * 16
+    pageContext.font = bodyFont
+    let y = marginPx + titleHeight
+    for (let i = 0; i < maxBodyLinesPerPage && cursor < lines.length; i += 1) {
+      pageContext.fillText(lines[cursor], marginPx, y)
+      y += lineHeightPx
+      cursor += 1
+    }
+
+    pages.push(pageCanvas)
+  }
+
+  const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  const pageHeight = pdf.internal.pageSize.getHeight()
+
+  pages.forEach((pageCanvas, index) => {
+    if (index > 0) pdf.addPage()
+    const imageData = pageCanvas.toDataURL('image/png')
+    pdf.addImage(imageData, 'PNG', 0, 0, pageWidth, pageHeight)
   })
 
   pdf.save(`palabras-ica-${ownerName.toLowerCase().replace(/\s+/g, '-')}.pdf`)

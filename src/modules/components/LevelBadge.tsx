@@ -20,7 +20,7 @@ const COLOR_MAP: Record<CEFRLevel, Tone> = {
 }
 
 const TONE_CLASSES: Record<Tone, string> = {
-  slate: 'bg-slate-500/15 text-slate-400',
+  slate: 'bg-muted text-muted-foreground',
   blue: 'bg-blue-500/15 text-blue-400',
   emerald: 'bg-emerald-500/15 text-emerald-400',
   amber: 'bg-amber-500/15 text-amber-400',

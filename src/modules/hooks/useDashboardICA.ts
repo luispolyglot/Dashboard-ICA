@@ -4,14 +4,12 @@ import { loadData, saveData } from '../services/storage'
 import { todayKey } from '../utils'
 import type {
   AppConfig,
-  AppView,
   CalendarTab,
   DailyProgressMap,
   Lexicard,
 } from '../types'
 
 export function useDashboardICA() {
-  const [view, setView] = useState<AppView>('home')
   const [cards, setCards] = useState<Lexicard[]>([])
   const [config, setConfig] = useState<AppConfig | null>(null)
   const [loading, setLoading] = useState(true)
@@ -76,6 +74,7 @@ export function useDashboardICA() {
     setDailyProgress(updated)
     await saveData('dashboard-ICA-daily-progress', updated)
     await checkCreationStreak(updated)
+    return updated[tk]
   }
 
   const handlePhraseGenerated = async () => {
@@ -86,6 +85,7 @@ export function useDashboardICA() {
     setDailyProgress(updated)
     await saveData('dashboard-ICA-daily-progress', updated)
     await checkCreationStreak(updated)
+    return updated[tk]
   }
 
   const handleSetup = async (nextConfig: AppConfig): Promise<void> => {
@@ -118,8 +118,6 @@ export function useDashboardICA() {
   }, [])
 
   return {
-    view,
-    setView,
     cards,
     setCards,
     config,

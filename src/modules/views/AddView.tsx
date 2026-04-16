@@ -14,7 +14,13 @@ import {
 import { recordWordAddedEvent } from '../services/gamification'
 import { saveData } from '../services/storage'
 import { generateId } from '../utils'
+import { RomanizationHint } from '../components/RomanizationHint'
 import { TranslationSuggestion } from '../components/TranslationSuggestion'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import type {
   AppConfig,
   DailyProgressMap,
@@ -27,7 +33,7 @@ type AddViewProps = {
   setCards: Dispatch<SetStateAction<Lexicard[]>>
   config: AppConfig
   dailyProgress: DailyProgressMap
-  onWordAdded: () => Promise<void>
+  onWordAdded: () => Promise<{ wordsAdded: number; phraseGenerated: boolean }>
 }
 
 const IMPORTANCE_TONE: Record<ImportanceKey, string> = {
@@ -62,7 +68,9 @@ export function AddView({
   const [suggestionTarget, setSuggestionTarget] = useState<string | null>(null)
   const [loadingNative, setLoadingNative] = useState(false)
   const [loadingTarget, setLoadingTarget] = useState(false)
-  const [spellingSuggestion, setSpellingSuggestion] = useState<string | null>(null)
+  const [spellingSuggestion, setSpellingSuggestion] = useState<string | null>(
+    null,
+  )
   const [checkingSpelling, setCheckingSpelling] = useState(false)
   const targetDebounceRef = useRef<number | null>(null)
   const nativeDebounceRef = useRef<number | null>(null)
@@ -222,9 +230,9 @@ export function AddView({
     try {
       setCards(nextCards)
       await saveData('dashboard-ICA-words', nextCards)
-      await onWordAdded()
+      const progress = await onWordAdded()
       try {
-        await recordWordAddedEvent()
+        await recordWordAddedEvent(progress)
       } catch (error) {
         console.error(error)
       }
@@ -242,16 +250,8 @@ export function AddView({
   return (
     <section className='mx-auto w-full max-w-xl flex-1 overflow-y-auto px-5 py-8'>
       <div className='mb-1 flex flex-wrap items-center justify-between gap-2'>
-        <h2 className='font-serif text-3xl font-bold text-slate-100'>
-          Añadir nueva palabra
-        </h2>
-        <div
-          className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1 ${
-            todayProgress.wordsAdded >= CREATION_WORDS_GOAL
-              ? 'border-violet-500/30 bg-violet-500/10 text-violet-400'
-              : 'border-slate-700 bg-slate-800 text-slate-400'
-          }`}
-        >
+        <h2 className='font-serif text-3xl font-bold'>Añadir nueva palabra</h2>
+        <Badge variant='secondary' className='gap-1.5'>
           <span className='text-sm font-bold'>
             {todayProgress.wordsAdded}/{CREATION_WORDS_GOAL}
           </span>
@@ -259,47 +259,50 @@ export function AddView({
           {todayProgress.wordsAdded >= CREATION_WORDS_GOAL && (
             <span className='text-xs'>✓</span>
           )}
-        </div>
+        </Badge>
       </div>
 
-      <p className='mb-7 text-sm text-slate-500'>
+      <p className='mb-7 text-sm text-muted-foreground'>
         Escribe en cualquier campo y la IA te sugiere la traduccion.
       </p>
 
       <div className='mb-5'>
-        <label className='mb-2 block text-[11px] uppercase tracking-wider text-slate-400'>
+        <Label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
           {config.targetLang}{' '}
-          <span className='normal-case tracking-normal text-slate-600'>
+          <span className='normal-case tracking-normal text-muted-foreground'>
             — idioma objetivo
           </span>
-        </label>
-        <input
+        </Label>
+        <Input
           value={target}
           onChange={(e) => handleTargetChange(e.target.value)}
           disabled={saving}
           placeholder={`Escribe en ${config.targetLang}...`}
-          className='w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-base text-slate-100 outline-none disabled:cursor-not-allowed disabled:opacity-60'
+          className='h-11'
         />
         {(checkingSpelling || spellingSuggestion) && (
           <div className='mt-1.5 flex items-center gap-2 text-xs'>
             {checkingSpelling && (
-              <span className='text-slate-500'>Revisando ortografia...</span>
+              <span className='text-muted-foreground'>
+                Revisando ortografia...
+              </span>
             )}
             {!checkingSpelling && spellingSuggestion && (
               <>
-                <span className='text-slate-500'>
+                <span className='text-muted-foreground'>
                   *quizas querias escribir "{spellingSuggestion}"*
                 </span>
-                <button
+                <Button
                   type='button'
+                  size='xs'
+                  variant='secondary'
                   onClick={() => {
                     handleTargetChange(spellingSuggestion)
                     setSpellingSuggestion(null)
                   }}
-                  className='rounded-md border border-slate-700 px-2 py-0.5 text-[11px] font-semibold text-slate-300'
                 >
                   Usar
-                </button>
+                </Button>
               </>
             )}
           </div>
@@ -318,18 +321,18 @@ export function AddView({
       </div>
 
       <div className='mb-6'>
-        <label className='mb-2 block text-[11px] uppercase tracking-wider text-slate-400'>
+        <Label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
           {config.nativeLang}{' '}
-          <span className='normal-case tracking-normal text-slate-600'>
+          <span className='normal-case tracking-normal text-muted-foreground'>
             — idioma materno
           </span>
-        </label>
-        <input
+        </Label>
+        <Input
           value={native}
           onChange={(e) => handleNativeChange(e.target.value)}
           disabled={saving}
           placeholder={`Escribe en ${config.nativeLang}...`}
-          className='w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-base text-slate-100 outline-none disabled:cursor-not-allowed disabled:opacity-60'
+          className='h-11'
         />
         <TranslationSuggestion
           suggestion={suggestionTarget}
@@ -345,66 +348,66 @@ export function AddView({
       </div>
 
       <div className='mb-7'>
-        <label className='mb-2 block text-[11px] uppercase tracking-wider text-slate-400'>
+        <Label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
           Frecuencia de uso
-        </label>
+        </Label>
         <div className='flex flex-wrap gap-2'>
           {IMPORTANCE_LEVELS.map((level) => {
             const selected = importance === level.key
             return (
-              <button
+              <Button
                 key={level.key}
                 type='button'
                 onClick={() => !saving && setImportance(level.key)}
                 disabled={saving}
-                className={`min-w-[90px] flex-1 rounded-xl border-2 px-2 py-2.5 text-center transition ${
-                  selected
-                    ? IMPORTANCE_TONE[level.key]
-                    : 'border-slate-800 bg-slate-950 text-slate-500'
-                } disabled:cursor-not-allowed disabled:opacity-60`}
+                variant={selected ? 'default' : 'outline'}
+                className={`min-w-22.5 h-auto flex-1 py-2.5 ${selected ? IMPORTANCE_TONE[level.key] : ''}`}
               >
-                <div className='mb-1 text-xs font-semibold'>{level.label}</div>
-                <div className='text-[10px]'>{level.desc}</div>
-              </button>
+                <div className='text-xs font-semibold'>{level.label}</div>
+              </Button>
             )
           })}
         </div>
       </div>
 
-      <button
+      <Button
         type='button'
         onClick={handleSave}
         disabled={!canSave}
-        className={`w-full rounded-xl px-4 py-3 text-base font-semibold ${
-          canSave
-            ? 'bg-gradient-to-r from-blue-500 to-blue-700 text-white'
-            : 'cursor-not-allowed bg-slate-800 text-slate-600'
-        }`}
+        className='h-11 w-full text-base font-semibold'
       >
         {saving ? 'Guardando...' : saved ? '✓ ¡Guardada!' : 'Guardar palabra'}
-      </button>
+      </Button>
 
       {recent.length > 0 && (
         <div className='mt-10'>
-          <h3 className='mb-3 text-[11px] uppercase tracking-wider text-slate-500'>
+          <h3 className='mb-3 text-[11px] uppercase tracking-wider text-muted-foreground'>
             Últimas añadidas
           </h3>
-          {recent.map((card) => {
-            const importanceMeta = getImportance(card.importance)
-            return (
-              <div
-                key={card.id}
-                className='mb-1.5 flex items-center gap-2.5 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5'
-              >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importanceMeta.key]}`}
-                />
-                <span className='text-sm text-slate-100'>{card.target}</span>
-                <span className='text-slate-700'>→</span>
-                <span className='text-sm text-slate-400'>{card.native}</span>
-              </div>
-            )
-          })}
+          <div className='space-y-2'>
+            {recent.map((card) => {
+              const importanceMeta = getImportance(card.importance)
+              return (
+                <Card key={card.id} size='sm'>
+                  <CardContent className='flex items-start gap-2.5'>
+                    <span
+                      className={`mt-1.5 h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importanceMeta.key]}`}
+                    />
+                    <div>
+                      <div className='flex items-center gap-2.5'>
+                        <span className='text-sm font-medium'>{card.target}</span>
+                        <span className='text-muted-foreground'>→</span>
+                        <span className='text-sm text-muted-foreground'>
+                          {card.native}
+                        </span>
+                      </div>
+                      <RomanizationHint text={card.target} language={card.targetLang || ''} />
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
         </div>
       )}
     </section>

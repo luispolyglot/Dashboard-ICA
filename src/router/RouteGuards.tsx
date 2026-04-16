@@ -30,6 +30,6 @@ export function PublicOnlyRoute() {
   }
 
   if (loading) return <FullscreenMessage message='Cargando sesión...' />
-  if (user) return <Navigate to='/app' replace />
+  if (user) return <Navigate to='/' replace />
   return <Outlet />
 }

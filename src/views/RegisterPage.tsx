@@ -1,8 +1,13 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { AlertTriangleIcon } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { checkRegistrationEmail, normalizeEmail } from '../auth/whitelist'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { AuthShell } from './components/AuthShell'
 
 type RegisterStep = 'email' | 'password'
 
@@ -55,17 +60,14 @@ export function RegisterPage() {
       setError('Primero valida tu email de la comunidad.')
       return
     }
-
     if (!emailAllowed) {
       setError('Tu email no esta autorizado para registro.')
       return
     }
-
     if (password !== confirmPassword) {
       setError('Las contraseñas no coinciden')
       return
     }
-
     if (!nickname.trim()) {
       setError('Ingresa un nickname para tu perfil')
       return
@@ -88,126 +90,124 @@ export function RegisterPage() {
   }
 
   return (
-    <main className='flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100'>
-      <section className='w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900 p-7 shadow-2xl'>
-        <h1 className='font-serif text-3xl font-bold'>Crea tu cuenta</h1>
-        <p className='mt-2 text-sm text-slate-400'>
-          Unete a Icademy y empieza a construir tu racha.
-        </p>
+    <AuthShell
+      title='Crea tu cuenta'
+      subtitle='Unete a Icademy y empieza a construir tu racha.'
+    >
+      {!hasSupabaseConfig && (
+        <div className='mb-4 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive'>
+          <AlertTriangleIcon className='size-4' />
+          Faltan variables de entorno de Supabase.
+        </div>
+      )}
 
-        {!hasSupabaseConfig && (
-          <div className='mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300'>
-            Faltan variables de entorno de Supabase.
+      {step === 'email' && (
+        <form className='space-y-4' onSubmit={handleCheckEmail}>
+          <div className='space-y-1.5'>
+            <Label htmlFor='register-email'>
+              Ingresa el mail que usas en la comunidad Icademy de Skool
+            </Label>
+            <Input
+              id='register-email'
+              type='email'
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
           </div>
-        )}
 
-        {step === 'email' && (
-          <form className='mt-6 space-y-4' onSubmit={handleCheckEmail}>
-            <label className='block text-sm'>
-              <span className='mb-1 block text-slate-300'>
-                Ingresa el mail que usas en la comunidad Icademy de Skool
-              </span>
-              <input
-                type='email'
-                required
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                className='w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 outline-none'
-              />
-            </label>
+          {error && <p className='text-sm text-destructive'>{error}</p>}
+          {success && <p className='text-sm text-emerald-500'>{success}</p>}
 
-            {error && <p className='text-sm text-red-400'>{error}</p>}
-            {success && <p className='text-sm text-emerald-400'>{success}</p>}
+          <Button
+            type='submit'
+            disabled={busy || !hasSupabaseConfig}
+            className='w-full'
+          >
+            {busy ? 'Validando...' : 'Validar email'}
+          </Button>
+        </form>
+      )}
 
-            <button
+      {step === 'password' && (
+        <form className='space-y-4' onSubmit={handleSubmit}>
+          <Input value={normalizeEmail(email)} disabled />
+
+          <div className='space-y-1.5'>
+            <Label htmlFor='register-nickname'>Nombre</Label>
+            <Input
+              id='register-nickname'
+              type='text'
+              required
+              maxLength={40}
+              value={nickname}
+              onChange={(event) => setNickname(event.target.value)}
+              placeholder='Ej: Tu nombre o un apodo'
+            />
+          </div>
+
+          <div className='space-y-1.5'>
+            <Label htmlFor='register-password'>Contraseña</Label>
+            <Input
+              id='register-password'
+              type='password'
+              required
+              minLength={6}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </div>
+
+          <div className='space-y-1.5'>
+            <Label htmlFor='register-password-confirm'>
+              Confirmar contraseña
+            </Label>
+            <Input
+              id='register-password-confirm'
+              type='password'
+              required
+              minLength={6}
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+            />
+          </div>
+
+          {error && <p className='text-sm text-destructive'>{error}</p>}
+          {success && <p className='text-sm text-emerald-500'>{success}</p>}
+
+          <div className='flex gap-2'>
+            <Button
+              type='button'
+              variant='outline'
+              className='flex-1'
+              onClick={() => {
+                setStep('email')
+                setNickname('')
+                setPassword('')
+                setConfirmPassword('')
+                setError(null)
+                setSuccess(null)
+              }}
+            >
+              Cambiar email
+            </Button>
+            <Button
               type='submit'
               disabled={busy || !hasSupabaseConfig}
-              className='w-full rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50'
+              className='flex-1'
             >
-              {busy ? 'Validando...' : 'Validar email'}
-            </button>
-          </form>
-        )}
+              {busy ? 'Creando...' : 'Crear cuenta'}
+            </Button>
+          </div>
+        </form>
+      )}
 
-        {step === 'password' && (
-          <form className='mt-6 space-y-4' onSubmit={handleSubmit}>
-            <div className='rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-300 opacity-60'>
-              {normalizeEmail(email)}
-            </div>
-
-            <label className='block text-sm'>
-              <span className='mb-1 block text-slate-300'>Nombre</span>
-              <input
-                type='text'
-                required
-                maxLength={40}
-                value={nickname}
-                onChange={(event) => setNickname(event.target.value)}
-                placeholder='Ej: Tu nombre o un apodo'
-                className='w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 outline-none'
-              />
-            </label>
-
-            <label className='block text-sm'>
-              <span className='mb-1 block text-slate-300'>Contraseña</span>
-              <input
-                type='password'
-                required
-                minLength={6}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className='w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 outline-none'
-              />
-            </label>
-
-            <label className='block text-sm'>
-              <span className='mb-1 block text-slate-300'>Confirmar contraseña</span>
-              <input
-                type='password'
-                required
-                minLength={6}
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                className='w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 outline-none'
-              />
-            </label>
-
-            {error && <p className='text-sm text-red-400'>{error}</p>}
-            {success && <p className='text-sm text-emerald-400'>{success}</p>}
-
-            <div className='flex gap-2'>
-              <button
-                type='button'
-                onClick={() => {
-                  setStep('email')
-                  setNickname('')
-                  setPassword('')
-                  setConfirmPassword('')
-                  setError(null)
-                  setSuccess(null)
-                }}
-                className='flex-1 rounded-xl border border-slate-700 px-4 py-3 text-sm font-semibold text-slate-300'
-              >
-                Cambiar email
-              </button>
-              <button
-                type='submit'
-                disabled={busy || !hasSupabaseConfig}
-                className='flex-1 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50'
-              >
-                {busy ? 'Creando...' : 'Crear cuenta'}
-              </button>
-            </div>
-          </form>
-        )}
-
-        <p className='mt-4 text-sm text-slate-400'>
-          Ya tienes cuenta?{' '}
-          <Link to='/login' className='font-semibold text-blue-400'>
-            Iniciá sesión
-          </Link>
-        </p>
-      </section>
-    </main>
+      <p className='mt-4 text-sm text-muted-foreground'>
+        Ya tienes cuenta?{' '}
+        <Link to='/login' className='font-semibold text-primary'>
+          Iniciar sesión
+        </Link>
+      </p>
+    </AuthShell>
   )
 }

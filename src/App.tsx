@@ -1,6 +1,16 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
-import DashboardICAApp from './modules/DashboardICA'
 import { useAuth } from './auth/AuthContext'
+import { DashboardProvider } from './modules/context/DashboardContext'
+import { DashboardLayout } from './modules/layout/DashboardLayout'
+import {
+  ActivationPhrasePage,
+  FlashcardsPage,
+  HomePage,
+  MyIcaWordsPage,
+  NewIcaWordsPage,
+  PhraseHistoryPage,
+} from './modules/routes/DashboardPages'
+import { DASHBOARD_ROUTES } from './modules/routes/paths'
 import { PrivateRoute, PublicOnlyRoute } from './router/RouteGuards'
 import { LoginPage } from './views/LoginPage'
 import { RegisterPage } from './views/RegisterPage'
@@ -10,18 +20,22 @@ function RootRedirect() {
 
   if (loading) {
     return (
-      <div className='flex min-h-screen items-center justify-center bg-slate-950 text-slate-400'>
+      <div className='flex min-h-screen items-center justify-center bg-background text-muted-foreground'>
         Cargando...
       </div>
     )
   }
 
-  return <Navigate to={user ? '/app' : '/login'} replace />
+  return <Navigate to={user ? DASHBOARD_ROUTES.home : '/login'} replace />
 }
 
-function DashboardRoute() {
+function DashboardShell() {
   const { signOut } = useAuth()
-  return <DashboardICAApp onLogout={signOut} />
+  return (
+    <DashboardProvider>
+      <DashboardLayout onLogout={signOut} />
+    </DashboardProvider>
+  )
 }
 
 export function App() {
@@ -33,10 +47,15 @@ export function App() {
       </Route>
 
       <Route element={<PrivateRoute />}>
-        <Route path='/app' element={<DashboardRoute />} />
+        <Route element={<DashboardShell />}>
+          <Route index element={<HomePage />} />
+          <Route path='new-ica-words' element={<NewIcaWordsPage />} />
+          <Route path='my-ica-words' element={<MyIcaWordsPage />} />
+          <Route path='flashcards' element={<FlashcardsPage />} />
+          <Route path='activation-phrase' element={<ActivationPhrasePage />} />
+          <Route path='phrase-history' element={<PhraseHistoryPage />} />
+        </Route>
       </Route>
-
-      <Route path='/' element={<RootRedirect />} />
       <Route path='*' element={<RootRedirect />} />
     </Routes>
   )

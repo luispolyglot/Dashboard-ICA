@@ -1,15 +1,28 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ComponentType } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { RomanizationHint } from '../components/RomanizationHint'
+import { SpeakButton } from '../components/SpeakButton'
 import { getImportance } from '../constants'
 import { fetchActivationPhrase } from '../services/anthropic'
 import { recordPhraseGeneratedEvent } from '../services/gamification'
-import { speakNatural, stopTTS } from '../services/tts'
-import type { ActivationPhraseResult, AppConfig, CEFRLevel, Lexicard } from '../types'
+import type {
+  ActivationPhraseResult,
+  AppConfig,
+  CEFRLevel,
+  Lexicard,
+} from '../types'
 
 type PhraseViewProps = {
   cards: Lexicard[]
   config: AppConfig
-  onPhraseGenerated: () => Promise<void>
+  onPhraseGenerated: () => Promise<{
+    wordsAdded: number
+    phraseGenerated: boolean
+  }>
   LevelBadge: ComponentType<{ level: CEFRLevel; size?: 'normal' | 'small' }>
 }
 
@@ -21,24 +34,58 @@ const IMPORTANCE_DOT = {
   irrelevant: 'bg-red-400',
 } as const
 
-export function PhraseView({ cards, config, onPhraseGenerated, LevelBadge }: PhraseViewProps) {
+export function PhraseView({
+  cards,
+  config,
+  onPhraseGenerated,
+  LevelBadge,
+}: PhraseViewProps) {
   const [wordCount, setWordCount] = useState(5)
-  const [customMode, setCustomMode] = useState(false)
-  const [customSelectedIds, setCustomSelectedIds] = useState<string[]>([])
+  const [mode, setMode] = useState<'automatic' | 'manual'>('automatic')
+  const [automaticSelectedIds, setAutomaticSelectedIds] = useState<string[]>([])
+  const [manualSelectedIds, setManualSelectedIds] = useState<string[]>([])
+  const [manualQuery, setManualQuery] = useState('')
   const [result, setResult] = useState<ActivationPhraseResult | null>(null)
   const [loading, setLoading] = useState(false)
-  const [speaking, setSpeaking] = useState(false)
 
   const level = config.level || 'A2'
-  const recentWords = cards.slice(-8).reverse()
-  const selectedWords = customMode
-    ? recentWords.filter((word) => customSelectedIds.includes(word.id))
-    : recentWords.slice(0, wordCount)
+  const allWords = cards.slice().reverse()
+  const automaticPool = cards.slice(-8).reverse()
+  const manualPool = cards.slice(-25).reverse()
 
-  const minWordsRequired = 3
+  useEffect(() => {
+    const defaultIds = automaticPool.slice(0, wordCount).map((word) => word.id)
+    setAutomaticSelectedIds(defaultIds)
+  }, [wordCount, cards.length])
+
+  useEffect(() => {
+    setManualSelectedIds((prev) =>
+      prev.filter((id) => allWords.some((word) => word.id === id)),
+    )
+  }, [cards])
+
+  const selectedWords =
+    mode === 'manual'
+      ? allWords.filter((word) => manualSelectedIds.includes(word.id))
+      : automaticPool.filter((word) => automaticSelectedIds.includes(word.id))
+
+  const minWordsRequired = 5
+
+  const searchableManualPool = manualQuery.trim() ? allWords : manualPool
+
+  const filteredManualPool = searchableManualPool.filter((word) => {
+    const q = manualQuery.trim().toLowerCase()
+    if (!q) return true
+    return (
+      word.target.toLowerCase().includes(q) ||
+      word.native.toLowerCase().includes(q)
+    )
+  })
 
   const toggleCustomWord = (id: string): void => {
-    setCustomSelectedIds((prev) => {
+    if (mode !== 'manual') return
+
+    setManualSelectedIds((prev) => {
       if (prev.includes(id)) {
         return prev.filter((item) => item !== id)
       }
@@ -49,30 +96,28 @@ export function PhraseView({ cards, config, onPhraseGenerated, LevelBadge }: Phr
     })
   }
 
-  const toggleCustomMode = (): void => {
-    setCustomMode((prev) => {
-      const next = !prev
-      if (next && customSelectedIds.length === 0) {
-        setCustomSelectedIds(recentWords.slice(0, wordCount).map((word) => word.id))
-      }
-      return next
-    })
-  }
-
   const handleGenerate = async (): Promise<void> => {
     if (selectedWords.length < minWordsRequired) return
     setLoading(true)
     setResult(null)
-    const response = await fetchActivationPhrase(selectedWords, config.targetLang, config.nativeLang, level)
+    const response = await fetchActivationPhrase(
+      selectedWords,
+      config.targetLang,
+      config.nativeLang,
+      level,
+    )
     setResult(response)
     setLoading(false)
     if (response) {
-      await onPhraseGenerated()
+      const progress = await onPhraseGenerated()
       try {
         await recordPhraseGeneratedEvent({
           words: selectedWords.map((word) => word.target),
           phrase: response.phrase,
           translation: response.translation,
+          wordsAdded: progress.wordsAdded,
+          targetLang: config.targetLang,
+          nativeLang: config.nativeLang,
         })
       } catch (error) {
         console.error(error)
@@ -80,194 +125,211 @@ export function PhraseView({ cards, config, onPhraseGenerated, LevelBadge }: Phr
     }
   }
 
-  const handleSpeak = (): void => {
-    if (!result?.phrase) return
-
-    if (speaking) {
-      stopTTS()
-      setSpeaking(false)
-      return
-    }
-
-    setSpeaking(true)
-    speakNatural(result.phrase, config.targetLang, () => setSpeaking(false))
-  }
-
   const removeSelectedWord = (id: string): void => {
-    if (customMode) {
-      setCustomSelectedIds((prev) => prev.filter((item) => item !== id))
+    if (mode === 'manual') {
+      setManualSelectedIds((prev) => prev.filter((item) => item !== id))
       return
     }
 
-    const nextIds = selectedWords
-      .map((word) => word.id)
-      .filter((wordId) => wordId !== id)
-    setCustomSelectedIds(nextIds)
-    setCustomMode(true)
+    setAutomaticSelectedIds((prev) => prev.filter((item) => item !== id))
   }
 
   return (
     <section className='mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-5 py-8'>
-      <h2 className='mb-1 font-serif text-3xl font-bold text-slate-100'>⚡ Frase de Activación</h2>
-      <p className='mb-1 text-sm text-slate-500'>
+      <h2 className='mb-1 font-serif text-3xl font-bold'>
+        ⚡ Frase de Activación
+      </h2>
+      <p className='mb-1 text-sm text-muted-foreground'>
         Genera una frase natural en {config.targetLang} usando tus palabras ICA.
       </p>
-      <p className='mb-4 text-xs text-slate-600'>
+      <p className='mb-4 text-xs text-muted-foreground'>
         Se usan las ultimas palabras añadidas (las mas recientes).
       </p>
 
       <div className='mb-6 flex items-center gap-2'>
         <LevelBadge level={level} />
-        <span className='text-xs text-slate-500'>· CEFR · Adaptado a tu nivel</span>
+        <span className='text-xs text-muted-foreground'>
+          · CEFR · Adaptado a tu nivel
+        </span>
       </div>
 
       <div className='mb-6'>
-        <label className='mb-2 block text-[11px] uppercase tracking-wider text-slate-400'>¿Cuántas palabras?</label>
-        <div className='flex gap-2'>
-          {[5, 6, 7, 8].map((n) => {
-            const available = recentWords.length >= n
-            const active = wordCount === n
-
-            return (
-              <button
-                key={n}
-                type='button'
-                onClick={() => available && setWordCount(n)}
-                className={`flex-1 rounded-xl border-2 px-2 py-3 text-center ${
-                  !available
-                    ? 'cursor-not-allowed border-slate-800 bg-slate-950 opacity-40'
-                    : active
-                      ? 'border-amber-500 bg-amber-500/10'
-                      : 'border-slate-800 bg-slate-950'
-                }`}
-              >
-                <div className={`text-2xl font-bold ${active && available ? 'text-amber-400' : 'text-slate-500'}`}>{n}</div>
-                <div className='text-[10px] text-slate-600'>palabras</div>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      <div className='mb-5'>
-        <button
-          type='button'
-          onClick={toggleCustomMode}
-          className='text-xs font-semibold text-amber-400 underline decoration-amber-700 underline-offset-2'
+        <Tabs
+          value={mode}
+          onValueChange={(value) => setMode(value as 'automatic' | 'manual')}
         >
-          {customMode
-            ? 'Usar seleccion automatica (principal)'
-            : 'Crear frase activacion personalizada'}
-        </button>
+          <TabsList className='grid w-full grid-cols-2'>
+            <TabsTrigger value='automatic'>Automática</TabsTrigger>
+            <TabsTrigger value='manual'>Manual</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
-      {customMode && (
-        <div className='mb-6 rounded-xl border border-slate-800 bg-slate-900/40 p-3.5'>
-          <label className='mb-2 block text-[11px] uppercase tracking-wider text-slate-400'>Selecciona palabras (3-8)</label>
-          <div className='flex flex-wrap gap-1.5'>
-            {recentWords.map((word) => {
-              const active = customSelectedIds.includes(word.id)
-              const importance = getImportance(word.importance)
+      {mode === 'automatic' && (
+        <div className='mb-6'>
+          <Label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
+            ¿Cuántas palabras?
+          </Label>
+          <div className='flex gap-2'>
+            {[5, 6, 7, 8].map((n) => {
+              const available = automaticPool.length >= n
+              const active = wordCount === n
+
               return (
-                <button
-                  key={word.id}
+                <Button
+                  key={n}
                   type='button'
-                  onClick={() => toggleCustomWord(word.id)}
-                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs ${active
-                    ? 'border-amber-500 bg-amber-500/10 text-amber-300'
-                    : 'border-slate-700 bg-slate-950 text-slate-400'}`}
+                  onClick={() => available && setWordCount(n)}
+                  variant={active ? 'default' : 'outline'}
+                  className='h-auto flex-1 py-3'
+                  disabled={!available}
                 >
-                  <span className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importance.key]}`} />
-                  {word.target}
-                </button>
+                  <div className='text-center'>
+                    <div className='text-2xl font-bold'>{n}</div>
+                    <div
+                      className={`text-[10px] ${active ? 'text-background' : 'text-muted-foreground'}`}
+                    >
+                      palabras
+                    </div>
+                  </div>
+                </Button>
               )
             })}
           </div>
-          <p className='mt-2 text-[11px] text-slate-500'>
+        </div>
+      )}
+
+      {mode === 'manual' && (
+        <div className='mb-6 rounded-xl border border-border bg-muted/30 p-3.5'>
+          <label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
+            Selecciona palabras (5-8, últimas 25 por defecto)
+          </label>
+
+          <Input
+            value={manualQuery}
+            onChange={(event) => setManualQuery(event.target.value)}
+            placeholder='Buscar palabra entre todas...'
+            className='mb-3'
+          />
+
+          <div className='flex max-h-44 flex-wrap gap-1.5 overflow-y-auto'>
+            {filteredManualPool.map((word) => {
+              const active = manualSelectedIds.includes(word.id)
+              const importance = getImportance(word.importance)
+              return (
+                <Button
+                  key={word.id}
+                  type='button'
+                  onClick={() => toggleCustomWord(word.id)}
+                  variant={active ? 'default' : 'outline'}
+                  size='sm'
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importance.key]}`}
+                  />
+                  {word.target}
+                </Button>
+              )
+            })}
+          </div>
+          <p className='mt-2 text-[11px] text-muted-foreground'>
             Seleccionadas: {selectedWords.length}/8
           </p>
         </div>
       )}
 
       <div className='mb-6'>
-        <label className='mb-2 block text-[11px] uppercase tracking-wider text-slate-400'>Palabras seleccionadas</label>
+        <label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
+          Palabras seleccionadas
+        </label>
         <div className='flex flex-wrap gap-1.5'>
           {selectedWords.map((word) => {
             const importance = getImportance(word.importance)
             return (
               <div
                 key={word.id}
-                className='inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5'
+                className='inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-3 py-1.5'
               >
-                <span className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importance.key]}`} />
-                <span className='text-sm font-semibold text-slate-100'>{word.target}</span>
-                <span className='text-xs text-slate-500'>({word.native})</span>
-                <button
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importance.key]}`}
+                />
+                <span className='text-sm font-semibold'>{word.target}</span>
+                <span className='text-xs text-muted-foreground'>
+                  ({word.native})
+                </span>
+                <Button
                   type='button'
                   onClick={() => removeSelectedWord(word.id)}
-                  className='ml-1 rounded-md border border-slate-700 px-1.5 py-0.5 text-[10px] font-bold text-slate-400'
+                  variant='outline'
+                  size='xs'
                 >
                   x
-                </button>
+                </Button>
               </div>
             )
           })}
         </div>
       </div>
 
-      <button
+      <Button
         type='button'
         onClick={handleGenerate}
         disabled={loading || selectedWords.length < minWordsRequired}
-        className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-base font-bold ${
-          loading || selectedWords.length < minWordsRequired
-            ? 'cursor-not-allowed bg-slate-800 text-slate-500'
-            : 'bg-gradient-to-r from-amber-500 to-orange-600 text-black'
-        }`}
+        className='h-11 w-full gap-2 text-base font-bold'
       >
         {loading ? (
           <>
-            <span className='inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-500 border-t-slate-300' />
+            <span className='inline-block h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground border-t-foreground' />
             Generando {level}...
           </>
         ) : (
           `⚡ Generar Frase · ${level}`
         )}
-      </button>
+      </Button>
 
       {result && (
-        <article className='mt-7 overflow-hidden rounded-2xl border border-amber-500/30'>
-          <div className='bg-gradient-to-br from-amber-950/50 to-slate-900 p-5'>
+        <article className='mt-7 overflow-hidden rounded-2xl border border-primary/30'>
+          <div className='bg-linear-to-br from-primary/15 to-background p-5'>
             <div className='mb-3 flex items-center justify-between'>
               <div className='flex items-center gap-2'>
-                <span className='text-[11px] font-semibold uppercase tracking-wider text-amber-400'>{config.targetLang}</span>
+                <span className='text-[11px] font-semibold uppercase tracking-wider text-primary'>
+                  {config.targetLang}
+                </span>
                 <LevelBadge level={level} size='small' />
               </div>
-              <button
-                type='button'
-                onClick={handleSpeak}
-                className='inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-400'
-              >
-                {speaking ? 'Parando...' : 'Escuchar'}
-              </button>
             </div>
-            <p className='font-serif text-2xl font-bold leading-relaxed text-slate-100'>{result.phrase}</p>
+            <p className='font-serif text-2xl font-bold leading-relaxed'>
+              {result.phrase}
+            </p>
+            <RomanizationHint
+              text={result.phrase}
+              language={config.targetLang}
+            />
+            <SpeakButton
+              text={result.phrase}
+              langName={config.targetLang}
+              color='#3B82F6'
+              label={`Escuchar ${config.targetLang}`}
+              className='mt-3'
+            />
           </div>
 
-          <div className='border-t border-slate-800 bg-slate-950 p-5'>
-            <span className='mb-2 block text-[11px] font-semibold uppercase tracking-wider text-slate-500'>
+          <div className='border-t border-border bg-muted/20 p-5'>
+            <span className='mb-2 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground'>
               {config.nativeLang}
             </span>
-            <p className='text-base leading-relaxed text-slate-300'>{result.translation}</p>
+            <p className='text-base leading-relaxed text-muted-foreground'>
+              {result.translation}
+            </p>
           </div>
 
           {result.words_used && (
-            <div className='border-t border-slate-800 bg-slate-950 px-5 py-3.5'>
+            <div className='border-t border-border bg-muted/20 px-5 py-3.5'>
               <div className='flex flex-wrap gap-1.5'>
                 {result.words_used.map((word) => (
                   <span
                     key={word}
-                    className='rounded-md bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-400'
+                    className='rounded-md bg-primary/30 px-2.5 py-0.5 text-xs font-semibold text-primary'
                   >
                     {word}
                   </span>
@@ -279,14 +341,15 @@ export function PhraseView({ cards, config, onPhraseGenerated, LevelBadge }: Phr
       )}
 
       {result && (
-        <button
+        <Button
           type='button'
           onClick={handleGenerate}
           disabled={loading}
-          className='mt-4 w-full rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm font-semibold text-slate-400'
+          variant='outline'
+          className='mt-4 w-full'
         >
           🔄 Generar otra frase
-        </button>
+        </Button>
       )}
     </section>
   )

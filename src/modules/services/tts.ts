@@ -36,7 +36,7 @@ function getBestVoice(langCode: string): SpeechSynthesisVoice | null {
   return matching.find((v) => v.lang === langCode) || matching[0]
 }
 
-function speakFallback(text: string, langCode: string, onEnd?: () => void): void {
+function speakFallback(text: string, langCode: string, onEnd?: () => void, rate = 1): void {
   if (!window.speechSynthesis) {
     if (onEnd) onEnd()
     return
@@ -46,7 +46,7 @@ function speakFallback(text: string, langCode: string, onEnd?: () => void): void
 
   const u = new SpeechSynthesisUtterance(text)
   u.lang = langCode
-  u.rate = 0.85
+  u.rate = Math.min(1.25, Math.max(0.5, rate))
   u.pitch = 1
   const voice = getBestVoice(langCode)
   if (voice) u.voice = voice
@@ -55,18 +55,24 @@ function speakFallback(text: string, langCode: string, onEnd?: () => void): void
   window.speechSynthesis.speak(u)
 }
 
-export function speakNatural(text: string, langName: string, onEnd?: () => void): void {
+export function speakNatural(
+  text: string,
+  langName: string,
+  onEnd?: () => void,
+  rate = 1,
+): void {
   stopTTS()
   const code = LANG_CODES[langName] || 'en-US'
 
   if (isIOSLikeDevice()) {
-    speakFallback(text, code, onEnd)
+    speakFallback(text, code, onEnd, rate)
     return
   }
 
   const lang = code.split('-')[0]
   const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${lang}&client=tw-ob`
   const audio = new Audio(url)
+  audio.playbackRate = Math.min(1.25, Math.max(0.5, rate))
   ttsAudio = audio
   let finished = false
   let started = false
@@ -82,7 +88,7 @@ export function speakNatural(text: string, langName: string, onEnd?: () => void)
     if (finished) return
     finished = true
     ttsAudio = null
-    speakFallback(text, code, onEnd)
+    speakFallback(text, code, onEnd, rate)
   }
 
   audio.onplaying = () => {

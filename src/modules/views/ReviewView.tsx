@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import { GOAL, IMPORTANCE_ORDER, getImportance } from '../constants'
 import { ProgressBar } from '../components/ProgressBar'
 import { SpeakButton } from '../components/SpeakButton'
@@ -13,6 +15,7 @@ import {
   updateCardAfterReview,
 } from '../utils'
 import type { AppConfig, Lexicard } from '../types'
+import { EyeIcon, EyeOffIcon } from 'lucide-react'
 
 type ReviewViewProps = {
   cards: Lexicard[]
@@ -50,6 +53,7 @@ export function ReviewView({
   const [busy, setBusy] = useState(false)
   const [completed, setCompleted] = useState(false)
   const [showExample, setShowExample] = useState(false)
+  const [showExampleTranslation, setShowExampleTranslation] = useState(false)
 
   useEffect(() => {
     setSorted(sortByPriority(cards, reviewSession))
@@ -98,7 +102,11 @@ export function ReviewView({
 
     try {
       await saveData('dashboard-ICA-words', nextCards)
-      await recordReviewEvent({ previousCard: currentCard, nextCard: updated, knew })
+      await recordReviewEvent({
+        previousCard: currentCard,
+        nextCard: updated,
+        knew,
+      })
 
       if (nextCorrect >= GOAL) {
         const dayKey = todayKey()
@@ -120,7 +128,9 @@ export function ReviewView({
       <section className='flex flex-1 items-center justify-center px-5 py-10 text-center'>
         <div>
           <div className='mb-3 text-5xl'>📝</div>
-          <p className='text-sm text-slate-500'>No hay tarjetas pendientes por ahora.</p>
+          <p className='text-sm text-muted-foreground'>
+            No hay tarjetas pendientes por ahora.
+          </p>
         </div>
       </section>
     )
@@ -131,16 +141,16 @@ export function ReviewView({
     return (
       <section className='flex flex-1 flex-col items-center justify-center px-5 py-10 text-center'>
         <div className='mb-4 text-7xl'>🏆</div>
-        <h2 className='mb-2 font-serif text-4xl font-bold text-slate-100'>
+        <h2 className='mb-2 font-serif text-4xl font-bold'>
           ¡Objetivo cumplido!
         </h2>
-        <p className='mb-3 max-w-sm text-sm leading-relaxed text-slate-500'>
+        <p className='mb-3 max-w-sm text-sm leading-relaxed text-muted-foreground'>
           Has acertado {GOAL} flashcards. ¡Racha de {streak} día
           {streak !== 1 ? 's' : ''}! 🔥
         </p>
         <ProgressBar correct={GOAL} />
         <div className='mt-4 flex flex-wrap justify-center gap-2'>
-          <button
+          <Button
             type='button'
             onClick={() => {
               setCorrect(0)
@@ -149,17 +159,18 @@ export function ReviewView({
               setSorted(sortByPriority(cards, reviewSession))
               startReviewSession().catch(() => undefined)
             }}
-            className='rounded-xl bg-gradient-to-r from-blue-500 to-blue-700 px-6 py-3 text-sm font-semibold text-white'
+            size='lg'
           >
             Otra ronda
-          </button>
-          <button
+          </Button>
+          <Button
             type='button'
             onClick={onFinishPractice}
-            className='rounded-xl border border-slate-700 bg-slate-900 px-6 py-3 text-sm font-semibold text-slate-300'
+            variant='outline'
+            size='lg'
           >
             Finalizar practica
-          </button>
+          </Button>
         </div>
       </section>
     )
@@ -174,119 +185,138 @@ export function ReviewView({
     <section className='flex flex-1 flex-col items-center justify-center px-5 py-8'>
       <ProgressBar correct={correct} />
 
-      <div
-        className='w-full max-w-[420px] cursor-pointer rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-6 text-center'
+      <Card
+        className='w-full max-w-105 cursor-pointer rounded-3xl border p-6 text-center'
         onClick={() => !flipped && !busy && setFlipped(true)}
       >
-        <div className='mb-4 flex items-center justify-between'>
-          <div className='inline-flex items-center gap-1.5 rounded-md bg-slate-800 px-2 py-1'>
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[currentCard.importance]}`}
-            />
-            <span className='text-[10px] font-semibold uppercase tracking-wide text-slate-300'>
-              {importance.label}
-            </span>
+        <CardContent className='p-0'>
+          <div className='mb-4 flex items-center justify-between'>
+            <div className='inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-1'>
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[currentCard.importance]}`}
+              />
+              <span className='text-[10px] font-semibold uppercase tracking-wide text-muted-foreground'>
+                {importance.label}
+              </span>
+            </div>
+
+            <div className='flex items-center gap-1.5'>
+              <span
+                className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+                  isFailed
+                    ? 'bg-red-500/10 text-red-400'
+                    : 'bg-emerald-500/10 text-emerald-400'
+                }`}
+              >
+                {isFailed ? 'POR APRENDER' : `RACHA ${currentCard.streak}`}
+              </span>
+              <span className='rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground'>
+                P{priorityNumber}
+              </span>
+            </div>
           </div>
 
-          <div className='flex items-center gap-1.5'>
-            <span
-              className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${
-                isFailed
-                  ? 'bg-red-500/10 text-red-400'
-                  : 'bg-emerald-500/10 text-emerald-400'
-              }`}
-            >
-              {isFailed ? 'POR APRENDER' : `RACHA ${currentCard.streak}`}
-            </span>
-            <span className='rounded-md bg-slate-800 px-2 py-0.5 text-[10px] font-semibold text-slate-500'>
-              P{priorityNumber}
-            </span>
-          </div>
-        </div>
+          <span className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
+            {flipped ? 'Idioma objetivo' : 'Tu idioma materno'}
+          </span>
 
-        <span className='mb-2 block text-[11px] uppercase tracking-wider text-slate-500'>
-          {flipped ? 'Idioma objetivo' : 'Tu idioma materno'}
-        </span>
+          <p className='font-serif text-4xl font-bold leading-tight'>
+            {flipped ? currentCard.target : currentCard.native}
+          </p>
 
-        <p
-          className={`font-serif text-4xl font-bold leading-tight ${flipped ? 'text-slate-100' : 'text-slate-100'}`}
-        >
-          {flipped ? currentCard.target : currentCard.native}
-        </p>
+          <p className='mt-2 text-sm text-muted-foreground'>
+            {flipped ? currentCard.native : 'Toca para girar ↻'}
+          </p>
 
-        <p className='mt-2 text-sm text-slate-500'>
-          {flipped ? currentCard.native : 'Toca para girar ↻'}
-        </p>
+          {flipped && (
+            <div className='flex flex-col gap-2'>
+              <SpeakButton
+                text={currentCard.target}
+                langName={config.targetLang || 'Inglés'}
+                color={importance.color}
+              />
 
-        {flipped && (
-          <>
-            <SpeakButton
-              text={currentCard.target}
-              langName={config.targetLang || 'Inglés'}
-              color={importance.color}
-            />
+              <Button
+                type='button'
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setShowExample((prev) => !prev)
+                }}
+                variant='outline'
+                className='mt-2'
+              >
+                {showExample ? 'Ocultar ejemplo' : 'Ejemplo'}
+              </Button>
 
-            <button
-              type='button'
-              onClick={(event) => {
-                event.stopPropagation()
-                setShowExample((prev) => !prev)
-              }}
-              className='mt-2 inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-5 py-2 text-sm font-semibold text-slate-300'
-            >
-              {showExample ? 'Ocultar ejemplo' : 'Ejemplo'}
-            </button>
-
-            {showExample && (
-              <div className='mt-3 rounded-xl border border-slate-800 bg-slate-900 p-3 text-left'>
-                {currentCard.examplePhrase && currentCard.exampleTranslation ? (
-                  <>
-                    <p className='text-sm font-semibold text-slate-100'>
-                      {currentCard.examplePhrase}
-                    </p>
-                    <p className='mt-1 text-xs text-slate-400'>
-                      {currentCard.exampleTranslation}
-                    </p>
-                    <div className='mt-1'>
+              {showExample && (
+                <div className='mt-3 rounded-xl border border-border bg-muted/30 p-3 text-left'>
+                  {currentCard.examplePhrase &&
+                  currentCard.exampleTranslation ? (
+                    <div className='flex flex-col gap-1'>
+                      <p className='text-sm font-semibold'>
+                        {currentCard.examplePhrase}
+                      </p>
+                      <div className='flex flex-row gap-2 items-center'>
+                        <p
+                          className={`text-xs text-muted-foreground ${showExampleTranslation ? '' : 'blur-xs'}`}
+                        >
+                          {currentCard.exampleTranslation}
+                        </p>
+                        <Button
+                          variant='ghost'
+                          size='icon'
+                          onClick={() =>
+                            setShowExampleTranslation((prev) => !prev)
+                          }
+                        >
+                          {showExampleTranslation ? (
+                            <EyeIcon className='size-4' />
+                          ) : (
+                            <EyeOffIcon className='size-4' />
+                          )}
+                        </Button>
+                      </div>
                       <SpeakButton
                         text={currentCard.examplePhrase}
                         langName={config.targetLang || 'Inglés'}
                         color={importance.color}
                       />
                     </div>
-                  </>
-                ) : (
-                  <p className='text-xs text-slate-500'>
-                    Esta palabra no tiene ejemplo guardado todavia.
-                  </p>
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </div>
+                  ) : (
+                    <p className='text-xs text-muted-foreground'>
+                      Esta palabra no tiene ejemplo guardado todavia.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {flipped && (
-        <div className='mt-5 grid w-full max-w-[420px] grid-cols-2 gap-3'>
-          <button
+        <div className='mt-5 grid w-full max-w-105 grid-cols-2 gap-3'>
+          <Button
             type='button'
             onClick={() => handleAnswer(false)}
-            className='rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-400'
+            variant='destructive'
+            className='h-11'
           >
             ✗ No la sabía
-          </button>
-          <button
+          </Button>
+          <Button
             type='button'
             onClick={() => handleAnswer(true)}
-            className='rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-400'
+            variant='default'
+            className='h-11'
           >
             ✓ ¡La sabía!
-          </button>
+          </Button>
         </div>
       )}
 
-      <div className='mt-6 w-full max-w-[420px]'>
-        <div className='mb-2 text-center text-[10px] uppercase tracking-wider text-slate-600'>
+      <div className='mt-6 w-full max-w-105'>
+        <div className='mb-2 text-center text-[10px] uppercase tracking-wider text-muted-foreground'>
           Cola de prioridad
         </div>
         <div className='flex flex-wrap justify-center gap-1'>
@@ -296,13 +326,15 @@ export function ReviewView({
               <span
                 key={`${card.id}-${index}`}
                 className={`rounded-full ${
-                  active ? 'h-3.5 w-3.5 border-2 border-white' : 'h-2.5 w-2.5'
+                  active
+                    ? 'h-3.5 w-3.5 border-2 border-foreground'
+                    : 'h-2.5 w-2.5'
                 } ${IMPORTANCE_DOT[card.importance]} ${(card.streak || 0) === 0 ? 'opacity-100' : 'opacity-40'}`}
               />
             )
           })}
           {sorted.length > 14 && (
-            <span className='self-center text-[10px] text-slate-600'>
+            <span className='self-center text-[10px] text-muted-foreground'>
               +{sorted.length - 14}
             </span>
           )}

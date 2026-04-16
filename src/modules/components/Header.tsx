@@ -1,91 +1,36 @@
-import { LevelBadge } from './LevelBadge'
-import type { AppConfig, AppView } from '../types'
+import { AppBreadcrumbs } from './AppBreadcrumbs'
+import { LeaderboardMenu } from './LeaderboardMenu'
+import { UserMenu } from './UserMenu'
+import type { AppConfig } from '../types'
 
 type HeaderProps = {
-  view: AppView
-  setView: (view: AppView) => void
-  totalCards: number
-  config: AppConfig | null
-  onEditLang: () => void
-  onManage: () => void
-  onPhrases: () => void
   onLogout: () => Promise<void>
+  config: AppConfig | null
+  onEditLanguages: () => void
 }
 
-export function Header({ view, setView, totalCards, config, onEditLang, onManage, onPhrases, onLogout }: HeaderProps) {
+export function Header({ onLogout, config, onEditLanguages }: HeaderProps) {
   return (
-    <header className='flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-gradient-to-r from-slate-950 to-slate-900 px-5 py-3'>
-      <button
-        type='button'
-        className='flex items-center gap-2'
-        onClick={() => setView('home')}
-      >
-        <span className='text-xl'>✦</span>
-        <span className='font-serif text-xl font-bold text-slate-100'>Mi Dashboard ICA</span>
-      </button>
-
-      {config && (
-        <div className='flex flex-wrap items-center gap-2'>
-          <button
-            type='button'
-            onClick={onEditLang}
-            className='inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900 px-3 py-1.5'
-          >
-            <span className='text-sm font-medium text-slate-300'>{config.nativeLang}</span>
-            <span className='font-bold text-blue-400'>→</span>
-            <span className='text-sm font-semibold text-slate-100'>{config.targetLang}</span>
-            <LevelBadge level={config.level || 'A2'} size='small' />
-            <span className='text-xs'>✏️</span>
-          </button>
-
-          <button
-            type='button'
-            onClick={onManage}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
-              view === 'manage'
-                ? 'border-violet-500 text-violet-400'
-                : 'border-slate-800 text-slate-400'
-            } bg-slate-900`}
-          >
-            📖 Mis Palabras ICA
-            {totalCards > 0 && (
-              <span className='rounded-full bg-violet-500/20 px-2 py-0.5 text-[11px] text-violet-400'>
-                {totalCards}
-              </span>
-            )}
-          </button>
-
-          <button
-            type='button'
-            onClick={onPhrases}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
-              view === 'phrases'
-                ? 'border-amber-500 text-amber-400'
-                : 'border-slate-800 text-slate-400'
-            } bg-slate-900`}
-          >
-            ⚡ Mis Frases
-          </button>
-
-          <button
-            type='button'
-            onClick={() => onLogout()}
-            className='rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-300'
-          >
-            Cerrar sesión
-          </button>
+    <header className='border-b bg-background'>
+      <div className='container mx-auto flex h-16 items-center justify-between px-4'>
+        <div className='flex flex-row gap-2 justify-center items-center'>
+          <img
+            src='src/modules/assets/icademy-logo.png'
+            alt='Logo'
+            className='h-8 w-auto'
+          />
+          <AppBreadcrumbs />
         </div>
-      )}
 
-      {view !== 'home' && (
-        <button
-          type='button'
-          onClick={() => setView('home')}
-          className='rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200'
-        >
-          ← Volver
-        </button>
-      )}
+        <div className='flex items-center gap-2'>
+          <LeaderboardMenu />
+          <UserMenu
+            onLogout={onLogout}
+            config={config}
+            onEditLanguages={onEditLanguages}
+          />
+        </div>
+      </div>
     </header>
   )
 }

@@ -1,4 +1,13 @@
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CREATION_WORDS_GOAL, DAY_NAMES, GOAL, MONTH_NAMES } from '../constants'
 import { getStreak, todayKey } from '../utils'
 import type { CalendarTab } from '../types'
@@ -28,79 +37,54 @@ export function CalendarModal({ completedDays, creationDays, onClose, activeTab 
 
   const cells: Array<number | null> = []
   for (let i = 0; i < startDow; i++) cells.push(null)
-  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+  for (let day = 1; day <= daysInMonth; day++) cells.push(day)
 
   const isCurrentMonth = year === today.getFullYear() && month === today.getMonth()
   const isFutureMonth = new Date(year, month, 1) > today
   const lastDayToCount = isCurrentMonth ? today.getDate() : daysInMonth
 
   let completedCount = 0
-  for (let d = 1; d <= lastDayToCount; d++) {
-    const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+  for (let day = 1; day <= lastDayToCount; day++) {
+    const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
     if (activeDays.includes(key)) completedCount++
   }
 
   const missedCount = lastDayToCount - completedCount
   const monthPercent = lastDayToCount > 0 ? Math.round((completedCount / lastDayToCount) * 100) : 0
 
-  const prevMonth = (): void => setViewDate(new Date(year, month - 1, 1))
-  const nextMonth = (): void => setViewDate(new Date(year, month + 1, 1))
-
   return (
-    <div className='fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-5' onClick={onClose}>
-      <div
-        onClick={(event) => event.stopPropagation()}
-        className='w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900 p-6'
-      >
-        <div className='mb-5 grid grid-cols-2 gap-1 rounded-xl bg-slate-950 p-1'>
-          <button
-            type='button'
-            onClick={() => setTab('review')}
-            className={`rounded-lg px-2 py-2.5 text-sm font-semibold transition ${
-              tab === 'review' ? 'bg-blue-950 text-blue-400' : 'text-slate-500'
-            }`}
-          >
-            🔥 Racha Flashcards
-          </button>
-          <button
-            type='button'
-            onClick={() => setTab('creation')}
-            className={`rounded-lg px-2 py-2.5 text-sm font-semibold transition ${
-              tab === 'creation' ? 'bg-blue-950 text-blue-400' : 'text-slate-500'
-            }`}
-          >
-            ✦ Racha ICA
-          </button>
-        </div>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className='max-w-xl'>
+        <DialogHeader>
+          <DialogTitle>Rachas</DialogTitle>
+          <DialogDescription>Seguimiento mensual de flashcards y creación ICA.</DialogDescription>
+        </DialogHeader>
 
-        <div className='mb-3'>
-          <button
-            type='button'
-            onClick={onClose}
-            className='rounded-md border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300'
-          >
-            ← Volver
-          </button>
-        </div>
+        <Tabs value={tab} onValueChange={(value) => setTab(value as CalendarTab)}>
+          <TabsList className='grid w-full grid-cols-2'>
+            <TabsTrigger value='review'>🔥 Racha Flashcards</TabsTrigger>
+            <TabsTrigger value='creation'>✦ Racha ICA</TabsTrigger>
+          </TabsList>
+        </Tabs>
 
-        <div className='mb-5 flex items-center justify-between'>
-          <button type='button' onClick={prevMonth} className='h-9 w-9 rounded-lg border border-slate-800 text-slate-400'>
+        <div className='flex items-center justify-between'>
+          <Button type='button' variant='outline' size='icon' onClick={() => setViewDate(new Date(year, month - 1, 1))}>
             ‹
-          </button>
+          </Button>
 
           <div className='text-center'>
-            <div className='font-serif text-2xl font-bold text-slate-100'>{MONTH_NAMES[month]}</div>
-            <div className='text-sm text-slate-500'>{year}</div>
+            <div className='text-xl font-semibold'>{MONTH_NAMES[month]}</div>
+            <div className='text-sm text-muted-foreground'>{year}</div>
           </div>
 
-          <button type='button' onClick={nextMonth} className='h-9 w-9 rounded-lg border border-slate-800 text-slate-400'>
+          <Button type='button' variant='outline' size='icon' onClick={() => setViewDate(new Date(year, month + 1, 1))}>
             ›
-          </button>
+          </Button>
         </div>
 
-        <div className='mb-2 grid grid-cols-7 gap-1'>
+        <div className='grid grid-cols-7 gap-1'>
           {DAY_NAMES.map((day) => (
-            <div key={day} className='py-1 text-center text-[11px] font-semibold text-slate-500'>
+            <div key={day} className='py-1 text-center text-[11px] font-semibold text-muted-foreground'>
               {day}
             </div>
           ))}
@@ -108,9 +92,7 @@ export function CalendarModal({ completedDays, creationDays, onClose, activeTab 
 
         <div className='grid grid-cols-7 gap-1'>
           {cells.map((day, index) => {
-            if (day === null) {
-              return <div key={`empty-${index}`} />
-            }
+            if (day === null) return <div key={`empty-${index}`} />
 
             const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
             const isCompleted = activeDays.includes(key)
@@ -120,35 +102,32 @@ export function CalendarModal({ completedDays, creationDays, onClose, activeTab 
             const baselineToday = new Date(today.getFullYear(), today.getMonth(), today.getDate())
             const isFuture = dayDate > baselineToday
             const isPast = dayDate < baselineToday
-
             const status: DayStatus = isFuture ? 'future' : isCompleted ? 'completed' : isPast ? 'missed' : 'empty'
 
-            return (
-              <DayCell key={key} day={day} status={status} isToday={isToday} />
-            )
+            return <DayCell key={key} day={day} status={status} isToday={isToday} />
           })}
         </div>
 
-        <div className='mt-5 flex justify-center gap-6 border-t border-slate-800 pt-4'>
-          <Stat label='Dias completados' value={completedCount} valueClass='text-blue-400' />
-          <Stat label='Dias sin completar' value={isFutureMonth ? 0 : missedCount} valueClass='text-red-400' />
-          <Stat label='Racha actual' value={getStreak(activeDays)} valueClass='text-amber-400' />
+        <div className='flex justify-center gap-6 border-t pt-4'>
+          <Stat label='Dias completados' value={completedCount} valueClass='text-primary' />
+          <Stat label='Dias sin completar' value={isFutureMonth ? 0 : missedCount} valueClass='text-destructive' />
+          <Stat label='Racha actual' value={getStreak(activeDays)} valueClass='text-amber-500' />
         </div>
 
         {!isFutureMonth && (
-          <div className='mt-4 rounded-xl border border-slate-800 bg-slate-950 p-3.5'>
+          <div className='rounded-xl border p-3.5'>
             <div className='mb-2 flex items-center justify-between'>
-              <span className='text-xs font-semibold text-slate-400'>Progreso del mes</span>
-              <span className='text-xl font-bold text-blue-400'>{monthPercent}%</span>
+              <span className='text-xs font-semibold text-muted-foreground'>Progreso del mes</span>
+              <span className='text-xl font-bold text-primary'>{monthPercent}%</span>
             </div>
-            <div className='grid grid-cols-10 gap-1 rounded-md bg-slate-800 p-1'>
+            <div className='grid grid-cols-10 gap-1 rounded-md bg-muted p-1'>
               {Array.from({ length: 10 }, (_, i) => {
                 const threshold = (i + 1) * 10
                 const active = monthPercent >= threshold
-                return <div key={i} className={`h-2 rounded-full ${active ? 'bg-blue-400' : 'bg-slate-900'}`} />
+                return <div key={i} className={`h-2 rounded-full ${active ? 'bg-primary' : 'bg-background'}`} />
               })}
             </div>
-            <div className='mt-1.5 text-center text-[11px] text-slate-500'>
+            <div className='mt-1.5 text-center text-[11px] text-muted-foreground'>
               {completedCount} de {lastDayToCount} dia{lastDayToCount !== 1 ? 's' : ''} completado
               {completedCount !== 1 ? 's' : ''}
             </div>
@@ -156,32 +135,31 @@ export function CalendarModal({ completedDays, creationDays, onClose, activeTab 
         )}
 
         {tab === 'review' && (
-          <div className='mt-3.5 rounded-xl border border-blue-500/20 bg-blue-500/5 p-3'>
-            <div className='mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-blue-400'>
+          <div className='rounded-xl border p-3'>
+            <div className='mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-primary'>
               Requisito diario
             </div>
-            <div className='text-xs text-slate-400'>📚 +{GOAL} flashcards acertados</div>
+            <div className='text-xs text-muted-foreground'>📚 +{GOAL} flashcards acertados</div>
           </div>
         )}
 
         {tab === 'creation' && (
-          <div className='mt-3.5 rounded-xl border border-blue-500/20 bg-blue-500/5 p-3'>
-            <div className='mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-blue-400'>
+          <div className='rounded-xl border p-3'>
+            <div className='mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-primary'>
               Requisitos diarios
             </div>
-            <div className='flex flex-wrap gap-3 text-xs text-slate-400'>
+            <div className='flex flex-wrap gap-3 text-xs text-muted-foreground'>
               <span>✍️ +{CREATION_WORDS_GOAL} palabras</span>
               <span>⚡ 1 frase de activacion</span>
             </div>
           </div>
         )}
 
-        <div className='mt-4 flex justify-center gap-4'>
-          <Legend colorClass='border border-blue-400/50 bg-blue-400/20' label='Completado' />
-          <Legend colorClass='border border-red-400/30 bg-red-400/10' label='No completado' />
+        <div className='flex justify-end'>
+          <Button type='button' onClick={onClose}>Cerrar</Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -194,17 +172,17 @@ type DayCellProps = {
 function DayCell({ day, status, isToday }: DayCellProps) {
   const statusClass =
     status === 'completed'
-      ? 'border-blue-400/50 bg-blue-400/20 text-blue-400'
+      ? 'border-primary/50 bg-primary/10 text-primary'
       : status === 'missed'
-        ? 'border-red-400/30 bg-red-400/10 text-red-400'
+        ? 'border-destructive/30 bg-destructive/10 text-destructive'
         : status === 'future'
-          ? 'border-transparent bg-slate-950 text-slate-800'
-          : 'border-slate-800 bg-slate-950 text-slate-600'
+          ? 'border-transparent bg-muted text-muted-foreground/60'
+          : 'border-border bg-background text-muted-foreground'
 
   return (
-    <div className={`relative flex aspect-square items-center justify-center rounded-lg border text-sm font-medium ${statusClass} ${isToday ? 'ring-2 ring-white/70' : ''}`}>
+    <div className={`relative flex aspect-square items-center justify-center rounded-lg border text-sm font-medium ${statusClass} ${isToday ? 'ring-2 ring-ring' : ''}`}>
       {day}
-      {status === 'completed' && <div className='absolute bottom-[3px] h-1.5 w-1.5 rounded-full bg-blue-400' />}
+      {status === 'completed' && <div className='absolute bottom-[3px] h-1.5 w-1.5 rounded-full bg-primary' />}
     </div>
   )
 }
@@ -219,21 +197,7 @@ function Stat({ label, value, valueClass }: StatProps) {
   return (
     <div className='text-center'>
       <div className={`text-2xl font-bold ${valueClass}`}>{value}</div>
-      <div className='text-[11px] text-slate-500'>{label}</div>
-    </div>
-  )
-}
-
-type LegendProps = {
-  colorClass: string
-  label: string
-}
-
-function Legend({ colorClass, label }: LegendProps) {
-  return (
-    <div className='flex items-center gap-1.5'>
-      <div className={`h-2.5 w-2.5 rounded-sm ${colorClass}`} />
-      <span className='text-[11px] text-slate-500'>{label}</span>
+      <div className='text-[11px] text-muted-foreground'>{label}</div>
     </div>
   )
 }

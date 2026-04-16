@@ -1,19 +1,12 @@
 import { useState } from 'react'
-import type { FormEvent, ReactNode } from 'react'
+import type { FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { AlertTriangleIcon } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
-
-function AuthShell({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
-  return (
-    <main className='flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100'>
-      <section className='w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900 p-7 shadow-2xl'>
-        <h1 className='font-serif text-3xl font-bold'>{title}</h1>
-        <p className='mt-2 text-sm text-slate-400'>{subtitle}</p>
-        <div className='mt-6'>{children}</div>
-      </section>
-    </main>
-  )
-}
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { AuthShell } from './components/AuthShell'
 
 export function LoginPage() {
   const { signIn, hasSupabaseConfig } = useAuth()
@@ -24,7 +17,8 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const redirectTo = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/app'
+  const redirectTo =
+    (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/'
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -44,49 +38,46 @@ export function LoginPage() {
   return (
     <AuthShell title='Bienvenido de nuevo' subtitle='Iniciá sesión para continuar tu progreso en Icademy.'>
       {!hasSupabaseConfig && (
-        <div className='mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300'>
+        <div className='mb-4 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive'>
+          <AlertTriangleIcon className='size-4' />
           Faltan variables de entorno de Supabase.
         </div>
       )}
 
       <form className='space-y-4' onSubmit={handleSubmit}>
-        <label className='block text-sm'>
-          <span className='mb-1 block text-slate-300'>Email</span>
-          <input
+        <div className='space-y-1.5'>
+          <Label htmlFor='login-email'>Email</Label>
+          <Input
+            id='login-email'
             type='email'
             required
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className='w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 outline-none'
           />
-        </label>
+        </div>
 
-        <label className='block text-sm'>
-          <span className='mb-1 block text-slate-300'>Contraseña</span>
-          <input
+        <div className='space-y-1.5'>
+          <Label htmlFor='login-password'>Contraseña</Label>
+          <Input
+            id='login-password'
             type='password'
             required
             minLength={6}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className='w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 outline-none'
           />
-        </label>
+        </div>
 
-        {error && <p className='text-sm text-red-400'>{error}</p>}
+        {error && <p className='text-sm text-destructive'>{error}</p>}
 
-        <button
-          type='submit'
-          disabled={busy || !hasSupabaseConfig}
-          className='w-full rounded-xl bg-gradient-to-r from-blue-500 to-blue-700 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50'
-        >
+        <Button type='submit' disabled={busy || !hasSupabaseConfig} className='w-full'>
           {busy ? 'Entrando...' : 'Entrar'}
-        </button>
+        </Button>
       </form>
 
-      <p className='mt-4 text-sm text-slate-400'>
+      <p className='mt-4 text-sm text-muted-foreground'>
         No tienes cuenta?{' '}
-        <Link to='/register' className='font-semibold text-blue-400'>
+        <Link to='/register' className='font-semibold text-primary'>
           Regístrate
         </Link>
       </p>

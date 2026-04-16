@@ -1,3 +1,20 @@
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { LANGUAGES, LEVELS } from '../constants'
 import type { AppConfig, CEFRLevel } from '../types'
 
@@ -7,85 +24,79 @@ type LangEditModalProps = {
   onClose: () => void
 }
 
-export function LangEditModal({
-  config,
-  setConfig,
-  onClose,
-}: LangEditModalProps) {
-  const baseSelectClass =
-    'w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none'
-
+export function LangEditModal({ config, setConfig, onClose }: LangEditModalProps) {
   return (
-    <div
-      className='fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-5'
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className='w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-6'
-      >
-        <h3 className='mb-5 font-serif text-2xl text-slate-100'>
-          Cambiar idiomas
-        </h3>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Cambiar idiomas</DialogTitle>
+          <DialogDescription>
+            Actualiza tu idioma materno, objetivo y nivel.
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className='mb-4'>
-          <label className='mb-1.5 block text-[11px] uppercase tracking-wider text-slate-400'>
-            Idioma materno
-          </label>
-          <select
-            value={config.nativeLang}
-            onChange={(e) =>
-              setConfig({ ...config, nativeLang: e.target.value })
-            }
-            className={baseSelectClass}
-          >
-            {LANGUAGES.map((l) => (
-              <option key={l}>{l}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className='mb-4'>
-          <label className='mb-1.5 block text-[11px] uppercase tracking-wider text-slate-400'>
-            Idioma objetivo + nivel
-          </label>
-          <div className='flex gap-2.5'>
-            <select
-              value={config.targetLang}
-              onChange={(e) =>
-                setConfig({ ...config, targetLang: e.target.value })
-              }
-              className={`${baseSelectClass} w-full`}
+        <div className='space-y-4'>
+          <div className='space-y-1.5'>
+            <Label>Idioma materno</Label>
+            <Select
+              value={config.nativeLang}
+              onValueChange={(nativeLang) => setConfig({ ...config, nativeLang })}
             >
-              {LANGUAGES.filter((l) => l !== config.nativeLang).map((l) => (
-                <option key={l}>{l}</option>
-              ))}
-            </select>
+              <SelectTrigger className='w-full'>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {LANGUAGES.map((language) => (
+                  <SelectItem key={language} value={language}>
+                    {language}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-            <select
-              value={config.level || 'A2'}
-              onChange={(e) =>
-                setConfig({ ...config, level: e.target.value as CEFRLevel })
-              }
-              className={`${baseSelectClass} w-24! text-center`}
-            >
-              {LEVELS.map((l) => (
-                <option key={l} value={l}>
-                  {l === '0' ? 'Nivel 0' : l}
-                </option>
-              ))}
-            </select>
+          <div className='space-y-1.5'>
+            <Label>Idioma objetivo + nivel</Label>
+            <div className='flex gap-2'>
+              <Select
+                value={config.targetLang}
+                onValueChange={(targetLang) => setConfig({ ...config, targetLang })}
+              >
+                <SelectTrigger className='w-full'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LANGUAGES.filter((language) => language !== config.nativeLang).map((language) => (
+                    <SelectItem key={language} value={language}>
+                      {language}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={config.level || 'A2'}
+                onValueChange={(value) => setConfig({ ...config, level: value as CEFRLevel })}
+              >
+                <SelectTrigger className='w-[96px]'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LEVELS.map((currentLevel) => (
+                    <SelectItem key={currentLevel} value={currentLevel}>
+                      {currentLevel === '0' ? 'Nivel 0' : currentLevel}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 
-        <button
-          type='button'
-          onClick={onClose}
-          className='mt-2 w-full rounded-xl bg-gradient-to-r from-blue-500 to-blue-700 px-4 py-3 text-sm font-semibold text-white'
-        >
-          Guardar
-        </button>
-      </div>
-    </div>
+        <DialogFooter>
+          <Button type='button' onClick={onClose}>Guardar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

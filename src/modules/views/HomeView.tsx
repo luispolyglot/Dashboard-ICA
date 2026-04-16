@@ -1,223 +1,178 @@
-import { useEffect, useState } from 'react'
-import { useAuth } from '../../auth/AuthContext'
+import { ReactNode, useMemo } from 'react'
+import { Link } from 'react-router-dom'
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { CREATION_WORDS_GOAL, getTodayProgress } from '../constants'
-import { fetchMonthlyStreakLeaderboard } from '../services/leaderboard'
-import type { AppConfig, AppView, DailyProgressMap } from '../types'
-import type { LeaderboardEntry } from '../types'
+import { DASHBOARD_ROUTES } from '../routes/paths'
+import type { AppConfig, DailyProgressMap } from '../types'
+import { Badge } from '@/components/ui/badge'
 
 type HomeViewProps = {
-  setView: (view: AppView) => void
   cardCount: number
   config: AppConfig
   dailyProgress: DailyProgressMap
+  reviewSession: number
 }
 
-type HomeItem = {
-  title: string
-  desc: string
-  icon: string
-  accent: 'emerald' | 'blue' | 'amber' | 'violet'
-  view: AppView
-  stat: string
-  progress?: string
+type HomeCardAction = {
+  label: string
+  to: string
   disabled?: boolean
-  badge?: string
-  badgeDone?: boolean
+  helper?: string
 }
 
-const ACCENT_CLASS: Record<HomeItem['accent'], string> = {
-  emerald: 'text-emerald-400 bg-emerald-500/15',
-  blue: 'text-blue-400 bg-blue-500/15',
-  amber: 'text-amber-400 bg-amber-500/15',
-  violet: 'text-violet-400 bg-violet-500/15',
-}
-
-const ORB_CLASS: Record<HomeItem['accent'], string> = {
-  emerald: 'bg-emerald-500/10',
-  blue: 'bg-blue-500/10',
-  amber: 'bg-amber-500/10',
-  violet: 'bg-violet-500/10',
+type HomeCard = {
+  initial: 'I' | 'C' | 'A'
+  title: string
+  description: string
+  actions: HomeCardAction[]
+  status?: ReactNode
 }
 
 export function HomeView({
-  setView,
   cardCount,
   config,
   dailyProgress,
+  reviewSession,
 }: HomeViewProps) {
-  const { user } = useAuth()
-  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
-  const [leaderboardError, setLeaderboardError] = useState<string | null>(null)
-
-  useEffect(() => {
-    fetchMonthlyStreakLeaderboard(8)
-      .then((rows) => {
-        setLeaderboard(rows)
-        setLeaderboardError(null)
-      })
-      .catch(() => {
-        setLeaderboardError('No se pudo cargar el ranking mensual')
-      })
-  }, [])
-
+  const todayProgress = getTodayProgress(dailyProgress)
+  const wordsDone = todayProgress.wordsAdded >= CREATION_WORDS_GOAL
+  const phraseDone = todayProgress.phraseGenerated
   const level = config.level || 'A2'
-  const tp = getTodayProgress(dailyProgress)
-  const wDone = tp.wordsAdded >= CREATION_WORDS_GOAL
-  const pDone = tp.phraseGenerated
 
-  const items: HomeItem[] = [
-    {
-      title: 'Añadir Palabras',
-      desc: 'Nuevas palabras con traduccion automatica por IA.',
-      icon: '✍️',
-      accent: 'emerald',
-      view: 'add',
-      stat: `${cardCount} palabra${cardCount !== 1 ? 's' : ''}`,
-      progress: `${tp.wordsAdded}/${CREATION_WORDS_GOAL} palabras hoy`,
-      badge: wDone ? 'Hecho hoy' : 'Pendiente hoy',
-      badgeDone: wDone,
-    },
-    {
-      title: 'Flashcards',
-      desc: 'Repasa con repeticion espaciada por prioridad.',
-      icon: '🧠',
-      accent: 'blue',
-      view: 'review',
-      stat: cardCount > 0 ? 'Empezar sesión' : 'Añade palabras primero',
-      disabled: cardCount === 0,
-    },
-    {
-      title: 'Frase de Activacion',
-      desc: `Genera frases reales nivel ${level} con tus palabras ICA.`,
-      icon: '⚡',
-      accent: 'amber',
-      view: 'phrase',
-      stat: cardCount >= 5 ? 'Generar frase' : 'Necesitas min. 5 palabras',
-      disabled: cardCount < 5,
-      badge: pDone ? 'Hecho hoy' : 'Pendiente hoy',
-      badgeDone: pDone,
-    },
-    {
-      title: 'Mis Frases',
-      desc: 'Revisa tu historial con metadata y palabras utilizadas.',
-      icon: '🗂️',
-      accent: 'violet',
-      view: 'phrases',
-      stat: 'Ver historial',
-    },
-  ]
-
-  const rankBadge = (rank: number): string => {
-    if (rank === 1) return '🥇'
-    if (rank === 2) return '🥈'
-    if (rank === 3) return '🥉'
-    return `#${rank}`
-  }
+  const cards: HomeCard[] = useMemo(
+    () => [
+      {
+        initial: 'I',
+        title: 'INMERSION',
+        description: 'Escribe las palabras filtradas mediante la inmersion.',
+        actions: [
+          {
+            label: 'Anadir palabras ICA',
+            to: DASHBOARD_ROUTES.newIcaWords,
+            helper: `${todayProgress.wordsAdded}/${CREATION_WORDS_GOAL} hoy`,
+          },
+        ],
+        status: wordsDone ? (
+          <Badge variant='secondary' className='absolute top-1 right-1'>
+            Hecho hoy
+          </Badge>
+        ) : (
+          <Badge variant='destructive' className='absolute top-1 right-1'>
+            Pendiente hoy
+          </Badge>
+        ),
+      },
+      {
+        initial: 'C',
+        title: 'CREACION',
+        description: 'Accede a la creacion de tu conocimiento escrito.',
+        actions: [
+          {
+            label: 'Mi Creacion ICA',
+            to: DASHBOARD_ROUTES.myIcaWords,
+            helper: `${cardCount} palabra${cardCount !== 1 ? 's' : ''}`,
+          },
+          {
+            label: 'Flashcards',
+            to: DASHBOARD_ROUTES.flashcards,
+            disabled: cardCount === 0,
+            helper: cardCount === 0 ? 'Anade palabras para iniciar' : undefined,
+          },
+        ],
+        status:
+          reviewSession > 0 ? (
+            <Badge variant='secondary' className='absolute top-1 right-1'>
+              Sesion iniciada
+            </Badge>
+          ) : (
+            <Badge variant='destructive' className='absolute top-1 right-1'>
+              Sesion no iniciada
+            </Badge>
+          ),
+      },
+      {
+        initial: 'A',
+        title: 'ACTIVACION',
+        description: 'Activa tu conocimiento escrito mediante frases.',
+        actions: [
+          {
+            label: 'Mi frase de activacion',
+            to: DASHBOARD_ROUTES.activationPhrase,
+            disabled: cardCount < 5,
+            helper:
+              cardCount < 5 ? 'Necesitas minimo 5 palabras' : `Nivel ${level}`,
+          },
+          {
+            label: 'Mi historial de frases',
+            to: DASHBOARD_ROUTES.phraseHistory,
+          },
+        ],
+        status: phraseDone ? (
+          <Badge variant='secondary' className='absolute top-1 right-1'>
+            Frase hecha hoy
+          </Badge>
+        ) : (
+          <Badge variant='destructive' className='absolute top-1 right-1'>
+            Frase pendiente hoy
+          </Badge>
+        ),
+      },
+    ],
+    [cardCount, level, phraseDone, todayProgress.wordsAdded, wordsDone],
+  )
 
   return (
-    <section className='flex flex-1 items-center justify-center px-5 py-10'>
-      <div className='grid w-full max-w-[1400px] grid-cols-1 gap-6 lg:grid-cols-[1fr_minmax(0,760px)_360px]'>
-        <div className='hidden lg:block' />
-
-        <div className='grid w-full max-w-[760px] grid-cols-1 gap-5 justify-self-center sm:grid-cols-2'>
-          {items.map((item) => (
-            <button
-              key={item.view}
-              type='button'
-              onClick={() => !item.disabled && setView(item.view)}
-              className={`relative w-full overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-6 text-left transition ${
-                item.disabled
-                  ? 'cursor-not-allowed opacity-50'
-                  : 'hover:-translate-y-0.5 hover:border-slate-700'
-              }`}
-            >
-              <div
-                className={`absolute -right-7 -top-7 h-20 w-20 rounded-full ${ORB_CLASS[item.accent]}`}
-              />
-
-              <div className='mb-3 text-4xl'>{item.icon}</div>
-              <h2 className='mb-1.5 font-serif text-xl font-bold text-slate-100'>
-                {item.title}
-              </h2>
-              <p className='mb-4 text-sm leading-relaxed text-slate-500'>
-                {item.desc}
-              </p>
-
-              <div
-                className={`inline-flex rounded-lg px-3 py-1 text-xs font-semibold ${ACCENT_CLASS[item.accent]}`}
-              >
-                {item.stat}
+    <section className='flex flex-1 items-center justify-center'>
+      <div className='mx-auto grid w-full max-w-6xl grid-cols-1 gap-5 lg:grid-cols-3'>
+        {cards.map((card) => (
+          <Card
+            className='relative lg:gap-16 gap-6 border border-primary'
+            key={card.initial}
+          >
+            {card.status && card.status}
+            <CardHeader>
+              <div className='lg:mt-8 mt-2 text-center text-8xl font-heading font-black text-muted-foreground/20'>
+                {card.initial}
               </div>
-              {item.badge !== undefined && (
-                <div
-                  className={`ml-2 inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold ${
-                    item.badgeDone
-                      ? 'border-violet-500/30 bg-violet-500/10 text-violet-400'
-                      : 'border-slate-700 bg-slate-800 text-slate-500'
-                  }`}
-                >
-                  {item.badgeDone && <span className='mr-1'>✓</span>}
-                  {item.badge}
-                </div>
-              )}
-            </button>
-          ))}
-        </div>
+              <CardTitle>{card.title}</CardTitle>
+              <CardDescription>{card.description}</CardDescription>
+            </CardHeader>
 
-        <article className='h-fit w-full lg:max-w-96 overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-5 lg:sticky lg:top-5 lg:justify-self-end  mb-14 lg:mb-0'>
-          <div className='mb-3 flex items-center justify-between'>
-            <h3 className='font-serif text-xl font-bold text-slate-100'>
-              Leaderboard mensual
-            </h3>
-            <span className='rounded-md whitespace-nowrap border border-slate-700 bg-slate-900 px-2 py-0.5 text-xs text-slate-400'>
-              Media rachas
-            </span>
-          </div>
-
-          {leaderboardError && (
-            <p className='text-sm text-red-400'>{leaderboardError}</p>
-          )}
-
-          {!leaderboardError && leaderboard.length === 0 && (
-            <p className='text-sm text-slate-500'>
-              Todavia no hay datos suficientes este mes.
-            </p>
-          )}
-
-          {!leaderboardError && leaderboard.length > 0 && (
-            <div className='space-y-2'>
-              {leaderboard.map((row) => (
-                <div
-                  key={row.user_id}
-                  className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
-                    row.user_id === user?.id
-                      ? 'border-blue-500/40 bg-blue-500/10'
-                      : 'border-slate-800 bg-slate-900'
-                  }`}
-                >
-                  <div className='flex items-center gap-3'>
-                    <span
-                      className={`w-8 text-center text-sm font-bold ${row.rank <= 3 ? 'text-amber-300' : 'text-slate-400'}`}
+            <CardContent className='flex flex-row justify-between gap-2'>
+              {card.actions.map((action) => (
+                <div key={action.label} className='w-full space-y-1.5'>
+                  {action.disabled ? (
+                    <Button
+                      type='button'
+                      variant='secondary'
+                      className='w-full justify-center'
+                      disabled
                     >
-                      {rankBadge(row.rank)}
-                    </span>
-                    <div>
-                      <div className='text-sm font-semibold text-slate-100'>
-                        {row.display_name || 'Usuario'}
-                        {row.user_id === user?.id && (
-                          <div className='ml-2 inline-flex bg-green-300 size-2 rounded-full'></div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <span className='text-sm font-bold text-blue-400'>
-                    {Math.round(row.avg_percent || 0)}%
-                  </span>
+                      {action.label}
+                    </Button>
+                  ) : (
+                    <Button asChild className='w-full justify-center'>
+                      <Link to={action.to}>{action.label}</Link>
+                    </Button>
+                  )}
+
+                  {action.helper && (
+                    <p className='ml-2 text-xs text-muted-foreground'>
+                      {action.helper}
+                    </p>
+                  )}
                 </div>
               ))}
-            </div>
-          )}
-        </article>
+            </CardContent>
+          </Card>
+        ))}
       </div>
     </section>
   )

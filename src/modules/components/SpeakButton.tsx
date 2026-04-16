@@ -1,15 +1,26 @@
 import { useState } from 'react'
 import type { MouseEvent } from 'react'
+import { Button } from '@/components/ui/button'
 import { speakNatural, stopTTS } from '../services/tts'
+import { Volume1Icon, SquareIcon } from 'lucide-react'
 
 type SpeakButtonProps = {
   text: string
   langName: string
   color: string
+  label?: string
+  className?: string
 }
 
-export function SpeakButton({ text, langName, color }: SpeakButtonProps) {
+export function SpeakButton({
+  text,
+  langName,
+  color,
+  label,
+  className,
+}: SpeakButtonProps) {
   const [s, setS] = useState(false)
+  const [rate, setRate] = useState<0.75 | 1>(1)
 
   const tone =
     color === '#EF4444'
@@ -30,33 +41,60 @@ export function SpeakButton({ text, langName, color }: SpeakButtonProps) {
       return
     }
     setS(true)
-    speakNatural(text, langName, () => setS(false))
+    speakNatural(text, langName, () => setS(false), rate)
+  }
+
+  const handleRate = (e: MouseEvent<HTMLButtonElement>, nextRate: 0.75 | 1) => {
+    e.stopPropagation()
+    setRate(nextRate)
+
+    if (!s) return
+
+    stopTTS()
+    setS(true)
+    speakNatural(text, langName, () => setS(false), nextRate)
   }
 
   return (
-    <button
-      type='button'
-      onClick={go}
-      className={`mt-4 inline-flex items-center gap-2 rounded-xl border px-5 py-2 text-sm font-semibold ${tone} ${s ? 'brightness-125' : ''}`}
+    <div
+      className={`mt-4 flex flex-wrap items-center gap-2 ${className || ''}`}
     >
-      <svg
-        width='16'
-        height='16'
-        viewBox='0 0 24 24'
-        fill='none'
-        stroke='currentColor'
-        strokeWidth='2.5'
-        strokeLinecap='round'
-        strokeLinejoin='round'
+      <span className='text-xs text-muted-foreground'>
+        {label || `Escuchar ${langName}`}
+      </span>
+
+      <Button
+        type='button'
+        size='sm'
+        variant={rate === 1 ? 'default' : 'outline'}
+        onClick={(e) => handleRate(e, 1)}
+        disabled={s}
       >
-        <polygon
-          points='11 5 6 9 2 9 2 15 6 15 11 19 11 5'
-          fill={s ? 'currentColor' : 'none'}
-        />
-        <path d='M15.54 8.46a5 5 0 0 1 0 7.07' />
-        <path d='M19.07 4.93a10 10 0 0 1 0 14.14' />
-      </svg>
-      {s ? 'Reproduciendo...' : 'Escuchar pronunciación'}
-    </button>
+        x1
+      </Button>
+      <Button
+        type='button'
+        size='sm'
+        variant={rate === 0.75 ? 'default' : 'outline'}
+        onClick={(e) => handleRate(e, 0.75)}
+        disabled={s}
+      >
+        x0.75
+      </Button>
+
+      <Button
+        type='button'
+        onClick={go}
+        variant='outline'
+        className={`${tone} ${s ? 'brightness-125' : ''}`}
+      >
+        {s ? 'Reproduciendo...' : 'Escuchar'}
+        {s ? (
+          <SquareIcon className='size-4 ml-1' />
+        ) : (
+          <Volume1Icon className='size-4 ml-1' />
+        )}
+      </Button>
+    </div>
   )
 }
