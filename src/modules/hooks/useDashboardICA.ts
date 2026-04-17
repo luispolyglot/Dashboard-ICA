@@ -54,7 +54,11 @@ export function useDashboardICA() {
 
   const checkCreationStreak = async (updatedProgress: DailyProgressMap): Promise<void> => {
     const tk = todayKey()
-    const todayProgress = updatedProgress[tk] || { wordsAdded: 0, phraseGenerated: false }
+    const todayProgress = updatedProgress[tk] || {
+      wordsAdded: 0,
+      phraseGenerated: false,
+      reviewCorrect: 0,
+    }
     if (
       todayProgress.wordsAdded >= CREATION_WORDS_GOAL
       && todayProgress.phraseGenerated
@@ -69,7 +73,9 @@ export function useDashboardICA() {
   const handleWordAdded = async () => {
     const tk = todayKey()
     const updated = { ...dailyProgress }
-    if (!updated[tk]) updated[tk] = { wordsAdded: 0, phraseGenerated: false }
+    if (!updated[tk]) {
+      updated[tk] = { wordsAdded: 0, phraseGenerated: false, reviewCorrect: 0 }
+    }
     updated[tk] = { ...updated[tk], wordsAdded: updated[tk].wordsAdded + 1 }
     setDailyProgress(updated)
     await saveData('dashboard-ICA-daily-progress', updated)
@@ -80,7 +86,9 @@ export function useDashboardICA() {
   const handlePhraseGenerated = async () => {
     const tk = todayKey()
     const updated = { ...dailyProgress }
-    if (!updated[tk]) updated[tk] = { wordsAdded: 0, phraseGenerated: false }
+    if (!updated[tk]) {
+      updated[tk] = { wordsAdded: 0, phraseGenerated: false, reviewCorrect: 0 }
+    }
     updated[tk] = { ...updated[tk], phraseGenerated: true }
     setDailyProgress(updated)
     await saveData('dashboard-ICA-daily-progress', updated)
@@ -106,6 +114,24 @@ export function useDashboardICA() {
   const openCalendar = (tab: CalendarTab): void => {
     setCalendarTab(tab)
     setShowCalendar(true)
+  }
+
+  const handleReviewAnswer = async (knew: boolean): Promise<void> => {
+    if (!knew) return
+
+    const tk = todayKey()
+    const updated = { ...dailyProgress }
+    if (!updated[tk]) {
+      updated[tk] = { wordsAdded: 0, phraseGenerated: false, reviewCorrect: 0 }
+    }
+
+    updated[tk] = {
+      ...updated[tk],
+      reviewCorrect: updated[tk].reviewCorrect + 1,
+    }
+
+    setDailyProgress(updated)
+    await saveData('dashboard-ICA-daily-progress', updated)
   }
 
   const startReviewSession = useCallback(async (): Promise<void> => {
@@ -134,6 +160,7 @@ export function useDashboardICA() {
     reviewSession,
     handleWordAdded,
     handlePhraseGenerated,
+    handleReviewAnswer,
     handleSetup,
     handleConfigChange,
     openCalendar,

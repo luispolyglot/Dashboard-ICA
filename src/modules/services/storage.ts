@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase'
 import type { AppConfig, DailyProgressMap, Lexicard } from '../types'
 
 const CREATION_GOAL_DEFAULT = 5
+const REVIEW_GOAL_DEFAULT = 10
 
 type DashboardStorageKey =
   | 'dashboard-ICA-words'
@@ -353,7 +354,7 @@ async function loadDailyProgress(userId: string): Promise<DailyProgressMap> {
   if (!supabase) return {}
   const { data, error } = await supabase
     .from('daily_metrics')
-    .select('day, words_added, phrase_generated')
+    .select('day, words_added, phrase_generated, correct_reviews')
     .eq('user_id', userId)
 
   if (error) throw error
@@ -363,6 +364,7 @@ async function loadDailyProgress(userId: string): Promise<DailyProgressMap> {
     map[row.day] = {
       wordsAdded: row.words_added,
       phraseGenerated: row.phrase_generated,
+      reviewCorrect: row.correct_reviews ?? 0,
     }
   }
 
@@ -378,6 +380,8 @@ async function saveDailyProgress(userId: string, progress: DailyProgressMap): Pr
     day,
     words_added: value.wordsAdded,
     phrase_generated: value.phraseGenerated,
+    correct_reviews: value.reviewCorrect,
+    review_goal_completed: value.reviewCorrect >= REVIEW_GOAL_DEFAULT,
     creation_goal_completed: value.wordsAdded >= CREATION_GOAL_DEFAULT && value.phraseGenerated,
   }))
 

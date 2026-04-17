@@ -1,4 +1,5 @@
 import { Outlet } from 'react-router-dom'
+import { FullscreenLoading } from '@/components/ui/fullscreen-loading'
 import { CalendarModal } from '../components/CalendarModal'
 import { Header } from '../components/Header'
 import { LangEditModal } from '../components/LangEditModal'
@@ -21,18 +22,13 @@ export function DashboardLayout({ onLogout }: DashboardLayoutProps) {
     calendarTab,
     completedDays,
     creationDays,
-    dailyProgress,
     handleSetup,
     handleConfigChange,
     openCalendar,
   } = useDashboardContext()
 
   if (loading) {
-    return (
-      <div className='flex min-h-screen items-center justify-center bg-background'>
-        <div className='text-sm text-muted-foreground'>Cargando...</div>
-      </div>
-    )
+    return <FullscreenLoading label='Cargando...' />
   }
 
   if (!config) {
@@ -75,7 +71,6 @@ export function DashboardLayout({ onLogout }: DashboardLayoutProps) {
         <StreakFab
           completedDays={completedDays}
           creationDays={creationDays}
-          dailyProgress={dailyProgress}
           onClick={openCalendar}
         />
       </div>

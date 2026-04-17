@@ -60,7 +60,16 @@ export const getImportance = (key: ImportanceKey | string): ImportanceLevel =>
 export function getTodayProgress(dailyProgress: DailyProgressMap): DailyProgressEntry {
   const d = new Date()
   const tk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  return dailyProgress[tk] || { wordsAdded: 0, phraseGenerated: false }
+  const current = dailyProgress[tk]
+  if (!current) {
+    return { wordsAdded: 0, phraseGenerated: false, reviewCorrect: 0 }
+  }
+
+  return {
+    wordsAdded: current.wordsAdded ?? 0,
+    phraseGenerated: current.phraseGenerated ?? false,
+    reviewCorrect: current.reviewCorrect ?? 0,
+  }
 }
 
 export function isCreationDone(progress: DailyProgressEntry): boolean {

@@ -1,9 +1,10 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { FullscreenLoading } from '@/components/ui/fullscreen-loading'
 import { useAuth } from '../auth/AuthContext'
 
 function FullscreenMessage({ message }: { message: string }) {
   return (
-    <div className='flex min-h-screen items-center justify-center bg-slate-950 px-6 text-center text-slate-400'>
+    <div className='flex min-h-screen items-center justify-center bg-background px-6 text-center text-muted-foreground'>
       {message}
     </div>
   )
@@ -17,7 +18,7 @@ export function PrivateRoute() {
     return <FullscreenMessage message='Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY para habilitar autenticación.' />
   }
 
-  if (loading) return <FullscreenMessage message='Cargando sesión...' />
+  if (loading) return <FullscreenLoading label='Cargando sesión...' />
   if (!user) return <Navigate to='/login' state={{ from: location }} replace />
   return <Outlet />
 }
@@ -29,7 +30,7 @@ export function PublicOnlyRoute() {
     return <Outlet />
   }
 
-  if (loading) return <FullscreenMessage message='Cargando sesión...' />
+  if (loading) return <FullscreenLoading label='Cargando sesión...' />
   if (user) return <Navigate to='/' replace />
   return <Outlet />
 }

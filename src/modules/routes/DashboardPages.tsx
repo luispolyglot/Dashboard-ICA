@@ -10,7 +10,7 @@ import { PhraseView } from '../views/PhraseView'
 import { ReviewView } from '../views/ReviewView'
 
 export function HomePage() {
-  const { cards, config, dailyProgress, reviewSession } = useDashboardContext()
+  const { cards, config, dailyProgress } = useDashboardContext()
   if (!config) return null
 
   return (
@@ -19,7 +19,6 @@ export function HomePage() {
         cardCount={cards.length}
         config={config}
         dailyProgress={dailyProgress}
-        reviewSession={reviewSession}
       />
     </PageLayout>
   )
@@ -63,6 +62,7 @@ export function FlashcardsPage() {
     setCompletedDays,
     reviewSession,
     startReviewSession,
+    handleReviewAnswer,
   } = useDashboardContext()
   const navigate = useNavigate()
   if (!config) return null
@@ -77,6 +77,7 @@ export function FlashcardsPage() {
         setCompletedDays={setCompletedDays}
         reviewSession={reviewSession}
         startReviewSession={startReviewSession}
+        onReviewAnswered={handleReviewAnswer}
         onFinishPractice={() => navigate('/')}
       />
     </PageLayout>

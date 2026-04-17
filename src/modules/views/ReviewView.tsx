@@ -25,6 +25,7 @@ type ReviewViewProps = {
   setCompletedDays: Dispatch<SetStateAction<string[]>>
   reviewSession: number
   startReviewSession: () => Promise<void>
+  onReviewAnswered: (knew: boolean) => Promise<void>
   onFinishPractice: () => void
 }
 
@@ -44,6 +45,7 @@ export function ReviewView({
   setCompletedDays,
   reviewSession,
   startReviewSession,
+  onReviewAnswered,
   onFinishPractice,
 }: ReviewViewProps) {
   const [sorted, setSorted] = useState<Lexicard[]>([])
@@ -107,6 +109,7 @@ export function ReviewView({
         nextCard: updated,
         knew,
       })
+      await onReviewAnswered(knew)
 
       if (nextCorrect >= GOAL) {
         const dayKey = todayKey()

@@ -62,6 +62,7 @@ export interface PhraseGenerationEntry {
 export interface DailyProgressEntry {
   wordsAdded: number
   phraseGenerated: boolean
+  reviewCorrect: number
 }
 
 export type DailyProgressMap = Record<string, DailyProgressEntry>

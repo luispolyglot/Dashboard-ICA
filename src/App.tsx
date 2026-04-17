@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { FullscreenLoading } from './components/ui/fullscreen-loading'
 import { useAuth } from './auth/AuthContext'
 import { DashboardProvider } from './modules/context/DashboardContext'
 import { DashboardLayout } from './modules/layout/DashboardLayout'
@@ -18,13 +19,7 @@ import { RegisterPage } from './views/RegisterPage'
 function RootRedirect() {
   const { user, loading } = useAuth()
 
-  if (loading) {
-    return (
-      <div className='flex min-h-screen items-center justify-center bg-background text-muted-foreground'>
-        Cargando...
-      </div>
-    )
-  }
+  if (loading) return <FullscreenLoading label='Cargando...' />
 
   return <Navigate to={user ? DASHBOARD_ROUTES.home : '/login'} replace />
 }
