@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { PropsWithChildren } from 'react'
 
-export type ThemePreference = 'light' | 'dark' | 'system'
+export type ThemePreference = 'light' | 'dark'
 export type ResolvedTheme = 'light' | 'dark'
 
 type ThemeContextValue = {
@@ -21,22 +21,23 @@ function getSystemTheme(): ResolvedTheme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-function getStoredTheme(): ThemePreference {
+function getStoredTheme(): ThemePreference | null {
   if (typeof window === 'undefined') {
-    return 'system'
+    return null
   }
 
   const stored = window.localStorage.getItem(THEME_STORAGE_KEY)
-  if (stored === 'light' || stored === 'dark' || stored === 'system') {
+  if (stored === 'light' || stored === 'dark') {
     return stored
   }
 
-  return 'system'
+  return null
 }
 
 export function ThemeProvider({ children }: PropsWithChildren) {
-  const [theme, setThemeState] = useState<ThemePreference>(() => getStoredTheme())
-  const [systemTheme, setSystemTheme] = useState<ResolvedTheme>(() => getSystemTheme())
+  const [theme, setThemeState] = useState<ThemePreference>(
+    () => getStoredTheme() ?? getSystemTheme(),
+  )
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -45,15 +46,21 @@ export function ThemeProvider({ children }: PropsWithChildren) {
 
     const media = window.matchMedia('(prefers-color-scheme: dark)')
     const onChange = (event: MediaQueryListEvent) => {
-      setSystemTheme(event.matches ? 'dark' : 'light')
+      const storedTheme = getStoredTheme()
+      if (!storedTheme) {
+        setThemeState(event.matches ? 'dark' : 'light')
+      }
     }
 
-    setSystemTheme(media.matches ? 'dark' : 'light')
+    const storedTheme = getStoredTheme()
+    if (!storedTheme) {
+      setThemeState(media.matches ? 'dark' : 'light')
+    }
     media.addEventListener('change', onChange)
     return () => media.removeEventListener('change', onChange)
   }, [])
 
-  const resolvedTheme: ResolvedTheme = theme === 'system' ? systemTheme : theme
+  const resolvedTheme: ResolvedTheme = theme
 
   useEffect(() => {
     if (typeof document === 'undefined') {

@@ -17,7 +17,7 @@ export function StreakFab({ completedDays, creationDays, onClick }: StreakFabPro
       type='button'
       onClick={() => onClick('review')}
       variant='outline'
-      className='fixed bottom-6 right-6 z-50 h-auto items-center gap-3 rounded-2xl border-primary/30 bg-background/90 px-4 py-3 shadow-2xl backdrop-blur-sm transition-all hover:scale-[1.02]'
+      className='fixed bottom-6 right-6 z-50 hidden h-auto items-center gap-3 rounded-2xl border-primary/30 bg-background/90 px-4 py-3 shadow-2xl backdrop-blur-sm transition-all hover:scale-[1.02] md:inline-flex'
     >
       <span className='text-lg'>⚡</span>
       <span className='text-sm font-semibold'>Mis rachas</span>

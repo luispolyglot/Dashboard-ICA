@@ -3,6 +3,7 @@ import { FullscreenLoading } from '@/components/ui/fullscreen-loading'
 import { CalendarModal } from '../components/CalendarModal'
 import { Header } from '../components/Header'
 import { LangEditModal } from '../components/LangEditModal'
+import { MobileBottomNav } from '../components/MobileBottomNav'
 import { StreakFab } from '../components/StreakFab'
 import { useDashboardContext } from '../context/DashboardContext'
 import { LanguageSetup } from '../views/LanguageSetup'
@@ -65,9 +66,15 @@ export function DashboardLayout({ onLogout }: DashboardLayoutProps) {
           />
         )}
 
-        <main className='flex flex-1 overflow-y-auto'>
+        <main className='flex flex-1 overflow-y-auto pb-24 md:pb-0'>
           <Outlet />
         </main>
+        <MobileBottomNav
+          onOpenCalendar={openCalendar}
+          onLogout={onLogout}
+          config={config}
+          onEditLanguages={() => setShowLangModal(true)}
+        />
         <StreakFab
           completedDays={completedDays}
           creationDays={creationDays}
