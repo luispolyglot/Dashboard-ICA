@@ -246,7 +246,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
   return (
     <section className='mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-5 py-8'>
       <h2 className='mb-1 font-serif text-3xl font-bold'>
-        📖 Mis Palabras ICA
+        📖 Mi creación ICA
       </h2>
       <p className='mb-6 text-sm text-muted-foreground'>
         {cards.length} palabra{cards.length !== 1 ? 's' : ''} · Mas reciente

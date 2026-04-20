@@ -5,6 +5,7 @@ import { PageLayout } from '../layout/PageLayout'
 import { AddView } from '../views/AddView'
 import { HomeView } from '../views/HomeView'
 import { ManageView } from '../views/ManageView'
+import { ProfileView } from '../views/ProfileView'
 import { PhraseHistoryView } from '../views/PhraseHistoryView'
 import { PhraseView } from '../views/PhraseView'
 import { ReviewView } from '../views/ReviewView'
@@ -107,6 +108,19 @@ export function PhraseHistoryPage() {
   return (
     <PageLayout>
       <PhraseHistoryView targetLang={config.targetLang} />
+    </PageLayout>
+  )
+}
+
+export function ProfilePage() {
+  const { config, setShowLangModal } = useDashboardContext()
+
+  return (
+    <PageLayout>
+      <ProfileView
+        config={config}
+        onEditLanguages={() => setShowLangModal(true)}
+      />
     </PageLayout>
   )
 }

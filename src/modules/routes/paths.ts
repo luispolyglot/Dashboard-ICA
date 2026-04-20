@@ -5,6 +5,7 @@ export const DASHBOARD_ROUTES = {
   flashcards: '/flashcards',
   activationPhrase: '/activation-phrase',
   phraseHistory: '/phrase-history',
+  profile: '/profile',
 } as const
 
 export const DASHBOARD_LABELS: Record<string, string> = {
@@ -14,4 +15,5 @@ export const DASHBOARD_LABELS: Record<string, string> = {
   '/flashcards': 'Flashcards',
   '/activation-phrase': 'Mi frase de activación',
   '/phrase-history': 'Mi historial de frases',
+  '/profile': 'Perfil',
 }

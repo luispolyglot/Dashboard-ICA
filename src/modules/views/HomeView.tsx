@@ -52,7 +52,7 @@ export function HomeView({ cardCount, config, dailyProgress }: HomeViewProps) {
       {
         initial: 'I',
         title: 'INMERSION',
-        description: 'Anade palabras nuevas.',
+        description: 'Escribe las palabras filtradas mediante la inmersión.',
         emoji: '🌊',
         tone: '#22C55E',
         statusLabel:
@@ -70,7 +70,7 @@ export function HomeView({ cardCount, config, dailyProgress }: HomeViewProps) {
       {
         initial: 'C',
         title: 'CREACION',
-        description: 'Organiza y practica.',
+        description: 'Accede a la creación de tu conocimiento escrito.',
         emoji: '🧩',
         tone: '#3B82F6',
         statusLabel:
@@ -81,7 +81,7 @@ export function HomeView({ cardCount, config, dailyProgress }: HomeViewProps) {
         progressLabel: `${todayProgress.reviewCorrect}/10`,
         actions: [
           {
-            label: 'Mi Creacion ICA',
+            label: 'Mi creación ICA',
             to: DASHBOARD_ROUTES.myIcaWords,
             helper: `${cardCount} palabra${cardCount !== 1 ? 's' : ''}`,
           },
@@ -96,7 +96,7 @@ export function HomeView({ cardCount, config, dailyProgress }: HomeViewProps) {
       {
         initial: 'A',
         title: 'ACTIVACION',
-        description: 'Activa en frases.',
+        description: 'Activa tu conocimiento escrito mediante frases.',
         emoji: '🗣️',
         tone: '#F59E0B',
         statusLabel:

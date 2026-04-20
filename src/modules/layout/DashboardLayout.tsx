@@ -68,11 +68,7 @@ function BoltFlightFx({ trigger, boltButtonRef, onDone }: BoltFlightFxProps) {
   )
 }
 
-type DashboardLayoutProps = {
-  onLogout: () => Promise<void>
-}
-
-export function DashboardLayout({ onLogout }: DashboardLayoutProps) {
+export function DashboardLayout() {
   const {
     config,
     loading,
@@ -139,9 +135,6 @@ export function DashboardLayout({ onLogout }: DashboardLayoutProps) {
     <div className='flex h-[calc(100dvh-0rem)] grow'>
       <div className='bg-background flex h-[calc(100dvh-0rem)] min-w-0 flex-1 flex-col'>
         <Header
-          onLogout={onLogout}
-          config={config}
-          onEditLanguages={() => setShowLangModal(true)}
           onOpenCalendar={openCalendar}
           dailyProgress={dailyProgress}
           boltButtonRef={(node) => {
@@ -171,9 +164,6 @@ export function DashboardLayout({ onLogout }: DashboardLayoutProps) {
         </main>
         <MobileBottomNav
           onOpenCalendar={openCalendar}
-          onLogout={onLogout}
-          config={config}
-          onEditLanguages={() => setShowLangModal(true)}
         />
 
         <BoltFlightFx

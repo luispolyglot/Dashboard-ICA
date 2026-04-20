@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ComponentType } from 'react'
+import { CopyIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -9,6 +10,7 @@ import { SpeakButton } from '../components/SpeakButton'
 import { getImportance } from '../constants'
 import { fetchActivationPhrase } from '../services/anthropic'
 import { recordPhraseGeneratedEvent } from '../services/gamification'
+import { fetchPhraseHistory } from '../services/phraseHistory'
 import type {
   ActivationPhraseResult,
   AppConfig,
@@ -47,6 +49,9 @@ export function PhraseView({
   const [manualQuery, setManualQuery] = useState('')
   const [result, setResult] = useState<ActivationPhraseResult | null>(null)
   const [loading, setLoading] = useState(false)
+  const [wordUsageCounts, setWordUsageCounts] = useState<Record<string, number>>({})
+  const [copyingResult, setCopyingResult] = useState(false)
+  const [resultCopied, setResultCopied] = useState(false)
 
   const level = config.level || 'A2'
   const allWords = cards.slice().reverse()
@@ -70,6 +75,55 @@ export function PhraseView({
       : automaticPool.filter((word) => automaticSelectedIds.includes(word.id))
 
   const minWordsRequired = 5
+
+  useEffect(() => {
+    let active = true
+
+    fetchPhraseHistory(300, config.targetLang)
+      .then((rows) => {
+        if (!active) return
+
+        const next: Record<string, number> = {}
+        rows.forEach((row) => {
+          ;(row.source_words || []).forEach((word) => {
+            const normalized = word
+              .normalize('NFKC')
+              .toLowerCase()
+              .replace(/\s+/g, ' ')
+              .trim()
+
+            next[normalized] = (next[normalized] || 0) + 1
+          })
+        })
+
+        setWordUsageCounts(next)
+      })
+      .catch(() => {
+        if (!active) return
+        setWordUsageCounts({})
+      })
+
+    return () => {
+      active = false
+    }
+  }, [config.targetLang])
+
+  const getUsageAuraClass = (word: string): string => {
+    const normalized = word
+      .normalize('NFKC')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    const usageCount = wordUsageCounts[normalized] || 0
+    if (usageCount >= 3) {
+      return '!border-amber-400/90 ring-1 ring-amber-300/60 bg-amber-500/12 shadow-[0_0_30px_-8px_rgba(251,191,36,0.95)]'
+    }
+    if (usageCount >= 1) {
+      return '!border-amber-400/70 ring-1 ring-amber-300/35 bg-amber-500/8 shadow-[0_0_26px_-10px_rgba(251,191,36,0.75)]'
+    }
+    return ''
+  }
 
   const searchableManualPool = manualQuery.trim() ? allWords : manualPool
 
@@ -134,16 +188,26 @@ export function PhraseView({
     setAutomaticSelectedIds((prev) => prev.filter((item) => item !== id))
   }
 
+  const handleCopyResultPhrase = async (): Promise<void> => {
+    if (!result?.phrase || copyingResult) return
+
+    setCopyingResult(true)
+    try {
+      await navigator.clipboard.writeText(result.phrase)
+      setResultCopied(true)
+      window.setTimeout(() => setResultCopied(false), 1400)
+    } finally {
+      setCopyingResult(false)
+    }
+  }
+
   return (
     <section className='mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-5 py-8'>
       <h2 className='mb-1 font-serif text-3xl font-bold'>
         ⚡ Frase de Activación
       </h2>
-      <p className='mb-1 text-sm text-muted-foreground'>
+      <p className='mb-4 text-sm text-muted-foreground'>
         Genera una frase natural en {config.targetLang} usando tus palabras ICA.
-      </p>
-      <p className='mb-4 text-xs text-muted-foreground'>
-        Se usan las ultimas palabras añadidas (las mas recientes).
       </p>
 
       <div className='mb-6 flex items-center gap-2'>
@@ -168,7 +232,7 @@ export function PhraseView({
       {mode === 'automatic' && (
         <div className='mb-6'>
           <Label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
-            ¿Cuántas palabras?
+            Utiliza las últimas:
           </Label>
           <div className='flex gap-2'>
             {[5, 6, 7, 8].map((n) => {
@@ -223,6 +287,7 @@ export function PhraseView({
                   onClick={() => toggleCustomWord(word.id)}
                   variant={active ? 'default' : 'outline'}
                   size='sm'
+                  className={getUsageAuraClass(word.target)}
                 >
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importance.key]}`}
@@ -248,7 +313,7 @@ export function PhraseView({
             return (
               <div
                 key={word.id}
-                className='inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-3 py-1.5'
+                className={`inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-3 py-1.5 ${getUsageAuraClass(word.target)}`}
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importance.key]}`}
@@ -312,6 +377,20 @@ export function PhraseView({
               label={`Escuchar ${config.targetLang}`}
               className='mt-3'
             />
+            <Button
+              type='button'
+              onClick={() => void handleCopyResultPhrase()}
+              variant='outline'
+              size='sm'
+              className='mt-2'
+            >
+              <CopyIcon />
+              {copyingResult
+                ? 'Copiando...'
+                : resultCopied
+                  ? 'Copiada'
+                  : 'Copiar frase'}
+            </Button>
           </div>
 
           <div className='border-t border-border bg-muted/20 p-5'>
@@ -329,7 +408,7 @@ export function PhraseView({
                 {result.words_used.map((word) => (
                   <span
                     key={word}
-                    className='rounded-md bg-primary/30 px-2.5 py-0.5 text-xs font-semibold text-primary'
+                    className='rounded-md bg-primary/30 px-2.5 py-0.5 text-xs font-semibold text-white'
                   >
                     {word}
                   </span>

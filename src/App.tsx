@@ -10,6 +10,7 @@ import {
   MyIcaWordsPage,
   NewIcaWordsPage,
   PhraseHistoryPage,
+  ProfilePage,
 } from './modules/routes/DashboardPages'
 import { DASHBOARD_ROUTES } from './modules/routes/paths'
 import { PrivateRoute, PublicOnlyRoute } from './router/RouteGuards'
@@ -25,10 +26,9 @@ function RootRedirect() {
 }
 
 function DashboardShell() {
-  const { signOut } = useAuth()
   return (
     <DashboardProvider>
-      <DashboardLayout onLogout={signOut} />
+      <DashboardLayout />
     </DashboardProvider>
   )
 }
@@ -49,6 +49,7 @@ export function App() {
           <Route path='flashcards' element={<FlashcardsPage />} />
           <Route path='activation-phrase' element={<ActivationPhrasePage />} />
           <Route path='phrase-history' element={<PhraseHistoryPage />} />
+          <Route path='profile' element={<ProfilePage />} />
         </Route>
       </Route>
       <Route path='*' element={<RootRedirect />} />

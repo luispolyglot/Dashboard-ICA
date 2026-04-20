@@ -1,15 +1,19 @@
 import { useId } from 'react'
+import { UserIcon } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { AppBreadcrumbs } from './AppBreadcrumbs'
 import { LeaderboardMenu } from './LeaderboardMenu'
-import { UserMenu } from './UserMenu'
 import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
-import type { AppConfig, CalendarTab, DailyProgressMap } from '../types'
-import { LogoIcademy } from './LogoIcademy'
+import { DASHBOARD_ROUTES } from '../routes/paths'
+import type { CalendarTab, DailyProgressMap } from '../types'
+import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 type HeaderProps = {
-  onLogout: () => Promise<void>
-  config: AppConfig | null
-  onEditLanguages: () => void
   onOpenCalendar: (tab: CalendarTab) => void
   dailyProgress: DailyProgressMap
   boltButtonRef: (node: HTMLButtonElement | null) => void
@@ -89,9 +93,6 @@ function HeaderBoltIcon({ segments, size = 28 }: HeaderBoltIconProps) {
 }
 
 export function Header({
-  onLogout,
-  config,
-  onEditLanguages,
   onOpenCalendar,
   dailyProgress,
   boltButtonRef,
@@ -109,7 +110,6 @@ export function Header({
       <div className='container mx-auto flex h-16 items-center justify-between px-4'>
         <div className='min-w-0 flex-1'>
           <div className='hidden flex-row items-center gap-2 md:flex'>
-            <LogoIcademy width={48} height={48} />
             <AppBreadcrumbs />
           </div>
           <div className='md:hidden'>
@@ -119,11 +119,20 @@ export function Header({
 
         <div className='hidden items-center gap-2 md:flex'>
           <LeaderboardMenu />
-          <UserMenu
-            onLogout={onLogout}
-            config={config}
-            onEditLanguages={onEditLanguages}
-          />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size='icon' variant='outline'>
+                <Link
+                  to={DASHBOARD_ROUTES.profile}
+                  aria-label='Ir al perfil'
+                  title='Perfil'
+                >
+                  <UserIcon className='h-4 w-4' />
+                </Link>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Mi Perfil</TooltipContent>
+          </Tooltip>
           <button
             ref={boltButtonRef}
             type='button'

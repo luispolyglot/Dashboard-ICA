@@ -1,31 +1,21 @@
 import { NavLink } from 'react-router-dom'
-import { useMonthlyLeaderboard } from '../hooks/useMonthlyLeaderboard'
 import { DASHBOARD_ROUTES } from '../routes/paths'
-import type { AppConfig, CalendarTab } from '../types'
-import { UserMenu } from './UserMenu'
+import type { CalendarTab } from '../types'
 
 type MobileBottomNavProps = {
   onOpenCalendar: (tab: CalendarTab) => void
-  onLogout: () => Promise<void>
-  config: AppConfig | null
-  onEditLanguages: () => void
 }
 
 export function MobileBottomNav({
   onOpenCalendar,
-  onLogout,
-  config,
-  onEditLanguages,
 }: MobileBottomNavProps) {
-  const leaderboard = useMonthlyLeaderboard()
-
   const linkClassName = ({ isActive }: { isActive: boolean }) =>
     `flex flex-col items-center gap-1 ${
       isActive ? 'text-primary' : 'text-muted-foreground'
     }`
 
   return (
-    <nav className='fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/95 pb-[max(env(safe-area-inset-bottom),0.5rem)] backdrop-blur md:hidden'>
+    <nav className='fixed inset-x-0 bottom-[5mm] z-40 border-t border-border/70 bg-background/95 pb-[max(env(safe-area-inset-bottom),0.5rem)] backdrop-blur md:hidden'>
       <div className='mx-auto grid max-w-md grid-cols-5 items-end px-3 pt-2'>
         <NavLink to={DASHBOARD_ROUTES.home} className={linkClassName}>
           <span className='text-lg leading-none' aria-hidden='true'>🏠</span>
@@ -54,26 +44,10 @@ export function MobileBottomNav({
           <span className='text-[11px] font-medium'>Flashcards</span>
         </NavLink>
 
-        <div className='flex flex-col items-center gap-1 text-muted-foreground'>
-          <UserMenu
-            onLogout={onLogout}
-            config={config}
-            onEditLanguages={onEditLanguages}
-            showTooltip={false}
-            customTrigger={
-              <button
-                type='button'
-                aria-label='Abrir menu de perfil'
-                className='inline-flex h-5 w-5 items-center justify-center text-current'
-              >
-                <span className='text-base leading-none' aria-hidden='true'>👤</span>
-              </button>
-            }
-            includeMobileLeaderboard
-            mobileLeaderboard={leaderboard}
-          />
+        <NavLink to={DASHBOARD_ROUTES.profile} className={linkClassName}>
+          <span className='text-base leading-none' aria-hidden='true'>👤</span>
           <span className='text-[11px] font-medium'>Perfil</span>
-        </div>
+        </NavLink>
       </div>
     </nav>
   )

@@ -11,7 +11,7 @@ import {
 } from '../services/phraseHistory'
 import { stopTTS } from '../services/tts'
 import type { PhraseGenerationEntry } from '../types'
-import { Trash2Icon } from 'lucide-react'
+import { CopyIcon, Trash2Icon } from 'lucide-react'
 
 type PhraseHistoryViewProps = {
   targetLang: string
@@ -49,6 +49,8 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
   const [error, setError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [copyingId, setCopyingId] = useState<string | null>(null)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   useEffect(() => {
     fetchPhraseHistory(40, targetLang)
@@ -95,6 +97,21 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
       phrase.includes(q) || translation.includes(q) || sourceWords.includes(q)
     )
   })
+
+  const handleCopyPhrase = async (id: string, phrase: string | null): Promise<void> => {
+    if (!phrase || copyingId) return
+
+    setCopyingId(id)
+    try {
+      await navigator.clipboard.writeText(phrase)
+      setCopiedId(id)
+      window.setTimeout(() => {
+        setCopiedId((current) => (current === id ? null : current))
+      }, 1400)
+    } finally {
+      setCopyingId(null)
+    }
+  }
 
   return (
     <section className='mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-5 py-8'>
@@ -177,7 +194,7 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
                 {(item.source_words || []).map((word) => (
                   <span
                     key={`${item.id}-${word}`}
-                    className='rounded-md bg-primary/30 px-2.5 py-0.5 text-xs font-semibold text-primary'
+                    className='rounded-md bg-primary/30 px-2.5 py-0.5 text-xs font-semibold text-white'
                   >
                     {highlightMatch(word, query)}
                   </span>
@@ -213,7 +230,21 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
                   </div>
                 </div>
               ) : (
-                <div className='mt-4 border-t border-border pt-3'>
+                <div className='mt-4 flex flex-wrap gap-2 border-t border-border pt-3'>
+                  <Button
+                    type='button'
+                    onClick={() => void handleCopyPhrase(item.id, item.generated_phrase)}
+                    variant='outline'
+                    size='sm'
+                    disabled={!item.generated_phrase || copyingId === item.id}
+                  >
+                    <CopyIcon className='size-4' />
+                    {copyingId === item.id
+                      ? 'Copiando...'
+                      : copiedId === item.id
+                        ? 'Copiada'
+                        : 'Copiar frase'}
+                  </Button>
                   <Button
                     type='button'
                     onClick={() => setConfirmDeleteId(item.id)}
