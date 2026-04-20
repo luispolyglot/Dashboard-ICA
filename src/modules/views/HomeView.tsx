@@ -1,16 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import type { LucideIcon } from 'lucide-react'
-import {
-  CheckCircle2,
-  ChevronRight,
-  CircleDashed,
-  Puzzle,
-  Speech,
-  Waves,
-} from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { AnimatedCircularProgressBar } from '@/components/ui/animated-circular-progress-bar'
 import {
   Dialog,
   DialogContent,
@@ -18,13 +9,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { MagicCard } from '@/components/ui/magic-card'
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
 import { CREATION_WORDS_GOAL, getTodayProgress } from '../constants'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import type { AppConfig, DailyProgressMap } from '../types'
@@ -46,13 +30,10 @@ type HomeCard = {
   initial: 'I' | 'C' | 'A'
   title: string
   description: string
-  icon: LucideIcon
-  haloTone: string
-  glowFrom: string
-  glowTo: string
+  emoji: string
+  tone: string
   statusLabel: string
   statusDone: boolean
-  progressValue: number
   progressLabel: string
   actions: HomeCardAction[]
 }
@@ -70,19 +51,13 @@ export function HomeView({ cardCount, config, dailyProgress }: HomeViewProps) {
     () => [
       {
         initial: 'I',
-        title: 'Inmersion',
-        description: 'Escribe las palabras filtradas mediante la inmersion.',
-        icon: Waves,
-        haloTone: 'from-chart-1/30 via-chart-2/15 to-transparent',
-        glowFrom: '#6fe1ff',
-        glowTo: '#6b8dff',
+        title: 'INMERSION',
+        description: 'Anade palabras nuevas.',
+        emoji: '🌊',
+        tone: '#22C55E',
         statusLabel:
           wordsDone ? 'Objetivo de hoy completado' : 'Te faltan palabras para hoy',
         statusDone: wordsDone,
-        progressValue: Math.min(
-          100,
-          Math.round((todayProgress.wordsAdded / CREATION_WORDS_GOAL) * 100),
-        ),
         progressLabel: `${todayProgress.wordsAdded}/${CREATION_WORDS_GOAL}`,
         actions: [
           {
@@ -94,22 +69,16 @@ export function HomeView({ cardCount, config, dailyProgress }: HomeViewProps) {
       },
       {
         initial: 'C',
-        title: 'Creacion',
-        description: 'Accede a la creacion de tu conocimiento escrito.',
-        icon: Puzzle,
-        haloTone: 'from-chart-2/35 via-chart-3/20 to-transparent',
-        glowFrom: '#7dd3fc',
-        glowTo: '#818cf8',
+        title: 'CREACION',
+        description: 'Organiza y practica.',
+        emoji: '🧩',
+        tone: '#3B82F6',
         statusLabel:
           todayProgress.reviewCorrect >= 10
             ? 'Objetivo de flashcards completado'
             : `Llevas ${todayProgress.reviewCorrect}/10 aciertos hoy`,
         statusDone: todayProgress.reviewCorrect >= 10,
-        progressValue: Math.min(
-          100,
-          Math.round((todayProgress.reviewCorrect / 10) * 100),
-        ),
-        progressLabel: `${todayProgress.reviewCorrect}/10 hoy`,
+        progressLabel: `${todayProgress.reviewCorrect}/10`,
         actions: [
           {
             label: 'Mi Creacion ICA',
@@ -126,17 +95,14 @@ export function HomeView({ cardCount, config, dailyProgress }: HomeViewProps) {
       },
       {
         initial: 'A',
-        title: 'Activacion',
-        description: 'Activa tu conocimiento escrito mediante frases.',
-        icon: Speech,
-        haloTone: 'from-chart-3/35 via-chart-4/20 to-transparent',
-        glowFrom: '#6fe1ff',
-        glowTo: '#a78bfa',
+        title: 'ACTIVACION',
+        description: 'Activa en frases.',
+        emoji: '🗣️',
+        tone: '#F59E0B',
         statusLabel:
           phraseDone ? 'Frase diaria completada' : 'Te queda una frase de activacion',
         statusDone: phraseDone,
-        progressValue: phraseDone ? 100 : 0,
-        progressLabel: phraseDone ? '1/1 frase' : '0/1 frase',
+        progressLabel: phraseDone ? '1/1' : '0/1',
         actions: [
           {
             label: 'Mi frase de activacion',
@@ -174,84 +140,70 @@ export function HomeView({ cardCount, config, dailyProgress }: HomeViewProps) {
 
   return (
     <>
-      <section className='flex flex-1 items-center justify-center'>
-        <div className='mx-auto grid w-full max-w-6xl grid-cols-1 items-stretch gap-5 lg:grid-cols-3'>
-          {cards.map((card, index) => (
-            <div key={card.initial} className='w-full min-w-0'>
-              <MagicCard
-                mode='orb'
-                glowFrom={card.glowFrom}
-                glowTo={card.glowTo}
-              glowOpacity={0.32}
-              glowBlur={70}
-              glowSize={320}
-              className='card-enter h-full w-full min-w-0 rounded-3xl transition-transform duration-300 hover:scale-[1.05]'
-              style={{ animationDelay: `${index * 90}ms` }}
-            >
-                <Card
-                  data-home-card
-                  role='button'
-                  tabIndex={0}
-                  onClick={() => openCard(card)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      openCard(card)
-                    }
-                  }}
-                  className='group relative flex h-full w-full min-w-0 cursor-pointer flex-1 flex-col overflow-hidden rounded-3xl border-border/60 bg-card/90 shadow-[0_20px_45px_-26px_var(--color-primary)] lg:gap-6 gap-6 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/45'
-                >
-                  <div className='pointer-events-none absolute inset-0'>
-                    <div
-                      className={`halo-drift absolute -top-10 -right-8 h-40 w-40 rounded-full bg-gradient-to-br blur-2xl ${card.haloTone}`}
-                    />
-                    <div className='halo-drift-reverse absolute -bottom-14 -left-10 h-36 w-36 rounded-full bg-gradient-to-br from-primary/18 via-chart-3/10 to-transparent blur-2xl' />
-                    <div className='absolute inset-0 bg-[linear-gradient(120deg,transparent_0%,var(--color-background)_55%,transparent_100%)] opacity-35' />
+      <section className='flex flex-1 items-center justify-center px-4 py-10 md:px-6 md:py-12'>
+        <div className='ica-home-grid'>
+          {cards.map((card) => {
+            const cardBody = (
+              <>
+                <div className='ica-card-ghost-letter' style={{ color: card.tone }}>
+                  {card.initial}
+                </div>
+
+                <div className='ica-card-emoji'>{card.emoji}</div>
+
+                <div className='ica-card-content'>
+                  <div className='ica-card-title-row'>
+                    <span
+                      className={cn('ica-card-letter-chip', card.statusDone && 'ica-card-letter-chip-done')}
+                      style={{
+                        color: card.statusDone ? '#EAB308' : card.tone,
+                        background: card.statusDone ? '#EAB30815' : `${card.tone}15`,
+                        borderColor: card.statusDone ? '#EAB30850' : `${card.tone}40`,
+                      }}
+                    >
+                      {card.initial}
+                    </span>
+                    <h2 className='ica-card-title'>{card.title}</h2>
+                    {card.statusDone && <span className='ica-card-done-spark'>✨</span>}
                   </div>
 
-                  <CardHeader>
-                    <div className='mb-3 flex items-center justify-between gap-3'>
-                      <div className='flex items-center gap-2'>
-                        <div className='rounded-2xl border border-border/60 bg-background/75 p-2 text-primary'>
-                          <card.icon className='h-5 w-5' aria-hidden='true' />
-                        </div>
-                        <span className='text-xs font-semibold tracking-wide text-muted-foreground'>
-                          {card.progressLabel}
-                        </span>
-                      </div>
-                      <div className='rounded-full border border-border/70 bg-background/80 p-1'>
-                        <AnimatedCircularProgressBar
-                          min={0}
-                          max={100}
-                          value={card.progressValue}
-                          gaugePrimaryColor='var(--color-primary)'
-                          gaugeSecondaryColor='var(--color-muted)'
-                          className='size-16 text-xs font-bold'
-                        />
-                      </div>
-                    </div>
+                  <p className='ica-card-description'>{card.description}</p>
 
-                    <CardTitle className='text-2xl tracking-tight'>
-                      <span className='font-heading text-3xl leading-none text-primary'>
-                        {card.title.slice(0, 1)}
-                      </span>
-                      <span>{card.title.slice(1)}</span>
-                    </CardTitle>
-                    <CardDescription>{card.description}</CardDescription>
-                    <div className='mt-1 flex items-center gap-2 text-xs text-muted-foreground'>
-                      {card.statusDone ? (
-                        <CheckCircle2 className='h-4 w-4 text-emerald-500' aria-hidden='true' />
-                      ) : (
-                        <CircleDashed className='h-4 w-4 text-chart-3' aria-hidden='true' />
-                      )}
-                      <span>{card.statusLabel}</span>
-                    </div>
-                  </CardHeader>
+                  <div className='ica-card-meta'>
+                    <span aria-hidden='true'>{card.statusDone ? '✅' : '🕒'}</span>
+                    <span>{card.statusLabel}</span>
+                  </div>
 
-                </Card>
-              </MagicCard>
-            </div>
-          ))}
+                  <div className='ica-card-progress'>{card.progressLabel}</div>
+                </div>
+              </>
+            )
+
+            return (
+              <div key={card.initial} className='relative'>
+                {card.statusDone ? (
+                  <div className='aura-outer'>
+                    <div className='aura-spinner' />
+                    <button
+                      type='button'
+                      onClick={() => openCard(card)}
+                      className='aura-inner-card card-hover ica-card-base'
+                    >
+                      {cardBody}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type='button'
+                    onClick={() => openCard(card)}
+                    className='ica-card-base ica-card-plain card-hover'
+                  >
+                    {cardBody}
+                  </button>
+                )}
+              </div>
+            )
+          })}
         </div>
       </section>
 
@@ -272,7 +224,7 @@ export function HomeView({ cardCount, config, dailyProgress }: HomeViewProps) {
                 {action.disabled ? (
                   <Button type='button' variant='secondary' disabled className='justify-between'>
                     <span>{action.label}</span>
-                    <ChevronRight className='h-4 w-4' aria-hidden='true' />
+                    <span aria-hidden='true'>→</span>
                   </Button>
                 ) : (
                   <Button
@@ -282,7 +234,7 @@ export function HomeView({ cardCount, config, dailyProgress }: HomeViewProps) {
                   >
                     <Link to={action.to}>
                       <span>{action.label}</span>
-                      <ChevronRight className='h-4 w-4' aria-hidden='true' />
+                      <span aria-hidden='true'>→</span>
                     </Link>
                   </Button>
                 )}
