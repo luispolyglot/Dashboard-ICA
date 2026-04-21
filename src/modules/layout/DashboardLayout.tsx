@@ -6,14 +6,13 @@ import { CalendarModal } from '../components/CalendarModal'
 import { Header } from '../components/Header'
 import { LangEditModal } from '../components/LangEditModal'
 import { MobileBottomNav } from '../components/MobileBottomNav'
-import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
+import { GOAL, getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
 import { LanguageSetup } from '../views/LanguageSetup'
 
 type DailyMilestones = {
-  words: boolean
   flash: boolean
-  phrase: boolean
+  ica: boolean
 }
 
 type BoltFlightFxProps = {
@@ -23,7 +22,13 @@ type BoltFlightFxProps = {
 }
 
 function BoltFlightFx({ trigger, boltButtonRef, onDone }: BoltFlightFxProps) {
-  const [anim, setAnim] = useState<null | { sx: number; sy: number; tx: number; ty: number; id: number }>(null)
+  const [anim, setAnim] = useState<null | {
+    sx: number
+    sy: number
+    tx: number
+    ty: number
+    id: number
+  }>(null)
 
   useEffect(() => {
     if (!trigger || !boltButtonRef.current) return
@@ -70,6 +75,7 @@ function BoltFlightFx({ trigger, boltButtonRef, onDone }: BoltFlightFxProps) {
 
 export function DashboardLayout() {
   const {
+    cards,
     config,
     loading,
     showLangModal,
@@ -87,23 +93,32 @@ export function DashboardLayout() {
 
   const boltButtonRef = useRef<HTMLButtonElement | null>(null)
   const previousMilestonesRef = useRef<DailyMilestones | null>(null)
+  const milestonesReadyRef = useRef(false)
   const [flightQueue, setFlightQueue] = useState(0)
   const [activeFlight, setActiveFlight] = useState(0)
 
   useEffect(() => {
+    if (loading) return
+
     const progress = getTodayProgress(dailyProgress)
+    const hasFiveWords = cards.length >= 5
     const currentMilestones: DailyMilestones = {
-      words: progress.wordsAdded >= CREATION_WORDS_GOAL,
       flash: progress.reviewCorrect >= GOAL,
-      phrase: progress.phraseGenerated,
+      ica: hasFiveWords && progress.phraseGenerated,
+    }
+
+    if (!milestonesReadyRef.current) {
+      previousMilestonesRef.current = currentMilestones
+      milestonesReadyRef.current = true
+      return
     }
 
     const previous = previousMilestonesRef.current
 
     if (previous) {
-      const newCompletions = Number(!previous.words && currentMilestones.words)
-        + Number(!previous.flash && currentMilestones.flash)
-        + Number(!previous.phrase && currentMilestones.phrase)
+      const newCompletions =
+        Number(!previous.flash && currentMilestones.flash) +
+        Number(!previous.ica && currentMilestones.ica)
 
       if (newCompletions > 0) {
         setFlightQueue((value) => value + newCompletions)
@@ -111,7 +126,7 @@ export function DashboardLayout() {
     }
 
     previousMilestonesRef.current = currentMilestones
-  }, [dailyProgress])
+  }, [cards.length, dailyProgress, loading])
 
   useEffect(() => {
     if (activeFlight !== 0 || flightQueue <= 0) return
@@ -137,6 +152,7 @@ export function DashboardLayout() {
         <Header
           onOpenCalendar={openCalendar}
           dailyProgress={dailyProgress}
+          cardCount={cards.length}
           boltButtonRef={(node) => {
             boltButtonRef.current = node
           }}
@@ -159,12 +175,10 @@ export function DashboardLayout() {
           />
         )}
 
-        <main className='flex flex-1 overflow-y-auto pb-24 md:pb-0'>
+        <main className='flex flex-1 overflow-y-auto pb-20 md:pb-0'>
           <Outlet />
         </main>
-        <MobileBottomNav
-          onOpenCalendar={openCalendar}
-        />
+        <MobileBottomNav onOpenCalendar={openCalendar} />
 
         <BoltFlightFx
           trigger={activeFlight}

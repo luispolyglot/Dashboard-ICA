@@ -247,169 +247,194 @@ export function AddView({
     }
   }
 
-  return (
-    <section className='mx-auto w-full max-w-xl flex-1 overflow-y-auto px-5 py-8'>
-      <div className='mb-1 flex flex-wrap items-center justify-between gap-2'>
-        <h2 className='font-serif text-3xl font-bold'>Añadir nueva palabra</h2>
-        <Badge variant='secondary' className='gap-1.5'>
-          <span className='text-sm font-bold'>
-            {todayProgress.wordsAdded}/{CREATION_WORDS_GOAL}
-          </span>
-          <span className='text-[11px]'>hoy</span>
-          {todayProgress.wordsAdded >= CREATION_WORDS_GOAL && (
-            <span className='text-xs'>✓</span>
-          )}
-        </Badge>
-      </div>
-
-      <p className='mb-7 text-sm text-muted-foreground'>
-        Escribe en cualquier campo y la IA te sugiere la traduccion.
-      </p>
-
-      <div className='mb-5'>
-        <Label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
-          {config.targetLang}{' '}
-          <span className='normal-case tracking-normal text-muted-foreground'>
-            — idioma objetivo
-          </span>
-        </Label>
-        <Input
-          value={target}
-          onChange={(e) => handleTargetChange(e.target.value)}
-          disabled={saving}
-          placeholder={`Escribe en ${config.targetLang}...`}
-          className='h-11'
-        />
-        {(checkingSpelling || spellingSuggestion) && (
-          <div className='mt-1.5 flex items-center gap-2 text-xs'>
-            {checkingSpelling && (
-              <span className='text-muted-foreground'>
-                Revisando ortografia...
-              </span>
-            )}
-            {!checkingSpelling && spellingSuggestion && (
-              <>
-                <span className='text-muted-foreground'>
-                  *quizas querias escribir "{spellingSuggestion}"*
-                </span>
-                <Button
-                  type='button'
-                  size='xs'
-                  variant='secondary'
-                  onClick={() => {
-                    handleTargetChange(spellingSuggestion)
-                    setSpellingSuggestion(null)
-                  }}
-                >
-                  Usar
-                </Button>
-              </>
-            )}
-          </div>
-        )}
-        <TranslationSuggestion
-          suggestion={suggestionNative}
-          loading={loadingNative}
-          label={`En ${config.nativeLang}`}
-          onAccept={() => {
-            if (suggestionNative) {
-              setNative(suggestionNative)
-              setSuggestionNative(null)
-            }
-          }}
-        />
-      </div>
-
-      <div className='mb-6'>
-        <Label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
-          {config.nativeLang}{' '}
-          <span className='normal-case tracking-normal text-muted-foreground'>
-            — idioma materno
-          </span>
-        </Label>
-        <Input
-          value={native}
-          onChange={(e) => handleNativeChange(e.target.value)}
-          disabled={saving}
-          placeholder={`Escribe en ${config.nativeLang}...`}
-          className='h-11'
-        />
-        <TranslationSuggestion
-          suggestion={suggestionTarget}
-          loading={loadingTarget}
-          label={`En ${config.targetLang}`}
-          onAccept={() => {
-            if (suggestionTarget) {
-              setTarget(suggestionTarget)
-              setSuggestionTarget(null)
-            }
-          }}
-        />
-      </div>
-
-      <div className='mb-7'>
-        <Label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
-          Frecuencia de uso
-        </Label>
-        <div className='flex flex-wrap gap-2'>
-          {IMPORTANCE_LEVELS.map((level) => {
-            const selected = importance === level.key
+  const recentList =
+    recent.length > 0 ? (
+      <div>
+        <h3 className='mb-3 text-[11px] uppercase tracking-wider text-muted-foreground'>
+          Últimas añadidas
+        </h3>
+        <div className='space-y-2'>
+          {recent.map((card) => {
+            const importanceMeta = getImportance(card.importance)
             return (
-              <Button
-                key={level.key}
-                type='button'
-                onClick={() => !saving && setImportance(level.key)}
-                disabled={saving}
-                variant={selected ? 'default' : 'outline'}
-                className={`min-w-22.5 h-auto flex-1 py-2.5 ${selected ? IMPORTANCE_TONE[level.key] : ''}`}
-              >
-                <div className='text-xs font-semibold'>{level.label}</div>
-              </Button>
+              <Card key={card.id} size='sm'>
+                <CardContent className='flex items-start gap-2.5'>
+                  <span
+                    className={`mt-1.5 h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importanceMeta.key]}`}
+                  />
+                  <div>
+                    <div className='flex items-center gap-2.5'>
+                      <span className='text-sm font-medium'>{card.target}</span>
+                      <span className='text-muted-foreground'>→</span>
+                      <span className='text-sm text-muted-foreground'>
+                        {card.native}
+                      </span>
+                    </div>
+                    <RomanizationHint
+                      text={card.target}
+                      language={card.targetLang || ''}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
             )
           })}
         </div>
       </div>
+    ) : null
 
-      <Button
-        type='button'
-        onClick={handleSave}
-        disabled={!canSave}
-        className='h-11 w-full text-base font-semibold'
-      >
-        {saving ? 'Guardando...' : saved ? '✓ ¡Guardada!' : 'Guardar palabra'}
-      </Button>
+  return (
+    <section className='mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-5 py-8'>
+      <div className='grid gap-10 lg:grid-cols-3 lg:items-start'>
+        <div className='hidden lg:block' />
 
-      {recent.length > 0 && (
-        <div className='mt-10'>
-          <h3 className='mb-3 text-[11px] uppercase tracking-wider text-muted-foreground'>
-            Últimas añadidas
-          </h3>
-          <div className='space-y-2'>
-            {recent.map((card) => {
-              const importanceMeta = getImportance(card.importance)
-              return (
-                <Card key={card.id} size='sm'>
-                  <CardContent className='flex items-start gap-2.5'>
-                    <span
-                      className={`mt-1.5 h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importanceMeta.key]}`}
-                    />
-                    <div>
-                      <div className='flex items-center gap-2.5'>
-                        <span className='text-sm font-medium'>{card.target}</span>
-                        <span className='text-muted-foreground'>→</span>
-                        <span className='text-sm text-muted-foreground'>
-                          {card.native}
-                        </span>
-                      </div>
-                      <RomanizationHint text={card.target} language={card.targetLang || ''} />
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            })}
+        <div className='lg:col-start-2'>
+          <div className='mb-1 flex flex-wrap items-center justify-between gap-2'>
+            <h2 className='font-serif text-3xl font-bold'>
+              Añadir nueva palabra ICA
+            </h2>
+            <Badge variant='secondary' className='gap-1.5'>
+              <span className='text-sm font-bold'>
+                {todayProgress.wordsAdded}/{CREATION_WORDS_GOAL}
+              </span>
+              <span className='text-[11px]'>hoy</span>
+              {todayProgress.wordsAdded >= CREATION_WORDS_GOAL && (
+                <span className='text-xs'>✓</span>
+              )}
+            </Badge>
           </div>
+
+          <p className='mb-7 text-sm text-muted-foreground'>
+            Escribe en cualquier campo y la IA te sugiere la traduccion.
+          </p>
+
+          <div className='mb-5'>
+            <Label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
+              {config.targetLang}{' '}
+              <span className='normal-case tracking-normal text-muted-foreground'>
+                — idioma objetivo
+              </span>
+            </Label>
+            <Input
+              value={target}
+              onChange={(e) => handleTargetChange(e.target.value)}
+              disabled={saving}
+              placeholder={`Escribe en ${config.targetLang}...`}
+              className='h-11'
+            />
+            {(checkingSpelling || spellingSuggestion) && (
+              <div className='mt-1.5 flex items-center gap-2 text-xs'>
+                {checkingSpelling && (
+                  <span className='text-muted-foreground'>
+                    Revisando ortografia...
+                  </span>
+                )}
+                {!checkingSpelling && spellingSuggestion && (
+                  <>
+                    <span className='text-muted-foreground'>
+                      *quizas querias escribir "{spellingSuggestion}"*
+                    </span>
+                    <Button
+                      type='button'
+                      size='xs'
+                      variant='secondary'
+                      onClick={() => {
+                        handleTargetChange(spellingSuggestion)
+                        setSpellingSuggestion(null)
+                      }}
+                    >
+                      Usar
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+            <TranslationSuggestion
+              suggestion={suggestionNative}
+              loading={loadingNative}
+              label={`En ${config.nativeLang}`}
+              onAccept={() => {
+                if (suggestionNative) {
+                  setNative(suggestionNative)
+                  setSuggestionNative(null)
+                }
+              }}
+            />
+          </div>
+
+          <div className='mb-6'>
+            <Label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
+              {config.nativeLang}{' '}
+              <span className='normal-case tracking-normal text-muted-foreground'>
+                — idioma materno
+              </span>
+            </Label>
+            <Input
+              value={native}
+              onChange={(e) => handleNativeChange(e.target.value)}
+              disabled={saving}
+              placeholder={`Escribe en ${config.nativeLang}...`}
+              className='h-11'
+            />
+            <TranslationSuggestion
+              suggestion={suggestionTarget}
+              loading={loadingTarget}
+              label={`En ${config.targetLang}`}
+              onAccept={() => {
+                if (suggestionTarget) {
+                  setTarget(suggestionTarget)
+                  setSuggestionTarget(null)
+                }
+              }}
+            />
+          </div>
+
+          <div className='mb-7'>
+            <Label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
+              Frecuencia de uso
+            </Label>
+            <div className='flex flex-wrap gap-2'>
+              {IMPORTANCE_LEVELS.map((level) => {
+                const selected = importance === level.key
+                return (
+                  <Button
+                    key={level.key}
+                    type='button'
+                    onClick={() => !saving && setImportance(level.key)}
+                    disabled={saving}
+                    variant={selected ? 'default' : 'outline'}
+                    className={`min-w-22.5 h-auto flex-1 py-2.5 ${selected ? IMPORTANCE_TONE[level.key] : ''}`}
+                  >
+                    <span
+                      className={`mr-1 h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[level.key]}`}
+                    />
+                    <div className='text-xs font-semibold'>{level.label}</div>
+                  </Button>
+                )
+              })}
+            </div>
+          </div>
+
+          <Button
+            type='button'
+            onClick={handleSave}
+            disabled={!canSave}
+            className='h-11 w-full text-base font-semibold'
+          >
+            {saving
+              ? 'Guardando...'
+              : saved
+                ? '✓ ¡Guardada!'
+                : 'Guardar palabra'}
+          </Button>
+
+          {recentList && <div className='mt-10 lg:hidden'>{recentList}</div>}
         </div>
-      )}
+
+        <div className='hidden lg:block lg:col-start-3 lg:pt-14 lg:pl-16'>
+          {recentList}
+        </div>
+      </div>
     </section>
   )
 }

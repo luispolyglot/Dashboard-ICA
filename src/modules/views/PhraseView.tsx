@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ComponentType } from 'react'
 import { CopyIcon } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -8,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { RomanizationHint } from '../components/RomanizationHint'
 import { SpeakButton } from '../components/SpeakButton'
 import { getImportance } from '../constants'
+import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchActivationPhrase } from '../services/anthropic'
 import { recordPhraseGeneratedEvent } from '../services/gamification'
 import { fetchPhraseHistory } from '../services/phraseHistory'
@@ -203,12 +205,19 @@ export function PhraseView({
 
   return (
     <section className='mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-5 py-8'>
-      <h2 className='mb-1 font-serif text-3xl font-bold'>
-        ⚡ Frase de Activación
-      </h2>
-      <p className='mb-4 text-sm text-muted-foreground'>
-        Genera una frase natural en {config.targetLang} usando tus palabras ICA.
-      </p>
+      <div className='mb-4 flex items-start justify-between gap-3'>
+        <div>
+          <h2 className='mb-1 font-serif text-3xl font-bold'>
+            ⚡ Frase de Activación
+          </h2>
+          <p className='text-sm text-muted-foreground'>
+            Genera una frase natural en {config.targetLang} usando tus palabras ICA.
+          </p>
+        </div>
+        <Button asChild variant='outline' size='sm'>
+          <Link to={DASHBOARD_ROUTES.phraseHistory}>📜 Historial</Link>
+        </Button>
+      </div>
 
       <div className='mb-6 flex items-center gap-2'>
         <LevelBadge level={level} />

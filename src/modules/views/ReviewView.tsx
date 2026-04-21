@@ -53,6 +53,7 @@ export function ReviewView({
   const [flipped, setFlipped] = useState(false)
   const [correct, setCorrect] = useState(0)
   const [busy, setBusy] = useState(false)
+  const [finishing, setFinishing] = useState(false)
   const [completed, setCompleted] = useState(false)
   const [showExample, setShowExample] = useState(false)
   const [showExampleTranslation, setShowExampleTranslation] = useState(false)
@@ -90,6 +91,12 @@ export function ReviewView({
     )
 
     const nextCorrect = knew ? correct + 1 : correct
+    const reachedGoal = nextCorrect >= GOAL
+
+    if (reachedGoal) {
+      setFinishing(true)
+    }
+
     setCorrect(nextCorrect)
 
     setCards(nextCards)
@@ -111,7 +118,7 @@ export function ReviewView({
       })
       await onReviewAnswered(knew)
 
-      if (nextCorrect >= GOAL) {
+      if (reachedGoal) {
         const dayKey = todayKey()
         if (!completedDays.includes(dayKey)) {
           const nextCompletedDays = [...completedDays, dayKey]
@@ -119,10 +126,11 @@ export function ReviewView({
           await saveData('dashboard-ICA-completed', nextCompletedDays)
         }
 
-        window.setTimeout(() => setCompleted(true), 250)
+        setCompleted(true)
       }
     } finally {
       setBusy(false)
+      setFinishing(false)
     }
   }
 
@@ -175,6 +183,20 @@ export function ReviewView({
             Finalizar practica
           </Button>
         </div>
+      </section>
+    )
+  }
+
+  if (finishing) {
+    return (
+      <section className='flex flex-1 flex-col items-center justify-center px-5 py-10 text-center'>
+        <div className='mb-4 text-5xl'>⏳</div>
+        <h2 className='mb-2 font-serif text-3xl font-bold'>
+          Guardando progreso...
+        </h2>
+        <p className='max-w-sm text-sm text-muted-foreground'>
+          Estamos registrando tu última respuesta para cerrar la sesión.
+        </p>
       </section>
     )
   }
@@ -257,13 +279,13 @@ export function ReviewView({
                   currentCard.exampleTranslation ? (
                     <div className='flex flex-col gap-1'>
                       <p className='text-sm font-semibold'>
-                        {currentCard.examplePhrase}
+                        {currentCard.exampleTranslation}
                       </p>
                       <div className='flex flex-row gap-2 items-center'>
                         <p
                           className={`text-xs text-muted-foreground ${showExampleTranslation ? '' : 'blur-xs'}`}
                         >
-                          {currentCard.exampleTranslation}
+                          {currentCard.examplePhrase}
                         </p>
                         <Button
                           variant='ghost'

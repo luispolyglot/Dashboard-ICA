@@ -1,4 +1,3 @@
-import { TrophyIcon } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { Button } from '@/components/ui/button'
 import {
@@ -37,7 +36,9 @@ export function LeaderboardMenu() {
                 size='icon'
                 aria-label='Abrir leaderboard mensual'
               >
-                <TrophyIcon />
+                <span aria-hidden='true' className='text-base'>
+                  🏆
+                </span>
               </Button>
             </DropdownMenuTrigger>
           </span>

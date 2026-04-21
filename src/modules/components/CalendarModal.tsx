@@ -54,7 +54,7 @@ export function CalendarModal({ completedDays, creationDays, onClose, activeTab 
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className='max-w-xl'>
+      <DialogContent className='max-w-xl py-6 sm:py-4'>
         <DialogHeader>
           <DialogTitle>Rachas</DialogTitle>
           <DialogDescription>Seguimiento mensual de flashcards y creación ICA.</DialogDescription>

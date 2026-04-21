@@ -15,7 +15,7 @@ export function useDashboardBreadcrumbs(): BreadcrumbItem[] {
     const path = location.pathname
 
     if (path === '/') {
-      return [{ href: '/', label: DASHBOARD_LABELS['/'], current: true }]
+      return [{ href: '/', label: '✦ Dashboard ICA', current: true }]
     }
 
     const label = DASHBOARD_LABELS[path] || path

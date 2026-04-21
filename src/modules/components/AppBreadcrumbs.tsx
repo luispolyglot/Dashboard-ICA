@@ -20,7 +20,15 @@ export function AppBreadcrumbs() {
           <Fragment key={item.href}>
             <BreadcrumbItem>
               {item.current ? (
-                <BreadcrumbPage>{item.label}</BreadcrumbPage>
+                <BreadcrumbPage
+                  className={
+                    item.href === '/'
+                      ? 'text-[0.9rem] lg:text-[1rem] font-heading'
+                      : undefined
+                  }
+                >
+                  {item.label}
+                </BreadcrumbPage>
               ) : (
                 <BreadcrumbLink asChild>
                   <Link to={item.href}>{item.label}</Link>
