@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { AuthShell } from './components/AuthShell'
 
 export function ResetPasswordPage() {
-  const { updatePassword, signOut, session, loading } = useAuth()
+  const { updatePassword, signOut, session, loading, isPasswordRecovery } = useAuth()
   const navigate = useNavigate()
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -16,7 +16,7 @@ export function ResetPasswordPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  const canSubmit = Boolean(session)
+  const canSubmit = Boolean(session && isPasswordRecovery)
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -25,6 +25,10 @@ export function ResetPasswordPage() {
 
     if (!session) {
       setError('El enlace es invalido o expiró. Solicita uno nuevo desde recuperar contraseña.')
+      return
+    }
+    if (!isPasswordRecovery) {
+      setError('Esta pantalla solo funciona desde un enlace de recuperación válido.')
       return
     }
     if (password.length < 6) {
@@ -53,7 +57,7 @@ export function ResetPasswordPage() {
   return (
     <AuthShell title='Nueva contraseña' subtitle='Define una contraseña nueva para tu cuenta.'>
       <form className='space-y-4' onSubmit={handleSubmit}>
-        {!loading && !canSubmit && (
+        {!loading && !canSubmit && !success && (
           <p className='text-sm text-destructive'>
             No detectamos una sesión de recuperación válida. Pide un nuevo enlace.
           </p>

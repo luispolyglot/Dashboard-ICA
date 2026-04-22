@@ -52,11 +52,36 @@ export function ReviewView({
   const [currentIndex, setCurrentIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [correct, setCorrect] = useState(0)
+  const [answerCount, setAnswerCount] = useState(0)
+  const [retryCooldowns, setRetryCooldowns] = useState<Record<string, number>>({})
   const [busy, setBusy] = useState(false)
   const [finishing, setFinishing] = useState(false)
   const [completed, setCompleted] = useState(false)
   const [showExample, setShowExample] = useState(false)
   const [showExampleTranslation, setShowExampleTranslation] = useState(false)
+
+  const pickNextIndex = (
+    cardsToShow: Lexicard[],
+    startIndex: number,
+    currentAnswerCount: number,
+    cooldownMap: Record<string, number>,
+  ): number => {
+    if (cardsToShow.length === 0) return 0
+
+    const normalizedStart =
+      ((startIndex % cardsToShow.length) + cardsToShow.length) % cardsToShow.length
+
+    for (let offset = 0; offset < cardsToShow.length; offset += 1) {
+      const candidateIndex = (normalizedStart + offset) % cardsToShow.length
+      const candidate = cardsToShow[candidateIndex]
+      const blockedUntil = cooldownMap[candidate.id] ?? 0
+      if (blockedUntil <= currentAnswerCount) {
+        return candidateIndex
+      }
+    }
+
+    return normalizedStart
+  }
 
   useEffect(() => {
     setSorted(sortByPriority(cards, reviewSession))
@@ -91,22 +116,50 @@ export function ReviewView({
     )
 
     const nextCorrect = knew ? correct + 1 : correct
+    const nextAnswerCount = answerCount + 1
     const reachedGoal = nextCorrect >= GOAL
+
+    const nextRetryCooldowns = {
+      ...retryCooldowns,
+      ...(knew
+        ? {}
+        : {
+            [updated.id]: nextAnswerCount + 2,
+          }),
+    }
 
     if (reachedGoal) {
       setFinishing(true)
     }
 
     setCorrect(nextCorrect)
+    setAnswerCount(nextAnswerCount)
+    setRetryCooldowns(nextRetryCooldowns)
 
     setCards(nextCards)
 
     if (nextCorrect < GOAL) {
       const reordered = sortByPriority(nextCards, reviewSession)
       setSorted(reordered)
-      setCurrentIndex(
-        reordered.length > 0 ? (currentIndex + 1) % reordered.length : 0,
-      )
+
+      if (reordered.length > 0) {
+        const updatedCardIndex = reordered.findIndex((card) => card.id === updated.id)
+        const nextStartIndex =
+          updatedCardIndex >= 0
+            ? (updatedCardIndex + 1) % reordered.length
+            : currentIndex % reordered.length
+
+        setCurrentIndex(
+          pickNextIndex(
+            reordered,
+            nextStartIndex,
+            nextAnswerCount,
+            nextRetryCooldowns,
+          ),
+        )
+      } else {
+        setCurrentIndex(0)
+      }
     }
 
     try {
@@ -165,6 +218,8 @@ export function ReviewView({
             type='button'
             onClick={() => {
               setCorrect(0)
+              setAnswerCount(0)
+              setRetryCooldowns({})
               setCompleted(false)
               setCurrentIndex(0)
               setSorted(sortByPriority(cards, reviewSession))

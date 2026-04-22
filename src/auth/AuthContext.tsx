@@ -14,6 +14,7 @@ type AuthContextValue = {
   signUp: (email: string, password: string, nickname: string) => Promise<void>
   requestPasswordReset: (email: string) => Promise<void>
   updatePassword: (password: string) => Promise<void>
+  changePassword: (currentPassword: string, nextPassword: string) => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -116,6 +117,22 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const { error } = await supabase.auth.updateUser({ password })
         if (error) throw error
         setIsPasswordRecovery(false)
+      },
+      changePassword: async (currentPassword, nextPassword) => {
+        if (!supabase) throw new Error('Falta configurar Supabase')
+        const email = session?.user?.email || user?.email
+        if (!email) throw new Error('No se pudo verificar tu cuenta actual.')
+
+        const { error: reauthError } = await supabase.auth.signInWithPassword({
+          email: normalizeEmail(email),
+          password: currentPassword,
+        })
+        if (reauthError) {
+          throw new Error('La contraseña actual no es correcta.')
+        }
+
+        const { error: updateError } = await supabase.auth.updateUser({ password: nextPassword })
+        if (updateError) throw updateError
       },
       signOut: async () => {
         if (!supabase) return

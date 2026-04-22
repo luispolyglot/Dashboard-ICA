@@ -1,8 +1,11 @@
 import { useMemo, useState } from 'react'
+import type { FormEvent } from 'react'
 import { LanguagesIcon, LogOutIcon, MoonIcon, SunIcon, UserIcon } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { useTheme } from '@/theme/ThemeContext'
 import type { AppConfig } from '../types'
 
@@ -19,9 +22,15 @@ function formatDate(value?: string): string {
 }
 
 export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
-  const { user, signOut } = useAuth()
+  const { user, signOut, changePassword } = useAuth()
   const { theme, resolvedTheme, setTheme } = useTheme()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [nextPassword, setNextPassword] = useState('')
+  const [confirmNextPassword, setConfirmNextPassword] = useState('')
+  const [isChangingPassword, setIsChangingPassword] = useState(false)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
 
   const metadata = useMemo(() => user?.user_metadata ?? {}, [user?.user_metadata])
   const displayName = metadata.display_name || user?.email?.split('@')[0] || 'Usuario'
@@ -33,6 +42,36 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
       await signOut()
     } finally {
       setIsLoggingOut(false)
+    }
+  }
+
+  const handlePasswordChange = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault()
+    setPasswordError(null)
+    setPasswordSuccess(null)
+
+    if (nextPassword.length < 6) {
+      setPasswordError('La nueva contraseña debe tener al menos 6 caracteres.')
+      return
+    }
+
+    if (nextPassword !== confirmNextPassword) {
+      setPasswordError('Las nuevas contraseñas no coinciden.')
+      return
+    }
+
+    setIsChangingPassword(true)
+    try {
+      await changePassword(currentPassword, nextPassword)
+      setCurrentPassword('')
+      setNextPassword('')
+      setConfirmNextPassword('')
+      setPasswordSuccess('Contraseña actualizada correctamente.')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo actualizar la contraseña'
+      setPasswordError(message)
+    } finally {
+      setIsChangingPassword(false)
     }
   }
 
@@ -102,6 +141,58 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
               <MoonIcon />
               Oscuro
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Seguridad</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form className='space-y-3' onSubmit={handlePasswordChange}>
+              <div className='space-y-1.5'>
+                <Label htmlFor='profile-current-password'>Contraseña actual</Label>
+                <Input
+                  id='profile-current-password'
+                  type='password'
+                  required
+                  minLength={6}
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                />
+              </div>
+
+              <div className='space-y-1.5'>
+                <Label htmlFor='profile-next-password'>Nueva contraseña</Label>
+                <Input
+                  id='profile-next-password'
+                  type='password'
+                  required
+                  minLength={6}
+                  value={nextPassword}
+                  onChange={(event) => setNextPassword(event.target.value)}
+                />
+              </div>
+
+              <div className='space-y-1.5'>
+                <Label htmlFor='profile-next-password-confirm'>Confirmar nueva contraseña</Label>
+                <Input
+                  id='profile-next-password-confirm'
+                  type='password'
+                  required
+                  minLength={6}
+                  value={confirmNextPassword}
+                  onChange={(event) => setConfirmNextPassword(event.target.value)}
+                />
+              </div>
+
+              {passwordError && <p className='text-sm text-destructive'>{passwordError}</p>}
+              {passwordSuccess && <p className='text-sm text-emerald-500'>{passwordSuccess}</p>}
+
+              <Button type='submit' disabled={isChangingPassword}>
+                {isChangingPassword ? 'Actualizando...' : 'Cambiar contraseña'}
+              </Button>
+            </form>
           </CardContent>
         </Card>
 
