@@ -11,6 +11,8 @@ type AuthContextValue = {
   hasSupabaseConfig: boolean
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string, nickname: string) => Promise<void>
+  requestPasswordReset: (email: string) => Promise<void>
+  updatePassword: (password: string) => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -86,6 +88,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
           if (profileError) throw profileError
         }
+      },
+      requestPasswordReset: async (email) => {
+        if (!supabase) throw new Error('Falta configurar Supabase')
+        const normalizedEmail = normalizeEmail(email)
+        await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        })
+      },
+      updatePassword: async (password) => {
+        if (!supabase) throw new Error('Falta configurar Supabase')
+        const { error } = await supabase.auth.updateUser({ password })
+        if (error) throw error
       },
       signOut: async () => {
         if (!supabase) return

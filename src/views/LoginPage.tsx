@@ -66,6 +66,11 @@ export function LoginPage() {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
+          <div className='pt-1 text-right'>
+            <Link to='/forgot-password' className='text-sm font-medium text-primary'>
+              Olvidé mi contraseña
+            </Link>
+          </div>
         </div>
 
         {error && <p className='text-sm text-destructive'>{error}</p>}

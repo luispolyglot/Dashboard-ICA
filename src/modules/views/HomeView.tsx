@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { DASHBOARD_ROUTES } from '../routes/paths'
-import { getTodayProgress } from '../constants'
+import { CREATION_WORDS_GOAL, getTodayProgress } from '../constants'
 import type { DailyProgressMap } from '../types'
 
 type HomeViewProps = {
@@ -30,8 +30,8 @@ export function HomeView({ cardCount, dailyProgress }: HomeViewProps) {
   const navigate = useNavigate()
   const todayProgress = getTodayProgress(dailyProgress)
 
-  const hasFiveWords = cardCount >= 5
-  const wordsLeftToUnlock = Math.max(0, 5 - cardCount)
+  const hasFiveWords = todayProgress.wordsAdded >= CREATION_WORDS_GOAL
+  const wordsLeftToUnlock = Math.max(0, CREATION_WORDS_GOAL - todayProgress.wordsAdded)
   const flashDone = todayProgress.reviewCorrect >= 10
   const phraseDone = todayProgress.phraseGenerated
 
@@ -56,7 +56,7 @@ export function HomeView({ cardCount, dailyProgress }: HomeViewProps) {
         emoji: '🧩',
         tone: '#3B82F6',
         statusLabel: hasFiveWords
-          ? `Tu creación está lista (${pluralize(cardCount, 'palabra', 'palabras')})`
+          ? `Tu creación está lista (${pluralize(todayProgress.wordsAdded, 'palabra', 'palabras')} hoy)`
           : `Necesitas ${pluralize(wordsLeftToUnlock, 'palabra', 'palabras')} más para desbloquearla`,
         statusDone: hasFiveWords,
         to: DASHBOARD_ROUTES.myIcaWords,
@@ -72,10 +72,10 @@ export function HomeView({ cardCount, dailyProgress }: HomeViewProps) {
           : `Te queda ${pluralize(1, 'frase de activacion', 'frases de activacion')}`,
         statusDone: phraseDone,
         to: DASHBOARD_ROUTES.activationPhrase,
-        disabled: cardCount < 5,
+        disabled: !hasFiveWords,
       },
     ],
-    [cardCount, hasFiveWords, phraseDone, wordsLeftToUnlock],
+    [hasFiveWords, phraseDone, todayProgress.wordsAdded, wordsLeftToUnlock],
   )
 
   return (

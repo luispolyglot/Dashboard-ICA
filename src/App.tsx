@@ -14,8 +14,10 @@ import {
 } from './modules/routes/DashboardPages'
 import { DASHBOARD_ROUTES } from './modules/routes/paths'
 import { PrivateRoute, PublicOnlyRoute } from './router/RouteGuards'
+import { ForgotPasswordPage } from './views/ForgotPasswordPage'
 import { LoginPage } from './views/LoginPage'
 import { RegisterPage } from './views/RegisterPage'
+import { ResetPasswordPage } from './views/ResetPasswordPage'
 
 function RootRedirect() {
   const { user, loading } = useAuth()
@@ -36,9 +38,12 @@ function DashboardShell() {
 export function App() {
   return (
     <Routes>
+      <Route path='/reset-password' element={<ResetPasswordPage />} />
+
       <Route element={<PublicOnlyRoute />}>
         <Route path='/login' element={<LoginPage />} />
         <Route path='/register' element={<RegisterPage />} />
+        <Route path='/forgot-password' element={<ForgotPasswordPage />} />
       </Route>
 
       <Route element={<PrivateRoute />}>

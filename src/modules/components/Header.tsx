@@ -2,7 +2,7 @@ import { useId } from 'react'
 import { Link } from 'react-router-dom'
 import { AppBreadcrumbs } from './AppBreadcrumbs'
 import { LeaderboardMenu } from './LeaderboardMenu'
-import { GOAL, getTodayProgress } from '../constants'
+import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import type { CalendarTab, DailyProgressMap } from '../types'
 import { Button } from '@/components/ui/button'
@@ -15,7 +15,6 @@ import {
 type HeaderProps = {
   onOpenCalendar: (tab: CalendarTab) => void
   dailyProgress: DailyProgressMap
-  cardCount: number
   boltButtonRef: (node: HTMLButtonElement | null) => void
 }
 
@@ -85,13 +84,13 @@ function HeaderBoltIcon({ segments, size = 28 }: HeaderBoltIconProps) {
 export function Header({
   onOpenCalendar,
   dailyProgress,
-  cardCount,
   boltButtonRef,
 }: HeaderProps) {
   const todayProgress = getTodayProgress(dailyProgress)
   const flashDone = todayProgress.reviewCorrect >= GOAL
   const phraseDone = todayProgress.phraseGenerated
-  const icaTopDone = cardCount >= 5 && phraseDone
+  const hasFiveWords = todayProgress.wordsAdded >= CREATION_WORDS_GOAL
+  const icaTopDone = hasFiveWords && phraseDone
   const completedSegments = (Number(flashDone) + Number(icaTopDone)) as
     | 0
     | 1

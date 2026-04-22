@@ -6,7 +6,7 @@ import { CalendarModal } from '../components/CalendarModal'
 import { Header } from '../components/Header'
 import { LangEditModal } from '../components/LangEditModal'
 import { MobileBottomNav } from '../components/MobileBottomNav'
-import { GOAL, getTodayProgress } from '../constants'
+import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
 import { LanguageSetup } from '../views/LanguageSetup'
 
@@ -75,7 +75,6 @@ function BoltFlightFx({ trigger, boltButtonRef, onDone }: BoltFlightFxProps) {
 
 export function DashboardLayout() {
   const {
-    cards,
     config,
     loading,
     showLangModal,
@@ -101,7 +100,7 @@ export function DashboardLayout() {
     if (loading) return
 
     const progress = getTodayProgress(dailyProgress)
-    const hasFiveWords = cards.length >= 5
+    const hasFiveWords = progress.wordsAdded >= CREATION_WORDS_GOAL
     const currentMilestones: DailyMilestones = {
       flash: progress.reviewCorrect >= GOAL,
       ica: hasFiveWords && progress.phraseGenerated,
@@ -126,7 +125,7 @@ export function DashboardLayout() {
     }
 
     previousMilestonesRef.current = currentMilestones
-  }, [cards.length, dailyProgress, loading])
+  }, [dailyProgress, loading])
 
   useEffect(() => {
     if (activeFlight !== 0 || flightQueue <= 0) return
@@ -152,7 +151,6 @@ export function DashboardLayout() {
         <Header
           onOpenCalendar={openCalendar}
           dailyProgress={dailyProgress}
-          cardCount={cards.length}
           boltButtonRef={(node) => {
             boltButtonRef.current = node
           }}
