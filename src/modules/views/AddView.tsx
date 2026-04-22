@@ -305,7 +305,7 @@ export function AddView({
           </div>
 
           <p className='mb-7 text-sm text-muted-foreground'>
-            Escribe en cualquier campo y la IA te sugiere la traduccion.
+            Escribe en cualquier campo y la IA te sugiere la traducción.
           </p>
 
           <div className='mb-5'>
@@ -326,13 +326,13 @@ export function AddView({
               <div className='mt-1.5 flex items-center gap-2 text-xs'>
                 {checkingSpelling && (
                   <span className='text-muted-foreground'>
-                    Revisando ortografia...
+                    Revisando ortografía...
                   </span>
                 )}
                 {!checkingSpelling && spellingSuggestion && (
                   <>
                     <span className='text-muted-foreground'>
-                      *quizas querias escribir "{spellingSuggestion}"*
+                      *quizás querías escribir "{spellingSuggestion}"*
                     </span>
                     <Button
                       type='button'

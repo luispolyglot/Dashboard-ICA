@@ -64,7 +64,7 @@ export function LeaderboardMenu() {
         )}
         {!loading && !error && rows.length === 0 && (
           <p className='px-2 py-1.5 text-sm text-muted-foreground'>
-            Todavia no hay datos suficientes este mes.
+            Todavía no hay datos suficientes este mes.
           </p>
         )}
 

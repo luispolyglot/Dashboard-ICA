@@ -7,9 +7,9 @@ import type {
 } from './types'
 
 export const IMPORTANCE_LEVELS: ImportanceLevel[] = [
-  { key: 'vital', label: 'Vital', desc: 'Cada dia', color: '#3B82F6', bg: '#1e3a5f', multiplier: 1 },
-  { key: 'frequent', label: 'Frecuente', desc: 'Min. un par al dia', color: '#22C55E', bg: '#1a3d2a', multiplier: 1.5 },
-  { key: 'occasional', label: 'Ocasional', desc: 'Max. un par al dia', color: '#EAB308', bg: '#3d3510', multiplier: 2 },
+  { key: 'vital', label: 'Vital', desc: 'Cada día', color: '#3B82F6', bg: '#1e3a5f', multiplier: 1 },
+  { key: 'frequent', label: 'Frecuente', desc: 'Min. un par al día', color: '#22C55E', bg: '#1a3d2a', multiplier: 1.5 },
+  { key: 'occasional', label: 'Ocasional', desc: 'Max. un par al día', color: '#EAB308', bg: '#3d3510', multiplier: 2 },
   { key: 'rare', label: 'Raro', desc: 'Max. un par/semana', color: '#F97316', bg: '#3d2510', multiplier: 3 },
   { key: 'irrelevant', label: 'Irrelevante', desc: 'Casi nunca', color: '#EF4444', bg: '#3d1515', multiplier: 5 },
 ]

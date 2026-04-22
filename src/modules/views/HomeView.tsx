@@ -29,9 +29,16 @@ function pluralize(value: number, singular: string, plural: string): string {
 export function HomeView({ cardCount, dailyProgress }: HomeViewProps) {
   const navigate = useNavigate()
   const todayProgress = getTodayProgress(dailyProgress)
+  const cardBaseClass =
+    'relative flex min-h-[220px] w-full flex-col border-none px-[26px] py-8 text-left font-sans transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] hover:-translate-y-[3px]'
+  const plainCardClass =
+    'overflow-hidden rounded-[20px] border border-slate-800 bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
 
-  const hasFiveWords = todayProgress.wordsAdded >= CREATION_WORDS_GOAL
-  const wordsLeftToUnlock = Math.max(0, CREATION_WORDS_GOAL - todayProgress.wordsAdded)
+  const hasFiveWords = cardCount >= CREATION_WORDS_GOAL
+  const wordsLeftToUnlock = Math.max(
+    0,
+    CREATION_WORDS_GOAL - cardCount,
+  )
   const flashDone = todayProgress.reviewCorrect >= 10
   const phraseDone = todayProgress.phraseGenerated
 
@@ -39,10 +46,10 @@ export function HomeView({ cardCount, dailyProgress }: HomeViewProps) {
     () => [
       {
         initial: 'I',
-        title: 'INMERSION',
+        title: 'INMERSIÓN',
         description: 'Escribe las palabras filtradas mediante la inmersión.',
         emoji: '🌊',
-        tone: '#22C55E',
+        tone: '#3B82F6',
         statusLabel: hasFiveWords
           ? 'Base ICA activada'
           : `Te faltan ${pluralize(wordsLeftToUnlock, 'palabra', 'palabras')} para activar I y C`,
@@ -51,70 +58,66 @@ export function HomeView({ cardCount, dailyProgress }: HomeViewProps) {
       },
       {
         initial: 'C',
-        title: 'CREACION',
+        title: 'CREACIÓN',
         description: 'Accede a la creación de tu conocimiento escrito.',
         emoji: '🧩',
         tone: '#3B82F6',
         statusLabel: hasFiveWords
-          ? `Tu creación está lista (${pluralize(todayProgress.wordsAdded, 'palabra', 'palabras')} hoy)`
+          ? `Tu creación está lista (${pluralize(cardCount, 'palabra', 'palabras')} en total)`
           : `Necesitas ${pluralize(wordsLeftToUnlock, 'palabra', 'palabras')} más para desbloquearla`,
         statusDone: hasFiveWords,
         to: DASHBOARD_ROUTES.myIcaWords,
       },
       {
         initial: 'A',
-        title: 'ACTIVACION',
+        title: 'ACTIVACIÓN',
         description: 'Activa tu conocimiento escrito mediante frases.',
         emoji: '🗣️',
-        tone: '#F59E0B',
+        tone: '#3B82F6',
         statusLabel: phraseDone
           ? 'Frase diaria completada'
-          : `Te queda ${pluralize(1, 'frase de activacion', 'frases de activacion')}`,
+          : `Te queda ${pluralize(1, 'frase de activación', 'frases de activación')}`,
         statusDone: phraseDone,
         to: DASHBOARD_ROUTES.activationPhrase,
         disabled: !hasFiveWords,
       },
     ],
-    [hasFiveWords, phraseDone, todayProgress.wordsAdded, wordsLeftToUnlock],
+    [cardCount, hasFiveWords, phraseDone, wordsLeftToUnlock],
   )
 
   return (
     <section className='flex flex-1 items-center justify-center px-4 pt-0 pb-20 lg:px-6 lg:py-12'>
-      <div className='w-full max-w-[960px]'>
-        <div className='ica-home-grid'>
+      <div className='w-full max-w-240'>
+        <div className='grid w-full max-w-240 grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-5'>
           {cards.map((card) => {
             const cardBody = (
               <>
-                <div className='ica-card-ghost-letter' style={{ color: card.tone }}>
-                  {card.initial}
+                <div
+                  className='pointer-events-none absolute top-4.5 right-5.5 select-none'
+                  style={{ color: card.tone }}
+                >
+                  <p className='font-serif text-[90px] leading-none font-extrabold opacity-35 shadow-inital-letter'>
+                    {card.initial}
+                  </p>
                 </div>
 
-                <div className='ica-card-emoji'>{card.emoji}</div>
+                <div className='relative z-1 mb-auto text-[32px]'>
+                  {card.emoji}
+                </div>
 
-                <div className='ica-card-content'>
-                  <div className='ica-card-title-row'>
-                    <span
-                      className={cn(
-                        'ica-card-letter-chip',
-                        card.statusDone && 'ica-card-letter-chip-done',
-                      )}
-                      style={{
-                        color: card.statusDone ? '#EAB308' : card.tone,
-                        background: card.statusDone ? '#EAB30815' : `${card.tone}15`,
-                        borderColor: card.statusDone
-                          ? '#EAB30850'
-                          : `${card.tone}40`,
-                      }}
-                    >
-                      {card.initial}
-                    </span>
-                    <h2 className='ica-card-title'>{card.title}</h2>
+                <div className='relative z-1 mt-9'>
+                  <div className='mb-1.25 flex items-center gap-2'>
+                    <h2 className='m-0 font-serif text-xl font-bold tracking-widest text-slate-100'>
+                      {card.title}
+                    </h2>
                   </div>
-
-                  <p className='ica-card-description'>{card.description}</p>
-
-                  <div className='ica-card-meta'>
-                    <span aria-hidden='true'>{card.statusDone ? '✅' : '🕒'}</span>
+                  <p className='m-0 text-xs leading-normal text-slate-500'>
+                    {card.description}
+                  </p>
+                  <div className='mt-2.5 inline-flex items-center gap-1.5 text-xs text-slate-400'>
+                    <span aria-hidden='true'>
+                      {card.statusDone ? '✅' : '🕒'}
+                    </span>
                     <span>{card.statusLabel}</span>
                   </div>
                 </div>
@@ -124,14 +127,15 @@ export function HomeView({ cardCount, dailyProgress }: HomeViewProps) {
             return (
               <div key={card.initial} className='relative'>
                 {card.statusDone ? (
-                  <div className='aura-outer'>
-                    <div className='aura-spinner' />
+                  <div className='relative overflow-hidden rounded-[22px] shadow-[0_0_32px_#eab30850,0_0_60px_#eab30828]'>
+                    <div className='pointer-events-none absolute inset-[-120%] z-0 animate-[rotateCW_8s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0deg,transparent_255deg,#eab30818_265deg,#eab30860_280deg,#eab308cc_305deg,#fde68a_322deg,#ffffffff_328deg,#fde68a_334deg,#eab308cc_350deg,#eab30860_368deg,#eab30818_378deg,transparent_390deg)]' />
                     <button
                       type='button'
                       onClick={() => !card.disabled && navigate(card.to)}
                       className={cn(
-                        'aura-inner-card card-hover ica-card-base',
-                        card.disabled && 'cursor-not-allowed opacity-70',
+                        cardBaseClass,
+                        'relative z-1 m-0.5 overflow-hidden rounded-[20px] bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]',
+                        card.disabled && 'cursor-not-allowed',
                       )}
                       disabled={card.disabled}
                     >
@@ -143,8 +147,9 @@ export function HomeView({ cardCount, dailyProgress }: HomeViewProps) {
                     type='button'
                     onClick={() => !card.disabled && navigate(card.to)}
                     className={cn(
-                      'ica-card-base ica-card-plain card-hover',
-                      card.disabled && 'cursor-not-allowed opacity-70',
+                      cardBaseClass,
+                      plainCardClass,
+                      card.disabled && 'cursor-not-allowed',
                     )}
                     disabled={card.disabled}
                   >
@@ -158,22 +163,27 @@ export function HomeView({ cardCount, dailyProgress }: HomeViewProps) {
 
         <div className='mt-5 hidden justify-center md:flex'>
           {flashDone ? (
-            <div className='aura-outer w-full max-w-80'>
-              <div className='aura-spinner' />
+            <div className='relative w-full max-w-80 overflow-hidden rounded-[22px] shadow-[0_0_32px_#eab30850,0_0_60px_#eab30828]'>
+              <div className='pointer-events-none absolute inset-[-120%] z-0 animate-[rotateCW_8s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0deg,transparent_255deg,#eab30818_265deg,#eab30860_280deg,#eab308cc_305deg,#fde68a_322deg,#ffffffff_328deg,#fde68a_334deg,#eab308cc_350deg,#eab30860_368deg,#eab30818_378deg,transparent_390deg)]' />
               <button
                 type='button'
                 onClick={() => navigate(DASHBOARD_ROUTES.flashcards)}
-                className='aura-inner-card card-hover ica-card-base min-h-[160px]'
+                className={cn(
+                  cardBaseClass,
+                  'relative z-1 m-0.5 min-h-40 overflow-hidden rounded-[20px] bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]',
+                )}
               >
-                <div className='ica-card-emoji'>📚</div>
-                <div className='ica-card-content'>
-                  <div className='ica-card-title-row'>
-                    <h2 className='ica-card-title'>FLASHCARDS</h2>
+                <div className='relative z-1'>
+                  <div className='mb-1.25 flex items-center gap-2'>
+                    <div className='text-3xl'>📚</div>
+                    <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-100'>
+                      FLASHCARDS
+                    </h2>
                   </div>
-                  <p className='ica-card-description'>
+                  <p className='m-0 text-xs leading-normal text-slate-500'>
                     Refuerza tu memoria activa con práctica diaria.
                   </p>
-                  <div className='ica-card-meta'>
+                  <div className='mt-2.5 inline-flex items-center gap-1.5 text-xs text-slate-400'>
                     <span aria-hidden='true'>✅</span>
                     <span>Objetivo de flashcards completado</span>
                   </div>
@@ -186,19 +196,23 @@ export function HomeView({ cardCount, dailyProgress }: HomeViewProps) {
               onClick={() => navigate(DASHBOARD_ROUTES.flashcards)}
               disabled={cardCount === 0}
               className={cn(
-                'ica-card-base ica-card-plain card-hover w-full max-w-80 min-h-[160px]',
-                cardCount === 0 && 'cursor-not-allowed opacity-70',
+                cardBaseClass,
+                plainCardClass,
+                'w-full max-w-80 min-h-40',
+                cardCount === 0 && 'cursor-not-allowed',
               )}
             >
-              <div className='ica-card-emoji'>📚</div>
-              <div className='ica-card-content'>
-                <div className='ica-card-title-row'>
-                  <h2 className='ica-card-title'>FLASHCARDS</h2>
+              <div className='relative z-1 my-auto'>
+                <div className='mb-1.25 flex items-center gap-2'>
+                  <div className='text-3xl'>📚</div>
+                  <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-100'>
+                    FLASHCARDS
+                  </h2>
                 </div>
-                <p className='ica-card-description'>
+                <p className='m-0 text-xs leading-normal text-slate-500'>
                   Refuerza tu memoria activa con práctica diaria.
                 </p>
-                <div className='ica-card-meta'>
+                <div className='mt-2.5 inline-flex items-center gap-1.5 text-xs text-slate-400'>
                   <span aria-hidden='true'>🕒</span>
                   <span>
                     {cardCount === 0

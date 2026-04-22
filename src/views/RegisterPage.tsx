@@ -50,7 +50,7 @@ export function RegisterPage() {
   return (
     <AuthShell
       title='Crea tu cuenta'
-      subtitle='Unete a Icademy y empieza a construir tu racha.'
+      subtitle='Únete a Icademy y empieza a construir tu racha.'
     >
       {!hasSupabaseConfig && (
         <div className='mb-4 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive'>

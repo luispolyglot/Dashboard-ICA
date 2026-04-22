@@ -116,10 +116,10 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
   return (
     <section className='mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-5 py-8'>
       <h2 className='mb-1 font-serif text-3xl font-bold'>
-        ⚡ Mis Frases de Activacion
+        ⚡ Mis Frases de Activación
       </h2>
       <p className='mb-6 text-sm text-muted-foreground'>
-        Historial con frase, traduccion, palabras usadas y metadata.
+        Historial con frase, traducción, palabras usadas y metadata.
       </p>
 
       <div className='mb-5 relative'>
@@ -141,7 +141,7 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
 
       {!loading && !error && visibleItems.length === 0 && (
         <p className='text-sm text-muted-foreground'>
-          Todavia no generaste frases.
+          Todavía no generaste frases.
         </p>
       )}
 
@@ -173,12 +173,12 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
                   language={targetLang}
                 />
               )}
-              <p className='mt-2 text-sm text-muted-foreground'>
-                {highlightMatch(
-                  item.translation || 'Sin traduccion registrada',
-                  query,
-                )}
-              </p>
+                <p className='mt-2 text-sm text-muted-foreground'>
+                  {highlightMatch(
+                    item.translation || 'Sin traducción registrada',
+                    query,
+                  )}
+                </p>
 
               {item.generated_phrase && (
                 <div className='mt-3'>
@@ -216,7 +216,7 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
                     >
                       {deletingId === item.id
                         ? 'Eliminando...'
-                        : 'Si, eliminar'}
+                        : 'Sí, eliminar'}
                     </Button>
                     <Button
                       type='button'

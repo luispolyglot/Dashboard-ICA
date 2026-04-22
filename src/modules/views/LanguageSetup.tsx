@@ -14,9 +14,9 @@ import type { AppConfig, CEFRLevel } from '../types'
 
 const LEVEL_DESC: Record<CEFRLevel, string> = {
   '0': 'Sin conocimientos previos',
-  A1: 'Entiendo frases muy basicas',
+  A1: 'Entiendo frases muy básicas',
   A2: 'Me comunico en situaciones simples',
-  B1: 'Me desenvuelvo en la mayoria de situaciones',
+  B1: 'Me desenvuelvo en la mayoría de situaciones',
   B2: 'Me expreso con fluidez',
   C1: 'Uso avanzado y complejo',
   C2: 'Dominio casi nativo',

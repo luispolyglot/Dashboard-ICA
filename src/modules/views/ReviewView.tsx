@@ -235,7 +235,7 @@ export function ReviewView({
             variant='outline'
             size='lg'
           >
-            Finalizar practica
+            Finalizar práctica
           </Button>
         </div>
       </section>

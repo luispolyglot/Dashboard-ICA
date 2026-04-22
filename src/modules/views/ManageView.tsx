@@ -65,11 +65,7 @@ function highlightMatch(text: string, query: string): ReactNode {
 }
 
 function normalizeTerm(value: string): string {
-  return value
-    .normalize('NFKC')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim()
+  return value.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim()
 }
 
 export function ManageView({ cards, setCards, config }: ManageViewProps) {
@@ -92,7 +88,9 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
   const [busyExport, setBusyExport] = useState<null | 'copy' | 'docx' | 'pdf'>(
     null,
   )
-  const [wordUsageCounts, setWordUsageCounts] = useState<Record<string, number>>({})
+  const [wordUsageCounts, setWordUsageCounts] = useState<
+    Record<string, number>
+  >({})
 
   useEffect(() => {
     let active = true
@@ -245,11 +243,9 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
 
   return (
     <section className='mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-5 py-8'>
-      <h2 className='mb-1 font-serif text-3xl font-bold'>
-        📖 Mi creación ICA
-      </h2>
+      <h2 className='mb-1 font-serif text-3xl font-bold'>📖 Mi creación ICA</h2>
       <p className='mb-6 text-sm text-muted-foreground'>
-        {cards.length} palabra{cards.length !== 1 ? 's' : ''} · Mas reciente
+        {cards.length} palabra{cards.length !== 1 ? 's' : ''} · Más reciente
         primero
       </p>
 
@@ -362,7 +358,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
                   ? 'border-amber-400/70 bg-amber-500/10 shadow-[0_0_28px_-10px_rgba(251,191,36,0.95)]'
                   : usageLevel === 1
                     ? 'border-amber-400/50 bg-amber-500/5 shadow-[0_0_24px_-12px_rgba(251,191,36,0.7)]'
-                  : ''
+                    : ''
             }`}
           >
             <CardContent className='p-0'>
@@ -454,7 +450,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
                       onChange={(event) =>
                         setDraftExampleTranslation(event.target.value)
                       }
-                      placeholder='Traduccion del ejemplo'
+                      placeholder='Traducción del ejemplo'
                     />
 
                     {!card.examplePhrase && (
@@ -515,7 +511,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
                             variant='destructive'
                             size='sm'
                           >
-                            Si, eliminar
+                            Sí, eliminar
                           </Button>
                           <Button
                             type='button'

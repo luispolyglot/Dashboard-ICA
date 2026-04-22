@@ -408,7 +408,7 @@ values
   ('first_word', 'Primera palabra', 'Agrega tu primera palabra al mazo.', 'book-open', 'vocabulary', 1),
   ('vocab_25', 'Vocab 25', 'Alcanza 25 palabras guardadas.', 'library', 'vocabulary', 25),
   ('review_100', 'Centurion', 'Completa 100 reviews de flashcards.', 'target', 'review', 100),
-  ('phrase_10', 'Frases x10', 'Genera 10 frases de activacion.', 'bolt', 'phrase', 10),
+  ('phrase_10', 'Frases x10', 'Genera 10 frases de activación.', 'bolt', 'phrase', 10),
   ('xp_500', 'XP 500', 'Consigue 500 XP totales.', 'trophy', 'xp', 500)
 on conflict (id) do update
 set

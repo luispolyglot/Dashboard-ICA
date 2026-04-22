@@ -3,7 +3,7 @@
 1. Crea un proyecto en Supabase.
 2. Abre el SQL Editor y ejecuta `supabase/schema.sql`.
 3. En Authentication > Providers, habilita Email.
-4. (Opcional) Activa o desactiva confirmacion por email segun tu flujo.
+4. (Opcional) Activa o desactiva confirmación por email segun tu flujo.
 5. Copia URL y anon key en `.env`:
 
 ```env
@@ -41,6 +41,7 @@ supabase functions deploy anthropic-proxy
 La function exige usuario autenticado (Bearer token de Supabase), evitando uso anónimo del endpoint.
 
 La app ya persiste el dashboard en tablas normalizadas:
+
 - `lexicards`
 - `user_settings`
 - `daily_metrics`

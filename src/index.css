@@ -246,6 +246,11 @@ button:disabled {
 }
 
 @layer utilities {
+
+  .shadow-inital-letter {
+    text-shadow: 1px 1px 5px white, -1px -1px 5px white;
+  }
+
   .card-enter {
     animation: card-enter 560ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
@@ -256,168 +261,6 @@ button:disabled {
 
   .halo-drift-reverse {
     animation: halo-drift 7s ease-in-out infinite reverse;
-  }
-
-  .card-hover {
-    transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
-
-  .card-hover:hover {
-    transform: translateY(-3px);
-  }
-
-  .aura-outer {
-    position: relative;
-    border-radius: 22px;
-    overflow: hidden;
-    box-shadow: 0 0 32px #eab30850, 0 0 60px #eab30828;
-  }
-
-  .aura-spinner {
-    position: absolute;
-    inset: -120%;
-    background: conic-gradient(
-      from 0deg,
-      transparent 0deg,
-      transparent 255deg,
-      #eab30818 265deg,
-      #eab30860 280deg,
-      #eab308cc 305deg,
-      #fde68a 322deg,
-      #ffffffff 328deg,
-      #fde68a 334deg,
-      #eab308cc 350deg,
-      #eab30860 368deg,
-      #eab30818 378deg,
-      transparent 390deg
-    );
-    animation: rotateCW 8s linear infinite;
-    z-index: 0;
-    pointer-events: none;
-  }
-
-  .aura-inner-card {
-    position: relative;
-    z-index: 1;
-    margin: 2px;
-    border-radius: 20px;
-    overflow: hidden;
-    background: linear-gradient(160deg, #0f172a, #0a0f1a);
-  }
-
-  .ica-home-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 20px;
-    max-width: 960px;
-    width: 100%;
-  }
-
-  .ica-card-base {
-    position: relative;
-    text-align: left;
-    padding: 32px 26px;
-    width: 100%;
-    box-sizing: border-box;
-    border: none;
-    cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    min-height: 220px;
-    font-family: var(--font-sans);
-  }
-
-  .ica-card-plain {
-    border-radius: 20px;
-    background: linear-gradient(160deg, #0f172a, #0a0f1a);
-    border: 1px solid #1e293b;
-    overflow: hidden;
-  }
-
-  .ica-card-ghost-letter {
-    position: absolute;
-    top: 18px;
-    right: 22px;
-    font-size: 90px;
-    font-weight: 800;
-    opacity: 0.18;
-    line-height: 1;
-    pointer-events: none;
-    user-select: none;
-    font-family: var(--font-heading);
-  }
-
-  .ica-card-emoji {
-    font-size: 32px;
-    margin-bottom: auto;
-    position: relative;
-    z-index: 1;
-  }
-
-  .ica-card-content {
-    position: relative;
-    z-index: 1;
-    margin-top: 36px;
-  }
-
-  .ica-card-title-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 5px;
-  }
-
-  .ica-card-letter-chip {
-    font-family: var(--font-heading);
-    font-size: 17px;
-    font-weight: 900;
-    border-radius: 8px;
-    padding: 4px 10px;
-    border: 1px solid transparent;
-  }
-
-  .ica-card-title {
-    margin: 0;
-    font-family: var(--font-heading);
-    font-size: 13px;
-    font-weight: 700;
-    color: #f1f5f9;
-    letter-spacing: 0.1em;
-  }
-
-  .ica-card-done-spark {
-    font-size: 13px;
-    filter: drop-shadow(0 0 4px #eab308);
-  }
-
-  .ica-card-description {
-    margin: 0;
-    font-size: 12px;
-    color: #64748b;
-    line-height: 1.5;
-  }
-
-  .ica-card-meta {
-    margin-top: 10px;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: #94a3b8;
-  }
-
-  .ica-card-progress {
-    margin-top: 10px;
-    display: inline-flex;
-    align-items: center;
-    width: fit-content;
-    border-radius: 7px;
-    border: 1px solid #1e293b;
-    padding: 3px 8px;
-    font-size: 11px;
-    font-weight: 600;
-    color: #64748b;
-    background: #020617;
   }
 
   .ica-bolt-fly {

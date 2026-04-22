@@ -180,7 +180,7 @@ export function UserMenu({
           className='text-destructive focus:text-destructive'
         >
           <LogOutIcon />
-          {isLoggingOut ? 'Cerrando sesion...' : 'Cerrar sesion'}
+          {isLoggingOut ? 'Cerrando sesión...' : 'Cerrar sesión'}
         </DropdownMenuItem>
       </DropdownMenuContent>
       </DropdownMenu>
@@ -210,7 +210,7 @@ export function UserMenu({
               !mobileLeaderboard.error &&
               mobileLeaderboard.rows.length === 0 && (
                 <p className='text-sm text-muted-foreground'>
-                  Todavia no hay datos suficientes este mes.
+                  Todavía no hay datos suficientes este mes.
                 </p>
               )}
 

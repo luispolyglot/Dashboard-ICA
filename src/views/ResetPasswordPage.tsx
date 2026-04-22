@@ -24,7 +24,7 @@ export function ResetPasswordPage() {
     setSuccess(null)
 
     if (!session) {
-      setError('El enlace es invalido o expiró. Solicita uno nuevo desde recuperar contraseña.')
+      setError('El enlace es inválido o expiró. Solicita uno nuevo desde recuperar contraseña.')
       return
     }
     if (!isPasswordRecovery) {

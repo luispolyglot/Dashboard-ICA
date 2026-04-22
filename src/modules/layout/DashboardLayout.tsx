@@ -65,7 +65,7 @@ function BoltFlightFx({ trigger, boltButtonRef, onDone }: BoltFlightFxProps) {
   } as CSSProperties
 
   return (
-    <div className='pointer-events-none fixed inset-0 z-[90]'>
+    <div className='pointer-events-none fixed inset-0 z-90'>
       <div key={anim.id} className='ica-bolt-fly' style={flyingStyle}>
         <span className='ica-bolt-fly-core' aria-hidden='true' />
       </div>

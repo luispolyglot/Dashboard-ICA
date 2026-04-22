@@ -128,7 +128,7 @@ export function CalendarModal({ completedDays, creationDays, onClose, activeTab 
               })}
             </div>
             <div className='mt-1.5 text-center text-[11px] text-muted-foreground'>
-              {completedCount} de {lastDayToCount} dia{lastDayToCount !== 1 ? 's' : ''} completado
+              {completedCount} de {lastDayToCount} día{lastDayToCount !== 1 ? 's' : ''} completado
               {completedCount !== 1 ? 's' : ''}
             </div>
           </div>
@@ -150,7 +150,7 @@ export function CalendarModal({ completedDays, creationDays, onClose, activeTab 
             </div>
             <div className='flex flex-wrap gap-3 text-xs text-muted-foreground'>
               <span>✍️ +{CREATION_WORDS_GOAL} palabras</span>
-              <span>⚡ 1 frase de activacion</span>
+              <span>⚡ 1 frase de activación</span>
             </div>
           </div>
         )}
