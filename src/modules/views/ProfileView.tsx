@@ -4,6 +4,14 @@ import { LanguagesIcon, LogOutIcon, MoonIcon, SunIcon, UserIcon } from 'lucide-r
 import { useAuth } from '@/auth/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useTheme } from '@/theme/ThemeContext'
@@ -29,6 +37,7 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
   const [nextPassword, setNextPassword] = useState('')
   const [confirmNextPassword, setConfirmNextPassword] = useState('')
   const [isChangingPassword, setIsChangingPassword] = useState(false)
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
   const [passwordError, setPasswordError] = useState<string | null>(null)
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
 
@@ -67,6 +76,7 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
       setNextPassword('')
       setConfirmNextPassword('')
       setPasswordSuccess('Contraseña actualizada correctamente.')
+      window.setTimeout(() => setIsPasswordModalOpen(false), 900)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'No se pudo actualizar la contraseña'
       setPasswordError(message)
@@ -148,8 +158,37 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
           <CardHeader>
             <CardTitle>Seguridad</CardTitle>
           </CardHeader>
-          <CardContent>
-            <form className='space-y-3' onSubmit={handlePasswordChange}>
+          <CardContent className='space-y-3'>
+            <p className='text-sm text-muted-foreground'>
+              Puedes actualizar tu contraseña validando primero tu contraseña actual.
+            </p>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => {
+                setPasswordError(null)
+                setPasswordSuccess(null)
+                setCurrentPassword('')
+                setNextPassword('')
+                setConfirmNextPassword('')
+                setIsPasswordModalOpen(true)
+              }}
+            >
+              Cambiar contraseña
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Dialog open={isPasswordModalOpen} onOpenChange={setIsPasswordModalOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Cambiar contraseña</DialogTitle>
+              <DialogDescription>
+                Ingresa tu contraseña actual y define una nueva.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form id='change-password-form' className='space-y-3' onSubmit={handlePasswordChange}>
               <div className='space-y-1.5'>
                 <Label htmlFor='profile-current-password'>Contraseña actual</Label>
                 <Input
@@ -188,13 +227,23 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
 
               {passwordError && <p className='text-sm text-destructive'>{passwordError}</p>}
               {passwordSuccess && <p className='text-sm text-emerald-500'>{passwordSuccess}</p>}
-
-              <Button type='submit' disabled={isChangingPassword}>
-                {isChangingPassword ? 'Actualizando...' : 'Cambiar contraseña'}
-              </Button>
             </form>
-          </CardContent>
-        </Card>
+
+            <DialogFooter>
+              <Button
+                type='button'
+                variant='outline'
+                onClick={() => setIsPasswordModalOpen(false)}
+                disabled={isChangingPassword}
+              >
+                Cancelar
+              </Button>
+              <Button type='submit' form='change-password-form' disabled={isChangingPassword}>
+                {isChangingPassword ? 'Guardando...' : 'Guardar'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <div>
           <Button
