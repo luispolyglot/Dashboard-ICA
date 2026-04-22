@@ -8,6 +8,7 @@ type AuthContextValue = {
   user: User | null
   session: Session | null
   loading: boolean
+  isPasswordRecovery: boolean
   hasSupabaseConfig: boolean
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string, nickname: string) => Promise<void>
@@ -22,11 +23,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false)
 
   useEffect(() => {
     if (!supabase) {
       setLoading(false)
       return
+    }
+
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    if (hashParams.get('type') === 'recovery') {
+      setIsPasswordRecovery(true)
     }
 
     supabase.auth.getSession().then(({ data }) => {
@@ -35,7 +42,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setLoading(false)
     })
 
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsPasswordRecovery(true)
+      }
+      if (event === 'SIGNED_OUT') {
+        setIsPasswordRecovery(false)
+      }
       setSession(nextSession)
       setUser(nextSession?.user ?? null)
       setLoading(false)
@@ -49,6 +62,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       user,
       session,
       loading,
+      isPasswordRecovery,
       hasSupabaseConfig,
       signIn: async (email, password) => {
         if (!supabase) throw new Error('Falta configurar Supabase')
@@ -60,6 +74,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
         const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password })
         if (error) throw error
+        setIsPasswordRecovery(false)
 
         const postCheck = await checkLoginEmail(normalizedEmail)
         if (!postCheck.allowed) {
@@ -100,14 +115,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
         if (!supabase) throw new Error('Falta configurar Supabase')
         const { error } = await supabase.auth.updateUser({ password })
         if (error) throw error
+        setIsPasswordRecovery(false)
       },
       signOut: async () => {
         if (!supabase) return
         const { error } = await supabase.auth.signOut()
         if (error) throw error
+        setIsPasswordRecovery(false)
       },
     }),
-    [user, session, loading],
+    [user, session, loading, isPasswordRecovery],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

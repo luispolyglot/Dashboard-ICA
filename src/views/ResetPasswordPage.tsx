@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { AuthShell } from './components/AuthShell'
 
 export function ResetPasswordPage() {
-  const { updatePassword, session, loading } = useAuth()
+  const { updatePassword, signOut, session, loading } = useAuth()
   const navigate = useNavigate()
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -39,6 +39,7 @@ export function ResetPasswordPage() {
     setBusy(true)
     try {
       await updatePassword(password)
+      await signOut()
       setSuccess('Contraseña actualizada. Ya puedes iniciar sesión con tu nueva clave.')
       window.setTimeout(() => navigate('/login', { replace: true }), 7000)
     } catch (err) {

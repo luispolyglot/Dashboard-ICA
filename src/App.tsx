@@ -20,9 +20,10 @@ import { RegisterPage } from './views/RegisterPage'
 import { ResetPasswordPage } from './views/ResetPasswordPage'
 
 function RootRedirect() {
-  const { user, loading } = useAuth()
+  const { user, loading, isPasswordRecovery } = useAuth()
 
   if (loading) return <FullscreenLoading label='Cargando...' />
+  if (isPasswordRecovery) return <Navigate to='/reset-password' replace />
 
   return <Navigate to={user ? DASHBOARD_ROUTES.home : '/login'} replace />
 }

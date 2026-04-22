@@ -11,7 +11,7 @@ function FullscreenMessage({ message }: { message: string }) {
 }
 
 export function PrivateRoute() {
-  const { user, loading, hasSupabaseConfig } = useAuth()
+  const { user, loading, hasSupabaseConfig, isPasswordRecovery } = useAuth()
   const location = useLocation()
 
   if (!hasSupabaseConfig) {
@@ -19,6 +19,7 @@ export function PrivateRoute() {
   }
 
   if (loading) return <FullscreenLoading label='Cargando sesión...' />
+  if (isPasswordRecovery) return <Navigate to='/reset-password' replace />
   if (!user) return <Navigate to='/login' state={{ from: location }} replace />
   return <Outlet />
 }
