@@ -75,17 +75,15 @@ export async function saveMetaTrackerProfile(
   if (!existing) {
     const { data: activationRows, error: activationError } = await supabase
       .from('lexicards')
-      .select('activation_count')
+      .select('id')
       .eq('user_id', userId)
       .eq('target_lang', targetLang)
       .eq('native_lang', nativeLang)
+      .gt('activation_count', 0)
 
     if (activationError) throw activationError
 
-    initialActivationWords = (activationRows || []).reduce(
-      (sum, row) => sum + Number(row.activation_count || 0),
-      0,
-    )
+    initialActivationWords = (activationRows || []).length
   }
 
   const payload = {
@@ -196,11 +194,11 @@ export async function registerWordActivations(
         && (row.native_lang || nativeLang) === nativeLang,
     )
 
-    let incremented = 0
+    let newlyActivated = 0
     for (const row of validRows) {
       const delta = countsById.get(row.id) || 0
       if (delta <= 0) continue
-      incremented += delta
+      const wasInactive = Number(row.activation_count || 0) <= 0
 
       const nextCount = Number(row.activation_count || 0) + delta
       const nowIso = new Date().toISOString()
@@ -215,6 +213,7 @@ export async function registerWordActivations(
         .eq('user_id', userId)
 
       if (updateError) throw updateError
+      if (wasInactive) newlyActivated += 1
     }
 
     const { data: tracker, error: trackerError } = await supabase
@@ -228,7 +227,7 @@ export async function registerWordActivations(
     if (trackerError) throw trackerError
 
     const currentTotal = Number(tracker?.activation_words_total || 0)
-    const nextTotal = currentTotal + incremented
+    const nextTotal = currentTotal + newlyActivated
 
     const { error: upsertError } = await supabase
       .from('user_meta_tracker')

@@ -668,21 +668,31 @@ begin
     from unnest(coalesce(p_lexicard_ids, array[]::uuid[])) as input_id
     group by input_id
   ),
+  valid as (
+    select
+      l.id as lexicard_id,
+      l.activation_count as previous_count,
+      e.uses
+    from expanded e
+    join public.lexicards l
+      on l.id = e.lexicard_id
+     and l.user_id = current_user_id
+    where coalesce(l.target_lang, p_target_lang) = p_target_lang
+      and coalesce(l.native_lang, p_native_lang) = p_native_lang
+  ),
   updated as (
     update public.lexicards l
     set
-      activation_count = l.activation_count + e.uses,
+      activation_count = l.activation_count + v.uses,
       first_activated_at = coalesce(l.first_activated_at, now()),
       last_activated_at = now()
-    from expanded e
-    where l.id = e.lexicard_id
+    from valid v
+    where l.id = v.lexicard_id
       and l.user_id = current_user_id
-      and coalesce(l.target_lang, p_target_lang) = p_target_lang
-      and coalesce(l.native_lang, p_native_lang) = p_native_lang
-    returning e.uses
+    returning case when v.previous_count = 0 and v.uses > 0 then 1 else 0 end as newly_activated
   ),
   delta as (
-    select coalesce(sum(uses), 0)::integer as amount from updated
+    select coalesce(sum(newly_activated), 0)::integer as amount from updated
   ),
   upsert_tracker as (
     insert into public.user_meta_tracker (
