@@ -24,7 +24,11 @@ type LangEditModalProps = {
   onClose: () => void
 }
 
-export function LangEditModal({ config, setConfig, onClose }: LangEditModalProps) {
+export function LangEditModal({
+  config,
+  setConfig,
+  onClose,
+}: LangEditModalProps) {
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
@@ -40,7 +44,9 @@ export function LangEditModal({ config, setConfig, onClose }: LangEditModalProps
             <Label>Idioma materno</Label>
             <Select
               value={config.nativeLang}
-              onValueChange={(nativeLang) => setConfig({ ...config, nativeLang })}
+              onValueChange={(nativeLang) =>
+                setConfig({ ...config, nativeLang })
+              }
             >
               <SelectTrigger className='w-full'>
                 <SelectValue />
@@ -60,13 +66,17 @@ export function LangEditModal({ config, setConfig, onClose }: LangEditModalProps
             <div className='flex gap-2'>
               <Select
                 value={config.targetLang}
-                onValueChange={(targetLang) => setConfig({ ...config, targetLang })}
+                onValueChange={(targetLang) =>
+                  setConfig({ ...config, targetLang })
+                }
               >
                 <SelectTrigger className='w-full'>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {LANGUAGES.filter((language) => language !== config.nativeLang).map((language) => (
+                  {LANGUAGES.filter(
+                    (language) => language !== config.nativeLang,
+                  ).map((language) => (
                     <SelectItem key={language} value={language}>
                       {language}
                     </SelectItem>
@@ -76,9 +86,11 @@ export function LangEditModal({ config, setConfig, onClose }: LangEditModalProps
 
               <Select
                 value={config.level || 'A2'}
-                onValueChange={(value) => setConfig({ ...config, level: value as CEFRLevel })}
+                onValueChange={(value) =>
+                  setConfig({ ...config, level: value as CEFRLevel })
+                }
               >
-                <SelectTrigger className='w-[96px]'>
+                <SelectTrigger className='w-24'>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -94,7 +106,9 @@ export function LangEditModal({ config, setConfig, onClose }: LangEditModalProps
         </div>
 
         <DialogFooter>
-          <Button type='button' onClick={onClose}>Guardar</Button>
+          <Button type='button' onClick={onClose}>
+            Guardar
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

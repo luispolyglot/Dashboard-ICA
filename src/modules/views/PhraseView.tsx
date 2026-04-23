@@ -12,7 +12,7 @@ import { getImportance } from '../constants'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchActivationPhrase } from '../services/anthropic'
 import { recordPhraseGeneratedEvent } from '../services/gamification'
-import { fetchPhraseHistory } from '../services/phraseHistory'
+import { fetchWordActivationCounts } from '../services/metaTracker'
 import type {
   ActivationPhraseResult,
   AppConfig,
@@ -51,11 +51,13 @@ export function PhraseView({
   const [manualQuery, setManualQuery] = useState('')
   const [result, setResult] = useState<ActivationPhraseResult | null>(null)
   const [loading, setLoading] = useState(false)
-  const [wordUsageCounts, setWordUsageCounts] = useState<Record<string, number>>({})
+  const [wordUsageCounts, setWordUsageCounts] = useState<
+    Record<string, number>
+  >({})
   const [copyingResult, setCopyingResult] = useState(false)
   const [resultCopied, setResultCopied] = useState(false)
 
-  const level = config.level || 'A2'
+  const level = config.level || 'A1'
   const allWords = cards.slice().reverse()
   const automaticPool = cards.slice(-8).reverse()
   const manualPool = cards.slice(-25).reverse()
@@ -81,23 +83,13 @@ export function PhraseView({
   useEffect(() => {
     let active = true
 
-    fetchPhraseHistory(300, config.targetLang)
-      .then((rows) => {
+    fetchWordActivationCounts(
+      cards.map((card) => card.id),
+      config.targetLang,
+      config.nativeLang,
+    )
+      .then((next) => {
         if (!active) return
-
-        const next: Record<string, number> = {}
-        rows.forEach((row) => {
-          ;(row.source_words || []).forEach((word) => {
-            const normalized = word
-              .normalize('NFKC')
-              .toLowerCase()
-              .replace(/\s+/g, ' ')
-              .trim()
-
-            next[normalized] = (next[normalized] || 0) + 1
-          })
-        })
-
         setWordUsageCounts(next)
       })
       .catch(() => {
@@ -108,16 +100,10 @@ export function PhraseView({
     return () => {
       active = false
     }
-  }, [config.targetLang])
+  }, [cards, config.nativeLang, config.targetLang])
 
-  const getUsageAuraClass = (word: string): string => {
-    const normalized = word
-      .normalize('NFKC')
-      .toLowerCase()
-      .replace(/\s+/g, ' ')
-      .trim()
-
-    const usageCount = wordUsageCounts[normalized] || 0
+  const getUsageAuraClass = (lexicardId: string): string => {
+    const usageCount = wordUsageCounts[lexicardId] || 0
     if (usageCount >= 3) {
       return '!border-amber-400/90 ring-1 ring-amber-300/60 bg-amber-500/12 shadow-[0_0_30px_-8px_rgba(251,191,36,0.95)]'
     }
@@ -168,12 +154,20 @@ export function PhraseView({
       const progress = await onPhraseGenerated()
       try {
         await recordPhraseGeneratedEvent({
+          wordIds: selectedWords.map((word) => word.id),
           words: selectedWords.map((word) => word.target),
           phrase: response.phrase,
           translation: response.translation,
           wordsAdded: progress.wordsAdded,
           targetLang: config.targetLang,
           nativeLang: config.nativeLang,
+        })
+        setWordUsageCounts((prev) => {
+          const next = { ...prev }
+          selectedWords.forEach((word) => {
+            next[word.id] = (next[word.id] || 0) + 1
+          })
+          return next
         })
       } catch (error) {
         console.error(error)
@@ -211,7 +205,8 @@ export function PhraseView({
             ⚡ Frase de Activación
           </h2>
           <p className='text-sm text-muted-foreground'>
-            Genera una frase natural en {config.targetLang} usando tus palabras ICA.
+            Genera una frase natural en {config.targetLang} usando tus palabras
+            ICA.
           </p>
         </div>
         <Button asChild variant='outline' size='sm'>
@@ -296,7 +291,7 @@ export function PhraseView({
                   onClick={() => toggleCustomWord(word.id)}
                   variant={active ? 'default' : 'outline'}
                   size='sm'
-                  className={getUsageAuraClass(word.target)}
+                  className={getUsageAuraClass(word.id)}
                 >
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importance.key]}`}
@@ -322,7 +317,7 @@ export function PhraseView({
             return (
               <div
                 key={word.id}
-                className={`inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-3 py-1.5 ${getUsageAuraClass(word.target)}`}
+                className={`inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-3 py-1.5 ${getUsageAuraClass(word.id)}`}
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importance.key]}`}

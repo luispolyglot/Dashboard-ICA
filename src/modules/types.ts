@@ -34,6 +34,9 @@ export interface Lexicard {
   streak: number
   lastReviewed: number | null
   lastSeenSession?: number
+  activationCount?: number
+  firstActivatedAt?: number | null
+  lastActivatedAt?: number | null
   createdAt: number
 }
 
@@ -63,6 +66,25 @@ export interface DailyProgressEntry {
   wordsAdded: number
   phraseGenerated: boolean
   reviewCorrect: number
+}
+
+export type MetaTrackerStartLevel =
+  | '0'
+  | 'A1'
+  | 'A1+'
+  | 'A2'
+  | 'A2+'
+  | 'B1'
+  | 'B1+'
+  | 'B2'
+  | 'B2+'
+  | 'C1'
+
+export interface MetaTrackerProfile {
+  startLevel: MetaTrackerStartLevel
+  priorIcaWords: number
+  activationWordsTotal: number
+  confirmedAt: number | null
 }
 
 export type DailyProgressMap = Record<string, DailyProgressEntry>

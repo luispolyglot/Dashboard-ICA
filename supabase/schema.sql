@@ -40,6 +40,9 @@ create table if not exists public.lexicards (
   example_phrase text,
   example_translation text,
   source text not null default 'manual',
+  activation_count integer not null default 0,
+  first_activated_at timestamptz,
+  last_activated_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -108,6 +111,51 @@ create table if not exists public.daily_metrics (
   updated_at timestamptz not null default now(),
   primary key (user_id, day)
 );
+
+create table if not exists public.user_meta_tracker (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  target_lang text not null,
+  native_lang text not null,
+  start_level text not null default '0',
+  prior_ica_words integer not null default 0,
+  activation_words_total integer not null default 0,
+  confirmed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, target_lang, native_lang)
+);
+
+create table if not exists public.word_activation_counters (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  target_lang text not null,
+  native_lang text not null,
+  word_normalized text not null,
+  activations_count integer not null default 0,
+  first_activated_at timestamptz,
+  last_activated_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, target_lang, native_lang, word_normalized)
+);
+
+create index if not exists word_activation_counters_lookup_idx
+  on public.word_activation_counters (user_id, target_lang, native_lang);
+
+create table if not exists public.lexicard_activation_counters (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  lexicard_id uuid not null references public.lexicards (id) on delete cascade,
+  target_lang text not null,
+  native_lang text not null,
+  activations_count integer not null default 0,
+  first_activated_at timestamptz,
+  last_activated_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, lexicard_id)
+);
+
+create index if not exists lexicard_activation_counters_user_lang_idx
+  on public.lexicard_activation_counters (user_id, target_lang, native_lang);
 
 create table if not exists public.goal_completions (
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -197,6 +245,24 @@ begin
 end;
 $$;
 
+create or replace function public.prevent_meta_tracker_changes_after_confirmation()
+returns trigger
+language plpgsql
+as $$
+begin
+  if old.confirmed_at is not null and (
+    old.start_level is distinct from new.start_level
+    or old.prior_ica_words is distinct from new.prior_ica_words
+    or old.target_lang is distinct from new.target_lang
+    or old.native_lang is distinct from new.native_lang
+  ) then
+    raise exception 'META_TRACKER_LOCKED';
+  end if;
+
+  return new;
+end;
+$$;
+
 drop trigger if exists profiles_set_updated_at on public.profiles;
 create trigger profiles_set_updated_at
 before update on public.profiles
@@ -216,6 +282,26 @@ drop trigger if exists daily_metrics_set_updated_at on public.daily_metrics;
 create trigger daily_metrics_set_updated_at
 before update on public.daily_metrics
 for each row execute procedure public.set_updated_at();
+
+drop trigger if exists user_meta_tracker_set_updated_at on public.user_meta_tracker;
+create trigger user_meta_tracker_set_updated_at
+before update on public.user_meta_tracker
+for each row execute procedure public.set_updated_at();
+
+drop trigger if exists word_activation_counters_set_updated_at on public.word_activation_counters;
+create trigger word_activation_counters_set_updated_at
+before update on public.word_activation_counters
+for each row execute procedure public.set_updated_at();
+
+drop trigger if exists lexicard_activation_counters_set_updated_at on public.lexicard_activation_counters;
+create trigger lexicard_activation_counters_set_updated_at
+before update on public.lexicard_activation_counters
+for each row execute procedure public.set_updated_at();
+
+drop trigger if exists user_meta_tracker_lock_after_confirmation on public.user_meta_tracker;
+create trigger user_meta_tracker_lock_after_confirmation
+before update on public.user_meta_tracker
+for each row execute procedure public.prevent_meta_tracker_changes_after_confirmation();
 
 drop trigger if exists goal_completions_set_updated_at on public.goal_completions;
 create trigger goal_completions_set_updated_at
@@ -293,6 +379,9 @@ alter table public.review_sessions enable row level security;
 alter table public.lexicard_reviews enable row level security;
 alter table public.phrase_generations enable row level security;
 alter table public.daily_metrics enable row level security;
+alter table public.user_meta_tracker enable row level security;
+alter table public.word_activation_counters enable row level security;
+alter table public.lexicard_activation_counters enable row level security;
 alter table public.goal_completions enable row level security;
 alter table public.xp_events enable row level security;
 alter table public.user_achievements enable row level security;
@@ -323,6 +412,15 @@ create policy "phrase_generations_all_own" on public.phrase_generations for all 
 
 drop policy if exists "daily_metrics_all_own" on public.daily_metrics;
 create policy "daily_metrics_all_own" on public.daily_metrics for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "user_meta_tracker_all_own" on public.user_meta_tracker;
+create policy "user_meta_tracker_all_own" on public.user_meta_tracker for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "word_activation_counters_all_own" on public.word_activation_counters;
+create policy "word_activation_counters_all_own" on public.word_activation_counters for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "lexicard_activation_counters_all_own" on public.lexicard_activation_counters;
+create policy "lexicard_activation_counters_all_own" on public.lexicard_activation_counters for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 drop policy if exists "goal_completions_all_own" on public.goal_completions;
 create policy "goal_completions_all_own" on public.goal_completions for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
@@ -463,6 +561,153 @@ $$;
 
 revoke all on function public.get_weekly_leaderboard(integer) from public;
 grant execute on function public.get_weekly_leaderboard(integer) to authenticated;
+
+create or replace function public.register_word_activations(
+  p_words text[],
+  p_target_lang text,
+  p_native_lang text
+)
+returns table (activation_words_total integer)
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  current_user_id uuid;
+begin
+  current_user_id := auth.uid();
+
+  if current_user_id is null then
+    raise exception 'AUTH_REQUIRED';
+  end if;
+
+  if nullif(trim(p_target_lang), '') is null or nullif(trim(p_native_lang), '') is null then
+    raise exception 'LANG_REQUIRED';
+  end if;
+
+  return query
+  with normalized as (
+    select
+      lower(trim(regexp_replace(word, '\s+', ' ', 'g'))) as normalized_word
+    from unnest(coalesce(p_words, array[]::text[])) as word
+    where nullif(trim(word), '') is not null
+  ),
+  upsert_words as (
+    insert into public.word_activation_counters (
+      user_id,
+      target_lang,
+      native_lang,
+      word_normalized,
+      activations_count,
+      first_activated_at,
+      last_activated_at
+    )
+    select
+      current_user_id,
+      p_target_lang,
+      p_native_lang,
+      normalized_word,
+      1,
+      now(),
+      now()
+    from normalized
+    on conflict (user_id, target_lang, native_lang, word_normalized)
+    do update set
+      activations_count = public.word_activation_counters.activations_count + 1,
+      last_activated_at = now()
+  ),
+  upsert_tracker as (
+    insert into public.user_meta_tracker (
+      user_id,
+      target_lang,
+      native_lang,
+      activation_words_total
+    )
+    values (
+      current_user_id,
+      p_target_lang,
+      p_native_lang,
+      (select count(*) from normalized)
+    )
+    on conflict (user_id, target_lang, native_lang)
+    do update set
+      activation_words_total = public.user_meta_tracker.activation_words_total + excluded.activation_words_total
+    returning activation_words_total
+  )
+  select activation_words_total from upsert_tracker;
+end;
+$$;
+
+revoke all on function public.register_word_activations(text[], text, text) from public;
+grant execute on function public.register_word_activations(text[], text, text) to authenticated;
+
+create or replace function public.register_lexicard_activations(
+  p_lexicard_ids uuid[],
+  p_target_lang text,
+  p_native_lang text
+)
+returns table (activation_words_total integer)
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  current_user_id uuid;
+begin
+  current_user_id := auth.uid();
+
+  if current_user_id is null then
+    raise exception 'AUTH_REQUIRED';
+  end if;
+
+  return query
+  with expanded as (
+    select
+      input_id as lexicard_id,
+      count(*)::integer as uses
+    from unnest(coalesce(p_lexicard_ids, array[]::uuid[])) as input_id
+    group by input_id
+  ),
+  updated as (
+    update public.lexicards l
+    set
+      activation_count = l.activation_count + e.uses,
+      first_activated_at = coalesce(l.first_activated_at, now()),
+      last_activated_at = now()
+    from expanded e
+    where l.id = e.lexicard_id
+      and l.user_id = current_user_id
+      and coalesce(l.target_lang, p_target_lang) = p_target_lang
+      and coalesce(l.native_lang, p_native_lang) = p_native_lang
+    returning e.uses
+  ),
+  delta as (
+    select coalesce(sum(uses), 0)::integer as amount from updated
+  ),
+  upsert_tracker as (
+    insert into public.user_meta_tracker (
+      user_id,
+      target_lang,
+      native_lang,
+      activation_words_total
+    )
+    values (
+      current_user_id,
+      p_target_lang,
+      p_native_lang,
+      (select amount from delta)
+    )
+    on conflict (user_id, target_lang, native_lang)
+    do update set
+      activation_words_total = public.user_meta_tracker.activation_words_total + excluded.activation_words_total
+    returning activation_words_total
+  )
+  select activation_words_total from upsert_tracker;
+end;
+$$;
+
+revoke all on function public.register_lexicard_activations(uuid[], text, text) from public;
+grant execute on function public.register_lexicard_activations(uuid[], text, text) to authenticated;
 
 create or replace function public.get_monthly_streak_leaderboard(limit_count integer default 20)
 returns table (

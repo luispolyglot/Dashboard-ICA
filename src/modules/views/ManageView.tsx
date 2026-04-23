@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input'
 import { RomanizationHint } from '../components/RomanizationHint'
 import { IMPORTANCE_LEVELS, getImportance } from '../constants'
 import { fetchWordExample } from '../services/anthropic'
-import { fetchPhraseHistory } from '../services/phraseHistory'
+import { fetchWordActivationCounts } from '../services/metaTracker'
 import { saveData } from '../services/storage'
 import {
   copyWordsToClipboard,
@@ -64,10 +64,6 @@ function highlightMatch(text: string, query: string): ReactNode {
   )
 }
 
-function normalizeTerm(value: string): string {
-  return value.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim()
-}
-
 export function ManageView({ cards, setCards, config }: ManageViewProps) {
   const { user } = useAuth()
   const [filter, setFilter] = useState<ImportanceKey | 'all'>('all')
@@ -95,16 +91,13 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
   useEffect(() => {
     let active = true
 
-    fetchPhraseHistory(300, config.targetLang)
-      .then((rows) => {
+    fetchWordActivationCounts(
+      cards.map((card) => card.id),
+      config.targetLang,
+      config.nativeLang,
+    )
+      .then((next) => {
         if (!active) return
-        const next: Record<string, number> = {}
-        rows.forEach((row) => {
-          ;(row.source_words || []).forEach((word) => {
-            const normalized = normalizeTerm(word)
-            next[normalized] = (next[normalized] || 0) + 1
-          })
-        })
         setWordUsageCounts(next)
       })
       .catch(() => {
@@ -115,7 +108,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
     return () => {
       active = false
     }
-  }, [config.targetLang])
+  }, [cards, config.nativeLang, config.targetLang])
 
   const filteredByImportance =
     filter === 'all' ? cards : cards.filter((c) => c.importance === filter)
@@ -339,7 +332,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
         const importance = getImportance(card.importance)
         const isFailed = (card.streak || 0) === 0
         const isEditing = editingId === card.id
-        const usageCount = wordUsageCounts[normalizeTerm(card.target)] || 0
+        const usageCount = wordUsageCounts[card.id] ?? card.activationCount ?? 0
         const usageLevel = usageCount >= 3 ? 2 : usageCount >= 1 ? 1 : 0
         const dateStr = card.createdAt
           ? new Date(card.createdAt).toLocaleDateString('es-ES', {

@@ -16,10 +16,7 @@ export function HomePage() {
 
   return (
     <PageLayout withBackButton={false}>
-      <HomeView
-        cardCount={cards.length}
-        dailyProgress={dailyProgress}
-      />
+      <HomeView config={config} cardCount={cards.length} dailyProgress={dailyProgress} />
     </PageLayout>
   )
 }

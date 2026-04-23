@@ -2,6 +2,7 @@ import { CREATION_WORDS_GOAL } from '../constants'
 import { supabase } from '../../lib/supabase'
 import { todayKey } from '../utils'
 import { evaluateAndUnlockAchievements } from './achievements'
+import { registerWordActivations } from './metaTracker'
 
 const WORD_ADD_POINTS = 5
 const PHRASE_POINTS = 20
@@ -91,6 +92,7 @@ export async function recordWordAddedEvent(params: WordAddedEventParams): Promis
 }
 
 type PhraseEventParams = {
+  wordIds: string[]
   words: string[]
   phrase: string
   translation: string
@@ -135,6 +137,12 @@ export async function recordPhraseGeneratedEvent(params: PhraseEventParams): Pro
   }
   if (phraseError) throw phraseError
 
+  const activationTotal = await registerWordActivations(
+    params.wordIds,
+    params.targetLang,
+    params.nativeLang,
+  )
+
   const { error: xpError } = await supabase.from('xp_events').insert({
     user_id: userId,
     source: 'phrase_generated',
@@ -142,6 +150,7 @@ export async function recordPhraseGeneratedEvent(params: PhraseEventParams): Pro
     metadata: {
       day,
       word_count: params.words.length,
+      activation_words_total: activationTotal,
     },
   })
   if (xpError) throw xpError

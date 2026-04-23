@@ -11,6 +11,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useTheme } from '@/theme/ThemeContext'
 
 type HeaderProps = {
   onOpenCalendar: (tab: CalendarTab) => void
@@ -96,16 +97,26 @@ export function Header({
     | 1
     | 2
 
+  const { theme } = useTheme()
+
   return (
     <header className='bg-background'>
       <div className='container mx-auto flex h-16 items-center justify-between px-4'>
         <div className='min-w-0 flex-1'>
           <div className='hidden flex-row items-center gap-0 md:flex'>
-            <img
-              src='/logo-dark.png'
-              alt='Logo de ICADEMY'
-              className='h-20 w-auto'
-            />
+            {theme === 'light' ? (
+              <img
+                src='/logo-light.png'
+                alt='Logo de ICADEMY'
+                className='h-20 w-auto'
+              />
+            ) : (
+              <img
+                src='/logo-dark.png'
+                alt='Logo de ICADEMY'
+                className='h-20 w-auto'
+              />
+            )}
             <AppBreadcrumbs />
           </div>
           <div className='md:hidden'>

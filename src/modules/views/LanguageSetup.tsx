@@ -1,6 +1,12 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -66,16 +72,21 @@ export function LanguageSetup({ onSave }: LanguageSetupProps) {
                   <SelectValue placeholder='Selecciona idioma' />
                 </SelectTrigger>
                 <SelectContent>
-                  {LANGUAGES.filter((language) => language !== nativeLang).map((language) => (
-                    <SelectItem key={language} value={language}>
-                      {language}
-                    </SelectItem>
-                  ))}
+                  {LANGUAGES.filter((language) => language !== nativeLang).map(
+                    (language) => (
+                      <SelectItem key={language} value={language}>
+                        {language}
+                      </SelectItem>
+                    ),
+                  )}
                 </SelectContent>
               </Select>
 
-              <Select value={level} onValueChange={(value) => setLevel(value as CEFRLevel)}>
-                <SelectTrigger className='w-[96px]'>
+              <Select
+                value={level}
+                onValueChange={(value) => setLevel(value as CEFRLevel)}
+              >
+                <SelectTrigger className='w-24'>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -103,10 +114,16 @@ export function LanguageSetup({ onSave }: LanguageSetupProps) {
                 </Button>
               ))}
             </div>
-            <p className='text-center text-xs text-muted-foreground'>{LEVEL_DESC[level]}</p>
+            <p className='text-center text-xs text-muted-foreground'>
+              {LEVEL_DESC[level]}
+            </p>
           </div>
 
-          <Button type='button' onClick={() => onSave({ nativeLang, targetLang, level })} className='w-full'>
+          <Button
+            type='button'
+            onClick={() => onSave({ nativeLang, targetLang, level })}
+            className='w-full'
+          >
             Empezar
           </Button>
         </CardContent>

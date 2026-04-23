@@ -2,10 +2,13 @@ import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { DASHBOARD_ROUTES } from '../routes/paths'
+import { MetaTrackerSection } from '../components/MetaTracker/MetaTrackerSection'
 import { CREATION_WORDS_GOAL, getTodayProgress } from '../constants'
 import type { DailyProgressMap } from '../types'
+import type { AppConfig } from '../types'
 
 type HomeViewProps = {
+  config: AppConfig
   cardCount: number
   dailyProgress: DailyProgressMap
 }
@@ -26,19 +29,16 @@ function pluralize(value: number, singular: string, plural: string): string {
   return `${value} ${value === 1 ? singular : plural}`
 }
 
-export function HomeView({ cardCount, dailyProgress }: HomeViewProps) {
+export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   const navigate = useNavigate()
   const todayProgress = getTodayProgress(dailyProgress)
   const cardBaseClass =
-    'relative flex min-h-[220px] w-full flex-col border-none px-[26px] py-8 text-left font-sans transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] hover:-translate-y-[3px]'
+    'relative flex min-h-[220px] w-full flex-col border-none px-[26px] py-8 text-left font-sans transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] hover:-translate-y-[3px] bg-[linear-gradient(160deg,#ffffff,#eef3f9)] dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
   const plainCardClass =
-    'overflow-hidden rounded-[20px] border border-slate-800 bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
+    'overflow-hidden rounded-[20px] border border-slate-800'
 
   const hasFiveWords = cardCount >= CREATION_WORDS_GOAL
-  const wordsLeftToUnlock = Math.max(
-    0,
-    CREATION_WORDS_GOAL - cardCount,
-  )
+  const wordsLeftToUnlock = Math.max(0, CREATION_WORDS_GOAL - cardCount)
   const flashDone = todayProgress.reviewCorrect >= 10
   const phraseDone = todayProgress.phraseGenerated
 
@@ -88,6 +88,8 @@ export function HomeView({ cardCount, dailyProgress }: HomeViewProps) {
   return (
     <section className='flex flex-1 items-center justify-center px-4 pt-0 pb-20 lg:px-6 lg:py-12'>
       <div className='w-full max-w-240'>
+        <MetaTrackerSection config={config} />
+
         <div className='grid w-full max-w-240 grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-5'>
           {cards.map((card) => {
             const cardBody = (
@@ -107,7 +109,7 @@ export function HomeView({ cardCount, dailyProgress }: HomeViewProps) {
 
                 <div className='relative z-1 mt-9'>
                   <div className='mb-1.25 flex items-center gap-2'>
-                    <h2 className='m-0 font-serif text-xl font-bold tracking-widest text-slate-100'>
+                    <h2 className='m-0 font-serif text-xl font-bold tracking-widest text-slate-700 dark:text-slate-100'>
                       {card.title}
                     </h2>
                   </div>
@@ -134,7 +136,7 @@ export function HomeView({ cardCount, dailyProgress }: HomeViewProps) {
                       onClick={() => !card.disabled && navigate(card.to)}
                       className={cn(
                         cardBaseClass,
-                        'relative z-1 m-0.5 overflow-hidden rounded-[20px] bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]',
+                        'relative z-1 m-0.5 overflow-hidden rounded-[20px]',
                         card.disabled && 'cursor-not-allowed',
                       )}
                       disabled={card.disabled}
@@ -170,13 +172,13 @@ export function HomeView({ cardCount, dailyProgress }: HomeViewProps) {
                 onClick={() => navigate(DASHBOARD_ROUTES.flashcards)}
                 className={cn(
                   cardBaseClass,
-                  'relative z-1 m-0.5 min-h-40 overflow-hidden rounded-[20px] bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]',
+                  'relative z-1 m-0.5 min-h-40 overflow-hidden rounded-[20px]',
                 )}
               >
                 <div className='relative z-1'>
                   <div className='mb-1.25 flex items-center gap-2'>
                     <div className='text-3xl'>📚</div>
-                    <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-100'>
+                    <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
                       FLASHCARDS
                     </h2>
                   </div>
@@ -205,7 +207,7 @@ export function HomeView({ cardCount, dailyProgress }: HomeViewProps) {
               <div className='relative z-1 my-auto'>
                 <div className='mb-1.25 flex items-center gap-2'>
                   <div className='text-3xl'>📚</div>
-                  <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-100'>
+                  <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
                     FLASHCARDS
                   </h2>
                 </div>

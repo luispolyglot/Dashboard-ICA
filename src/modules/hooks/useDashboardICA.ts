@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { CREATION_WORDS_GOAL } from '../constants'
+import {
+  loadMetaTrackerProfile,
+  saveMetaTrackerProfile,
+} from '../services/metaTracker'
 import { loadData, saveData } from '../services/storage'
 import { todayKey } from '../utils'
 import type {
@@ -7,7 +11,13 @@ import type {
   CalendarTab,
   DailyProgressMap,
   Lexicard,
+  MetaTrackerProfile,
+  MetaTrackerStartLevel,
 } from '../types'
+
+function getMetaTrackerScopeKey(config: AppConfig): string {
+  return `${config.nativeLang}::${config.targetLang}`
+}
 
 export function useDashboardICA() {
   const [cards, setCards] = useState<Lexicard[]>([])
@@ -20,6 +30,11 @@ export function useDashboardICA() {
   const [showCalendar, setShowCalendar] = useState(false)
   const [calendarTab, setCalendarTab] = useState<CalendarTab>('review')
   const [reviewSession, setReviewSession] = useState(0)
+  const [metaTrackerByScope, setMetaTrackerByScope] = useState<
+    Record<string, MetaTrackerProfile | null | undefined>
+  >({})
+  const [metaTrackerLoading, setMetaTrackerLoading] = useState(false)
+  const [metaTrackerSaving, setMetaTrackerSaving] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -51,6 +66,60 @@ export function useDashboardICA() {
       window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices()
     }
   }, [])
+
+  useEffect(() => {
+    if (!config) {
+      setMetaTrackerLoading(false)
+      return
+    }
+
+    const scopeKey = getMetaTrackerScopeKey(config)
+    if (metaTrackerByScope[scopeKey] !== undefined) {
+      setMetaTrackerLoading(false)
+      return
+    }
+
+    let active = true
+    setMetaTrackerLoading(true)
+
+    loadMetaTrackerProfile(config.targetLang, config.nativeLang)
+      .then((profile) => {
+        if (!active) return
+        setMetaTrackerByScope((prev) => ({ ...prev, [scopeKey]: profile }))
+      })
+      .finally(() => {
+        if (!active) return
+        setMetaTrackerLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [config, metaTrackerByScope])
+
+  const saveMetaTracker = useCallback(
+    async (params: {
+      startLevel: MetaTrackerStartLevel
+      priorIcaWords: number
+    }): Promise<MetaTrackerProfile | null> => {
+      if (!config) return null
+
+      const scopeKey = getMetaTrackerScopeKey(config)
+      setMetaTrackerSaving(true)
+      try {
+        const saved = await saveMetaTrackerProfile(config.targetLang, config.nativeLang, {
+          startLevel: params.startLevel,
+          priorIcaWords: params.priorIcaWords,
+          confirmedAt: Date.now(),
+        })
+        setMetaTrackerByScope((prev) => ({ ...prev, [scopeKey]: saved }))
+        return saved
+      } finally {
+        setMetaTrackerSaving(false)
+      }
+    },
+    [config],
+  )
 
   const checkCreationStreak = async (updatedProgress: DailyProgressMap): Promise<void> => {
     const tk = todayKey()
@@ -143,6 +212,10 @@ export function useDashboardICA() {
     await saveData('dashboard-ICA-review-session', next)
   }, [])
 
+  const metaTrackerProfile = config
+    ? metaTrackerByScope[getMetaTrackerScopeKey(config)] ?? null
+    : null
+
   return {
     cards,
     setCards,
@@ -158,11 +231,15 @@ export function useDashboardICA() {
     setShowCalendar,
     calendarTab,
     reviewSession,
+    metaTrackerProfile,
+    metaTrackerLoading,
+    metaTrackerSaving,
     handleWordAdded,
     handlePhraseGenerated,
     handleReviewAnswer,
     handleSetup,
     handleConfigChange,
+    saveMetaTracker,
     openCalendar,
     startReviewSession,
   }

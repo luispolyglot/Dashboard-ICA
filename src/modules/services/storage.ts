@@ -85,6 +85,9 @@ async function loadWords(userId: string): Promise<Lexicard[]> {
       interval: Number(row.interval),
       easeFactor: Number(row.ease_factor),
       streak: Number(row.streak),
+      activationCount: typeof row.activation_count === 'number' ? row.activation_count : 0,
+      firstActivatedAt: toMillisFromIso((row.first_activated_at as string | null) || null),
+      lastActivatedAt: toMillisFromIso((row.last_activated_at as string | null) || null),
       lastReviewed: toMillisFromIso((row.last_reviewed_at as string | null) || null),
       lastSeenSession: typeof row.last_seen_session === 'number' ? row.last_seen_session : undefined,
       createdAt: new Date(String(row.created_at)).getTime(),
@@ -105,6 +108,9 @@ async function loadWords(userId: string): Promise<Lexicard[]> {
     'example_phrase',
     'example_translation',
     'last_seen_session',
+    'activation_count',
+    'first_activated_at',
+    'last_activated_at',
   ].join(', ')
 
   try {
@@ -184,6 +190,9 @@ async function saveWords(userId: string, cards: Lexicard[]): Promise<void> {
     streak: card.streak,
     last_reviewed_at: toIsoFromMillis(card.lastReviewed),
     last_seen_session: card.lastSeenSession ?? null,
+    activation_count: card.activationCount ?? 0,
+    first_activated_at: toIsoFromMillis(card.firstActivatedAt ?? null),
+    last_activated_at: toIsoFromMillis(card.lastActivatedAt ?? null),
     created_at: new Date(card.createdAt).toISOString(),
   }))
 
@@ -202,6 +211,9 @@ async function saveWords(userId: string, cards: Lexicard[]): Promise<void> {
         ease_factor: card.easeFactor,
         streak: card.streak,
         last_reviewed_at: toIsoFromMillis(card.lastReviewed),
+        activation_count: card.activationCount ?? 0,
+        first_activated_at: toIsoFromMillis(card.firstActivatedAt ?? null),
+        last_activated_at: toIsoFromMillis(card.lastActivatedAt ?? null),
         created_at: new Date(card.createdAt).toISOString(),
       }))
       const { error } = await supabase.from('lexicards').upsert(legacyPayload)
