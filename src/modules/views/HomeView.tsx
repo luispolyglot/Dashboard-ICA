@@ -37,8 +37,9 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   const plainCardClass =
     'overflow-hidden rounded-[20px] border border-slate-800'
 
-  const hasFiveWords = cardCount >= CREATION_WORDS_GOAL
-  const wordsLeftToUnlock = Math.max(0, CREATION_WORDS_GOAL - cardCount)
+  const hasFiveWordsTotal = cardCount >= CREATION_WORDS_GOAL
+  const hasFiveWordsToday = todayProgress.wordsAdded >= CREATION_WORDS_GOAL
+  const wordsLeftToday = Math.max(0, CREATION_WORDS_GOAL - todayProgress.wordsAdded)
   const flashDone = todayProgress.reviewCorrect >= 10
   const phraseDone = todayProgress.phraseGenerated
 
@@ -50,10 +51,10 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
         description: 'Escribe las palabras filtradas mediante la inmersión.',
         emoji: '🌊',
         tone: '#3B82F6',
-        statusLabel: hasFiveWords
-          ? 'Base ICA activada'
-          : `Te faltan ${pluralize(wordsLeftToUnlock, 'palabra', 'palabras')} para activar I y C`,
-        statusDone: hasFiveWords,
+        statusLabel: hasFiveWordsToday
+          ? 'Objetivo diario de inmersión completado'
+          : `Te faltan ${pluralize(wordsLeftToday, 'palabra', 'palabras')} hoy`,
+        statusDone: hasFiveWordsToday,
         to: DASHBOARD_ROUTES.newIcaWords,
       },
       {
@@ -62,10 +63,10 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
         description: 'Accede a la creación de tu conocimiento escrito.',
         emoji: '🧩',
         tone: '#3B82F6',
-        statusLabel: hasFiveWords
-          ? `Tu creación está lista (${pluralize(cardCount, 'palabra', 'palabras')} en total)`
-          : `Necesitas ${pluralize(wordsLeftToUnlock, 'palabra', 'palabras')} más para desbloquearla`,
-        statusDone: hasFiveWords,
+        statusLabel: hasFiveWordsToday
+          ? 'Objetivo diario de creación listo'
+          : `Necesitas ${pluralize(wordsLeftToday, 'palabra', 'palabras')} más hoy`,
+        statusDone: hasFiveWordsToday,
         to: DASHBOARD_ROUTES.myIcaWords,
       },
       {
@@ -79,10 +80,10 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           : `Te queda ${pluralize(1, 'frase de activación', 'frases de activación')}`,
         statusDone: phraseDone,
         to: DASHBOARD_ROUTES.activationPhrase,
-        disabled: !hasFiveWords,
+        disabled: !hasFiveWordsTotal,
       },
     ],
-    [cardCount, hasFiveWords, phraseDone, wordsLeftToUnlock],
+    [cardCount, hasFiveWordsToday, hasFiveWordsTotal, phraseDone, wordsLeftToday],
   )
 
   return (
