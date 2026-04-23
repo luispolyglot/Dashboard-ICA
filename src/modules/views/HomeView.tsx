@@ -39,7 +39,10 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
 
   const hasFiveWordsTotal = cardCount >= CREATION_WORDS_GOAL
   const hasFiveWordsToday = todayProgress.wordsAdded >= CREATION_WORDS_GOAL
-  const wordsLeftToday = Math.max(0, CREATION_WORDS_GOAL - todayProgress.wordsAdded)
+  const wordsLeftToday = Math.max(
+    0,
+    CREATION_WORDS_GOAL - todayProgress.wordsAdded,
+  )
   const flashDone = todayProgress.reviewCorrect >= 10
   const phraseDone = todayProgress.phraseGenerated
 
@@ -49,7 +52,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
         initial: 'I',
         title: 'INMERSIÓN',
         description: 'Escribe las palabras filtradas mediante la inmersión.',
-        emoji: '🌊',
+        emoji: '✍️',
         tone: '#3B82F6',
         statusLabel: hasFiveWordsToday
           ? 'Objetivo diario de inmersión completado'
@@ -64,7 +67,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
         emoji: '🧩',
         tone: '#3B82F6',
         statusLabel: hasFiveWordsToday
-          ? 'Objetivo diario de creación listo'
+          ? 'Objetivo diario de creación completado'
           : `Necesitas ${pluralize(wordsLeftToday, 'palabra', 'palabras')} más hoy`,
         statusDone: hasFiveWordsToday,
         to: DASHBOARD_ROUTES.myIcaWords,
@@ -83,7 +86,13 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
         disabled: !hasFiveWordsTotal,
       },
     ],
-    [cardCount, hasFiveWordsToday, hasFiveWordsTotal, phraseDone, wordsLeftToday],
+    [
+      cardCount,
+      hasFiveWordsToday,
+      hasFiveWordsTotal,
+      phraseDone,
+      wordsLeftToday,
+    ],
   )
 
   return (
