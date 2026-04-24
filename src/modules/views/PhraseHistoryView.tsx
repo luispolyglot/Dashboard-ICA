@@ -98,12 +98,17 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
     )
   })
 
-  const handleCopyPhrase = async (id: string, phrase: string | null): Promise<void> => {
+  const handleCopyPhrase = async (
+    id: string,
+    phrase: string | null,
+    translation: string | null = null,
+  ): Promise<void> => {
     if (!phrase || copyingId) return
 
     setCopyingId(id)
     try {
-      await navigator.clipboard.writeText(phrase)
+      const completedPhrase = phrase + '\n\n' + translation
+      await navigator.clipboard.writeText(completedPhrase)
       setCopiedId(id)
       window.setTimeout(() => {
         setCopiedId((current) => (current === id ? null : current))
@@ -173,12 +178,12 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
                   language={targetLang}
                 />
               )}
-                <p className='mt-2 text-sm text-muted-foreground'>
-                  {highlightMatch(
-                    item.translation || 'Sin traducción registrada',
-                    query,
-                  )}
-                </p>
+              <p className='mt-2 text-sm text-muted-foreground'>
+                {highlightMatch(
+                  item.translation || 'Sin traducción registrada',
+                  query,
+                )}
+              </p>
 
               {item.generated_phrase && (
                 <div className='mt-3'>
@@ -233,7 +238,13 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
                 <div className='mt-4 flex flex-wrap gap-2 border-t border-border pt-3'>
                   <Button
                     type='button'
-                    onClick={() => void handleCopyPhrase(item.id, item.generated_phrase)}
+                    onClick={() =>
+                      void handleCopyPhrase(
+                        item.id,
+                        item.generated_phrase,
+                        item.translation,
+                      )
+                    }
                     variant='outline'
                     size='sm'
                     disabled={!item.generated_phrase || copyingId === item.id}
@@ -242,8 +253,8 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
                     {copyingId === item.id
                       ? 'Copiando...'
                       : copiedId === item.id
-                        ? 'Copiada'
-                        : 'Copiar frase'}
+                        ? 'Copiadas'
+                        : 'Copiar frases'}
                   </Button>
                   <Button
                     type='button'

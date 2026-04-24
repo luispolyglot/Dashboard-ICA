@@ -392,8 +392,8 @@ export function PhraseView({
               {copyingResult
                 ? 'Copiando...'
                 : resultCopied
-                  ? 'Copiada'
-                  : 'Copiar frase'}
+                  ? 'Copiadas'
+                  : 'Copiar frases'}
             </Button>
           </div>
 

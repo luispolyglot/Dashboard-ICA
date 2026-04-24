@@ -21,7 +21,12 @@ type CalendarModalProps = {
 
 type DayStatus = 'empty' | 'future' | 'missed' | 'completed'
 
-export function CalendarModal({ completedDays, creationDays, onClose, activeTab }: CalendarModalProps) {
+export function CalendarModal({
+  completedDays,
+  creationDays,
+  onClose,
+  activeTab,
+}: CalendarModalProps) {
   const [viewDate, setViewDate] = useState(new Date())
   const [tab, setTab] = useState<CalendarTab>(activeTab)
 
@@ -39,7 +44,8 @@ export function CalendarModal({ completedDays, creationDays, onClose, activeTab 
   for (let i = 0; i < startDow; i++) cells.push(null)
   for (let day = 1; day <= daysInMonth; day++) cells.push(day)
 
-  const isCurrentMonth = year === today.getFullYear() && month === today.getMonth()
+  const isCurrentMonth =
+    year === today.getFullYear() && month === today.getMonth()
   const isFutureMonth = new Date(year, month, 1) > today
   const lastDayToCount = isCurrentMonth ? today.getDate() : daysInMonth
 
@@ -50,17 +56,23 @@ export function CalendarModal({ completedDays, creationDays, onClose, activeTab 
   }
 
   const missedCount = lastDayToCount - completedCount
-  const monthPercent = lastDayToCount > 0 ? Math.round((completedCount / lastDayToCount) * 100) : 0
+  const monthPercent =
+    lastDayToCount > 0 ? Math.round((completedCount / lastDayToCount) * 100) : 0
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className='max-w-xl py-6 sm:py-4'>
+      <DialogContent className='w-dvh h-[calc(100dvh-2rem)] lg:h-auto overflow-y-auto lg:max-w-sm py-4 '>
         <DialogHeader>
           <DialogTitle>Rachas</DialogTitle>
-          <DialogDescription>Seguimiento mensual de flashcards y creación ICA.</DialogDescription>
+          <DialogDescription>
+            Seguimiento mensual de flashcards y creación ICA.
+          </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={tab} onValueChange={(value) => setTab(value as CalendarTab)}>
+        <Tabs
+          value={tab}
+          onValueChange={(value) => setTab(value as CalendarTab)}
+        >
           <TabsList className='grid w-full grid-cols-2'>
             <TabsTrigger value='review'>🔥 Racha Flashcards</TabsTrigger>
             <TabsTrigger value='creation'>✦ Racha ICA</TabsTrigger>
@@ -68,7 +80,12 @@ export function CalendarModal({ completedDays, creationDays, onClose, activeTab 
         </Tabs>
 
         <div className='flex items-center justify-between'>
-          <Button type='button' variant='outline' size='icon' onClick={() => setViewDate(new Date(year, month - 1, 1))}>
+          <Button
+            type='button'
+            variant='outline'
+            size='icon'
+            onClick={() => setViewDate(new Date(year, month - 1, 1))}
+          >
             ‹
           </Button>
 
@@ -77,14 +94,22 @@ export function CalendarModal({ completedDays, creationDays, onClose, activeTab 
             <div className='text-sm text-muted-foreground'>{year}</div>
           </div>
 
-          <Button type='button' variant='outline' size='icon' onClick={() => setViewDate(new Date(year, month + 1, 1))}>
+          <Button
+            type='button'
+            variant='outline'
+            size='icon'
+            onClick={() => setViewDate(new Date(year, month + 1, 1))}
+          >
             ›
           </Button>
         </div>
 
         <div className='grid grid-cols-7 gap-1'>
           {DAY_NAMES.map((day) => (
-            <div key={day} className='py-1 text-center text-[11px] font-semibold text-muted-foreground'>
+            <div
+              key={day}
+              className='py-1 text-center text-[11px] font-semibold text-muted-foreground'
+            >
               {day}
             </div>
           ))}
@@ -99,36 +124,70 @@ export function CalendarModal({ completedDays, creationDays, onClose, activeTab 
             const isToday = key === todayStr
 
             const dayDate = new Date(year, month, day)
-            const baselineToday = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+            const baselineToday = new Date(
+              today.getFullYear(),
+              today.getMonth(),
+              today.getDate(),
+            )
             const isFuture = dayDate > baselineToday
             const isPast = dayDate < baselineToday
-            const status: DayStatus = isFuture ? 'future' : isCompleted ? 'completed' : isPast ? 'missed' : 'empty'
+            const status: DayStatus = isFuture
+              ? 'future'
+              : isCompleted
+                ? 'completed'
+                : isPast
+                  ? 'missed'
+                  : 'empty'
 
-            return <DayCell key={key} day={day} status={status} isToday={isToday} />
+            return (
+              <DayCell key={key} day={day} status={status} isToday={isToday} />
+            )
           })}
         </div>
 
         <div className='flex justify-center gap-6 border-t pt-4'>
-          <Stat label='Dias completados' value={completedCount} valueClass='text-primary' />
-          <Stat label='Dias sin completar' value={isFutureMonth ? 0 : missedCount} valueClass='text-destructive' />
-          <Stat label='Racha actual' value={getStreak(activeDays)} valueClass='text-amber-500' />
+          <Stat
+            label='Dias completados'
+            value={completedCount}
+            valueClass='text-primary'
+          />
+          <Stat
+            label='Dias sin completar'
+            value={isFutureMonth ? 0 : missedCount}
+            valueClass='text-destructive'
+          />
+          <Stat
+            label='Racha actual'
+            value={getStreak(activeDays)}
+            valueClass='text-amber-500'
+          />
         </div>
 
         {!isFutureMonth && (
           <div className='rounded-xl border p-3.5'>
             <div className='mb-2 flex items-center justify-between'>
-              <span className='text-xs font-semibold text-muted-foreground'>Progreso del mes</span>
-              <span className='text-xl font-bold text-primary'>{monthPercent}%</span>
+              <span className='text-xs font-semibold text-muted-foreground'>
+                Progreso del mes
+              </span>
+              <span className='text-xl font-bold text-primary'>
+                {monthPercent}%
+              </span>
             </div>
             <div className='grid grid-cols-10 gap-1 rounded-md bg-muted p-1'>
               {Array.from({ length: 10 }, (_, i) => {
                 const threshold = (i + 1) * 10
                 const active = monthPercent >= threshold
-                return <div key={i} className={`h-2 rounded-full ${active ? 'bg-primary' : 'bg-background'}`} />
+                return (
+                  <div
+                    key={i}
+                    className={`h-2 rounded-full ${active ? 'bg-primary' : 'bg-background'}`}
+                  />
+                )
               })}
             </div>
             <div className='mt-1.5 text-center text-[11px] text-muted-foreground'>
-              {completedCount} de {lastDayToCount} día{lastDayToCount !== 1 ? 's' : ''} completado
+              {completedCount} de {lastDayToCount} día
+              {lastDayToCount !== 1 ? 's' : ''} completado
               {completedCount !== 1 ? 's' : ''}
             </div>
           </div>
@@ -139,7 +198,9 @@ export function CalendarModal({ completedDays, creationDays, onClose, activeTab 
             <div className='mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-primary'>
               Requisito diario
             </div>
-            <div className='text-xs text-muted-foreground'>📚 +{GOAL} flashcards acertados</div>
+            <div className='text-xs text-muted-foreground'>
+              📚 +{GOAL} flashcards acertados
+            </div>
           </div>
         )}
 
@@ -156,7 +217,9 @@ export function CalendarModal({ completedDays, creationDays, onClose, activeTab 
         )}
 
         <div className='flex justify-end'>
-          <Button type='button' onClick={onClose}>Cerrar</Button>
+          <Button type='button' onClick={onClose}>
+            Cerrar
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -180,9 +243,13 @@ function DayCell({ day, status, isToday }: DayCellProps) {
           : 'border-border bg-background text-muted-foreground'
 
   return (
-    <div className={`relative flex aspect-square items-center justify-center rounded-lg border text-sm font-medium ${statusClass} ${isToday ? 'ring-2 ring-ring' : ''}`}>
+    <div
+      className={`relative flex aspect-square items-center justify-center rounded-lg border text-sm font-medium ${statusClass} ${isToday ? 'ring-2 ring-ring' : ''}`}
+    >
       {day}
-      {status === 'completed' && <div className='absolute bottom-[3px] h-1.5 w-1.5 rounded-full bg-primary' />}
+      {status === 'completed' && (
+        <div className='absolute bottom-0.75 h-1.5 w-1.5 rounded-full bg-primary' />
+      )}
     </div>
   )
 }

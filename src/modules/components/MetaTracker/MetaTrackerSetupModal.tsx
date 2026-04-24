@@ -12,11 +12,7 @@ type MetaTrackerSetupModalProps = {
   }) => Promise<void>
 }
 
-type SetupStep =
-  | 'entry'
-  | 'existing-questions'
-  | 'existing-confirm'
-  | 'newbie'
+type SetupStep = 'entry' | 'existing-questions' | 'existing-confirm' | 'newbie'
 
 const OPTIONS: Array<{ key: MetaTrackerStartLevel; label: string }> = [
   { key: '0', label: 'Desde cero' },
@@ -60,12 +56,12 @@ export function MetaTrackerSetupModal({
 
   return (
     <div
-      className='fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-5 backdrop-blur-sm'
+      className='fixed inset-0 z-200 flex items-center justify-center bg-black/80 p-5 backdrop-blur-sm'
       onClick={onClose}
     >
       <div
         onClick={(event) => event.stopPropagation()}
-        className='max-h-[90vh] w-full max-w-[460px] overflow-y-auto rounded-[20px] border border-slate-300 px-6 py-7 bg-[linear-gradient(160deg,#ffffff,#eef3f9)] dark:border-[#1e293b] dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
+        className='max-h-[90vh] w-full max-w-115 overflow-y-auto rounded-[20px] border border-slate-300 px-6 py-7 bg-[linear-gradient(160deg,#ffffff,#eef3f9)] dark:border-[#1e293b] dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
       >
         <div className='mb-1.5 flex items-center justify-between'>
           <h3 className='m-0 text-xl font-semibold text-slate-900 dark:text-[#f1f5f9]'>
@@ -196,13 +192,20 @@ export function MetaTrackerSetupModal({
                 palabras
               </div>
             </div>
-
-            <button
-              onClick={() => setStep('existing-confirm')}
-              className='w-full cursor-pointer rounded-xl border-none bg-linear-to-br from-blue-500 to-blue-900 p-3.25 text-[14px] font-bold text-white'
-            >
-              Continuar →
-            </button>
+            <div className='flex gap-2.5'>
+              <button
+                onClick={() => setStep('entry')}
+                className='flex-1 cursor-pointer rounded-xl border border-slate-300 bg-white p-3.25 text-[13px] font-semibold text-slate-600 dark:border-[#1e293b] dark:bg-[#020617] dark:text-[#94a3b8]'
+              >
+                ← Volver
+              </button>
+              <button
+                onClick={() => setStep('existing-confirm')}
+                className='flex-1 cursor-pointer rounded-xl border-none bg-linear-to-br from-blue-500 to-blue-900 p-3.25 text-[14px] font-bold text-white'
+              >
+                Continuar →
+              </button>
+            </div>
           </>
         ) : step === 'existing-confirm' ? (
           <>
@@ -224,7 +227,9 @@ export function MetaTrackerSetupModal({
               <span className='shrink-0 text-[18px]'>⚠️</span>
               <p className='m-0 text-[12px] leading-normal font-medium text-orange-700 dark:text-[#fdba74]'>
                 <strong>Importante:</strong> esta informacion{' '}
-                <strong>no se podra cambiar</strong> una vez confirmada.
+                <strong>no se podra cambiar</strong> una vez confirmada. <br />{' '}
+                Los umbrales se basan en datos de otros estudiantes que han
+                aplicado ICA. Es acertado pero <strong>no exacto</strong>.
               </p>
             </div>
 
@@ -272,6 +277,15 @@ export function MetaTrackerSetupModal({
                   </button>
                 )
               })}
+            </div>
+            <div className='mb-5.5 flex items-start gap-2.5 rounded-xl border border-orange-400/25 bg-orange-100/60 px-4 py-3.5 dark:border-[#F9731640] dark:bg-[#3d2510]'>
+              <span className='shrink-0 text-[18px]'>⚠️</span>
+              <p className='m-0 text-[12px] leading-normal font-medium text-orange-700 dark:text-[#fdba74]'>
+                <strong>Importante:</strong> esta informacion{' '}
+                <strong>no se podra cambiar</strong> una vez confirmada. <br />{' '}
+                Los umbrales se basan en datos de otros estudiantes que han
+                aplicado ICA. Es acertado pero <strong>no exacto</strong>.
+              </p>
             </div>
 
             <div className='flex gap-2.5'>

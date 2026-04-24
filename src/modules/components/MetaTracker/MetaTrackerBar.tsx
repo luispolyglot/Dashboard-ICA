@@ -56,45 +56,81 @@ export function MetaTrackerBar({
           >
             i
           </button>
-          <span
-            style={{
-              padding: '3px 9px',
-              borderRadius: 7,
-              background: `${currentColor}15`,
-              border: `1px solid ${currentColor}40`,
-              color: currentColor,
-              fontSize: 11,
-              fontWeight: 700,
-              animation: 'metaLevelPulse 1.5s ease-out infinite',
-            }}
-          >
-            {pos.currentLevelKey}
-          </span>
-          <span className='text-[10px] text-slate-500 dark:text-[#64748b]'>
-            →
-          </span>
-          <span
-            style={{
-              padding: '3px 9px',
-              borderRadius: 7,
-              background: `${nextColor}08`,
-              border: `1px solid ${nextColor}25`,
-              color: `${nextColor}aa`,
-              fontSize: 11,
-              fontWeight: 600,
-            }}
-          >
-            {pos.nextLevelKey}
-          </span>
+          <div className='hidden lg:flex gap-2 items-center'>
+            <span
+              style={{
+                padding: '3px 9px',
+                borderRadius: 7,
+                background: `${currentColor}15`,
+                border: `1px solid ${currentColor}40`,
+                color: currentColor,
+                fontSize: 11,
+                fontWeight: 700,
+                animation: 'metaLevelPulse 1.5s ease-out infinite',
+              }}
+            >
+              {pos.currentLevelKey}
+            </span>
+            <span className='text-[10px] text-slate-500 dark:text-[#64748b]'>
+              →
+            </span>
+            <span
+              style={{
+                padding: '3px 9px',
+                borderRadius: 7,
+                background: `${nextColor}08`,
+                border: `1px solid ${nextColor}25`,
+                color: `${nextColor}aa`,
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            >
+              {pos.nextLevelKey}
+            </span>
+          </div>
         </div>
-        <div className='text-[11px] text-slate-500 dark:text-[#64748b]'>
-          <span className='text-[13px] font-bold text-slate-900 dark:text-[#f1f5f9]'>
-            {pos.total.toLocaleString()}
-          </span>
-          <span className='text-slate-600 dark:text-[#475569]'>
-            {' '}
-            / {pos.segEnd.toLocaleString()} palabras
-          </span>
+        <div className='w-full lg:w-auto flex gap-2 items-center lg:justify-end justify-between'>
+          <div className='flex lg:hidden gap-2 items-center'>
+            <span
+              style={{
+                padding: '3px 9px',
+                borderRadius: 7,
+                background: `${currentColor}15`,
+                border: `1px solid ${currentColor}40`,
+                color: currentColor,
+                fontSize: 11,
+                fontWeight: 700,
+                animation: 'metaLevelPulse 1.5s ease-out infinite',
+              }}
+            >
+              {pos.currentLevelKey}
+            </span>
+            <span className='text-[10px] text-slate-500 dark:text-[#64748b]'>
+              →
+            </span>
+            <span
+              style={{
+                padding: '3px 9px',
+                borderRadius: 7,
+                background: `${nextColor}08`,
+                border: `1px solid ${nextColor}25`,
+                color: `${nextColor}aa`,
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            >
+              {pos.nextLevelKey}
+            </span>
+          </div>
+          <div className='text-[11px] text-slate-500 dark:text-[#64748b]'>
+            <span className='text-[13px] font-bold text-slate-900 dark:text-[#f1f5f9]'>
+              {pos.total.toLocaleString()}
+            </span>
+            <span className='text-slate-600 dark:text-[#475569]'>
+              {' '}
+              / {pos.segEnd.toLocaleString()} palabras
+            </span>
+          </div>
         </div>
       </div>
 
@@ -155,7 +191,7 @@ export function MetaTrackerBar({
         <div
           style={{
             position: 'absolute',
-            top: -2,
+            top: -4,
             left: `${pos.pctOverall * 100}%`,
             transform: 'translateY(0) translateX(-50%)',
             zIndex: 3,
@@ -165,6 +201,17 @@ export function MetaTrackerBar({
           }}
         >
           🚶‍➡️
+          <div
+            style={{
+              width: 0,
+              height: 0,
+              borderLeft: '5px solid transparent',
+              borderRight: '5px solid transparent',
+              borderTop: `6px solid ${currentColor}`,
+              marginTop: -4,
+              marginLeft: 8,
+            }}
+          />
         </div>
 
         <div className='relative h-2.25 overflow-hidden rounded-[5px] border border-slate-300 bg-slate-100 dark:border-[#1e293b] dark:bg-[#020617]'>
@@ -187,7 +234,7 @@ export function MetaTrackerBar({
                 bottom: 0,
                 width: `${100 / Math.max(pos.pctOverall, 0.0001)}%`,
                 background: `linear-gradient(90deg,
-                #3B82F6 0%,
+                #64748b 0%,
                 #3B82F6 11.11%,
                 #22C55E 22.22%,
                 #22C55E 33.33%,

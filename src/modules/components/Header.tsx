@@ -103,24 +103,22 @@ export function Header({
     <header className='bg-background'>
       <div className='container mx-auto flex h-16 items-center justify-between px-4'>
         <div className='min-w-0 flex-1'>
-          <div className='hidden flex-row items-center gap-0 md:flex'>
+          <div className='flex flex-row items-center gap-0 w-full lg:w-auto lg:justify-start justify-between'>
             {theme === 'light' ? (
               <img
                 src='/logo-light.png'
                 alt='Logo de ICADEMY'
-                className='h-20 w-auto'
+                className='h-16 lg:h-20 w-auto'
               />
             ) : (
               <img
                 src='/logo-dark.png'
                 alt='Logo de ICADEMY'
-                className='h-20 w-auto'
+                className='h-16 lg:h-20 w-auto'
               />
             )}
             <AppBreadcrumbs />
-          </div>
-          <div className='md:hidden'>
-            <AppBreadcrumbs />
+            <div className='w-1 block lg:hidden'></div>
           </div>
         </div>
 

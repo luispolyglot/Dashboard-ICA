@@ -96,7 +96,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   )
 
   return (
-    <section className='flex flex-1 items-center justify-center px-4 pt-0 pb-20 lg:px-6 lg:py-12'>
+    <section className='flex flex-1 items-center justify-center px-4 pt-0 pb-28 lg:px-6 lg:py-12'>
       <div className='w-full max-w-240'>
         <MetaTrackerSection config={config} />
 
@@ -108,7 +108,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
                   className='pointer-events-none absolute top-4.5 right-5.5 select-none'
                   style={{ color: card.tone }}
                 >
-                  <p className='font-serif text-[90px] leading-none font-extrabold opacity-35 shadow-inital-letter'>
+                  <p className='font-serif text-[90px] leading-none font-extrabold shadow-inital-letter'>
                     {card.initial}
                   </p>
                 </div>
@@ -139,7 +139,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
             return (
               <div key={card.initial} className='relative'>
                 {card.statusDone ? (
-                  <div className='relative overflow-hidden rounded-[22px] shadow-[0_0_32px_#eab30850,0_0_60px_#eab30828]'>
+                  <div className='relative overflow-hidden rounded-[22px] shadow-[0_0_12px_#eab30850,0_0_60px_#eab30828]'>
                     <div className='pointer-events-none absolute inset-[-120%] z-0 animate-[rotateCW_8s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0deg,transparent_255deg,#eab30818_265deg,#eab30860_280deg,#eab308cc_305deg,#fde68a_322deg,#ffffffff_328deg,#fde68a_334deg,#eab308cc_350deg,#eab30860_368deg,#eab30818_378deg,transparent_390deg)]' />
                     <button
                       type='button'
@@ -175,7 +175,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
 
         <div className='mt-5 hidden justify-center md:flex'>
           {flashDone ? (
-            <div className='relative w-full max-w-80 overflow-hidden rounded-[22px] shadow-[0_0_32px_#eab30850,0_0_60px_#eab30828]'>
+            <div className='relative w-full max-w-80 overflow-hidden rounded-[22px] shadow-[0_0_12px_#eab30850,0_0_60px_#eab30828]'>
               <div className='pointer-events-none absolute inset-[-120%] z-0 animate-[rotateCW_8s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0deg,transparent_255deg,#eab30818_265deg,#eab30860_280deg,#eab308cc_305deg,#fde68a_322deg,#ffffffff_328deg,#fde68a_334deg,#eab308cc_350deg,#eab30860_368deg,#eab30818_378deg,transparent_390deg)]' />
               <button
                 type='button'

@@ -53,7 +53,9 @@ export function ReviewView({
   const [flipped, setFlipped] = useState(false)
   const [correct, setCorrect] = useState(0)
   const [answerCount, setAnswerCount] = useState(0)
-  const [retryCooldowns, setRetryCooldowns] = useState<Record<string, number>>({})
+  const [retryCooldowns, setRetryCooldowns] = useState<Record<string, number>>(
+    {},
+  )
   const [busy, setBusy] = useState(false)
   const [finishing, setFinishing] = useState(false)
   const [completed, setCompleted] = useState(false)
@@ -69,7 +71,8 @@ export function ReviewView({
     if (cardsToShow.length === 0) return 0
 
     const normalizedStart =
-      ((startIndex % cardsToShow.length) + cardsToShow.length) % cardsToShow.length
+      ((startIndex % cardsToShow.length) + cardsToShow.length) %
+      cardsToShow.length
 
     for (let offset = 0; offset < cardsToShow.length; offset += 1) {
       const candidateIndex = (normalizedStart + offset) % cardsToShow.length
@@ -143,7 +146,9 @@ export function ReviewView({
       setSorted(reordered)
 
       if (reordered.length > 0) {
-        const updatedCardIndex = reordered.findIndex((card) => card.id === updated.id)
+        const updatedCardIndex = reordered.findIndex(
+          (card) => card.id === updated.id,
+        )
         const nextStartIndex =
           updatedCardIndex >= 0
             ? (updatedCardIndex + 1) % reordered.length
@@ -300,7 +305,7 @@ export function ReviewView({
             {flipped ? 'Idioma objetivo' : 'Tu idioma materno'}
           </span>
 
-          <p className='font-serif text-4xl font-bold leading-tight'>
+          <p className='font-serif text-2xl lg:text-4xl font-bold leading-tight wrap-break-word'>
             {flipped ? currentCard.target : currentCard.native}
           </p>
 
