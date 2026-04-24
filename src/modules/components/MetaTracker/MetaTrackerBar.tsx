@@ -263,6 +263,7 @@ export function MetaTrackerBar({
         >
           🚶‍➡️
           <div
+            className='ml-2 lg:ml-1.5'
             style={{
               width: 0,
               height: 0,
@@ -270,7 +271,6 @@ export function MetaTrackerBar({
               borderRight: '5px solid transparent',
               borderTop: `6px solid ${walkerColor}`,
               marginTop: -4,
-              marginLeft: 6,
             }}
           />
         </div>
