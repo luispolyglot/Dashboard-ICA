@@ -24,7 +24,7 @@ export function MobileBottomNav({ onOpenCalendar }: MobileBottomNavProps) {
 
         <button
           type='button'
-          onClick={() => onOpenCalendar('review')}
+          onClick={() => onOpenCalendar('creation')}
           className='flex flex-col items-center gap-1 text-muted-foreground'
         >
           <span className='text-lg leading-none' aria-hidden='true'>

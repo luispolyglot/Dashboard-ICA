@@ -28,7 +28,7 @@ export function useDashboardICA() {
   const [creationDays, setCreationDays] = useState<string[]>([])
   const [dailyProgress, setDailyProgress] = useState<DailyProgressMap>({})
   const [showCalendar, setShowCalendar] = useState(false)
-  const [calendarTab, setCalendarTab] = useState<CalendarTab>('review')
+  const [calendarTab, setCalendarTab] = useState<CalendarTab>('creation')
   const [reviewSession, setReviewSession] = useState(0)
   const [metaTrackerByScope, setMetaTrackerByScope] = useState<
     Record<string, MetaTrackerProfile | null | undefined>

@@ -149,7 +149,7 @@ export function Header({
                 type='button'
                 size='icon'
                 variant='outline'
-                onClick={() => onOpenCalendar('review')}
+                onClick={() => onOpenCalendar('creation')}
                 aria-label={`Abrir mis rachas (${completedSegments}/2)`}
                 title={`Mis rachas (${completedSegments}/2)`}
                 className='transition-all duration-300 hover:scale-[1.04]'

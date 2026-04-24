@@ -74,8 +74,8 @@ export function CalendarModal({
           onValueChange={(value) => setTab(value as CalendarTab)}
         >
           <TabsList className='grid w-full grid-cols-2'>
-            <TabsTrigger value='review'>🔥 Racha Flashcards</TabsTrigger>
             <TabsTrigger value='creation'>✦ Racha ICA</TabsTrigger>
+            <TabsTrigger value='review'>🔥 Racha Flashcards</TabsTrigger>
           </TabsList>
         </Tabs>
 
