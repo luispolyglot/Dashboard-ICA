@@ -121,6 +121,27 @@ export function useDashboardICA() {
     [config],
   )
 
+  const setMetaTrackerActivationWordsTotal = useCallback(
+    (activationWordsTotal: number): void => {
+      if (!config) return
+      const scopeKey = getMetaTrackerScopeKey(config)
+      setMetaTrackerByScope((prev) => {
+        const current = prev[scopeKey]
+        if (!current) return prev
+        if (current.activationWordsTotal === activationWordsTotal) return prev
+
+        return {
+          ...prev,
+          [scopeKey]: {
+            ...current,
+            activationWordsTotal,
+          },
+        }
+      })
+    },
+    [config],
+  )
+
   const checkCreationStreak = async (updatedProgress: DailyProgressMap): Promise<void> => {
     const tk = todayKey()
     const todayProgress = updatedProgress[tk] || {
@@ -240,6 +261,7 @@ export function useDashboardICA() {
     handleSetup,
     handleConfigChange,
     saveMetaTracker,
+    setMetaTrackerActivationWordsTotal,
     openCalendar,
     startReviewSession,
   }

@@ -83,7 +83,12 @@ export function FlashcardsPage() {
 }
 
 export function ActivationPhrasePage() {
-  const { cards, config, handlePhraseGenerated } = useDashboardContext()
+  const {
+    cards,
+    config,
+    handlePhraseGenerated,
+    setMetaTrackerActivationWordsTotal,
+  } = useDashboardContext()
   if (!config) return null
 
   return (
@@ -92,6 +97,7 @@ export function ActivationPhrasePage() {
         cards={cards}
         config={config}
         onPhraseGenerated={handlePhraseGenerated}
+        onActivationWordsTotalChange={setMetaTrackerActivationWordsTotal}
         LevelBadge={LevelBadge}
       />
     </PageLayout>

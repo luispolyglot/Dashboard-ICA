@@ -27,6 +27,7 @@ type PhraseViewProps = {
     wordsAdded: number
     phraseGenerated: boolean
   }>
+  onActivationWordsTotalChange: (activationWordsTotal: number) => void
   LevelBadge: ComponentType<{ level: CEFRLevel; size?: 'normal' | 'small' }>
 }
 
@@ -42,6 +43,7 @@ export function PhraseView({
   cards,
   config,
   onPhraseGenerated,
+  onActivationWordsTotalChange,
   LevelBadge,
 }: PhraseViewProps) {
   const [wordCount, setWordCount] = useState(5)
@@ -153,7 +155,7 @@ export function PhraseView({
     if (response) {
       const progress = await onPhraseGenerated()
       try {
-        await recordPhraseGeneratedEvent({
+        const activationWordsTotal = await recordPhraseGeneratedEvent({
           wordIds: selectedWords.map((word) => word.id),
           words: selectedWords.map((word) => word.target),
           phrase: response.phrase,
@@ -162,6 +164,9 @@ export function PhraseView({
           targetLang: config.targetLang,
           nativeLang: config.nativeLang,
         })
+        if (typeof activationWordsTotal === 'number') {
+          onActivationWordsTotalChange(activationWordsTotal)
+        }
         setWordUsageCounts((prev) => {
           const next = { ...prev }
           selectedWords.forEach((word) => {

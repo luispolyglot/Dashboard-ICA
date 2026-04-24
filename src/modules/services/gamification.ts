@@ -101,10 +101,12 @@ type PhraseEventParams = {
   nativeLang: string
 }
 
-export async function recordPhraseGeneratedEvent(params: PhraseEventParams): Promise<void> {
-  if (!supabase) return
+export async function recordPhraseGeneratedEvent(
+  params: PhraseEventParams,
+): Promise<number | null> {
+  if (!supabase) return null
   const userId = await getCurrentUserId()
-  if (!userId) return
+  if (!userId) return null
 
   const day = todayKey()
   const metric = await getDailyMetrics(userId, day)
@@ -182,4 +184,5 @@ export async function recordPhraseGeneratedEvent(params: PhraseEventParams): Pro
   if (goalError) throw goalError
 
   await evaluateAndUnlockAchievements(userId)
+  return activationTotal
 }
