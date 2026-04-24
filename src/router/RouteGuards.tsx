@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { FullscreenLoading } from '@/components/ui/fullscreen-loading'
+import { checkAdminAccess } from '@/modules/services/adminAnalytics'
 import { useAuth } from '../auth/AuthContext'
 
 function FullscreenMessage({ message }: { message: string }) {
@@ -15,7 +17,9 @@ export function PrivateRoute() {
   const location = useLocation()
 
   if (!hasSupabaseConfig) {
-    return <FullscreenMessage message='Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY para habilitar autenticación.' />
+    return (
+      <FullscreenMessage message='Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY para habilitar autenticación.' />
+    )
   }
 
   if (loading) return <FullscreenLoading label='Cargando sesión...' />
@@ -33,5 +37,54 @@ export function PublicOnlyRoute() {
 
   if (loading) return <FullscreenLoading label='Cargando sesión...' />
   if (user) return <Navigate to='/' replace />
+  return <Outlet />
+}
+
+export function AnalyticsAdminRoute() {
+  const { user, loading, hasSupabaseConfig } = useAuth()
+  const [checking, setChecking] = useState(true)
+  const [hasAccess, setHasAccess] = useState(false)
+  const location = useLocation()
+
+  useEffect(() => {
+    let isMounted = true
+
+    const run = async () => {
+      if (!user) {
+        if (isMounted) {
+          setHasAccess(false)
+          setChecking(false)
+        }
+        return
+      }
+
+      setChecking(true)
+      const allowed = await checkAdminAccess()
+
+      if (isMounted) {
+        setHasAccess(allowed)
+        setChecking(false)
+      }
+    }
+
+    if (!loading) {
+      void run()
+    }
+
+    return () => {
+      isMounted = false
+    }
+  }, [loading, user?.id])
+
+  if (!hasSupabaseConfig) {
+    return (
+      <FullscreenMessage message='Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY para habilitar autenticación.' />
+    )
+  }
+
+  if (loading || checking)
+    return <FullscreenLoading label='Verificando permisos de admin...' />
+  if (!user) return <Navigate to='/login' state={{ from: location }} replace />
+  if (!hasAccess) return <Navigate to='/' replace />
   return <Outlet />
 }

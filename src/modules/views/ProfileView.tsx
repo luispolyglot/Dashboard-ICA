@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { LanguagesIcon, LogOutIcon, MoonIcon, SunIcon, UserIcon } from 'lucide-react'
+import { BarChart3Icon, LanguagesIcon, LogOutIcon, MoonIcon, SunIcon, UserIcon } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,6 +16,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useTheme } from '@/theme/ThemeContext'
+import { checkAdminAccess } from '../services/adminAnalytics'
+import { DASHBOARD_ROUTES } from '../routes/paths'
 import type { AppConfig } from '../types'
 
 type ProfileViewProps = {
@@ -40,9 +43,27 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
   const [passwordError, setPasswordError] = useState<string | null>(null)
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
+  const [canSeeAdminAnalytics, setCanSeeAdminAnalytics] = useState(false)
 
   const metadata = useMemo(() => user?.user_metadata ?? {}, [user?.user_metadata])
   const displayName = metadata.display_name || user?.email?.split('@')[0] || 'Usuario'
+
+  useEffect(() => {
+    let isMounted = true
+
+    const run = async () => {
+      const allowed = await checkAdminAccess()
+      if (isMounted) {
+        setCanSeeAdminAnalytics(allowed)
+      }
+    }
+
+    void run()
+
+    return () => {
+      isMounted = false
+    }
+  }, [user?.id])
 
   const handleLogout = async (): Promise<void> => {
     if (isLoggingOut) return
@@ -153,6 +174,25 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
             </Button>
           </CardContent>
         </Card>
+
+        {canSeeAdminAnalytics && (
+          <Card>
+            <CardHeader>
+              <CardTitle className='flex items-center gap-2'>
+                <BarChart3Icon className='h-4 w-4' />
+                Analíticas Admin
+              </CardTitle>
+            </CardHeader>
+            <CardContent className='space-y-3'>
+              <p className='text-sm text-muted-foreground'>
+                Accede al panel de métricas globales. Esta sección exige permisos administrativos.
+              </p>
+              <Button type='button' variant='outline' asChild>
+                <Link to={DASHBOARD_ROUTES.analytics}>Analíticas Admin</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>

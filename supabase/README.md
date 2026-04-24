@@ -36,6 +36,12 @@ supabase secrets set ANTHROPIC_BASE_URL=https://api.anthropic.com
 supabase functions deploy anthropic-proxy
 ```
 
+Para el panel de analíticas admin:
+
+```bash
+supabase functions deploy admin-analytics
+```
+
 5. Verifica que en Network ya no aparezca `x-api-key` ni requests directos a `api.anthropic.com`.
 
 La function exige usuario autenticado (Bearer token de Supabase), evitando uso anónimo del endpoint.

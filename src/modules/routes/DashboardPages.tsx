@@ -3,6 +3,7 @@ import { LevelBadge } from '../components/LevelBadge'
 import { useDashboardContext } from '../context/DashboardContext'
 import { PageLayout } from '../layout/PageLayout'
 import { AddView } from '../views/AddView'
+import { AdminAnalyticsView } from '../views/AdminAnalyticsView'
 import { HomeView } from '../views/HomeView'
 import { ManageView } from '../views/ManageView'
 import { ProfileView } from '../views/ProfileView'
@@ -117,6 +118,14 @@ export function ProfilePage() {
         config={config}
         onEditLanguages={() => setShowLangModal(true)}
       />
+    </PageLayout>
+  )
+}
+
+export function AnalyticsPage() {
+  return (
+    <PageLayout>
+      <AdminAnalyticsView />
     </PageLayout>
   )
 }

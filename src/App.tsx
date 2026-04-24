@@ -4,6 +4,7 @@ import { useAuth } from './auth/AuthContext'
 import { DashboardProvider } from './modules/context/DashboardContext'
 import { DashboardLayout } from './modules/layout/DashboardLayout'
 import {
+  AnalyticsPage,
   ActivationPhrasePage,
   FlashcardsPage,
   HomePage,
@@ -13,7 +14,7 @@ import {
   ProfilePage,
 } from './modules/routes/DashboardPages'
 import { DASHBOARD_ROUTES } from './modules/routes/paths'
-import { PrivateRoute, PublicOnlyRoute } from './router/RouteGuards'
+import { AnalyticsAdminRoute, PrivateRoute, PublicOnlyRoute } from './router/RouteGuards'
 import { ForgotPasswordPage } from './views/ForgotPasswordPage'
 import { LoginPage } from './views/LoginPage'
 import { RegisterPage } from './views/RegisterPage'
@@ -56,6 +57,9 @@ export function App() {
           <Route path='activation-phrase' element={<ActivationPhrasePage />} />
           <Route path='phrase-history' element={<PhraseHistoryPage />} />
           <Route path='profile' element={<ProfilePage />} />
+          <Route element={<AnalyticsAdminRoute />}>
+            <Route path='analytics' element={<AnalyticsPage />} />
+          </Route>
         </Route>
       </Route>
       <Route path='*' element={<RootRedirect />} />
