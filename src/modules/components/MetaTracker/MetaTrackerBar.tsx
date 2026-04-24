@@ -23,6 +23,67 @@ const LEVEL_COLORS: Record<string, string> = {
   C1: '#A855F7',
 }
 
+const GRADIENT_STOPS: { pct: number; color: string }[] = [
+  { pct: 0, color: '#64748b' },
+  { pct: 0.11111, color: '#3B82F6' },
+  { pct: 0.22222, color: '#22C55E' },
+  { pct: 0.33333, color: '#22C55E' },
+  { pct: 0.44444, color: '#EAB308' },
+  { pct: 0.55555, color: '#EAB308' },
+  { pct: 0.66666, color: '#F97316' },
+  { pct: 0.77777, color: '#F97316' },
+  { pct: 1, color: '#A855F7' },
+]
+
+const hexToRgb = (hex: string) => {
+  const clean = hex.replace('#', '')
+  const value =
+    clean.length === 3
+      ? clean
+          .split('')
+          .map((chr) => chr + chr)
+          .join('')
+      : clean
+  const intValue = parseInt(value, 16)
+  return {
+    r: (intValue >> 16) & 0xff,
+    g: (intValue >> 8) & 0xff,
+    b: intValue & 0xff,
+  }
+}
+
+const rgbToHex = ({ r, g, b }: { r: number; g: number; b: number }) =>
+  `#${[r, g, b].map((c) => c.toString(16).padStart(2, '0')).join('')}`
+
+const interpolateColor = (
+  from: { r: number; g: number; b: number },
+  to: { r: number; g: number; b: number },
+  ratio: number,
+) => ({
+  r: Math.round(from.r + (to.r - from.r) * ratio),
+  g: Math.round(from.g + (to.g - from.g) * ratio),
+  b: Math.round(from.b + (to.b - from.b) * ratio),
+})
+
+const getGradientColorAtPercent = (rawPct: number) => {
+  const pct = Math.min(Math.max(rawPct, 0), 1)
+  for (let i = 1; i < GRADIENT_STOPS.length; i += 1) {
+    const previous = GRADIENT_STOPS[i - 1]
+    const current = GRADIENT_STOPS[i]
+    if (pct <= current.pct) {
+      if (current.pct === previous.pct) {
+        return current.color
+      }
+      const rangePct = (pct - previous.pct) / (current.pct - previous.pct)
+      const fromRgb = hexToRgb(previous.color)
+      const toRgb = hexToRgb(current.color)
+      return rgbToHex(interpolateColor(fromRgb, toRgb, rangePct))
+    }
+  }
+
+  return GRADIENT_STOPS[GRADIENT_STOPS.length - 1].color
+}
+
 export function MetaTrackerBar({
   targetLang,
   totalWords,
@@ -31,8 +92,8 @@ export function MetaTrackerBar({
   const pos = computeLevelPosition(totalWords, thresholds)
   const currentColor = LEVEL_COLORS[pos.currentLevelKey] || '#64748b'
   const nextColor = LEVEL_COLORS[pos.nextLevelKey] || '#64748b'
+  const walkerColor = getGradientColorAtPercent(pos.pctOverall)
   const [infoOpen, setInfoOpen] = useState(false)
-
   return (
     <div className='relative box-border mx-auto mb-2 rounded-[14px] border border-slate-300 px-4.5 py-3.5 bg-[linear-gradient(160deg,#ffffff,#eef3f9)] dark:border-[#1e293b] dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'>
       <style>
@@ -207,9 +268,9 @@ export function MetaTrackerBar({
               height: 0,
               borderLeft: '5px solid transparent',
               borderRight: '5px solid transparent',
-              borderTop: `6px solid ${currentColor}`,
+              borderTop: `6px solid ${walkerColor}`,
               marginTop: -4,
-              marginLeft: 8,
+              marginLeft: 6,
             }}
           />
         </div>
