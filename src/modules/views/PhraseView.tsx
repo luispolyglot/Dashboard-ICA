@@ -289,7 +289,8 @@ export function PhraseView({
 
     setCopyingResult(true)
     try {
-      await navigator.clipboard.writeText(result.phrase)
+      const completedPhrase = result.phrase + '\n\n' + result.translation
+      await navigator.clipboard.writeText(completedPhrase)
       setResultCopied(true)
       window.setTimeout(() => setResultCopied(false), 1400)
     } finally {
@@ -428,7 +429,7 @@ export function PhraseView({
                   setManualPhraseTarget(event.target.value)
                 }}
                 placeholder={`Escribe la frase en ${config.targetLang}...`}
-                className='min-h-[88px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
+                className='min-h-22 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
               />
             </div>
 
@@ -443,14 +444,14 @@ export function PhraseView({
                   setManualPhraseNative(event.target.value)
                 }}
                 placeholder={`Escribe la frase en ${config.nativeLang}...`}
-                className='min-h-[88px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
+                className='min-h-22 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
               />
             </div>
           </div>
 
           <p className='mt-3 text-[11px] text-muted-foreground'>
-            Detectadas automáticamente: {manualDetectedWords.length}. Se aprueba con
-            mínimo {minWordsRequired} palabras ICA.
+            Detectadas automáticamente: {manualDetectedWords.length}. Se aprueba
+            con mínimo {minWordsRequired} palabras ICA.
           </p>
         </div>
       )}
@@ -497,7 +498,8 @@ export function PhraseView({
         onClick={handlePrimaryAction}
         disabled={
           loading ||
-          (mode !== 'manualPhrase' && selectedWords.length < minWordsRequired) ||
+          (mode !== 'manualPhrase' &&
+            selectedWords.length < minWordsRequired) ||
           (mode === 'manualPhrase' &&
             !manualPhraseApproved &&
             (selectedWords.length < minWordsRequired ||
@@ -509,14 +511,18 @@ export function PhraseView({
         {loading ? (
           <>
             <span className='inline-block h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground border-t-foreground' />
-            {mode === 'manualPhrase' ? 'Registrando frase...' : `Generando ${level}...`}
+            {mode === 'manualPhrase'
+              ? 'Registrando frase...'
+              : `Generando ${level}...`}
           </>
+        ) : mode === 'manualPhrase' ? (
+          manualPhraseApproved ? (
+            '🔄 Generar otra frase manual'
+          ) : (
+            `✅ Aprobar frase manual · ${selectedWords.length}/${minWordsRequired}`
+          )
         ) : (
-          mode === 'manualPhrase'
-            ? manualPhraseApproved
-              ? '🔄 Generar otra frase manual'
-              : `✅ Aprobar frase manual · ${selectedWords.length}/${minWordsRequired}`
-            : `⚡ Generar Frase · ${level}`
+          `⚡ Generar Frase · ${level}`
         )}
       </Button>
 
