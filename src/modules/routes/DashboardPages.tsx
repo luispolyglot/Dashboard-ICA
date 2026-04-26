@@ -5,6 +5,7 @@ import { PageLayout } from '../layout/PageLayout'
 import { AddView } from '../views/AddView'
 import { AdminAnalyticsView } from '../views/AdminAnalyticsView'
 import { HomeView } from '../views/HomeView'
+import { ManageWhitelistView } from '../views/ManageWhitelistView'
 import { ManageView } from '../views/ManageView'
 import { ProfileView } from '../views/ProfileView'
 import { PhraseHistoryView } from '../views/PhraseHistoryView'
@@ -132,6 +133,14 @@ export function AnalyticsPage() {
   return (
     <PageLayout>
       <AdminAnalyticsView />
+    </PageLayout>
+  )
+}
+
+export function ManageWhitelistPage() {
+  return (
+    <PageLayout>
+      <ManageWhitelistView />
     </PageLayout>
   )
 }
