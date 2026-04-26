@@ -8,13 +8,19 @@ import {
   ActivationPhrasePage,
   FlashcardsPage,
   HomePage,
+  ManageWhitelistPage,
   MyIcaWordsPage,
   NewIcaWordsPage,
   PhraseHistoryPage,
   ProfilePage,
 } from './modules/routes/DashboardPages'
 import { DASHBOARD_ROUTES } from './modules/routes/paths'
-import { AnalyticsAdminRoute, PrivateRoute, PublicOnlyRoute } from './router/RouteGuards'
+import {
+  AnalyticsAdminRoute,
+  PrivateRoute,
+  PublicOnlyRoute,
+  SuperAdminRoute,
+} from './router/RouteGuards'
 import { ForgotPasswordPage } from './views/ForgotPasswordPage'
 import { LoginPage } from './views/LoginPage'
 import { RegisterPage } from './views/RegisterPage'
@@ -59,6 +65,9 @@ export function App() {
           <Route path='profile' element={<ProfilePage />} />
           <Route element={<AnalyticsAdminRoute />}>
             <Route path='analytics' element={<AnalyticsPage />} />
+          </Route>
+          <Route element={<SuperAdminRoute />}>
+            <Route path='manage-whitelist' element={<ManageWhitelistPage />} />
           </Route>
         </Route>
       </Route>

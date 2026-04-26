@@ -7,6 +7,7 @@ export const DASHBOARD_ROUTES = {
   phraseHistory: '/phrase-history',
   profile: '/profile',
   analytics: '/analytics',
+  manageWhitelist: '/manage-whitelist',
 } as const
 
 export const DASHBOARD_LABELS: Record<string, string> = {
@@ -18,4 +19,5 @@ export const DASHBOARD_LABELS: Record<string, string> = {
   '/phrase-history': 'Mi historial de frases',
   '/profile': 'Perfil',
   '/analytics': 'Analíticas Admin',
+  '/manage-whitelist': 'Gestionar whitelist',
 }

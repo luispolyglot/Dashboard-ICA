@@ -233,6 +233,14 @@ create table if not exists public.auth_whitelist (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.admin_users (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  role text not null check (role in ('admin', 'super_admin')),
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 drop table if exists public.user_state cascade;
 
 create or replace function public.set_updated_at()
@@ -313,6 +321,11 @@ create trigger auth_whitelist_set_updated_at
 before update on public.auth_whitelist
 for each row execute procedure public.set_updated_at();
 
+drop trigger if exists admin_users_set_updated_at on public.admin_users;
+create trigger admin_users_set_updated_at
+before update on public.admin_users
+for each row execute procedure public.set_updated_at();
+
 create or replace function public.enforce_whitelist_on_signup()
 returns trigger
 language plpgsql
@@ -387,6 +400,7 @@ alter table public.xp_events enable row level security;
 alter table public.user_achievements enable row level security;
 alter table public.activity_events enable row level security;
 alter table public.auth_whitelist enable row level security;
+alter table public.admin_users enable row level security;
 
 drop policy if exists "profiles_select_own" on public.profiles;
 create policy "profiles_select_own" on public.profiles for select using (auth.uid() = id);
@@ -434,6 +448,9 @@ create policy "user_achievements_all_own" on public.user_achievements for all us
 drop policy if exists "activity_events_all_own" on public.activity_events;
 create policy "activity_events_all_own" on public.activity_events for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists "admin_users_select_own" on public.admin_users;
+create policy "admin_users_select_own" on public.admin_users for select using (auth.uid() = user_id);
+
 alter table public.achievements enable row level security;
 drop policy if exists "achievements_read_all" on public.achievements;
 create policy "achievements_read_all" on public.achievements for select using (true);
@@ -441,6 +458,20 @@ create policy "achievements_read_all" on public.achievements for select using (t
 alter table public.leaderboard_snapshots enable row level security;
 drop policy if exists "leaderboard_read_all" on public.leaderboard_snapshots;
 create policy "leaderboard_read_all" on public.leaderboard_snapshots for select using (true);
+
+drop policy if exists "auth_whitelist_select_super_admin" on public.auth_whitelist;
+create policy "auth_whitelist_select_super_admin"
+on public.auth_whitelist
+for select
+using (
+  exists (
+    select 1
+    from public.admin_users a
+    where a.user_id = auth.uid()
+      and a.is_active = true
+      and a.role = 'super_admin'
+  )
+);
 
 create or replace function public.whitelist_check_registration(email_input text)
 returns table (

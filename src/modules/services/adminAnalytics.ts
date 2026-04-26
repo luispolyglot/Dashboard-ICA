@@ -2,6 +2,11 @@ import { supabase } from '@/lib/supabase'
 
 export type AdminRole = 'admin' | 'super_admin'
 
+type AdminUserRow = {
+  role: AdminRole
+  is_active: boolean
+}
+
 export type AdminAnalyticsSummary = {
   totalUsers: number
   totalLexicards: number
@@ -55,22 +60,36 @@ function getErrorStatus(error: unknown): number | null {
 export async function checkAdminAccess(): Promise<boolean> {
   if (!supabase) return false
 
+  const role = await fetchAdminRole()
+  return role === 'admin' || role === 'super_admin'
+}
+
+export async function checkSuperAdminAccess(): Promise<boolean> {
+  if (!supabase) return false
+
+  const role = await fetchAdminRole()
+  return role === 'super_admin'
+}
+
+export async function fetchAdminRole(): Promise<AdminRole | null> {
+  if (!supabase) return null
+
   const {
     data: { user },
     error: authError,
   } = await supabase.auth.getUser()
 
-  if (authError || !user) return false
+  if (authError || !user) return null
 
   const { data, error } = await supabase
     .from('admin_users')
     .select('role, is_active')
     .eq('user_id', user.id)
     .eq('is_active', true)
-    .maybeSingle()
+    .maybeSingle<AdminUserRow>()
 
-  if (error || !data) return false
-  return data.role === 'admin' || data.role === 'super_admin'
+  if (error || !data) return null
+  return data.role
 }
 
 export async function fetchAdminAnalytics(): Promise<AdminAnalyticsPayload> {

@@ -99,6 +99,7 @@ type PhraseEventParams = {
   wordsAdded: number
   targetLang: string
   nativeLang: string
+  source?: 'generated' | 'manual'
 }
 
 export async function recordPhraseGeneratedEvent(
@@ -118,7 +119,10 @@ export async function recordPhraseGeneratedEvent(
     source_words: params.words,
     generated_phrase: params.phrase,
     translation: params.translation,
-    model: import.meta.env.VITE_ANTHROPIC_MODEL || null,
+    model:
+      params.source === 'manual'
+        ? 'manual'
+        : import.meta.env.VITE_ANTHROPIC_MODEL || null,
     success: true,
     target_lang: params.targetLang,
     native_lang: params.nativeLang,
@@ -153,6 +157,7 @@ export async function recordPhraseGeneratedEvent(
       day,
       word_count: params.words.length,
       activation_words_total: activationTotal,
+      phrase_source: params.source || 'generated',
     },
   })
   if (xpError) throw xpError

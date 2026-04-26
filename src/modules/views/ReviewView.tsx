@@ -52,23 +52,20 @@ export function ReviewView({
   const [currentIndex, setCurrentIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [correct, setCorrect] = useState(0)
-  const [answerCount, setAnswerCount] = useState(0)
-  const [retryCooldowns, setRetryCooldowns] = useState<Record<string, number>>(
-    {},
-  )
+  const [answeredIds, setAnsweredIds] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
   const [finishing, setFinishing] = useState(false)
   const [completed, setCompleted] = useState(false)
+  const [completedByGoal, setCompletedByGoal] = useState(false)
   const [showExample, setShowExample] = useState(false)
   const [showExampleTranslation, setShowExampleTranslation] = useState(false)
 
-  const pickNextIndex = (
+  const pickNextUnansweredIndex = (
     cardsToShow: Lexicard[],
+    answered: Set<string>,
     startIndex: number,
-    currentAnswerCount: number,
-    cooldownMap: Record<string, number>,
   ): number => {
-    if (cardsToShow.length === 0) return 0
+    if (cardsToShow.length === 0) return -1
 
     const normalizedStart =
       ((startIndex % cardsToShow.length) + cardsToShow.length) %
@@ -77,13 +74,12 @@ export function ReviewView({
     for (let offset = 0; offset < cardsToShow.length; offset += 1) {
       const candidateIndex = (normalizedStart + offset) % cardsToShow.length
       const candidate = cardsToShow[candidateIndex]
-      const blockedUntil = cooldownMap[candidate.id] ?? 0
-      if (blockedUntil <= currentAnswerCount) {
+      if (!answered.has(candidate.id)) {
         return candidateIndex
       }
     }
 
-    return normalizedStart
+    return -1
   }
 
   useEffect(() => {
@@ -95,6 +91,7 @@ export function ReviewView({
 
   useEffect(() => {
     setShowExample(false)
+    setShowExampleTranslation(false)
   }, [currentIndex, flipped])
 
   useEffect(() => {
@@ -112,59 +109,42 @@ export function ReviewView({
     stopTTS()
     setFlipped(false)
     setShowExample(false)
+    setShowExampleTranslation(false)
 
     const updated = updateCardAfterReview(currentCard, knew, reviewSession)
     const nextCards = cards.map((card) =>
       card.id === updated.id ? updated : card,
     )
+    const nextAnsweredIds = new Set(answeredIds)
+    nextAnsweredIds.add(currentCard.id)
 
     const nextCorrect = knew ? correct + 1 : correct
-    const nextAnswerCount = answerCount + 1
     const reachedGoal = nextCorrect >= GOAL
 
-    const nextRetryCooldowns = {
-      ...retryCooldowns,
-      ...(knew
-        ? {}
-        : {
-            [updated.id]: nextAnswerCount + 2,
-          }),
-    }
+    const reordered = sortByPriority(nextCards, reviewSession)
+    const updatedCardIndex = reordered.findIndex((card) => card.id === updated.id)
+    const nextStartIndex =
+      updatedCardIndex >= 0
+        ? (updatedCardIndex + 1) % Math.max(reordered.length, 1)
+        : currentIndex % Math.max(reordered.length, 1)
 
-    if (reachedGoal) {
+    const nextIndex = reachedGoal
+      ? -1
+      : pickNextUnansweredIndex(reordered, nextAnsweredIds, nextStartIndex)
+    const exhaustedRound = !reachedGoal && nextIndex === -1
+
+    if (reachedGoal || exhaustedRound) {
       setFinishing(true)
     }
 
     setCorrect(nextCorrect)
-    setAnswerCount(nextAnswerCount)
-    setRetryCooldowns(nextRetryCooldowns)
+    setAnsweredIds(nextAnsweredIds)
+    setSorted(reordered)
 
     setCards(nextCards)
 
-    if (nextCorrect < GOAL) {
-      const reordered = sortByPriority(nextCards, reviewSession)
-      setSorted(reordered)
-
-      if (reordered.length > 0) {
-        const updatedCardIndex = reordered.findIndex(
-          (card) => card.id === updated.id,
-        )
-        const nextStartIndex =
-          updatedCardIndex >= 0
-            ? (updatedCardIndex + 1) % reordered.length
-            : currentIndex % reordered.length
-
-        setCurrentIndex(
-          pickNextIndex(
-            reordered,
-            nextStartIndex,
-            nextAnswerCount,
-            nextRetryCooldowns,
-          ),
-        )
-      } else {
-        setCurrentIndex(0)
-      }
+    if (!reachedGoal && !exhaustedRound) {
+      setCurrentIndex(nextIndex)
     }
 
     try {
@@ -176,7 +156,7 @@ export function ReviewView({
       })
       await onReviewAnswered(knew)
 
-      if (reachedGoal) {
+      if (reachedGoal || exhaustedRound) {
         const dayKey = todayKey()
         if (!completedDays.includes(dayKey)) {
           const nextCompletedDays = [...completedDays, dayKey]
@@ -184,6 +164,7 @@ export function ReviewView({
           await saveData('dashboard-ICA-completed', nextCompletedDays)
         }
 
+        setCompletedByGoal(reachedGoal)
         setCompleted(true)
       }
     } finally {
@@ -214,8 +195,9 @@ export function ReviewView({
           ¡Objetivo cumplido!
         </h2>
         <p className='mb-3 max-w-sm text-sm leading-relaxed text-muted-foreground'>
-          Has acertado {GOAL} flashcards. ¡Racha de {streak} día
-          {streak !== 1 ? 's' : ''}! 🔥
+          {completedByGoal
+            ? `Has acertado ${GOAL} flashcards. ¡Racha de ${streak} día${streak !== 1 ? 's' : ''}! 🔥`
+            : `Terminaste la ronda sin repetir palabras. Acertaste ${correct} de ${answeredIds.size} tarjetas.`}
         </p>
         <ProgressBar correct={GOAL} />
         <div className='mt-4 flex flex-wrap justify-center gap-2'>
@@ -223,10 +205,13 @@ export function ReviewView({
             type='button'
             onClick={() => {
               setCorrect(0)
-              setAnswerCount(0)
-              setRetryCooldowns({})
+              setAnsweredIds(new Set())
               setCompleted(false)
+              setCompletedByGoal(false)
               setCurrentIndex(0)
+              setFlipped(false)
+              setShowExample(false)
+              setShowExampleTranslation(false)
               setSorted(sortByPriority(cards, reviewSession))
               startReviewSession().catch(() => undefined)
             }}

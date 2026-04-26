@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ComponentType } from 'react'
 import { CopyIcon } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -47,10 +47,15 @@ export function PhraseView({
   LevelBadge,
 }: PhraseViewProps) {
   const [wordCount, setWordCount] = useState(5)
-  const [mode, setMode] = useState<'automatic' | 'manual'>('automatic')
+  const [mode, setMode] = useState<'automatic' | 'manual' | 'manualPhrase'>(
+    'automatic',
+  )
   const [automaticSelectedIds, setAutomaticSelectedIds] = useState<string[]>([])
   const [manualSelectedIds, setManualSelectedIds] = useState<string[]>([])
   const [manualQuery, setManualQuery] = useState('')
+  const [manualPhraseTarget, setManualPhraseTarget] = useState('')
+  const [manualPhraseNative, setManualPhraseNative] = useState('')
+  const [manualPhraseApproved, setManualPhraseApproved] = useState(false)
   const [result, setResult] = useState<ActivationPhraseResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [wordUsageCounts, setWordUsageCounts] = useState<
@@ -75,12 +80,60 @@ export function PhraseView({
     )
   }, [cards])
 
-  const selectedWords =
-    mode === 'manual'
-      ? allWords.filter((word) => manualSelectedIds.includes(word.id))
-      : automaticPool.filter((word) => automaticSelectedIds.includes(word.id))
-
   const minWordsRequired = 5
+
+  const normalizeText = (value: string): string =>
+    value
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\p{L}\p{N}\s'-]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  const escapeRegex = (value: string): string =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+  const includesAsWholeWord = (phrase: string, value: string): boolean => {
+    if (!value) return false
+    const regex = new RegExp(`(^|\\s)${escapeRegex(value)}(?=\\s|$)`, 'u')
+    return regex.test(phrase)
+  }
+
+  const manualDetectedWords = useMemo(() => {
+    if (!manualPhraseTarget.trim() && !manualPhraseNative.trim()) return []
+
+    const normalizedTargetPhrase = normalizeText(manualPhraseTarget)
+    const normalizedNativePhrase = normalizeText(manualPhraseNative)
+
+    return allWords.filter((word) => {
+      const targetToken = normalizeText(word.target)
+      const nativeToken = normalizeText(word.native)
+
+      if (!targetToken && !nativeToken) return false
+
+      const matchesTarget = targetToken
+        ? targetToken.length > 1
+          ? includesAsWholeWord(normalizedTargetPhrase, targetToken)
+          : normalizedTargetPhrase.includes(targetToken)
+        : false
+
+      const matchesNative = nativeToken
+        ? nativeToken.length > 1
+          ? includesAsWholeWord(normalizedNativePhrase, nativeToken)
+          : normalizedNativePhrase.includes(nativeToken)
+        : false
+
+      return matchesTarget || matchesNative
+    })
+  }, [allWords, manualPhraseNative, manualPhraseTarget])
+
+  const selectedWords =
+    mode === 'manualPhrase'
+      ? manualDetectedWords
+      : mode === 'manual'
+        ? allWords.filter((word) => manualSelectedIds.includes(word.id))
+        : automaticPool.filter((word) => automaticSelectedIds.includes(word.id))
 
   useEffect(() => {
     let active = true
@@ -141,20 +194,38 @@ export function PhraseView({
   }
 
   const handleGenerate = async (): Promise<void> => {
+    if (
+      mode === 'manualPhrase' &&
+      (!manualPhraseTarget.trim() || !manualPhraseNative.trim())
+    ) {
+      return
+    }
     if (selectedWords.length < minWordsRequired) return
+
     setLoading(true)
     setResult(null)
-    const response = await fetchActivationPhrase(
-      selectedWords,
-      config.targetLang,
-      config.nativeLang,
-      level,
-    )
-    setResult(response)
-    setLoading(false)
-    if (response) {
-      const progress = await onPhraseGenerated()
-      try {
+    setManualPhraseApproved(false)
+
+    try {
+      let response: ActivationPhraseResult | null = null
+      if (mode === 'manualPhrase') {
+        response = {
+          phrase: manualPhraseTarget.trim(),
+          translation: manualPhraseNative.trim(),
+          words_used: selectedWords.map((word) => word.target),
+        }
+      } else {
+        response = await fetchActivationPhrase(
+          selectedWords,
+          config.targetLang,
+          config.nativeLang,
+          level,
+        )
+      }
+
+      setResult(response)
+      if (response) {
+        const progress = await onPhraseGenerated()
         const activationWordsTotal = await recordPhraseGeneratedEvent({
           wordIds: selectedWords.map((word) => word.id),
           words: selectedWords.map((word) => word.target),
@@ -163,6 +234,7 @@ export function PhraseView({
           wordsAdded: progress.wordsAdded,
           targetLang: config.targetLang,
           nativeLang: config.nativeLang,
+          source: mode === 'manualPhrase' ? 'manual' : 'generated',
         })
         if (typeof activationWordsTotal === 'number') {
           onActivationWordsTotalChange(activationWordsTotal)
@@ -174,13 +246,36 @@ export function PhraseView({
           })
           return next
         })
-      } catch (error) {
-        console.error(error)
+        if (mode === 'manualPhrase') {
+          setManualPhraseApproved(true)
+        }
       }
+    } catch (error) {
+      console.error(error)
+    } finally {
+      setLoading(false)
     }
   }
 
+  const resetManualPhraseFlow = (): void => {
+    setManualPhraseTarget('')
+    setManualPhraseNative('')
+    setManualPhraseApproved(false)
+    setResult(null)
+    setResultCopied(false)
+  }
+
+  const handlePrimaryAction = (): void => {
+    if (mode === 'manualPhrase' && manualPhraseApproved) {
+      resetManualPhraseFlow()
+      return
+    }
+    void handleGenerate()
+  }
+
   const removeSelectedWord = (id: string): void => {
+    if (mode === 'manualPhrase') return
+
     if (mode === 'manual') {
       setManualSelectedIds((prev) => prev.filter((item) => item !== id))
       return
@@ -229,11 +324,14 @@ export function PhraseView({
       <div className='mb-6'>
         <Tabs
           value={mode}
-          onValueChange={(value) => setMode(value as 'automatic' | 'manual')}
+          onValueChange={(value) =>
+            setMode(value as 'automatic' | 'manual' | 'manualPhrase')
+          }
         >
-          <TabsList className='grid w-full grid-cols-2'>
+          <TabsList className='grid w-full grid-cols-3'>
             <TabsTrigger value='automatic'>Automática</TabsTrigger>
-            <TabsTrigger value='manual'>Manual</TabsTrigger>
+            <TabsTrigger value='manual'>Palabras manual</TabsTrigger>
+            <TabsTrigger value='manualPhrase'>Frase manual</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -312,9 +410,56 @@ export function PhraseView({
         </div>
       )}
 
+      {mode === 'manualPhrase' && (
+        <div className='mb-6 rounded-xl border border-border bg-muted/30 p-3.5'>
+          <label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
+            Escribe tu frase manual en ambos idiomas
+          </label>
+
+          <div className='space-y-3'>
+            <div>
+              <Label className='mb-1 block text-xs text-muted-foreground'>
+                {config.targetLang}
+              </Label>
+              <textarea
+                value={manualPhraseTarget}
+                onChange={(event) => {
+                  setManualPhraseApproved(false)
+                  setManualPhraseTarget(event.target.value)
+                }}
+                placeholder={`Escribe la frase en ${config.targetLang}...`}
+                className='min-h-[88px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
+              />
+            </div>
+
+            <div>
+              <Label className='mb-1 block text-xs text-muted-foreground'>
+                {config.nativeLang}
+              </Label>
+              <textarea
+                value={manualPhraseNative}
+                onChange={(event) => {
+                  setManualPhraseApproved(false)
+                  setManualPhraseNative(event.target.value)
+                }}
+                placeholder={`Escribe la frase en ${config.nativeLang}...`}
+                className='min-h-[88px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
+              />
+            </div>
+          </div>
+
+          <p className='mt-3 text-[11px] text-muted-foreground'>
+            Detectadas automáticamente: {manualDetectedWords.length}. Se aprueba con
+            mínimo {minWordsRequired} palabras ICA.
+          </p>
+        </div>
+      )}
+
       <div className='mb-6'>
         <label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
-          Palabras seleccionadas
+          {mode === 'manualPhrase'
+            ? 'Palabras ICA detectadas'
+            : 'Palabras seleccionadas'}
         </label>
         <div className='flex flex-wrap gap-1.5'>
           {selectedWords.map((word) => {
@@ -331,14 +476,16 @@ export function PhraseView({
                 <span className='text-xs text-muted-foreground'>
                   ({word.native})
                 </span>
-                <Button
-                  type='button'
-                  onClick={() => removeSelectedWord(word.id)}
-                  variant='outline'
-                  size='xs'
-                >
-                  x
-                </Button>
+                {mode === 'manual' && (
+                  <Button
+                    type='button'
+                    onClick={() => removeSelectedWord(word.id)}
+                    variant='outline'
+                    size='xs'
+                  >
+                    x
+                  </Button>
+                )}
               </div>
             )
           })}
@@ -347,17 +494,29 @@ export function PhraseView({
 
       <Button
         type='button'
-        onClick={handleGenerate}
-        disabled={loading || selectedWords.length < minWordsRequired}
+        onClick={handlePrimaryAction}
+        disabled={
+          loading ||
+          (mode !== 'manualPhrase' && selectedWords.length < minWordsRequired) ||
+          (mode === 'manualPhrase' &&
+            !manualPhraseApproved &&
+            (selectedWords.length < minWordsRequired ||
+              !manualPhraseTarget.trim() ||
+              !manualPhraseNative.trim()))
+        }
         className='h-11 w-full gap-2 text-base font-bold'
       >
         {loading ? (
           <>
             <span className='inline-block h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground border-t-foreground' />
-            Generando {level}...
+            {mode === 'manualPhrase' ? 'Registrando frase...' : `Generando ${level}...`}
           </>
         ) : (
-          `⚡ Generar Frase · ${level}`
+          mode === 'manualPhrase'
+            ? manualPhraseApproved
+              ? '🔄 Generar otra frase manual'
+              : `✅ Aprobar frase manual · ${selectedWords.length}/${minWordsRequired}`
+            : `⚡ Generar Frase · ${level}`
         )}
       </Button>
 
@@ -428,7 +587,7 @@ export function PhraseView({
         </article>
       )}
 
-      {result && (
+      {result && mode !== 'manualPhrase' && (
         <Button
           type='button'
           onClick={handleGenerate}
