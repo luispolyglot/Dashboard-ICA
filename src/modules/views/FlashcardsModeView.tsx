@@ -14,6 +14,7 @@ export function FlashcardsModeView({
   reviewCorrectToday,
   onStartMode,
 }: FlashcardsModeViewProps) {
+  const minWordsPerFrequencyMode = 10
   const roundSize: number = REVIEW_ROUND_SIZE
   const flashcardsLiteral = roundSize === 1 ? 'flashcard' : 'flashcards'
 
@@ -51,8 +52,13 @@ export function FlashcardsModeView({
         <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-3 pb-20 md:pb-0'>
           {REVIEW_MODE_OPTIONS.map((mode) => {
             const count = countsByMode[mode.key]
-            const disabled = count === 0
+            const requiresMinimum = mode.key !== 'mixed'
+            const disabled = requiresMinimum
+              ? count < minWordsPerFrequencyMode
+              : count === 0
             const wordsLiteral = count === 1 ? 'palabra' : 'palabras'
+            const missing = Math.max(minWordsPerFrequencyMode - count, 0)
+            const missingLiteral = missing === 1 ? 'palabra' : 'palabras'
 
             return (
               <button
@@ -80,7 +86,13 @@ export function FlashcardsModeView({
                     disabled && 'font-semibold text-red-600 dark:text-red-300',
                   )}
                 >
-                  {disabled ? (
+                  {disabled && requiresMinimum ? (
+                    <>
+                      Necesitas <strong>{minWordsPerFrequencyMode}</strong>{' '}
+                      palabras ICA de esta frecuencia. Tienes{' '}
+                      <strong>{count}</strong> ({missing} {missingLiteral} mas).
+                    </>
+                  ) : disabled ? (
                     'No posees palabras ICA de esta frecuencia.'
                   ) : mode.key === 'mixed' ? (
                     <>
