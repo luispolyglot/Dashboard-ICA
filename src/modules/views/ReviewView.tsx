@@ -2,30 +2,38 @@ import { useEffect, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { GOAL, IMPORTANCE_ORDER, getImportance } from '../constants'
+import {
+  IMPORTANCE_ORDER,
+  REVIEW_ROUND_SIZE,
+  REVIEW_MODE_OPTIONS,
+  getImportance,
+} from '../constants'
+import { GlobalReviewGoalBadge } from '../components/GlobalReviewGoalBadge'
 import { ProgressBar } from '../components/ProgressBar'
 import { SpeakButton } from '../components/SpeakButton'
 import { saveData } from '../services/storage'
 import { recordReviewEvent } from '../services/reviewTracking'
 import { stopTTS } from '../services/tts'
 import {
-  getStreak,
-  sortByPriority,
+  buildReviewRound,
   todayKey,
   updateCardAfterReview,
 } from '../utils'
-import type { AppConfig, Lexicard } from '../types'
+import type { AppConfig, Lexicard, ReviewMode } from '../types'
 import { EyeIcon, EyeOffIcon } from 'lucide-react'
 
 type ReviewViewProps = {
   cards: Lexicard[]
   setCards: Dispatch<SetStateAction<Lexicard[]>>
   config: AppConfig
+  mode: ReviewMode
+  globalCorrectToday: number
   completedDays: string[]
   setCompletedDays: Dispatch<SetStateAction<string[]>>
   reviewSession: number
   startReviewSession: () => Promise<void>
   onReviewAnswered: (knew: boolean) => Promise<void>
+  onChooseMode: () => void
   onFinishPractice: () => void
 }
 
@@ -41,53 +49,74 @@ export function ReviewView({
   cards,
   setCards,
   config,
+  mode,
+  globalCorrectToday,
   completedDays,
   setCompletedDays,
   reviewSession,
   startReviewSession,
   onReviewAnswered,
+  onChooseMode,
   onFinishPractice,
 }: ReviewViewProps) {
-  const [sorted, setSorted] = useState<Lexicard[]>([])
+  const [roundCards, setRoundCards] = useState<Lexicard[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [correct, setCorrect] = useState(0)
-  const [answeredIds, setAnsweredIds] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
   const [finishing, setFinishing] = useState(false)
   const [completed, setCompleted] = useState(false)
-  const [completedByGoal, setCompletedByGoal] = useState(false)
   const [showExample, setShowExample] = useState(false)
   const [showExampleTranslation, setShowExampleTranslation] = useState(false)
 
-  const pickNextUnansweredIndex = (
-    cardsToShow: Lexicard[],
-    answered: Set<string>,
-    startIndex: number,
-  ): number => {
-    if (cardsToShow.length === 0) return -1
+  const activeMode =
+    REVIEW_MODE_OPTIONS.find((option) => option.key === mode) ||
+    REVIEW_MODE_OPTIONS[0]
 
-    const normalizedStart =
-      ((startIndex % cardsToShow.length) + cardsToShow.length) %
-      cardsToShow.length
-
-    for (let offset = 0; offset < cardsToShow.length; offset += 1) {
-      const candidateIndex = (normalizedStart + offset) % cardsToShow.length
-      const candidate = cardsToShow[candidateIndex]
-      if (!answered.has(candidate.id)) {
-        return candidateIndex
+  const roundFeedback = (() => {
+    if (correct <= 2) {
+      return {
+        icon: '🧱',
+        title: 'Base en construccion',
+        message: 'Hoy tocaba sembrar. Lo importante es seguir, no hacerlo perfecto.',
       }
     }
 
-    return -1
-  }
+    if (correct <= 5) {
+      return {
+        icon: '🌱',
+        title: 'Buen avance',
+        message: 'Ya hay progreso real. En la siguiente ronda esto sube rapido.',
+      }
+    }
+
+    if (correct <= 8) {
+      return {
+        icon: '🔥',
+        title: 'Muy buena ronda',
+        message: 'Estas consolidando vocabulario. Te queda muy poco para dominarla.',
+      }
+    }
+
+    return {
+      icon: '🚀',
+      title: 'Ronda excelente',
+      message: 'Nivel altisimo. Estas en modo imparable.',
+    }
+  })()
 
   useEffect(() => {
-    setSorted(sortByPriority(cards, reviewSession))
+    setRoundCards(buildReviewRound(cards, mode, REVIEW_ROUND_SIZE))
+    setCurrentIndex(0)
+    setCorrect(0)
+    setCompleted(false)
+    setFlipped(false)
+    setShowExample(false)
+    setShowExampleTranslation(false)
     if (window.speechSynthesis) {
       window.speechSynthesis.getVoices()
     }
-  }, [cards, reviewSession])
+  }, [mode, reviewSession])
 
   useEffect(() => {
     setShowExample(false)
@@ -98,7 +127,8 @@ export function ReviewView({
     startReviewSession().catch(() => undefined)
   }, [startReviewSession])
 
-  const currentCard = sorted[currentIndex]
+  const currentCard = roundCards[currentIndex]
+  const roundTotal = Math.max(roundCards.length, 1)
   const importance = currentCard ? getImportance(currentCard.importance) : null
   const isFailed = currentCard ? (currentCard.streak || 0) === 0 : false
 
@@ -115,36 +145,18 @@ export function ReviewView({
     const nextCards = cards.map((card) =>
       card.id === updated.id ? updated : card,
     )
-    const nextAnsweredIds = new Set(answeredIds)
-    nextAnsweredIds.add(currentCard.id)
-
     const nextCorrect = knew ? correct + 1 : correct
-    const reachedGoal = nextCorrect >= GOAL
+    const isLastCard = currentIndex >= roundCards.length - 1
 
-    const reordered = sortByPriority(nextCards, reviewSession)
-    const updatedCardIndex = reordered.findIndex((card) => card.id === updated.id)
-    const nextStartIndex =
-      updatedCardIndex >= 0
-        ? (updatedCardIndex + 1) % Math.max(reordered.length, 1)
-        : currentIndex % Math.max(reordered.length, 1)
-
-    const nextIndex = reachedGoal
-      ? -1
-      : pickNextUnansweredIndex(reordered, nextAnsweredIds, nextStartIndex)
-    const exhaustedRound = !reachedGoal && nextIndex === -1
-
-    if (reachedGoal || exhaustedRound) {
+    if (isLastCard) {
       setFinishing(true)
     }
 
     setCorrect(nextCorrect)
-    setAnsweredIds(nextAnsweredIds)
-    setSorted(reordered)
-
     setCards(nextCards)
 
-    if (!reachedGoal && !exhaustedRound) {
-      setCurrentIndex(nextIndex)
+    if (!isLastCard) {
+      setCurrentIndex((prev) => prev + 1)
     }
 
     try {
@@ -156,7 +168,7 @@ export function ReviewView({
       })
       await onReviewAnswered(knew)
 
-      if (reachedGoal || exhaustedRound) {
+      if (isLastCard) {
         const dayKey = todayKey()
         if (!completedDays.includes(dayKey)) {
           const nextCompletedDays = [...completedDays, dayKey]
@@ -164,7 +176,6 @@ export function ReviewView({
           await saveData('dashboard-ICA-completed', nextCompletedDays)
         }
 
-        setCompletedByGoal(reachedGoal)
         setCompleted(true)
       }
     } finally {
@@ -187,37 +198,44 @@ export function ReviewView({
   }
 
   if (completed) {
-    const streak = getStreak(completedDays)
     return (
       <section className='flex flex-1 flex-col items-center justify-center px-5 py-10 text-center'>
-        <div className='mb-4 text-7xl'>🏆</div>
+        <div className='mb-4 text-7xl'>{roundFeedback.icon}</div>
         <h2 className='mb-2 font-serif text-4xl font-bold'>
-          ¡Objetivo cumplido!
+          {roundFeedback.title}
         </h2>
         <p className='mb-3 max-w-sm text-sm leading-relaxed text-muted-foreground'>
-          {completedByGoal
-            ? `Has acertado ${GOAL} flashcards. ¡Racha de ${streak} día${streak !== 1 ? 's' : ''}! 🔥`
-            : `Terminaste la ronda sin repetir palabras. Acertaste ${correct} de ${answeredIds.size} tarjetas.`}
+          {roundFeedback.message}
         </p>
-        <ProgressBar correct={GOAL} />
+        <ProgressBar correct={correct} total={roundTotal} />
+        <div className='mt-3'>
+          <GlobalReviewGoalBadge correctToday={globalCorrectToday} />
+        </div>
         <div className='mt-4 flex flex-wrap justify-center gap-2'>
           <Button
             type='button'
             onClick={() => {
+              const nextRound = buildReviewRound(cards, mode, REVIEW_ROUND_SIZE)
               setCorrect(0)
-              setAnsweredIds(new Set())
               setCompleted(false)
-              setCompletedByGoal(false)
               setCurrentIndex(0)
               setFlipped(false)
               setShowExample(false)
               setShowExampleTranslation(false)
-              setSorted(sortByPriority(cards, reviewSession))
+              setRoundCards(nextRound)
               startReviewSession().catch(() => undefined)
             }}
             size='lg'
           >
-            Otra ronda
+            {`Otra ronda ${activeMode.title}`}
+          </Button>
+          <Button
+            type='button'
+            onClick={onChooseMode}
+            variant='outline'
+            size='lg'
+          >
+            Elegir otro modo
           </Button>
           <Button
             type='button'
@@ -253,11 +271,17 @@ export function ReviewView({
 
   return (
     <section className='flex flex-1 flex-col items-center justify-center px-5 py-8'>
-      <ProgressBar correct={correct} />
+      <div className='mb-3 flex w-full max-w-105 flex-wrap items-center justify-between gap-2'>
+        <div className='inline-flex items-center rounded-md bg-muted px-2 py-1 text-[11px] font-semibold text-muted-foreground'>
+          {activeMode.emoji} {activeMode.title}
+        </div>
+        <GlobalReviewGoalBadge correctToday={globalCorrectToday} />
+      </div>
+      <ProgressBar correct={correct} total={roundTotal} />
 
       <Card
         className='w-full max-w-105 cursor-pointer rounded-3xl border p-6 text-center'
-        onClick={() => !flipped && !busy && setFlipped(true)}
+        onClick={() => !flipped && setFlipped(true)}
       >
         <CardContent className='p-0'>
           <div className='mb-4 flex items-center justify-between'>
@@ -371,6 +395,7 @@ export function ReviewView({
             onClick={() => handleAnswer(false)}
             variant='destructive'
             className='h-11'
+            disabled={busy}
           >
             ✗ No la sabía
           </Button>
@@ -379,6 +404,7 @@ export function ReviewView({
             onClick={() => handleAnswer(true)}
             variant='default'
             className='h-11'
+            disabled={busy}
           >
             ✓ ¡La sabía!
           </Button>
@@ -387,11 +413,12 @@ export function ReviewView({
 
       <div className='mt-6 w-full max-w-105'>
         <div className='mb-2 text-center text-[10px] uppercase tracking-wider text-muted-foreground'>
-          Cola de prioridad
+          Progreso de la ronda
         </div>
         <div className='flex flex-wrap justify-center gap-1'>
-          {sorted.slice(0, 14).map((card, index) => {
+          {roundCards.slice(0, 14).map((card, index) => {
             const active = index === currentIndex
+            const answered = index < currentIndex
             return (
               <span
                 key={`${card.id}-${index}`}
@@ -399,13 +426,13 @@ export function ReviewView({
                   active
                     ? 'h-3.5 w-3.5 border-2 border-foreground'
                     : 'h-2.5 w-2.5'
-                } ${IMPORTANCE_DOT[card.importance]} ${(card.streak || 0) === 0 ? 'opacity-100' : 'opacity-40'}`}
+                } ${IMPORTANCE_DOT[card.importance]} ${answered ? 'opacity-100' : 'opacity-45'}`}
               />
             )
           })}
-          {sorted.length > 14 && (
+          {roundCards.length > 14 && (
             <span className='self-center text-[10px] text-muted-foreground'>
-              +{sorted.length - 14}
+              +{roundCards.length - 14}
             </span>
           )}
         </div>

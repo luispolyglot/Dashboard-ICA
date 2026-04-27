@@ -1,5 +1,5 @@
 import { IMPORTANCE_ORDER } from './constants'
-import type { Lexicard } from './types'
+import type { ImportanceKey, Lexicard, ReviewMode } from './types'
 
 export function generateId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -100,6 +100,141 @@ export function sortByPriority(cards: Lexicard[], currentSession: number): Lexic
 
 export function sortChronological(cards: Lexicard[]): Lexicard[] {
   return [...cards].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+}
+
+function getCardWeight(card: Lexicard, mode: ReviewMode): number {
+  const streak = card.streak || 0
+  const interval = card.interval || 1
+  const isNew = card.lastReviewed === null
+  const isFailed = streak === 0 && card.lastReviewed !== null
+
+  const baseByImportance: Record<ImportanceKey, number> = {
+    vital: 1.2,
+    frequent: 1,
+    occasional: 0.85,
+    rare: 0.72,
+    irrelevant: 0.58,
+  }
+
+  const streakFactor = 1 / (1 + streak * 0.55)
+  const intervalFactor = 1 / (1 + Math.max(0, interval - 1) * 0.08)
+  const noveltyFactor = isNew ? 1.25 : 1
+  const failedFactor = isFailed ? 1.35 : 1
+  const modeBoost = mode !== 'mixed' && card.importance === mode ? 2.4 : 1
+
+  return Math.max(
+    0.03,
+    (baseByImportance[card.importance] ?? 0.5) *
+      streakFactor *
+      intervalFactor *
+      noveltyFactor *
+      failedFactor *
+      modeBoost,
+  )
+}
+
+function pickWeightedOne(cards: Lexicard[], mode: ReviewMode): Lexicard | null {
+  if (cards.length === 0) return null
+  const weighted = cards.map((card) => ({ card, weight: getCardWeight(card, mode) }))
+  const total = weighted.reduce((sum, item) => sum + item.weight, 0)
+  if (total <= 0) return weighted[Math.floor(Math.random() * weighted.length)].card
+
+  let target = Math.random() * total
+  for (const item of weighted) {
+    target -= item.weight
+    if (target <= 0) return item.card
+  }
+
+  return weighted[weighted.length - 1].card
+}
+
+function pickWeightedMany(
+  source: Lexicard[],
+  count: number,
+  mode: ReviewMode,
+  excludedIds: Set<string>,
+): Lexicard[] {
+  const selected: Lexicard[] = []
+  const localExcluded = new Set(excludedIds)
+
+  while (selected.length < count) {
+    const candidates = source.filter((card) => !localExcluded.has(card.id))
+    if (candidates.length === 0) break
+    const picked = pickWeightedOne(candidates, mode)
+    if (!picked) break
+    selected.push(picked)
+    localExcluded.add(picked.id)
+  }
+
+  return selected
+}
+
+function sortRoundByLearningPriority(cards: Lexicard[]): Lexicard[] {
+  return [...cards].sort((a, b) => {
+    const aNew = (a.streak || 0) === 0 && a.lastReviewed === null
+    const bNew = (b.streak || 0) === 0 && b.lastReviewed === null
+    if (aNew !== bNew) return aNew ? -1 : 1
+
+    const aStreak = a.streak || 0
+    const bStreak = b.streak || 0
+    if (aStreak !== bStreak) return aStreak - bStreak
+
+    return (a.lastReviewed || 0) - (b.lastReviewed || 0)
+  })
+}
+
+export function buildReviewRound(
+  cards: Lexicard[],
+  mode: ReviewMode,
+  roundSize: number,
+): Lexicard[] {
+  if (cards.length === 0 || roundSize <= 0) return []
+
+  const uniquePool = cards.filter(
+    (card, index, self) => self.findIndex((value) => value.id === card.id) === index,
+  )
+  const selected: Lexicard[] = []
+  const excluded = new Set<string>()
+
+  if (mode === 'mixed') {
+    const byImportance: Record<ImportanceKey, Lexicard[]> = {
+      vital: uniquePool.filter((card) => card.importance === 'vital'),
+      frequent: uniquePool.filter((card) => card.importance === 'frequent'),
+      occasional: uniquePool.filter((card) => card.importance === 'occasional'),
+      rare: uniquePool.filter((card) => card.importance === 'rare'),
+      irrelevant: uniquePool.filter((card) => card.importance === 'irrelevant'),
+    }
+
+    const quotas: Array<{ key: ImportanceKey; count: number }> = [
+      { key: 'vital', count: 4 },
+      { key: 'frequent', count: 3 },
+      { key: 'occasional', count: 2 },
+    ]
+
+    for (const quota of quotas) {
+      const picks = pickWeightedMany(byImportance[quota.key], quota.count, mode, excluded)
+      selected.push(...picks)
+      for (const card of picks) excluded.add(card.id)
+    }
+
+    const warmPool = [...byImportance.rare, ...byImportance.irrelevant]
+    const warmPick = pickWeightedMany(warmPool, 1, mode, excluded)
+    selected.push(...warmPick)
+    for (const card of warmPick) excluded.add(card.id)
+  } else {
+    const primary = uniquePool.filter((card) => card.importance === mode)
+    const primaryPicks = pickWeightedMany(primary, roundSize, mode, excluded)
+    selected.push(...primaryPicks)
+    for (const card of primaryPicks) excluded.add(card.id)
+    return sortRoundByLearningPriority(selected)
+  }
+
+  if (selected.length < roundSize) {
+    const fillers = pickWeightedMany(uniquePool, roundSize - selected.length, mode, excluded)
+    selected.push(...fillers)
+  }
+
+  return sortRoundByLearningPriority(selected)
 }
 
 export function updateCardAfterReview(

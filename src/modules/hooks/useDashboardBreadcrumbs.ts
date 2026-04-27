@@ -18,7 +18,14 @@ export function useDashboardBreadcrumbs(): BreadcrumbItem[] {
       return [{ href: '/', label: '✦ Dashboard ICA', current: true }]
     }
 
-    const label = DASHBOARD_LABELS[path] || path
+    const exactLabel = DASHBOARD_LABELS[path]
+    const dynamicLabel = exactLabel
+      ? null
+      : Object.entries(DASHBOARD_LABELS)
+          .sort((a, b) => b[0].length - a[0].length)
+          .find(([basePath]) => path.startsWith(`${basePath}/`))?.[1]
+
+    const label = exactLabel || dynamicLabel || path
     return [
       { href: '/', label: DASHBOARD_LABELS['/'], current: false },
       { href: path, label, current: true },
