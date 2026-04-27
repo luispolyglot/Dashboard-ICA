@@ -7,6 +7,7 @@ import {
   AnalyticsPage,
   ActivationPhrasePage,
   FlashcardsPage,
+  FlashcardsPlayPage,
   HomePage,
   ManageWhitelistPage,
   MyIcaWordsPage,
@@ -60,6 +61,7 @@ export function App() {
           <Route path='new-ica-words' element={<NewIcaWordsPage />} />
           <Route path='my-ica-words' element={<MyIcaWordsPage />} />
           <Route path='flashcards' element={<FlashcardsPage />} />
+          <Route path='flashcards/play/:mode' element={<FlashcardsPlayPage />} />
           <Route path='activation-phrase' element={<ActivationPhrasePage />} />
           <Route path='phrase-history' element={<PhraseHistoryPage />} />
           <Route path='profile' element={<ProfilePage />} />

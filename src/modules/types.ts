@@ -9,6 +9,14 @@ export type CEFRLevel = '0' | 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2'
 
 export type AppView = 'home' | 'add' | 'review' | 'manage' | 'phrase' | 'phrases'
 
+export type ReviewMode =
+  | 'mixed'
+  | 'vital'
+  | 'frequent'
+  | 'occasional'
+  | 'rare'
+  | 'irrelevant'
+
 export type CalendarTab = 'review' | 'creation'
 
 export interface ImportanceLevel {

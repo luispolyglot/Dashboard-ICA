@@ -4,6 +4,7 @@ import type {
   DailyProgressMap,
   ImportanceKey,
   ImportanceLevel,
+  ReviewMode,
 } from './types'
 
 export const IMPORTANCE_LEVELS: ImportanceLevel[] = [
@@ -41,7 +42,52 @@ export const LANG_CODES: Record<string, string> = {
 }
 
 export const GOAL = 10
+export const REVIEW_ROUND_SIZE = 10
 export const CREATION_WORDS_GOAL = 5
+
+export const REVIEW_MODE_OPTIONS: Array<{
+  key: ReviewMode
+  title: string
+  description: string
+  emoji: string
+}> = [
+  {
+    key: 'mixed',
+    title: 'Aleatorio',
+    description: 'Juega con tus palabras ICA de forma aleatoria.',
+    emoji: '🎲',
+  },
+  {
+    key: 'vital',
+    title: 'Vital',
+    description: 'Juega con tus palabras ICA de frecuencia vital.',
+    emoji: '🔵',
+  },
+  {
+    key: 'frequent',
+    title: 'Frecuente',
+    description: 'Juega con tus palabras ICA de frecuencia frecuente.',
+    emoji: '🟢',
+  },
+  {
+    key: 'occasional',
+    title: 'Ocasional',
+    description: 'Juega con tus palabras ICA de frecuencia ocasional.',
+    emoji: '🟡',
+  },
+  {
+    key: 'rare',
+    title: 'Raro',
+    description: 'Juega con tus palabras ICA de frecuencia rara.',
+    emoji: '🟠',
+  },
+  {
+    key: 'irrelevant',
+    title: 'Irrelevante',
+    description: 'Juega con tus palabras ICA de frecuencia irrelevante.',
+    emoji: '🔴',
+  },
+]
 
 export const IMPORTANCE_ORDER: Record<ImportanceKey, number> = {
   vital: 0,
