@@ -19,7 +19,19 @@ type CalendarModalProps = {
   activeTab: CalendarTab
 }
 
-type DayStatus = 'empty' | 'future' | 'missed' | 'completed'
+type DayStatus =
+  | 'empty'
+  | 'future'
+  | 'missed'
+  | 'completed'
+  | 'outside'
+  | 'outside-missed'
+  | 'outside-completed'
+
+type CalendarCell = {
+  day: number
+  monthOffset: -1 | 0 | 1
+}
 
 export function CalendarModal({
   completedDays,
@@ -40,9 +52,21 @@ export function CalendarModal({
   const todayStr = todayKey()
   const activeDays = tab === 'review' ? completedDays : creationDays
 
-  const cells: Array<number | null> = []
-  for (let i = 0; i < startDow; i++) cells.push(null)
-  for (let day = 1; day <= daysInMonth; day++) cells.push(day)
+  const cells: CalendarCell[] = []
+  const prevMonthDays = new Date(year, month, 0).getDate()
+
+  for (let i = startDow - 1; i >= 0; i--) {
+    cells.push({ day: prevMonthDays - i, monthOffset: -1 })
+  }
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    cells.push({ day, monthOffset: 0 })
+  }
+
+  const trailing = (7 - (cells.length % 7)) % 7
+  for (let i = 1; i <= trailing; i++) {
+    cells.push({ day: i, monthOffset: 1 })
+  }
 
   const isCurrentMonth =
     year === today.getFullYear() && month === today.getMonth()
@@ -74,8 +98,8 @@ export function CalendarModal({
           onValueChange={(value) => setTab(value as CalendarTab)}
         >
           <TabsList className='grid w-full grid-cols-2'>
-            <TabsTrigger value='creation'>✦ Racha ICA</TabsTrigger>
-            <TabsTrigger value='review'>🔥 Racha Flashcards</TabsTrigger>
+            <TabsTrigger value='creation'>🔥 Racha ICA</TabsTrigger>
+            <TabsTrigger value='review'>✦ Racha Flashcards</TabsTrigger>
           </TabsList>
         </Tabs>
 
@@ -116,14 +140,11 @@ export function CalendarModal({
         </div>
 
         <div className='grid grid-cols-7 gap-1'>
-          {cells.map((day, index) => {
-            if (day === null) return <div key={`empty-${index}`} />
-
-            const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+          {cells.map((cell) => {
+            const dayDate = new Date(year, month + cell.monthOffset, cell.day)
+            const key = `${dayDate.getFullYear()}-${String(dayDate.getMonth() + 1).padStart(2, '0')}-${String(dayDate.getDate()).padStart(2, '0')}`
             const isCompleted = activeDays.includes(key)
             const isToday = key === todayStr
-
-            const dayDate = new Date(year, month, day)
             const baselineToday = new Date(
               today.getFullYear(),
               today.getMonth(),
@@ -131,16 +152,28 @@ export function CalendarModal({
             )
             const isFuture = dayDate > baselineToday
             const isPast = dayDate < baselineToday
-            const status: DayStatus = isFuture
-              ? 'future'
-              : isCompleted
-                ? 'completed'
-                : isPast
-                  ? 'missed'
-                  : 'empty'
+            const status: DayStatus =
+              cell.monthOffset === -1
+                ? isCompleted
+                  ? 'outside-completed'
+                  : 'outside-missed'
+                : cell.monthOffset === 1
+                  ? 'outside'
+                  : isFuture
+                    ? 'future'
+                    : isCompleted
+                      ? 'completed'
+                      : isPast
+                        ? 'missed'
+                        : 'empty'
 
             return (
-              <DayCell key={key} day={day} status={status} isToday={isToday} />
+              <DayCell
+                key={key}
+                day={cell.day}
+                status={status}
+                isToday={isToday}
+              />
             )
           })}
         </div>
@@ -159,7 +192,8 @@ export function CalendarModal({
           <Stat
             label='Racha actual'
             value={getStreak(activeDays)}
-            valueClass='text-amber-500'
+            valueClass='text-slate-500 dark:text-slate-200'
+            icon={tab === 'creation' ? '🔥' : '✦'}
           />
         </div>
 
@@ -238,9 +272,15 @@ function DayCell({ day, status, isToday }: DayCellProps) {
       ? 'border-primary/50 bg-primary/10 text-primary'
       : status === 'missed'
         ? 'border-destructive/30 bg-destructive/10 text-destructive'
-        : status === 'future'
-          ? 'border-transparent bg-muted text-muted-foreground/60'
-          : 'border-border bg-background text-muted-foreground'
+        : status === 'outside-completed'
+          ? 'border-primary/25 bg-primary/10 text-primary opacity-60'
+          : status === 'outside-missed'
+            ? 'border-destructive/20 bg-destructive/10 text-destructive opacity-60'
+        : status === 'outside'
+          ? 'border-transparent bg-background/30 text-muted-foreground opacity-60'
+          : status === 'future'
+            ? 'border-transparent bg-muted text-muted-foreground/60'
+            : 'border-border bg-background text-muted-foreground'
 
   return (
     <div
@@ -258,12 +298,21 @@ type StatProps = {
   label: string
   value: number
   valueClass: string
+  icon?: string
 }
 
-function Stat({ label, value, valueClass }: StatProps) {
+function Stat({ label, value, valueClass, icon }: StatProps) {
   return (
-    <div className='text-center'>
-      <div className={`text-2xl font-bold ${valueClass}`}>{value}</div>
+    <div className='text-center flex flex-col justify-between'>
+      {icon ? (
+        <div
+          className={`text-2xl font-bold ${valueClass} flex items-center justify-center gap-1`}
+        >
+          {icon} {value}
+        </div>
+      ) : (
+        <div className={`text-2xl font-bold ${valueClass}`}>{value}</div>
+      )}
       <div className='text-[11px] text-muted-foreground'>{label}</div>
     </div>
   )

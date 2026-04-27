@@ -119,157 +119,161 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
   }
 
   return (
-    <section className='mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-5 py-8'>
-      <h2 className='mb-1 font-serif text-3xl font-bold'>
+    <section className='mx-auto flex h-auto w-full max-w-3xl flex-1 flex-col px-5 py-8 lg:h-full lg:min-h-0'>
+      <h2 className='mb-0 lg:mb-1 font-serif text-2xl lg:text-3xl font-bold'>
         ⚡ Mis Frases de Activación
       </h2>
-      <p className='mb-6 text-sm text-muted-foreground'>
+      <p className='mb-4 lg:mb-6 text-sm text-muted-foreground'>
         Historial con frase, traducción, palabras usadas y metadata.
       </p>
 
-      <div className='mb-5 relative'>
-        <span className='pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground'>
-          🔎
-        </span>
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder='Buscar por palabra o frase...'
-          className='pl-9'
-        />
+      <div className='sticky top-0 z-20 -mx-5 mb-5 border-b border-border/60 bg-background/95 px-5 pt-1 pb-3 backdrop-blur lg:static lg:z-auto lg:m-0 lg:mb-5 lg:border-none lg:bg-transparent lg:px-0 lg:pt-0 lg:pb-0 lg:backdrop-blur-none'>
+        <div className='relative'>
+          <span className='pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground'>
+            🔎
+          </span>
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder='Buscar por palabra o frase...'
+            className='pl-9'
+          />
+        </div>
       </div>
 
-      {loading && (
-        <p className='text-sm text-muted-foreground'>Cargando historial...</p>
-      )}
-      {error && <p className='text-sm text-red-400'>{error}</p>}
+      <div className='min-h-0 flex-1 overflow-visible lg:overflow-y-auto lg:pr-1'>
+        {loading && (
+          <p className='text-sm text-muted-foreground'>Cargando historial...</p>
+        )}
+        {error && <p className='text-sm text-red-400'>{error}</p>}
 
-      {!loading && !error && visibleItems.length === 0 && (
-        <p className='text-sm text-muted-foreground'>
-          Todavía no generaste frases.
-        </p>
-      )}
+        {!loading && !error && visibleItems.length === 0 && (
+          <p className='text-sm text-muted-foreground'>
+            Todavía no generaste frases.
+          </p>
+        )}
 
-      <div className='space-y-3'>
-        {visibleItems.map((item) => (
-          <Card key={item.id} className='rounded-2xl'>
-            <CardContent>
-              <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
-                <span className='text-xs text-muted-foreground'>
-                  {new Date(item.created_at).toLocaleString('es-ES', {
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </span>
-              </div>
-
-              <p className='font-serif text-xl font-bold'>
-                {highlightMatch(
-                  item.generated_phrase || 'Sin frase registrada',
-                  query,
-                )}
-              </p>
-              {item.generated_phrase && (
-                <RomanizationHint
-                  text={item.generated_phrase}
-                  language={targetLang}
-                />
-              )}
-              <p className='mt-2 text-sm text-muted-foreground'>
-                {highlightMatch(
-                  item.translation || 'Sin traducción registrada',
-                  query,
-                )}
-              </p>
-
-              {item.generated_phrase && (
-                <div className='mt-3'>
-                  <SpeakButton
-                    text={item.generated_phrase}
-                    langName={targetLang}
-                    color='#3B82F6'
-                  />
+        <div className='space-y-3'>
+          {visibleItems.map((item) => (
+            <Card key={item.id} className='rounded-2xl'>
+              <CardContent>
+                <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
+                  <span className='text-xs text-muted-foreground'>
+                    {new Date(item.created_at).toLocaleString('es-ES', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
                 </div>
-              )}
 
-              <div className='mt-3 flex flex-wrap gap-1.5'>
-                {(item.source_words || []).map((word) => (
-                  <span
-                    key={`${item.id}-${word}`}
-                    className='rounded-md bg-primary/30 px-2.5 py-0.5 text-xs font-semibold text-white'
-                  >
-                    {highlightMatch(word, query)}
-                  </span>
-                ))}
-              </div>
+                <p className='font-serif text-xl font-bold'>
+                  {highlightMatch(
+                    item.generated_phrase || 'Sin frase registrada',
+                    query,
+                  )}
+                </p>
+                {item.generated_phrase && (
+                  <RomanizationHint
+                    text={item.generated_phrase}
+                    language={targetLang}
+                  />
+                )}
+                <p className='mt-2 text-sm text-muted-foreground'>
+                  {highlightMatch(
+                    item.translation || 'Sin traducción registrada',
+                    query,
+                  )}
+                </p>
 
-              {confirmDeleteId === item.id ? (
-                <div className='mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-red-500/20 pt-3'>
-                  <span className='text-sm text-red-400'>
-                    ¿Eliminar esta frase?
-                  </span>
-                  <div className='flex gap-2'>
+                {item.generated_phrase && (
+                  <div className='mt-3'>
+                    <SpeakButton
+                      text={item.generated_phrase}
+                      langName={targetLang}
+                      color='#3B82F6'
+                    />
+                  </div>
+                )}
+
+                <div className='mt-3 flex flex-wrap gap-1.5'>
+                  {(item.source_words || []).map((word) => (
+                    <span
+                      key={`${item.id}-${word}`}
+                      className='rounded-md bg-primary/30 px-2.5 py-0.5 text-xs font-semibold text-white'
+                    >
+                      {highlightMatch(word, query)}
+                    </span>
+                  ))}
+                </div>
+
+                {confirmDeleteId === item.id ? (
+                  <div className='mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-red-500/20 pt-3'>
+                    <span className='text-sm text-red-400'>
+                      ¿Eliminar esta frase?
+                    </span>
+                    <div className='flex gap-2'>
+                      <Button
+                        type='button'
+                        onClick={() => handleDelete(item.id)}
+                        disabled={deletingId === item.id}
+                        variant='destructive'
+                        size='sm'
+                      >
+                        {deletingId === item.id
+                          ? 'Eliminando...'
+                          : 'Sí, eliminar'}
+                      </Button>
+                      <Button
+                        type='button'
+                        onClick={() => setConfirmDeleteId(null)}
+                        disabled={deletingId === item.id}
+                        variant='outline'
+                        size='sm'
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className='mt-4 flex flex-wrap gap-2 border-t border-border pt-3'>
                     <Button
                       type='button'
-                      onClick={() => handleDelete(item.id)}
-                      disabled={deletingId === item.id}
+                      onClick={() =>
+                        void handleCopyPhrase(
+                          item.id,
+                          item.generated_phrase,
+                          item.translation,
+                        )
+                      }
+                      variant='outline'
+                      size='sm'
+                      disabled={!item.generated_phrase || copyingId === item.id}
+                    >
+                      <CopyIcon className='size-4' />
+                      {copyingId === item.id
+                        ? 'Copiando...'
+                        : copiedId === item.id
+                          ? 'Copiadas'
+                          : 'Copiar frases'}
+                    </Button>
+                    <Button
+                      type='button'
+                      onClick={() => setConfirmDeleteId(item.id)}
                       variant='destructive'
                       size='sm'
                     >
-                      {deletingId === item.id
-                        ? 'Eliminando...'
-                        : 'Sí, eliminar'}
-                    </Button>
-                    <Button
-                      type='button'
-                      onClick={() => setConfirmDeleteId(null)}
-                      disabled={deletingId === item.id}
-                      variant='outline'
-                      size='sm'
-                    >
-                      Cancelar
+                      Eliminar frase
+                      <Trash2Icon className='size-4 ml-1' />
                     </Button>
                   </div>
-                </div>
-              ) : (
-                <div className='mt-4 flex flex-wrap gap-2 border-t border-border pt-3'>
-                  <Button
-                    type='button'
-                    onClick={() =>
-                      void handleCopyPhrase(
-                        item.id,
-                        item.generated_phrase,
-                        item.translation,
-                      )
-                    }
-                    variant='outline'
-                    size='sm'
-                    disabled={!item.generated_phrase || copyingId === item.id}
-                  >
-                    <CopyIcon className='size-4' />
-                    {copyingId === item.id
-                      ? 'Copiando...'
-                      : copiedId === item.id
-                        ? 'Copiadas'
-                        : 'Copiar frases'}
-                  </Button>
-                  <Button
-                    type='button'
-                    onClick={() => setConfirmDeleteId(item.id)}
-                    variant='destructive'
-                    size='sm'
-                  >
-                    Eliminar frase
-                    <Trash2Icon className='size-4 ml-1' />
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     </section>
   )
