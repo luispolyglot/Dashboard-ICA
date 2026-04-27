@@ -153,19 +153,19 @@ export function CalendarModal({
             const isFuture = dayDate > baselineToday
             const isPast = dayDate < baselineToday
             const status: DayStatus =
-              cell.monthOffset === -1
-                ? isCompleted
-                  ? 'outside-completed'
-                  : 'outside-missed'
-                : cell.monthOffset === 1
+              cell.monthOffset !== 0
+                ? isFuture
                   ? 'outside'
-                  : isFuture
-                    ? 'future'
-                    : isCompleted
-                      ? 'completed'
-                      : isPast
-                        ? 'missed'
-                        : 'empty'
+                  : isCompleted
+                    ? 'outside-completed'
+                    : 'outside-missed'
+                : isFuture
+                  ? 'future'
+                  : isCompleted
+                    ? 'completed'
+                    : isPast
+                      ? 'missed'
+                      : 'empty'
 
             return (
               <DayCell
