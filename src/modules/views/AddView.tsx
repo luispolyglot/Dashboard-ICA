@@ -325,6 +325,7 @@ export function AddView({
               placeholder={`Escribe en ${config.targetLang}...`}
               className='h-11'
             />
+            <RomanizationHint text={target} language={config.targetLang} />
             {(checkingSpelling || spellingSuggestion) && (
               <div className='mt-1.5 flex items-center gap-2 text-xs'>
                 {checkingSpelling && (

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CopyIcon, DownloadIcon, Trash2Icon } from 'lucide-react'
+import { CopyIcon, DownloadIcon, SquareIcon, Trash2Icon, Volume1Icon } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
 import type { Dispatch, SetStateAction } from 'react'
 import type { ReactNode } from 'react'
@@ -17,6 +17,7 @@ import { IMPORTANCE_LEVELS, getImportance } from '../constants'
 import { fetchWordExample } from '../services/anthropic'
 import { fetchWordActivationCounts } from '../services/metaTracker'
 import { saveData } from '../services/storage'
+import { speakNatural, stopTTS } from '../services/tts'
 import {
   copyWordsToClipboard,
   downloadWordsAsDocx,
@@ -87,6 +88,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
   const [wordUsageCounts, setWordUsageCounts] = useState<
     Record<string, number>
   >({})
+  const [playingWordId, setPlayingWordId] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -109,6 +111,12 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
       active = false
     }
   }, [cards, config.nativeLang, config.targetLang])
+
+  useEffect(() => {
+    return () => {
+      stopTTS()
+    }
+  }, [])
 
   const filteredByImportance =
     filter === 'all' ? cards : cards.filter((c) => c.importance === filter)
@@ -234,8 +242,22 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
     }
   }
 
+  const handlePlayWord = (card: Lexicard): void => {
+    if (playingWordId === card.id) {
+      stopTTS()
+      setPlayingWordId(null)
+      return
+    }
+
+    stopTTS()
+    setPlayingWordId(card.id)
+    speakNatural(card.target, card.targetLang || config.targetLang, () => {
+      setPlayingWordId((current) => (current === card.id ? null : current))
+    })
+  }
+
   return (
-    <section className='mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-5 py-8'>
+    <section className='mx-auto flex h-full w-full max-w-2xl flex-1 min-h-0 flex-col px-5 py-8'>
       <h2 className='mb-1 font-serif text-3xl font-bold'>📖 Mi creación ICA</h2>
       <p className='mb-6 text-sm text-muted-foreground'>
         {cards.length} palabra{cards.length !== 1 ? 's' : ''} · Más reciente
@@ -322,13 +344,14 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
         })}
       </div>
 
-      {sorted.length === 0 && (
-        <p className='mt-10 text-center text-sm text-muted-foreground'>
-          No hay palabras con ese filtro.
-        </p>
-      )}
+      <div className='min-h-0 flex-1 overflow-y-auto pr-1'>
+        {sorted.length === 0 && (
+          <p className='mt-10 text-center text-sm text-muted-foreground'>
+            No hay palabras con ese filtro.
+          </p>
+        )}
 
-      {sorted.map((card) => {
+        {sorted.map((card) => {
         const importance = getImportance(card.importance)
         const isFailed = (card.streak || 0) === 0
         const isEditing = editingId === card.id
@@ -406,14 +429,30 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
                 </div>
 
                 {!isEditing && (
-                  <Button
-                    type='button'
-                    onClick={() => openEditor(card)}
-                    variant='outline'
-                    size='sm'
-                  >
-                    Editar
-                  </Button>
+                  <div className='flex items-center gap-1.5'>
+                    <Button
+                      type='button'
+                      onClick={() => handlePlayWord(card)}
+                      variant='outline'
+                      size='icon'
+                      className='h-8 w-8'
+                      aria-label={`Escuchar ${card.target}`}
+                    >
+                      {playingWordId === card.id ? (
+                        <SquareIcon className='size-4' />
+                      ) : (
+                        <Volume1Icon className='size-4' />
+                      )}
+                    </Button>
+                    <Button
+                      type='button'
+                      onClick={() => openEditor(card)}
+                      variant='outline'
+                      size='sm'
+                    >
+                      Editar
+                    </Button>
+                  </div>
                 )}
               </div>
 
@@ -429,6 +468,10 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
                       onChange={(event) => setDraftNative(event.target.value)}
                     />
                   </div>
+                  <RomanizationHint
+                    text={draftTarget}
+                    language={card.targetLang || config.targetLang}
+                  />
 
                   <div className='grid gap-2'>
                     <Input
@@ -552,6 +595,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
           </Card>
         )
       })}
+      </div>
     </section>
   )
 }

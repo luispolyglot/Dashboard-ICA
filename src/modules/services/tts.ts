@@ -22,12 +22,21 @@ export function stopTTS(): void {
   window.speechSynthesis?.cancel()
 }
 
-function getBestVoice(langCode: string): SpeechSynthesisVoice | null {
+function getBestVoice(
+  langCode: string,
+  options?: { preferLocalService?: boolean },
+): SpeechSynthesisVoice | null {
   const voices = window.speechSynthesis.getVoices()
   if (!voices.length) return null
   const lang = langCode.split('-')[0]
   const matching = voices.filter((v) => v.lang.startsWith(lang))
   if (!matching.length) return null
+  if (options?.preferLocalService) {
+    const exactLocal = matching.find((v) => v.lang === langCode && v.localService)
+    if (exactLocal) return exactLocal
+    const local = matching.find((v) => v.localService)
+    if (local) return local
+  }
   const premiumRe = /Natural|Premium|Enhanced|Neural|Online|Google|Wavenet/i
   const best = matching.find((v) => premiumRe.test(v.name))
   if (best) return best
@@ -44,11 +53,18 @@ function speakFallback(text: string, langCode: string, onEnd?: () => void, rate 
 
   window.speechSynthesis.cancel()
 
+  const isIOS = isIOSLikeDevice()
+  const normalizedRate = Math.min(1.25, Math.max(0.5, rate))
+  const utteranceRate =
+    isIOS && normalizedRate < 1
+      ? Math.max(0.45, normalizedRate - 0.2)
+      : normalizedRate
+
   const u = new SpeechSynthesisUtterance(text)
   u.lang = langCode
-  u.rate = Math.min(1.25, Math.max(0.5, rate))
+  u.rate = utteranceRate
   u.pitch = 1
-  const voice = getBestVoice(langCode)
+  const voice = getBestVoice(langCode, { preferLocalService: isIOS })
   if (voice) u.voice = voice
   u.onend = onEnd ? () => onEnd() : null
   u.onerror = onEnd ? () => onEnd() : null
