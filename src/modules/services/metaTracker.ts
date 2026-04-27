@@ -147,17 +147,71 @@ export async function registerWordActivations(
   lexicardIds: string[],
   targetLang: string,
   nativeLang: string,
+  sourceWords: string[] = [],
 ): Promise<number | null> {
   if (!supabase) return null
   const userId = await getCurrentUserId()
   if (!userId) return null
 
   const ids = lexicardIds.filter((id) => id.length > 0)
-  if (ids.length === 0) return null
+
+  const isUuid = (value: string): boolean =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+
+  let activationIds = Array.from(new Set(ids.filter((id) => isUuid(id))))
+
+  if (activationIds.length === 0 && sourceWords.length > 0) {
+    const normalizedWords = Array.from(
+      new Set(sourceWords.map((word) => word.trim().toLowerCase()).filter(Boolean)),
+    )
+
+    const { data: scopedRows, error: scopedRowsError } = await supabase
+      .from('lexicards')
+      .select('id, target')
+      .eq('user_id', userId)
+      .eq('target_lang', targetLang)
+      .eq('native_lang', nativeLang)
+
+    if (scopedRowsError) {
+      console.error('Could not resolve lexicard ids by words', scopedRowsError)
+      return null
+    }
+
+    let rows = scopedRows || []
+
+    if (rows.length === 0) {
+      const { data: legacyRows, error: legacyRowsError } = await supabase
+        .from('lexicards')
+        .select('id, target')
+        .eq('user_id', userId)
+        .is('target_lang', null)
+        .is('native_lang', null)
+
+      if (legacyRowsError) {
+        console.error('Could not resolve legacy lexicard ids by words', legacyRowsError)
+        return null
+      }
+
+      rows = legacyRows || []
+    }
+
+    const byTarget = new Map<string, string>()
+    for (const row of rows) {
+      const normalizedTarget = String(row.target || '').trim().toLowerCase()
+      if (!normalizedTarget || byTarget.has(normalizedTarget)) continue
+      byTarget.set(normalizedTarget, String(row.id))
+    }
+
+    activationIds = normalizedWords
+      .map((word) => byTarget.get(word) || '')
+      .filter((id) => id.length > 0)
+  }
+
+  if (activationIds.length === 0) return null
 
   try {
     const { data, error } = await supabase.rpc('register_lexicard_activations', {
-      p_lexicard_ids: ids,
+      p_lexicard_ids: activationIds,
       p_target_lang: targetLang,
       p_native_lang: nativeLang,
     })
@@ -175,7 +229,7 @@ export async function registerWordActivations(
 
   try {
     const countsById = new Map<string, number>()
-    for (const id of ids) {
+    for (const id of activationIds) {
       countsById.set(id, (countsById.get(id) || 0) + 1)
     }
 

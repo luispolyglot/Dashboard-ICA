@@ -147,6 +147,7 @@ export async function recordPhraseGeneratedEvent(
     params.wordIds,
     params.targetLang,
     params.nativeLang,
+    params.words,
   )
 
   const { error: xpError } = await supabase.from('xp_events').insert({
