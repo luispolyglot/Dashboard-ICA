@@ -48,7 +48,7 @@ export function FlashcardsModeView({
           </div>
         </div>
 
-        <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-3'>
+        <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-3 pb-20 md:pb-0'>
           {REVIEW_MODE_OPTIONS.map((mode) => {
             const count = countsByMode[mode.key]
             const disabled = count === 0
@@ -80,11 +80,19 @@ export function FlashcardsModeView({
                     disabled && 'font-semibold text-red-600 dark:text-red-300',
                   )}
                 >
-                  {disabled
-                    ? 'No posees palabras ICA de esta frecuencia.'
-                    : mode.key === 'mixed'
-                      ? <>Juega con tus <strong>{count}</strong> {wordsLiteral} ICA de forma aleatoria.</>
-                      : <>Juega con tus <strong>{count}</strong> {wordsLiteral} ICA de frecuencia {mode.title.toLowerCase()}.</>}
+                  {disabled ? (
+                    'No posees palabras ICA de esta frecuencia.'
+                  ) : mode.key === 'mixed' ? (
+                    <>
+                      Juega con tus <strong>{count}</strong> {wordsLiteral} ICA
+                      de forma aleatoria.
+                    </>
+                  ) : (
+                    <>
+                      Juega con tus <strong>{count}</strong> {wordsLiteral} ICA
+                      de frecuencia {mode.title.toLowerCase()}.
+                    </>
+                  )}
                 </p>
               </button>
             )
