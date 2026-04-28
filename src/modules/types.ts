@@ -53,6 +53,7 @@ export interface LeaderboardEntry {
   user_id: string
   username: string
   display_name: string
+  ica_streak_days?: number
   score?: number
   avg_percent?: number
   review_percent?: number

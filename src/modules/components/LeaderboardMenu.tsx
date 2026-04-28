@@ -34,7 +34,7 @@ export function LeaderboardMenu() {
               <Button
                 variant='outline'
                 size='icon'
-                aria-label='Abrir leaderboard mensual'
+                aria-label='Abrir leaderboard'
               >
                 <span aria-hidden='true' className='text-base'>
                   🏆
@@ -43,7 +43,7 @@ export function LeaderboardMenu() {
             </DropdownMenuTrigger>
           </span>
         </TooltipTrigger>
-        <TooltipContent>Leaderboard mensual</TooltipContent>
+        <TooltipContent>Leaderboard</TooltipContent>
       </Tooltip>
 
       <DropdownMenuContent
@@ -51,7 +51,7 @@ export function LeaderboardMenu() {
         align='end'
         className='w-80'
       >
-        <DropdownMenuLabel>Leaderboard mensual</DropdownMenuLabel>
+        <DropdownMenuLabel>Leaderboard</DropdownMenuLabel>
         <DropdownMenuSeparator />
 
         {loading && (
@@ -70,6 +70,9 @@ export function LeaderboardMenu() {
 
         {!loading && !error && rows.length > 0 && (
           <div className='space-y-1 p-1'>
+            <div className='flex items-center justify-end px-2 text-[11px] font-medium text-muted-foreground'>
+              <span>Racha ICA · % mensual</span>
+            </div>
             {rows.map((row) => (
               <div
                 key={`${row.user_id}-${row.rank}`}
@@ -80,18 +83,20 @@ export function LeaderboardMenu() {
                 }`}
               >
                 <div className='flex min-w-0 items-center gap-2'>
-                  <span className='w-10 shrink-0 text-xs text-muted-foreground'>
+                  <span className='w-4 shrink-0 text-xs text-muted-foreground'>
                     {rankBadge(row.rank)}
                   </span>
                   {row.user_id === user?.id && (
                     <span className='h-2 w-2 rounded-full bg-emerald-500' />
                   )}
-                  <span className='truncate text-sm'>
+                  <span className='truncate text-sm max-w-36'>
                     {row.display_name || row.username || 'Usuario'}
                   </span>
                 </div>
                 <span className='text-sm font-medium'>
-                  {Math.round(row.avg_percent || 0)}%
+                  {row.ica_streak_days && row.ica_streak_days > 0
+                    ? `🔥 ${row.ica_streak_days} · ${Math.round(row.avg_percent || 0)}%`
+                    : `${Math.round(row.avg_percent || 0)}%`}
                 </span>
               </div>
             ))}

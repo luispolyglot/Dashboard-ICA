@@ -756,6 +756,7 @@ returns table (
   user_id uuid,
   username text,
   display_name text,
+  ica_streak_days integer,
   avg_percent numeric,
   review_percent numeric,
   creation_percent numeric
@@ -790,23 +791,50 @@ as $$
     from user_progress up
     cross join month_bounds mb
   ),
+  creation_days as (
+    select
+      dm.user_id,
+      dm.day,
+      dm.day - (row_number() over (partition by dm.user_id order by dm.day))::integer as grp
+    from public.daily_metrics dm
+    where dm.creation_goal_completed
+      and dm.day <= current_date
+  ),
+  creation_streaks as (
+    select
+      cd.user_id,
+      count(*)::integer as ica_streak_days,
+      max(cd.day) as streak_end_day
+    from creation_days cd
+    group by cd.user_id, cd.grp
+  ),
+  latest_creation_streak as (
+    select distinct on (cs.user_id)
+      cs.user_id,
+      cs.ica_streak_days
+    from creation_streaks cs
+    order by cs.user_id, cs.streak_end_day desc
+  ),
   ranked as (
     select
       row_number() over (order by s.avg_percent desc, s.user_id) as rank,
       s.user_id,
       coalesce(p.username, 'anon') as username,
       coalesce(p.display_name, p.username, 'Usuario') as display_name,
+      coalesce(lcs.ica_streak_days, 0) as ica_streak_days,
       s.avg_percent,
       s.review_percent,
       s.creation_percent
     from scores s
     left join public.profiles p on p.id = s.user_id
+    left join latest_creation_streak lcs on lcs.user_id = s.user_id
   )
   select
     r.rank,
     r.user_id,
     r.username,
     r.display_name,
+    r.ica_streak_days,
     r.avg_percent,
     r.review_percent,
     r.creation_percent
