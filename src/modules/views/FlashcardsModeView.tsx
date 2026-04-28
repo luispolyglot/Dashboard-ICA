@@ -19,7 +19,7 @@ export function FlashcardsModeView({
   const flashcardsLiteral = roundSize === 1 ? 'flashcard' : 'flashcards'
 
   const cardBaseClass =
-    'relative flex min-h-[210px] w-full flex-col overflow-hidden rounded-[20px] border border-slate-800 px-[24px] py-7 text-left font-sans transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] bg-[linear-gradient(160deg,#ffffff,#eef3f9)] hover:-translate-y-[3px] dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
+    'relative flex min-h-40 w-full flex-col overflow-hidden rounded-[20px] border border-slate-800 px-[24px] py-7 text-left font-sans transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] bg-[linear-gradient(160deg,#ffffff,#eef3f9)] hover:-translate-y-[3px] dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
 
   const countsByMode: Record<ReviewMode, number> = {
     mixed: cards.length,
@@ -37,7 +37,7 @@ export function FlashcardsModeView({
           <p className='text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground'>
             Flashcards
           </p>
-          <h1 className='font-serif text-3xl font-bold tracking-tight md:text-4xl'>
+          <h1 className='font-serif text-2xl lg:text-3xl font-bold tracking-tight'>
             Elige tu modo de práctica
           </h1>
           <p className='mx-auto max-w-2xl text-sm text-muted-foreground md:text-base'>
@@ -82,7 +82,7 @@ export function FlashcardsModeView({
                 </div>
                 <p
                   className={cn(
-                    'mt-5 text-sm leading-relaxed text-slate-500 dark:text-slate-300',
+                    'mt-2 lg:mt-5 text-sm leading-relaxed text-slate-500 dark:text-slate-300',
                     disabled && 'font-semibold text-red-600 dark:text-red-300',
                   )}
                 >

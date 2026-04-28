@@ -14,11 +14,7 @@ import { SpeakButton } from '../components/SpeakButton'
 import { saveData } from '../services/storage'
 import { recordReviewEvent } from '../services/reviewTracking'
 import { stopTTS } from '../services/tts'
-import {
-  buildReviewRound,
-  todayKey,
-  updateCardAfterReview,
-} from '../utils'
+import { buildReviewRound, todayKey, updateCardAfterReview } from '../utils'
 import type { AppConfig, Lexicard, ReviewMode } from '../types'
 import { EyeIcon, EyeOffIcon } from 'lucide-react'
 
@@ -77,8 +73,9 @@ export function ReviewView({
     if (correct <= 2) {
       return {
         icon: '🧱',
-        title: 'Base en construccion',
-        message: 'Hoy tocaba sembrar. Lo importante es seguir, no hacerlo perfecto.',
+        title: 'Base en construcción',
+        message:
+          'Hoy tocaba sembrar. Lo importante es seguir, no hacerlo perfecto.',
       }
     }
 
@@ -86,7 +83,8 @@ export function ReviewView({
       return {
         icon: '🌱',
         title: 'Buen avance',
-        message: 'Ya hay progreso real. En la siguiente ronda esto sube rapido.',
+        message:
+          'Ya hay progreso real. En la siguiente ronda esto sube rápido.',
       }
     }
 
@@ -94,14 +92,15 @@ export function ReviewView({
       return {
         icon: '🔥',
         title: 'Muy buena ronda',
-        message: 'Estas consolidando vocabulario. Te queda muy poco para dominarla.',
+        message:
+          'Estás consolidando vocabulario. Te queda muy poco para dominarla.',
       }
     }
 
     return {
       icon: '🚀',
       title: 'Ronda excelente',
-      message: 'Nivel altisimo. Estas en modo imparable.',
+      message: 'Nivel altísimo. Estás en modo imparable.',
     }
   })()
 
@@ -201,7 +200,7 @@ export function ReviewView({
     return (
       <section className='flex flex-1 flex-col items-center justify-center px-5 py-10 text-center'>
         <div className='mb-4 text-7xl'>{roundFeedback.icon}</div>
-        <h2 className='mb-2 font-serif text-4xl font-bold'>
+        <h2 className='mb-2 font-serif text-2xl lg:text-3xl font-bold'>
           {roundFeedback.title}
         </h2>
         <p className='mb-3 max-w-sm text-sm leading-relaxed text-muted-foreground'>
@@ -378,7 +377,7 @@ export function ReviewView({
                     </div>
                   ) : (
                     <p className='text-xs text-muted-foreground'>
-                      Esta palabra no tiene ejemplo guardado todavia.
+                      Esta palabra no tiene ejemplo guardado todavía.
                     </p>
                   )}
                 </div>

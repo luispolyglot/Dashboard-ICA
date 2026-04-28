@@ -53,6 +53,7 @@ export function PhraseView({
   const [automaticSelectedIds, setAutomaticSelectedIds] = useState<string[]>([])
   const [manualSelectedIds, setManualSelectedIds] = useState<string[]>([])
   const [manualQuery, setManualQuery] = useState('')
+  const [manualOnlyNotActivated, setManualOnlyNotActivated] = useState(false)
   const [manualPhraseTarget, setManualPhraseTarget] = useState('')
   const [manualPhraseNative, setManualPhraseNative] = useState('')
   const [manualPhraseApproved, setManualPhraseApproved] = useState(false)
@@ -172,11 +173,14 @@ export function PhraseView({
 
   const filteredManualPool = searchableManualPool.filter((word) => {
     const q = manualQuery.trim().toLowerCase()
-    if (!q) return true
-    return (
+    const matchesQuery =
+      !q ||
       word.target.toLowerCase().includes(q) ||
       word.native.toLowerCase().includes(q)
-    )
+    if (!matchesQuery) return false
+    if (!manualOnlyNotActivated) return true
+    const activationCount = wordUsageCounts[word.id] || 0
+    return activationCount === 0
   })
 
   const toggleCustomWord = (id: string): void => {
@@ -383,6 +387,18 @@ export function PhraseView({
             placeholder='Buscar palabra entre todas...'
             className='mb-3'
           />
+
+          <label className='mb-3 inline-flex items-center gap-2 text-xs text-muted-foreground'>
+            <input
+              type='checkbox'
+              checked={manualOnlyNotActivated}
+              onChange={(event) =>
+                setManualOnlyNotActivated(event.target.checked)
+              }
+              className='h-4 w-4 accent-primary'
+            />
+            Mostrar solo palabras no activadas
+          </label>
 
           <div className='flex max-h-44 flex-wrap gap-1.5 overflow-y-auto'>
             {filteredManualPool.map((word) => {
