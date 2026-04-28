@@ -113,7 +113,7 @@ export function MetaTrackerSetupModal({
             </p>
 
             <label className='mb-2 block text-[11px] font-medium tracking-[0.06em] text-slate-600 uppercase dark:text-[#64748b]'>
-              1. ¿Con que nivel empezaste a aplicar ICA?
+              1. ¿Con qué nivel empezaste a aplicar ICA?
             </label>
             <div className='mb-5.5 grid grid-cols-[repeat(auto-fit,minmax(80px,1fr))] gap-1.25'>
               {OPTIONS.map((option) => {
@@ -135,7 +135,7 @@ export function MetaTrackerSetupModal({
             </div>
 
             <label className='mb-2 block text-[11px] font-medium tracking-[0.06em] text-slate-600 uppercase dark:text-[#64748b]'>
-              2. ¿Cuantas palabras ICA tienes acumuladas?
+              2. ¿Cuántas palabras ICA tienes acumuladas?
             </label>
             <input
               type='number'
@@ -211,7 +211,7 @@ export function MetaTrackerSetupModal({
           <>
             <div className='mb-4.5 rounded-[14px] border border-slate-300 p-4.5 bg-[linear-gradient(160deg,#ffffff,#eef3f9)] dark:border-[#1e293b] dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'>
               <p className='m-0 text-[14px] leading-[1.6] text-slate-900 dark:text-[#f1f5f9]'>
-                ¿Estas seguro/a que empezaste a aplicar ICA con un nivel{' '}
+                ¿Estás seguro/a que empezaste a aplicar ICA con un nivel{' '}
                 <span className='font-bold text-blue-500 dark:text-[#60a5fa]'>
                   {startLevel === '0' ? 'de cero' : startLevel}
                 </span>{' '}
@@ -226,8 +226,8 @@ export function MetaTrackerSetupModal({
             <div className='mb-5.5 flex items-start gap-2.5 rounded-xl border border-orange-400/25 bg-orange-100/60 px-4 py-3.5 dark:border-[#F9731640] dark:bg-[#3d2510]'>
               <span className='shrink-0 text-[18px]'>⚠️</span>
               <p className='m-0 text-[12px] leading-normal font-medium text-orange-700 dark:text-[#fdba74]'>
-                <strong>Importante:</strong> esta informacion{' '}
-                <strong>no se podra cambiar</strong> una vez confirmada. <br />{' '}
+                <strong>Importante:</strong> esta información{' '}
+                <strong>no se podrá cambiar</strong> una vez confirmada. <br />{' '}
                 Los umbrales se basan en datos de otros estudiantes que han
                 aplicado ICA. Es acertado pero <strong>no exacto</strong>.
               </p>
@@ -246,7 +246,7 @@ export function MetaTrackerSetupModal({
                 style={{ flex: 2 }}
                 className={`rounded-xl border-none bg-linear-to-br from-emerald-500 to-emerald-800 p-3.25 text-[14px] font-bold text-white ${saving ? 'cursor-default opacity-70' : 'cursor-pointer opacity-100'}`}
               >
-                {saving ? 'Guardando...' : '✓ Si, confirmar'}
+                {saving ? 'Guardando...' : '✓ Sí, confirmar'}
               </button>
             </div>
           </>

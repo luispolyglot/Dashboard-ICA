@@ -48,42 +48,49 @@ export const CREATION_WORDS_GOAL = 5
 export const REVIEW_MODE_OPTIONS: Array<{
   key: ReviewMode
   title: string
+  mode: string
   description: string
   emoji: string
 }> = [
   {
     key: 'mixed',
     title: 'Aleatorio',
+    mode: 'aleatoria',
     description: 'Juega con tus palabras ICA de forma aleatoria.',
     emoji: '🎲',
   },
   {
     key: 'vital',
     title: 'Vital',
+    mode: 'vital',
     description: 'Juega con tus palabras ICA de frecuencia vital.',
     emoji: '🔵',
   },
   {
     key: 'frequent',
     title: 'Frecuente',
+    mode: 'frecuente',
     description: 'Juega con tus palabras ICA de frecuencia frecuente.',
     emoji: '🟢',
   },
   {
     key: 'occasional',
     title: 'Ocasional',
+    mode: 'ocasional',
     description: 'Juega con tus palabras ICA de frecuencia ocasional.',
     emoji: '🟡',
   },
   {
     key: 'rare',
     title: 'Raro',
+    mode: 'raro',
     description: 'Juega con tus palabras ICA de frecuencia rara.',
     emoji: '🟠',
   },
   {
     key: 'irrelevant',
     title: 'Irrelevante',
+    mode: 'irrelevante',
     description: 'Juega con tus palabras ICA de frecuencia irrelevante.',
     emoji: '🔴',
   },

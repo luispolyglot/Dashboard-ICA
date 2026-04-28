@@ -73,7 +73,7 @@ export function ReviewView({
     if (correct <= 2) {
       return {
         icon: '🧱',
-        title: 'Base en construccion',
+        title: 'Base en construcción',
         message:
           'Hoy tocaba sembrar. Lo importante es seguir, no hacerlo perfecto.',
       }
@@ -84,7 +84,7 @@ export function ReviewView({
         icon: '🌱',
         title: 'Buen avance',
         message:
-          'Ya hay progreso real. En la siguiente ronda esto sube rapido.',
+          'Ya hay progreso real. En la siguiente ronda esto sube rápido.',
       }
     }
 
@@ -93,14 +93,14 @@ export function ReviewView({
         icon: '🔥',
         title: 'Muy buena ronda',
         message:
-          'Estas consolidando vocabulario. Te queda muy poco para dominarla.',
+          'Estás consolidando vocabulario. Te queda muy poco para dominarla.',
       }
     }
 
     return {
       icon: '🚀',
       title: 'Ronda excelente',
-      message: 'Nivel altisimo. Estas en modo imparable.',
+      message: 'Nivel altísimo. Estás en modo imparable.',
     }
   })()
 
@@ -377,7 +377,7 @@ export function ReviewView({
                     </div>
                   ) : (
                     <p className='text-xs text-muted-foreground'>
-                      Esta palabra no tiene ejemplo guardado todavia.
+                      Esta palabra no tiene ejemplo guardado todavía.
                     </p>
                   )}
                 </div>
