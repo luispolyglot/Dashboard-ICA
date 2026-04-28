@@ -15,6 +15,7 @@ type AuthContextValue = {
   requestPasswordReset: (email: string) => Promise<void>
   updatePassword: (password: string) => Promise<void>
   changePassword: (currentPassword: string, nextPassword: string) => Promise<void>
+  updateDisplayName: (displayName: string) => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -133,6 +134,31 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
         const { error: updateError } = await supabase.auth.updateUser({ password: nextPassword })
         if (updateError) throw updateError
+      },
+      updateDisplayName: async (displayName) => {
+        if (!supabase) throw new Error('Falta configurar Supabase')
+
+        const cleanDisplayName = displayName.trim()
+        if (cleanDisplayName.length < 3) {
+          throw new Error('El nombre debe tener al menos 3 caracteres.')
+        }
+
+        const currentUserId = user?.id || session?.user?.id
+        if (!currentUserId) throw new Error('No se pudo identificar el usuario actual.')
+
+        const { data, error } = await supabase.auth.updateUser({
+          data: { display_name: cleanDisplayName },
+        })
+        if (error) throw error
+
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert({ id: currentUserId, display_name: cleanDisplayName }, { onConflict: 'id' })
+        if (profileError) throw profileError
+
+        if (data.user) {
+          setUser(data.user)
+        }
       },
       signOut: async () => {
         if (!supabase) return

@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   BarChart3Icon,
+  CheckIcon,
   LanguagesIcon,
   ListChecksIcon,
   LogOutIcon,
   MoonIcon,
+  PencilIcon,
   SunIcon,
   UserIcon,
+  XIcon,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
@@ -41,7 +44,7 @@ function formatDate(value?: string): string {
 }
 
 export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
-  const { user, signOut, changePassword } = useAuth()
+  const { user, signOut, changePassword, updateDisplayName } = useAuth()
   const { theme, resolvedTheme, setTheme } = useTheme()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
@@ -53,9 +56,24 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
   const [canSeeAdminAnalytics, setCanSeeAdminAnalytics] = useState(false)
   const [canManageWhitelist, setCanManageWhitelist] = useState(false)
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
+  const [nameError, setNameError] = useState<string | null>(null)
+  const [nameSuccess, setNameSuccess] = useState<string | null>(null)
+  const [isSavingName, setIsSavingName] = useState(false)
 
   const metadata = useMemo(() => user?.user_metadata ?? {}, [user?.user_metadata])
   const displayName = metadata.display_name || user?.email?.split('@')[0] || 'Usuario'
+  const cleanCurrentDisplayName = displayName.trim()
+  const cleanNameDraft = nameDraft.trim()
+  const isNameChanged = cleanNameDraft !== cleanCurrentDisplayName
+  const canSaveName = cleanNameDraft.length >= 3 && isNameChanged
+
+  useEffect(() => {
+    if (!isEditingName) {
+      setNameDraft(displayName)
+    }
+  }, [displayName, isEditingName])
 
   useEffect(() => {
     let isMounted = true
@@ -116,6 +134,56 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
     }
   }
 
+  const handleStartNameEdit = () => {
+    setNameDraft(displayName)
+    setNameError(null)
+    setNameSuccess(null)
+    setIsEditingName(true)
+  }
+
+  const handleCancelNameEdit = () => {
+    if (isSavingName) return
+    setNameDraft(displayName)
+    setNameError(null)
+    setIsEditingName(false)
+  }
+
+  const handleSaveName = async (): Promise<void> => {
+    const cleanName = nameDraft.trim()
+    if (cleanName === cleanCurrentDisplayName) {
+      setNameError(null)
+      setIsEditingName(false)
+      return
+    }
+
+    if (cleanName.length < 3) {
+      setNameError('El nombre debe tener al menos 3 caracteres.')
+      return
+    }
+
+    setNameError(null)
+    setNameSuccess(null)
+    setIsSavingName(true)
+    try {
+      await updateDisplayName(cleanName)
+      setIsEditingName(false)
+      setNameSuccess('Nombre actualizado correctamente.')
+      window.setTimeout(() => setNameSuccess(null), 2000)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo actualizar el nombre.'
+      setNameError(message)
+    } finally {
+      setIsSavingName(false)
+    }
+  }
+
+  const handleNameKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      handleCancelNameEdit()
+    }
+  }
+
   return (
     <section className='mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-5 py-8'>
       <h2 className='mb-1 font-serif text-3xl font-bold'>
@@ -134,7 +202,71 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className='space-y-2 text-sm'>
-            <p><span className='text-muted-foreground'>Nombre:</span> {displayName}</p>
+            <div className='space-y-1'>
+              <div className='flex flex-wrap items-center gap-2'>
+                <span className='text-muted-foreground'>Nombre:</span>
+                {!isEditingName && <span>{displayName}</span>}
+
+                {isEditingName ? (
+                  <form
+                    className='flex min-w-0 flex-1 items-center gap-1.5'
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      void handleSaveName()
+                    }}
+                  >
+                    <Input
+                      value={nameDraft}
+                      onChange={(event) => {
+                        setNameDraft(event.target.value)
+                        setNameError(null)
+                        setNameSuccess(null)
+                      }}
+                      onKeyDown={handleNameKeyDown}
+                      minLength={3}
+                      required
+                      autoFocus
+                      className='h-8 max-w-56'
+                      aria-label='Editar nombre'
+                    />
+                    <Button
+                      type='submit'
+                      variant='outline'
+                      size='icon'
+                      className='h-8 w-8'
+                      aria-label='Guardar nombre'
+                      disabled={isSavingName || !canSaveName}
+                    >
+                      <CheckIcon className='h-4 w-4' />
+                    </Button>
+                    <Button
+                      type='button'
+                      variant='outline'
+                      size='icon'
+                      className='h-8 w-8'
+                      aria-label='Cancelar edición de nombre'
+                      onClick={handleCancelNameEdit}
+                      disabled={isSavingName}
+                    >
+                      <XIcon className='h-4 w-4' />
+                    </Button>
+                  </form>
+                ) : (
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='icon'
+                    className='h-7 w-7'
+                    aria-label='Editar nombre'
+                    onClick={handleStartNameEdit}
+                  >
+                    <PencilIcon className='h-4 w-4' />
+                  </Button>
+                )}
+              </div>
+              {nameError && <p className='text-sm text-destructive'>{nameError}</p>}
+              {nameSuccess && <p className='text-sm text-emerald-500'>{nameSuccess}</p>}
+            </div>
             <p><span className='text-muted-foreground'>Email:</span> {user?.email || 'No disponible'}</p>
             <p><span className='text-muted-foreground'>Creado:</span> {formatDate(user?.created_at)}</p>
             <p><span className='text-muted-foreground'>Último acceso:</span> {formatDate(user?.last_sign_in_at)}</p>
