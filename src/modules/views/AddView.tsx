@@ -287,14 +287,13 @@ export function AddView({
     ) : null
 
   return (
-    <section className='mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-5 py-8'>
-      <div className='grid gap-10 lg:grid-cols-3 lg:items-start'>
-        <div className='hidden lg:block' />
-
-        <div className='lg:col-start-2'>
+    <section className='mx-auto w-full max-w-6xl flex-1 overflow-y-auto flex justify-center items-center lg:pb-24'>
+      <div className='flex w-full gap-6'>
+        <div className='hidden lg:block w-1/4' />
+        <div className='w-full lg:w-1/2'>
           <div className='mb-1 flex flex-wrap items-center justify-between gap-2'>
-            <h2 className='font-serif text-3xl font-bold'>
-              Añadir nueva palabra ICA
+            <h2 className='font-serif text-2xl lg:text-3xl font-bold'>
+              ✍️ Añadir nueva palabra ICA
             </h2>
             <Badge variant='secondary' className='gap-1.5'>
               <span className='text-sm font-bold'>
@@ -435,9 +434,7 @@ export function AddView({
           {recentList && <div className='mt-10 lg:hidden'>{recentList}</div>}
         </div>
 
-        <div className='hidden lg:block lg:col-start-3 lg:pt-14 lg:pl-16'>
-          {recentList}
-        </div>
+        <div className='hidden w-1/4 lg:block pt-18'>{recentList}</div>
       </div>
     </section>
   )

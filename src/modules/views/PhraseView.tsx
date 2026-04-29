@@ -158,13 +158,13 @@ export function PhraseView({
     }
   }, [cards, config.nativeLang, config.targetLang])
 
-  const getUsageAuraClass = (lexicardId: string): string => {
+  const getUsageAuraClass = (lexicardId: string, active?: boolean): string => {
     const usageCount = wordUsageCounts[lexicardId] || 0
     if (usageCount >= 3) {
-      return '!border-amber-400/90 ring-1 ring-amber-300/60 bg-amber-500/12 shadow-[0_0_30px_-8px_rgba(251,191,36,0.95)]'
+      return `!border-amber-400/90 ring-1 ring-amber-300/60 ${!active && 'bg-amber-500/12'} shadow-[0_0_30px_-8px_rgba(251,191,36,0.95)]`
     }
     if (usageCount >= 1) {
-      return '!border-amber-400/70 ring-1 ring-amber-300/35 bg-amber-500/8 shadow-[0_0_26px_-10px_rgba(251,191,36,0.75)]'
+      return `!border-amber-400/70 ring-1 ring-amber-300/35 ${!active && 'bg-amber-500/8'} shadow-[0_0_26px_-10px_rgba(251,191,36,0.75)]`
     }
     return ''
   }
@@ -303,30 +303,33 @@ export function PhraseView({
   }
 
   return (
-    <section className='mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-5 py-8'>
-      <div className='mb-4 flex items-start justify-between gap-3'>
+    <section className='mx-auto w-full max-w-2xl flex-1 overflow-y-auto flex flex-col justify-center items-center'>
+      <div className='mb-4 w-full flex items-start justify-between gap-3'>
         <div>
-          <h2 className='mb-1 font-serif text-3xl font-bold'>
-            ⚡ Frase de Activación
+          <h2 className='mb-1 font-serif text-2xl lg:text-3xl font-bold'>
+            🗣️ Frase de Activación
           </h2>
           <p className='text-sm text-muted-foreground'>
             Genera una frase natural en {config.targetLang} usando tus palabras
             ICA.
           </p>
         </div>
-        <Button asChild variant='outline' size='sm'>
+        <Button asChild variant='outline' size='sm' className='hidden lg:flex'>
           <Link to={DASHBOARD_ROUTES.phraseHistory}>📜 Historial</Link>
         </Button>
       </div>
 
-      <div className='mb-6 flex items-center gap-2'>
+      <div className='w-full mb-6 flex items-center gap-2'>
         <LevelBadge level={level} />
         <span className='text-xs text-muted-foreground'>
           · CEFR · Adaptado a tu nivel
         </span>
+        <Button asChild variant='outline' size='sm' className='flex lg:hidden'>
+          <Link to={DASHBOARD_ROUTES.phraseHistory}>📜 Historial</Link>
+        </Button>
       </div>
 
-      <div className='mb-6'>
+      <div className='w-full mb-6'>
         <Tabs
           value={mode}
           onValueChange={(value) =>
@@ -342,7 +345,7 @@ export function PhraseView({
       </div>
 
       {mode === 'automatic' && (
-        <div className='mb-6'>
+        <div className='mb-6 w-full'>
           <Label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
             Utiliza las últimas:
           </Label>
@@ -376,7 +379,7 @@ export function PhraseView({
       )}
 
       {mode === 'manual' && (
-        <div className='mb-6 rounded-xl border border-border bg-muted/30 p-3.5'>
+        <div className='mb-6 w-full rounded-xl border border-border bg-muted/30 p-3.5'>
           <label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
             Selecciona palabras (5-8, últimas 25 por defecto)
           </label>
@@ -411,7 +414,7 @@ export function PhraseView({
                   onClick={() => toggleCustomWord(word.id)}
                   variant={active ? 'default' : 'outline'}
                   size='sm'
-                  className={getUsageAuraClass(word.id)}
+                  className={getUsageAuraClass(word.id, active)}
                 >
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importance.key]}`}
@@ -428,7 +431,7 @@ export function PhraseView({
       )}
 
       {mode === 'manualPhrase' && (
-        <div className='mb-6 rounded-xl border border-border bg-muted/30 p-3.5'>
+        <div className='mb-6 w-full rounded-xl border border-border bg-muted/30 p-3.5'>
           <label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
             Escribe tu frase manual en ambos idiomas
           </label>
@@ -472,7 +475,7 @@ export function PhraseView({
         </div>
       )}
 
-      <div className='mb-6'>
+      <div className='mb-6 w-full'>
         <label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
           {mode === 'manualPhrase'
             ? 'Palabras ICA detectadas'

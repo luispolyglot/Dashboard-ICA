@@ -31,19 +31,18 @@ export function FlashcardsModeView({
   }
 
   return (
-    <section className='flex flex-1 justify-center items-center px-4 py-6 md:py-10'>
+    <section className='flex flex-1 justify-center items-center p-4'>
       <div className='w-full max-w-5xl space-y-6'>
-        <div className='space-y-3 text-center'>
-          <p className='text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground'>
-            Flashcards
-          </p>
-          <h1 className='font-serif text-2xl lg:text-3xl font-bold tracking-tight'>
-            Elige tu modo de práctica
-          </h1>
-          <p className='mx-auto max-w-2xl text-sm text-muted-foreground md:text-base'>
-            Juega con tus palabras ICA en una ronda de {REVIEW_ROUND_SIZE}{' '}
-            {flashcardsLiteral}.
-          </p>
+        <div className='flex justify-between'>
+          <div className='flex flex-col gap-2'>
+            <h1 className='font-serif text-2xl lg:text-3xl font-bold tracking-tight'>
+              📚 Flashcards
+            </h1>
+            <p className='mx-auto max-w-2xl text-sm text-muted-foreground md:text-base'>
+              Elige tu modo de práctica. Juega con tus palabras ICA en una ronda
+              de {REVIEW_ROUND_SIZE} {flashcardsLiteral}.
+            </p>
+          </div>
           <div className='flex justify-center'>
             <GlobalReviewGoalBadge correctToday={reviewCorrectToday} />
           </div>

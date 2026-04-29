@@ -265,9 +265,9 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
   }
 
   return (
-    <section className='mx-auto flex h-auto w-full max-w-2xl flex-1 flex-col px-5 pt-4 pb-0 lg:h-full lg:min-h-0 lg:pt-8 lg:pb-8'>
+    <section className='mx-auto flex h-auto w-full max-w-2xl flex-1 flex-col pt-4 pb-0 lg:h-full lg:min-h-0 lg:pt-8 lg:pb-8'>
       <h2 className='mb-0 lg:mb-1 font-serif text-2xl lg:text-3xl font-bold'>
-        📖 Mi creación ICA
+        🧩 Mi creación ICA
       </h2>
       <p className='mb-2 lg:mb-6 text-sm text-muted-foreground'>
         {cards.length} palabra{cards.length !== 1 ? 's' : ''} · Más reciente

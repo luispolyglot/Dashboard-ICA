@@ -263,7 +263,7 @@ export function MetaTrackerBar({
         >
           🚶‍➡️
           <div
-            className='ml-2 lg:ml-1.5'
+            className='ml-2'
             style={{
               width: 0,
               height: 0,
