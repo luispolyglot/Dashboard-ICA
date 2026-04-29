@@ -11,9 +11,11 @@ import {
   HomePage,
   ManageWhitelistPage,
   MyIcaWordsPage,
+  NewTrackerPage,
   NewIcaWordsPage,
   PhraseHistoryPage,
   ProfilePage,
+  TrackersPage,
 } from './modules/routes/DashboardPages'
 import { DASHBOARD_ROUTES } from './modules/routes/paths'
 import {
@@ -65,6 +67,8 @@ export function App() {
           <Route path='activation-phrase' element={<ActivationPhrasePage />} />
           <Route path='phrase-history' element={<PhraseHistoryPage />} />
           <Route path='profile' element={<ProfilePage />} />
+          <Route path='trackers' element={<TrackersPage />} />
+          <Route path='trackers/new' element={<NewTrackerPage />} />
           <Route element={<AnalyticsAdminRoute />}>
             <Route path='analytics' element={<AnalyticsPage />} />
           </Route>

@@ -96,6 +96,24 @@ export interface MetaTrackerProfile {
   confirmedAt: number | null
 }
 
+export interface ImprovementTracker {
+  id: string
+  trackerMonth: string
+  pronunciationPct: number
+  fluencyPct: number
+  improvisationPct: number
+  createdAt: string
+}
+
+export interface ImprovementTrackerInput {
+  targetLang: string
+  nativeLang: string
+  trackerMonth: string
+  pronunciationPct: number
+  fluencyPct: number
+  improvisationPct: number
+}
+
 export type DailyProgressMap = Record<string, DailyProgressEntry>
 
 export interface AppConfig {

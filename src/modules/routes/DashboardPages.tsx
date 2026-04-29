@@ -10,10 +10,12 @@ import { FlashcardsModeView } from '../views/FlashcardsModeView'
 import { HomeView } from '../views/HomeView'
 import { ManageWhitelistView } from '../views/ManageWhitelistView'
 import { ManageView } from '../views/ManageView'
+import { NewTrackerView } from '../views/NewTrackerView'
 import { ProfileView } from '../views/ProfileView'
 import { PhraseHistoryView } from '../views/PhraseHistoryView'
 import { PhraseView } from '../views/PhraseView'
 import { ReviewView } from '../views/ReviewView'
+import { TrackersView } from '../views/TrackersView'
 import {
   DEFAULT_REVIEW_PLAY_STYLE,
   REVIEW_PLAY_STYLE_QUERY_PARAM,
@@ -187,6 +189,28 @@ export function ProfilePage() {
         config={config}
         onEditLanguages={() => setShowLangModal(true)}
       />
+    </PageLayout>
+  )
+}
+
+export function TrackersPage() {
+  const { config } = useDashboardContext()
+  if (!config) return null
+
+  return (
+    <PageLayout>
+      <TrackersView targetLang={config.targetLang} nativeLang={config.nativeLang} />
+    </PageLayout>
+  )
+}
+
+export function NewTrackerPage() {
+  const { config } = useDashboardContext()
+  if (!config) return null
+
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.trackers}>
+      <NewTrackerView targetLang={config.targetLang} nativeLang={config.nativeLang} />
     </PageLayout>
   )
 }

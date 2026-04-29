@@ -4,6 +4,7 @@ import {
   BarChart3Icon,
   CheckIcon,
   LanguagesIcon,
+  LineChartIcon,
   ListChecksIcon,
   LogOutIcon,
   MoonIcon,
@@ -62,8 +63,12 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
   const [nameSuccess, setNameSuccess] = useState<string | null>(null)
   const [isSavingName, setIsSavingName] = useState(false)
 
-  const metadata = useMemo(() => user?.user_metadata ?? {}, [user?.user_metadata])
-  const displayName = metadata.display_name || user?.email?.split('@')[0] || 'Usuario'
+  const metadata = useMemo(
+    () => user?.user_metadata ?? {},
+    [user?.user_metadata],
+  )
+  const displayName =
+    metadata.display_name || user?.email?.split('@')[0] || 'Usuario'
   const cleanCurrentDisplayName = displayName.trim()
   const cleanNameDraft = nameDraft.trim()
   const isNameChanged = cleanNameDraft !== cleanCurrentDisplayName
@@ -103,7 +108,9 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
     }
   }
 
-  const handlePasswordChange = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
+  const handlePasswordChange = async (
+    event: FormEvent<HTMLFormElement>,
+  ): Promise<void> => {
     event.preventDefault()
     setPasswordError(null)
     setPasswordSuccess(null)
@@ -127,7 +134,10 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
       setPasswordSuccess('Contraseña actualizada correctamente.')
       window.setTimeout(() => setIsPasswordModalOpen(false), 900)
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'No se pudo actualizar la contraseña'
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'No se pudo actualizar la contraseña'
       setPasswordError(message)
     } finally {
       setIsChangingPassword(false)
@@ -170,7 +180,8 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
       setNameSuccess('Nombre actualizado correctamente.')
       window.setTimeout(() => setNameSuccess(null), 2000)
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'No se pudo actualizar el nombre.'
+      const message =
+        err instanceof Error ? err.message : 'No se pudo actualizar el nombre.'
       setNameError(message)
     } finally {
       setIsSavingName(false)
@@ -186,9 +197,7 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
 
   return (
     <section className='mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-5 py-8'>
-      <h2 className='mb-1 font-serif text-3xl font-bold'>
-        👤 Perfil
-      </h2>
+      <h2 className='mb-1 font-serif text-3xl font-bold'>👤 Perfil</h2>
       <p className='mb-6 text-sm text-muted-foreground'>
         Gestiona tu cuenta, idioma y apariencia desde un solo lugar.
       </p>
@@ -264,12 +273,25 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
                   </Button>
                 )}
               </div>
-              {nameError && <p className='text-sm text-destructive'>{nameError}</p>}
-              {nameSuccess && <p className='text-sm text-emerald-500'>{nameSuccess}</p>}
+              {nameError && (
+                <p className='text-sm text-destructive'>{nameError}</p>
+              )}
+              {nameSuccess && (
+                <p className='text-sm text-emerald-500'>{nameSuccess}</p>
+              )}
             </div>
-            <p><span className='text-muted-foreground'>Email:</span> {user?.email || 'No disponible'}</p>
-            <p><span className='text-muted-foreground'>Creado:</span> {formatDate(user?.created_at)}</p>
-            <p><span className='text-muted-foreground'>Último acceso:</span> {formatDate(user?.last_sign_in_at)}</p>
+            <p>
+              <span className='text-muted-foreground'>Email:</span>{' '}
+              {user?.email || 'No disponible'}
+            </p>
+            <p>
+              <span className='text-muted-foreground'>Creado:</span>{' '}
+              {formatDate(user?.created_at)}
+            </p>
+            <p>
+              <span className='text-muted-foreground'>Último acceso:</span>{' '}
+              {formatDate(user?.last_sign_in_at)}
+            </p>
           </CardContent>
         </Card>
 
@@ -295,7 +317,9 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
 
         <Card>
           <CardHeader>
-            <CardTitle>Tema ({resolvedTheme === 'dark' ? 'Oscuro' : 'Claro'})</CardTitle>
+            <CardTitle>
+              Tema ({resolvedTheme === 'dark' ? 'Oscuro' : 'Claro'})
+            </CardTitle>
           </CardHeader>
           <CardContent className='flex flex-wrap gap-2'>
             <Button
@@ -317,6 +341,24 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader>
+            <CardTitle className='flex items-center gap-2'>
+              <LineChartIcon className='h-4 w-4' />
+              Trackers de mejora
+            </CardTitle>
+          </CardHeader>
+          <CardContent className='space-y-3'>
+            <p className='text-sm text-muted-foreground'>
+              Carga y revisa tus trackers mensuales de pronunciación, fluidez e
+              improvisación.
+            </p>
+            <Button type='button' variant='outline' asChild>
+              <Link to={DASHBOARD_ROUTES.trackers}>Trackers de mejora</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
         {canSeeAdminAnalytics && (
           <Card>
             <CardHeader>
@@ -327,7 +369,8 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
             </CardHeader>
             <CardContent className='space-y-3'>
               <p className='text-sm text-muted-foreground'>
-                Accede al panel de métricas globales. Esta sección exige permisos administrativos.
+                Accede al panel de métricas globales. Esta sección exige
+                permisos administrativos.
               </p>
               <Button type='button' variant='outline' asChild>
                 <Link to={DASHBOARD_ROUTES.analytics}>Analíticas Admin</Link>
@@ -346,10 +389,13 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
             </CardHeader>
             <CardContent className='space-y-3'>
               <p className='text-sm text-muted-foreground'>
-                Administra qué emails pueden registrarse o iniciar sesión, y sincroniza el CSV oficial.
+                Administra qué emails pueden registrarse o iniciar sesión, y
+                sincroniza el CSV oficial.
               </p>
               <Button type='button' variant='outline' asChild>
-                <Link to={DASHBOARD_ROUTES.manageWhitelist}>Gestionar whitelist</Link>
+                <Link to={DASHBOARD_ROUTES.manageWhitelist}>
+                  Gestionar whitelist
+                </Link>
               </Button>
             </CardContent>
           </Card>
@@ -361,7 +407,8 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
           </CardHeader>
           <CardContent className='space-y-3'>
             <p className='text-sm text-muted-foreground'>
-              Puedes actualizar tu contraseña validando primero tu contraseña actual.
+              Puedes actualizar tu contraseña validando primero tu contraseña
+              actual.
             </p>
             <Button
               type='button'
@@ -380,7 +427,10 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
           </CardContent>
         </Card>
 
-        <Dialog open={isPasswordModalOpen} onOpenChange={setIsPasswordModalOpen}>
+        <Dialog
+          open={isPasswordModalOpen}
+          onOpenChange={setIsPasswordModalOpen}
+        >
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Cambiar contraseña</DialogTitle>
@@ -389,9 +439,15 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
               </DialogDescription>
             </DialogHeader>
 
-            <form id='change-password-form' className='space-y-3' onSubmit={handlePasswordChange}>
+            <form
+              id='change-password-form'
+              className='space-y-3'
+              onSubmit={handlePasswordChange}
+            >
               <div className='space-y-1.5'>
-                <Label htmlFor='profile-current-password'>Contraseña actual</Label>
+                <Label htmlFor='profile-current-password'>
+                  Contraseña actual
+                </Label>
                 <Input
                   id='profile-current-password'
                   type='password'
@@ -415,19 +471,27 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
               </div>
 
               <div className='space-y-1.5'>
-                <Label htmlFor='profile-next-password-confirm'>Confirmar nueva contraseña</Label>
+                <Label htmlFor='profile-next-password-confirm'>
+                  Confirmar nueva contraseña
+                </Label>
                 <Input
                   id='profile-next-password-confirm'
                   type='password'
                   required
                   minLength={6}
                   value={confirmNextPassword}
-                  onChange={(event) => setConfirmNextPassword(event.target.value)}
+                  onChange={(event) =>
+                    setConfirmNextPassword(event.target.value)
+                  }
                 />
               </div>
 
-              {passwordError && <p className='text-sm text-destructive'>{passwordError}</p>}
-              {passwordSuccess && <p className='text-sm text-emerald-500'>{passwordSuccess}</p>}
+              {passwordError && (
+                <p className='text-sm text-destructive'>{passwordError}</p>
+              )}
+              {passwordSuccess && (
+                <p className='text-sm text-emerald-500'>{passwordSuccess}</p>
+              )}
             </form>
 
             <DialogFooter>
@@ -439,7 +503,11 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
               >
                 Cancelar
               </Button>
-              <Button type='submit' form='change-password-form' disabled={isChangingPassword}>
+              <Button
+                type='submit'
+                form='change-password-form'
+                disabled={isChangingPassword}
+              >
                 {isChangingPassword ? 'Guardando...' : 'Guardar'}
               </Button>
             </DialogFooter>

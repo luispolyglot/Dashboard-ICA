@@ -287,7 +287,7 @@ export function AddView({
     ) : null
 
   return (
-    <section className='mx-auto w-full max-w-6xl flex-1 overflow-y-auto flex justify-center items-center lg:pb-24'>
+    <section className='mx-auto w-full max-w-6xl flex flex-1 justify-center items-center p-4 pb-24'>
       <div className='flex w-full gap-6'>
         <div className='hidden lg:block w-1/4' />
         <div className='w-full lg:w-1/2'>

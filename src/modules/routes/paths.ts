@@ -10,6 +10,8 @@ export const DASHBOARD_ROUTES = {
   activationPhrase: '/activation-phrase',
   phraseHistory: '/phrase-history',
   profile: '/profile',
+  trackers: '/trackers',
+  trackersNew: '/trackers/new',
   analytics: '/analytics',
   manageWhitelist: '/manage-whitelist',
 } as const
@@ -23,6 +25,8 @@ export const DASHBOARD_LABELS: Record<string, string> = {
   '/activation-phrase': 'Mi frase de activación',
   '/phrase-history': 'Mi historial de frases',
   '/profile': 'Perfil',
+  '/trackers': 'Trackers de mejora',
+  '/trackers/new': 'Nuevo tracker de mejora',
   '/analytics': 'Analíticas Admin',
   '/manage-whitelist': 'Gestionar whitelist',
 }

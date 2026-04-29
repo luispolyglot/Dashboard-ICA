@@ -303,7 +303,7 @@ export function PhraseView({
   }
 
   return (
-    <section className='mx-auto w-full max-w-2xl flex-1 overflow-y-auto flex flex-col justify-center items-center'>
+    <section className='mx-auto w-full max-w-2xl flex-1 flex flex-col justify-center items-center p-4 pb-24'>
       <div className='mb-4 w-full flex items-start justify-between gap-3'>
         <div>
           <h2 className='mb-1 font-serif text-2xl lg:text-3xl font-bold'>
