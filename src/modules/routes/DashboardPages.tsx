@@ -15,6 +15,7 @@ import { ProfileView } from '../views/ProfileView'
 import { PhraseHistoryView } from '../views/PhraseHistoryView'
 import { PhraseView } from '../views/PhraseView'
 import { ReviewView } from '../views/ReviewView'
+import { TrackerDetailView } from '../views/TrackerDetailView'
 import { TrackersView } from '../views/TrackersView'
 import {
   DEFAULT_REVIEW_PLAY_STYLE,
@@ -211,6 +212,22 @@ export function NewTrackerPage() {
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.trackers}>
       <NewTrackerView targetLang={config.targetLang} nativeLang={config.nativeLang} />
+    </PageLayout>
+  )
+}
+
+export function TrackerDetailPage() {
+  const { config } = useDashboardContext()
+  const { trackerId } = useParams<{ trackerId: string }>()
+  if (!config || !trackerId) return null
+
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.trackers}>
+      <TrackerDetailView
+        trackerId={trackerId}
+        targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+      />
     </PageLayout>
   )
 }

@@ -15,6 +15,7 @@ import {
   NewIcaWordsPage,
   PhraseHistoryPage,
   ProfilePage,
+  TrackerDetailPage,
   TrackersPage,
 } from './modules/routes/DashboardPages'
 import { DASHBOARD_ROUTES } from './modules/routes/paths'
@@ -69,6 +70,7 @@ export function App() {
           <Route path='profile' element={<ProfilePage />} />
           <Route path='trackers' element={<TrackersPage />} />
           <Route path='trackers/new' element={<NewTrackerPage />} />
+          <Route path='trackers/:trackerId' element={<TrackerDetailPage />} />
           <Route element={<AnalyticsAdminRoute />}>
             <Route path='analytics' element={<AnalyticsPage />} />
           </Route>

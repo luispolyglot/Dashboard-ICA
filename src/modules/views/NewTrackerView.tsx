@@ -217,7 +217,7 @@ export function NewTrackerView({
           Nuevo tracker de mejora
         </h2>
         <p className='text-sm text-muted-foreground'>
-          Puedes cargar un solo tracker por mes, desde junio 2024 hasta el mes
+          Puedes cargar un solo tracker por mes, desde septiembre de 2025 hasta el mes
           actual.
         </p>
       </div>
@@ -364,7 +364,7 @@ export function NewTrackerView({
           <CardHeader>
             <CardTitle>Vista previa</CardTitle>
             <CardDescription>
-              Esta gráfica se puede descargar y sera igual a la que veras en el
+              Esta gráfica se puede descargar y será igual a la que verás en el
               histórico.
             </CardDescription>
           </CardHeader>
