@@ -1,21 +1,29 @@
 import { cn } from '@/lib/utils'
 import { REVIEW_MODE_OPTIONS, REVIEW_ROUND_SIZE } from '../constants'
 import { GlobalReviewGoalBadge } from '../components/GlobalReviewGoalBadge'
+import { ReviewPlayStyleControl } from '../components/ReviewPlayStyleControl'
+import { getReviewModeMinimumWords } from '../review/playStyle'
+import type { ReviewPlayStyle } from '../review/playStyle'
 import type { Lexicard, ReviewMode } from '../types'
 
 type FlashcardsModeViewProps = {
   cards: Lexicard[]
   reviewCorrectToday: number
+  playStyle: ReviewPlayStyle
+  onPlayStyleChange: (style: ReviewPlayStyle) => void
   onStartMode: (mode: ReviewMode) => void
 }
 
 export function FlashcardsModeView({
   cards,
   reviewCorrectToday,
+  playStyle,
+  onPlayStyleChange,
   onStartMode,
 }: FlashcardsModeViewProps) {
-  const minWordsPerFrequencyMode = 10
-  const roundSize: number = REVIEW_ROUND_SIZE
+  const isGoalStyle = playStyle === 'goal'
+  const minWordsByMode = getReviewModeMinimumWords(playStyle)
+  const roundSize: number = isGoalStyle ? cards.length : REVIEW_ROUND_SIZE
   const flashcardsLiteral = roundSize === 1 ? 'flashcard' : 'flashcards'
 
   const cardBaseClass =
@@ -31,7 +39,7 @@ export function FlashcardsModeView({
   }
 
   return (
-    <section className='flex flex-1 justify-center items-center p-4'>
+    <section className='flex flex-1 justify-center items-center p-4 lg:pb-24'>
       <div className='w-full max-w-5xl space-y-6'>
         <div className='flex justify-between'>
           <div className='flex flex-col gap-2'>
@@ -39,24 +47,31 @@ export function FlashcardsModeView({
               📚 Flashcards
             </h1>
             <p className='mx-auto max-w-2xl text-sm text-muted-foreground md:text-base'>
-              Elige tu modo de práctica. Juega con tus palabras ICA en una ronda
-              de {REVIEW_ROUND_SIZE} {flashcardsLiteral}.
+              {isGoalStyle
+                ? 'Usa todas tus tarjetas disponibles y termina al llegar a 10 correctas.'
+                : `Juega con tus palabras ICA en una ronda de ${REVIEW_ROUND_SIZE} ${flashcardsLiteral}.`}
             </p>
           </div>
-          <div className='flex justify-center'>
+          <div className='flex flex-col items-end justify-center gap-2'>
             <GlobalReviewGoalBadge correctToday={reviewCorrectToday} />
+            <ReviewPlayStyleControl
+              playStyle={playStyle}
+              onPlayStyleChange={onPlayStyleChange}
+            />
           </div>
         </div>
 
         <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-3 pb-20 md:pb-0'>
           {REVIEW_MODE_OPTIONS.map((mode) => {
             const count = countsByMode[mode.key]
-            const requiresMinimum = mode.key !== 'mixed'
-            const disabled = requiresMinimum
-              ? count < minWordsPerFrequencyMode
-              : count === 0
+            const minimumRequired = isGoalStyle
+              ? minWordsByMode
+              : mode.key === 'mixed'
+                ? 1
+                : minWordsByMode
+            const disabled = count < minimumRequired
             const wordsLiteral = count === 1 ? 'palabra' : 'palabras'
-            const missing = Math.max(minWordsPerFrequencyMode - count, 0)
+            const missing = Math.max(minimumRequired - count, 0)
             const missingLiteral = missing === 1 ? 'palabra' : 'palabras'
 
             return (
@@ -85,14 +100,15 @@ export function FlashcardsModeView({
                     disabled && 'font-semibold text-red-600 dark:text-red-300',
                   )}
                 >
-                  {disabled && requiresMinimum ? (
+                  {disabled ? (
                     <>
-                      Necesitas <strong>{minWordsPerFrequencyMode}</strong>{' '}
-                      palabras ICA de esta frecuencia. Tienes{' '}
-                      <strong>{count}</strong> ({missing} {missingLiteral} mas).
+                      Necesitas <strong>{minimumRequired}</strong>{' '}
+                      {mode.key === 'mixed'
+                        ? 'palabras ICA totales'
+                        : 'palabras ICA de esta frecuencia'}
+                      . Tienes <strong>{count}</strong> ({missing}{' '}
+                      {missingLiteral} más).
                     </>
-                  ) : disabled ? (
-                    'No posees palabras ICA de esta frecuencia.'
                   ) : mode.key === 'mixed' ? (
                     <>
                       Juega con tus <strong>{count}</strong> {wordsLiteral} ICA

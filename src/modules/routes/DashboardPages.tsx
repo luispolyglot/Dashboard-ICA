@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { LevelBadge } from '../components/LevelBadge'
 import { getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
@@ -14,6 +14,12 @@ import { ProfileView } from '../views/ProfileView'
 import { PhraseHistoryView } from '../views/PhraseHistoryView'
 import { PhraseView } from '../views/PhraseView'
 import { ReviewView } from '../views/ReviewView'
+import {
+  DEFAULT_REVIEW_PLAY_STYLE,
+  REVIEW_PLAY_STYLE_QUERY_PARAM,
+  getReviewPlayStyleFromQuery,
+  type ReviewPlayStyle,
+} from '../review/playStyle'
 import type { ReviewMode } from '../types'
 import { DASHBOARD_ROUTES, getFlashcardsPlayRoute } from './paths'
 
@@ -61,13 +67,18 @@ export function FlashcardsPage() {
   const { cards, dailyProgress } = useDashboardContext()
   const navigate = useNavigate()
   const todayProgress = getTodayProgress(dailyProgress)
+  const [playStyle, setPlayStyle] = useState<ReviewPlayStyle>(
+    DEFAULT_REVIEW_PLAY_STYLE,
+  )
 
   return (
     <PageLayout>
       <FlashcardsModeView
         cards={cards}
         reviewCorrectToday={todayProgress.reviewCorrect}
-        onStartMode={(mode) => navigate(getFlashcardsPlayRoute(mode))}
+        playStyle={playStyle}
+        onPlayStyleChange={setPlayStyle}
+        onStartMode={(mode) => navigate(getFlashcardsPlayRoute(mode, playStyle))}
       />
     </PageLayout>
   )
@@ -86,7 +97,11 @@ export function FlashcardsPlayPage() {
     handleReviewAnswer,
   } = useDashboardContext()
   const { mode } = useParams<{ mode: string }>()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const playStyle = getReviewPlayStyleFromQuery(
+    searchParams.get(REVIEW_PLAY_STYLE_QUERY_PARAM),
+  )
 
   const safeMode = useMemo<ReviewMode>(() => {
     const validModes: ReviewMode[] = [
@@ -106,7 +121,7 @@ export function FlashcardsPlayPage() {
 
   if (!config) return null
   if (mode !== safeMode) {
-    return <Navigate to={getFlashcardsPlayRoute(safeMode)} replace />
+    return <Navigate to={getFlashcardsPlayRoute(safeMode, playStyle)} replace />
   }
 
   return (
@@ -116,6 +131,7 @@ export function FlashcardsPlayPage() {
         setCards={setCards}
         config={config}
         mode={safeMode}
+        playStyle={playStyle}
         globalCorrectToday={todayProgress.reviewCorrect}
         completedDays={completedDays}
         setCompletedDays={setCompletedDays}

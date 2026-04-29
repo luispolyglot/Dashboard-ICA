@@ -1,4 +1,5 @@
 import type { ReviewMode } from '../types'
+import type { ReviewPlayStyle } from '../review/playStyle'
 
 export const DASHBOARD_ROUTES = {
   home: '/',
@@ -26,6 +27,11 @@ export const DASHBOARD_LABELS: Record<string, string> = {
   '/manage-whitelist': 'Gestionar whitelist',
 }
 
-export function getFlashcardsPlayRoute(mode: ReviewMode): string {
-  return `${DASHBOARD_ROUTES.flashcardsPlay}/${mode}`
+export function getFlashcardsPlayRoute(
+  mode: ReviewMode,
+  playStyle?: ReviewPlayStyle,
+): string {
+  const baseRoute = `${DASHBOARD_ROUTES.flashcardsPlay}/${mode}`
+  if (!playStyle) return baseRoute
+  return `${baseRoute}?playStyle=${playStyle}`
 }

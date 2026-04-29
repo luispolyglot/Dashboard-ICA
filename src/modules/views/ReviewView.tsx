@@ -4,13 +4,17 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   IMPORTANCE_ORDER,
-  REVIEW_ROUND_SIZE,
   REVIEW_MODE_OPTIONS,
   getImportance,
 } from '../constants'
 import { GlobalReviewGoalBadge } from '../components/GlobalReviewGoalBadge'
 import { ProgressBar } from '../components/ProgressBar'
 import { SpeakButton } from '../components/SpeakButton'
+import {
+  REVIEW_PLAY_STYLE_CORRECT_GOAL,
+  getReviewRoundSizeByStyle,
+  type ReviewPlayStyle,
+} from '../review/playStyle'
 import { saveData } from '../services/storage'
 import { recordReviewEvent } from '../services/reviewTracking'
 import { stopTTS } from '../services/tts'
@@ -23,6 +27,7 @@ type ReviewViewProps = {
   setCards: Dispatch<SetStateAction<Lexicard[]>>
   config: AppConfig
   mode: ReviewMode
+  playStyle: ReviewPlayStyle
   globalCorrectToday: number
   completedDays: string[]
   setCompletedDays: Dispatch<SetStateAction<string[]>>
@@ -46,6 +51,7 @@ export function ReviewView({
   setCards,
   config,
   mode,
+  playStyle,
   globalCorrectToday,
   completedDays,
   setCompletedDays,
@@ -55,6 +61,7 @@ export function ReviewView({
   onChooseMode,
   onFinishPractice,
 }: ReviewViewProps) {
+  const isGoalStyle = playStyle === 'goal'
   const [roundCards, setRoundCards] = useState<Lexicard[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
@@ -105,7 +112,13 @@ export function ReviewView({
   })()
 
   useEffect(() => {
-    setRoundCards(buildReviewRound(cards, mode, REVIEW_ROUND_SIZE))
+    setRoundCards(
+      buildReviewRound(
+        cards,
+        mode,
+        getReviewRoundSizeByStyle(playStyle, cards.length),
+      ),
+    )
     setCurrentIndex(0)
     setCorrect(0)
     setCompleted(false)
@@ -115,7 +128,7 @@ export function ReviewView({
     if (window.speechSynthesis) {
       window.speechSynthesis.getVoices()
     }
-  }, [mode, reviewSession])
+  }, [cards.length, mode, playStyle, reviewSession])
 
   useEffect(() => {
     setShowExample(false)
@@ -127,7 +140,9 @@ export function ReviewView({
   }, [startReviewSession])
 
   const currentCard = roundCards[currentIndex]
-  const roundTotal = Math.max(roundCards.length, 1)
+  const roundTotal = isGoalStyle
+    ? REVIEW_PLAY_STYLE_CORRECT_GOAL
+    : Math.max(roundCards.length, 1)
   const importance = currentCard ? getImportance(currentCard.importance) : null
   const isFailed = currentCard ? (currentCard.streak || 0) === 0 : false
 
@@ -146,16 +161,21 @@ export function ReviewView({
     )
     const nextCorrect = knew ? correct + 1 : correct
     const isLastCard = currentIndex >= roundCards.length - 1
+    const reachedCorrectGoal = nextCorrect >= REVIEW_PLAY_STYLE_CORRECT_GOAL
+    const shouldComplete = isGoalStyle ? reachedCorrectGoal : isLastCard
 
-    if (isLastCard) {
+    if (shouldComplete) {
       setFinishing(true)
     }
 
     setCorrect(nextCorrect)
     setCards(nextCards)
 
-    if (!isLastCard) {
-      setCurrentIndex((prev) => prev + 1)
+    if (!shouldComplete) {
+      setCurrentIndex((prev) => {
+        if (isGoalStyle && isLastCard) return 0
+        return prev + 1
+      })
     }
 
     try {
@@ -167,7 +187,7 @@ export function ReviewView({
       })
       await onReviewAnswered(knew)
 
-      if (isLastCard) {
+      if (shouldComplete) {
         const dayKey = todayKey()
         if (!completedDays.includes(dayKey)) {
           const nextCompletedDays = [...completedDays, dayKey]
@@ -214,7 +234,11 @@ export function ReviewView({
           <Button
             type='button'
             onClick={() => {
-              const nextRound = buildReviewRound(cards, mode, REVIEW_ROUND_SIZE)
+              const nextRound = buildReviewRound(
+                cards,
+                mode,
+                getReviewRoundSizeByStyle(playStyle, cards.length),
+              )
               setCorrect(0)
               setCompleted(false)
               setCurrentIndex(0)
@@ -267,12 +291,13 @@ export function ReviewView({
 
   const priorityNumber =
     (isFailed ? 0 : 5) + (IMPORTANCE_ORDER[currentCard.importance] ?? 4) + 1
+  const playStyleLabel = isGoalStyle ? 'Modo objetivo' : 'Modo clásico'
 
   return (
-    <section className='flex flex-1 flex-col items-center justify-center px-5 py-8'>
+    <section className='flex flex-1 flex-col items-center justify-center p-4 lg:pb-24'>
       <div className='mb-3 flex w-full max-w-105 flex-wrap items-center justify-between gap-2'>
         <div className='inline-flex items-center rounded-md bg-muted px-2 py-1 text-[11px] font-semibold text-muted-foreground'>
-          {activeMode.emoji} {activeMode.title}
+          {playStyleLabel}: {activeMode.emoji} {activeMode.title}
         </div>
         <GlobalReviewGoalBadge correctToday={globalCorrectToday} />
       </div>
@@ -412,7 +437,7 @@ export function ReviewView({
 
       <div className='mt-6 w-full max-w-105'>
         <div className='mb-2 text-center text-[10px] uppercase tracking-wider text-muted-foreground'>
-          Progreso de la ronda
+          {isGoalStyle ? 'Progreso hacia 10 correctas' : 'Progreso de la ronda'}
         </div>
         <div className='flex flex-wrap justify-center gap-1'>
           {roundCards.slice(0, 14).map((card, index) => {
