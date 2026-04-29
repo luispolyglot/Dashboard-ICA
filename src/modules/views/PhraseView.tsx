@@ -403,7 +403,7 @@ export function PhraseView({
             Mostrar solo palabras no activadas
           </label>
 
-          <div className='flex max-h-44 flex-wrap gap-1.5 overflow-y-auto'>
+          <div className='flex max-h-44 flex-wrap gap-1.5 overflow-y-auto py-4'>
             {filteredManualPool.map((word) => {
               const active = manualSelectedIds.includes(word.id)
               const importance = getImportance(word.importance)
