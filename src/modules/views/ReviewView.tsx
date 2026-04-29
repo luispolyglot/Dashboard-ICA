@@ -226,7 +226,7 @@ export function ReviewView({
             }}
             size='lg'
           >
-            {`Otra ronda ${activeMode.title}`}
+            {`Otra ronda ${activeMode.mode}`}
           </Button>
           <Button
             type='button'
