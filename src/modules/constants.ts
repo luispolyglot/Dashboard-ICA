@@ -111,8 +111,17 @@ export const getImportance = (key: ImportanceKey | string): ImportanceLevel =>
   IMPORTANCE_LEVELS.find((l) => l.key === key) || IMPORTANCE_LEVELS[0]
 
 export function getTodayProgress(dailyProgress: DailyProgressMap): DailyProgressEntry {
-  const d = new Date()
-  const tk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Madrid',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+
+  const year = parts.find((part) => part.type === 'year')?.value ?? '1970'
+  const month = parts.find((part) => part.type === 'month')?.value ?? '01'
+  const day = parts.find((part) => part.type === 'day')?.value ?? '01'
+  const tk = `${year}-${month}-${day}`
   const current = dailyProgress[tk]
   if (!current) {
     return { wordsAdded: 0, phraseGenerated: false, reviewCorrect: 0 }

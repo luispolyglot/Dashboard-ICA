@@ -14,6 +14,7 @@ export const DASHBOARD_ROUTES = {
   trackersNew: '/trackers/new',
   analytics: '/analytics',
   manageWhitelist: '/manage-whitelist',
+  historicLeaderboard: '/historic-leaderboard',
 } as const
 
 export const DASHBOARD_LABELS: Record<string, string> = {
@@ -29,6 +30,7 @@ export const DASHBOARD_LABELS: Record<string, string> = {
   '/trackers/new': 'Nuevo tracker de mejora',
   '/analytics': 'Analíticas Admin',
   '/manage-whitelist': 'Gestionar whitelist',
+  '/historic-leaderboard': 'Histórico leaderboard',
 }
 
 export function getFlashcardsPlayRoute(

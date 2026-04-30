@@ -8,6 +8,7 @@ import {
   ActivationPhrasePage,
   FlashcardsPage,
   FlashcardsPlayPage,
+  HistoricLeaderboardPage,
   HomePage,
   ManageWhitelistPage,
   MyIcaWordsPage,
@@ -76,6 +77,7 @@ export function App() {
           </Route>
           <Route element={<SuperAdminRoute />}>
             <Route path='manage-whitelist' element={<ManageWhitelistPage />} />
+            <Route path='historic-leaderboard' element={<HistoricLeaderboardPage />} />
           </Route>
         </Route>
       </Route>

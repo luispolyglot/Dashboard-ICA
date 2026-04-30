@@ -17,24 +17,35 @@ export function useMonthlyLeaderboard(limit = 200): UseMonthlyLeaderboardResult 
 
   useEffect(() => {
     let active = true
+    const REFRESH_MS = 60 * 1000
 
-    fetchMonthlyStreakLeaderboard(limit)
-      .then((data) => {
+    const fetchRows = async (withLoading: boolean): Promise<void> => {
+      if (withLoading && active) {
+        setLoading(true)
+      }
+
+      try {
+        const data = await fetchMonthlyStreakLeaderboard(limit)
         if (!active) return
         setRows(data)
         setError(null)
-      })
-      .catch(() => {
+      } catch {
         if (!active) return
         setError('No se pudo cargar el ranking mensual')
-      })
-      .finally(() => {
+      } finally {
         if (!active) return
         setLoading(false)
-      })
+      }
+    }
+
+    void fetchRows(true)
+    const intervalId = window.setInterval(() => {
+      void fetchRows(false)
+    }, REFRESH_MS)
 
     return () => {
       active = false
+      window.clearInterval(intervalId)
     }
   }, [limit])
 

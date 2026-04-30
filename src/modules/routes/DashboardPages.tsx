@@ -7,6 +7,7 @@ import { PageLayout } from '../layout/PageLayout'
 import { AddView } from '../views/AddView'
 import { AdminAnalyticsView } from '../views/AdminAnalyticsView'
 import { FlashcardsModeView } from '../views/FlashcardsModeView'
+import { HistoricLeaderboardView } from '../views/HistoricLeaderboardView'
 import { HomeView } from '../views/HomeView'
 import { ManageWhitelistView } from '../views/ManageWhitelistView'
 import { ManageView } from '../views/ManageView'
@@ -244,6 +245,14 @@ export function ManageWhitelistPage() {
   return (
     <PageLayout>
       <ManageWhitelistView />
+    </PageLayout>
+  )
+}
+
+export function HistoricLeaderboardPage() {
+  return (
+    <PageLayout>
+      <HistoricLeaderboardView />
     </PageLayout>
   )
 }

@@ -10,6 +10,7 @@ import {
   MoonIcon,
   PencilIcon,
   SunIcon,
+  TrophyIcon,
   UserIcon,
   XIcon,
 } from 'lucide-react'
@@ -57,6 +58,7 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
   const [canSeeAdminAnalytics, setCanSeeAdminAnalytics] = useState(false)
   const [canManageWhitelist, setCanManageWhitelist] = useState(false)
+  const [canSeeHistoricLeaderboard, setCanSeeHistoricLeaderboard] = useState(false)
   const [isEditingName, setIsEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
   const [nameError, setNameError] = useState<string | null>(null)
@@ -88,6 +90,7 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
       if (isMounted) {
         setCanSeeAdminAnalytics(role === 'admin' || role === 'super_admin')
         setCanManageWhitelist(role === 'super_admin')
+        setCanSeeHistoricLeaderboard(role === 'super_admin')
       }
     }
 
@@ -395,6 +398,27 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
               <Button type='button' variant='outline' asChild>
                 <Link to={DASHBOARD_ROUTES.manageWhitelist}>
                   Gestionar whitelist
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {canSeeHistoricLeaderboard && (
+          <Card>
+            <CardHeader>
+              <CardTitle className='flex items-center gap-2'>
+                <TrophyIcon className='h-4 w-4' />
+                Histórico leaderboard
+              </CardTitle>
+            </CardHeader>
+            <CardContent className='space-y-3'>
+              <p className='text-sm text-muted-foreground'>
+                Consulta los rankings mensuales cerrados por mes y año.
+              </p>
+              <Button type='button' variant='outline' asChild>
+                <Link to={DASHBOARD_ROUTES.historicLeaderboard}>
+                  Ver histórico leaderboard
                 </Link>
               </Button>
             </CardContent>

@@ -8,9 +8,34 @@ export function generateId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+const SPAIN_TIMEZONE = 'Europe/Madrid'
+
+function formatSpainDay(date: Date): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SPAIN_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+
+  const year = parts.find((part) => part.type === 'year')?.value ?? '1970'
+  const month = parts.find((part) => part.type === 'month')?.value ?? '01'
+  const day = parts.find((part) => part.type === 'day')?.value ?? '01'
+  return `${year}-${month}-${day}`
+}
+
+function shiftIsoDay(isoDay: string, days: number): string {
+  const [year, month, day] = isoDay.split('-').map(Number)
+  const date = new Date(Date.UTC(year, (month || 1) - 1, day || 1))
+  date.setUTCDate(date.getUTCDate() + days)
+  const yyyy = date.getUTCFullYear()
+  const mm = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(date.getUTCDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
 export function todayKey() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return formatSpainDay(new Date())
 }
 
 function isCardFailed(card: Lexicard): boolean {
@@ -53,24 +78,24 @@ function isSuccessfulCardDue(card: Lexicard, currentSession: number): boolean {
 
 export function getStreak(completedDays: string[]): number {
   if (!completedDays || completedDays.length === 0) return 0
-  const sorted = [...completedDays].sort().reverse()
+
+  const sorted = [...new Set(completedDays)].sort().reverse()
+  const sortedSet = new Set(sorted)
   const today = todayKey()
-  const yesterday = (() => {
-    const d = new Date()
-    d.setDate(d.getDate() - 1)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  })()
+  const yesterday = shiftIsoDay(today, -1)
+
   if (sorted[0] !== today && sorted[0] !== yesterday) return 0
+
   let streak = 0
-  const checkDate = new Date()
-  if (sorted[0] !== today) checkDate.setDate(checkDate.getDate() - 1)
+  let cursor = sorted[0] === today ? today : yesterday
+
   for (let i = 0; i < 365; i++) {
-    const key = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`
-    if (sorted.includes(key)) {
+    if (sortedSet.has(cursor)) {
       streak++
-      checkDate.setDate(checkDate.getDate() - 1)
+      cursor = shiftIsoDay(cursor, -1)
     } else break
   }
+
   return streak
 }
 
