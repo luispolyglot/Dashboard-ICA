@@ -39,7 +39,11 @@ export function CalendarModal({
   onClose,
   activeTab,
 }: CalendarModalProps) {
-  const [viewDate, setViewDate] = useState(new Date())
+  const todayStr = todayKey()
+  const [todayYear, todayMonth, todayDay] = todayStr.split('-').map(Number)
+  const [viewDate, setViewDate] = useState(
+    () => new Date(todayYear, (todayMonth || 1) - 1, 1),
+  )
   const [tab, setTab] = useState<CalendarTab>(activeTab)
 
   const year = viewDate.getFullYear()
@@ -48,8 +52,6 @@ export function CalendarModal({
   const lastDay = new Date(year, month + 1, 0)
   const startDow = (firstDay.getDay() + 6) % 7
   const daysInMonth = lastDay.getDate()
-  const today = new Date()
-  const todayStr = todayKey()
   const activeDays = tab === 'review' ? completedDays : creationDays
 
   const cells: CalendarCell[] = []
@@ -68,10 +70,11 @@ export function CalendarModal({
     cells.push({ day: i, monthOffset: 1 })
   }
 
-  const isCurrentMonth =
-    year === today.getFullYear() && month === today.getMonth()
-  const isFutureMonth = new Date(year, month, 1) > today
-  const lastDayToCount = isCurrentMonth ? today.getDate() : daysInMonth
+  const baselineToday = new Date(todayYear, (todayMonth || 1) - 1, todayDay || 1)
+  const isCurrentMonth = year === todayYear && month === (todayMonth || 1) - 1
+  const isFutureMonth =
+    year > todayYear || (year === todayYear && month > (todayMonth || 1) - 1)
+  const lastDayToCount = isCurrentMonth ? todayDay : daysInMonth
 
   let completedCount = 0
   for (let day = 1; day <= lastDayToCount; day++) {
@@ -145,11 +148,6 @@ export function CalendarModal({
             const key = `${dayDate.getFullYear()}-${String(dayDate.getMonth() + 1).padStart(2, '0')}-${String(dayDate.getDate()).padStart(2, '0')}`
             const isCompleted = activeDays.includes(key)
             const isToday = key === todayStr
-            const baselineToday = new Date(
-              today.getFullYear(),
-              today.getMonth(),
-              today.getDate(),
-            )
             const isFuture = dayDate > baselineToday
             const isPast = dayDate < baselineToday
             const status: DayStatus =
