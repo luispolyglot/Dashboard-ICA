@@ -228,7 +228,7 @@ export function LeaderboardView() {
                     <th className='w-[20%] pb-2 font-medium'>% mensual</th>
                   </tr>
                 </thead>
-                <tbody className='block max-h-[60dvh] overflow-y-auto'>
+                <tbody className='block lg:max-h-[50dvh] lg:overflow-y-auto'>
                   {visibleRows.map((row) => (
                     <tr
                       key={`${row.user_id}-${row.rank}-${selectedMonth}`}
