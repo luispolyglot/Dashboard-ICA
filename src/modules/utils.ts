@@ -8,22 +8,6 @@ export function generateId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-const SPAIN_TIMEZONE = 'Europe/Madrid'
-
-function formatSpainDay(date: Date): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: SPAIN_TIMEZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date)
-
-  const year = parts.find((part) => part.type === 'year')?.value ?? '1970'
-  const month = parts.find((part) => part.type === 'month')?.value ?? '01'
-  const day = parts.find((part) => part.type === 'day')?.value ?? '01'
-  return `${year}-${month}-${day}`
-}
-
 function shiftIsoDay(isoDay: string, days: number): string {
   const [year, month, day] = isoDay.split('-').map(Number)
   const date = new Date(Date.UTC(year, (month || 1) - 1, day || 1))
@@ -35,7 +19,8 @@ function shiftIsoDay(isoDay: string, days: number): string {
 }
 
 export function todayKey() {
-  return formatSpainDay(new Date())
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 function isCardFailed(card: Lexicard): boolean {

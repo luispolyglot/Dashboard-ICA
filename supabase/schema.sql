@@ -779,36 +779,45 @@ language sql
 security definer
 set search_path = public
 as $$
-  with madrid_now as (
-    select (now() at time zone 'Europe/Madrid') as now_spain
+  with user_context as (
+    select distinct
+      dm.user_id,
+      coalesce(tzn.name, 'UTC') as timezone_name,
+      (now() at time zone coalesce(tzn.name, 'UTC')) as now_local
+    from public.daily_metrics dm
+    left join public.profiles p on p.id = dm.user_id
+    left join pg_timezone_names tzn on tzn.name = nullif(p.timezone, '')
   ),
   month_bounds as (
     select
-      date_trunc('month', mn.now_spain)::date as month_start,
-      (date_trunc('month', mn.now_spain) + interval '1 month')::date as month_end,
-      extract(day from mn.now_spain)::numeric as elapsed_days,
-      mn.now_spain::date as today_spain
-    from madrid_now mn
+      uc.user_id,
+      date_trunc('month', uc.now_local)::date as month_start,
+      (date_trunc('month', uc.now_local) + interval '1 month')::date as month_end,
+      greatest(1, least(28, extract(day from uc.now_local)::integer))::numeric as elapsed_days,
+      uc.now_local::date as today_local
+    from user_context uc
   ),
   user_progress as (
     select
-      dm.user_id,
+      mb.user_id,
+      mb.elapsed_days,
       sum(case when dm.review_goal_completed then 1 else 0 end)::numeric as review_days,
       sum(case when dm.creation_goal_completed then 1 else 0 end)::numeric as creation_days
-    from public.daily_metrics dm
-    cross join month_bounds mb
-    where dm.day >= mb.month_start
-      and dm.day < mb.month_end
-    group by dm.user_id
+    from month_bounds mb
+    join public.daily_metrics dm
+      on dm.user_id = mb.user_id
+     and dm.day >= mb.month_start
+     and dm.day < mb.month_end
+     and extract(day from dm.day)::integer <= mb.elapsed_days::integer
+    group by mb.user_id, mb.elapsed_days
   ),
   scores as (
     select
       up.user_id,
-      round((up.review_days / nullif(mb.elapsed_days, 0)) * 100, 2) as review_percent,
-      round((up.creation_days / nullif(mb.elapsed_days, 0)) * 100, 2) as creation_percent,
-      round((((up.review_days / nullif(mb.elapsed_days, 0)) * 100) + ((up.creation_days / nullif(mb.elapsed_days, 0)) * 100)) / 2, 2) as avg_percent
+      round((up.review_days / nullif(up.elapsed_days, 0)) * 100, 2) as review_percent,
+      round((up.creation_days / nullif(up.elapsed_days, 0)) * 100, 2) as creation_percent,
+      round((((up.review_days / nullif(up.elapsed_days, 0)) * 100) + ((up.creation_days / nullif(up.elapsed_days, 0)) * 100)) / 2, 2) as avg_percent
     from user_progress up
-    cross join month_bounds mb
   ),
   creation_days as (
     select
@@ -816,9 +825,9 @@ as $$
       dm.day,
       dm.day - (row_number() over (partition by dm.user_id order by dm.day))::integer as grp
     from public.daily_metrics dm
-    cross join month_bounds mb
+    join month_bounds mb on mb.user_id = dm.user_id
     where dm.creation_goal_completed
-      and dm.day <= mb.today_spain
+      and dm.day <= mb.today_local
   ),
   creation_streaks as (
     select
@@ -833,8 +842,8 @@ as $$
       cs.user_id,
       cs.ica_streak_days
     from creation_streaks cs
-    cross join month_bounds mb
-    where cs.streak_end_day between (mb.today_spain - interval '1 day')::date and mb.today_spain
+    join month_bounds mb on mb.user_id = cs.user_id
+    where cs.streak_end_day between (mb.today_local - interval '1 day')::date and mb.today_local
     order by cs.user_id, cs.streak_end_day desc
   ),
   ranked as (
@@ -880,14 +889,15 @@ as $$
   with period as (
     select coalesce(
       p_month_start,
-      date_trunc('month', (now() at time zone 'Europe/Madrid') - interval '1 month')::date
+      date_trunc('month', (now() at time zone 'UTC') - interval '1 month')::date
     ) as month_start
   ),
   bounds as (
     select
       p.month_start,
       (p.month_start + interval '1 month')::date as month_end,
-      extract(day from ((p.month_start + interval '1 month')::date - interval '1 day'))::numeric as month_days,
+      (p.month_start + interval '27 days')::date as cutoff_day,
+      28::numeric as month_days,
       ((p.month_start + interval '1 month')::date - interval '1 day')::date as month_last_day
     from period p
   ),
@@ -900,6 +910,7 @@ as $$
     cross join bounds b
     where dm.day >= b.month_start
       and dm.day < b.month_end
+      and dm.day <= b.cutoff_day
     group by dm.user_id
   ),
   scores as (
@@ -965,7 +976,7 @@ as $$
     select
       'monthly',
       b.month_start,
-      b.month_last_day,
+      b.cutoff_day,
       r.user_id,
       round(r.avg_percent)::integer as score,
       r.rank::integer,
@@ -999,15 +1010,15 @@ security definer
 set search_path = public
 as $$
 declare
-  now_spain timestamp := (now() at time zone 'Europe/Madrid');
+  now_utc timestamp := (now() at time zone 'UTC');
   target_start date;
   affected_rows integer;
 begin
-  if extract(day from now_spain)::integer <> 1 then
-    return 'skip:not-first-day-spain';
+  if extract(day from now_utc)::integer <> 1 or extract(hour from now_utc)::integer < 13 then
+    return 'skip:not-ready-utc-window';
   end if;
 
-  target_start := date_trunc('month', now_spain - interval '1 month')::date;
+  target_start := date_trunc('month', now_utc - interval '1 month')::date;
   affected_rows := public.snapshot_monthly_leaderboard(target_start, 500);
   return 'ok:' || affected_rows::text;
 end;
@@ -1019,18 +1030,17 @@ do $$
 declare
   existing_job_id bigint;
 begin
-  select jobid
-  into existing_job_id
-  from cron.job
-  where jobname = 'monthly_leaderboard_snapshot_spain';
-
-  if existing_job_id is not null then
+  for existing_job_id in
+    select jobid
+    from cron.job
+    where jobname in ('monthly_leaderboard_snapshot_spain', 'monthly_leaderboard_snapshot_utc')
+  loop
     perform cron.unschedule(existing_job_id);
-  end if;
+  end loop;
 
   perform cron.schedule(
-    'monthly_leaderboard_snapshot_spain',
-    '15 * * * *',
+    'monthly_leaderboard_snapshot_utc',
+    '15 * 1 * *',
     $cron$select public.run_monthly_leaderboard_snapshot_if_needed();$cron$
   );
 end;

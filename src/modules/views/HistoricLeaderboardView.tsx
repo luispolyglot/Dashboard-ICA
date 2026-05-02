@@ -22,7 +22,6 @@ function monthLabel(periodStart: string): string {
   const label = date.toLocaleDateString('es-ES', {
     month: 'long',
     year: 'numeric',
-    timeZone: 'Europe/Madrid',
   })
 
   return label.slice(0, 1).toUpperCase() + label.slice(1)

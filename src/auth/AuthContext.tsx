@@ -21,6 +21,11 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
+function detectUserTimezone(): string {
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  return timezone && timezone.trim().length > 0 ? timezone : 'UTC'
+}
+
 export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
@@ -58,6 +63,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
     return () => data.subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    if (!supabase || !user?.id) return
+
+    const timezone = detectUserTimezone()
+    void supabase
+      .from('profiles')
+      .upsert({ id: user.id, timezone }, { onConflict: 'id' })
+  }, [user?.id])
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -99,9 +113,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const userId = data.user?.id
         const hasActiveSession = Boolean(data.session)
         if (userId && cleanNickname && hasActiveSession) {
+          const timezone = detectUserTimezone()
           const { error: profileError } = await supabase
             .from('profiles')
-            .upsert({ id: userId, display_name: cleanNickname }, { onConflict: 'id' })
+            .upsert({ id: userId, display_name: cleanNickname, timezone }, { onConflict: 'id' })
 
           if (profileError) throw profileError
         }
