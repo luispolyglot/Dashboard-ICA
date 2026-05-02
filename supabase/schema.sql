@@ -879,7 +879,9 @@ as $$
   ),
   ranked as (
     select
-      row_number() over (order by s.avg_percent desc, s.user_id) as rank,
+      row_number() over (
+        order by s.avg_percent desc, coalesce(ccs.ica_streak_days, 0) desc, s.user_id
+      ) as rank,
       s.user_id,
       coalesce(p.username, 'anon') as username,
       coalesce(p.display_name, p.username, 'Usuario') as display_name,
@@ -1059,7 +1061,9 @@ as $$
   ),
   ranked as (
     select
-      row_number() over (order by s.avg_percent desc, s.user_id) as rank,
+      row_number() over (
+        order by s.avg_percent desc, coalesce(ccs.ica_streak_days, 0) desc, s.user_id
+      ) as rank,
       s.user_id,
       coalesce(p.username, 'anon') as username,
       coalesce(p.display_name, p.username, 'Usuario') as display_name,

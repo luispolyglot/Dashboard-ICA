@@ -20,7 +20,6 @@ import { ReviewView } from '../views/ReviewView'
 import { TrackerDetailView } from '../views/TrackerDetailView'
 import { TrackersView } from '../views/TrackersView'
 import {
-  DEFAULT_REVIEW_PLAY_STYLE,
   loadSavedReviewPlayStyle,
   REVIEW_PLAY_STYLE_QUERY_PARAM,
   saveReviewPlayStyle,
