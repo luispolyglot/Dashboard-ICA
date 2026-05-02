@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { LevelBadge } from '../components/LevelBadge'
 import { getTodayProgress } from '../constants'
@@ -8,6 +8,7 @@ import { AddView } from '../views/AddView'
 import { AdminAnalyticsView } from '../views/AdminAnalyticsView'
 import { FlashcardsModeView } from '../views/FlashcardsModeView'
 import { HistoricLeaderboardView } from '../views/HistoricLeaderboardView'
+import { LeaderboardView } from '../views/LeaderboardView'
 import { HomeView } from '../views/HomeView'
 import { ManageWhitelistView } from '../views/ManageWhitelistView'
 import { ManageView } from '../views/ManageView'
@@ -20,7 +21,9 @@ import { TrackerDetailView } from '../views/TrackerDetailView'
 import { TrackersView } from '../views/TrackersView'
 import {
   DEFAULT_REVIEW_PLAY_STYLE,
+  loadSavedReviewPlayStyle,
   REVIEW_PLAY_STYLE_QUERY_PARAM,
+  saveReviewPlayStyle,
   getReviewPlayStyleFromQuery,
   type ReviewPlayStyle,
 } from '../review/playStyle'
@@ -72,8 +75,12 @@ export function FlashcardsPage() {
   const navigate = useNavigate()
   const todayProgress = getTodayProgress(dailyProgress)
   const [playStyle, setPlayStyle] = useState<ReviewPlayStyle>(
-    DEFAULT_REVIEW_PLAY_STYLE,
+    loadSavedReviewPlayStyle(),
   )
+
+  useEffect(() => {
+    saveReviewPlayStyle(playStyle)
+  }, [playStyle])
 
   return (
     <PageLayout>
@@ -178,6 +185,14 @@ export function PhraseHistoryPage() {
   return (
     <PageLayout>
       <PhraseHistoryView targetLang={config.targetLang} />
+    </PageLayout>
+  )
+}
+
+export function LeaderboardPage() {
+  return (
+    <PageLayout>
+      <LeaderboardView />
     </PageLayout>
   )
 }

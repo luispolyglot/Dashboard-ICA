@@ -28,3 +28,21 @@ export async function fetchMonthlyStreakLeaderboard(limit = 12): Promise<Leaderb
 
   return (data || []) as LeaderboardEntry[]
 }
+
+export async function fetchMonthlySnapshotLeaderboard(
+  periodStart: string,
+  limit = 30,
+): Promise<LeaderboardEntry[]> {
+  if (!supabase) return []
+
+  const { data, error } = await supabase.rpc('get_monthly_snapshot_leaderboard', {
+    p_period_start: periodStart,
+    limit_count: limit,
+  })
+
+  if (error) {
+    throw error
+  }
+
+  return (data || []) as LeaderboardEntry[]
+}

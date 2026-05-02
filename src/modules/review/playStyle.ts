@@ -7,6 +7,7 @@ export const DEFAULT_REVIEW_PLAY_STYLE: ReviewPlayStyle = 'classic'
 export const REVIEW_CLASSIC_MIN_WORDS_PER_FREQUENCY = 10
 export const REVIEW_GOAL_MIN_WORDS_PER_MODE = 20
 export const REVIEW_PLAY_STYLE_QUERY_PARAM = 'playStyle'
+export const REVIEW_PLAY_STYLE_STORAGE_KEY = 'dashboard-ica-review-play-style'
 
 export function isReviewPlayStyle(value: unknown): value is ReviewPlayStyle {
   return value === 'classic' || value === 'goal'
@@ -33,4 +34,17 @@ export function getReviewModeMinimumWords(style: ReviewPlayStyle): number {
   return style === 'goal'
     ? REVIEW_GOAL_MIN_WORDS_PER_MODE
     : REVIEW_CLASSIC_MIN_WORDS_PER_FREQUENCY
+}
+
+export function loadSavedReviewPlayStyle(): ReviewPlayStyle {
+  if (typeof window === 'undefined') return DEFAULT_REVIEW_PLAY_STYLE
+
+  const saved = window.localStorage.getItem(REVIEW_PLAY_STYLE_STORAGE_KEY)
+  if (isReviewPlayStyle(saved)) return saved
+  return DEFAULT_REVIEW_PLAY_STYLE
+}
+
+export function saveReviewPlayStyle(style: ReviewPlayStyle): void {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(REVIEW_PLAY_STYLE_STORAGE_KEY, style)
 }

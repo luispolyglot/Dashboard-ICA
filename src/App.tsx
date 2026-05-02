@@ -10,6 +10,7 @@ import {
   FlashcardsPlayPage,
   HistoricLeaderboardPage,
   HomePage,
+  LeaderboardPage,
   ManageWhitelistPage,
   MyIcaWordsPage,
   NewTrackerPage,
@@ -68,6 +69,7 @@ export function App() {
           <Route path='flashcards/play/:mode' element={<FlashcardsPlayPage />} />
           <Route path='activation-phrase' element={<ActivationPhrasePage />} />
           <Route path='phrase-history' element={<PhraseHistoryPage />} />
+          <Route path='leaderboard' element={<LeaderboardPage />} />
           <Route path='profile' element={<ProfilePage />} />
           <Route path='trackers' element={<TrackersPage />} />
           <Route path='trackers/new' element={<NewTrackerPage />} />
