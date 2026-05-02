@@ -68,9 +68,22 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (!supabase || !user?.id) return
 
     const timezone = detectUserTimezone()
-    void supabase
-      .from('profiles')
-      .upsert({ id: user.id, timezone }, { onConflict: 'id' })
+
+    void (async () => {
+      const { error: rpcError } = await supabase.rpc('set_my_timezone', {
+        p_timezone: timezone,
+      })
+
+      if (!rpcError) return
+
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert({ id: user.id, timezone }, { onConflict: 'id' })
+
+      if (profileError) {
+        console.warn('No se pudo sincronizar timezone de perfil', profileError)
+      }
+    })()
   }, [user?.id])
 
   const value = useMemo<AuthContextValue>(
