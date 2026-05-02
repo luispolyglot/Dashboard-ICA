@@ -169,7 +169,8 @@ export function PhraseView({
     return ''
   }
 
-  const searchableManualPool = manualQuery.trim() ? allWords : manualPool
+  const searchableManualPool =
+    manualQuery.trim() || manualOnlyNotActivated ? allWords : manualPool
 
   const filteredManualPool = searchableManualPool.filter((word) => {
     const q = manualQuery.trim().toLowerCase()
@@ -381,7 +382,8 @@ export function PhraseView({
       {mode === 'manual' && (
         <div className='mb-6 w-full rounded-xl border border-border bg-muted/30 p-3.5'>
           <label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
-            Selecciona palabras (5-8, últimas 25 por defecto)
+            Selecciona palabras (5-8,{' '}
+            {!manualOnlyNotActivated ? 'últimas 25 por defecto' : 'todas'})
           </label>
 
           <Input
