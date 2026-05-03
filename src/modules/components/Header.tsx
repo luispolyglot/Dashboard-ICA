@@ -1,10 +1,10 @@
 import { useId } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { AppBreadcrumbs } from './AppBreadcrumbs'
 import { LeaderboardMenu } from './LeaderboardMenu'
 import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
 import { DASHBOARD_ROUTES } from '../routes/paths'
-import type { CalendarTab, DailyProgressMap } from '../types'
+import type { DailyProgressMap } from '../types'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -14,7 +14,6 @@ import {
 import { useTheme } from '@/theme/ThemeContext'
 
 type HeaderProps = {
-  onOpenCalendar: (tab: CalendarTab) => void
   dailyProgress: DailyProgressMap
   boltButtonRef: (node: HTMLButtonElement | null) => void
 }
@@ -83,10 +82,10 @@ function HeaderBoltIcon({ segments, size = 28 }: HeaderBoltIconProps) {
 }
 
 export function Header({
-  onOpenCalendar,
   dailyProgress,
   boltButtonRef,
 }: HeaderProps) {
+  const navigate = useNavigate()
   const todayProgress = getTodayProgress(dailyProgress)
   const flashDone = todayProgress.reviewCorrect >= GOAL
   const phraseDone = todayProgress.phraseGenerated
@@ -149,7 +148,7 @@ export function Header({
                 type='button'
                 size='icon'
                 variant='outline'
-                onClick={() => onOpenCalendar('creation')}
+                onClick={() => navigate(DASHBOARD_ROUTES.streaks)}
                 aria-label={`Abrir mis rachas (${completedSegments}/2)`}
                 title={`Mis rachas (${completedSegments}/2)`}
                 className='transition-all duration-300 hover:scale-[1.04]'

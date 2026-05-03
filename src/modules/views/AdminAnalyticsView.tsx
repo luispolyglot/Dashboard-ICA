@@ -138,7 +138,7 @@ export function AdminAnalyticsView() {
           <CardHeader>
             <CardTitle className='flex items-center gap-2 text-base'>
               <ActivityIcon className='h-4 w-4' />
-              Reviews totales
+              Flashcards totales
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -185,7 +185,7 @@ export function AdminAnalyticsView() {
               </p>
             </div>
             <div>
-              <p className='text-muted-foreground'>Reviews realizadas</p>
+              <p className='text-muted-foreground'>Flashcards realizadas</p>
               <p className='text-xl font-semibold'>
                 {analytics.summary.reviewsToday}
               </p>

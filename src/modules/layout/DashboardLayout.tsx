@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, RefObject } from 'react'
 import { Outlet } from 'react-router-dom'
 import { FullscreenLoading } from '@/components/ui/fullscreen-loading'
-import { CalendarModal } from '../components/CalendarModal'
 import { Header } from '../components/Header'
 import { LangEditModal } from '../components/LangEditModal'
 import { MobileBottomNav } from '../components/MobileBottomNav'
@@ -79,15 +78,9 @@ export function DashboardLayout() {
     loading,
     showLangModal,
     setShowLangModal,
-    showCalendar,
-    setShowCalendar,
-    calendarTab,
-    completedDays,
-    creationDays,
     dailyProgress,
     handleSetup,
     handleConfigChange,
-    openCalendar,
   } = useDashboardContext()
 
   const boltButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -149,7 +142,6 @@ export function DashboardLayout() {
     <div className='flex h-[calc(100dvh-0rem)] grow'>
       <div className='bg-background flex h-[calc(100dvh-0rem)] min-w-0 flex-1 flex-col'>
         <Header
-          onOpenCalendar={openCalendar}
           dailyProgress={dailyProgress}
           boltButtonRef={(node) => {
             boltButtonRef.current = node
@@ -164,19 +156,10 @@ export function DashboardLayout() {
           />
         )}
 
-        {showCalendar && (
-          <CalendarModal
-            completedDays={completedDays}
-            creationDays={creationDays}
-            onClose={() => setShowCalendar(false)}
-            activeTab={calendarTab}
-          />
-        )}
-
         <main className='flex flex-1 overflow-y-auto pb-20 md:pb-0'>
           <Outlet />
         </main>
-        <MobileBottomNav onOpenCalendar={openCalendar} />
+        <MobileBottomNav />
 
         <BoltFlightFx
           trigger={activeFlight}

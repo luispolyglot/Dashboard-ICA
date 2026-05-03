@@ -1,12 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { DASHBOARD_ROUTES } from '../routes/paths'
-import type { CalendarTab } from '../types'
 
-type MobileBottomNavProps = {
-  onOpenCalendar: (tab: CalendarTab) => void
-}
-
-export function MobileBottomNav({ onOpenCalendar }: MobileBottomNavProps) {
+export function MobileBottomNav() {
   const linkClassName = ({ isActive }: { isActive: boolean }) =>
     `flex flex-col items-center gap-1 ${
       isActive ? 'text-primary' : 'text-muted-foreground'
@@ -22,16 +17,12 @@ export function MobileBottomNav({ onOpenCalendar }: MobileBottomNavProps) {
           <span className='text-[11px] font-medium'>Inicio</span>
         </NavLink>
 
-        <button
-          type='button'
-          onClick={() => onOpenCalendar('creation')}
-          className='flex flex-col items-center gap-1 text-muted-foreground'
-        >
+        <NavLink to={DASHBOARD_ROUTES.streaks} className={linkClassName}>
           <span className='text-lg leading-none' aria-hidden='true'>
             📆
           </span>
           <span className='text-[11px] font-medium'>Rachas</span>
-        </button>
+        </NavLink>
 
         <NavLink
           to={DASHBOARD_ROUTES.newIcaWords}

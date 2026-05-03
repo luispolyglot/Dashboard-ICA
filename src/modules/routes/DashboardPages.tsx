@@ -17,6 +17,7 @@ import { ProfileView } from '../views/ProfileView'
 import { PhraseHistoryView } from '../views/PhraseHistoryView'
 import { PhraseView } from '../views/PhraseView'
 import { ReviewView } from '../views/ReviewView'
+import { StreaksView } from '../views/StreaksView'
 import { TrackerDetailView } from '../views/TrackerDetailView'
 import { TrackersView } from '../views/TrackersView'
 import {
@@ -192,6 +193,16 @@ export function LeaderboardPage() {
   return (
     <PageLayout>
       <LeaderboardView />
+    </PageLayout>
+  )
+}
+
+export function StreaksPage() {
+  const { completedDays, creationDays } = useDashboardContext()
+
+  return (
+    <PageLayout>
+      <StreaksView completedDays={completedDays} creationDays={creationDays} />
     </PageLayout>
   )
 }

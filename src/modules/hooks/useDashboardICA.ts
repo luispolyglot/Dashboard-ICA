@@ -8,7 +8,6 @@ import { loadData, saveData } from '../services/storage'
 import { todayKey } from '../utils'
 import type {
   AppConfig,
-  CalendarTab,
   DailyProgressMap,
   Lexicard,
   MetaTrackerProfile,
@@ -27,8 +26,6 @@ export function useDashboardICA() {
   const [completedDays, setCompletedDays] = useState<string[]>([])
   const [creationDays, setCreationDays] = useState<string[]>([])
   const [dailyProgress, setDailyProgress] = useState<DailyProgressMap>({})
-  const [showCalendar, setShowCalendar] = useState(false)
-  const [calendarTab, setCalendarTab] = useState<CalendarTab>('creation')
   const [reviewSession, setReviewSession] = useState(0)
   const [metaTrackerByScope, setMetaTrackerByScope] = useState<
     Record<string, MetaTrackerProfile | null | undefined>
@@ -201,11 +198,6 @@ export function useDashboardICA() {
     })()
   }
 
-  const openCalendar = (tab: CalendarTab): void => {
-    setCalendarTab(tab)
-    setShowCalendar(true)
-  }
-
   const handleReviewAnswer = async (knew: boolean): Promise<void> => {
     if (!knew) return
 
@@ -248,9 +240,6 @@ export function useDashboardICA() {
     setCompletedDays,
     creationDays,
     dailyProgress,
-    showCalendar,
-    setShowCalendar,
-    calendarTab,
     reviewSession,
     metaTrackerProfile,
     metaTrackerLoading,
@@ -262,7 +251,6 @@ export function useDashboardICA() {
     handleConfigChange,
     saveMetaTracker,
     setMetaTrackerActivationWordsTotal,
-    openCalendar,
     startReviewSession,
   }
 }

@@ -17,6 +17,7 @@ import {
   NewIcaWordsPage,
   PhraseHistoryPage,
   ProfilePage,
+  StreaksPage,
   TrackerDetailPage,
   TrackersPage,
 } from './modules/routes/DashboardPages'
@@ -70,6 +71,7 @@ export function App() {
           <Route path='activation-phrase' element={<ActivationPhrasePage />} />
           <Route path='phrase-history' element={<PhraseHistoryPage />} />
           <Route path='leaderboard' element={<LeaderboardPage />} />
+          <Route path='streaks' element={<StreaksPage />} />
           <Route path='profile' element={<ProfilePage />} />
           <Route path='trackers' element={<TrackersPage />} />
           <Route path='trackers/new' element={<NewTrackerPage />} />
