@@ -1,9 +1,10 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { MetaTrackerSection } from '../components/MetaTracker/MetaTrackerSection'
 import { CREATION_WORDS_GOAL, getTodayProgress } from '../constants'
+import { fetchTodayVoiceActivationCount } from '../services/phraseVoiceActivations'
 import type { DailyProgressMap } from '../types'
 import type { AppConfig } from '../types'
 
@@ -31,6 +32,7 @@ function pluralize(value: number, singular: string, plural: string): string {
 
 export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   const navigate = useNavigate()
+  const [voiceActivationsToday, setVoiceActivationsToday] = useState(0)
   const todayProgress = getTodayProgress(dailyProgress)
   const cardBaseClass =
     'relative flex min-h-[220px] w-full flex-col border-none px-[26px] py-8 text-left font-sans transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] hover:-translate-y-[3px] bg-[linear-gradient(160deg,#ffffff,#eef3f9)] dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
@@ -46,12 +48,31 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   const flashDone = todayProgress.reviewCorrect >= 10
   const phraseDone = todayProgress.phraseGenerated
 
+  useEffect(() => {
+    let active = true
+
+    fetchTodayVoiceActivationCount()
+      .then((count) => {
+        if (!active) return
+        setVoiceActivationsToday(count)
+      })
+      .catch(() => {
+        if (!active) return
+        setVoiceActivationsToday(0)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
   const cards: HomeCard[] = useMemo(
     () => [
       {
         initial: 'I',
         title: 'INMERSIÓN',
-        description: 'Escribe las palabras filtradas mediante la inmersión.',
+        description:
+          'Añade palabras y consulta su historial ICA en un solo flujo.',
         emoji: '✍️',
         tone: '#3B82F6',
         statusLabel: hasFiveWordsToday
@@ -63,27 +84,29 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
       {
         initial: 'C',
         title: 'CREACIÓN',
-        description: 'Accede a la creación de tu conocimiento escrito.',
+        description: 'Crea frases con tus palabras ICA y consolida contexto.',
         emoji: '🧩',
         tone: '#3B82F6',
-        statusLabel: hasFiveWordsToday
-          ? 'Objetivo diario de creación completado'
-          : `Necesitas ${pluralize(wordsLeftToday, 'palabra', 'palabras')} más hoy`,
-        statusDone: hasFiveWordsToday,
-        to: DASHBOARD_ROUTES.myIcaWords,
+        statusLabel: phraseDone
+          ? 'Frase diaria completada'
+          : `Te queda ${pluralize(1, 'frase de creación', 'frases de creación')}`,
+        statusDone: phraseDone,
+        to: DASHBOARD_ROUTES.activationPhrase,
+        disabled: !hasFiveWordsTotal,
       },
       {
         initial: 'A',
         title: 'ACTIVACIÓN',
-        description: 'Activa tu conocimiento escrito mediante frases.',
+        description: 'Activa tus frases creadas con grabación de voz propia.',
         emoji: '🗣️',
         tone: '#3B82F6',
-        statusLabel: phraseDone
-          ? 'Frase diaria completada'
-          : `Te queda ${pluralize(1, 'frase de activación', 'frases de activación')}`,
-        statusDone: phraseDone,
-        to: DASHBOARD_ROUTES.activationPhrase,
-        disabled: !hasFiveWordsTotal,
+        statusLabel:
+          voiceActivationsToday > 0
+            ? `${pluralize(voiceActivationsToday, 'activación', 'activaciones')} hoy`
+            : 'Activa cualquier frase creada',
+        statusDone: voiceActivationsToday > 0,
+        to: DASHBOARD_ROUTES.masterNotes,
+        disabled: false,
       },
     ],
     [
@@ -91,6 +114,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
       hasFiveWordsToday,
       hasFiveWordsTotal,
       phraseDone,
+      voiceActivationsToday,
       wordsLeftToday,
     ],
   )

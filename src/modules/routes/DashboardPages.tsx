@@ -12,6 +12,9 @@ import { LeaderboardView } from '../views/LeaderboardView'
 import { HomeView } from '../views/HomeView'
 import { ManageWhitelistView } from '../views/ManageWhitelistView'
 import { ManageView } from '../views/ManageView'
+import { MasterNoteActivatePhraseView } from '../views/MasterNoteActivatePhraseView'
+import { MasterNoteDetailView } from '../views/MasterNoteDetailView'
+import { MasterNotesView } from '../views/MasterNotesView'
 import { NewTrackerView } from '../views/NewTrackerView'
 import { ProfileView } from '../views/ProfileView'
 import { PhraseHistoryView } from '../views/PhraseHistoryView'
@@ -207,6 +210,45 @@ export function PhraseHistoryPage() {
   return (
     <PageLayout>
       <PhraseHistoryView targetLang={config.targetLang} />
+    </PageLayout>
+  )
+}
+
+export function MasterNotesPage() {
+  const { config } = useDashboardContext()
+  if (!config) return null
+
+  return (
+    <PageLayout>
+      <MasterNotesView targetLang={config.targetLang} />
+    </PageLayout>
+  )
+}
+
+export function MasterNoteDetailPage() {
+  const { config } = useDashboardContext()
+  const { noteId } = useParams<{ noteId: string }>()
+  if (!config || !noteId) return null
+
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.masterNotes}>
+      <MasterNoteDetailView noteId={noteId} targetLang={config.targetLang} />
+    </PageLayout>
+  )
+}
+
+export function MasterNoteActivatePhrasePage() {
+  const { config } = useDashboardContext()
+  const { noteId, phraseId } = useParams<{ noteId: string; phraseId: string }>()
+  if (!config || !noteId || !phraseId) return null
+
+  return (
+    <PageLayout backTo={`${DASHBOARD_ROUTES.masterNotes}/note/${noteId}`}>
+      <MasterNoteActivatePhraseView
+        noteId={noteId}
+        phraseId={phraseId}
+        targetLang={config.targetLang}
+      />
     </PageLayout>
   )
 }

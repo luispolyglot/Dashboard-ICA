@@ -308,7 +308,7 @@ export function PhraseView({
       <div className='mb-4 w-full flex items-start justify-between gap-3'>
         <div>
           <h2 className='mb-1 font-serif text-2xl lg:text-3xl font-bold'>
-            🗣️ Frase de Activación
+            🧩 Creación de Frases ICA
           </h2>
           <p className='text-sm text-muted-foreground'>
             Genera una frase natural en {config.targetLang} usando tus palabras

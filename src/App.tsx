@@ -12,6 +12,9 @@ import {
   HomePage,
   LeaderboardPage,
   ManageWhitelistPage,
+  MasterNoteActivatePhrasePage,
+  MasterNoteDetailPage,
+  MasterNotesPage,
   MyIcaWordsPage,
   NewTrackerPage,
   NewIcaWordsPage,
@@ -70,6 +73,12 @@ export function App() {
           <Route path='flashcards/play/:mode' element={<FlashcardsPlayPage />} />
           <Route path='activation-phrase' element={<ActivationPhrasePage />} />
           <Route path='phrase-history' element={<PhraseHistoryPage />} />
+          <Route path='master-notes' element={<MasterNotesPage />} />
+          <Route path='master-notes/note/:noteId' element={<MasterNoteDetailPage />} />
+          <Route
+            path='master-notes/note/:noteId/activate/:phraseId'
+            element={<MasterNoteActivatePhrasePage />}
+          />
           <Route path='leaderboard' element={<LeaderboardPage />} />
           <Route path='streaks' element={<StreaksPage />} />
           <Route path='profile' element={<ProfilePage />} />

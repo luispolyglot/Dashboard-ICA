@@ -12,9 +12,11 @@ export type AdminAnalyticsSummary = {
   totalLexicards: number
   totalReviews: number
   totalPhrases: number
+  totalVoiceActivations: number
   activeUsersToday: number
   wordsAddedToday: number
   reviewsToday: number
+  voiceActivationsToday: number
 }
 
 export type AdminAnalyticsRecentUser = {
@@ -109,7 +111,11 @@ export async function fetchAdminAnalytics(): Promise<AdminAnalyticsPayload> {
     throw new AnalyticsRequestError('No se pudieron cargar las analíticas.', status)
   }
 
-  if (!data?.summary || !Array.isArray(data.recentUsers) || !Array.isArray(data.dailySignups)) {
+  if (
+    !data?.summary ||
+    !Array.isArray(data.recentUsers) ||
+    !Array.isArray(data.dailySignups)
+  ) {
     throw new AnalyticsRequestError('Respuesta inválida del servidor de analíticas.')
   }
 

@@ -71,6 +71,41 @@ export interface PhraseGenerationEntry {
   created_at: string
 }
 
+export interface PhraseVoiceActivationEntry {
+  id: string
+  phrase_generation_id: string
+  storage_path: string
+  duration_ms: number | null
+  mime_type: string | null
+  size_bytes: number | null
+  status: 'uploaded' | 'processing' | 'ready' | 'failed'
+  created_at: string
+}
+
+export interface MasterNote {
+  id: string
+  name: string
+  state: 'open' | 'closed'
+  close_type: 'final' | 'temporal'
+  total_duration_ms: number
+  final_audio_path: string | null
+  created_at: string
+  updated_at: string
+  closed_at: string | null
+}
+
+export interface MasterNoteChunk {
+  id: string
+  master_note_id: string
+  phrase_generation_id: string
+  storage_path: string
+  duration_ms: number
+  mime_type: string | null
+  size_bytes: number | null
+  sort_order: number
+  created_at: string
+}
+
 export interface DailyProgressEntry {
   wordsAdded: number
   phraseGenerated: boolean
