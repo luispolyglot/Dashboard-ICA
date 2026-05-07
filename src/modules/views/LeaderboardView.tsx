@@ -104,12 +104,12 @@ function buildVisibleRowsWithSharedRank(
       currentPercent === prevPercent
 
     if (!sameAsPrevious) {
-      sharedRank += 1
+      sharedRank = index + 1
     }
 
     result.push({
       row,
-      rankLabel: sameAsPrevious ? '-' : rankBadge(sharedRank),
+      rankLabel: rankBadge(sharedRank),
     })
 
     prevStreak = currentStreak
