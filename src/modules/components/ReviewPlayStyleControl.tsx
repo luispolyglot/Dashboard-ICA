@@ -102,7 +102,7 @@ export function ReviewPlayStyleControl({
 
       <label
         htmlFor='review-pending-only'
-        className='inline-flex max-w-[320px] items-start gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-1.5 text-left text-[11px] font-medium text-muted-foreground'
+        className='inline-flex w-auto items-center gap-2 p-1.5 text-left text-[11px] font-medium text-muted-foreground'
       >
         <input
           id='review-pending-only'
@@ -115,7 +115,9 @@ export function ReviewPlayStyleControl({
         <span
           className={cn(
             pendingOnly && 'text-foreground',
-            pendingOnly && pendingCount === 0 && 'text-red-600 dark:text-red-300',
+            pendingOnly &&
+              pendingCount === 0 &&
+              'text-red-600 dark:text-red-300',
           )}
         >
           {pendingOnlyLabel}

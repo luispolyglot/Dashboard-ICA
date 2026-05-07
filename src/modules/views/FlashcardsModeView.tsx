@@ -29,7 +29,9 @@ export function FlashcardsModeView({
   const pendingCards = cards.filter((card) => (card.streak || 0) === 0)
   const availableCards = pendingOnly ? pendingCards : cards
   const minWordsByMode = getReviewModeMinimumWords(playStyle)
-  const roundSize: number = isGoalStyle ? availableCards.length : REVIEW_ROUND_SIZE
+  const roundSize: number = isGoalStyle
+    ? availableCards.length
+    : REVIEW_ROUND_SIZE
   const flashcardsLiteral = roundSize === 1 ? 'flashcard' : 'flashcards'
 
   const cardBaseClass =
@@ -38,16 +40,21 @@ export function FlashcardsModeView({
   const countsByMode: Record<ReviewMode, number> = {
     mixed: availableCards.length,
     vital: availableCards.filter((card) => card.importance === 'vital').length,
-    frequent: availableCards.filter((card) => card.importance === 'frequent').length,
-    occasional: availableCards.filter((card) => card.importance === 'occasional').length,
+    frequent: availableCards.filter((card) => card.importance === 'frequent')
+      .length,
+    occasional: availableCards.filter(
+      (card) => card.importance === 'occasional',
+    ).length,
     rare: availableCards.filter((card) => card.importance === 'rare').length,
-    irrelevant: availableCards.filter((card) => card.importance === 'irrelevant').length,
+    irrelevant: availableCards.filter(
+      (card) => card.importance === 'irrelevant',
+    ).length,
   }
 
   return (
     <section className='flex flex-1 justify-center items-center p-4 lg:pb-24'>
       <div className='w-full max-w-5xl space-y-6'>
-        <div className='flex justify-between'>
+        <div className='flex flex-col lg:flex-row justify-between'>
           <div className='flex flex-col gap-2'>
             <h1 className='font-serif text-2xl lg:text-3xl font-bold tracking-tight'>
               📚 Flashcards
