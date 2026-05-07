@@ -1,9 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { SquareIcon, Trash2Icon, Volume2Icon } from 'lucide-react'
+import {
+  PencilIcon,
+  SquareIcon,
+  EyeIcon,
+  Trash2Icon,
+  Volume2Icon,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import {
   createMasterNote,
@@ -29,9 +42,9 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
   const [items, setItems] = useState<MasterNote[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [playingId, setPlayingId] = useState<string | null>(null)
   const currentAudioRef = useRef<HTMLAudioElement | null>(null)
   const playTokenRef = useRef(0)
@@ -89,13 +102,19 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
     [items],
   )
 
+  const isPlayableNote = (item: MasterNote): boolean => {
+    if (item.close_type === 'final') {
+      return Boolean(item.final_audio_path)
+    }
+    return item.total_duration_ms > 0
+  }
+
   const handleCreate = async (): Promise<void> => {
     if (creating) return
     setCreating(true)
     try {
-      const created = await createMasterNote(name)
+      const created = await createMasterNote()
       setItems((prev) => [created, ...prev])
-      setName('')
       setError(null)
     } catch (err) {
       console.error(err)
@@ -111,6 +130,7 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
     try {
       await deleteMasterNote(noteId)
       setItems((prev) => prev.filter((item) => item.id !== noteId))
+      setConfirmDeleteId(null)
     } catch (err) {
       console.error(err)
       setError('No se pudo eliminar la nota maestra')
@@ -182,20 +202,13 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
           <p className='mb-2 text-xs font-semibold tracking-wide text-muted-foreground'>
             NUEVA NOTA MAESTRA
           </p>
-          <div className='flex flex-col gap-2 sm:flex-row'>
-            <Input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder='Título (se guardará como NOTA MAESTRA: ...)'
-            />
-            <Button
-              type='button'
-              onClick={() => void handleCreate()}
-              disabled={creating}
-            >
-              {creating ? 'Creando...' : 'Crear nota maestra'}
-            </Button>
-          </div>
+          <Button
+            type='button'
+            onClick={() => void handleCreate()}
+            disabled={creating}
+          >
+            {creating ? 'Creando...' : 'Crear nota maestra'}
+          </Button>
         </CardContent>
       </Card>
 
@@ -205,36 +218,6 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
       {error && <p className='mb-3 text-sm text-red-400'>{error}</p>}
 
       <div className='space-y-3'>
-        {openItems.map((item) => (
-          <Card key={item.id} className='rounded-2xl'>
-            <CardContent className='flex flex-wrap items-center justify-between gap-3'>
-              <div>
-                <p className='font-semibold'>{item.name}</p>
-                <p className='text-xs text-muted-foreground'>
-                  En progreso · {formatDuration(item.total_duration_ms)}
-                </p>
-              </div>
-              <div className='flex gap-2'>
-                <Button asChild size='sm'>
-                  <Link to={`${DASHBOARD_ROUTES.masterNotes}/note/${item.id}`}>
-                    Entrar
-                  </Link>
-                </Button>
-                <Button
-                  type='button'
-                  size='sm'
-                  variant='destructive'
-                  disabled={deletingId === item.id}
-                  onClick={() => void handleDelete(item.id)}
-                >
-                  <Trash2Icon className='mr-1 size-4' />
-                  {deletingId === item.id ? 'Eliminando...' : 'Eliminar'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-
         {closedItems.map((item) => (
           <Card key={item.id} className='rounded-2xl'>
             <CardContent className='flex flex-wrap items-center justify-between gap-3'>
@@ -245,16 +228,10 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
                 </p>
               </div>
               <div className='flex gap-2'>
-                <Button asChild size='sm'>
-                  <Link to={`${DASHBOARD_ROUTES.masterNotes}/note/${item.id}`}>
-                    Entrar
-                  </Link>
-                </Button>
                 <Button
                   type='button'
-                  size='sm'
-                  variant='outline'
                   onClick={() => void handlePlayFinal(item)}
+                  disabled={!isPlayableNote(item)}
                 >
                   {playingId === item.id ? (
                     <>
@@ -269,14 +246,75 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
                   )}
                 </Button>
                 <Button
+                  asChild
+                  size='icon'
+                  variant='outline'
+                  aria-label='Ingresar a la nota maestra'
+                >
+                  <Link to={`${DASHBOARD_ROUTES.masterNotes}/note/${item.id}`}>
+                    <EyeIcon className='size-4' />
+                  </Link>
+                </Button>
+                <Button
                   type='button'
-                  size='sm'
+                  size='icon'
                   variant='destructive'
                   disabled={deletingId === item.id}
-                  onClick={() => void handleDelete(item.id)}
+                  onClick={() => setConfirmDeleteId(item.id)}
+                  aria-label='Eliminar nota maestra'
                 >
-                  <Trash2Icon className='mr-1 size-4' />
-                  {deletingId === item.id ? 'Eliminando...' : 'Eliminar'}
+                  <Trash2Icon className='size-4' />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+        {openItems.map((item) => (
+          <Card key={item.id} className='rounded-2xl'>
+            <CardContent className='flex flex-wrap items-center justify-between gap-3'>
+              <div>
+                <p className='font-semibold'>{item.name}</p>
+                <p className='text-xs text-muted-foreground'>
+                  En progreso · {formatDuration(item.total_duration_ms)}
+                </p>
+              </div>
+              <div className='flex gap-2'>
+                <Button
+                  type='button'
+                  onClick={() => void handlePlayFinal(item)}
+                  disabled={!isPlayableNote(item)}
+                >
+                  {playingId === item.id ? (
+                    <>
+                      <SquareIcon className='mr-1 size-4' />
+                      Detener
+                    </>
+                  ) : (
+                    <>
+                      <Volume2Icon className='mr-1 size-4' />
+                      Escuchar
+                    </>
+                  )}
+                </Button>
+                <Button
+                  asChild
+                  size='icon'
+                  variant='outline'
+                  aria-label='Ingresar a la nota maestra'
+                >
+                  <Link to={`${DASHBOARD_ROUTES.masterNotes}/note/${item.id}`}>
+                    <PencilIcon className='size-4' />
+                  </Link>
+                </Button>
+                <Button
+                  type='button'
+                  size='icon'
+                  variant='destructive'
+                  disabled={deletingId === item.id}
+                  onClick={() => setConfirmDeleteId(item.id)}
+                  aria-label='Eliminar nota maestra'
+                >
+                  <Trash2Icon className='size-4' />
                 </Button>
               </div>
             </CardContent>
@@ -289,6 +327,42 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
           </p>
         )}
       </div>
+
+      <Dialog
+        open={Boolean(confirmDeleteId)}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDeleteId(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Eliminar nota maestra</DialogTitle>
+            <DialogDescription>
+              Esta acción es irreversible. Se eliminarán la nota y sus audios.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setConfirmDeleteId(null)}
+              disabled={Boolean(deletingId)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type='button'
+              variant='destructive'
+              onClick={() =>
+                confirmDeleteId && void handleDelete(confirmDeleteId)
+              }
+              disabled={Boolean(deletingId)}
+            >
+              {deletingId ? 'Eliminando...' : 'Sí, eliminar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

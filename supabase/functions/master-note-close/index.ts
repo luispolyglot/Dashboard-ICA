@@ -8,7 +8,6 @@ const CORS_HEADERS = {
 }
 
 const MIN_DURATION_MS = 3 * 60 * 1000
-const MAX_DURATION_MS = 3 * 60 * 1000 + 30 * 1000
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -89,12 +88,9 @@ Deno.serve(async (req) => {
     return jsonResponse(400, { error: 'La nota maestra ya está cerrada' })
   }
 
-  if (
-    note.total_duration_ms < MIN_DURATION_MS ||
-    note.total_duration_ms > MAX_DURATION_MS
-  ) {
+  if (note.total_duration_ms < MIN_DURATION_MS) {
     return jsonResponse(400, {
-      error: 'La nota maestra debe durar entre 3:00 y 3:30 para cerrarse',
+      error: 'La nota maestra debe durar al menos 3:00 para cerrarse',
     })
   }
 

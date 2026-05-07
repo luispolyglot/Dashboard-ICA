@@ -157,6 +157,7 @@ export async function uploadPhraseVoiceActivation({
       mime_type: mimeType,
       size_bytes: audioBlob.size,
       status: 'uploaded',
+      activation_source: 'direct',
     })
     .select(
       'id, phrase_generation_id, storage_path, duration_ms, mime_type, size_bytes, status, created_at',
