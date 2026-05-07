@@ -15,6 +15,11 @@ import {
   type HistoricLeaderboardMonth,
 } from '../services/historicLeaderboard'
 
+type HistoricLeaderboardRowWithRankLabel = {
+  row: HistoricLeaderboardEntry
+  rankLabel: string
+}
+
 function monthLabel(periodStart: string): string {
   const date = new Date(`${periodStart}T00:00:00`)
   if (Number.isNaN(date.getTime())) return periodStart
@@ -32,6 +37,36 @@ function rankBadge(rank: number): string {
   if (rank === 2) return '🥈'
   if (rank === 3) return '🥉'
   return `#${rank}`
+}
+
+function buildRowsWithSharedRank(
+  rows: HistoricLeaderboardEntry[],
+): HistoricLeaderboardRowWithRankLabel[] {
+  const result: HistoricLeaderboardRowWithRankLabel[] = []
+  let sharedRank = 0
+  let prevStreak: number | null = null
+  let prevPercent: number | null = null
+
+  rows.forEach((row, index) => {
+    const currentStreak = row.icaStreakDays || 0
+    const currentPercent = Math.round(row.avgPercent || 0)
+    const sameAsPrevious =
+      index > 0 && currentStreak === prevStreak && currentPercent === prevPercent
+
+    if (!sameAsPrevious) {
+      sharedRank += 1
+    }
+
+    result.push({
+      row,
+      rankLabel: sameAsPrevious ? '-' : rankBadge(sharedRank),
+    })
+
+    prevStreak = currentStreak
+    prevPercent = currentPercent
+  })
+
+  return result
 }
 
 export function HistoricLeaderboardView() {
@@ -113,6 +148,7 @@ export function HistoricLeaderboardView() {
   const selectedPeriod = useMemo(() => {
     return months.find((month) => month.periodStart === selectedMonth) || null
   }, [months, selectedMonth])
+  const rowsWithSharedRank = useMemo(() => buildRowsWithSharedRank(rows), [rows])
 
   return (
     <section className='mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-5 py-8'>
@@ -191,12 +227,12 @@ export function HistoricLeaderboardView() {
                   </tr>
                 </thead>
                 <tbody className='block max-h-[58dvh] overflow-y-auto'>
-                  {rows.map((row) => (
+                  {rowsWithSharedRank.map(({ row, rankLabel }) => (
                     <tr
                       key={`${row.periodStart}-${row.userId}`}
                       className='table w-full table-fixed border-b align-middle last:border-b-0'
                     >
-                      <td className='w-[8%] py-2'>{rankBadge(row.rank)}</td>
+                      <td className='w-[8%] py-2'>{rankLabel}</td>
                       <td className='w-[27%] py-2'>
                         <p className='truncate font-medium'>
                           {row.displayName || row.username || 'Usuario'}

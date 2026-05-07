@@ -23,6 +23,11 @@ type MonthOption = {
   label: string
 }
 
+type VisibleLeaderboardRow = {
+  row: LeaderboardEntry
+  rankLabel: string
+}
+
 function toUtcMonthStart(date: Date): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-01`
 }
@@ -76,6 +81,42 @@ function rankBadge(rank: number): string {
   if (rank === 2) return '🥈'
   if (rank === 3) return '🥉'
   return `#${rank}`
+}
+
+function toComparablePercent(value: number | undefined): number {
+  return Math.round(value || 0)
+}
+
+function buildVisibleRowsWithSharedRank(
+  rows: LeaderboardEntry[],
+): VisibleLeaderboardRow[] {
+  const result: VisibleLeaderboardRow[] = []
+  let sharedRank = 0
+  let prevStreak: number | null = null
+  let prevPercent: number | null = null
+
+  rows.forEach((row, index) => {
+    const currentStreak = row.ica_streak_days || 0
+    const currentPercent = toComparablePercent(row.avg_percent)
+    const sameAsPrevious =
+      index > 0 &&
+      currentStreak === prevStreak &&
+      currentPercent === prevPercent
+
+    if (!sameAsPrevious) {
+      sharedRank += 1
+    }
+
+    result.push({
+      row,
+      rankLabel: sameAsPrevious ? '-' : rankBadge(sharedRank),
+    })
+
+    prevStreak = currentStreak
+    prevPercent = currentPercent
+  })
+
+  return result
 }
 
 function closeAtUtcForMonth(isoMonthStart: string): Date {
@@ -159,6 +200,10 @@ export function LeaderboardView() {
     () => pickVisibleRows(rows, user?.id),
     [rows, user?.id],
   )
+  const rowsWithSharedRank = useMemo(
+    () => buildVisibleRowsWithSharedRank(visibleRows),
+    [visibleRows],
+  )
 
   return (
     <section className='mx-auto w-full max-w-5xl flex-1 overflow-y-auto px-5 py-8'>
@@ -213,7 +258,7 @@ export function LeaderboardView() {
             </p>
           ) : error ? (
             <p className='text-sm text-destructive'>{error}</p>
-          ) : visibleRows.length === 0 ? (
+          ) : rowsWithSharedRank.length === 0 ? (
             <p className='text-sm text-muted-foreground'>
               Todavía no hay datos disponibles para este periodo.
             </p>
@@ -230,14 +275,14 @@ export function LeaderboardView() {
                   </tr>
                 </thead>
                 <tbody className='block lg:max-h-[50dvh] lg:overflow-y-auto'>
-                  {visibleRows.map((row) => (
+                  {rowsWithSharedRank.map(({ row, rankLabel }) => (
                     <tr
                       key={`${row.user_id}-${row.rank}-${selectedMonth}`}
                       className={`table w-full table-fixed border-b align-middle last:border-b-0 ${
                         row.user_id === user?.id ? 'bg-emerald-500/10' : ''
                       }`}
                     >
-                      <td className='w-[15%] py-2'>{rankBadge(row.rank)}</td>
+                      <td className='w-[15%] py-2'>{rankLabel}</td>
                       <td className='w-auto py-2 flex flex-row gap-3 items-center pr-2'>
                         <p className='truncate font-medium'>
                           {row.display_name || row.username || 'Usuario'}
@@ -248,10 +293,12 @@ export function LeaderboardView() {
                           </p>
                         )}
                       </td>
-                      <td className='w-[18%] py-2'>
+                      <td
+                        className={`w-[18%] py-2 ${row.ica_streak_days && row.ica_streak_days > 0 ? '' : 'grayscale'}`}
+                      >
                         {row.ica_streak_days && row.ica_streak_days > 0
                           ? `🔥 ${row.ica_streak_days}`
-                          : '0'}
+                          : '🔥 0'}
                       </td>
                       <td className='w-[18%] py-2 font-medium'>
                         {Math.round(row.avg_percent || 0)}%
