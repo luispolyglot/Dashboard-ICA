@@ -224,8 +224,9 @@ export function LeaderboardView() {
                   <tr className='border-b text-muted-foreground'>
                     <th className='w-[15%] pb-2 font-medium'>Rank</th>
                     <th className='w-auto pb-2 font-medium'>Usuario</th>
-                    <th className='w-[20%] pb-2 font-medium'>Racha ICA</th>
-                    <th className='w-[20%] pb-2 font-medium'>% mensual</th>
+                    <th className='w-[18%] pb-2 font-medium'>Racha ICA</th>
+                    <th className='w-[18%] pb-2 font-medium'>% mensual</th>
+                    <th className='w-[18%] pb-2 font-medium'>Puntaje</th>
                   </tr>
                 </thead>
                 <tbody className='block lg:max-h-[50dvh] lg:overflow-y-auto'>
@@ -237,7 +238,7 @@ export function LeaderboardView() {
                       }`}
                     >
                       <td className='w-[15%] py-2'>{rankBadge(row.rank)}</td>
-                      <td className='w-auto py-2 flex flex-row gap-3 items-center'>
+                      <td className='w-auto py-2 flex flex-row gap-3 items-center pr-2'>
                         <p className='truncate font-medium'>
                           {row.display_name || row.username || 'Usuario'}
                         </p>
@@ -247,13 +248,18 @@ export function LeaderboardView() {
                           </p>
                         )}
                       </td>
-                      <td className='w-[20%] py-2'>
+                      <td className='w-[18%] py-2'>
                         {row.ica_streak_days && row.ica_streak_days > 0
                           ? `🔥 ${row.ica_streak_days}`
                           : '0'}
                       </td>
-                      <td className='w-[20%] py-2 font-medium'>
+                      <td className='w-[18%] py-2 font-medium'>
                         {Math.round(row.avg_percent || 0)}%
+                      </td>
+                      <td className='w-[18%] py-2 font-medium'>
+                        {row.avg_percent
+                          ? (Math.round(row.avg_percent) * 0.1).toFixed(1)
+                          : '0'}
                       </td>
                     </tr>
                   ))}
