@@ -1,13 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import {
-  CheckIcon,
-  MicIcon,
-  PencilIcon,
-  SquareIcon,
-  Volume2Icon,
-  XIcon,
-} from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { MicIcon, SquareIcon, Trash2Icon, Volume2Icon } from 'lucide-react'
 import {
   Accordion,
   AccordionContent,
@@ -16,15 +9,24 @@ import {
 } from '@/components/ui/accordion'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchPhraseHistory } from '../services/phraseHistory'
 import {
   closeMasterNote,
   createSignedMasterNoteAudioUrl,
+  deleteMasterNote,
   fetchMasterNoteById,
   fetchMasterNoteChunks,
-  updateMasterNoteName,
+  removeMasterNoteChunk,
 } from '../services/masterNotes'
 import { fetchPhraseVoiceActivations } from '../services/phraseVoiceActivations'
 import type {
@@ -48,14 +50,11 @@ function formatDuration(durationMs: number): string {
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
-function extractNameValue(name: string): string {
-  return name.replace(/^NOTA MAESTRA:\s*/i, '')
-}
-
 export function MasterNoteDetailView({
   noteId,
   targetLang,
 }: MasterNoteDetailViewProps) {
+  const navigate = useNavigate()
   const [note, setNote] = useState<MasterNote | null>(null)
   const [chunks, setChunks] = useState<MasterNoteChunk[]>([])
   const [phrases, setPhrases] = useState<PhraseGenerationEntry[]>([])
@@ -64,11 +63,11 @@ export function MasterNoteDetailView({
   >({})
   const [query, setQuery] = useState('')
   const [onlyNotActivated, setOnlyNotActivated] = useState(false)
-  const [isEditingName, setIsEditingName] = useState(false)
-  const [nameDraft, setNameDraft] = useState('')
   const [loading, setLoading] = useState(true)
-  const [savingName, setSavingName] = useState(false)
   const [closing, setClosing] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [removingChunkId, setRemovingChunkId] = useState<string | null>(null)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [playingNote, setPlayingNote] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -127,7 +126,6 @@ export function MasterNoteDetailView({
         )
 
         setNote({ ...foundNote, total_duration_ms: totalDuration })
-        setNameDraft(extractNameValue(foundNote.name))
         setPhrases(phraseRows)
         setChunks(chunkRows)
         setActivationsByPhrase(
@@ -196,13 +194,17 @@ export function MasterNoteDetailView({
   ])
 
   const canClose =
+    !!note && note.state === 'open' && note.total_duration_ms >= MIN_DURATION_MS
+  const canActivateMorePhrases =
+    !!note && note.state === 'open' && note.total_duration_ms < MAX_DURATION_MS
+  const canPlayNote =
     !!note &&
-    note.state === 'open' &&
-    note.total_duration_ms >= MIN_DURATION_MS &&
-    note.total_duration_ms <= MAX_DURATION_MS
+    (note.close_type === 'final'
+      ? Boolean(note.final_audio_path)
+      : chunks.length > 0)
 
   const handlePlayNote = async (): Promise<void> => {
-    if (!note || note.state !== 'closed') return
+    if (!note) return
 
     if (playingNote) {
       stopPlayback()
@@ -250,29 +252,6 @@ export function MasterNoteDetailView({
     }
   }
 
-  const handleSaveName = async (): Promise<void> => {
-    if (!note || note.state !== 'open' || savingName) return
-    setSavingName(true)
-    try {
-      await updateMasterNoteName(note.id, nameDraft)
-      const nextName = `NOTA MAESTRA: ${nameDraft.trim() || 'Sin título'}`
-      setNote((prev) => (prev ? { ...prev, name: nextName } : prev))
-      setIsEditingName(false)
-      setError(null)
-    } catch (err) {
-      console.error(err)
-      setError('No se pudo actualizar el nombre de la nota')
-    } finally {
-      setSavingName(false)
-    }
-  }
-
-  const handleCancelNameEdit = (): void => {
-    if (!note) return
-    setNameDraft(extractNameValue(note.name))
-    setIsEditingName(false)
-  }
-
   const handleCloseNote = async (): Promise<void> => {
     if (!note || !canClose || closing) return
     setClosing(true)
@@ -297,6 +276,50 @@ export function MasterNoteDetailView({
     }
   }
 
+  const handleDeleteNote = async (): Promise<void> => {
+    if (!note || deleting) return
+    setDeleting(true)
+    try {
+      stopPlayback()
+      await deleteMasterNote(note.id)
+      navigate(DASHBOARD_ROUTES.masterNotes)
+    } catch (err) {
+      console.error(err)
+      setError('No se pudo eliminar la nota maestra')
+    } finally {
+      setDeleting(false)
+      setConfirmDeleteOpen(false)
+    }
+  }
+
+  const handleRemoveActivatedPhrase = async (
+    chunkId: string,
+  ): Promise<void> => {
+    if (!note || note.state !== 'open' || removingChunkId) return
+    setRemovingChunkId(chunkId)
+    try {
+      const nextTotal = await removeMasterNoteChunk(note.id, chunkId)
+      const nextChunks = chunks.filter((chunk) => chunk.id !== chunkId)
+      setChunks(nextChunks)
+      setNote((prev) =>
+        prev ? { ...prev, total_duration_ms: nextTotal } : prev,
+      )
+
+      const nextActivationMap = await fetchPhraseVoiceActivations(
+        phrases.map((item) => item.id),
+      )
+      setActivationsByPhrase(
+        nextActivationMap as Record<string, { id: string }[]>,
+      )
+      setError(null)
+    } catch (err) {
+      console.error(err)
+      setError('No se pudo eliminar la frase activada de esta nota')
+    } finally {
+      setRemovingChunkId(null)
+    }
+  }
+
   if (loading) {
     return (
       <section className='mx-auto w-full max-w-4xl flex-1 px-5 py-8'>
@@ -318,18 +341,18 @@ export function MasterNoteDetailView({
   return (
     <section className='mx-auto w-full max-w-4xl flex-1 px-5 pt-8 pb-24 lg:pb-8'>
       <h2 className='mb-1 font-serif text-2xl lg:text-3xl font-bold'>
-        Nota maestra
+        {note.state === 'closed' ? `⭐ ${note.name}` : note.name}
       </h2>
       <p className='mb-4 text-sm text-muted-foreground'>
         Duración acumulada: {formatDuration(note.total_duration_ms)} · Estado:{' '}
         {note.state === 'closed' ? 'cerrada' : 'abierta'}
       </p>
-      {note.state === 'closed' && (
-        <div className='mb-4'>
+      <div className='mb-4'>
+        <div className='flex gap-2'>
           <Button
             type='button'
-            variant='outline'
             onClick={() => void handlePlayNote()}
+            disabled={!canPlayNote}
           >
             {playingNote ? (
               <>
@@ -343,83 +366,25 @@ export function MasterNoteDetailView({
               </>
             )}
           </Button>
+          <Button
+            type='button'
+            size='icon'
+            variant='destructive'
+            aria-label='Eliminar nota maestra'
+            onClick={() => setConfirmDeleteOpen(true)}
+            disabled={deleting}
+          >
+            <Trash2Icon className='size-4' />
+          </Button>
         </div>
-      )}
+      </div>
       {error && <p className='mb-3 text-sm text-red-400'>{error}</p>}
-
-      <Card className='mb-4 rounded-2xl'>
-        <CardContent className='space-y-2 text-sm'>
-          <div className='flex flex-wrap items-center gap-2'>
-            <span className='text-muted-foreground'>Nombre:</span>
-            {!isEditingName && <span>{note.name}</span>}
-
-            {isEditingName ? (
-              <form
-                className='flex min-w-0 flex-1 items-center gap-1.5'
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  void handleSaveName()
-                }}
-              >
-                <div className='flex min-w-0 flex-1 items-center gap-1 px-2'>
-                  <span className='text-muted-foreground text-nowrap'>
-                    NOTA MAESTRA:
-                  </span>
-                  <Input
-                    value={nameDraft}
-                    onChange={(event) => setNameDraft(event.target.value)}
-                    minLength={1}
-                    required
-                    autoFocus
-                    className='h-8 border-0 px-1 shadow-none focus-visible:ring-0'
-                    aria-label='Editar nombre de nota maestra'
-                  />
-                </div>
-                <Button
-                  type='submit'
-                  variant='outline'
-                  size='icon'
-                  className='h-8 w-8'
-                  disabled={savingName || note.state === 'closed'}
-                  aria-label='Guardar nombre'
-                >
-                  <CheckIcon className='h-4 w-4' />
-                </Button>
-                <Button
-                  type='button'
-                  variant='outline'
-                  size='icon'
-                  className='h-8 w-8'
-                  onClick={handleCancelNameEdit}
-                  disabled={savingName}
-                  aria-label='Cancelar edición'
-                >
-                  <XIcon className='h-4 w-4' />
-                </Button>
-              </form>
-            ) : (
-              note.state === 'open' && (
-                <Button
-                  type='button'
-                  variant='ghost'
-                  size='icon'
-                  className='h-7 w-7'
-                  aria-label='Editar nombre de nota maestra'
-                  onClick={() => setIsEditingName(true)}
-                >
-                  <PencilIcon className='h-4 w-4' />
-                </Button>
-              )
-            )}
-          </div>
-        </CardContent>
-      </Card>
 
       {note.state === 'open' && (
         <Card className='mb-4 rounded-2xl'>
           <CardContent className='flex flex-wrap items-center justify-between gap-3'>
             <p className='text-sm text-muted-foreground'>
-              Cierra la nota cuando esté entre 3:00 y 3:30.
+              Cierra la nota cuando supere 3:00.
             </p>
             <Button
               type='button'
@@ -487,14 +452,31 @@ export function MasterNoteDetailView({
                       {activatedPhrasesInThisNote.map(({ chunk, phrase }) => (
                         <div
                           key={chunk.id}
-                          className='flex items-center justify-between gap-2 rounded-md border border-border/50 px-2 py-1.5 text-xs'
+                          className='flex flex-row items-center justify-between gap-2 rounded-md border border-border/50 px-2 py-1.5 text-xs'
                         >
-                          <p className='truncate font-medium'>
+                          <p className='truncate font-medium mb-0! p-1'>
                             {phrase?.generated_phrase || 'Sin frase registrada'}
                           </p>
-                          <span className='shrink-0 text-muted-foreground'>
-                            {formatDuration(chunk.duration_ms)}
-                          </span>
+                          <div className='flex items-center gap-2'>
+                            <span className='shrink-0 text-muted-foreground'>
+                              {formatDuration(chunk.duration_ms)}
+                            </span>
+                            {note.state === 'open' && (
+                              <Button
+                                type='button'
+                                size='icon'
+                                variant='ghost'
+                                className='h-6 w-6'
+                                aria-label='Eliminar frase activada de esta nota'
+                                disabled={Boolean(removingChunkId)}
+                                onClick={() =>
+                                  void handleRemoveActivatedPhrase(chunk.id)
+                                }
+                              >
+                                <Trash2Icon className='size-3.5 text-destructive' />
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -508,6 +490,12 @@ export function MasterNoteDetailView({
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder='Buscar frase...'
                 />
+                {!canActivateMorePhrases && (
+                  <p className='text-xs font-semibold text-red-400'>
+                    Límite alcanzado: esta nota superó 3:30 y ya no admite
+                    nuevas activaciones.
+                  </p>
+                )}
                 <label className='inline-flex items-center gap-2 text-xs text-muted-foreground'>
                   <input
                     type='checkbox'
@@ -531,8 +519,8 @@ export function MasterNoteDetailView({
                       key={item.id}
                       className='flex flex-col items-start justify-between gap-2 rounded-xl border border-border/70 p-3'
                     >
-                      <div>
-                        <div className='flex items-center gap-2'>
+                      <div className='flex flex-col w-full'>
+                        <div className='w-full flex items-start justify-between gap-2'>
                           <p className='font-serif text-lg font-bold'>
                             {item.generated_phrase || 'Sin frase registrada'}
                           </p>
@@ -546,12 +534,21 @@ export function MasterNoteDetailView({
                           {item.translation || 'Sin traducción'}
                         </p>
                       </div>
-                      <Button asChild size='sm'>
-                        <Link
-                          to={`${DASHBOARD_ROUTES.masterNotes}/note/${note.id}/activate/${item.id}`}
-                        >
-                          {isActivated ? 'ACTIVAR DE NUEVO' : 'ACTIVAR'}
-                        </Link>
+                      <Button
+                        asChild={canActivateMorePhrases}
+                        size='sm'
+                        variant={canActivateMorePhrases ? 'default' : 'outline'}
+                        disabled={!canActivateMorePhrases}
+                      >
+                        {canActivateMorePhrases ? (
+                          <Link
+                            to={`${DASHBOARD_ROUTES.masterNotes}/note/${note.id}/activate/${item.id}`}
+                          >
+                            ACTIVAR
+                          </Link>
+                        ) : (
+                          <span>Límite alcanzado</span>
+                        )}
                       </Button>
                     </div>
                   )
@@ -567,6 +564,36 @@ export function MasterNoteDetailView({
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Eliminar nota maestra</DialogTitle>
+            <DialogDescription>
+              Esta acción es irreversible. Se eliminarán la nota y sus audios
+              asociados.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setConfirmDeleteOpen(false)}
+              disabled={deleting}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type='button'
+              variant='destructive'
+              onClick={() => void handleDeleteNote()}
+              disabled={deleting}
+            >
+              {deleting ? 'Eliminando...' : 'Sí, eliminar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

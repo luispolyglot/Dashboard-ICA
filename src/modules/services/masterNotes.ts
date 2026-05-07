@@ -2,11 +2,16 @@ import { supabase } from '@/lib/supabase'
 import type { MasterNote, MasterNoteChunk } from '../types'
 
 const MASTER_NOTES_BUCKET = 'master-notes'
-const MAX_MASTER_NOTE_DURATION_MS = 3 * 60 * 1000 + 30 * 1000
 
-function normalizeMasterNoteName(name: string): string {
-  const value = name.trim().replace(/^NOTA MAESTRA:\s*/i, '')
-  return `NOTA MAESTRA: ${value || 'Sin título'}`
+function getNextMasterNoteNumber(names: string[]): number {
+  const maxNumber = names.reduce((max, name) => {
+    const match = name.match(/^NOTA MAESTRA:\s*(\d+)$/i)
+    const value = match ? Number(match[1]) : 0
+    if (!Number.isFinite(value)) return max
+    return Math.max(max, value)
+  }, 0)
+
+  return maxNumber + 1
 }
 
 function getFileExtension(mimeType: string): string {
@@ -38,15 +43,26 @@ export async function fetchMasterNotes(): Promise<MasterNote[]> {
   return (data || []) as MasterNote[]
 }
 
-export async function createMasterNote(name: string): Promise<MasterNote> {
+export async function createMasterNote(): Promise<MasterNote> {
   if (!supabase) throw new Error('Falta configurar Supabase')
 
   const userId = await getCurrentUserId()
   if (!userId) throw new Error('Debes iniciar sesión')
 
+  const { data: existingRows, error: existingError } = await supabase
+    .from('master_notes')
+    .select('name')
+
+  if (existingError) throw existingError
+
+  const nextNumber = getNextMasterNoteNumber(
+    (existingRows || []).map((row) => row.name || ''),
+  )
+  const generatedName = `NOTA MAESTRA: ${nextNumber}`
+
   const { data, error } = await supabase
     .from('master_notes')
-    .insert({ user_id: userId, name: normalizeMasterNoteName(name), state: 'open' })
+    .insert({ user_id: userId, name: generatedName, state: 'open' })
     .select(
       'id, name, state, close_type, total_duration_ms, final_audio_path, created_at, updated_at, closed_at',
     )
@@ -71,23 +87,12 @@ export async function fetchMasterNoteById(noteId: string): Promise<MasterNote | 
   return (data as MasterNote | null) || null
 }
 
-export async function updateMasterNoteName(noteId: string, name: string): Promise<void> {
-  if (!supabase) throw new Error('Falta configurar Supabase')
-  const { error } = await supabase
-    .from('master_notes')
-    .update({ name: normalizeMasterNoteName(name) })
-    .eq('id', noteId)
-    .eq('state', 'open')
-
-  if (error) throw error
-}
-
 export async function deleteMasterNote(noteId: string): Promise<void> {
   if (!supabase) throw new Error('Falta configurar Supabase')
 
   const { data: chunks, error: chunksError } = await supabase
     .from('master_note_chunks')
-    .select('storage_path')
+    .select('id, storage_path')
     .eq('master_note_id', noteId)
 
   if (chunksError) throw chunksError
@@ -105,6 +110,28 @@ export async function deleteMasterNote(noteId: string): Promise<void> {
     ...(note?.final_audio_path ? [note.final_audio_path] : []),
   ]
 
+  const chunkIds = (chunks || []).map((row) => row.id).filter(Boolean)
+
+  if (chunkIds.length > 0) {
+    const { error: deleteActivationsBySourceError } = await supabase
+      .from('phrase_voice_activations')
+      .delete()
+      .eq('activation_source', 'master_note_chunk')
+      .in('activation_source_id', chunkIds)
+
+    if (deleteActivationsBySourceError) throw deleteActivationsBySourceError
+  }
+
+  const chunkPaths = (chunks || []).map((row) => row.storage_path).filter(Boolean)
+  if (chunkPaths.length > 0) {
+    const { error: deleteActivationsByPathError } = await supabase
+      .from('phrase_voice_activations')
+      .delete()
+      .in('storage_path', chunkPaths)
+
+    if (deleteActivationsByPathError) throw deleteActivationsByPathError
+  }
+
   if (paths.length > 0) {
     const { error: removeError } = await supabase.storage
       .from(MASTER_NOTES_BUCKET)
@@ -114,6 +141,84 @@ export async function deleteMasterNote(noteId: string): Promise<void> {
 
   const { error } = await supabase.from('master_notes').delete().eq('id', noteId)
   if (error) throw error
+}
+
+export async function removeMasterNoteChunk(
+  noteId: string,
+  chunkId: string,
+): Promise<number> {
+  if (!supabase) throw new Error('Falta configurar Supabase')
+
+  const { data: noteRow, error: noteError } = await supabase
+    .from('master_notes')
+    .select('id, state')
+    .eq('id', noteId)
+    .maybeSingle()
+
+  if (noteError) throw noteError
+  if (!noteRow) throw new Error('No se encontró la nota maestra')
+  if (noteRow.state !== 'open') {
+    throw new Error('Solo puedes editar notas maestras abiertas')
+  }
+
+  const { data: chunkRow, error: chunkError } = await supabase
+    .from('master_note_chunks')
+    .select('id, storage_path')
+    .eq('id', chunkId)
+    .eq('master_note_id', noteId)
+    .maybeSingle()
+
+  if (chunkError) throw chunkError
+  if (!chunkRow) throw new Error('No se encontró el audio activado')
+
+  const { error: removeStorageError } = await supabase.storage
+    .from(MASTER_NOTES_BUCKET)
+    .remove([chunkRow.storage_path])
+
+  if (removeStorageError) throw removeStorageError
+
+  const { error: deleteActivationBySourceError } = await supabase
+    .from('phrase_voice_activations')
+    .delete()
+    .eq('activation_source', 'master_note_chunk')
+    .eq('activation_source_id', chunkRow.id)
+
+  if (deleteActivationBySourceError) throw deleteActivationBySourceError
+
+  const { error: deleteActivationByPathError } = await supabase
+    .from('phrase_voice_activations')
+    .delete()
+    .eq('storage_path', chunkRow.storage_path)
+
+  if (deleteActivationByPathError) throw deleteActivationByPathError
+
+  const { error: deleteChunkError } = await supabase
+    .from('master_note_chunks')
+    .delete()
+    .eq('id', chunkRow.id)
+
+  if (deleteChunkError) throw deleteChunkError
+
+  const { data: remainingRows, error: remainingError } = await supabase
+    .from('master_note_chunks')
+    .select('duration_ms')
+    .eq('master_note_id', noteId)
+
+  if (remainingError) throw remainingError
+
+  const totalDurationMs = (remainingRows || []).reduce(
+    (sum, row) => sum + (row.duration_ms || 0),
+    0,
+  )
+
+  const { error: updateNoteError } = await supabase
+    .from('master_notes')
+    .update({ total_duration_ms: totalDurationMs })
+    .eq('id', noteId)
+
+  if (updateNoteError) throw updateNoteError
+
+  return totalDurationMs
 }
 
 export async function fetchMasterNoteChunks(
@@ -179,10 +284,6 @@ export async function addMasterNoteChunk({
   }
 
   const normalizedDurationMs = Math.max(1, Math.round(durationMs))
-  if (noteRow.total_duration_ms + normalizedDurationMs > MAX_MASTER_NOTE_DURATION_MS) {
-    throw new Error('Ese audio supera el límite de 3:30 para esta nota maestra')
-  }
-
   const chunkId = crypto.randomUUID()
   const ext = getFileExtension(mimeType)
   const storagePath = `${userId}/${noteId}/chunks/${chunkId}.${ext}`
@@ -238,6 +339,8 @@ export async function addMasterNoteChunk({
       mime_type: mimeType,
       size_bytes: audioBlob.size,
       status: 'uploaded',
+      activation_source: 'master_note_chunk',
+      activation_source_id: chunkId,
     })
 
   if (activationError) {

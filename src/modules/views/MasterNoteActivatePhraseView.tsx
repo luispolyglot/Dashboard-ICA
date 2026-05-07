@@ -179,10 +179,9 @@ export function MasterNoteActivatePhraseView({
     remainingBeforeRecordingMs > 0 &&
     !error?.includes('ya fue activada')
 
-  useEffect(() => {
-    if (!recording || remainingDuringRecordingMs > 0) return
-    stopRecording()
-  }, [recording, remainingDuringRecordingMs])
+  const exceededLimitWhileRecording = recording && remainingDuringRecordingMs === 0
+  const exceededLimitForNewRecordings =
+    !recording && remainingBeforeRecordingMs === 0
 
   const startWave = (stream: MediaStream): void => {
     try {
@@ -405,6 +404,7 @@ export function MasterNoteActivatePhraseView({
                 text={phrase.generated_phrase}
                 langName={targetLang}
                 color='#3B82F6'
+                disabled={recording}
               />
             </div>
           )}
@@ -423,6 +423,11 @@ export function MasterNoteActivatePhraseView({
                   Tiempo restante para la nota:{' '}
                   {formatDuration(remainingDuringRecordingMs)}
                 </p>
+                {exceededLimitWhileRecording && (
+                  <p className='text-xs font-semibold text-red-400'>
+                    Superaste 3:30. Puedes guardar este audio, pero no podrás grabar más.
+                  </p>
+                )}
                 <canvas
                   ref={waveCanvasRef}
                   width={600}
@@ -445,6 +450,12 @@ export function MasterNoteActivatePhraseView({
               >
                 Activar frase
               </Button>
+            )}
+
+            {exceededLimitForNewRecordings && (
+              <p className='mt-2 text-xs font-semibold text-red-400'>
+                Esta nota ya superó 3:30. Ya no puedes grabar más audios.
+              </p>
             )}
 
             {recordingDraft && (

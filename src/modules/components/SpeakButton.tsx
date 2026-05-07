@@ -10,6 +10,7 @@ type SpeakButtonProps = {
   color: string
   label?: string
   className?: string
+  disabled?: boolean
 }
 
 export function SpeakButton({
@@ -18,6 +19,7 @@ export function SpeakButton({
   color,
   label,
   className,
+  disabled,
 }: SpeakButtonProps) {
   const [s, setS] = useState(false)
   const [rate, setRate] = useState<0.75 | 1>(1)
@@ -68,7 +70,7 @@ export function SpeakButton({
         size='sm'
         variant={rate === 1 ? 'default' : 'outline'}
         onClick={(e) => handleRate(e, 1)}
-        disabled={s}
+        disabled={s || disabled}
       >
         x1
       </Button>
@@ -77,7 +79,7 @@ export function SpeakButton({
         size='sm'
         variant={rate === 0.75 ? 'default' : 'outline'}
         onClick={(e) => handleRate(e, 0.75)}
-        disabled={s}
+        disabled={s || disabled}
       >
         x0.75
       </Button>
@@ -86,6 +88,7 @@ export function SpeakButton({
         type='button'
         onClick={go}
         variant='outline'
+        disabled={disabled}
         className={`${tone} ${s ? 'brightness-125' : ''}`}
       >
         {s ? 'Reproduciendo...' : 'Escuchar'}
