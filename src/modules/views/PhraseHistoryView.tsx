@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+import { CopyIcon, MicIcon, Trash2Icon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { RomanizationHint } from '../components/RomanizationHint'
 import { SpeakButton } from '../components/SpeakButton'
+import { fetchPhraseVoiceActivations } from '../services/phraseVoiceActivations'
 import {
   deletePhraseHistoryEntry,
   fetchPhraseHistory,
 } from '../services/phraseHistory'
 import { stopTTS } from '../services/tts'
-import type { PhraseGenerationEntry } from '../types'
-import { CopyIcon, Trash2Icon } from 'lucide-react'
+import type {
+  PhraseGenerationEntry,
+  PhraseVoiceActivationEntry,
+} from '../types'
 
 type PhraseHistoryViewProps = {
   targetLang: string
@@ -44,6 +48,9 @@ function highlightMatch(text: string, query: string): ReactNode {
 
 export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
   const [items, setItems] = useState<PhraseGenerationEntry[]>([])
+  const [activationsByPhrase, setActivationsByPhrase] = useState<
+    Record<string, PhraseVoiceActivationEntry[]>
+  >({})
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -53,17 +60,25 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchPhraseHistory(40, targetLang)
-      .then((rows) => {
+    const load = async (): Promise<void> => {
+      setLoading(true)
+      try {
+        const rows = await fetchPhraseHistory(40, targetLang)
         setItems(rows)
+        const activations = await fetchPhraseVoiceActivations(
+          rows.map((r) => r.id),
+        )
+        setActivationsByPhrase(activations)
         setError(null)
-      })
-      .catch(() => {
-        setError('No se pudo cargar tu historial de frases')
-      })
-      .finally(() => {
+      } catch (err) {
+        console.error(err)
+        setError('No se pudo cargar creación/activación de frases')
+      } finally {
         setLoading(false)
-      })
+      }
+    }
+
+    void load()
 
     return () => {
       stopTTS()
@@ -77,8 +92,14 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
     try {
       await deletePhraseHistoryEntry(id)
       setItems((prev) => prev.filter((item) => item.id !== id))
+      setActivationsByPhrase((prev) => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
       setConfirmDeleteId(null)
-    } catch {
+    } catch (err) {
+      console.error(err)
       setError('No se pudo eliminar la frase')
     } finally {
       setDeletingId(null)
@@ -113,6 +134,8 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
       window.setTimeout(() => {
         setCopiedId((current) => (current === id ? null : current))
       }, 1400)
+    } catch (err) {
+      console.error(err)
     } finally {
       setCopyingId(null)
     }
@@ -121,7 +144,7 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
   return (
     <section className='mx-auto flex h-auto w-full max-w-3xl flex-1 flex-col px-5 py-8 lg:h-full lg:min-h-0'>
       <h2 className='mb-0 lg:mb-1 font-serif text-2xl lg:text-3xl font-bold'>
-        ⚡ Mis Frases de Activación
+        ⚡ Historial de Creación de Frases
       </h2>
       <p className='mb-4 lg:mb-6 text-sm text-muted-foreground'>
         Historial con frase, traducción, palabras usadas y metadata.
@@ -154,125 +177,139 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
         )}
 
         <div className='space-y-3'>
-          {visibleItems.map((item) => (
-            <Card key={item.id} className='rounded-2xl'>
-              <CardContent>
-                <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
-                  <span className='text-xs text-muted-foreground'>
-                    {new Date(item.created_at).toLocaleString('es-ES', {
-                      day: '2-digit',
-                      month: 'short',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </span>
-                </div>
-
-                <p className='font-serif text-xl font-bold'>
-                  {highlightMatch(
-                    item.generated_phrase || 'Sin frase registrada',
-                    query,
-                  )}
-                </p>
-                {item.generated_phrase && (
-                  <RomanizationHint
-                    text={item.generated_phrase}
-                    language={targetLang}
-                  />
-                )}
-                <p className='mt-2 text-sm text-muted-foreground'>
-                  {highlightMatch(
-                    item.translation || 'Sin traducción registrada',
-                    query,
-                  )}
-                </p>
-
-                {item.generated_phrase && (
-                  <div className='mt-3'>
-                    <SpeakButton
-                      text={item.generated_phrase}
-                      langName={targetLang}
-                      color='#3B82F6'
-                    />
-                  </div>
-                )}
-
-                <div className='mt-3 flex flex-wrap gap-1.5'>
-                  {(item.source_words || []).map((word) => (
+          {visibleItems.map((item) => {
+            const activationCount = (activationsByPhrase[item.id] || []).length
+            return (
+              <Card key={item.id} className='rounded-2xl'>
+                <CardContent>
+                  <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
+                    <span className='text-xs text-muted-foreground'>
+                      {new Date(item.created_at).toLocaleString('es-ES', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
                     <span
-                      key={`${item.id}-${word}`}
-                      className='rounded-md bg-primary/30 px-2.5 py-0.5 text-xs font-semibold text-white'
+                      className={`inline-flex rounded-full p-1.5 ${
+                        activationCount > 0
+                          ? 'shadow-[0_0_10px_#eab30877,0_0_22px_#eab30844]'
+                          : ''
+                      }`}
                     >
-                      {highlightMatch(word, query)}
+                      <MicIcon className='size-4 text-muted-foreground' />
                     </span>
-                  ))}
-                </div>
+                  </div>
 
-                {confirmDeleteId === item.id ? (
-                  <div className='mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-red-500/20 pt-3'>
-                    <span className='text-sm text-red-400'>
-                      ¿Eliminar esta frase?
-                    </span>
-                    <div className='flex gap-2'>
+                  <p className='font-serif text-xl font-bold'>
+                    {highlightMatch(
+                      item.generated_phrase || 'Sin frase registrada',
+                      query,
+                    )}
+                  </p>
+                  {item.generated_phrase && (
+                    <RomanizationHint
+                      text={item.generated_phrase}
+                      language={targetLang}
+                    />
+                  )}
+                  <p className='mt-2 text-sm text-muted-foreground'>
+                    {highlightMatch(
+                      item.translation || 'Sin traducción registrada',
+                      query,
+                    )}
+                  </p>
+
+                  {item.generated_phrase && (
+                    <div className='mt-3'>
+                      <SpeakButton
+                        text={item.generated_phrase}
+                        langName={targetLang}
+                        color='#3B82F6'
+                      />
+                    </div>
+                  )}
+
+                  <div className='mt-3 flex flex-wrap gap-1.5'>
+                    {(item.source_words || []).map((word) => (
+                      <span
+                        key={`${item.id}-${word}`}
+                        className='rounded-md bg-primary/30 px-2.5 py-0.5 text-xs font-semibold text-white'
+                      >
+                        {highlightMatch(word, query)}
+                      </span>
+                    ))}
+                  </div>
+
+                  {confirmDeleteId === item.id ? (
+                    <div className='mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-red-500/20 pt-3'>
+                      <span className='text-sm text-red-400'>
+                        ¿Eliminar esta frase?
+                      </span>
+                      <div className='flex gap-2'>
+                        <Button
+                          type='button'
+                          onClick={() => void handleDelete(item.id)}
+                          disabled={deletingId === item.id}
+                          variant='destructive'
+                          size='sm'
+                        >
+                          {deletingId === item.id
+                            ? 'Eliminando...'
+                            : 'Sí, eliminar'}
+                        </Button>
+                        <Button
+                          type='button'
+                          onClick={() => setConfirmDeleteId(null)}
+                          disabled={deletingId === item.id}
+                          variant='outline'
+                          size='sm'
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className='mt-4 flex flex-wrap gap-2 border-t border-border pt-3'>
                       <Button
                         type='button'
-                        onClick={() => handleDelete(item.id)}
-                        disabled={deletingId === item.id}
+                        onClick={() =>
+                          void handleCopyPhrase(
+                            item.id,
+                            item.generated_phrase,
+                            item.translation,
+                          )
+                        }
+                        variant='outline'
+                        size='sm'
+                        disabled={
+                          !item.generated_phrase || copyingId === item.id
+                        }
+                      >
+                        <CopyIcon className='size-4' />
+                        {copyingId === item.id
+                          ? 'Copiando...'
+                          : copiedId === item.id
+                            ? 'Copiadas'
+                            : 'Copiar frases'}
+                      </Button>
+                      <Button
+                        type='button'
+                        onClick={() => setConfirmDeleteId(item.id)}
                         variant='destructive'
                         size='sm'
                       >
-                        {deletingId === item.id
-                          ? 'Eliminando...'
-                          : 'Sí, eliminar'}
-                      </Button>
-                      <Button
-                        type='button'
-                        onClick={() => setConfirmDeleteId(null)}
-                        disabled={deletingId === item.id}
-                        variant='outline'
-                        size='sm'
-                      >
-                        Cancelar
+                        Eliminar frase
+                        <Trash2Icon className='ml-1 size-4' />
                       </Button>
                     </div>
-                  </div>
-                ) : (
-                  <div className='mt-4 flex flex-wrap gap-2 border-t border-border pt-3'>
-                    <Button
-                      type='button'
-                      onClick={() =>
-                        void handleCopyPhrase(
-                          item.id,
-                          item.generated_phrase,
-                          item.translation,
-                        )
-                      }
-                      variant='outline'
-                      size='sm'
-                      disabled={!item.generated_phrase || copyingId === item.id}
-                    >
-                      <CopyIcon className='size-4' />
-                      {copyingId === item.id
-                        ? 'Copiando...'
-                        : copiedId === item.id
-                          ? 'Copiadas'
-                          : 'Copiar frases'}
-                    </Button>
-                    <Button
-                      type='button'
-                      onClick={() => setConfirmDeleteId(item.id)}
-                      variant='destructive'
-                      size='sm'
-                    >
-                      Eliminar frase
-                      <Trash2Icon className='size-4 ml-1' />
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                  )}
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       </div>
     </section>

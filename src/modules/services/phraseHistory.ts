@@ -72,3 +72,24 @@ export async function deletePhraseHistoryEntry(id: string): Promise<void> {
     throw error
   }
 }
+
+export async function fetchPhraseHistoryEntry(
+  id: string,
+): Promise<PhraseGenerationEntry | null> {
+  if (!supabase) return null
+
+  const { data, error } = await supabase
+    .from('phrase_generations')
+    .select(
+      'id, source_words, generated_phrase, translation, model, target_lang, native_lang, created_at',
+    )
+    .eq('id', id)
+    .eq('success', true)
+    .maybeSingle()
+
+  if (error) {
+    throw error
+  }
+
+  return (data as PhraseGenerationEntry | null) || null
+}

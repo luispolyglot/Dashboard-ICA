@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
+import { Link } from 'react-router-dom'
 import {
   CREATION_WORDS_GOAL,
   IMPORTANCE_LEVELS,
@@ -16,6 +17,7 @@ import { insertWord } from '../services/storage'
 import { generateId } from '../utils'
 import { RomanizationHint } from '../components/RomanizationHint'
 import { TranslationSuggestion } from '../components/TranslationSuggestion'
+import { DASHBOARD_ROUTES } from '../routes/paths'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -268,8 +270,13 @@ export function AddView({
 
   const recentList =
     recent.length > 0 ? (
-      <div>
-        <h3 className='mb-3 text-[11px] uppercase tracking-wider text-muted-foreground'>
+      <div className='flex flex-col gap-2'>
+        <Button asChild variant='outline' size='sm' className='hidden lg:flex'>
+          <Link to={DASHBOARD_ROUTES.myIcaWords}>
+            Historial de palabras ICA
+          </Link>
+        </Button>
+        <h3 className='mt-2 text-[11px] uppercase tracking-wider text-muted-foreground'>
           Últimas añadidas
         </h3>
         <div className='space-y-2'>
@@ -320,6 +327,11 @@ export function AddView({
                 <span className='text-xs'>✓</span>
               )}
             </Badge>
+            <Button asChild variant='outline' size='sm' className='lg:hidden'>
+              <Link to={DASHBOARD_ROUTES.myIcaWords}>
+                Historial de palabras ICA
+              </Link>
+            </Button>
           </div>
 
           <p className='mb-7 text-sm text-muted-foreground'>
@@ -453,10 +465,10 @@ export function AddView({
             </p>
           )}
 
-          {recentList && <div className='mt-10 lg:hidden'>{recentList}</div>}
+          {recentList && <div className='mt-8 lg:hidden'>{recentList}</div>}
         </div>
 
-        <div className='hidden w-1/4 lg:block pt-18'>{recentList}</div>
+        <div className='hidden w-1/4 lg:block pt-12'>{recentList}</div>
       </div>
     </section>
   )

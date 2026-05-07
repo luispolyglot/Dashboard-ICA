@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   ActivityIcon,
   BookOpenTextIcon,
+  MicIcon,
   MessageSquareQuoteIcon,
   ShieldCheckIcon,
   UsersIcon,
@@ -105,7 +106,7 @@ export function AdminAnalyticsView() {
         </p>
       </div>
 
-      <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
+      <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-5'>
         <Card>
           <CardHeader>
             <CardTitle className='flex items-center gap-2 text-base'>
@@ -161,6 +162,20 @@ export function AdminAnalyticsView() {
             </p>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className='flex items-center gap-2 text-base'>
+              <MicIcon className='h-4 w-4' />
+              Activaciones de voz
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className='text-3xl font-semibold'>
+              {analytics.summary.totalVoiceActivations}
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       <div className='mt-4 grid gap-4 lg:grid-cols-2'>
@@ -171,23 +186,29 @@ export function AdminAnalyticsView() {
               Actividad de hoy
             </CardTitle>
           </CardHeader>
-          <CardContent className='grid grid-cols-3 gap-4 text-sm'>
+          <CardContent className='grid grid-cols-2 gap-5 text-sm'>
             <div>
-              <p className='text-muted-foreground'>Usuarios activos</p>
-              <p className='text-xl font-semibold'>
+              <p className='text-sm text-muted-foreground'>Usuarios activos</p>
+              <p className='text-2xl font-semibold lg:text-3xl'>
                 {analytics.summary.activeUsersToday}
               </p>
             </div>
             <div>
-              <p className='text-muted-foreground'>Palabras añadidas</p>
-              <p className='text-xl font-semibold'>
+              <p className='text-sm text-muted-foreground'>Palabras añadidas</p>
+              <p className='text-2xl font-semibold lg:text-3xl'>
                 {analytics.summary.wordsAddedToday}
               </p>
             </div>
             <div>
-              <p className='text-muted-foreground'>Flashcards realizadas</p>
-              <p className='text-xl font-semibold'>
+              <p className='text-sm text-muted-foreground'>Flashcards realizadas</p>
+              <p className='text-2xl font-semibold lg:text-3xl'>
                 {analytics.summary.reviewsToday}
+              </p>
+            </div>
+            <div>
+              <p className='text-sm text-muted-foreground'>Activaciones de voz</p>
+              <p className='text-2xl font-semibold lg:text-3xl'>
+                {analytics.summary.voiceActivationsToday}
               </p>
             </div>
           </CardContent>
@@ -224,6 +245,7 @@ export function AdminAnalyticsView() {
             })}
           </CardContent>
         </Card>
+
       </div>
 
       <Card className='mt-4'>
