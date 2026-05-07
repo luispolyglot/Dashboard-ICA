@@ -7,6 +7,7 @@ export const DEFAULT_REVIEW_PLAY_STYLE: ReviewPlayStyle = 'classic'
 export const REVIEW_CLASSIC_MIN_WORDS_PER_FREQUENCY = 10
 export const REVIEW_GOAL_MIN_WORDS_PER_MODE = 20
 export const REVIEW_PLAY_STYLE_QUERY_PARAM = 'playStyle'
+export const REVIEW_PENDING_ONLY_QUERY_PARAM = 'pendingOnly'
 export const REVIEW_PLAY_STYLE_STORAGE_KEY = 'dashboard-ica-review-play-style'
 
 export function isReviewPlayStyle(value: unknown): value is ReviewPlayStyle {
@@ -17,6 +18,10 @@ export function getReviewPlayStyleFromQuery(value: string | null): ReviewPlaySty
   if (value === 'goal') return 'goal'
   if (value === 'classic' || value === 'clasic') return 'classic'
   return DEFAULT_REVIEW_PLAY_STYLE
+}
+
+export function getReviewPendingOnlyFromQuery(value: string | null): boolean {
+  return value === '1' || value === 'true'
 }
 
 export function getReviewRoundSizeByStyle(

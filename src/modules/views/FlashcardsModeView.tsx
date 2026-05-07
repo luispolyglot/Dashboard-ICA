@@ -10,7 +10,9 @@ type FlashcardsModeViewProps = {
   cards: Lexicard[]
   reviewCorrectToday: number
   playStyle: ReviewPlayStyle
+  pendingOnly: boolean
   onPlayStyleChange: (style: ReviewPlayStyle) => void
+  onPendingOnlyChange: (pendingOnly: boolean) => void
   onStartMode: (mode: ReviewMode) => void
 }
 
@@ -18,24 +20,28 @@ export function FlashcardsModeView({
   cards,
   reviewCorrectToday,
   playStyle,
+  pendingOnly,
   onPlayStyleChange,
+  onPendingOnlyChange,
   onStartMode,
 }: FlashcardsModeViewProps) {
   const isGoalStyle = playStyle === 'goal'
+  const pendingCards = cards.filter((card) => (card.streak || 0) === 0)
+  const availableCards = pendingOnly ? pendingCards : cards
   const minWordsByMode = getReviewModeMinimumWords(playStyle)
-  const roundSize: number = isGoalStyle ? cards.length : REVIEW_ROUND_SIZE
+  const roundSize: number = isGoalStyle ? availableCards.length : REVIEW_ROUND_SIZE
   const flashcardsLiteral = roundSize === 1 ? 'flashcard' : 'flashcards'
 
   const cardBaseClass =
     'relative flex min-h-40 w-full flex-col overflow-hidden rounded-[20px] border border-slate-800 px-[24px] py-7 text-left font-sans transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] bg-[linear-gradient(160deg,#ffffff,#eef3f9)] hover:-translate-y-[3px] dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
 
   const countsByMode: Record<ReviewMode, number> = {
-    mixed: cards.length,
-    vital: cards.filter((card) => card.importance === 'vital').length,
-    frequent: cards.filter((card) => card.importance === 'frequent').length,
-    occasional: cards.filter((card) => card.importance === 'occasional').length,
-    rare: cards.filter((card) => card.importance === 'rare').length,
-    irrelevant: cards.filter((card) => card.importance === 'irrelevant').length,
+    mixed: availableCards.length,
+    vital: availableCards.filter((card) => card.importance === 'vital').length,
+    frequent: availableCards.filter((card) => card.importance === 'frequent').length,
+    occasional: availableCards.filter((card) => card.importance === 'occasional').length,
+    rare: availableCards.filter((card) => card.importance === 'rare').length,
+    irrelevant: availableCards.filter((card) => card.importance === 'irrelevant').length,
   }
 
   return (
@@ -48,15 +54,22 @@ export function FlashcardsModeView({
             </h1>
             <p className='mx-auto max-w-2xl text-sm text-muted-foreground md:text-base'>
               {isGoalStyle
-                ? 'Usa todas tus tarjetas disponibles y termina al llegar a 10 correctas.'
-                : `Juega con tus palabras ICA en una ronda de ${REVIEW_ROUND_SIZE} ${flashcardsLiteral}.`}
+                ? pendingOnly
+                  ? 'Usa solo tus tarjetas no aprendidas o falladas y termina al llegar a 10 correctas.'
+                  : 'Usa todas tus tarjetas disponibles y termina al llegar a 10 correctas.'
+                : pendingOnly
+                  ? `Juega con tus tarjetas no aprendidas o falladas en una ronda de ${REVIEW_ROUND_SIZE} ${flashcardsLiteral}.`
+                  : `Juega con tus palabras ICA en una ronda de ${REVIEW_ROUND_SIZE} ${flashcardsLiteral}.`}
             </p>
           </div>
           <div className='flex flex-col items-end justify-center gap-2'>
             <GlobalReviewGoalBadge correctToday={reviewCorrectToday} />
             <ReviewPlayStyleControl
               playStyle={playStyle}
+              pendingOnly={pendingOnly}
+              pendingCount={pendingCards.length}
               onPlayStyleChange={onPlayStyleChange}
+              onPendingOnlyChange={onPendingOnlyChange}
             />
           </div>
         </div>
@@ -66,7 +79,7 @@ export function FlashcardsModeView({
             const count = countsByMode[mode.key]
             const minimumRequired = isGoalStyle
               ? minWordsByMode
-              : mode.key === 'mixed'
+              : mode.key === 'mixed' && !pendingOnly
                 ? 1
                 : minWordsByMode
             const disabled = count < minimumRequired
@@ -104,19 +117,29 @@ export function FlashcardsModeView({
                     <>
                       Necesitas <strong>{minimumRequired}</strong>{' '}
                       {mode.key === 'mixed'
-                        ? 'palabras ICA totales'
-                        : 'palabras ICA de esta frecuencia'}
+                        ? pendingOnly
+                          ? 'tarjetas no aprendidas o falladas totales'
+                          : 'palabras ICA totales'
+                        : pendingOnly
+                          ? 'tarjetas no aprendidas o falladas de esta frecuencia'
+                          : 'palabras ICA de esta frecuencia'}
                       . Tienes <strong>{count}</strong> ({missing}{' '}
                       {missingLiteral} más).
                     </>
                   ) : mode.key === 'mixed' ? (
                     <>
-                      Juega con tus <strong>{count}</strong> {wordsLiteral} ICA
+                      Juega con tus <strong>{count}</strong>{' '}
+                      {pendingOnly
+                        ? `${wordsLiteral} no aprendidas o falladas`
+                        : `${wordsLiteral} ICA`}{' '}
                       de forma aleatoria.
                     </>
                   ) : (
                     <>
-                      Juega con tus <strong>{count}</strong> {wordsLiteral} ICA
+                      Juega con tus <strong>{count}</strong>{' '}
+                      {pendingOnly
+                        ? `${wordsLiteral} no aprendidas o falladas`
+                        : `${wordsLiteral} ICA`}{' '}
                       de frecuencia {mode.title.toLowerCase()}.
                     </>
                   )}
@@ -126,9 +149,11 @@ export function FlashcardsModeView({
           })}
         </div>
 
-        {cards.length === 0 && (
+        {availableCards.length === 0 && (
           <p className='text-center text-sm text-muted-foreground'>
-            Aún no tienes palabras. Añade ICA words para desbloquear las rondas.
+            {pendingOnly
+              ? 'No tienes tarjetas no aprendidas o falladas en este momento.'
+              : 'Aún no tienes palabras. Añade ICA words para desbloquear las rondas.'}
           </p>
         )}
       </div>

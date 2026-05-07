@@ -21,7 +21,9 @@ import { StreaksView } from '../views/StreaksView'
 import { TrackerDetailView } from '../views/TrackerDetailView'
 import { TrackersView } from '../views/TrackersView'
 import {
+  getReviewPendingOnlyFromQuery,
   loadSavedReviewPlayStyle,
+  REVIEW_PENDING_ONLY_QUERY_PARAM,
   REVIEW_PLAY_STYLE_QUERY_PARAM,
   saveReviewPlayStyle,
   getReviewPlayStyleFromQuery,
@@ -77,6 +79,7 @@ export function FlashcardsPage() {
   const [playStyle, setPlayStyle] = useState<ReviewPlayStyle>(
     loadSavedReviewPlayStyle(),
   )
+  const [pendingOnly, setPendingOnly] = useState(false)
 
   useEffect(() => {
     saveReviewPlayStyle(playStyle)
@@ -88,8 +91,12 @@ export function FlashcardsPage() {
         cards={cards}
         reviewCorrectToday={todayProgress.reviewCorrect}
         playStyle={playStyle}
+        pendingOnly={pendingOnly}
         onPlayStyleChange={setPlayStyle}
-        onStartMode={(mode) => navigate(getFlashcardsPlayRoute(mode, playStyle))}
+        onPendingOnlyChange={setPendingOnly}
+        onStartMode={(mode) =>
+          navigate(getFlashcardsPlayRoute(mode, playStyle, pendingOnly))
+        }
       />
     </PageLayout>
   )
@@ -113,6 +120,14 @@ export function FlashcardsPlayPage() {
   const playStyle = getReviewPlayStyleFromQuery(
     searchParams.get(REVIEW_PLAY_STYLE_QUERY_PARAM),
   )
+  const pendingOnly = getReviewPendingOnlyFromQuery(
+    searchParams.get(REVIEW_PENDING_ONLY_QUERY_PARAM),
+  )
+  const cardsToReview = useMemo(
+    () =>
+      pendingOnly ? cards.filter((card) => (card.streak || 0) === 0) : cards,
+    [cards, pendingOnly],
+  )
 
   const safeMode = useMemo<ReviewMode>(() => {
     const validModes: ReviewMode[] = [
@@ -132,13 +147,18 @@ export function FlashcardsPlayPage() {
 
   if (!config) return null
   if (mode !== safeMode) {
-    return <Navigate to={getFlashcardsPlayRoute(safeMode, playStyle)} replace />
+    return (
+      <Navigate
+        to={getFlashcardsPlayRoute(safeMode, playStyle, pendingOnly)}
+        replace
+      />
+    )
   }
 
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.flashcards}>
       <ReviewView
-        cards={cards}
+        cards={cardsToReview}
         setCards={setCards}
         config={config}
         mode={safeMode}

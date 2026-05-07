@@ -1,5 +1,9 @@
 import type { ReviewMode } from '../types'
-import type { ReviewPlayStyle } from '../review/playStyle'
+import {
+  REVIEW_PENDING_ONLY_QUERY_PARAM,
+  REVIEW_PLAY_STYLE_QUERY_PARAM,
+  type ReviewPlayStyle,
+} from '../review/playStyle'
 
 export const DASHBOARD_ROUTES = {
   home: '/',
@@ -40,8 +44,20 @@ export const DASHBOARD_LABELS: Record<string, string> = {
 export function getFlashcardsPlayRoute(
   mode: ReviewMode,
   playStyle?: ReviewPlayStyle,
+  pendingOnly?: boolean,
 ): string {
   const baseRoute = `${DASHBOARD_ROUTES.flashcardsPlay}/${mode}`
-  if (!playStyle) return baseRoute
-  return `${baseRoute}?playStyle=${playStyle}`
+  const params = new URLSearchParams()
+
+  if (playStyle) {
+    params.set(REVIEW_PLAY_STYLE_QUERY_PARAM, playStyle)
+  }
+
+  if (pendingOnly) {
+    params.set(REVIEW_PENDING_ONLY_QUERY_PARAM, '1')
+  }
+
+  const query = params.toString()
+  if (!query) return baseRoute
+  return `${baseRoute}?${query}`
 }
