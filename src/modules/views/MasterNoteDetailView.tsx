@@ -373,16 +373,18 @@ export function MasterNoteDetailView({
               </span>
             </>
           )}
-          <Button
-            type='button'
-            size='icon'
-            variant='destructive'
-            aria-label='Eliminar nota maestra'
-            onClick={() => setConfirmDeleteOpen(true)}
-            disabled={deleting}
-          >
-            <Trash2Icon className='size-4' />
-          </Button>
+          {playingNoteId !== note.id && (
+            <Button
+              type='button'
+              size='icon'
+              variant='destructive'
+              aria-label='Eliminar nota maestra'
+              onClick={() => setConfirmDeleteOpen(true)}
+              disabled={deleting}
+            >
+              <Trash2Icon className='size-4' />
+            </Button>
+          )}
         </div>
       </div>
       {(error || playbackError) && (

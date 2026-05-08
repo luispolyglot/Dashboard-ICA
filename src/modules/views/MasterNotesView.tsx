@@ -258,27 +258,31 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
                   </>
                 )}
 
-                <Button
-                  asChild
-                  size='icon'
-                  variant='outline'
-                  aria-label='Ingresar a la nota maestra'
-                >
-                  <Link to={`${DASHBOARD_ROUTES.masterNotes}/note/${item.id}`}>
-                    <PencilIcon className='size-4' />
-                  </Link>
-                </Button>
+                {playingNoteId !== item.id && (
+                  <>
+                    <Button
+                      asChild
+                      size='icon'
+                      variant='outline'
+                      aria-label='Ingresar a la nota maestra'
+                    >
+                      <Link to={`${DASHBOARD_ROUTES.masterNotes}/note/${item.id}`}>
+                        <PencilIcon className='size-4' />
+                      </Link>
+                    </Button>
 
-                <Button
-                  type='button'
-                  size='icon'
-                  variant='destructive'
-                  disabled={deletingId === item.id}
-                  onClick={() => setConfirmDeleteId(item.id)}
-                  aria-label='Eliminar nota maestra'
-                >
-                  <Trash2Icon className='size-4' />
-                </Button>
+                    <Button
+                      type='button'
+                      size='icon'
+                      variant='destructive'
+                      disabled={deletingId === item.id}
+                      onClick={() => setConfirmDeleteId(item.id)}
+                      aria-label='Eliminar nota maestra'
+                    >
+                      <Trash2Icon className='size-4' />
+                    </Button>
+                  </>
+                )}
               </div>
             </CardContent>
           </Card>
