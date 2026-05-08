@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   MicIcon,
+  PauseIcon,
+  PlayIcon,
   RotateCcwIcon,
   RotateCwIcon,
   SquareIcon,
@@ -113,8 +115,10 @@ export function MasterNoteDetailView({
     canPlay,
     play,
     stop,
+    togglePause,
     seekBack10,
     seekForward10,
+    isPaused,
     positionSec,
     durationSec,
   } = useMasterNotePlayback()
@@ -336,6 +340,10 @@ export function MasterNoteDetailView({
             </Button>
           ) : (
             <>
+              <Button type='button' onClick={stop}>
+                <SquareIcon className='mr-1 size-4' />
+                Detener
+              </Button>
               <Button
                 type='button'
                 size='icon'
@@ -348,9 +356,9 @@ export function MasterNoteDetailView({
                 type='button'
                 size='icon'
                 variant='outline'
-                onClick={stop}
+                onClick={togglePause}
               >
-                <SquareIcon className='size-4' />
+                {isPaused ? <PlayIcon className='size-4' /> : <PauseIcon className='size-4' />}
               </Button>
               <Button
                 type='button'
