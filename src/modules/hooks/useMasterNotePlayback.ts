@@ -16,6 +16,7 @@ function clamp(value: number, min: number, max: number): number {
 
 export function useMasterNotePlayback() {
   const [playingNoteId, setPlayingNoteId] = useState<string | null>(null)
+  const [isPaused, setIsPaused] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [positionSec, setPositionSec] = useState(0)
   const [durationSec, setDurationSec] = useState(0)
@@ -33,8 +34,37 @@ export function useMasterNotePlayback() {
       audioRef.current = null
     }
     setPlayingNoteId(null)
+    setIsPaused(false)
     setPositionSec(0)
     setDurationSec(0)
+  }
+
+  const pause = (): void => {
+    if (!audioRef.current || !playingNoteId) return
+    if (!audioRef.current.paused) {
+      audioRef.current.pause()
+      setIsPaused(true)
+    }
+  }
+
+  const resume = async (): Promise<void> => {
+    if (!audioRef.current || !playingNoteId) return
+    if (!audioRef.current.paused) return
+
+    try {
+      await audioRef.current.play()
+      setIsPaused(false)
+    } catch {
+      setError('No se pudo reanudar la reproducción')
+    }
+  }
+
+  const togglePause = (): void => {
+    if (isPaused) {
+      void resume()
+      return
+    }
+    pause()
   }
 
   useEffect(() => {
@@ -93,6 +123,7 @@ export function useMasterNotePlayback() {
       const nextIndex = trackIndex + 1
       if (nextIndex >= playlistRef.current.length) {
         setPlayingNoteId(null)
+        setIsPaused(false)
         return
       }
       void playTrackAt(nextIndex, 0, token)
@@ -102,6 +133,7 @@ export function useMasterNotePlayback() {
       if (token !== tokenRef.current) return
       setError('No se pudo reproducir la nota maestra')
       setPlayingNoteId(null)
+      setIsPaused(false)
     }
 
     audio.onended = onEnded
@@ -136,10 +168,12 @@ export function useMasterNotePlayback() {
 
     try {
       await audio.play()
+      setIsPaused(false)
     } catch {
       if (token !== tokenRef.current) return
       setError('No se pudo reproducir la nota maestra')
       setPlayingNoteId(null)
+      setIsPaused(false)
     }
   }
 
@@ -176,6 +210,10 @@ export function useMasterNotePlayback() {
   }
 
   const canPlay = (note: MasterNote, chunkCount = 0): boolean => {
+    if (note.state === 'open') {
+      return chunkCount > 0 || note.total_duration_ms > 0
+    }
+
     if (note.close_type === 'final') {
       return Boolean(note.final_audio_path)
     }
@@ -233,8 +271,12 @@ export function useMasterNotePlayback() {
     canPlay,
     play,
     stop,
+    pause,
+    resume,
+    togglePause,
     seekBack10: () => seekBy(-10),
     seekForward10: () => seekBy(10),
+    isPaused,
     positionSec,
     durationSec,
   }

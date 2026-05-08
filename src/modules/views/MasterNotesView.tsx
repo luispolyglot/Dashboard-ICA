@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
+  PauseIcon,
   PencilIcon,
-  EyeIcon,
+  PlayIcon,
   RotateCcwIcon,
   RotateCwIcon,
   SquareIcon,
@@ -83,8 +84,10 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
     canPlay,
     play,
     stop,
+    togglePause,
     seekBack10,
     seekForward10,
+    isPaused,
     positionSec,
     durationSec,
   } = useMasterNotePlayback()
@@ -143,7 +146,10 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
   }
 
   const handlePlay = async (note: MasterNote): Promise<void> => {
-    if (playingNoteId === note.id) return
+    if (playingNoteId === note.id) {
+      stop()
+      return
+    }
     try {
       await play(note)
       setError(null)
@@ -213,6 +219,10 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
                   </Button>
                 ) : (
                   <>
+                    <Button type='button' onClick={() => void handlePlay(item)}>
+                      <SquareIcon className='mr-1 size-4' />
+                      Detener
+                    </Button>
                     <Button
                       type='button'
                       size='icon'
@@ -225,9 +235,13 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
                       type='button'
                       size='icon'
                       variant='outline'
-                      onClick={stop}
+                      onClick={togglePause}
                     >
-                      <SquareIcon className='size-4' />
+                      {isPaused ? (
+                        <PlayIcon className='size-4' />
+                      ) : (
+                        <PauseIcon className='size-4' />
+                      )}
                     </Button>
                     <Button
                       type='button'
@@ -251,11 +265,7 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
                   aria-label='Ingresar a la nota maestra'
                 >
                   <Link to={`${DASHBOARD_ROUTES.masterNotes}/note/${item.id}`}>
-                    {item.state === 'closed' ? (
-                      <EyeIcon className='size-4' />
-                    ) : (
-                      <PencilIcon className='size-4' />
-                    )}
+                    <PencilIcon className='size-4' />
                   </Link>
                 </Button>
 
