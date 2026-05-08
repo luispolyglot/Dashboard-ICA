@@ -51,6 +51,10 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+function normalizeComparableText(value: string): string {
+  return value.normalize('NFKC').trim().toLowerCase()
+}
+
 function highlightMatch(text: string, query: string): ReactNode {
   const trimmedQuery = query.trim()
   if (!trimmedQuery) return text
@@ -84,6 +88,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
   const [draftExampleTranslation, setDraftExampleTranslation] = useState('')
   const [draftImportance, setDraftImportance] = useState<ImportanceKey>('vital')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [editError, setEditError] = useState<string | null>(null)
   const [generatingExampleId, setGeneratingExampleId] = useState<string | null>(
     null,
   )
@@ -139,6 +144,19 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
   const sorted = sortChronological(filtered)
   const ownerName =
     user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Usuario'
+  const editingCard = cards.find((card) => card.id === editingId) || null
+  const hasDuplicateEditTarget = Boolean(
+    editingCard &&
+      draftTarget.trim() &&
+      cards.some(
+        (card) =>
+          card.id !== editingCard.id &&
+          normalizeComparableText(card.target) ===
+            normalizeComparableText(draftTarget) &&
+          (card.targetLang || '') === (editingCard.targetLang || '') &&
+          (card.nativeLang || '') === (editingCard.nativeLang || ''),
+      ),
+  )
 
   const handleCopyWords = async (): Promise<void> => {
     if (busyExport) return
@@ -186,14 +204,23 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
     setDraftExampleTranslation(card.exampleTranslation || '')
     setDraftImportance(card.importance)
     setConfirmDeleteId(null)
+    setEditError(null)
   }
 
   const closeEditor = (): void => {
     setEditingId(null)
     setConfirmDeleteId(null)
+    setEditError(null)
   }
 
   const handleSaveEdit = async (id: string): Promise<void> => {
+    if (hasDuplicateEditTarget) {
+      setEditError(
+        'Ya existe una palabra con ese target en este mismo par de idiomas.',
+      )
+      return
+    }
+
     let updatedCard: Lexicard | null = null
     const nextCards = cards.map((card) => {
       if (card.id !== id) return card
@@ -481,13 +508,23 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
                     <div className='grid gap-2 sm:grid-cols-2'>
                       <Input
                         value={draftTarget}
-                        onChange={(event) => setDraftTarget(event.target.value)}
+                        onChange={(event) => {
+                          setDraftTarget(event.target.value)
+                          setEditError(null)
+                        }}
                       />
                       <Input
                         value={draftNative}
                         onChange={(event) => setDraftNative(event.target.value)}
                       />
                     </div>
+
+                    {(hasDuplicateEditTarget || editError) && (
+                      <p className='text-xs text-red-600 dark:text-red-300'>
+                        {editError ||
+                          'Ya existe una palabra con ese target en este mismo par de idiomas.'}
+                      </p>
+                    )}
                     <RomanizationHint
                       text={draftTarget}
                       language={card.targetLang || config.targetLang}
@@ -604,6 +641,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
                           type='button'
                           onClick={() => handleSaveEdit(card.id)}
                           size='sm'
+                          disabled={hasDuplicateEditTarget}
                         >
                           Guardar cambios
                         </Button>

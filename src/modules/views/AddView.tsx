@@ -52,6 +52,10 @@ const IMPORTANCE_DOT: Record<ImportanceKey, string> = {
   irrelevant: 'bg-red-400',
 }
 
+function normalizeComparableText(value: string): string {
+  return value.normalize('NFKC').trim().toLowerCase()
+}
+
 export function AddView({
   cards,
   setCards,
@@ -81,6 +85,15 @@ export function AddView({
 
   const recent = cards.slice(-5).reverse()
   const todayProgress = getTodayProgress(dailyProgress)
+  const trimmedTarget = target.trim()
+  const duplicateWord = cards.find(
+    (card) =>
+      normalizeComparableText(card.target) ===
+        normalizeComparableText(trimmedTarget) &&
+      (card.targetLang || '') === config.targetLang &&
+      (card.nativeLang || '') === config.nativeLang,
+  )
+  const isDuplicate = Boolean(trimmedTarget && duplicateWord)
 
   const handleTargetChange = (value: string): void => {
     setTarget(value)
@@ -170,7 +183,8 @@ export function AddView({
     }, 900)
   }
 
-  const canSave = target.trim() && native.trim() && importance && !saving
+  const canSave =
+    target.trim() && native.trim() && importance && !saving && !isDuplicate
 
   const handleSave = async (): Promise<void> => {
     if (!canSave || !importance) return
@@ -200,6 +214,11 @@ export function AddView({
 
     const trimmedTarget = target.trim()
     const trimmedNative = native.trim()
+
+    if (isDuplicate) {
+      setSaving(false)
+      return
+    }
     const example = await fetchWordExample(
       trimmedTarget,
       trimmedNative,
@@ -427,6 +446,12 @@ export function AddView({
                 ? '✓ ¡Guardada!'
                 : 'Guardar palabra'}
           </Button>
+
+          {isDuplicate && (
+            <p className='mt-2 text-xs text-red-600 dark:text-red-300'>
+              Esta palabra ya existe en tus flashcards para este par de idiomas.
+            </p>
+          )}
 
           {recentList && <div className='mt-10 lg:hidden'>{recentList}</div>}
         </div>
