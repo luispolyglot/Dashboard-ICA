@@ -1,6 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { MicIcon, SquareIcon, Trash2Icon, Volume2Icon } from 'lucide-react'
+import {
+  MicIcon,
+  RotateCcwIcon,
+  RotateCwIcon,
+  SquareIcon,
+  Trash2Icon,
+  Volume2Icon,
+} from 'lucide-react'
 import {
   Accordion,
   AccordionContent,
@@ -22,13 +29,13 @@ import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchPhraseHistory } from '../services/phraseHistory'
 import {
   closeMasterNote,
-  createSignedMasterNoteAudioUrl,
   deleteMasterNote,
   fetchMasterNoteById,
   fetchMasterNoteChunks,
   removeMasterNoteChunk,
 } from '../services/masterNotes'
 import { fetchPhraseVoiceActivations } from '../services/phraseVoiceActivations'
+import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
 import type {
   MasterNote,
   MasterNoteChunk,
@@ -50,6 +57,35 @@ function formatDuration(durationMs: number): string {
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
+function formatSeconds(seconds: number): string {
+  const safe = Math.max(0, Math.round(seconds))
+  const minutes = Math.floor(safe / 60)
+  const rest = safe % 60
+  return `${minutes}:${String(rest).padStart(2, '0')}`
+}
+
+function SeekBack10Icon() {
+  return (
+    <div className='relative'>
+      <RotateCcwIcon className='size-4' />
+      <span className='absolute -right-1 -bottom-1 text-[9px] font-bold'>
+        10
+      </span>
+    </div>
+  )
+}
+
+function SeekForward10Icon() {
+  return (
+    <div className='relative'>
+      <RotateCwIcon className='size-4' />
+      <span className='absolute -right-1 -bottom-1 text-[9px] font-bold'>
+        10
+      </span>
+    </div>
+  )
+}
+
 export function MasterNoteDetailView({
   noteId,
   targetLang,
@@ -68,36 +104,20 @@ export function MasterNoteDetailView({
   const [deleting, setDeleting] = useState(false)
   const [removingChunkId, setRemovingChunkId] = useState<string | null>(null)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
-  const [playingNote, setPlayingNote] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const currentAudioRef = useRef<HTMLAudioElement | null>(null)
-  const playTokenRef = useRef(0)
-
-  const stopPlayback = (): void => {
-    playTokenRef.current += 1
-    if (currentAudioRef.current) {
-      currentAudioRef.current.pause()
-      currentAudioRef.current.currentTime = 0
-      currentAudioRef.current = null
-    }
-  }
-
-  const playSingleAudio = async (src: string, token: number): Promise<void> => {
-    if (token !== playTokenRef.current) return
-    const audio = new Audio(src)
-    currentAudioRef.current = audio
-
-    await new Promise<void>((resolve, reject) => {
-      audio.onended = () => resolve()
-      audio.onerror = () => reject(new Error('AUDIO_PLAYBACK_FAILED'))
-      void audio.play().catch(reject)
-    })
-
-    if (token === playTokenRef.current) {
-      currentAudioRef.current = null
-    }
-  }
+  const {
+    error: playbackError,
+    clearError,
+    playingNoteId,
+    canPlay,
+    play,
+    stop,
+    seekBack10,
+    seekForward10,
+    positionSec,
+    durationSec,
+  } = useMasterNotePlayback()
 
   useEffect(() => {
     const load = async (): Promise<void> => {
@@ -141,10 +161,6 @@ export function MasterNoteDetailView({
     }
 
     void load()
-
-    return () => {
-      stopPlayback()
-    }
   }, [noteId, targetLang])
 
   const activatedInThisNote = useMemo(() => {
@@ -197,58 +213,18 @@ export function MasterNoteDetailView({
     !!note && note.state === 'open' && note.total_duration_ms >= MIN_DURATION_MS
   const canActivateMorePhrases =
     !!note && note.state === 'open' && note.total_duration_ms < MAX_DURATION_MS
-  const canPlayNote =
-    !!note &&
-    (note.close_type === 'final'
-      ? Boolean(note.final_audio_path)
-      : chunks.length > 0)
+  const canPlayNote = !!note && canPlay(note, chunks.length)
 
   const handlePlayNote = async (): Promise<void> => {
     if (!note) return
-
-    if (playingNote) {
-      stopPlayback()
-      setPlayingNote(false)
-      return
-    }
-
-    stopPlayback()
-    const token = playTokenRef.current
-
+    if (playingNoteId === note.id) return
     try {
-      setPlayingNote(true)
-
-      if (note.close_type === 'final' && note.final_audio_path) {
-        const signedUrl = await createSignedMasterNoteAudioUrl(
-          note.final_audio_path,
-        )
-        await playSingleAudio(signedUrl, token)
-      } else {
-        if (chunks.length === 0) {
-          throw new Error('NO_CHUNKS_AVAILABLE')
-        }
-
-        for (const chunk of chunks) {
-          if (token !== playTokenRef.current) return
-          const signedUrl = await createSignedMasterNoteAudioUrl(
-            chunk.storage_path,
-          )
-          await playSingleAudio(signedUrl, token)
-        }
-      }
-
-      if (token === playTokenRef.current) {
-        setPlayingNote(false)
-      }
+      await play(note, chunks.length)
+      clearError()
+      setError(null)
     } catch (err) {
-      if (token !== playTokenRef.current) return
       console.error(err)
-      setError(
-        err instanceof Error && err.message === 'NO_CHUNKS_AVAILABLE'
-          ? 'No hay audios para reproducir en esta nota maestra'
-          : 'No se pudo reproducir la nota maestra',
-      )
-      setPlayingNote(false)
+      setError('No se pudo reproducir la nota maestra')
     }
   }
 
@@ -280,7 +256,7 @@ export function MasterNoteDetailView({
     if (!note || deleting) return
     setDeleting(true)
     try {
-      stopPlayback()
+      stop()
       await deleteMasterNote(note.id)
       navigate(DASHBOARD_ROUTES.masterNotes)
     } catch (err) {
@@ -349,23 +325,46 @@ export function MasterNoteDetailView({
       </p>
       <div className='mb-4'>
         <div className='flex gap-2'>
-          <Button
-            type='button'
-            onClick={() => void handlePlayNote()}
-            disabled={!canPlayNote}
-          >
-            {playingNote ? (
-              <>
-                <SquareIcon className='mr-1 size-4' />
-                Detener
-              </>
-            ) : (
-              <>
-                <Volume2Icon className='mr-1 size-4' />
-                Escuchar
-              </>
-            )}
-          </Button>
+          {playingNoteId !== note.id ? (
+            <Button
+              type='button'
+              onClick={() => void handlePlayNote()}
+              disabled={!canPlayNote}
+            >
+              <Volume2Icon className='mr-1 size-4' />
+              Escuchar
+            </Button>
+          ) : (
+            <>
+              <Button
+                type='button'
+                size='icon'
+                variant='outline'
+                onClick={seekBack10}
+              >
+                <SeekBack10Icon />
+              </Button>
+              <Button
+                type='button'
+                size='icon'
+                variant='outline'
+                onClick={stop}
+              >
+                <SquareIcon className='size-4' />
+              </Button>
+              <Button
+                type='button'
+                size='icon'
+                variant='outline'
+                onClick={seekForward10}
+              >
+                <SeekForward10Icon />
+              </Button>
+              <span className='inline-flex min-w-18 items-center justify-end text-xs text-muted-foreground'>
+                {formatSeconds(positionSec)} / {formatSeconds(durationSec)}
+              </span>
+            </>
+          )}
           <Button
             type='button'
             size='icon'
@@ -378,7 +377,9 @@ export function MasterNoteDetailView({
           </Button>
         </div>
       </div>
-      {error && <p className='mb-3 text-sm text-red-400'>{error}</p>}
+      {(error || playbackError) && (
+        <p className='mb-3 text-sm text-red-400'>{error || playbackError}</p>
+      )}
 
       {note.state === 'open' && (
         <Card className='mb-4 rounded-2xl'>

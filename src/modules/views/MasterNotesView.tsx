@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   PencilIcon,
-  SquareIcon,
   EyeIcon,
+  RotateCcwIcon,
+  RotateCwIcon,
+  SquareIcon,
   Trash2Icon,
   Volume2Icon,
 } from 'lucide-react'
@@ -18,11 +20,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { DASHBOARD_ROUTES } from '../routes/paths'
+import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
 import {
   createMasterNote,
-  createSignedMasterNoteAudioUrl,
   deleteMasterNote,
-  fetchMasterNoteChunks,
   fetchMasterNotes,
 } from '../services/masterNotes'
 import type { MasterNote } from '../types'
@@ -38,6 +39,35 @@ function formatDuration(durationMs: number): string {
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
+function formatSeconds(seconds: number): string {
+  const safe = Math.max(0, Math.round(seconds))
+  const minutes = Math.floor(safe / 60)
+  const rest = safe % 60
+  return `${minutes}:${String(rest).padStart(2, '0')}`
+}
+
+function SeekBack10Icon() {
+  return (
+    <div className='relative'>
+      <RotateCcwIcon className='size-4' />
+      <span className='absolute -right-1 -bottom-1 text-[9px] font-bold'>
+        10
+      </span>
+    </div>
+  )
+}
+
+function SeekForward10Icon() {
+  return (
+    <div className='relative'>
+      <RotateCwIcon className='size-4' />
+      <span className='absolute -right-1 -bottom-1 text-[9px] font-bold'>
+        10
+      </span>
+    </div>
+  )
+}
+
 export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
   const [items, setItems] = useState<MasterNote[]>([])
   const [loading, setLoading] = useState(true)
@@ -45,46 +75,26 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
   const [creating, setCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
-  const [playingId, setPlayingId] = useState<string | null>(null)
-  const currentAudioRef = useRef<HTMLAudioElement | null>(null)
-  const playTokenRef = useRef(0)
 
-  const stopPlayback = (): void => {
-    playTokenRef.current += 1
-    if (currentAudioRef.current) {
-      currentAudioRef.current.pause()
-      currentAudioRef.current.currentTime = 0
-      currentAudioRef.current = null
-    }
-  }
-
-  useEffect(() => {
-    return () => {
-      stopPlayback()
-    }
-  }, [])
-
-  const playSingleAudio = async (src: string, token: number): Promise<void> => {
-    if (token !== playTokenRef.current) return
-    const audio = new Audio(src)
-    currentAudioRef.current = audio
-
-    await new Promise<void>((resolve, reject) => {
-      audio.onended = () => resolve()
-      audio.onerror = () => reject(new Error('AUDIO_PLAYBACK_FAILED'))
-      void audio.play().catch(reject)
-    })
-
-    if (token === playTokenRef.current) {
-      currentAudioRef.current = null
-    }
-  }
+  const {
+    error: playbackError,
+    clearError,
+    playingNoteId,
+    canPlay,
+    play,
+    stop,
+    seekBack10,
+    seekForward10,
+    positionSec,
+    durationSec,
+  } = useMasterNotePlayback()
 
   useEffect(() => {
     fetchMasterNotes()
       .then((rows) => {
         setItems(rows)
         setError(null)
+        clearError()
       })
       .catch((err) => {
         console.error(err)
@@ -101,13 +111,6 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
     () => items.filter((item) => item.state === 'closed'),
     [items],
   )
-
-  const isPlayableNote = (item: MasterNote): boolean => {
-    if (item.close_type === 'final') {
-      return Boolean(item.final_audio_path)
-    }
-    return item.total_duration_ms > 0
-  }
 
   const handleCreate = async (): Promise<void> => {
     if (creating) return
@@ -139,51 +142,14 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
     }
   }
 
-  const handlePlayFinal = async (note: MasterNote): Promise<void> => {
-    if (playingId === note.id) {
-      stopPlayback()
-      setPlayingId(null)
-      return
-    }
-
-    stopPlayback()
-    const token = playTokenRef.current
-
+  const handlePlay = async (note: MasterNote): Promise<void> => {
+    if (playingNoteId === note.id) return
     try {
-      setPlayingId(note.id)
-
-      if (note.close_type === 'final' && note.final_audio_path) {
-        const signedUrl = await createSignedMasterNoteAudioUrl(
-          note.final_audio_path,
-        )
-        await playSingleAudio(signedUrl, token)
-      } else {
-        const chunks = await fetchMasterNoteChunks(note.id)
-        if (chunks.length === 0) {
-          throw new Error('NO_CHUNKS_AVAILABLE')
-        }
-
-        for (const chunk of chunks) {
-          if (token !== playTokenRef.current) return
-          const signedUrl = await createSignedMasterNoteAudioUrl(
-            chunk.storage_path,
-          )
-          await playSingleAudio(signedUrl, token)
-        }
-      }
-
-      if (token === playTokenRef.current) {
-        setPlayingId(null)
-      }
+      await play(note)
+      setError(null)
     } catch (err) {
-      if (token !== playTokenRef.current) return
       console.error(err)
-      setError(
-        err instanceof Error && err.message === 'NO_CHUNKS_AVAILABLE'
-          ? 'No hay audios para reproducir en esta nota maestra'
-          : 'No se pudo reproducir la nota maestra',
-      )
-      setPlayingId(null)
+      setError('No se pudo reproducir la nota maestra')
     }
   }
 
@@ -215,36 +181,69 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
       {loading && (
         <p className='text-sm text-muted-foreground'>Cargando notas...</p>
       )}
-      {error && <p className='mb-3 text-sm text-red-400'>{error}</p>}
+      {(error || playbackError) && (
+        <p className='mb-3 text-sm text-red-400'>{error || playbackError}</p>
+      )}
 
       <div className='space-y-3'>
-        {closedItems.map((item) => (
+        {[...closedItems, ...openItems].map((item) => (
           <Card key={item.id} className='rounded-2xl'>
             <CardContent className='flex flex-wrap items-center justify-between gap-3'>
               <div>
-                <p className='font-semibold'>⭐ {item.name}</p>
+                <p className='font-semibold'>
+                  {item.state === 'closed' ? `⭐ ${item.name}` : item.name}
+                </p>
                 <p className='text-xs text-muted-foreground'>
-                  Cerrada · {formatDuration(item.total_duration_ms)}
+                  {item.state === 'closed' ? 'Cerrada' : 'En progreso'} ·{' '}
+                  {formatDuration(item.total_duration_ms)}
                 </p>
               </div>
+
               <div className='flex gap-2'>
-                <Button
-                  type='button'
-                  onClick={() => void handlePlayFinal(item)}
-                  disabled={!isPlayableNote(item)}
-                >
-                  {playingId === item.id ? (
-                    <>
-                      <SquareIcon className='mr-1 size-4' />
-                      Detener
-                    </>
-                  ) : (
-                    <>
-                      <Volume2Icon className='mr-1 size-4' />
-                      Escuchar
-                    </>
-                  )}
-                </Button>
+                {playingNoteId !== item.id ? (
+                  <Button
+                    type='button'
+                    onClick={() => void handlePlay(item)}
+                    disabled={
+                      !canPlay(item, item.total_duration_ms > 0 ? 1 : 0)
+                    }
+                  >
+                    <Volume2Icon className='mr-1 size-4' />
+                    Escuchar
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      type='button'
+                      size='icon'
+                      variant='outline'
+                      onClick={seekBack10}
+                    >
+                      <SeekBack10Icon />
+                    </Button>
+                    <Button
+                      type='button'
+                      size='icon'
+                      variant='outline'
+                      onClick={stop}
+                    >
+                      <SquareIcon className='size-4' />
+                    </Button>
+                    <Button
+                      type='button'
+                      size='icon'
+                      variant='outline'
+                      onClick={seekForward10}
+                    >
+                      <SeekForward10Icon />
+                    </Button>
+                    <span className='inline-flex min-w-18 items-center justify-end text-xs text-muted-foreground'>
+                      {formatSeconds(positionSec)} /{' '}
+                      {formatSeconds(durationSec)}
+                    </span>
+                  </>
+                )}
+
                 <Button
                   asChild
                   size='icon'
@@ -252,60 +251,14 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
                   aria-label='Ingresar a la nota maestra'
                 >
                   <Link to={`${DASHBOARD_ROUTES.masterNotes}/note/${item.id}`}>
-                    <EyeIcon className='size-4' />
+                    {item.state === 'closed' ? (
+                      <EyeIcon className='size-4' />
+                    ) : (
+                      <PencilIcon className='size-4' />
+                    )}
                   </Link>
                 </Button>
-                <Button
-                  type='button'
-                  size='icon'
-                  variant='destructive'
-                  disabled={deletingId === item.id}
-                  onClick={() => setConfirmDeleteId(item.id)}
-                  aria-label='Eliminar nota maestra'
-                >
-                  <Trash2Icon className='size-4' />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-        {openItems.map((item) => (
-          <Card key={item.id} className='rounded-2xl'>
-            <CardContent className='flex flex-wrap items-center justify-between gap-3'>
-              <div>
-                <p className='font-semibold'>{item.name}</p>
-                <p className='text-xs text-muted-foreground'>
-                  En progreso · {formatDuration(item.total_duration_ms)}
-                </p>
-              </div>
-              <div className='flex gap-2'>
-                <Button
-                  type='button'
-                  onClick={() => void handlePlayFinal(item)}
-                  disabled={!isPlayableNote(item)}
-                >
-                  {playingId === item.id ? (
-                    <>
-                      <SquareIcon className='mr-1 size-4' />
-                      Detener
-                    </>
-                  ) : (
-                    <>
-                      <Volume2Icon className='mr-1 size-4' />
-                      Escuchar
-                    </>
-                  )}
-                </Button>
-                <Button
-                  asChild
-                  size='icon'
-                  variant='outline'
-                  aria-label='Ingresar a la nota maestra'
-                >
-                  <Link to={`${DASHBOARD_ROUTES.masterNotes}/note/${item.id}`}>
-                    <PencilIcon className='size-4' />
-                  </Link>
-                </Button>
+
                 <Button
                   type='button'
                   size='icon'
