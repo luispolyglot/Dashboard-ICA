@@ -123,11 +123,6 @@ export function FlashcardsPlayPage() {
   const pendingOnly = getReviewPendingOnlyFromQuery(
     searchParams.get(REVIEW_PENDING_ONLY_QUERY_PARAM),
   )
-  const cardsToReview = useMemo(
-    () =>
-      pendingOnly ? cards.filter((card) => (card.streak || 0) === 0) : cards,
-    [cards, pendingOnly],
-  )
 
   const safeMode = useMemo<ReviewMode>(() => {
     const validModes: ReviewMode[] = [
@@ -158,11 +153,12 @@ export function FlashcardsPlayPage() {
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.flashcards}>
       <ReviewView
-        cards={cardsToReview}
+        cards={cards}
         setCards={setCards}
         config={config}
         mode={safeMode}
         playStyle={playStyle}
+        pendingOnly={pendingOnly}
         globalCorrectToday={todayProgress.reviewCorrect}
         completedDays={completedDays}
         setCompletedDays={setCompletedDays}

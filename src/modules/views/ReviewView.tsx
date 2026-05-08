@@ -28,6 +28,7 @@ type ReviewViewProps = {
   config: AppConfig
   mode: ReviewMode
   playStyle: ReviewPlayStyle
+  pendingOnly: boolean
   globalCorrectToday: number
   completedDays: string[]
   setCompletedDays: Dispatch<SetStateAction<string[]>>
@@ -52,6 +53,7 @@ export function ReviewView({
   config,
   mode,
   playStyle,
+  pendingOnly,
   globalCorrectToday,
   completedDays,
   setCompletedDays,
@@ -71,6 +73,9 @@ export function ReviewView({
   const [completed, setCompleted] = useState(false)
   const [showExample, setShowExample] = useState(false)
   const [showExampleTranslation, setShowExampleTranslation] = useState(false)
+  const reviewPool = pendingOnly
+    ? cards.filter((card) => (card.streak || 0) === 0)
+    : cards
 
   const activeMode =
     REVIEW_MODE_OPTIONS.find((option) => option.key === mode) ||
@@ -114,9 +119,9 @@ export function ReviewView({
   useEffect(() => {
     setRoundCards(
       buildReviewRound(
-        cards,
+        reviewPool,
         mode,
-        getReviewRoundSizeByStyle(playStyle, cards.length),
+        getReviewRoundSizeByStyle(playStyle, reviewPool.length),
       ),
     )
     setCurrentIndex(0)
@@ -128,7 +133,7 @@ export function ReviewView({
     if (window.speechSynthesis) {
       window.speechSynthesis.getVoices()
     }
-  }, [cards.length, mode, playStyle, reviewSession])
+  }, [cards.length, mode, playStyle, reviewSession, pendingOnly])
 
   useEffect(() => {
     setShowExample(false)
@@ -149,13 +154,15 @@ export function ReviewView({
   const handleAnswer = async (knew: boolean): Promise<void> => {
     if (busy || !currentCard) return
 
+    const sourceCard = cards.find((card) => card.id === currentCard.id) || currentCard
+
     setBusy(true)
     stopTTS()
     setFlipped(false)
     setShowExample(false)
     setShowExampleTranslation(false)
 
-    const updated = updateCardAfterReview(currentCard, knew, reviewSession)
+    const updated = updateCardAfterReview(sourceCard, knew, reviewSession)
     const nextCards = cards.map((card) =>
       card.id === updated.id ? updated : card,
     )
@@ -181,7 +188,7 @@ export function ReviewView({
     try {
       await saveData('dashboard-ICA-words', nextCards)
       await recordReviewEvent({
-        previousCard: currentCard,
+        previousCard: sourceCard,
         nextCard: updated,
         knew,
       })
@@ -235,9 +242,9 @@ export function ReviewView({
             type='button'
             onClick={() => {
               const nextRound = buildReviewRound(
-                cards,
+                reviewPool,
                 mode,
-                getReviewRoundSizeByStyle(playStyle, cards.length),
+                getReviewRoundSizeByStyle(playStyle, reviewPool.length),
               )
               setCorrect(0)
               setCompleted(false)
