@@ -12,7 +12,7 @@ import {
   fetchWordExample,
 } from '../services/anthropic'
 import { recordWordAddedEvent } from '../services/gamification'
-import { saveData } from '../services/storage'
+import { insertWord } from '../services/storage'
 import { generateId } from '../utils'
 import { RomanizationHint } from '../components/RomanizationHint'
 import { TranslationSuggestion } from '../components/TranslationSuggestion'
@@ -208,31 +208,28 @@ export function AddView({
       config.level || 'A2',
     )
 
-    const nextCards: Lexicard[] = [
-      ...cards,
-      {
-        id: generateId(),
-        target: trimmedTarget,
-        native: trimmedNative,
-        targetLang: config.targetLang,
-        nativeLang: config.nativeLang,
-        examplePhrase: example?.phrase || null,
-        exampleTranslation: example?.translation || null,
-        importance,
-        interval: 1,
-        easeFactor: 2.5,
-        streak: 0,
-        activationCount: 0,
-        firstActivatedAt: null,
-        lastActivatedAt: null,
-        lastReviewed: null,
-        createdAt: Date.now(),
-      },
-    ]
+    const newCard: Lexicard = {
+      id: generateId(),
+      target: trimmedTarget,
+      native: trimmedNative,
+      targetLang: config.targetLang,
+      nativeLang: config.nativeLang,
+      examplePhrase: example?.phrase || null,
+      exampleTranslation: example?.translation || null,
+      importance,
+      interval: 1,
+      easeFactor: 2.5,
+      streak: 0,
+      activationCount: 0,
+      firstActivatedAt: null,
+      lastActivatedAt: null,
+      lastReviewed: null,
+      createdAt: Date.now(),
+    }
 
     try {
-      setCards(nextCards)
-      await saveData('dashboard-ICA-words', nextCards)
+      setCards((prev) => [...prev, newCard])
+      await insertWord(newCard)
       const progress = await onWordAdded()
       try {
         await recordWordAddedEvent(progress)

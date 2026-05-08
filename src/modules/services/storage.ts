@@ -3,6 +3,7 @@ import type { AppConfig, DailyProgressMap, Lexicard } from '../types'
 
 const CREATION_GOAL_DEFAULT = 5
 const REVIEW_GOAL_DEFAULT = 10
+const MAX_SAFE_WORD_DELETES_PER_SAVE = 5
 
 type DashboardStorageKey =
   | 'dashboard-ICA-words'
@@ -163,7 +164,7 @@ async function loadWords(userId: string): Promise<Lexicard[]> {
   }
 }
 
-async function saveWords(userId: string, cards: Lexicard[]): Promise<void> {
+async function replaceWordsSnapshot(userId: string, cards: Lexicard[]): Promise<void> {
   if (!supabase) return
 
   const { data: settings } = await supabase
@@ -240,6 +241,13 @@ async function saveWords(userId: string, cards: Lexicard[]): Promise<void> {
     .filter((id) => !nextIds.has(id))
 
   if (idsToDelete.length > 0) {
+    if (idsToDelete.length > MAX_SAFE_WORD_DELETES_PER_SAVE) {
+      console.warn(
+        `[storage] Skip deleting ${idsToDelete.length} lexicards in a single save to prevent mass data loss.`,
+      )
+      return
+    }
+
     let deleteQuery = supabase
       .from('lexicards')
       .delete()
@@ -258,6 +266,116 @@ async function saveWords(userId: string, cards: Lexicard[]): Promise<void> {
     const { error } = await deleteQuery.in('id', idsToDelete)
     if (error) throw error
   }
+}
+
+function toLexicardRow(userId: string, card: Lexicard): Record<string, unknown> {
+  return {
+    id: card.id,
+    user_id: userId,
+    target: card.target,
+    native: card.native,
+    target_lang: card.targetLang || null,
+    native_lang: card.nativeLang || null,
+    example_phrase: card.examplePhrase || null,
+    example_translation: card.exampleTranslation || null,
+    importance: card.importance,
+    interval: card.interval,
+    ease_factor: card.easeFactor,
+    streak: card.streak,
+    last_reviewed_at: toIsoFromMillis(card.lastReviewed),
+    last_seen_session: card.lastSeenSession ?? null,
+    activation_count: card.activationCount ?? 0,
+    first_activated_at: toIsoFromMillis(card.firstActivatedAt ?? null),
+    last_activated_at: toIsoFromMillis(card.lastActivatedAt ?? null),
+    created_at: new Date(card.createdAt).toISOString(),
+  }
+}
+
+function toLegacyLexicardRow(userId: string, card: Lexicard): Record<string, unknown> {
+  return {
+    id: card.id,
+    user_id: userId,
+    target: card.target,
+    native: card.native,
+    importance: card.importance,
+    interval: card.interval,
+    ease_factor: card.easeFactor,
+    streak: card.streak,
+    last_reviewed_at: toIsoFromMillis(card.lastReviewed),
+    created_at: new Date(card.createdAt).toISOString(),
+  }
+}
+
+async function insertWordRecord(userId: string, card: Lexicard): Promise<void> {
+  if (!supabase) return
+
+  try {
+    const { error } = await supabase.from('lexicards').insert(toLexicardRow(userId, card))
+    if (error) throw error
+  } catch {
+    const { error } = await supabase.from('lexicards').insert(toLegacyLexicardRow(userId, card))
+    if (error) throw error
+  }
+}
+
+async function updateWordRecord(userId: string, card: Lexicard): Promise<void> {
+  if (!supabase) return
+
+  const fullPatch = {
+    target: card.target,
+    native: card.native,
+    target_lang: card.targetLang || null,
+    native_lang: card.nativeLang || null,
+    example_phrase: card.examplePhrase || null,
+    example_translation: card.exampleTranslation || null,
+    importance: card.importance,
+    interval: card.interval,
+    ease_factor: card.easeFactor,
+    streak: card.streak,
+    last_reviewed_at: toIsoFromMillis(card.lastReviewed),
+    last_seen_session: card.lastSeenSession ?? null,
+    activation_count: card.activationCount ?? 0,
+    first_activated_at: toIsoFromMillis(card.firstActivatedAt ?? null),
+    last_activated_at: toIsoFromMillis(card.lastActivatedAt ?? null),
+    created_at: new Date(card.createdAt).toISOString(),
+  }
+
+  const legacyPatch = {
+    target: card.target,
+    native: card.native,
+    importance: card.importance,
+    interval: card.interval,
+    ease_factor: card.easeFactor,
+    streak: card.streak,
+    last_reviewed_at: toIsoFromMillis(card.lastReviewed),
+    created_at: new Date(card.createdAt).toISOString(),
+  }
+
+  try {
+    const { error } = await supabase
+      .from('lexicards')
+      .update(fullPatch)
+      .eq('user_id', userId)
+      .eq('id', card.id)
+    if (error) throw error
+  } catch {
+    const { error } = await supabase
+      .from('lexicards')
+      .update(legacyPatch)
+      .eq('user_id', userId)
+      .eq('id', card.id)
+    if (error) throw error
+  }
+}
+
+async function deleteWordRecord(userId: string, id: string): Promise<void> {
+  if (!supabase) return
+  const { error } = await supabase
+    .from('lexicards')
+    .delete()
+    .eq('user_id', userId)
+    .eq('id', id)
+  if (error) throw error
 }
 
 async function loadConfig(userId: string): Promise<AppConfig | null> {
@@ -465,7 +583,7 @@ export async function saveData<T>(key: string, value: T): Promise<void> {
     if (!userId) return
 
     if (key === 'dashboard-ICA-words') {
-      await saveWords(userId, value as Lexicard[])
+      await replaceWordsSnapshot(userId, value as Lexicard[])
       return
     }
 
@@ -486,4 +604,22 @@ export async function saveData<T>(key: string, value: T): Promise<void> {
   } catch (error) {
     console.error(error)
   }
+}
+
+export async function insertWord(card: Lexicard): Promise<void> {
+  const userId = await getCurrentUserId()
+  if (!userId) return
+  await insertWordRecord(userId, card)
+}
+
+export async function updateWord(card: Lexicard): Promise<void> {
+  const userId = await getCurrentUserId()
+  if (!userId) return
+  await updateWordRecord(userId, card)
+}
+
+export async function deleteWordById(id: string): Promise<void> {
+  const userId = await getCurrentUserId()
+  if (!userId) return
+  await deleteWordRecord(userId, id)
 }

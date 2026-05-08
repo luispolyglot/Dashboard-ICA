@@ -22,7 +22,7 @@ import { RomanizationHint } from '../components/RomanizationHint'
 import { IMPORTANCE_LEVELS, getImportance } from '../constants'
 import { fetchWordExample } from '../services/anthropic'
 import { fetchWordActivationCounts } from '../services/metaTracker'
-import { saveData } from '../services/storage'
+import { deleteWordById, updateWord } from '../services/storage'
 import { speakNatural, stopTTS } from '../services/tts'
 import {
   copyWordsToClipboard,
@@ -173,7 +173,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
   const handleDelete = async (id: string): Promise<void> => {
     const nextCards = cards.filter((c) => c.id !== id)
     setCards(nextCards)
-    await saveData('dashboard-ICA-words', nextCards)
+    await deleteWordById(id)
     setEditingId(null)
     setConfirmDeleteId(null)
   }
@@ -194,9 +194,10 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
   }
 
   const handleSaveEdit = async (id: string): Promise<void> => {
+    let updatedCard: Lexicard | null = null
     const nextCards = cards.map((card) => {
       if (card.id !== id) return card
-      return {
+      updatedCard = {
         ...card,
         target: draftTarget.trim() || card.target,
         native: draftNative.trim() || card.native,
@@ -204,10 +205,12 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
         exampleTranslation: draftExampleTranslation.trim() || null,
         importance: draftImportance,
       }
+      return updatedCard
     })
 
+    if (!updatedCard) return
     setCards(nextCards)
-    await saveData('dashboard-ICA-words', nextCards)
+    await updateWord(updatedCard)
     closeEditor()
   }
 
@@ -233,18 +236,20 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
         return
       }
 
-      const nextCards = cards.map((current) =>
-        current.id === card.id
-          ? {
-              ...current,
-              examplePhrase: example.phrase,
-              exampleTranslation: example.translation,
-            }
-          : current,
-      )
+      let updatedCard: Lexicard | null = null
+      const nextCards = cards.map((current) => {
+        if (current.id !== card.id) return current
+        updatedCard = {
+          ...current,
+          examplePhrase: example.phrase,
+          exampleTranslation: example.translation,
+        }
+        return updatedCard
+      })
 
+      if (!updatedCard) return
       setCards(nextCards)
-      await saveData('dashboard-ICA-words', nextCards)
+      await updateWord(updatedCard)
     } finally {
       setGeneratingExampleId(null)
     }

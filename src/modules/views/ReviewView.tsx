@@ -15,7 +15,7 @@ import {
   getReviewRoundSizeByStyle,
   type ReviewPlayStyle,
 } from '../review/playStyle'
-import { saveData } from '../services/storage'
+import { saveData, updateWord } from '../services/storage'
 import { recordReviewEvent } from '../services/reviewTracking'
 import { stopTTS } from '../services/tts'
 import { buildReviewRound, todayKey, updateCardAfterReview } from '../utils'
@@ -186,7 +186,7 @@ export function ReviewView({
     }
 
     try {
-      await saveData('dashboard-ICA-words', nextCards)
+      await updateWord(updated)
       await recordReviewEvent({
         previousCard: sourceCard,
         nextCard: updated,
