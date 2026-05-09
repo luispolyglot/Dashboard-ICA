@@ -94,6 +94,7 @@ export function AddView({
       (card.nativeLang || '') === config.nativeLang,
   )
   const isDuplicate = Boolean(trimmedTarget && duplicateWord)
+  const showDuplicateWarning = isDuplicate && !saving && !saved
 
   const handleTargetChange = (value: string): void => {
     setTarget(value)
@@ -447,7 +448,7 @@ export function AddView({
                 : 'Guardar palabra'}
           </Button>
 
-          {isDuplicate && (
+          {showDuplicateWarning && (
             <p className='mt-2 text-xs text-red-600 dark:text-red-300'>
               Esta palabra ya existe en tus flashcards para este par de idiomas.
             </p>
