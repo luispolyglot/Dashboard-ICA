@@ -195,11 +195,16 @@ export function ReviewView({
       await onReviewAnswered(knew)
 
       if (shouldComplete) {
-        const dayKey = todayKey()
-        if (!completedDays.includes(dayKey)) {
-          const nextCompletedDays = [...completedDays, dayKey]
-          setCompletedDays(nextCompletedDays)
-          await saveData('dashboard-ICA-completed', nextCompletedDays)
+        const reachedDailyReviewGoal =
+          nextCorrect >= REVIEW_PLAY_STYLE_CORRECT_GOAL
+
+        if (reachedDailyReviewGoal) {
+          const dayKey = todayKey()
+          if (!completedDays.includes(dayKey)) {
+            const nextCompletedDays = [...completedDays, dayKey]
+            setCompletedDays(nextCompletedDays)
+            await saveData('dashboard-ICA-completed', nextCompletedDays)
+          }
         }
 
         setCompleted(true)
