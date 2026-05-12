@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
+  DownloadIcon,
+  EyeIcon,
+  Loader2Icon,
   PauseIcon,
   PencilIcon,
   PlayIcon,
@@ -25,6 +28,7 @@ import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
 import {
   createMasterNote,
   deleteMasterNote,
+  downloadMasterNoteAudio,
   fetchMasterNotes,
 } from '../services/masterNotes'
 import type { MasterNote } from '../types'
@@ -45,6 +49,16 @@ function formatSeconds(seconds: number): string {
   const minutes = Math.floor(safe / 60)
   const rest = safe % 60
   return `${minutes}:${String(rest).padStart(2, '0')}`
+}
+
+function compareByCreatedAtAsc(a: MasterNote, b: MasterNote): number {
+  const aTime = new Date(a.created_at || 0).getTime()
+  const bTime = new Date(b.created_at || 0).getTime()
+
+  if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0
+  if (Number.isNaN(aTime)) return 1
+  if (Number.isNaN(bTime)) return -1
+  return aTime - bTime
 }
 
 function SeekBack10Icon() {
@@ -70,11 +84,13 @@ function SeekForward10Icon() {
 }
 
 export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
+  const navigate = useNavigate()
   const [items, setItems] = useState<MasterNote[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const {
@@ -107,11 +123,19 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
   }, [])
 
   const openItems = useMemo(
-    () => items.filter((item) => item.state === 'open'),
+    () =>
+      items
+        .filter((item) => item.state === 'open')
+        .slice()
+        .sort(compareByCreatedAtAsc),
     [items],
   )
   const closedItems = useMemo(
-    () => items.filter((item) => item.state === 'closed'),
+    () =>
+      items
+        .filter((item) => item.state === 'closed')
+        .slice()
+        .sort(compareByCreatedAtAsc),
     [items],
   )
 
@@ -122,6 +146,7 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
       const created = await createMasterNote()
       setItems((prev) => [created, ...prev])
       setError(null)
+      navigate(`${DASHBOARD_ROUTES.masterNotes}/note/${created.id}`)
     } catch (err) {
       console.error(err)
       setError('No se pudo crear la nota maestra')
@@ -159,6 +184,20 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
     }
   }
 
+  const handleDownload = async (note: MasterNote): Promise<void> => {
+    if (downloadingId) return
+    setDownloadingId(note.id)
+    try {
+      await downloadMasterNoteAudio(note)
+      setError(null)
+    } catch (err) {
+      console.error(err)
+      setError('No se pudo descargar la nota maestra')
+    } finally {
+      setDownloadingId(null)
+    }
+  }
+
   return (
     <section className='mx-auto w-full max-w-4xl flex-1 px-5 pt-8 pb-24 lg:pb-8'>
       <h2 className='mb-1 font-serif text-2xl lg:text-3xl font-bold'>
@@ -172,7 +211,7 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
       <Card className='mb-4 rounded-2xl'>
         <CardContent>
           <p className='mb-2 text-xs font-semibold tracking-wide text-muted-foreground'>
-            NUEVA NOTA MAESTRA
+            Nueva Nota Maestra
           </p>
           <Button
             type='button'
@@ -192,9 +231,12 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
       )}
 
       <div className='space-y-3'>
-        {[...closedItems, ...openItems].map((item) => (
-          <Card key={item.id} className='rounded-2xl'>
-            <CardContent className='flex flex-wrap items-center justify-between gap-3'>
+        {[...closedItems, ...openItems].map((item) => {
+          const isDownloadingThis = downloadingId === item.id
+
+          return (
+            <Card key={item.id} className='rounded-2xl'>
+              <CardContent className='flex flex-wrap items-center justify-between gap-3'>
               <div>
                 <p className='font-semibold'>
                   {item.state === 'closed' ? `⭐ ${item.name}` : item.name}
@@ -211,7 +253,8 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
                     type='button'
                     onClick={() => void handlePlay(item)}
                     disabled={
-                      !canPlay(item, item.total_duration_ms > 0 ? 1 : 0)
+                      !canPlay(item, item.total_duration_ms > 0 ? 1 : 0) ||
+                      isDownloadingThis
                     }
                   >
                     <Volume2Icon className='mr-1 size-4' />
@@ -260,22 +303,58 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
 
                 {playingNoteId !== item.id && (
                   <>
-                    <Button
-                      asChild
-                      size='icon'
-                      variant='outline'
-                      aria-label='Ingresar a la nota maestra'
-                    >
-                      <Link to={`${DASHBOARD_ROUTES.masterNotes}/note/${item.id}`}>
-                        <PencilIcon className='size-4' />
-                      </Link>
-                    </Button>
+                    {isDownloadingThis ? (
+                      <Button
+                        size='icon'
+                        variant='outline'
+                        aria-label='Ingresar a la nota maestra'
+                        disabled
+                      >
+                        {item.state === 'closed' ? (
+                          <EyeIcon className='size-4' />
+                        ) : (
+                          <PencilIcon className='size-4' />
+                        )}
+                      </Button>
+                    ) : (
+                      <Button
+                        asChild
+                        size='icon'
+                        variant='outline'
+                        aria-label='Ingresar a la nota maestra'
+                      >
+                        <Link to={`${DASHBOARD_ROUTES.masterNotes}/note/${item.id}`}>
+                          {item.state === 'closed' ? (
+                            <EyeIcon className='size-4' />
+                          ) : (
+                            <PencilIcon className='size-4' />
+                          )}
+                        </Link>
+                      </Button>
+                    )}
+
+                    {item.state === 'closed' && (
+                      <Button
+                        type='button'
+                        size='icon'
+                        variant='outline'
+                        aria-label='Descargar nota maestra'
+                        disabled={downloadingId === item.id}
+                        onClick={() => void handleDownload(item)}
+                      >
+                        {isDownloadingThis ? (
+                          <Loader2Icon className='size-4 animate-spin' />
+                        ) : (
+                          <DownloadIcon className='size-4' />
+                        )}
+                      </Button>
+                    )}
 
                     <Button
                       type='button'
                       size='icon'
                       variant='destructive'
-                      disabled={deletingId === item.id}
+                      disabled={deletingId === item.id || isDownloadingThis}
                       onClick={() => setConfirmDeleteId(item.id)}
                       aria-label='Eliminar nota maestra'
                     >
@@ -284,9 +363,10 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
                   </>
                 )}
               </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          )
+        })}
 
         {!loading && items.length === 0 && (
           <p className='text-sm text-muted-foreground'>

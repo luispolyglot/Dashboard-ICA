@@ -5,7 +5,7 @@ const MASTER_NOTES_BUCKET = 'master-notes'
 
 function getNextMasterNoteNumber(names: string[]): number {
   const maxNumber = names.reduce((max, name) => {
-    const match = name.match(/^NOTA MAESTRA:\s*(\d+)$/i)
+    const match = name.match(/^nota maestra:\s*(\d+)$/i)
     const value = match ? Number(match[1]) : 0
     if (!Number.isFinite(value)) return max
     return Math.max(max, value)
@@ -58,7 +58,7 @@ export async function createMasterNote(): Promise<MasterNote> {
   const nextNumber = getNextMasterNoteNumber(
     (existingRows || []).map((row) => row.name || ''),
   )
-  const generatedName = `NOTA MAESTRA: ${nextNumber}`
+  const generatedName = `Nota Maestra: ${nextNumber}`
 
   const { data, error } = await supabase
     .from('master_notes')
@@ -397,4 +397,143 @@ export async function createSignedMasterNoteAudioUrl(
   }
 
   return data.signedUrl
+}
+
+function triggerDownload(blob: Blob, fileName: string): void {
+  const objectUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(objectUrl)
+}
+
+function sanitizeFileName(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9\-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+function encodeWav(buffers: AudioBuffer[]): Blob {
+  const sampleRate = buffers[0]?.sampleRate || 48000
+  const channelCount = Math.max(...buffers.map((buffer) => buffer.numberOfChannels), 1)
+  const totalSamples = buffers.reduce((sum, buffer) => sum + buffer.length, 0)
+
+  const interleaved = new Float32Array(totalSamples * channelCount)
+  let writeOffset = 0
+
+  for (const buffer of buffers) {
+    for (let i = 0; i < buffer.length; i += 1) {
+      for (let channel = 0; channel < channelCount; channel += 1) {
+        const sourceChannel = Math.min(channel, buffer.numberOfChannels - 1)
+        const data = buffer.getChannelData(sourceChannel)
+        interleaved[(writeOffset + i) * channelCount + channel] = data[i] || 0
+      }
+    }
+    writeOffset += buffer.length
+  }
+
+  const bytesPerSample = 2
+  const blockAlign = channelCount * bytesPerSample
+  const byteRate = sampleRate * blockAlign
+  const dataSize = interleaved.length * bytesPerSample
+  const buffer = new ArrayBuffer(44 + dataSize)
+  const view = new DataView(buffer)
+
+  const writeString = (offset: number, text: string) => {
+    for (let i = 0; i < text.length; i += 1) {
+      view.setUint8(offset + i, text.charCodeAt(i))
+    }
+  }
+
+  writeString(0, 'RIFF')
+  view.setUint32(4, 36 + dataSize, true)
+  writeString(8, 'WAVE')
+  writeString(12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, channelCount, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, byteRate, true)
+  view.setUint16(32, blockAlign, true)
+  view.setUint16(34, 16, true)
+  writeString(36, 'data')
+  view.setUint32(40, dataSize, true)
+
+  let offset = 44
+  for (let i = 0; i < interleaved.length; i += 1) {
+    const sample = Math.max(-1, Math.min(1, interleaved[i]))
+    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true)
+    offset += 2
+  }
+
+  return new Blob([buffer], { type: 'audio/wav' })
+}
+
+export async function downloadMasterNoteAudio(note: MasterNote): Promise<void> {
+  if (!supabase) throw new Error('Falta configurar Supabase')
+
+  const baseName = sanitizeFileName(note.name || 'nota-maestra') || 'nota-maestra'
+
+  if (note.close_type === 'final' && note.final_audio_path) {
+    const { data: finalBlob, error } = await supabase.storage
+      .from(MASTER_NOTES_BUCKET)
+      .download(note.final_audio_path)
+
+    if (error || !finalBlob) {
+      throw error || new Error('No se pudo descargar el audio final')
+    }
+
+    const ext = note.final_audio_path.split('.').pop() || 'webm'
+    triggerDownload(finalBlob, `${baseName}.${ext}`)
+    return
+  }
+
+  const chunks = await fetchMasterNoteChunks(note.id)
+  if (chunks.length === 0) {
+    throw new Error('No hay audios para descargar en esta nota')
+  }
+
+  if (chunks.length === 1) {
+    const { data: singleBlob, error } = await supabase.storage
+      .from(MASTER_NOTES_BUCKET)
+      .download(chunks[0].storage_path)
+
+    if (error || !singleBlob) {
+      throw error || new Error('No se pudo descargar el audio')
+    }
+
+    const ext = chunks[0].storage_path.split('.').pop() || 'webm'
+    triggerDownload(singleBlob, `${baseName}.${ext}`)
+    return
+  }
+
+  const audioContext = new AudioContext()
+  try {
+    const audioBuffers: AudioBuffer[] = []
+
+    for (const chunk of chunks) {
+      const { data: chunkBlob, error } = await supabase.storage
+        .from(MASTER_NOTES_BUCKET)
+        .download(chunk.storage_path)
+
+      if (error || !chunkBlob) {
+        throw error || new Error('No se pudo descargar un chunk de audio')
+      }
+
+      const arrayBuffer = await chunkBlob.arrayBuffer()
+      const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0))
+      audioBuffers.push(decoded)
+    }
+
+    const wavBlob = encodeWav(audioBuffers)
+    triggerDownload(wavBlob, `${baseName}.wav`)
+  } finally {
+    await audioContext.close().catch(() => null)
+  }
 }

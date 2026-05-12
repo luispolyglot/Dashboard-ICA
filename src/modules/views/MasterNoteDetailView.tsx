@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
+  DownloadIcon,
   MicIcon,
   PauseIcon,
   PlayIcon,
@@ -32,6 +33,7 @@ import { fetchPhraseHistory } from '../services/phraseHistory'
 import {
   closeMasterNote,
   deleteMasterNote,
+  downloadMasterNoteAudio,
   fetchMasterNoteById,
   fetchMasterNoteChunks,
   removeMasterNoteChunk,
@@ -104,6 +106,7 @@ export function MasterNoteDetailView({
   const [loading, setLoading] = useState(true)
   const [closing, setClosing] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const [removingChunkId, setRemovingChunkId] = useState<string | null>(null)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -272,6 +275,20 @@ export function MasterNoteDetailView({
     }
   }
 
+  const handleDownloadNote = async (): Promise<void> => {
+    if (!note || note.state !== 'closed' || downloading) return
+    setDownloading(true)
+    try {
+      await downloadMasterNoteAudio(note)
+      setError(null)
+    } catch (err) {
+      console.error(err)
+      setError('No se pudo descargar la nota maestra')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   const handleRemoveActivatedPhrase = async (
     chunkId: string,
   ): Promise<void> => {
@@ -358,7 +375,11 @@ export function MasterNoteDetailView({
                 variant='outline'
                 onClick={togglePause}
               >
-                {isPaused ? <PlayIcon className='size-4' /> : <PauseIcon className='size-4' />}
+                {isPaused ? (
+                  <PlayIcon className='size-4' />
+                ) : (
+                  <PauseIcon className='size-4' />
+                )}
               </Button>
               <Button
                 type='button'
@@ -374,16 +395,30 @@ export function MasterNoteDetailView({
             </>
           )}
           {playingNoteId !== note.id && (
-            <Button
-              type='button'
-              size='icon'
-              variant='destructive'
-              aria-label='Eliminar nota maestra'
-              onClick={() => setConfirmDeleteOpen(true)}
-              disabled={deleting}
-            >
-              <Trash2Icon className='size-4' />
-            </Button>
+            <>
+              {note.state === 'closed' && (
+                <Button
+                  type='button'
+                  size='icon'
+                  variant='outline'
+                  aria-label='Descargar nota maestra'
+                  onClick={() => void handleDownloadNote()}
+                  disabled={downloading}
+                >
+                  <DownloadIcon className='size-4' />
+                </Button>
+              )}
+              <Button
+                type='button'
+                size='icon'
+                variant='destructive'
+                aria-label='Eliminar nota maestra'
+                onClick={() => setConfirmDeleteOpen(true)}
+                disabled={deleting}
+              >
+                <Trash2Icon className='size-4' />
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -555,7 +590,7 @@ export function MasterNoteDetailView({
                           <Link
                             to={`${DASHBOARD_ROUTES.masterNotes}/note/${note.id}/activate/${item.id}`}
                           >
-                            ACTIVAR
+                            Activar
                           </Link>
                         ) : (
                           <span>Límite alcanzado</span>

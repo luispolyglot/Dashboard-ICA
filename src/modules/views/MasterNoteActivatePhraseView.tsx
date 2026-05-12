@@ -475,15 +475,16 @@ export function MasterNoteActivatePhraseView({
                   >
                     {saving ? 'Guardando...' : 'Guardar audio'}
                   </Button>
-                  <Button
-                    type='button'
-                    onClick={clearDraft}
-                    size='sm'
-                    variant='ghost'
-                    disabled={saving}
-                  >
-                    Descartar
-                  </Button>
+                  {!saving && (
+                    <Button
+                      type='button'
+                      onClick={clearDraft}
+                      size='sm'
+                      variant='ghost'
+                    >
+                      Descartar
+                    </Button>
+                  )}
                 </div>
               </div>
             )}

@@ -34,7 +34,7 @@ export function useDashboardBreadcrumbs(): BreadcrumbItem[] {
         }
 
         const formatted = note.name
-          .replace(/^NOTA MAESTRA:\s*/i, 'Nota maestra ')
+          .replace(/^nota maestra:\s*/i, 'Nota Maestra ')
           .trim()
 
         setMasterNoteLabel(formatted || DASHBOARD_LABELS['/master-notes/note'])

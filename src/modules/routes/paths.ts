@@ -33,7 +33,7 @@ export const DASHBOARD_LABELS: Record<string, string> = {
   '/activation-phrase': 'Creación de frases ICA',
   '/phrase-history': 'Historial de frases ICA',
   '/master-notes': 'Notas maestras',
-  '/master-notes/note': 'Nota maestra',
+  '/master-notes/note': 'Nota Maestra',
   '/master-notes/note/activate': 'Activar frase',
   '/leaderboard': 'Leaderboard',
   '/streaks': 'Rachas',
