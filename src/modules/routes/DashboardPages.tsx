@@ -22,9 +22,11 @@ import { TrackerDetailView } from '../views/TrackerDetailView'
 import { TrackersView } from '../views/TrackersView'
 import {
   getReviewPendingOnlyFromQuery,
+  loadSavedReviewPendingOnly,
   loadSavedReviewPlayStyle,
   REVIEW_PENDING_ONLY_QUERY_PARAM,
   REVIEW_PLAY_STYLE_QUERY_PARAM,
+  saveReviewPendingOnly,
   saveReviewPlayStyle,
   getReviewPlayStyleFromQuery,
   type ReviewPlayStyle,
@@ -79,11 +81,15 @@ export function FlashcardsPage() {
   const [playStyle, setPlayStyle] = useState<ReviewPlayStyle>(
     loadSavedReviewPlayStyle(),
   )
-  const [pendingOnly, setPendingOnly] = useState(false)
+  const [pendingOnly, setPendingOnly] = useState(loadSavedReviewPendingOnly())
 
   useEffect(() => {
     saveReviewPlayStyle(playStyle)
   }, [playStyle])
+
+  useEffect(() => {
+    saveReviewPendingOnly(pendingOnly)
+  }, [pendingOnly])
 
   return (
     <PageLayout>

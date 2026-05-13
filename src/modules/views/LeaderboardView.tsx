@@ -240,7 +240,8 @@ export function LeaderboardView() {
 
           <p className='flex items-center gap-2 text-sm text-muted-foreground'>
             <InfoIcon className='h-4 w-4' />
-            El porcentaje mensual se calcula con los días del 1 al 28.
+            El porcentaje mensual es un promedio de las rachas ICA y flashcards,
+            hasta el día 28 inclusive.
           </p>
 
           <p className='flex items-center gap-2 text-sm text-muted-foreground'>

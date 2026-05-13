@@ -9,6 +9,8 @@ export const REVIEW_GOAL_MIN_WORDS_PER_MODE = 20
 export const REVIEW_PLAY_STYLE_QUERY_PARAM = 'playStyle'
 export const REVIEW_PENDING_ONLY_QUERY_PARAM = 'pendingOnly'
 export const REVIEW_PLAY_STYLE_STORAGE_KEY = 'dashboard-ica-review-play-style'
+export const REVIEW_PENDING_ONLY_STORAGE_KEY =
+  'dashboard-ica-review-pending-only'
 
 export function isReviewPlayStyle(value: unknown): value is ReviewPlayStyle {
   return value === 'classic' || value === 'goal'
@@ -52,4 +54,19 @@ export function loadSavedReviewPlayStyle(): ReviewPlayStyle {
 export function saveReviewPlayStyle(style: ReviewPlayStyle): void {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(REVIEW_PLAY_STYLE_STORAGE_KEY, style)
+}
+
+export function loadSavedReviewPendingOnly(): boolean {
+  if (typeof window === 'undefined') return false
+
+  const saved = window.localStorage.getItem(REVIEW_PENDING_ONLY_STORAGE_KEY)
+  return saved === '1' || saved === 'true'
+}
+
+export function saveReviewPendingOnly(pendingOnly: boolean): void {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(
+    REVIEW_PENDING_ONLY_STORAGE_KEY,
+    pendingOnly ? '1' : '0',
+  )
 }

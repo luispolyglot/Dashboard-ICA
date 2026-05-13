@@ -11,6 +11,7 @@ import { GlobalReviewGoalBadge } from '../components/GlobalReviewGoalBadge'
 import { ProgressBar } from '../components/ProgressBar'
 import { SpeakButton } from '../components/SpeakButton'
 import {
+  getReviewModeMinimumWords,
   REVIEW_PLAY_STYLE_CORRECT_GOAL,
   getReviewRoundSizeByStyle,
   type ReviewPlayStyle,
@@ -68,6 +69,7 @@ export function ReviewView({
   const [currentIndex, setCurrentIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [correct, setCorrect] = useState(0)
+  const [answerResults, setAnswerResults] = useState<Array<'correct' | 'wrong'>>([])
   const [busy, setBusy] = useState(false)
   const [finishing, setFinishing] = useState(false)
   const [completed, setCompleted] = useState(false)
@@ -76,10 +78,18 @@ export function ReviewView({
   const reviewPool = pendingOnly
     ? cards.filter((card) => (card.streak || 0) === 0)
     : cards
+  const pendingPool = cards.filter((card) => (card.streak || 0) === 0)
 
   const activeMode =
     REVIEW_MODE_OPTIONS.find((option) => option.key === mode) ||
     REVIEW_MODE_OPTIONS[0]
+  const replayMinimumRequired = getReviewModeMinimumWords(playStyle)
+  const replayEligibleCount =
+    mode === 'mixed'
+      ? pendingPool.length
+      : pendingPool.filter((card) => card.importance === mode).length
+  const canPlayAnotherRound =
+    !pendingOnly || replayEligibleCount >= replayMinimumRequired
 
   const roundFeedback = (() => {
     if (correct <= 2) {
@@ -126,6 +136,7 @@ export function ReviewView({
     )
     setCurrentIndex(0)
     setCorrect(0)
+    setAnswerResults([])
     setCompleted(false)
     setFlipped(false)
     setShowExample(false)
@@ -167,6 +178,9 @@ export function ReviewView({
       card.id === updated.id ? updated : card,
     )
     const nextCorrect = knew ? correct + 1 : correct
+    const nextAnswerResults: Array<'correct' | 'wrong'> = isGoalStyle
+      ? answerResults
+      : [...answerResults, knew ? 'correct' : 'wrong']
     const isLastCard = currentIndex >= roundCards.length - 1
     const reachedCorrectGoal = nextCorrect >= REVIEW_PLAY_STYLE_CORRECT_GOAL
     const shouldComplete = isGoalStyle ? reachedCorrectGoal : isLastCard
@@ -176,6 +190,9 @@ export function ReviewView({
     }
 
     setCorrect(nextCorrect)
+    if (!isGoalStyle) {
+      setAnswerResults(nextAnswerResults)
+    }
     setCards(nextCards)
 
     if (!shouldComplete) {
@@ -238,20 +255,32 @@ export function ReviewView({
         <p className='mb-3 max-w-sm text-sm leading-relaxed text-muted-foreground'>
           {roundFeedback.message}
         </p>
-        <ProgressBar correct={correct} total={roundTotal} />
+        <ProgressBar
+          correct={correct}
+          total={roundTotal}
+          answers={isGoalStyle ? undefined : answerResults}
+        />
         <div className='mt-3'>
           <GlobalReviewGoalBadge correctToday={globalCorrectToday} />
         </div>
+        {!canPlayAnotherRound && pendingOnly && (
+          <p className='mt-4 rounded-lg border border-red-500/35 bg-red-500/8 px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-300'>
+            No quedan suficientes tarjetas no aprendidas o falladas para otra ronda ({replayEligibleCount}/{replayMinimumRequired}).
+          </p>
+        )}
         <div className='mt-4 flex flex-wrap justify-center gap-2'>
           <Button
             type='button'
+            disabled={!canPlayAnotherRound}
             onClick={() => {
+              if (!canPlayAnotherRound) return
               const nextRound = buildReviewRound(
                 reviewPool,
                 mode,
                 getReviewRoundSizeByStyle(playStyle, reviewPool.length),
               )
               setCorrect(0)
+              setAnswerResults([])
               setCompleted(false)
               setCurrentIndex(0)
               setFlipped(false)
@@ -313,7 +342,11 @@ export function ReviewView({
         </div>
         <GlobalReviewGoalBadge correctToday={globalCorrectToday} />
       </div>
-      <ProgressBar correct={correct} total={roundTotal} />
+      <ProgressBar
+        correct={correct}
+        total={roundTotal}
+        answers={isGoalStyle ? undefined : answerResults}
+      />
 
       <Card
         className='w-full max-w-105 cursor-pointer rounded-3xl border p-6 text-center'
