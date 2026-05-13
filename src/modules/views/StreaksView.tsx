@@ -237,7 +237,8 @@ export function StreaksView({ completedDays, creationDays }: StreaksViewProps) {
               </div>
               <div className='flex flex-wrap gap-3 text-xs text-muted-foreground'>
                 <span>✍️ +{CREATION_WORDS_GOAL} palabras</span>
-                <span>⚡ 1 frase de activación</span>
+                <span>🧩 1 Frase de Creación</span>
+                <span>🗣️ 1 Nota de Activación</span>
               </div>
             </div>
           )}

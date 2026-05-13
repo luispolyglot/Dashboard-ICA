@@ -71,8 +71,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
       {
         initial: 'I',
         title: 'INMERSIÓN',
-        description:
-          'Añade palabras y consulta su historial ICA en un solo flujo.',
+        description: 'Añade palabras ICA filtradas mediante la inmersión.',
         emoji: '✍️',
         tone: '#3B82F6',
         statusLabel: hasFiveWordsToday
@@ -84,7 +83,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
       {
         initial: 'C',
         title: 'CREACIÓN',
-        description: 'Crea frases con tus palabras ICA y consolida contexto.',
+        description: 'Crea frases contextualizadas con tu Baúl ICA.',
         emoji: '🧩',
         tone: '#3B82F6',
         statusLabel: phraseDone
@@ -97,7 +96,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
       {
         initial: 'A',
         title: 'ACTIVACIÓN',
-        description: 'Activa tus frases creadas con grabación de voz propia.',
+        description: 'Activa el conocimiento mediante tu propia voz.',
         emoji: '🗣️',
         tone: '#3B82F6',
         statusLabel:
@@ -217,7 +216,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
                     </h2>
                   </div>
                   <p className='m-0 text-xs leading-normal text-slate-500'>
-                    Refuerza tu memoria activa con práctica diaria.
+                    Refuerza tu memoria con repetición espaciada.
                   </p>
                   <div className='mt-2.5 inline-flex items-center gap-1.5 text-xs text-slate-400'>
                     <span aria-hidden='true'>✅</span>
@@ -246,7 +245,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
                   </h2>
                 </div>
                 <p className='m-0 text-xs leading-normal text-slate-500'>
-                  Refuerza tu memoria activa con práctica diaria.
+                  Refuerza tu memoria con repetición espaciada.
                 </p>
                 <div className='mt-2.5 inline-flex items-center gap-1.5 text-xs text-slate-400'>
                   <span aria-hidden='true'>🕒</span>
