@@ -147,7 +147,7 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
         ⚡ Historial de Creación de Frases
       </h2>
       <p className='mb-4 lg:mb-6 text-sm text-muted-foreground'>
-        Historial con frase, traducción, palabras usadas y metadata.
+        Historial con frase, traducción y palabras usadas.
       </p>
 
       <div className='sticky top-0 z-20 -mx-5 mb-5 border-b border-border/60 bg-background/95 px-5 pt-1 pb-3 backdrop-blur lg:static lg:z-auto lg:m-0 lg:mb-5 lg:border-none lg:bg-transparent lg:px-0 lg:pt-0 lg:pb-0 lg:backdrop-blur-none'>
