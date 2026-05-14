@@ -30,6 +30,8 @@ export type CoachingMembership = {
   updatedAt: string
 }
 
+const COACHING_CLASS_REPORTS_BUCKET = 'coaching-class-reports'
+
 export type CoachingManagedUser = {
   id: string
   userId: string
@@ -293,4 +295,47 @@ export async function upsertCoachingAdmin(input: {
     },
     'No se pudo guardar el coach admin.',
   )
+}
+
+function sanitizePathChunk(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+export async function uploadCoachingClassReportImage(input: {
+  file: File
+  userId: string
+  targetLang: string
+  weekKey: string
+}): Promise<string> {
+  if (!supabase) {
+    throw new CoachingRequestError('Supabase no está configurado.')
+  }
+
+  const extension = input.file.name.includes('.')
+    ? input.file.name.split('.').pop()?.toLowerCase() || 'jpg'
+    : 'jpg'
+
+  const safeTargetLang = sanitizePathChunk(input.targetLang) || 'lang'
+  const safeWeekKey = sanitizePathChunk(input.weekKey) || 'week'
+  const path = `${input.userId}/${safeTargetLang}/${safeWeekKey}/${crypto.randomUUID()}.${extension}`
+
+  const { error } = await supabase.storage
+    .from(COACHING_CLASS_REPORTS_BUCKET)
+    .upload(path, input.file, { upsert: false })
+
+  if (error) {
+    throw new CoachingRequestError('No se pudo subir la imagen de reporte.')
+  }
+
+  return path
+}
+
+export async function deleteCoachingClassReportImage(path: string): Promise<void> {
+  if (!supabase || !path) return
+  await supabase.storage.from(COACHING_CLASS_REPORTS_BUCKET).remove([path])
 }

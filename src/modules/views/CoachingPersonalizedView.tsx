@@ -1,7 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BookOpenIcon, GoalIcon, RefreshCwIcon, RepeatIcon } from 'lucide-react'
+import {
+  BookOpenIcon,
+  GoalIcon,
+  RefreshCwIcon,
+  RepeatIcon,
+  SearchIcon,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Select,
   SelectContent,
@@ -24,6 +36,7 @@ type ClassSession = {
   title: string
   loomUrl: string | null
   report: string | null
+  reportImageUrl: string | null
   createdAt: string | null
 }
 
@@ -71,6 +84,7 @@ function normalizeClassSessions(value: unknown[]): ClassSession[] {
       title: toString(item.title) || `Clase ${index + 1}`,
       loomUrl: toString(item.loomUrl ?? item.loom_url),
       report: toString(item.report),
+      reportImageUrl: toString(item.reportImageUrl ?? item.report_image_url),
       createdAt: toString(item.createdAt ?? item.created_at),
     }))
 }
@@ -88,6 +102,14 @@ function normalizeWeeklyObjectiveMap(
   return output
 }
 
+function getEmbeddableVideoUrl(value: string | null): string | null {
+  if (!value) return null
+  if (/loom\.com/i.test(value)) {
+    return value.replace('/share/', '/embed/').replace('/shared/', '/embed/')
+  }
+  return null
+}
+
 function getWeekOfMonth(date: Date): number {
   return Math.min(5, Math.max(1, Math.ceil(date.getDate() / 7)))
 }
@@ -98,6 +120,7 @@ export function CoachingPersonalizedView({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [memberships, setMemberships] = useState<CoachingMembership[]>([])
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
   const now = new Date()
   const [selectedYear, setSelectedYear] = useState(String(now.getFullYear()))
   const [selectedMonth, setSelectedMonth] = useState(
@@ -161,7 +184,10 @@ export function CoachingPersonalizedView({
       const hasFlatFields =
         'wordsTarget' in record ||
         'nmTarget' in record ||
+        'icaStreakObjectivePct' in record ||
         'icaStreakTargetPct' in record ||
+        'flashcardsStreakObjectivePct' in record ||
+        'flashcardsStreakAchievedPct' in record ||
         'icaStreakAchievedPct' in record ||
         'reportExerciseUrl' in record
       return hasFlatFields ? record : {}
@@ -257,8 +283,14 @@ export function CoachingPersonalizedView({
   }, [weekOptions, selectedWeek])
   const wordsObjective = toNumber(objectives.wordsTarget)
   const nmObjective = toNumber(objectives.nmTarget)
-  const streakObjective = toNumber(objectives.icaStreakTargetPct)
-  const streakAchieved = toNumber(objectives.icaStreakAchievedPct)
+  const streakObjective = toNumber(
+    objectives.icaStreakObjectivePct ?? objectives.icaStreakTargetPct,
+  )
+  const streakAchieved = toNumber(
+    objectives.flashcardsStreakObjectivePct ??
+      objectives.flashcardsStreakAchievedPct ??
+      objectives.icaStreakAchievedPct,
+  )
   const reportExerciseUrl = toString(objectives.reportExerciseUrl)
 
   return (
@@ -395,6 +427,17 @@ export function CoachingPersonalizedView({
                     <p className='text-xs text-muted-foreground'>
                       Semana: {session.key}
                     </p>
+                    {getEmbeddableVideoUrl(session.loomUrl) && (
+                      <div className='mb-2 overflow-hidden rounded-md border'>
+                        <iframe
+                          src={getEmbeddableVideoUrl(session.loomUrl) || ''}
+                          title={`Video ${session.title}`}
+                          className='aspect-video w-full'
+                          allow='autoplay; fullscreen; picture-in-picture'
+                          allowFullScreen
+                        />
+                      </div>
+                    )}
                     {session.loomUrl && (
                       <a
                         href={session.loomUrl}
@@ -407,6 +450,25 @@ export function CoachingPersonalizedView({
                     )}
                     {session.report && (
                       <p className='mt-1 text-sm'>{session.report}</p>
+                    )}
+                    {session.reportImageUrl && (
+                      <button
+                        type='button'
+                        onClick={() =>
+                          setImagePreviewUrl(session.reportImageUrl)
+                        }
+                        className='group relative mt-2 block cursor-zoom-in overflow-hidden rounded-md border text-left'
+                        aria-label='Expandir imagen del reporte'
+                      >
+                        <img
+                          src={session.reportImageUrl}
+                          alt='Imagen del reporte de clase'
+                          className='max-h-48 w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]'
+                        />
+                        <div className='absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100'>
+                          <SearchIcon className='h-5 w-5 text-white' />
+                        </div>
+                      </button>
                     )}
                   </div>
                 ))
@@ -456,13 +518,13 @@ export function CoachingPersonalizedView({
               <p>Palabras ICA objetivo: {wordsObjective ?? 'No definido'}</p>
               <p>Notas Maestras objetivo: {nmObjective ?? 'No definido'}</p>
               <p>
-                Racha ICA objetivo:{' '}
+                Objetivo % racha ICA:{' '}
                 {streakObjective !== null
                   ? `${streakObjective}%`
                   : 'No definido'}
               </p>
               <p>
-                Racha ICA alcanzada:{' '}
+                Objetivo % racha flashcards:{' '}
                 {streakAchieved !== null ? `${streakAchieved}%` : 'No definido'}
               </p>
               {reportExerciseUrl && (
@@ -479,6 +541,26 @@ export function CoachingPersonalizedView({
           </Card>
         </div>
       )}
+
+      <Dialog
+        open={Boolean(imagePreviewUrl)}
+        onOpenChange={(open) => {
+          if (!open) setImagePreviewUrl(null)
+        }}
+      >
+        <DialogContent className='max-h-[92dvh] overflow-y-auto sm:max-w-4xl'>
+          <DialogHeader>
+            <DialogTitle>Imagen del reporte</DialogTitle>
+          </DialogHeader>
+          {imagePreviewUrl && (
+            <img
+              src={imagePreviewUrl}
+              alt='Imagen ampliada del reporte de clase'
+              className='h-auto w-full rounded-md border object-contain'
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

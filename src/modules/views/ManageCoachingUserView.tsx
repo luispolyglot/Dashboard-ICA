@@ -14,10 +14,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
+  deleteCoachingClassReportImage,
   fetchCoachingUserInsights,
   fetchCoachingUserMemberships,
   type CoachingUserInsights,
   type CoachingUserMembership,
+  uploadCoachingClassReportImage,
   upsertCoachingUser,
 } from '../services/coaching'
 
@@ -60,6 +62,8 @@ type ClassSessionItem = {
   title: string
   loomUrl: string | null
   report: string | null
+  reportImagePath: string | null
+  reportImageUrl: string | null
   createdAt: string | null
   updatedAt: string | null
 }
@@ -89,6 +93,8 @@ function normalizeClassSessions(value: unknown): ClassSessionItem[] {
         title: toInputValue(row.title) || 'Clase semanal',
         loomUrl: toInputValue(row.loomUrl ?? row.loom_url) || null,
         report: toInputValue(row.report) || null,
+        reportImagePath: toInputValue(row.reportImagePath ?? row.report_image_path) || null,
+        reportImageUrl: toInputValue(row.reportImageUrl ?? row.report_image_url) || null,
         createdAt: createdAt || null,
         updatedAt: toInputValue(row.updatedAt ?? row.updated_at) || null,
       }
@@ -98,7 +104,12 @@ function normalizeClassSessions(value: unknown): ClassSessionItem[] {
 function appendClassSession(
   current: ClassSessionItem[],
   key: string,
-  payload: { title: string; loomUrl: string | null; report: string | null },
+  payload: {
+    title: string
+    loomUrl: string | null
+    report: string | null
+    reportImagePath: string | null
+  },
 ): ClassSessionItem[] {
   const now = new Date().toISOString()
   return [
@@ -108,6 +119,8 @@ function appendClassSession(
       title: payload.title,
       loomUrl: payload.loomUrl,
       report: payload.report,
+      reportImagePath: payload.reportImagePath,
+      reportImageUrl: null,
       createdAt: now,
       updatedAt: now,
     },
@@ -159,6 +172,7 @@ export function ManageCoachingUserView({
   const [classTitle, setClassTitle] = useState('Clase semanal')
   const [classLoomUrl, setClassLoomUrl] = useState('')
   const [classReport, setClassReport] = useState('')
+  const [classReportImageFile, setClassReportImageFile] = useState<File | null>(null)
   const [savingClass, setSavingClass] = useState(false)
   const [classFeedback, setClassFeedback] = useState<string | null>(null)
   const [classFeedbackIsError, setClassFeedbackIsError] = useState(false)
@@ -202,7 +216,10 @@ export function ManageCoachingUserView({
       const hasFlatFields =
         'wordsTarget' in asRecord ||
         'nmTarget' in asRecord ||
+        'icaStreakObjectivePct' in asRecord ||
         'icaStreakTargetPct' in asRecord ||
+        'flashcardsStreakObjectivePct' in asRecord ||
+        'flashcardsStreakAchievedPct' in asRecord ||
         'icaStreakAchievedPct' in asRecord ||
         'reportExerciseUrl' in asRecord
       if (hasFlatFields) return asRecord
@@ -214,8 +231,16 @@ export function ManageCoachingUserView({
   useEffect(() => {
     setObjectiveWords(toInputValue(weekData.wordsTarget))
     setObjectiveNm(toInputValue(weekData.nmTarget))
-    setObjectiveStreakTarget(toInputValue(weekData.icaStreakTargetPct))
-    setObjectiveStreakAchieved(toInputValue(weekData.icaStreakAchievedPct))
+    setObjectiveStreakTarget(
+      toInputValue(weekData.icaStreakObjectivePct ?? weekData.icaStreakTargetPct),
+    )
+    setObjectiveStreakAchieved(
+      toInputValue(
+        weekData.flashcardsStreakObjectivePct ??
+          weekData.flashcardsStreakAchievedPct ??
+          weekData.icaStreakAchievedPct,
+      ),
+    )
     setObjectiveReportUrl(toInputValue(weekData.reportExerciseUrl))
   }, [weekData])
 
@@ -285,6 +310,10 @@ export function ManageCoachingUserView({
       setObjectiveWeek(String(weekOptions[0]))
     }
   }, [weekOptions, objectiveWeek])
+
+  useEffect(() => {
+    setClassReportImageFile(null)
+  }, [objectiveKey])
 
   const loadAll = async () => {
     setLoading(true)
@@ -369,8 +398,8 @@ export function ManageCoachingUserView({
         [objectiveKey]: {
           wordsTarget: objectiveWords.trim() || null,
           nmTarget: objectiveNm.trim() || null,
-          icaStreakTargetPct: objectiveStreakTarget.trim() || null,
-          icaStreakAchievedPct: objectiveStreakAchieved.trim() || null,
+          icaStreakObjectivePct: objectiveStreakTarget.trim() || null,
+          flashcardsStreakObjectivePct: objectiveStreakAchieved.trim() || null,
           reportExerciseUrl: objectiveReportUrl.trim() || null,
         },
       }
@@ -420,10 +449,22 @@ export function ManageCoachingUserView({
       const currentSessions = normalizeClassSessions(
         selectedMembership.classSessions,
       )
+
+      let reportImagePath: string | null = null
+      if (classReportImageFile) {
+        reportImagePath = await uploadCoachingClassReportImage({
+          file: classReportImageFile,
+          userId: selectedMembership.userId,
+          targetLang: selectedMembership.targetLang,
+          weekKey: objectiveKey,
+        })
+      }
+
       const nextSessions = appendClassSession(currentSessions, objectiveKey, {
         title: classTitle.trim() || 'Clase semanal',
         loomUrl: classLoomUrl.trim() || null,
         report: classReport.trim() || null,
+        reportImagePath,
       })
 
       await upsertCoachingUser({
@@ -449,6 +490,7 @@ export function ManageCoachingUserView({
       setClassTitle('Clase semanal')
       setClassLoomUrl('')
       setClassReport('')
+      setClassReportImageFile(null)
       setClassFeedbackIsError(false)
       setClassFeedback('Grabación guardada.')
     } catch (err) {
@@ -476,6 +518,11 @@ export function ManageCoachingUserView({
       const nextSessions = currentSessions.filter(
         (session) => session.id !== sessionId,
       )
+
+      const sessionToDelete = currentSessions.find((session) => session.id === sessionId)
+      if (sessionToDelete?.reportImagePath) {
+        await deleteCoachingClassReportImage(sessionToDelete.reportImagePath)
+      }
 
       await upsertCoachingUser({
         userId: selectedMembership.userId,
@@ -675,7 +722,7 @@ export function ManageCoachingUserView({
                   />
                 </div>
                 <div className='space-y-1.5'>
-                  <Label>Objetivo % racha</Label>
+                  <Label>Objetivo % racha ICA</Label>
                   <Input
                     value={objectiveStreakTarget}
                     onChange={(event) =>
@@ -685,7 +732,7 @@ export function ManageCoachingUserView({
                   />
                 </div>
                 <div className='space-y-1.5'>
-                  <Label>% racha alcanzado</Label>
+                  <Label>Objetivo % racha flashcards</Label>
                   <Input
                     value={objectiveStreakAchieved}
                     onChange={(event) =>
@@ -756,6 +803,14 @@ export function ManageCoachingUserView({
                   placeholder='Ej: Repasó 25 palabras ICA y 2 notas maestras'
                 />
               </div>
+              <div className='space-y-1.5'>
+                <Label>Imagen reporte clase</Label>
+                <Input
+                  type='file'
+                  accept='image/*'
+                  onChange={(event) => setClassReportImageFile(event.target.files?.[0] || null)}
+                />
+              </div>
 
               <Button
                 type='button'
@@ -793,6 +848,16 @@ export function ManageCoachingUserView({
                           </a>
                         )}
                         {session.report && <p>{session.report}</p>}
+                        {session.reportImageUrl && (
+                          <a
+                            href={session.reportImageUrl}
+                            target='_blank'
+                            rel='noreferrer'
+                            className='text-blue-600 underline underline-offset-2'
+                          >
+                            Ver imagen de reporte
+                          </a>
+                        )}
                       </div>
                       <Button
                         type='button'

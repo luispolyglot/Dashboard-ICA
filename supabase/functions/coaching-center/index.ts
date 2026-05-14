@@ -55,8 +55,15 @@ function safeString(value: unknown): string | null {
 
 function normalizeUrl(value: string | null): string | null {
   if (!value) return null
-  if (/^https?:\/\//i.test(value)) return value
-  return `https://${value}`
+  const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`
+
+  if (/loom\.com/i.test(withProtocol)) {
+    return withProtocol
+      .replace('/shared/', '/embed/')
+      .replace('/share/', '/embed/')
+  }
+
+  return withProtocol
 }
 
 function buildWeekKeyFromIso(value: string | null): string | null {
@@ -91,10 +98,41 @@ function safeClassSessions(value: unknown): unknown[] {
         title: safeString(item.title) || 'Clase semanal',
         loomUrl: normalizeUrl(safeString(item.loomUrl ?? item.loom_url)),
         report: safeString(item.report),
+        reportImagePath:
+          safeString(item.reportImagePath ?? item.report_image_path) || null,
         createdAt,
         updatedAt: safeString(item.updatedAt ?? item.updated_at) || new Date().toISOString(),
       }
     })
+}
+
+async function withSignedClassReportUrls(
+  adminClient: { storage: { from: (bucket: string) => { createSignedUrl: (path: string, expiresIn: number) => Promise<{ data: { signedUrl: string } | null; error: { message: string } | null }> } } },
+  value: unknown,
+): Promise<unknown[]> {
+  const sessions = safeClassSessions(value)
+  return Promise.all(
+    sessions.map(async (item) => {
+      const row = item as Record<string, unknown>
+      const path = safeString(row.reportImagePath)
+      if (!path) {
+        return { ...row, reportImageUrl: null }
+      }
+
+      const { data, error } = await adminClient.storage
+        .from('coaching-class-reports')
+        .createSignedUrl(path, 60 * 60)
+
+      if (error || !data?.signedUrl) {
+        return { ...row, reportImageUrl: null }
+      }
+
+      return {
+        ...row,
+        reportImageUrl: data.signedUrl,
+      }
+    }),
+  )
 }
 
 function safeJsonObject(value: unknown): Record<string, unknown> {
@@ -170,8 +208,8 @@ Deno.serve(async (req) => {
       )
     }
 
-    return jsonResponse(200, {
-      memberships: rows.map((row) => ({
+    const memberships = await Promise.all(
+      rows.map(async (row) => ({
         id: row.id,
         userId: row.user_id,
         createdAt: row.created_at,
@@ -180,14 +218,16 @@ Deno.serve(async (req) => {
         targetLang: row.target_lang,
         nativeLang: row.native_lang,
         level: row.level,
-        classSessions: safeClassSessions(row.class_sessions),
+        classSessions: await withSignedClassReportUrls(auth.adminClient as any, row.class_sessions),
         feedbackNmUrl: row.feedback_nm_url,
         feedbackNmNotes: row.feedback_nm_notes,
         weeklyObjectives: safeJsonObject(row.weekly_objectives),
         notes: row.notes,
         updatedAt: row.updated_at,
       })),
-    })
+    )
+
+    return jsonResponse(200, { memberships })
   }
 
   const admin = await ensureCoachingAdmin(req)
@@ -251,8 +291,8 @@ Deno.serve(async (req) => {
       (settingsResult.data || []).map((row) => [String(row.user_id), row]),
     )
 
-    return jsonResponse(200, {
-      rows: visibleRows.map((row) => {
+    const rows = await Promise.all(
+      visibleRows.map(async (row) => {
         const activeSettings = settingsByUserId.get(row.user_id)
         return {
           id: row.id,
@@ -263,7 +303,7 @@ Deno.serve(async (req) => {
           targetLang: row.target_lang,
           nativeLang: row.native_lang,
           level: row.level,
-          classSessions: safeClassSessions(row.class_sessions),
+          classSessions: await withSignedClassReportUrls(admin.adminClient as any, row.class_sessions),
           feedbackNmUrl: row.feedback_nm_url,
           feedbackNmNotes: row.feedback_nm_notes,
           weeklyObjectives: safeJsonObject(row.weekly_objectives),
@@ -275,7 +315,9 @@ Deno.serve(async (req) => {
           activeLevel: activeSettings?.cefr_level || null,
         }
       }),
-    })
+    )
+
+    return jsonResponse(200, { rows })
   }
 
   if (action === 'list-available-users') {
@@ -652,8 +694,8 @@ Deno.serve(async (req) => {
       scopeAllows(admin.adminRole, admin.scopes, row.target_lang, row.level),
     )
 
-    return jsonResponse(200, {
-      rows: visibleRows.map((row) => ({
+    const rows = await Promise.all(
+      visibleRows.map(async (row) => ({
         id: row.id,
         userId: row.user_id,
         userDisplayName: displayName,
@@ -661,7 +703,7 @@ Deno.serve(async (req) => {
         targetLang: row.target_lang,
         nativeLang: row.native_lang,
         level: row.level,
-        classSessions: safeClassSessions(row.class_sessions),
+        classSessions: await withSignedClassReportUrls(admin.adminClient as any, row.class_sessions),
         feedbackNmUrl: row.feedback_nm_url,
         feedbackNmNotes: row.feedback_nm_notes,
         weeklyObjectives: safeJsonObject(row.weekly_objectives),
@@ -669,7 +711,9 @@ Deno.serve(async (req) => {
         isActive: row.is_active,
         updatedAt: row.updated_at,
       })),
-    })
+    )
+
+    return jsonResponse(200, { rows })
   }
 
   if (action === 'list-admins') {
