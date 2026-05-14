@@ -147,15 +147,15 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
   const editingCard = cards.find((card) => card.id === editingId) || null
   const hasDuplicateEditTarget = Boolean(
     editingCard &&
-      draftTarget.trim() &&
-      cards.some(
-        (card) =>
-          card.id !== editingCard.id &&
-          normalizeComparableText(card.target) ===
-            normalizeComparableText(draftTarget) &&
-          (card.targetLang || '') === (editingCard.targetLang || '') &&
-          (card.nativeLang || '') === (editingCard.nativeLang || ''),
-      ),
+    draftTarget.trim() &&
+    cards.some(
+      (card) =>
+        card.id !== editingCard.id &&
+        normalizeComparableText(card.target) ===
+          normalizeComparableText(draftTarget) &&
+        (card.targetLang || '') === (editingCard.targetLang || '') &&
+        (card.nativeLang || '') === (editingCard.nativeLang || ''),
+    ),
   )
 
   const handleCopyWords = async (): Promise<void> => {
@@ -215,9 +215,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
 
   const handleSaveEdit = async (id: string): Promise<void> => {
     if (hasDuplicateEditTarget) {
-      setEditError(
-        'Ya existe una palabra con ese target en este mismo par de idiomas.',
-      )
+      setEditError('Ya existe esta palabra en tu baúl ICA.')
       return
     }
 
@@ -521,8 +519,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
 
                     {(hasDuplicateEditTarget || editError) && (
                       <p className='text-xs text-red-600 dark:text-red-300'>
-                        {editError ||
-                          'Ya existe una palabra con ese target en este mismo par de idiomas.'}
+                        {editError || 'Ya existe esta palabra en tu baúl ICA.'}
                       </p>
                     )}
                     <RomanizationHint

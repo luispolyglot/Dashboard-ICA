@@ -450,7 +450,7 @@ export function AddView({
 
           {showDuplicateWarning && (
             <p className='mt-2 text-xs text-red-600 dark:text-red-300'>
-              Esta palabra ya existe en tus flashcards para este par de idiomas.
+              Esta palabra ya existe en tu baúl ICA.
             </p>
           )}
 
