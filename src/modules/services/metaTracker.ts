@@ -13,6 +13,15 @@ async function getCurrentUserId(): Promise<string | null> {
   return data.session?.user.id ?? null
 }
 
+function normalizeActivationToken(value: string): string {
+  return value
+    .normalize('NFKC')
+    .trim()
+    .replace(/^\d+[\).\-:]\s*/u, '')
+    .replace(/^[•\-]\s*/u, '')
+    .toLowerCase()
+}
+
 function toProfile(row: {
   start_level: string
   prior_ica_words: number
@@ -162,7 +171,7 @@ export async function registerWordActivations(
 
   if (activationIds.length === 0 && sourceWords.length > 0) {
     const normalizedWords = Array.from(
-      new Set(sourceWords.map((word) => word.trim().toLowerCase()).filter(Boolean)),
+      new Set(sourceWords.map((word) => normalizeActivationToken(word)).filter(Boolean)),
     )
 
     const { data: scopedRows, error: scopedRowsError } = await supabase
@@ -197,7 +206,7 @@ export async function registerWordActivations(
 
     const byTarget = new Map<string, string>()
     for (const row of rows) {
-      const normalizedTarget = String(row.target || '').trim().toLowerCase()
+      const normalizedTarget = normalizeActivationToken(String(row.target || ''))
       if (!normalizedTarget || byTarget.has(normalizedTarget)) continue
       byTarget.set(normalizedTarget, String(row.id))
     }

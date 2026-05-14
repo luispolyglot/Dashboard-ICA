@@ -143,12 +143,32 @@ export async function recordPhraseGeneratedEvent(
   }
   if (phraseError) throw phraseError
 
-  const activationTotal = await registerWordActivations(
+  let activationTotal = await registerWordActivations(
     params.wordIds,
     params.targetLang,
     params.nativeLang,
     params.words,
   )
+
+  if (activationTotal === null) {
+    activationTotal = await registerWordActivations(
+      params.wordIds,
+      params.targetLang,
+      params.nativeLang,
+      params.words,
+    )
+  }
+
+  if (activationTotal === null) {
+    console.error('Could not register word activations after retry', {
+      userId,
+      targetLang: params.targetLang,
+      nativeLang: params.nativeLang,
+      wordIdsCount: params.wordIds.length,
+      wordsCount: params.words.length,
+      source: params.source || 'generated',
+    })
+  }
 
   const { error: xpError } = await supabase.from('xp_events').insert({
     user_id: userId,
