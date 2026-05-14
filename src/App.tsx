@@ -6,12 +6,15 @@ import { DashboardLayout } from './modules/layout/DashboardLayout'
 import {
   AnalyticsPage,
   ActivationPhrasePage,
+  CoachingPersonalizedPage,
   FlashcardsPage,
   FlashcardsPlayPage,
   HistoricLeaderboardPage,
   HomePage,
   LeaderboardPage,
   ManageWhitelistPage,
+  ManageCoachingPage,
+  ManageCoachingUserPage,
   MasterNoteActivatePhrasePage,
   MasterNoteDetailPage,
   MasterNotesPage,
@@ -27,6 +30,8 @@ import {
 import { DASHBOARD_ROUTES } from './modules/routes/paths'
 import {
   AnalyticsAdminRoute,
+  CoachingAdminRoute,
+  CoachingMemberRoute,
   PrivateRoute,
   PublicOnlyRoute,
   SuperAdminRoute,
@@ -87,6 +92,13 @@ export function App() {
           <Route path='trackers/:trackerId' element={<TrackerDetailPage />} />
           <Route element={<AnalyticsAdminRoute />}>
             <Route path='analytics' element={<AnalyticsPage />} />
+          </Route>
+          <Route element={<CoachingMemberRoute />}>
+            <Route path='coaching-personalized' element={<CoachingPersonalizedPage />} />
+          </Route>
+          <Route element={<CoachingAdminRoute />}>
+            <Route path='manage-coaching' element={<ManageCoachingPage />} />
+            <Route path='manage-coaching/:userId' element={<ManageCoachingUserPage />} />
           </Route>
           <Route element={<SuperAdminRoute />}>
             <Route path='manage-whitelist' element={<ManageWhitelistPage />} />

@@ -6,10 +6,13 @@ import { useDashboardContext } from '../context/DashboardContext'
 import { PageLayout } from '../layout/PageLayout'
 import { AddView } from '../views/AddView'
 import { AdminAnalyticsView } from '../views/AdminAnalyticsView'
+import { CoachingPersonalizedView } from '../views/CoachingPersonalizedView'
 import { FlashcardsModeView } from '../views/FlashcardsModeView'
 import { HistoricLeaderboardView } from '../views/HistoricLeaderboardView'
 import { LeaderboardView } from '../views/LeaderboardView'
 import { HomeView } from '../views/HomeView'
+import { ManageCoachingView } from '../views/ManageCoachingView'
+import { ManageCoachingUserView } from '../views/ManageCoachingUserView'
 import { ManageWhitelistView } from '../views/ManageWhitelistView'
 import { ManageView } from '../views/ManageView'
 import { MasterNoteActivatePhraseView } from '../views/MasterNoteActivatePhraseView'
@@ -342,6 +345,40 @@ export function HistoricLeaderboardPage() {
   return (
     <PageLayout>
       <HistoricLeaderboardView />
+    </PageLayout>
+  )
+}
+
+export function CoachingPersonalizedPage() {
+  const { config } = useDashboardContext()
+
+  return (
+    <PageLayout>
+      <CoachingPersonalizedView targetLang={config?.targetLang} />
+    </PageLayout>
+  )
+}
+
+export function ManageCoachingPage() {
+  return (
+    <PageLayout>
+      <ManageCoachingView />
+    </PageLayout>
+  )
+}
+
+export function ManageCoachingUserPage() {
+  const { userId } = useParams<{ userId: string }>()
+  const [searchParams] = useSearchParams()
+
+  if (!userId) return null
+
+  return (
+    <PageLayout withBackButton={false}>
+      <ManageCoachingUserView
+        userId={userId}
+        initialTargetLang={searchParams.get('targetLang')}
+      />
     </PageLayout>
   )
 }

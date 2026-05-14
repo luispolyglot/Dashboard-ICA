@@ -22,6 +22,8 @@ export const DASHBOARD_ROUTES = {
   analytics: '/analytics',
   manageWhitelist: '/manage-whitelist',
   historicLeaderboard: '/historic-leaderboard',
+  coachingPersonalized: '/coaching-personalized',
+  manageCoaching: '/manage-coaching',
 } as const
 
 export const DASHBOARD_LABELS: Record<string, string> = {
@@ -43,6 +45,8 @@ export const DASHBOARD_LABELS: Record<string, string> = {
   '/analytics': 'Analíticas Admin',
   '/manage-whitelist': 'Gestionar whitelist',
   '/historic-leaderboard': 'Histórico leaderboard',
+  '/coaching-personalized': 'Coaching Personalizado',
+  '/manage-coaching': 'Administrar Coaching',
 }
 
 export function getFlashcardsPlayRoute(
@@ -64,4 +68,13 @@ export function getFlashcardsPlayRoute(
   const query = params.toString()
   if (!query) return baseRoute
   return `${baseRoute}?${query}`
+}
+
+export function getManageCoachingUserRoute(userId: string, targetLang?: string): string {
+  const base = `${DASHBOARD_ROUTES.manageCoaching}/${userId}`
+  if (!targetLang) return base
+
+  const params = new URLSearchParams()
+  params.set('targetLang', targetLang)
+  return `${base}?${params.toString()}`
 }

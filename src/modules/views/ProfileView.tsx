@@ -3,6 +3,7 @@ import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   BarChart3Icon,
   CheckIcon,
+  GraduationCapIcon,
   LanguagesIcon,
   LineChartIcon,
   ListChecksIcon,
@@ -12,6 +13,7 @@ import {
   SunIcon,
   TrophyIcon,
   UserIcon,
+  UsersIcon,
   XIcon,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -30,6 +32,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useTheme } from '@/theme/ThemeContext'
 import { fetchAdminRole } from '../services/adminAnalytics'
+import { fetchCoachingAccess } from '../services/coaching'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import type { AppConfig } from '../types'
 
@@ -59,6 +62,8 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
   const [canSeeAdminAnalytics, setCanSeeAdminAnalytics] = useState(false)
   const [canManageWhitelist, setCanManageWhitelist] = useState(false)
   const [canSeeHistoricLeaderboard, setCanSeeHistoricLeaderboard] = useState(false)
+  const [canSeeCoachingPersonalized, setCanSeeCoachingPersonalized] = useState(false)
+  const [canManageCoaching, setCanManageCoaching] = useState(false)
   const [isEditingName, setIsEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
   const [nameError, setNameError] = useState<string | null>(null)
@@ -86,12 +91,17 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
     let isMounted = true
 
     const run = async () => {
-      const role = await fetchAdminRole()
-      if (isMounted) {
-        setCanSeeAdminAnalytics(role === 'admin' || role === 'super_admin')
-        setCanManageWhitelist(role === 'super_admin')
-        setCanSeeHistoricLeaderboard(role === 'super_admin')
-      }
+      const [role, coachingAccess] = await Promise.all([
+        fetchAdminRole(),
+        fetchCoachingAccess().catch(() => null),
+      ])
+      if (!isMounted) return
+
+      setCanSeeAdminAnalytics(role === 'admin' || role === 'super_admin')
+      setCanManageWhitelist(role === 'super_admin')
+      setCanSeeHistoricLeaderboard(role === 'super_admin')
+      setCanSeeCoachingPersonalized(Boolean(coachingAccess?.isCoachingUser))
+      setCanManageCoaching(Boolean(coachingAccess?.isCoachingAdmin))
     }
 
     void run()
@@ -361,6 +371,48 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
             </Button>
           </CardContent>
         </Card>
+
+        {canSeeCoachingPersonalized && (
+          <Card>
+            <CardHeader>
+              <CardTitle className='flex items-center gap-2'>
+                <GraduationCapIcon className='h-4 w-4' />
+                Coaching Personalizado
+              </CardTitle>
+            </CardHeader>
+            <CardContent className='space-y-3'>
+              <p className='text-sm text-muted-foreground'>
+                Accede a tus clases semanales, feedback NM y objetivos ICA.
+              </p>
+              <Button type='button' variant='outline' asChild>
+                <Link to={DASHBOARD_ROUTES.coachingPersonalized}>
+                  Abrir Coaching Personalizado
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {canManageCoaching && (
+          <Card>
+            <CardHeader>
+              <CardTitle className='flex items-center gap-2'>
+                <UsersIcon className='h-4 w-4' />
+                Administrar Coaching
+              </CardTitle>
+            </CardHeader>
+            <CardContent className='space-y-3'>
+              <p className='text-sm text-muted-foreground'>
+                Gestiona usuarios por idioma/nivel, feedback y objetivos personalizados.
+              </p>
+              <Button type='button' variant='outline' asChild>
+                <Link to={DASHBOARD_ROUTES.manageCoaching}>
+                  Abrir panel de Coaching
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {canSeeAdminAnalytics && (
           <Card>
