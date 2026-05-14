@@ -53,18 +53,48 @@ function safeString(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null
 }
 
+function normalizeUrl(value: string | null): string | null {
+  if (!value) return null
+  if (/^https?:\/\//i.test(value)) return value
+  return `https://${value}`
+}
+
+function buildWeekKeyFromIso(value: string | null): string | null {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const week = Math.min(5, Math.max(1, Math.ceil(date.getUTCDate() / 7)))
+  return `${year}-${month}-S${week}`
+}
+
 function safeClassSessions(value: unknown): unknown[] {
   if (!Array.isArray(value)) return []
   return value
     .filter((item) => item && typeof item === 'object')
     .map((item) => item as Record<string, unknown>)
-    .map((item) => ({
-      title: safeString(item.title),
-      loomUrl: safeString(item.loomUrl ?? item.loom_url),
-      report: safeString(item.report),
-      week: safeString(item.week),
-      createdAt: safeString(item.createdAt ?? item.created_at) || new Date().toISOString(),
-    }))
+    .map((item, index) => {
+      const createdAt = safeString(item.createdAt ?? item.created_at) || new Date().toISOString()
+      const weekKey =
+        safeString(item.key ?? item.weekKey ?? item.week_key) ||
+        safeString(item.week) ||
+        buildWeekKeyFromIso(createdAt) ||
+        `legacy-${index + 1}`
+      const sessionId = safeString(item.id) || crypto.randomUUID()
+
+      return {
+        id: sessionId,
+        key: weekKey,
+        weekKey,
+        title: safeString(item.title) || 'Clase semanal',
+        loomUrl: normalizeUrl(safeString(item.loomUrl ?? item.loom_url)),
+        report: safeString(item.report),
+        createdAt,
+        updatedAt: safeString(item.updatedAt ?? item.updated_at) || new Date().toISOString(),
+      }
+    })
 }
 
 function safeJsonObject(value: unknown): Record<string, unknown> {
@@ -144,12 +174,13 @@ Deno.serve(async (req) => {
       memberships: rows.map((row) => ({
         id: row.id,
         userId: row.user_id,
+        createdAt: row.created_at,
         coachUserId: row.coach_user_id,
         coachDisplayName: row.coach_user_id ? coachesById.get(row.coach_user_id) || 'Coach' : null,
         targetLang: row.target_lang,
         nativeLang: row.native_lang,
         level: row.level,
-        classSessions: Array.isArray(row.class_sessions) ? row.class_sessions : [],
+        classSessions: safeClassSessions(row.class_sessions),
         feedbackNmUrl: row.feedback_nm_url,
         feedbackNmNotes: row.feedback_nm_notes,
         weeklyObjectives: safeJsonObject(row.weekly_objectives),
@@ -232,7 +263,7 @@ Deno.serve(async (req) => {
           targetLang: row.target_lang,
           nativeLang: row.native_lang,
           level: row.level,
-          classSessions: Array.isArray(row.class_sessions) ? row.class_sessions : [],
+          classSessions: safeClassSessions(row.class_sessions),
           feedbackNmUrl: row.feedback_nm_url,
           feedbackNmNotes: row.feedback_nm_notes,
           weeklyObjectives: safeJsonObject(row.weekly_objectives),
@@ -626,10 +657,11 @@ Deno.serve(async (req) => {
         id: row.id,
         userId: row.user_id,
         userDisplayName: displayName,
+        createdAt: row.created_at,
         targetLang: row.target_lang,
         nativeLang: row.native_lang,
         level: row.level,
-        classSessions: Array.isArray(row.class_sessions) ? row.class_sessions : [],
+        classSessions: safeClassSessions(row.class_sessions),
         feedbackNmUrl: row.feedback_nm_url,
         feedbackNmNotes: row.feedback_nm_notes,
         weeklyObjectives: safeJsonObject(row.weekly_objectives),

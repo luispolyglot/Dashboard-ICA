@@ -16,6 +16,7 @@ export type CoachingAccessPayload = {
 export type CoachingMembership = {
   id: string
   userId: string
+  createdAt: string
   coachUserId: string | null
   coachDisplayName: string | null
   targetLang: string
@@ -96,6 +97,7 @@ export type CoachingUserMembership = {
   id: string
   userId: string
   userDisplayName: string
+  createdAt: string
   targetLang: string
   nativeLang: string | null
   level: string

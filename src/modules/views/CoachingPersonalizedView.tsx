@@ -62,7 +62,12 @@ function normalizeClassSessions(value: unknown[]): ClassSession[] {
     .filter((item) => item && typeof item === 'object')
     .map((item) => item as Record<string, unknown>)
     .map((item, index) => ({
-      key: toString(item.key) || toString(item.weekKey) || `legacy-${index + 1}`,
+      key:
+        toString(item.key) ||
+        toString(item.weekKey) ||
+        toString(item.week_key) ||
+        toString(item.week) ||
+        `legacy-${index + 1}`,
       title: toString(item.title) || `Clase ${index + 1}`,
       loomUrl: toString(item.loomUrl ?? item.loom_url),
       report: toString(item.report),
@@ -70,7 +75,9 @@ function normalizeClassSessions(value: unknown[]): ClassSession[] {
     }))
 }
 
-function normalizeWeeklyObjectiveMap(value: unknown): Record<string, Record<string, unknown>> {
+function normalizeWeeklyObjectiveMap(
+  value: unknown,
+): Record<string, Record<string, unknown>> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
 
   const output: Record<string, Record<string, unknown>> = {}
@@ -81,6 +88,10 @@ function normalizeWeeklyObjectiveMap(value: unknown): Record<string, Record<stri
   return output
 }
 
+function getWeekOfMonth(date: Date): number {
+  return Math.min(5, Math.max(1, Math.ceil(date.getDate() / 7)))
+}
+
 export function CoachingPersonalizedView({
   targetLang,
 }: CoachingPersonalizedViewProps) {
@@ -89,7 +100,9 @@ export function CoachingPersonalizedView({
   const [memberships, setMemberships] = useState<CoachingMembership[]>([])
   const now = new Date()
   const [selectedYear, setSelectedYear] = useState(String(now.getFullYear()))
-  const [selectedMonth, setSelectedMonth] = useState(String(now.getMonth() + 1).padStart(2, '0'))
+  const [selectedMonth, setSelectedMonth] = useState(
+    String(now.getMonth() + 1).padStart(2, '0'),
+  )
   const [selectedWeek, setSelectedWeek] = useState('1')
 
   const loadData = async () => {
@@ -123,13 +136,24 @@ export function CoachingPersonalizedView({
     )
   }, [memberships, targetLang])
 
+  const membershipStartDate = useMemo(() => {
+    const raw = selectedMembership?.createdAt
+    if (!raw) return null
+    const parsed = new Date(raw)
+    if (Number.isNaN(parsed.getTime())) return null
+    return parsed
+  }, [selectedMembership?.createdAt])
+
   const classSessions = selectedMembership
     ? normalizeClassSessions(selectedMembership.classSessions)
     : []
   const weekKey = `${selectedYear}-${selectedMonth}-S${selectedWeek}`
 
-  const objectivesByWeek = normalizeWeeklyObjectiveMap(selectedMembership?.weeklyObjectives)
-  const objectives = objectivesByWeek[weekKey] ||
+  const objectivesByWeek = normalizeWeeklyObjectiveMap(
+    selectedMembership?.weeklyObjectives,
+  )
+  const objectives =
+    objectivesByWeek[weekKey] ||
     (() => {
       const raw = selectedMembership?.weeklyObjectives
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
@@ -143,12 +167,94 @@ export function CoachingPersonalizedView({
       return hasFlatFields ? record : {}
     })()
 
-  const classSessionsForWeek = classSessions.filter((session) => session.key === weekKey)
+  const classSessionsForWeek = classSessions.filter(
+    (session) => session.key === weekKey,
+  )
+
+  const minYear = membershipStartDate
+    ? membershipStartDate.getFullYear()
+    : now.getFullYear()
+  const minMonth = membershipStartDate
+    ? membershipStartDate.getMonth() + 1
+    : now.getMonth() + 1
+  const minWeek = membershipStartDate ? getWeekOfMonth(membershipStartDate) : 1
+  const maxYear = now.getFullYear()
+  const maxMonth = now.getMonth() + 1
+  const maxWeek = getWeekOfMonth(now)
 
   const years = useMemo(() => {
-    const current = Number(selectedYear) || now.getFullYear()
-    return [current - 1, current, current + 1].map((value) => String(value))
-  }, [selectedYear])
+    const values: string[] = []
+    for (let year = minYear; year <= maxYear; year += 1) {
+      values.push(String(year))
+    }
+    return values
+  }, [minYear, maxYear])
+
+  const selectedYearNumber = Number(selectedYear)
+  const monthOptions = useMemo(() => {
+    return MONTH_OPTIONS.filter((month) => {
+      const numeric = Number(month.value)
+      if (selectedYearNumber === minYear && numeric < minMonth) return false
+      if (selectedYearNumber === maxYear && numeric > maxMonth) return false
+      return true
+    })
+  }, [selectedYearNumber, minYear, minMonth, maxYear, maxMonth])
+
+  const selectedMonthNumber = Number(selectedMonth)
+  const weekOptions = useMemo(() => {
+    const values = [1, 2, 3, 4, 5]
+    return values.filter((week) => {
+      if (
+        selectedYearNumber === minYear &&
+        selectedMonthNumber === minMonth &&
+        week < minWeek
+      ) {
+        return false
+      }
+
+      if (
+        selectedYearNumber === maxYear &&
+        selectedMonthNumber === maxMonth &&
+        week > maxWeek
+      ) {
+        return false
+      }
+
+      return true
+    })
+  }, [
+    selectedYearNumber,
+    selectedMonthNumber,
+    minYear,
+    minMonth,
+    minWeek,
+    maxYear,
+    maxMonth,
+    maxWeek,
+  ])
+
+  useEffect(() => {
+    if (years.length === 0) return
+    if (!years.includes(selectedYear)) {
+      setSelectedYear(years[0])
+    }
+  }, [years, selectedYear])
+
+  useEffect(() => {
+    if (monthOptions.length === 0) return
+    const allowed = monthOptions.some((month) => month.value === selectedMonth)
+    if (!allowed) {
+      setSelectedMonth(monthOptions[0].value)
+    }
+  }, [monthOptions, selectedMonth])
+
+  useEffect(() => {
+    if (weekOptions.length === 0) return
+    const numericWeek = Number(selectedWeek)
+    if (!weekOptions.includes(numericWeek)) {
+      setSelectedWeek(String(weekOptions[0]))
+    }
+  }, [weekOptions, selectedWeek])
   const wordsObjective = toNumber(objectives.wordsTarget)
   const nmObjective = toNumber(objectives.nmTarget)
   const streakObjective = toNumber(objectives.icaStreakTargetPct)
@@ -163,7 +269,8 @@ export function CoachingPersonalizedView({
             Coaching Personalizado
           </h2>
           <p className='text-sm text-muted-foreground'>
-            Tu seguimiento semanal con clases, feedback NM y objetivos ICA.
+            Tu seguimiento semanal con clases, feedback de Notas Maestras y
+            objetivos ICA.
           </p>
         </div>
 
@@ -186,23 +293,21 @@ export function CoachingPersonalizedView({
       ) : (
         <div className='grid gap-4'>
           <Card>
-            <CardContent className='pt-6 text-sm text-muted-foreground'>
-              Idioma: <span className='font-medium text-foreground'>{selectedMembership.targetLang}</span> · Nivel:{' '}
-              <span className='font-medium text-foreground'>{selectedMembership.level}</span>
-              {selectedMembership.coachDisplayName
-                ? ` · Coach: ${selectedMembership.coachDisplayName}`
-                : ''}
-            </CardContent>
-          </Card>
+            <CardContent className='space-y-3 pt-6 text-sm text-muted-foreground'>
+              <p>
+                Idioma:{' '}
+                <span className='font-medium text-foreground'>
+                  {selectedMembership.targetLang}
+                </span>{' '}
+                · Nivel:{' '}
+                <span className='font-medium text-foreground'>
+                  {selectedMembership.level}
+                </span>
+                {selectedMembership.coachDisplayName
+                  ? ` · Coach: ${selectedMembership.coachDisplayName}`
+                  : ''}
+              </p>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className='flex items-center gap-2'>
-                <BookOpenIcon className='h-4 w-4' />
-                👨‍🏫 Mis clases
-              </CardTitle>
-            </CardHeader>
-            <CardContent className='space-y-3 text-sm'>
               <div className='flex flex-wrap items-end gap-2'>
                 <div className='space-y-1.5'>
                   <p className='text-xs text-muted-foreground'>Año</p>
@@ -224,13 +329,16 @@ export function CoachingPersonalizedView({
 
                 <div className='space-y-1.5'>
                   <p className='text-xs text-muted-foreground'>Mes</p>
-                  <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <Select
+                    value={selectedMonth}
+                    onValueChange={setSelectedMonth}
+                  >
                     <SelectTrigger className='w-36'>
                       <SelectValue placeholder='Mes' />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        {MONTH_OPTIONS.map((month) => (
+                        {monthOptions.map((month) => (
                           <SelectItem key={month.value} value={month.value}>
                             {month.label}
                           </SelectItem>
@@ -248,28 +356,45 @@ export function CoachingPersonalizedView({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        <SelectItem value='1'>Semana 1</SelectItem>
-                        <SelectItem value='2'>Semana 2</SelectItem>
-                        <SelectItem value='3'>Semana 3</SelectItem>
-                        <SelectItem value='4'>Semana 4</SelectItem>
-                        <SelectItem value='5'>Semana 5</SelectItem>
+                        {weekOptions.map((week) => (
+                          <SelectItem key={String(week)} value={String(week)}>
+                            Semana {week}
+                          </SelectItem>
+                        ))}
                       </SelectGroup>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
-              <p className='text-xs text-muted-foreground'>Semana seleccionada: {weekKey}</p>
+              <p className='text-xs text-muted-foreground'>
+                Semana seleccionada: {weekKey}
+              </p>
+            </CardContent>
+          </Card>
 
+          <Card>
+            <CardHeader>
+              <CardTitle className='flex items-center gap-2'>
+                <BookOpenIcon className='h-4 w-4' />
+                👨‍🏫 Mis clases
+              </CardTitle>
+            </CardHeader>
+            <CardContent className='space-y-3 text-sm'>
               {classSessionsForWeek.length === 0 ? (
                 <p className='text-muted-foreground'>
                   Aún no hay grabaciones ni reportes cargados.
                 </p>
               ) : (
                 classSessionsForWeek.map((session, index) => (
-                  <div key={`${session.title}-${index}`} className='rounded-md border p-3'>
+                  <div
+                    key={`${session.title}-${index}`}
+                    className='rounded-md border p-3'
+                  >
                     <p className='font-medium'>{session.title}</p>
-                    <p className='text-xs text-muted-foreground'>Semana: {session.key}</p>
+                    <p className='text-xs text-muted-foreground'>
+                      Semana: {session.key}
+                    </p>
                     {session.loomUrl && (
                       <a
                         href={session.loomUrl}
@@ -280,7 +405,9 @@ export function CoachingPersonalizedView({
                         Ver grabación en Loom
                       </a>
                     )}
-                    {session.report && <p className='mt-1 text-sm'>{session.report}</p>}
+                    {session.report && (
+                      <p className='mt-1 text-sm'>{session.report}</p>
+                    )}
                   </div>
                 ))
               )}
@@ -291,7 +418,7 @@ export function CoachingPersonalizedView({
             <CardHeader>
               <CardTitle className='flex items-center gap-2'>
                 <RepeatIcon className='h-4 w-4' />
-                🔁 Feedback NM
+                🔁 Feedback Notas Maestras
               </CardTitle>
             </CardHeader>
             <CardContent className='space-y-2 text-sm'>
@@ -302,11 +429,11 @@ export function CoachingPersonalizedView({
                   rel='noreferrer'
                   className='text-blue-600 underline underline-offset-2'
                 >
-                  Ver vídeo feedback NM
+                  Ver vídeo feedback de Notas Maestras
                 </a>
               ) : (
                 <p className='text-muted-foreground'>
-                  Todavía no hay vídeo de feedback NM.
+                  Todavía no hay vídeo de feedback de Notas Maestras.
                 </p>
               )}
               {selectedMembership.feedbackNmNotes && (
@@ -323,14 +450,20 @@ export function CoachingPersonalizedView({
               </CardTitle>
             </CardHeader>
             <CardContent className='space-y-2 text-sm'>
-              <p className='text-xs text-muted-foreground'>Semana seleccionada: {weekKey}</p>
+              <p className='text-xs text-muted-foreground'>
+                Semana seleccionada: {weekKey}
+              </p>
               <p>Palabras ICA objetivo: {wordsObjective ?? 'No definido'}</p>
-              <p>NM objetivo: {nmObjective ?? 'No definido'}</p>
+              <p>Notas Maestras objetivo: {nmObjective ?? 'No definido'}</p>
               <p>
-                Racha ICA objetivo: {streakObjective !== null ? `${streakObjective}%` : 'No definido'}
+                Racha ICA objetivo:{' '}
+                {streakObjective !== null
+                  ? `${streakObjective}%`
+                  : 'No definido'}
               </p>
               <p>
-                Racha ICA alcanzada: {streakAchieved !== null ? `${streakAchieved}%` : 'No definido'}
+                Racha ICA alcanzada:{' '}
+                {streakAchieved !== null ? `${streakAchieved}%` : 'No definido'}
               </p>
               {reportExerciseUrl && (
                 <a

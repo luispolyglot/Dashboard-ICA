@@ -46,7 +46,9 @@ export function ManageCoachingView() {
   const [feedback, setFeedback] = useState<string | null>(null)
 
   const [users, setUsers] = useState<CoachingManagedUser[]>([])
-  const [availableUsers, setAvailableUsers] = useState<CoachingAvailableUser[]>([])
+  const [availableUsers, setAvailableUsers] = useState<CoachingAvailableUser[]>(
+    [],
+  )
   const [admins, setAdmins] = useState<CoachingAdminRow[]>([])
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
 
@@ -56,12 +58,18 @@ export function ManageCoachingView() {
   const [isSavingUser, setIsSavingUser] = useState(false)
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
-  const [userToDelete, setUserToDelete] = useState<CoachingManagedUser | null>(null)
+  const [userToDelete, setUserToDelete] = useState<CoachingManagedUser | null>(
+    null,
+  )
 
   const [isCreateAdminModalOpen, setIsCreateAdminModalOpen] = useState(false)
   const [createAdminUserId, setCreateAdminUserId] = useState('')
-  const [createAdminRole, setCreateAdminRole] = useState<'coach_admin' | 'super_admin'>('coach_admin')
-  const [createAdminScopes, setCreateAdminScopes] = useState<CoachingScope[]>([])
+  const [createAdminRole, setCreateAdminRole] = useState<
+    'coach_admin' | 'super_admin'
+  >('coach_admin')
+  const [createAdminScopes, setCreateAdminScopes] = useState<CoachingScope[]>(
+    [],
+  )
   const [createAdminScopeLanguage, setCreateAdminScopeLanguage] = useState('')
   const [createAdminScopeLevel, setCreateAdminScopeLevel] = useState('')
   const [isSavingAdmin, setIsSavingAdmin] = useState(false)
@@ -90,7 +98,9 @@ export function ManageCoachingView() {
       }
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'No se pudo cargar el panel de coaching.'
+        err instanceof Error
+          ? err.message
+          : 'No se pudo cargar el panel de coaching.'
       setError(message)
     } finally {
       setLoading(false)
@@ -105,9 +115,13 @@ export function ManageCoachingView() {
     return availableUsers
       .filter((row) => !row.alreadyInCoaching)
       .sort((a, b) => {
-        const byName = a.userDisplayName.localeCompare(b.userDisplayName, 'es', {
-          sensitivity: 'base',
-        })
+        const byName = a.userDisplayName.localeCompare(
+          b.userDisplayName,
+          'es',
+          {
+            sensitivity: 'base',
+          },
+        )
         if (byName !== 0) return byName
         return a.targetLang.localeCompare(b.targetLang, 'es', {
           sensitivity: 'base',
@@ -135,9 +149,14 @@ export function ManageCoachingView() {
     for (const row of availableUsers) {
       if (seen.has(row.userId)) continue
       seen.add(row.userId)
-      output.push({ userId: row.userId, label: `${row.userDisplayName} (${row.userId})` })
+      output.push({
+        userId: row.userId,
+        label: `${row.userDisplayName} (${row.userId})`,
+      })
     }
-    return output.sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }))
+    return output.sort((a, b) =>
+      a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }),
+    )
   }, [availableUsers])
 
   const coachingLevels = useMemo(() => LEVELS, [])
@@ -155,7 +174,9 @@ export function ManageCoachingView() {
   )
 
   const handleCreateUser = async () => {
-    const selected = availableOptions.find((item) => item.key === createUserSelection)
+    const selected = availableOptions.find(
+      (item) => item.key === createUserSelection,
+    )
     if (!selected) {
       setFeedback('Selecciona un usuario con idioma activo.')
       return
@@ -187,7 +208,6 @@ export function ManageCoachingView() {
       setIsSavingUser(false)
     }
   }
-
 
   const handleAskDeleteUser = (row: CoachingManagedUser) => {
     setUserToDelete(row)
@@ -260,7 +280,9 @@ export function ManageCoachingView() {
       await loadData()
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'No se pudo guardar el coach admin.'
+        err instanceof Error
+          ? err.message
+          : 'No se pudo guardar el coach admin.'
       setFeedback(message)
     } finally {
       setIsSavingAdmin(false)
@@ -277,7 +299,9 @@ export function ManageCoachingView() {
 
     const nextKey = createScopeKey(targetLang, level)
     const exists = createAdminScopes.some((scope) =>
-      scope.levels.some((itemLevel) => createScopeKey(scope.targetLang, itemLevel) === nextKey),
+      scope.levels.some(
+        (itemLevel) => createScopeKey(scope.targetLang, itemLevel) === nextKey,
+      ),
     )
 
     if (exists) {
@@ -319,18 +343,29 @@ export function ManageCoachingView() {
     <section className='mx-auto w-full max-w-7xl flex-1 overflow-y-auto px-5 py-8'>
       <div className='mb-6 flex flex-wrap items-center justify-between gap-3'>
         <div>
-          <h2 className='mb-1 font-serif text-3xl font-bold'>Administrar Coaching</h2>
+          <h2 className='mb-1 font-serif text-3xl font-bold'>
+            Administrar Coaching
+          </h2>
           <p className='text-sm text-muted-foreground'>
-            Gestiona usuarios del coaching por idioma, nivel y objetivos semanales.
+            Gestiona usuarios del coaching por idioma, nivel y objetivos
+            semanales.
           </p>
         </div>
         <div className='flex flex-wrap gap-2'>
-          <Button type='button' variant='outline' onClick={() => setIsCreateUserModalOpen(true)}>
+          <Button
+            type='button'
+            variant='outline'
+            onClick={() => setIsCreateUserModalOpen(true)}
+          >
             <PlusIcon className='h-4 w-4' />
             Agregar usuario
           </Button>
           {isSuperAdmin && (
-            <Button type='button' variant='outline' onClick={() => setIsCreateAdminModalOpen(true)}>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setIsCreateAdminModalOpen(true)}
+            >
               <PlusIcon className='h-4 w-4' />
               Crear coach
             </Button>
@@ -343,7 +378,9 @@ export function ManageCoachingView() {
       </div>
 
       {(error || feedback) && (
-        <p className={`mb-4 text-sm ${error ? 'text-destructive' : 'text-muted-foreground'}`}>
+        <p
+          className={`mb-4 text-sm ${error ? 'text-destructive' : 'text-muted-foreground'}`}
+        >
           {error || feedback}
         </p>
       )}
@@ -356,13 +393,16 @@ export function ManageCoachingView() {
           {loading ? (
             <p className='text-sm text-muted-foreground'>Cargando tabla...</p>
           ) : users.length === 0 ? (
-            <p className='text-sm text-muted-foreground'>No hay usuarios asignados todavía.</p>
+            <p className='text-sm text-muted-foreground'>
+              No hay usuarios asignados todavía.
+            </p>
           ) : (
             <div className='overflow-x-auto'>
               <table className='w-full min-w-200 table-fixed text-left text-sm'>
                 <thead>
                   <tr className='border-b text-muted-foreground'>
                     <th className='pb-2 font-medium'>Usuario</th>
+                    {isSuperAdmin && <th className='pb-2 font-medium'>ID</th>}
                     <th className='pb-2 font-medium'>Idioma</th>
                     <th className='pb-2 font-medium'>Nivel</th>
                     <th className='pb-2 font-medium'>Coach</th>
@@ -373,23 +413,29 @@ export function ManageCoachingView() {
                 </thead>
                 <tbody>
                   {users.map((row) => (
-                    <tr key={`${row.userId}-${row.targetLang}`} className='border-b align-middle last:border-b-0'>
+                    <tr
+                      key={`${row.userId}-${row.targetLang}`}
+                      className='border-b align-middle last:border-b-0'
+                    >
                       <td className='py-2'>
                         <p className='font-medium'>{row.userDisplayName}</p>
-                        {isSuperAdmin && (
-                          <p className='text-xs text-muted-foreground'>{row.userId}</p>
-                        )}
                       </td>
+                      {isSuperAdmin && (
+                        <td className='py-2'>
+                          <p className='text-xs text-muted-foreground'>
+                            {row.userId}
+                          </p>
+                        </td>
+                      )}
                       <td className='py-2'>
                         <p>{row.targetLang}</p>
-                        <p className='text-xs text-muted-foreground'>
-                          Activo app: {row.activeTargetLang || '-'} ({row.activeLevel || '-'})
-                        </p>
                       </td>
                       <td className='py-2'>{row.level}</td>
                       <td className='py-2'>{row.coachDisplayName || '-'}</td>
                       <td className='py-2'>{row.isActive ? 'Sí' : 'No'}</td>
-                      <td className='py-2 text-xs text-muted-foreground'>{formatDateTime(row.updatedAt)}</td>
+                      <td className='py-2 text-xs text-muted-foreground'>
+                        {formatDateTime(row.updatedAt)}
+                      </td>
                       <td className='py-2'>
                         <div className='flex flex-wrap gap-2'>
                           <Button
@@ -398,14 +444,19 @@ export function ManageCoachingView() {
                             size='icon'
                             aria-label='Ver usuario coaching'
                             onClick={() =>
-                              navigate(getManageCoachingUserRoute(row.userId, row.targetLang))
+                              navigate(
+                                getManageCoachingUserRoute(
+                                  row.userId,
+                                  row.targetLang,
+                                ),
+                              )
                             }
                           >
                             <EyeIcon className='h-4 w-4' />
                           </Button>
                           <Button
                             type='button'
-                            variant='outline'
+                            variant='destructive'
                             size='icon'
                             aria-label='Eliminar usuario coaching'
                             onClick={() => handleAskDeleteUser(row)}
@@ -430,7 +481,9 @@ export function ManageCoachingView() {
           </CardHeader>
           <CardContent>
             {admins.length === 0 ? (
-              <p className='text-sm text-muted-foreground'>No hay coaches admin creados.</p>
+              <p className='text-sm text-muted-foreground'>
+                No hay coaches admin creados.
+              </p>
             ) : (
               <div className='overflow-x-auto'>
                 <table className='w-full min-w-160 table-fixed text-left text-sm'>
@@ -448,17 +501,24 @@ export function ManageCoachingView() {
                       <tr key={row.userId} className='border-b last:border-b-0'>
                         <td className='py-2'>
                           <p className='font-medium'>{row.userDisplayName}</p>
-                          <p className='text-xs text-muted-foreground'>{row.userId}</p>
+                          <p className='text-xs text-muted-foreground'>
+                            {row.userId}
+                          </p>
                         </td>
                         <td className='py-2'>{row.role}</td>
                         <td className='py-2'>
                           {row.scopes.length === 0
                             ? 'Sin scopes (acceso completo por rol)'
                             : row.scopes
-                                .map((scope) => `${scope.targetLang} [${scope.levels.join(', ') || 'todos'}]`)
+                                .map(
+                                  (scope) =>
+                                    `${scope.targetLang} [${scope.levels.join(', ') || 'todos'}]`,
+                                )
                                 .join(' · ')}
                         </td>
-                        <td className='py-2'>{row.isActive ? 'Activo' : 'Inactivo'}</td>
+                        <td className='py-2'>
+                          {row.isActive ? 'Activo' : 'Inactivo'}
+                        </td>
                         <td className='py-2 text-xs text-muted-foreground'>
                           {formatDateTime(row.createdAt)}
                         </td>
@@ -472,12 +532,16 @@ export function ManageCoachingView() {
         </Card>
       )}
 
-      <Dialog open={isCreateUserModalOpen} onOpenChange={setIsCreateUserModalOpen}>
+      <Dialog
+        open={isCreateUserModalOpen}
+        onOpenChange={setIsCreateUserModalOpen}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Agregar usuario al coaching</DialogTitle>
             <DialogDescription>
-              Selecciona un usuario y su idioma activo. Se precompleta con su nivel actual.
+              Selecciona un usuario y su idioma activo. Se precompleta con su
+              nivel actual.
             </DialogDescription>
           </DialogHeader>
 
@@ -488,7 +552,9 @@ export function ManageCoachingView() {
                 value={createUserSelection}
                 onValueChange={(key) => {
                   setCreateUserSelection(key)
-                  const selected = availableOptions.find((item) => item.key === key)
+                  const selected = availableOptions.find(
+                    (item) => item.key === key,
+                  )
                   setCreateUserLevel(selected?.row.activeLevel || '')
                 }}
                 options={availableComboboxOptions}
@@ -510,10 +576,18 @@ export function ManageCoachingView() {
           </div>
 
           <DialogFooter>
-            <Button type='button' variant='outline' onClick={() => setIsCreateUserModalOpen(false)}>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setIsCreateUserModalOpen(false)}
+            >
               Cancelar
             </Button>
-            <Button type='button' onClick={() => void handleCreateUser()} disabled={isSavingUser}>
+            <Button
+              type='button'
+              onClick={() => void handleCreateUser()}
+              disabled={isSavingUser}
+            >
               {isSavingUser ? 'Guardando...' : 'Agregar'}
             </Button>
           </DialogFooter>
@@ -525,13 +599,20 @@ export function ManageCoachingView() {
           <DialogHeader>
             <DialogTitle>Eliminar usuario del coaching</DialogTitle>
             <DialogDescription>
-              Esta acción desactiva su membresía en coaching para el idioma seleccionado.
+              Esta acción desactiva su membresía en coaching para el idioma
+              seleccionado.
             </DialogDescription>
           </DialogHeader>
 
           <p className='text-sm text-muted-foreground'>
-            Usuario: <span className='font-medium text-foreground'>{userToDelete?.userDisplayName || '-'}</span>
-            {' · '}Idioma: <span className='font-medium text-foreground'>{userToDelete?.targetLang || '-'}</span>
+            Usuario:{' '}
+            <span className='font-medium text-foreground'>
+              {userToDelete?.userDisplayName || '-'}
+            </span>
+            {' · '}Idioma:{' '}
+            <span className='font-medium text-foreground'>
+              {userToDelete?.targetLang || '-'}
+            </span>
           </p>
 
           <DialogFooter>
@@ -545,14 +626,21 @@ export function ManageCoachingView() {
             >
               Cancelar
             </Button>
-            <Button type='button' onClick={() => void handleConfirmDeleteUser()} disabled={isSavingUser}>
+            <Button
+              type='button'
+              onClick={() => void handleConfirmDeleteUser()}
+              disabled={isSavingUser}
+            >
               {isSavingUser ? 'Eliminando...' : 'Confirmar eliminación'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isCreateAdminModalOpen} onOpenChange={setIsCreateAdminModalOpen}>
+      <Dialog
+        open={isCreateAdminModalOpen}
+        onOpenChange={setIsCreateAdminModalOpen}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Crear coach admin</DialogTitle>
@@ -586,7 +674,9 @@ export function ManageCoachingView() {
                 className='h-10 w-full rounded-md border bg-background px-3 text-sm'
                 value={createAdminRole}
                 onChange={(event) =>
-                  setCreateAdminRole(event.target.value as 'coach_admin' | 'super_admin')
+                  setCreateAdminRole(
+                    event.target.value as 'coach_admin' | 'super_admin',
+                  )
                 }
               >
                 <option value='coach_admin'>coach_admin</option>
@@ -605,7 +695,9 @@ export function ManageCoachingView() {
                       id='create-admin-scope-language'
                       className='h-10 w-full rounded-md border bg-background px-3 text-sm'
                       value={createAdminScopeLanguage}
-                      onChange={(event) => setCreateAdminScopeLanguage(event.target.value)}
+                      onChange={(event) =>
+                        setCreateAdminScopeLanguage(event.target.value)
+                      }
                     >
                       <option value=''>Selecciona idioma</option>
                       {LANGUAGES.map((language) => (
@@ -622,7 +714,9 @@ export function ManageCoachingView() {
                       id='create-admin-scope-level'
                       className='h-10 w-full max-w-14 rounded-md border bg-background px-3 text-sm'
                       value={createAdminScopeLevel}
-                      onChange={(event) => setCreateAdminScopeLevel(event.target.value)}
+                      onChange={(event) =>
+                        setCreateAdminScopeLevel(event.target.value)
+                      }
                     >
                       <option value=''>-</option>
                       {coachingLevels.map((level) => (
@@ -638,7 +732,9 @@ export function ManageCoachingView() {
                       type='button'
                       variant='outline'
                       onClick={handleAddScope}
-                      disabled={!createAdminScopeLanguage || !createAdminScopeLevel}
+                      disabled={
+                        !createAdminScopeLanguage || !createAdminScopeLevel
+                      }
                     >
                       <PlusIcon className='h-4 w-4' />
                       Añadir
@@ -647,11 +743,16 @@ export function ManageCoachingView() {
                 </div>
 
                 {scopeList.length === 0 ? (
-                  <p className='text-sm text-muted-foreground'>No hay scopes agregados.</p>
+                  <p className='text-sm text-muted-foreground'>
+                    No hay scopes agregados.
+                  </p>
                 ) : (
                   <div className='space-y-2'>
                     {scopeList.map((scopeItem) => (
-                      <div key={scopeItem.key} className='flex items-center justify-between rounded-md border px-3 py-2 text-sm'>
+                      <div
+                        key={scopeItem.key}
+                        className='flex items-center justify-between rounded-md border px-3 py-2 text-sm'
+                      >
                         <span>
                           {scopeItem.targetLang} · {scopeItem.level}
                         </span>
@@ -660,7 +761,10 @@ export function ManageCoachingView() {
                           variant='ghost'
                           size='sm'
                           onClick={() =>
-                            handleRemoveScope(scopeItem.targetLang, scopeItem.level)
+                            handleRemoveScope(
+                              scopeItem.targetLang,
+                              scopeItem.level,
+                            )
                           }
                         >
                           Quitar
@@ -674,10 +778,18 @@ export function ManageCoachingView() {
           </div>
 
           <DialogFooter>
-            <Button type='button' variant='outline' onClick={() => setIsCreateAdminModalOpen(false)}>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setIsCreateAdminModalOpen(false)}
+            >
               Cancelar
             </Button>
-            <Button type='button' onClick={() => void handleCreateAdmin()} disabled={isSavingAdmin}>
+            <Button
+              type='button'
+              onClick={() => void handleCreateAdmin()}
+              disabled={isSavingAdmin}
+            >
               {isSavingAdmin ? 'Guardando...' : 'Crear coach'}
             </Button>
           </DialogFooter>

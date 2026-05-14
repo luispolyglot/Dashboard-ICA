@@ -61,8 +61,10 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
   const [canSeeAdminAnalytics, setCanSeeAdminAnalytics] = useState(false)
   const [canManageWhitelist, setCanManageWhitelist] = useState(false)
-  const [canSeeHistoricLeaderboard, setCanSeeHistoricLeaderboard] = useState(false)
-  const [canSeeCoachingPersonalized, setCanSeeCoachingPersonalized] = useState(false)
+  const [canSeeHistoricLeaderboard, setCanSeeHistoricLeaderboard] =
+    useState(false)
+  const [canSeeCoachingPersonalized, setCanSeeCoachingPersonalized] =
+    useState(false)
   const [canManageCoaching, setCanManageCoaching] = useState(false)
   const [isEditingName, setIsEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
@@ -382,7 +384,8 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
             </CardHeader>
             <CardContent className='space-y-3'>
               <p className='text-sm text-muted-foreground'>
-                Accede a tus clases semanales, feedback NM y objetivos ICA.
+                Accede a tus clases semanales, feedback de Notas Maestras y
+                objetivos ICA.
               </p>
               <Button type='button' variant='outline' asChild>
                 <Link to={DASHBOARD_ROUTES.coachingPersonalized}>
@@ -403,7 +406,8 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
             </CardHeader>
             <CardContent className='space-y-3'>
               <p className='text-sm text-muted-foreground'>
-                Gestiona usuarios por idioma/nivel, feedback y objetivos personalizados.
+                Gestiona usuarios por idioma/nivel, feedback y objetivos
+                personalizados.
               </p>
               <Button type='button' variant='outline' asChild>
                 <Link to={DASHBOARD_ROUTES.manageCoaching}>
