@@ -8,6 +8,9 @@ import {
 
 type CoachingCenterPayload = {
   action?: string
+  sessionId?: string
+  masterNoteId?: string
+  feedbackLoomUrl?: string | null
   targetLang?: string
   userId?: string
   level?: string
@@ -36,6 +39,9 @@ type CoachingUserRow = {
   weekly_objectives: unknown
   notes: string | null
   is_active: boolean
+  status: 'draft' | 'active' | 'completed' | 'cancelled'
+  activated_at: string | null
+  duration_weeks: number
   created_at: string
   updated_at: string
 }
@@ -47,10 +53,60 @@ type MasterNoteChunkRow = {
   sort_order: number
 }
 
+type CoachingSessionWeeklyObjectiveRow = {
+  session_id: string
+  week_number: number
+  words_target: number | null
+  nm_target: number | null
+  ica_streak_objective_pct: number | null
+  flashcards_streak_objective_pct: number | null
+  report_exercise_url: string | null
+}
+
+type CoachingSessionClassRow = {
+  id: string
+  session_id: string
+  week_number: number
+  title: string
+  loom_url: string | null
+  report: string | null
+  report_image_path: string | null
+  created_at: string
+  updated_at: string
+}
+
+type WeekProgressItem = {
+  wordsCreated: number
+  closedMasterNotes: number
+  icaStreakPct: number
+  flashcardsStreakPct: number
+}
+
+type CoachingClosedNoteItem = {
+  id: string
+  name: string
+  closedAt: string
+  feedbackLoomUrl: string | null
+}
+
 function safeString(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const normalized = value.trim()
   return normalized.length > 0 ? normalized : null
+}
+
+function safeInteger(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.trunc(value)
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim()
+    if (!normalized) return null
+    const parsed = Number(normalized)
+    if (!Number.isFinite(parsed)) return null
+    return Math.trunc(parsed)
+  }
+  return null
 }
 
 function normalizeUrl(value: string | null): string | null {
@@ -66,15 +122,52 @@ function normalizeUrl(value: string | null): string | null {
   return withProtocol
 }
 
+function getWeekFromActivatedAt(
+  activatedAt: string | null,
+  referenceAt: string | null,
+  durationWeeks = 12,
+): number | null {
+  if (!activatedAt || !referenceAt) return null
+  const activated = toUtcDate(activatedAt)
+  const reference = toUtcDate(referenceAt)
+  if (!activated || !reference) return null
+
+  const week =
+    Math.floor((reference.getTime() - activated.getTime()) / (7 * 24 * 60 * 60 * 1000)) +
+    1
+  if (!Number.isFinite(week) || week < 1 || week > durationWeeks) return null
+  return week
+}
+
 function buildWeekKeyFromIso(value: string | null): string | null {
   if (!value) return null
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return null
 
-  const year = date.getUTCFullYear()
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
   const week = Math.min(5, Math.max(1, Math.ceil(date.getUTCDate() / 7)))
-  return `${year}-${month}-S${week}`
+  return `W${String(week).padStart(2, '0')}`
+}
+
+function normalizeProgramWeekKey(value: string | null): string | null {
+  if (!value) return null
+  const normalized = value.trim().toUpperCase()
+  const directMatch = normalized.match(/^W(\d{1,2})$/)
+  if (directMatch) {
+    const week = Number(directMatch[1])
+    if (Number.isFinite(week) && week >= 1 && week <= 12) {
+      return `W${String(week).padStart(2, '0')}`
+    }
+  }
+
+  const calendarMatch = normalized.match(/-S(\d)$/)
+  if (calendarMatch) {
+    const week = Number(calendarMatch[1])
+    if (Number.isFinite(week) && week >= 1 && week <= 5) {
+      return `W${String(week).padStart(2, '0')}`
+    }
+  }
+
+  return null
 }
 
 function safeClassSessions(value: unknown): unknown[] {
@@ -85,10 +178,12 @@ function safeClassSessions(value: unknown): unknown[] {
     .map((item, index) => {
       const createdAt = safeString(item.createdAt ?? item.created_at) || new Date().toISOString()
       const weekKey =
-        safeString(item.key ?? item.weekKey ?? item.week_key) ||
-        safeString(item.week) ||
+        normalizeProgramWeekKey(
+          safeString(item.key ?? item.weekKey ?? item.week_key) ||
+            safeString(item.week),
+        ) ||
         buildWeekKeyFromIso(createdAt) ||
-        `legacy-${index + 1}`
+        `W${String(Math.min(12, index + 1)).padStart(2, '0')}`
       const sessionId = safeString(item.id) || crypto.randomUUID()
 
       return {
@@ -140,6 +235,426 @@ function safeJsonObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>
 }
 
+function normalizeWeeklyObjectives(value: unknown): Record<string, unknown> {
+  const source = safeJsonObject(value)
+  const output: Record<string, unknown> = {}
+
+  for (const [key, raw] of Object.entries(source)) {
+    const normalizedWeek = normalizeProgramWeekKey(key)
+    if (normalizedWeek && raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      output[normalizedWeek] = raw
+      continue
+    }
+
+    if (
+      !normalizedWeek &&
+      raw &&
+      typeof raw === 'object' &&
+      !Array.isArray(raw)
+    ) {
+      output[key] = raw
+    }
+  }
+
+  return output
+}
+
+function weekNumberFromKey(value: string | null, fallback = 1): number {
+  const key = normalizeProgramWeekKey(value)
+  if (!key) return fallback
+  const parsed = Number(key.slice(1))
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(12, Math.max(1, parsed))
+}
+
+function weekKeyFromNumber(value: number): string {
+  const week = Math.min(12, Math.max(1, Number.isFinite(value) ? value : 1))
+  return `W${String(week).padStart(2, '0')}`
+}
+
+function toUtcDate(value: string): Date | null {
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function computeWeekProgress(
+  input: {
+    activatedAt: string | null
+    durationWeeks: number
+    wordCreatedAt: string[]
+    closedNoteAt: string[]
+    creationCompletedDays: string[]
+    reviewCompletedDays: string[]
+  },
+): Record<string, WeekProgressItem> {
+  const activated = input.activatedAt ? toUtcDate(input.activatedAt) : null
+  if (!activated) return {}
+
+  const duration = Math.min(12, Math.max(1, input.durationWeeks || 12))
+  const output: Record<string, WeekProgressItem> = {}
+
+  const wordDates = input.wordCreatedAt.map((value) => toUtcDate(value)).filter((value): value is Date => Boolean(value))
+  const noteDates = input.closedNoteAt.map((value) => toUtcDate(value)).filter((value): value is Date => Boolean(value))
+
+  for (let week = 1; week <= duration; week += 1) {
+    const start = new Date(activated.getTime() + (week - 1) * 7 * 24 * 60 * 60 * 1000)
+    const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
+
+    const wordsCreated = wordDates.filter(
+      (date) => date.getTime() >= start.getTime() && date.getTime() < end.getTime(),
+    ).length
+
+    const closedMasterNotes = noteDates.filter(
+      (date) => date.getTime() >= start.getTime() && date.getTime() < end.getTime(),
+    ).length
+
+    const daySet = Array.from({ length: 7 }, (_, idx) => {
+      const date = new Date(start.getTime() + idx * 24 * 60 * 60 * 1000)
+      return date.toISOString().slice(0, 10)
+    })
+
+    const icaHits = daySet.filter((day) => input.creationCompletedDays.includes(day)).length
+    const flashcardsHits = daySet.filter((day) => input.reviewCompletedDays.includes(day)).length
+
+    output[weekKeyFromNumber(week)] = {
+      wordsCreated,
+      closedMasterNotes,
+      icaStreakPct: Math.round((icaHits / 7) * 100),
+      flashcardsStreakPct: Math.round((flashcardsHits / 7) * 100),
+    }
+  }
+
+  return output
+}
+
+async function fetchWeekProgressForSession(
+  adminClient: any,
+  session: { user_id: string; target_lang: string; activated_at: string | null; duration_weeks: number },
+): Promise<Record<string, WeekProgressItem>> {
+  if (!session.activated_at) return {}
+
+  const activated = toUtcDate(session.activated_at)
+  if (!activated) return {}
+
+  const end = new Date(
+    activated.getTime() + (Math.min(12, Math.max(1, session.duration_weeks || 12)) * 7 * 24 * 60 * 60 * 1000),
+  )
+
+  const startIso = activated.toISOString()
+  const endIso = end.toISOString()
+  const startDay = startIso.slice(0, 10)
+  const endDay = endIso.slice(0, 10)
+
+  const [wordsResult, notesResult, dailyResult] = await Promise.all([
+    adminClient
+      .from('lexicards')
+      .select('created_at')
+      .eq('user_id', session.user_id)
+      .eq('target_lang', session.target_lang)
+      .gte('created_at', startIso)
+      .lt('created_at', endIso),
+    adminClient
+      .from('master_notes')
+      .select('state, closed_at, updated_at')
+      .eq('user_id', session.user_id)
+      .eq('state', 'closed'),
+    adminClient
+      .from('daily_metrics')
+      .select('day, creation_goal_completed, review_goal_completed')
+      .eq('user_id', session.user_id)
+      .gte('day', startDay)
+      .lt('day', endDay),
+  ])
+
+  if (wordsResult.error || notesResult.error || dailyResult.error) {
+    return {}
+  }
+
+  return computeWeekProgress({
+    activatedAt: session.activated_at,
+    durationWeeks: session.duration_weeks,
+    wordCreatedAt: (wordsResult.data || []).map((row: { created_at: string }) => row.created_at),
+    closedNoteAt: (notesResult.data || []).map((row: { closed_at: string | null; updated_at: string }) => row.closed_at || row.updated_at),
+    creationCompletedDays: (dailyResult.data || [])
+      .filter((row: { creation_goal_completed: boolean }) => Boolean(row.creation_goal_completed))
+      .map((row: { day: string }) => row.day),
+    reviewCompletedDays: (dailyResult.data || [])
+      .filter((row: { review_goal_completed: boolean }) => Boolean(row.review_goal_completed))
+      .map((row: { day: string }) => row.day),
+  })
+}
+
+async function fetchClosedNotesByWeekForSession(
+  adminClient: any,
+  session: {
+    user_id: string
+    activated_at: string | null
+    duration_weeks: number
+  },
+): Promise<Record<string, CoachingClosedNoteItem[]>> {
+  const output: Record<string, CoachingClosedNoteItem[]> = {}
+  if (!session.activated_at) return output
+
+  const activated = toUtcDate(session.activated_at)
+  if (!activated) return output
+
+  const duration = Math.min(12, Math.max(1, session.duration_weeks || 12))
+
+  const { data, error } = await adminClient
+    .from('master_notes')
+    .select('id, name, state, closed_at, updated_at, coaching_feedback_loom_url')
+    .eq('user_id', session.user_id)
+    .eq('state', 'closed')
+    .order('updated_at', { ascending: false })
+
+  if (error) return output
+
+  for (const row of data || []) {
+    const closedAt =
+      typeof row.closed_at === 'string' && row.closed_at.length > 0
+        ? row.closed_at
+        : typeof row.updated_at === 'string'
+          ? row.updated_at
+          : null
+
+    const week = getWeekFromActivatedAt(session.activated_at, closedAt, duration)
+    if (!week || !closedAt) continue
+    const weekKey = weekKeyFromNumber(week)
+    const existing = output[weekKey] || []
+    existing.push({
+      id: String(row.id),
+      name:
+        typeof row.name === 'string' && row.name.trim().length > 0
+          ? row.name
+          : 'Nota Maestra: Sin titulo',
+      closedAt,
+      feedbackLoomUrl: normalizeUrl(safeString(row.coaching_feedback_loom_url)),
+    })
+    output[weekKey] = existing
+  }
+
+  return output
+}
+
+function serializeWeeklyObjectives(
+  rows: CoachingSessionWeeklyObjectiveRow[],
+): Record<string, unknown> {
+  const output: Record<string, unknown> = {}
+
+  for (const row of rows) {
+    output[weekKeyFromNumber(row.week_number)] = {
+      wordsTarget: row.words_target,
+      nmTarget: row.nm_target,
+      icaStreakObjectivePct: row.ica_streak_objective_pct,
+      flashcardsStreakObjectivePct: row.flashcards_streak_objective_pct,
+      reportExerciseUrl: row.report_exercise_url,
+    }
+  }
+
+  return output
+}
+
+function serializeClassSessions(rows: CoachingSessionClassRow[]): unknown[] {
+  return rows.map((row) => ({
+    id: row.id,
+    key: weekKeyFromNumber(row.week_number),
+    weekKey: weekKeyFromNumber(row.week_number),
+    title: row.title,
+    loomUrl: normalizeUrl(row.loom_url),
+    report: row.report,
+    reportImagePath: row.report_image_path,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }))
+}
+
+function objectiveRowsFromPayload(
+  sessionId: string,
+  value: unknown,
+): Array<{
+  session_id: string
+  week_number: number
+  words_target: number | null
+  nm_target: number | null
+  ica_streak_objective_pct: number | null
+  flashcards_streak_objective_pct: number | null
+  report_exercise_url: string | null
+}> {
+  const normalized = normalizeWeeklyObjectives(value)
+
+  return Object.entries(normalized)
+    .filter(([, raw]) => raw && typeof raw === 'object' && !Array.isArray(raw))
+    .map(([key, raw]) => {
+      const record = raw as Record<string, unknown>
+      return {
+        session_id: sessionId,
+        week_number: weekNumberFromKey(key),
+        words_target: safeInteger(record.wordsTarget),
+        nm_target: safeInteger(record.nmTarget),
+        ica_streak_objective_pct: safeInteger(
+          record.icaStreakObjectivePct ?? record.icaStreakTargetPct,
+        ),
+        flashcards_streak_objective_pct: safeInteger(
+          record.flashcardsStreakObjectivePct ??
+            record.flashcardsStreakAchievedPct ??
+            record.icaStreakAchievedPct,
+        ),
+        report_exercise_url: safeString(record.reportExerciseUrl),
+      }
+    })
+}
+
+function classRowsFromPayload(
+  sessionId: string,
+  value: unknown,
+): Array<{
+  session_id: string
+  week_number: number
+  title: string
+  loom_url: string | null
+  report: string | null
+  report_image_path: string | null
+  created_at: string
+  updated_at: string
+}> {
+  return safeClassSessions(value).map((item) => {
+    const row = item as Record<string, unknown>
+    const createdAt = safeString(row.createdAt) || new Date().toISOString()
+
+    return {
+      session_id: sessionId,
+      week_number: weekNumberFromKey(
+        safeString(row.key ?? row.weekKey ?? row.week) ||
+          buildWeekKeyFromIso(createdAt),
+      ),
+      title: safeString(row.title) || 'Clase semanal',
+      loom_url: normalizeUrl(safeString(row.loomUrl ?? row.loom_url)),
+      report: safeString(row.report),
+      report_image_path: safeString(row.reportImagePath ?? row.report_image_path),
+      created_at: createdAt,
+      updated_at: safeString(row.updatedAt) || new Date().toISOString(),
+    }
+  })
+}
+
+async function replaceSessionProgramData(
+  adminClient: any,
+  input: {
+    sessionId: string
+    classSessions?: unknown
+    weeklyObjectives?: unknown
+  },
+): Promise<string | null> {
+  if (typeof input.weeklyObjectives !== 'undefined') {
+    const { error: deleteObjectivesError } = await adminClient
+      .from('coaching_session_weekly_objectives')
+      .delete()
+      .eq('session_id', input.sessionId)
+
+    if (deleteObjectivesError) return deleteObjectivesError.message
+
+    const objectiveRows = objectiveRowsFromPayload(
+      input.sessionId,
+      input.weeklyObjectives,
+    )
+
+    if (objectiveRows.length > 0) {
+      const { error: insertObjectivesError } = await adminClient
+        .from('coaching_session_weekly_objectives')
+        .insert(objectiveRows)
+
+      if (insertObjectivesError) return insertObjectivesError.message
+    }
+  }
+
+  if (typeof input.classSessions !== 'undefined') {
+    const { error: deleteClassesError } = await adminClient
+      .from('coaching_session_classes')
+      .delete()
+      .eq('session_id', input.sessionId)
+
+    if (deleteClassesError) return deleteClassesError.message
+
+    const classRows = classRowsFromPayload(input.sessionId, input.classSessions)
+    if (classRows.length > 0) {
+      const { error: insertClassesError } = await adminClient
+        .from('coaching_session_classes')
+        .insert(classRows)
+
+      if (insertClassesError) return insertClassesError.message
+    }
+  }
+
+  return null
+}
+
+async function fetchProgramDataBySessionIds(
+  adminClient: any,
+  sessionIds: string[],
+): Promise<{
+  weeklyObjectivesBySession: Map<string, Record<string, unknown>>
+  classSessionsBySession: Map<string, unknown[]>
+  error: string | null
+}> {
+  const weeklyObjectivesBySession = new Map<string, Record<string, unknown>>()
+  const classSessionsBySession = new Map<string, unknown[]>()
+
+  if (sessionIds.length === 0) {
+    return { weeklyObjectivesBySession, classSessionsBySession, error: null }
+  }
+
+  const [weeklyResult, classesResult] = await Promise.all([
+    adminClient
+      .from('coaching_session_weekly_objectives')
+      .select(
+        'session_id, week_number, words_target, nm_target, ica_streak_objective_pct, flashcards_streak_objective_pct, report_exercise_url',
+      )
+      .in('session_id', sessionIds),
+    adminClient
+      .from('coaching_session_classes')
+      .select(
+        'id, session_id, week_number, title, loom_url, report, report_image_path, created_at, updated_at',
+      )
+      .in('session_id', sessionIds)
+      .order('created_at', { ascending: false }),
+  ])
+
+  if (weeklyResult.error || classesResult.error) {
+    return {
+      weeklyObjectivesBySession,
+      classSessionsBySession,
+      error: weeklyResult.error?.message || classesResult.error?.message || 'Program data error',
+    }
+  }
+
+  const objectivesGrouped = new Map<string, CoachingSessionWeeklyObjectiveRow[]>()
+  for (const row of (weeklyResult.data || []) as CoachingSessionWeeklyObjectiveRow[]) {
+    const existing = objectivesGrouped.get(row.session_id) || []
+    existing.push(row)
+    objectivesGrouped.set(row.session_id, existing)
+  }
+
+  const classesGrouped = new Map<string, CoachingSessionClassRow[]>()
+  for (const row of (classesResult.data || []) as CoachingSessionClassRow[]) {
+    const existing = classesGrouped.get(row.session_id) || []
+    existing.push(row)
+    classesGrouped.set(row.session_id, existing)
+  }
+
+  for (const sessionId of sessionIds) {
+    weeklyObjectivesBySession.set(
+      sessionId,
+      serializeWeeklyObjectives(objectivesGrouped.get(sessionId) || []),
+    )
+    classSessionsBySession.set(
+      sessionId,
+      serializeClassSessions(classesGrouped.get(sessionId) || []),
+    )
+  }
+
+  return { weeklyObjectivesBySession, classSessionsBySession, error: null }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
@@ -166,10 +681,12 @@ Deno.serve(async (req) => {
 
   if (action === 'my-dashboard') {
     let query = auth.adminClient
-      .from('users_coaching')
+      .from('coaching_sessions')
       .select('*')
       .eq('user_id', auth.userId)
       .eq('is_active', true)
+      .eq('status', 'active')
+      .not('activated_at', 'is', null)
       .order('updated_at', { ascending: false })
 
     const targetLang = safeString(payload.targetLang)
@@ -208,23 +725,47 @@ Deno.serve(async (req) => {
       )
     }
 
+    const sessionIds = rows.map((row) => row.id)
+    const programData = await fetchProgramDataBySessionIds(
+      auth.adminClient,
+      sessionIds,
+    )
+    if (programData.error) {
+      return jsonResponse(500, { error: programData.error })
+    }
+
     const memberships = await Promise.all(
-      rows.map(async (row) => ({
-        id: row.id,
-        userId: row.user_id,
-        createdAt: row.created_at,
-        coachUserId: row.coach_user_id,
-        coachDisplayName: row.coach_user_id ? coachesById.get(row.coach_user_id) || 'Coach' : null,
-        targetLang: row.target_lang,
-        nativeLang: row.native_lang,
-        level: row.level,
-        classSessions: await withSignedClassReportUrls(auth.adminClient as any, row.class_sessions),
-        feedbackNmUrl: row.feedback_nm_url,
-        feedbackNmNotes: row.feedback_nm_notes,
-        weeklyObjectives: safeJsonObject(row.weekly_objectives),
-        notes: row.notes,
-        updatedAt: row.updated_at,
-      })),
+      rows.map(async (row) => {
+        const weekProgress = await fetchWeekProgressForSession(auth.adminClient, row)
+        const closedMasterNotesByWeek = await fetchClosedNotesByWeekForSession(
+          auth.adminClient,
+          row,
+        )
+        return {
+          id: row.id,
+          userId: row.user_id,
+          createdAt: row.created_at,
+          coachUserId: row.coach_user_id,
+          coachDisplayName: row.coach_user_id ? coachesById.get(row.coach_user_id) || 'Coach' : null,
+          targetLang: row.target_lang,
+          nativeLang: row.native_lang,
+          level: row.level,
+          classSessions: await withSignedClassReportUrls(
+            auth.adminClient as any,
+            programData.classSessionsBySession.get(row.id) || [],
+          ),
+          feedbackNmUrl: row.feedback_nm_url,
+          feedbackNmNotes: row.feedback_nm_notes,
+          weeklyObjectives: programData.weeklyObjectivesBySession.get(row.id) || {},
+          notes: row.notes,
+          status: row.status,
+          activatedAt: row.activated_at,
+          durationWeeks: row.duration_weeks,
+          weekProgress,
+          closedMasterNotesByWeek,
+          updatedAt: row.updated_at,
+        }
+      }),
     )
 
     return jsonResponse(200, { memberships })
@@ -235,7 +776,7 @@ Deno.serve(async (req) => {
 
   if (action === 'list-users') {
     const { data, error } = await admin.adminClient
-      .from('users_coaching')
+      .from('coaching_sessions')
       .select('*')
       .order('updated_at', { ascending: false })
 
@@ -291,6 +832,15 @@ Deno.serve(async (req) => {
       (settingsResult.data || []).map((row) => [String(row.user_id), row]),
     )
 
+    const sessionIds = visibleRows.map((row) => row.id)
+    const programData = await fetchProgramDataBySessionIds(
+      admin.adminClient,
+      sessionIds,
+    )
+    if (programData.error) {
+      return jsonResponse(500, { error: programData.error })
+    }
+
     const rows = await Promise.all(
       visibleRows.map(async (row) => {
         const activeSettings = settingsByUserId.get(row.user_id)
@@ -303,12 +853,18 @@ Deno.serve(async (req) => {
           targetLang: row.target_lang,
           nativeLang: row.native_lang,
           level: row.level,
-          classSessions: await withSignedClassReportUrls(admin.adminClient as any, row.class_sessions),
+          classSessions: await withSignedClassReportUrls(
+            admin.adminClient as any,
+            programData.classSessionsBySession.get(row.id) || [],
+          ),
           feedbackNmUrl: row.feedback_nm_url,
           feedbackNmNotes: row.feedback_nm_notes,
-          weeklyObjectives: safeJsonObject(row.weekly_objectives),
+          weeklyObjectives: programData.weeklyObjectivesBySession.get(row.id) || {},
           notes: row.notes,
           isActive: row.is_active,
+          status: row.status,
+          activatedAt: row.activated_at,
+          durationWeeks: row.duration_weeks,
           updatedAt: row.updated_at,
           activeTargetLang: activeSettings?.target_lang || null,
           activeNativeLang: activeSettings?.native_lang || null,
@@ -339,9 +895,10 @@ Deno.serve(async (req) => {
         .not('target_lang', 'is', null)
         .limit(20000),
       admin.adminClient
-        .from('users_coaching')
+        .from('coaching_sessions')
         .select('user_id, target_lang')
-        .eq('is_active', true),
+        .eq('is_active', true)
+        .in('status', ['draft', 'active']),
     ])
 
     if (
@@ -460,9 +1017,85 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'upsert-user') {
+    const sessionId = safeString(payload.sessionId)
     const userId = safeString(payload.userId)
     const targetLang = safeString(payload.targetLang)
     const level = safeString(payload.level) || 'A2'
+    const hasClassSessions = typeof payload.classSessions !== 'undefined'
+    const hasWeeklyObjectives = typeof payload.weeklyObjectives !== 'undefined'
+    const classSessions = hasClassSessions
+      ? safeClassSessions(payload.classSessions)
+      : undefined
+    const weeklyObjectives = hasWeeklyObjectives
+      ? normalizeWeeklyObjectives(payload.weeklyObjectives)
+      : undefined
+    const coachUserId =
+      admin.adminRole === 'super_admin'
+        ? safeString(payload.coachUserId) || admin.userId
+        : admin.userId
+
+    if (sessionId) {
+      const { data: existingRow, error: existingError } = await admin.adminClient
+        .from('coaching_sessions')
+        .select('id, target_lang, level')
+        .eq('id', sessionId)
+        .maybeSingle<{ id: string; target_lang: string; level: string }>()
+
+      if (existingError) {
+        return jsonResponse(500, { error: existingError.message })
+      }
+      if (!existingRow) {
+        return jsonResponse(404, { error: 'Coaching session not found' })
+      }
+
+      if (
+        !scopeAllows(
+          admin.adminRole,
+          admin.scopes,
+          existingRow.target_lang,
+          existingRow.level,
+        )
+      ) {
+        return jsonResponse(403, { error: 'Forbidden for selected language/level scope' })
+      }
+
+      const updatePayload: Record<string, unknown> = {
+        coach_user_id: coachUserId,
+        native_lang: safeString(payload.nativeLang),
+        level,
+        feedback_nm_url: safeString(payload.feedbackNmUrl),
+        feedback_nm_notes: safeString(payload.feedbackNmNotes),
+        notes: safeString(payload.notes),
+        is_active: typeof payload.isActive === 'boolean' ? payload.isActive : true,
+      }
+
+      if (hasClassSessions) updatePayload.class_sessions = classSessions
+      if (hasWeeklyObjectives) updatePayload.weekly_objectives = weeklyObjectives
+
+      const { data, error } = await admin.adminClient
+        .from('coaching_sessions')
+        .update(updatePayload)
+        .eq('id', sessionId)
+        .select('id')
+        .maybeSingle<{ id: string }>()
+
+      if (error) {
+        return jsonResponse(500, { error: error.message })
+      }
+
+      const programWriteError = await replaceSessionProgramData(admin.adminClient, {
+        sessionId,
+        classSessions: hasClassSessions ? classSessions : undefined,
+        weeklyObjectives: hasWeeklyObjectives ? weeklyObjectives : undefined,
+      })
+
+      if (programWriteError) {
+        return jsonResponse(500, { error: programWriteError })
+      }
+
+      return jsonResponse(200, { ok: true, id: data?.id || null })
+    }
+
     if (!userId || !targetLang) {
       return jsonResponse(400, { error: 'userId and targetLang are required' })
     }
@@ -471,31 +1104,24 @@ Deno.serve(async (req) => {
       return jsonResponse(403, { error: 'Forbidden for selected language/level scope' })
     }
 
-    const classSessions = safeClassSessions(payload.classSessions)
-    const weeklyObjectives = safeJsonObject(payload.weeklyObjectives)
-    const coachUserId =
-      admin.adminRole === 'super_admin'
-        ? safeString(payload.coachUserId) || admin.userId
-        : admin.userId
-
     const { data, error } = await admin.adminClient
-      .from('users_coaching')
-      .upsert(
-        {
-          user_id: userId,
-          coach_user_id: coachUserId,
-          target_lang: targetLang,
-          native_lang: safeString(payload.nativeLang),
-          level,
-          class_sessions: classSessions,
-          feedback_nm_url: safeString(payload.feedbackNmUrl),
-          feedback_nm_notes: safeString(payload.feedbackNmNotes),
-          weekly_objectives: weeklyObjectives,
-          notes: safeString(payload.notes),
-          is_active: typeof payload.isActive === 'boolean' ? payload.isActive : true,
-        },
-        { onConflict: 'user_id,target_lang' },
-      )
+      .from('coaching_sessions')
+      .insert({
+        user_id: userId,
+        coach_user_id: coachUserId,
+        target_lang: targetLang,
+        native_lang: safeString(payload.nativeLang),
+        level,
+        ...(hasClassSessions ? { class_sessions: classSessions } : {}),
+        feedback_nm_url: safeString(payload.feedbackNmUrl),
+        feedback_nm_notes: safeString(payload.feedbackNmNotes),
+        ...(hasWeeklyObjectives ? { weekly_objectives: weeklyObjectives } : {}),
+        notes: safeString(payload.notes),
+        is_active: typeof payload.isActive === 'boolean' ? payload.isActive : true,
+        status: 'draft',
+        activated_at: null,
+        duration_weeks: 12,
+      })
       .select('id')
       .maybeSingle<{ id: string }>()
 
@@ -503,10 +1129,150 @@ Deno.serve(async (req) => {
       return jsonResponse(500, { error: error.message })
     }
 
+    if (data?.id) {
+      const programWriteError = await replaceSessionProgramData(admin.adminClient, {
+        sessionId: data.id,
+        classSessions: hasClassSessions ? classSessions : undefined,
+        weeklyObjectives: hasWeeklyObjectives ? weeklyObjectives : undefined,
+      })
+
+      if (programWriteError) {
+        return jsonResponse(500, { error: programWriteError })
+      }
+    }
+
     return jsonResponse(200, { ok: true, id: data?.id || null })
   }
 
+  if (action === 'activate-session') {
+    const sessionId = safeString(payload.sessionId)
+    if (!sessionId) {
+      return jsonResponse(400, { error: 'sessionId is required' })
+    }
+
+    const { data: row, error: rowError } = await admin.adminClient
+      .from('coaching_sessions')
+      .select('id, target_lang, level, status')
+      .eq('id', sessionId)
+      .maybeSingle<{ id: string; target_lang: string; level: string; status: string }>()
+
+    if (rowError) {
+      return jsonResponse(500, { error: rowError.message })
+    }
+    if (!row) {
+      return jsonResponse(404, { error: 'Coaching session not found' })
+    }
+
+    if (!scopeAllows(admin.adminRole, admin.scopes, row.target_lang, row.level)) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+
+    const { error } = await admin.adminClient
+      .from('coaching_sessions')
+      .update({
+        status: 'active',
+        activated_at: new Date().toISOString(),
+      })
+      .eq('id', sessionId)
+
+    if (error) {
+      return jsonResponse(500, { error: error.message })
+    }
+
+    return jsonResponse(200, { ok: true })
+  }
+
+  if (action === 'delete-session') {
+    const sessionId = safeString(payload.sessionId)
+    if (!sessionId) {
+      return jsonResponse(400, { error: 'sessionId is required' })
+    }
+
+    const { data: row, error: rowError } = await admin.adminClient
+      .from('coaching_sessions')
+      .select('id, target_lang, level')
+      .eq('id', sessionId)
+      .maybeSingle<{ id: string; target_lang: string; level: string }>()
+
+    if (rowError) {
+      return jsonResponse(500, { error: rowError.message })
+    }
+    if (!row) {
+      return jsonResponse(404, { error: 'Coaching session not found' })
+    }
+
+    if (!scopeAllows(admin.adminRole, admin.scopes, row.target_lang, row.level)) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+
+    const { error } = await admin.adminClient
+      .from('coaching_sessions')
+      .update({
+        is_active: false,
+        status: 'cancelled',
+      })
+      .eq('id', sessionId)
+
+    if (error) {
+      return jsonResponse(500, { error: error.message })
+    }
+
+    return jsonResponse(200, { ok: true })
+  }
+
+  if (action === 'upsert-master-note-feedback-loom') {
+    const sessionId = safeString(payload.sessionId)
+    const masterNoteId = safeString(payload.masterNoteId)
+    if (!sessionId || !masterNoteId) {
+      return jsonResponse(400, { error: 'sessionId and masterNoteId are required' })
+    }
+
+    const { data: sessionRow, error: sessionError } = await admin.adminClient
+      .from('coaching_sessions')
+      .select('id, user_id, target_lang, level')
+      .eq('id', sessionId)
+      .maybeSingle<{ id: string; user_id: string; target_lang: string; level: string }>()
+
+    if (sessionError) {
+      return jsonResponse(500, { error: sessionError.message })
+    }
+    if (!sessionRow) {
+      return jsonResponse(404, { error: 'Coaching session not found' })
+    }
+    if (!scopeAllows(admin.adminRole, admin.scopes, sessionRow.target_lang, sessionRow.level)) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+
+    const { data: noteRow, error: noteError } = await admin.adminClient
+      .from('master_notes')
+      .select('id, user_id')
+      .eq('id', masterNoteId)
+      .maybeSingle<{ id: string; user_id: string }>()
+
+    if (noteError) {
+      return jsonResponse(500, { error: noteError.message })
+    }
+    if (!noteRow) {
+      return jsonResponse(404, { error: 'Master note not found' })
+    }
+    if (noteRow.user_id !== sessionRow.user_id) {
+      return jsonResponse(403, { error: 'Master note does not belong to this session user' })
+    }
+
+    const { error: updateError } = await admin.adminClient
+      .from('master_notes')
+      .update({ coaching_feedback_loom_url: normalizeUrl(safeString(payload.feedbackLoomUrl)) })
+      .eq('id', masterNoteId)
+
+    if (updateError) {
+      return jsonResponse(500, { error: updateError.message })
+    }
+
+    return jsonResponse(200, { ok: true })
+  }
+
   if (action === 'get-user-insights') {
+    const sessionId = safeString(payload.sessionId)
     const userId = safeString(payload.userId)
     if (!userId) {
       return jsonResponse(400, { error: 'userId is required' })
@@ -514,14 +1280,19 @@ Deno.serve(async (req) => {
 
     const requestedTargetLang = safeString(payload.targetLang)
     let coachingQuery = admin.adminClient
-      .from('users_coaching')
-      .select('target_lang, level')
-      .eq('user_id', userId)
+      .from('coaching_sessions')
+      .select('id, target_lang, level, activated_at, duration_weeks')
       .eq('is_active', true)
+      .order('updated_at', { ascending: false })
       .limit(1)
 
-    if (requestedTargetLang) {
-      coachingQuery = coachingQuery.eq('target_lang', requestedTargetLang)
+    if (sessionId) {
+      coachingQuery = coachingQuery.eq('id', sessionId)
+    } else {
+      coachingQuery = coachingQuery.eq('user_id', userId)
+      if (requestedTargetLang) {
+        coachingQuery = coachingQuery.eq('target_lang', requestedTargetLang)
+      }
     }
 
     const { data: coachingRows, error: coachingError } = await coachingQuery
@@ -538,18 +1309,19 @@ Deno.serve(async (req) => {
       return jsonResponse(403, { error: 'Forbidden' })
     }
 
-    const targetLang = requestedTargetLang || String(coachingRow.target_lang)
-
-    const { data: coachingMembershipRows, error: membershipError } = await admin.adminClient
-      .from('users_coaching')
-      .select('weekly_objectives')
-      .eq('user_id', userId)
-      .eq('target_lang', targetLang)
-      .limit(1)
-
-    if (membershipError) {
-      return jsonResponse(500, { error: membershipError.message })
+    const programData = await fetchProgramDataBySessionIds(admin.adminClient, [coachingRow.id])
+    if (programData.error) {
+      return jsonResponse(500, { error: programData.error })
     }
+
+    const weekProgress = await fetchWeekProgressForSession(admin.adminClient, {
+      user_id: userId,
+      target_lang: String(coachingRow.target_lang),
+      activated_at: (coachingRow as { activated_at?: string | null }).activated_at || null,
+      duration_weeks: (coachingRow as { duration_weeks?: number }).duration_weeks || 12,
+    })
+
+    const targetLang = requestedTargetLang || String(coachingRow.target_lang)
 
     const [wordCountResult, wordsResult, notesCountResult, notesResult] = await Promise.all([
       admin.adminClient
@@ -570,7 +1342,7 @@ Deno.serve(async (req) => {
         .eq('user_id', userId),
       admin.adminClient
         .from('master_notes')
-        .select('id, name, state, created_at, closed_at, final_audio_path')
+        .select('id, name, state, created_at, updated_at, closed_at, final_audio_path, coaching_feedback_loom_url')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(1000),
@@ -608,6 +1380,12 @@ Deno.serve(async (req) => {
       (notesResult.data || []).map(async (note) => {
         const path = typeof note.final_audio_path === 'string' ? note.final_audio_path : null
         const noteChunks = chunksByNoteId.get(String(note.id)) || []
+        const baseNote = {
+          ...note,
+          coachingFeedbackLoomUrl: normalizeUrl(
+            safeString((note as { coaching_feedback_loom_url?: unknown }).coaching_feedback_loom_url),
+          ),
+        }
 
         const chunkItems = await Promise.all(
           noteChunks.map(async (chunk) => {
@@ -626,7 +1404,7 @@ Deno.serve(async (req) => {
 
         if (!path) {
           return {
-            ...note,
+            ...baseNote,
             audioUrl: chunkItems.find((item) => Boolean(item.audioUrl))?.audioUrl || null,
             audioChunks: chunkItems,
           }
@@ -638,14 +1416,14 @@ Deno.serve(async (req) => {
 
         if (signedError || !signedData?.signedUrl) {
           return {
-            ...note,
+            ...baseNote,
             audioUrl: chunkItems.find((item) => Boolean(item.audioUrl))?.audioUrl || null,
             audioChunks: chunkItems,
           }
         }
 
         return {
-          ...note,
+          ...baseNote,
           audioUrl: signedData.signedUrl,
           audioChunks: chunkItems,
         }
@@ -658,7 +1436,9 @@ Deno.serve(async (req) => {
       words: wordsResult.data || [],
       masterNotesCount: notesCountResult.count || 0,
       masterNotes: notesWithAudio,
-      weeklyObjectives: safeJsonObject((coachingMembershipRows || [])[0]?.weekly_objectives),
+      sessionId: coachingRow.id,
+      weeklyObjectives: programData.weeklyObjectivesBySession.get(coachingRow.id) || {},
+      weekProgress,
     })
   }
 
@@ -680,7 +1460,7 @@ Deno.serve(async (req) => {
       'Usuario'
 
     const { data, error } = await admin.adminClient
-      .from('users_coaching')
+      .from('coaching_sessions')
       .select('*')
       .eq('user_id', userId)
       .eq('is_active', true)
@@ -694,6 +1474,15 @@ Deno.serve(async (req) => {
       scopeAllows(admin.adminRole, admin.scopes, row.target_lang, row.level),
     )
 
+    const sessionIds = visibleRows.map((row) => row.id)
+    const programData = await fetchProgramDataBySessionIds(
+      admin.adminClient,
+      sessionIds,
+    )
+    if (programData.error) {
+      return jsonResponse(500, { error: programData.error })
+    }
+
     const rows = await Promise.all(
       visibleRows.map(async (row) => ({
         id: row.id,
@@ -703,12 +1492,18 @@ Deno.serve(async (req) => {
         targetLang: row.target_lang,
         nativeLang: row.native_lang,
         level: row.level,
-        classSessions: await withSignedClassReportUrls(admin.adminClient as any, row.class_sessions),
+        classSessions: await withSignedClassReportUrls(
+          admin.adminClient as any,
+          programData.classSessionsBySession.get(row.id) || [],
+        ),
         feedbackNmUrl: row.feedback_nm_url,
         feedbackNmNotes: row.feedback_nm_notes,
-        weeklyObjectives: safeJsonObject(row.weekly_objectives),
+        weeklyObjectives: programData.weeklyObjectivesBySession.get(row.id) || {},
         notes: row.notes,
         isActive: row.is_active,
+        status: row.status,
+        activatedAt: row.activated_at,
+        durationWeeks: row.duration_weeks,
         updatedAt: row.updated_at,
       })),
     )

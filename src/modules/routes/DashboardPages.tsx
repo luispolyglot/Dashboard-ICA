@@ -377,7 +377,7 @@ export function ManageCoachingUserPage() {
     <PageLayout withBackButton={false}>
       <ManageCoachingUserView
         userId={userId}
-        initialTargetLang={searchParams.get('targetLang')}
+        initialSessionId={searchParams.get('sessionId')}
       />
     </PageLayout>
   )

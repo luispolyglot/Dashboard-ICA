@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { EyeIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react'
+import { EyeIcon, PlayIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
@@ -16,6 +16,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   fetchAvailableUsersForCoaching,
+  activateCoachingSession,
+  deleteCoachingSession,
   fetchCoachingAccess,
   fetchCoachingAdmins,
   fetchCoachingManagedUsers,
@@ -196,7 +198,7 @@ export function ManageCoachingView() {
       setIsCreateUserModalOpen(false)
       setCreateUserSelection('')
       setCreateUserLevel('')
-      setFeedback('Usuario añadido al coaching correctamente.')
+      setFeedback('Sesión de coaching creada en borrador.')
       await loadData()
     } catch (err) {
       const message =
@@ -221,22 +223,11 @@ export function ManageCoachingView() {
     setFeedback(null)
 
     try {
-      await upsertCoachingUser({
-        userId: userToDelete.userId,
-        targetLang: userToDelete.targetLang,
-        nativeLang: userToDelete.nativeLang,
-        level: userToDelete.level,
-        classSessions: userToDelete.classSessions,
-        feedbackNmUrl: userToDelete.feedbackNmUrl,
-        feedbackNmNotes: userToDelete.feedbackNmNotes,
-        weeklyObjectives: userToDelete.weeklyObjectives,
-        notes: userToDelete.notes,
-        isActive: false,
-      })
+      await deleteCoachingSession(userToDelete.id)
 
       setDeleteModalOpen(false)
       setUserToDelete(null)
-      setFeedback('Usuario removido de coaching correctamente.')
+      setFeedback('Sesión de coaching eliminada correctamente.')
       await loadData()
     } catch (err) {
       const message =
@@ -246,6 +237,19 @@ export function ManageCoachingView() {
       setFeedback(message)
     } finally {
       setIsSavingUser(false)
+    }
+  }
+
+  const handleStartSession = async (row: CoachingManagedUser) => {
+    setFeedback(null)
+    try {
+      await activateCoachingSession(row.id)
+      setFeedback('Sesión comenzada correctamente.')
+      await loadData()
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'No se pudo comenzar la sesión.'
+      setFeedback(message)
     }
   }
 
@@ -347,19 +351,19 @@ export function ManageCoachingView() {
             Administrar Coaching
           </h2>
           <p className='text-sm text-muted-foreground'>
-            Gestiona usuarios del coaching por idioma, nivel y objetivos
-            semanales.
+            Gestiona sesiones de coaching por idioma, nivel y programa de 12
+            semanas.
           </p>
         </div>
         <div className='flex flex-wrap gap-2'>
-          <Button
-            type='button'
-            variant='outline'
-            onClick={() => setIsCreateUserModalOpen(true)}
-          >
-            <PlusIcon className='h-4 w-4' />
-            Agregar usuario
-          </Button>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setIsCreateUserModalOpen(true)}
+            >
+              <PlusIcon className='h-4 w-4' />
+              Crear sesión
+            </Button>
           {isSuperAdmin && (
             <Button
               type='button'
@@ -387,7 +391,7 @@ export function ManageCoachingView() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Usuarios en coaching ({users.length})</CardTitle>
+          <CardTitle>Sesiones de coaching ({users.length})</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -406,6 +410,8 @@ export function ManageCoachingView() {
                     <th className='pb-2 font-medium'>Idioma</th>
                     <th className='pb-2 font-medium'>Nivel</th>
                     <th className='pb-2 font-medium'>Coach</th>
+                    <th className='pb-2 font-medium'>Estado</th>
+                    <th className='pb-2 font-medium'>Comenzó</th>
                     <th className='pb-2 font-medium'>Activo</th>
                     <th className='pb-2 font-medium'>Actualizado</th>
                     <th className='pb-2 font-medium'>Acciones</th>
@@ -413,10 +419,7 @@ export function ManageCoachingView() {
                 </thead>
                 <tbody>
                   {users.map((row) => (
-                    <tr
-                      key={`${row.userId}-${row.targetLang}`}
-                      className='border-b align-middle last:border-b-0'
-                    >
+                    <tr key={row.id} className='border-b align-middle last:border-b-0'>
                       <td className='py-2'>
                         <p className='font-medium'>{row.userDisplayName}</p>
                       </td>
@@ -432,6 +435,10 @@ export function ManageCoachingView() {
                       </td>
                       <td className='py-2'>{row.level}</td>
                       <td className='py-2'>{row.coachDisplayName || '-'}</td>
+                      <td className='py-2'>{row.status}</td>
+                      <td className='py-2 text-xs text-muted-foreground'>
+                        {row.activatedAt ? formatDateTime(row.activatedAt) : '-'}
+                      </td>
                       <td className='py-2'>{row.isActive ? 'Sí' : 'No'}</td>
                       <td className='py-2 text-xs text-muted-foreground'>
                         {formatDateTime(row.updatedAt)}
@@ -447,13 +454,24 @@ export function ManageCoachingView() {
                               navigate(
                                 getManageCoachingUserRoute(
                                   row.userId,
-                                  row.targetLang,
+                                  row.id,
                                 ),
                               )
                             }
                           >
                             <EyeIcon className='h-4 w-4' />
                           </Button>
+                          {row.status === 'draft' && (
+                            <Button
+                              type='button'
+                              variant='outline'
+                              size='icon'
+                              aria-label='Comenzar sesión coaching'
+                              onClick={() => void handleStartSession(row)}
+                            >
+                              <PlayIcon className='h-4 w-4' />
+                            </Button>
+                          )}
                           <Button
                             type='button'
                             variant='destructive'
@@ -540,8 +558,8 @@ export function ManageCoachingView() {
           <DialogHeader>
             <DialogTitle>Agregar usuario al coaching</DialogTitle>
             <DialogDescription>
-              Selecciona un usuario y su idioma activo. Se precompleta con su
-              nivel actual.
+              Selecciona un usuario y su idioma activo para crear una sesión
+              de coaching en borrador.
             </DialogDescription>
           </DialogHeader>
 
@@ -597,10 +615,9 @@ export function ManageCoachingView() {
       <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Eliminar usuario del coaching</DialogTitle>
+            <DialogTitle>Eliminar sesión de coaching</DialogTitle>
             <DialogDescription>
-              Esta acción desactiva su membresía en coaching para el idioma
-              seleccionado.
+              Esta acción elimina la sesión de coaching seleccionada.
             </DialogDescription>
           </DialogHeader>
 

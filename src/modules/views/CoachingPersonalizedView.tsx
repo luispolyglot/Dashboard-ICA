@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  BookOpenIcon,
+  DownloadIcon,
   GoalIcon,
   RefreshCwIcon,
   RepeatIcon,
@@ -9,19 +9,17 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
+import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import {
   fetchMyCoachingDashboard,
   type CoachingMembership,
@@ -33,27 +31,10 @@ type CoachingPersonalizedViewProps = {
 
 type ClassSession = {
   key: string
-  title: string
   loomUrl: string | null
   report: string | null
   reportImageUrl: string | null
-  createdAt: string | null
 }
-
-const MONTH_OPTIONS = [
-  { value: '01', label: 'Enero' },
-  { value: '02', label: 'Febrero' },
-  { value: '03', label: 'Marzo' },
-  { value: '04', label: 'Abril' },
-  { value: '05', label: 'Mayo' },
-  { value: '06', label: 'Junio' },
-  { value: '07', label: 'Julio' },
-  { value: '08', label: 'Agosto' },
-  { value: '09', label: 'Septiembre' },
-  { value: '10', label: 'Octubre' },
-  { value: '11', label: 'Noviembre' },
-  { value: '12', label: 'Diciembre' },
-]
 
 function toNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value
@@ -70,23 +51,26 @@ function toString(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null
 }
 
-function normalizeClassSessions(value: unknown[]): ClassSession[] {
-  return value
-    .filter((item) => item && typeof item === 'object')
-    .map((item) => item as Record<string, unknown>)
-    .map((item, index) => ({
-      key:
-        toString(item.key) ||
-        toString(item.weekKey) ||
-        toString(item.week_key) ||
-        toString(item.week) ||
-        `legacy-${index + 1}`,
-      title: toString(item.title) || `Clase ${index + 1}`,
-      loomUrl: toString(item.loomUrl ?? item.loom_url),
-      report: toString(item.report),
-      reportImageUrl: toString(item.reportImageUrl ?? item.report_image_url),
-      createdAt: toString(item.createdAt ?? item.created_at),
-    }))
+function normalizeProgramWeekKey(value: string | null): string | null {
+  if (!value) return null
+  const normalized = value.trim().toUpperCase()
+  const direct = normalized.match(/^W(\d{1,2})$/)
+  if (direct) {
+    const week = Number(direct[1])
+    if (Number.isFinite(week) && week >= 1 && week <= 12) {
+      return `W${String(week).padStart(2, '0')}`
+    }
+  }
+
+  const legacy = normalized.match(/-S(\d)$/)
+  if (legacy) {
+    const week = Number(legacy[1])
+    if (Number.isFinite(week) && week >= 1) {
+      return `W${String(week).padStart(2, '0')}`
+    }
+  }
+
+  return null
 }
 
 function normalizeWeeklyObjectiveMap(
@@ -97,9 +81,26 @@ function normalizeWeeklyObjectiveMap(
   const output: Record<string, Record<string, unknown>> = {}
   for (const [key, raw] of Object.entries(value)) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
-    output[key] = raw as Record<string, unknown>
+    output[normalizeProgramWeekKey(key) || key] = raw as Record<string, unknown>
   }
   return output
+}
+
+function normalizeClassSessions(value: unknown[]): ClassSession[] {
+  return value
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => item as Record<string, unknown>)
+    .map((item) => ({
+      key:
+        normalizeProgramWeekKey(toString(item.key)) ||
+        normalizeProgramWeekKey(toString(item.weekKey)) ||
+        normalizeProgramWeekKey(toString(item.week_key)) ||
+        normalizeProgramWeekKey(toString(item.week)) ||
+        'W01',
+      loomUrl: toString(item.loomUrl ?? item.loom_url),
+      report: toString(item.report),
+      reportImageUrl: toString(item.reportImageUrl ?? item.report_image_url),
+    }))
 }
 
 function getEmbeddableVideoUrl(value: string | null): string | null {
@@ -110,8 +111,30 @@ function getEmbeddableVideoUrl(value: string | null): string | null {
   return null
 }
 
-function getWeekOfMonth(date: Date): number {
-  return Math.min(5, Math.max(1, Math.ceil(date.getDate() / 7)))
+function getCurrentProgramWeek(
+  activatedAt: string | null,
+  durationWeeks = 12,
+): number {
+  if (!activatedAt) return 1
+  const start = new Date(activatedAt)
+  if (Number.isNaN(start.getTime())) return 1
+  const week =
+    Math.floor((Date.now() - start.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1
+  return Math.min(durationWeeks, Math.max(1, week))
+}
+
+function objectiveStatus(
+  target: number | null,
+  actual: number,
+): {
+  label: string
+  done: boolean
+} {
+  if (target === null) return { label: 'No definido', done: false }
+  return {
+    label: `${actual}/${target}`,
+    done: actual >= target,
+  }
 }
 
 export function CoachingPersonalizedView({
@@ -121,12 +144,6 @@ export function CoachingPersonalizedView({
   const [error, setError] = useState<string | null>(null)
   const [memberships, setMemberships] = useState<CoachingMembership[]>([])
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
-  const now = new Date()
-  const [selectedYear, setSelectedYear] = useState(String(now.getFullYear()))
-  const [selectedMonth, setSelectedMonth] = useState(
-    String(now.getMonth() + 1).padStart(2, '0'),
-  )
-  const [selectedWeek, setSelectedWeek] = useState('1')
 
   const loadData = async () => {
     setLoading(true)
@@ -150,148 +167,49 @@ export function CoachingPersonalizedView({
   }, [targetLang])
 
   const selectedMembership = useMemo(() => {
-    if (memberships.length === 0) return null
-    if (!targetLang) return memberships[0]
+    const activeSessions = memberships.filter((row) => row.status === 'active')
+    if (activeSessions.length === 0) return null
+    if (!targetLang) return activeSessions[0]
     return (
-      memberships.find(
+      activeSessions.find(
         (row) => row.targetLang.toLowerCase() === targetLang.toLowerCase(),
-      ) || memberships[0]
+      ) || activeSessions[0]
     )
   }, [memberships, targetLang])
 
-  const membershipStartDate = useMemo(() => {
-    const raw = selectedMembership?.createdAt
-    if (!raw) return null
-    const parsed = new Date(raw)
-    if (Number.isNaN(parsed.getTime())) return null
-    return parsed
-  }, [selectedMembership?.createdAt])
+  const classSessionsByWeek = useMemo(() => {
+    const map = new Map<string, ClassSession[]>()
+    if (!selectedMembership) return map
+    for (const session of normalizeClassSessions(
+      selectedMembership.classSessions,
+    )) {
+      const existing = map.get(session.key) || []
+      existing.push(session)
+      map.set(session.key, existing)
+    }
+    return map
+  }, [selectedMembership])
 
-  const classSessions = selectedMembership
-    ? normalizeClassSessions(selectedMembership.classSessions)
-    : []
-  const weekKey = `${selectedYear}-${selectedMonth}-S${selectedWeek}`
-
-  const objectivesByWeek = normalizeWeeklyObjectiveMap(
-    selectedMembership?.weeklyObjectives,
-  )
-  const objectives =
-    objectivesByWeek[weekKey] ||
-    (() => {
-      const raw = selectedMembership?.weeklyObjectives
-      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
-      const record = raw as Record<string, unknown>
-      const hasFlatFields =
-        'wordsTarget' in record ||
-        'nmTarget' in record ||
-        'icaStreakObjectivePct' in record ||
-        'icaStreakTargetPct' in record ||
-        'flashcardsStreakObjectivePct' in record ||
-        'flashcardsStreakAchievedPct' in record ||
-        'icaStreakAchievedPct' in record ||
-        'reportExerciseUrl' in record
-      return hasFlatFields ? record : {}
-    })()
-
-  const classSessionsForWeek = classSessions.filter(
-    (session) => session.key === weekKey,
+  const objectivesByWeek = useMemo(
+    () => normalizeWeeklyObjectiveMap(selectedMembership?.weeklyObjectives),
+    [selectedMembership?.weeklyObjectives],
   )
 
-  const minYear = membershipStartDate
-    ? membershipStartDate.getFullYear()
-    : now.getFullYear()
-  const minMonth = membershipStartDate
-    ? membershipStartDate.getMonth() + 1
-    : now.getMonth() + 1
-  const minWeek = membershipStartDate ? getWeekOfMonth(membershipStartDate) : 1
-  const maxYear = now.getFullYear()
-  const maxMonth = now.getMonth() + 1
-  const maxWeek = getWeekOfMonth(now)
-
-  const years = useMemo(() => {
-    const values: string[] = []
-    for (let year = minYear; year <= maxYear; year += 1) {
-      values.push(String(year))
-    }
-    return values
-  }, [minYear, maxYear])
-
-  const selectedYearNumber = Number(selectedYear)
-  const monthOptions = useMemo(() => {
-    return MONTH_OPTIONS.filter((month) => {
-      const numeric = Number(month.value)
-      if (selectedYearNumber === minYear && numeric < minMonth) return false
-      if (selectedYearNumber === maxYear && numeric > maxMonth) return false
-      return true
-    })
-  }, [selectedYearNumber, minYear, minMonth, maxYear, maxMonth])
-
-  const selectedMonthNumber = Number(selectedMonth)
-  const weekOptions = useMemo(() => {
-    const values = [1, 2, 3, 4, 5]
-    return values.filter((week) => {
-      if (
-        selectedYearNumber === minYear &&
-        selectedMonthNumber === minMonth &&
-        week < minWeek
-      ) {
-        return false
-      }
-
-      if (
-        selectedYearNumber === maxYear &&
-        selectedMonthNumber === maxMonth &&
-        week > maxWeek
-      ) {
-        return false
-      }
-
-      return true
-    })
-  }, [
-    selectedYearNumber,
-    selectedMonthNumber,
-    minYear,
-    minMonth,
-    minWeek,
-    maxYear,
-    maxMonth,
-    maxWeek,
-  ])
-
-  useEffect(() => {
-    if (years.length === 0) return
-    if (!years.includes(selectedYear)) {
-      setSelectedYear(years[0])
-    }
-  }, [years, selectedYear])
-
-  useEffect(() => {
-    if (monthOptions.length === 0) return
-    const allowed = monthOptions.some((month) => month.value === selectedMonth)
-    if (!allowed) {
-      setSelectedMonth(monthOptions[0].value)
-    }
-  }, [monthOptions, selectedMonth])
-
-  useEffect(() => {
-    if (weekOptions.length === 0) return
-    const numericWeek = Number(selectedWeek)
-    if (!weekOptions.includes(numericWeek)) {
-      setSelectedWeek(String(weekOptions[0]))
-    }
-  }, [weekOptions, selectedWeek])
-  const wordsObjective = toNumber(objectives.wordsTarget)
-  const nmObjective = toNumber(objectives.nmTarget)
-  const streakObjective = toNumber(
-    objectives.icaStreakObjectivePct ?? objectives.icaStreakTargetPct,
+  const durationWeeks = selectedMembership?.durationWeeks || 12
+  const currentProgramWeek = useMemo(
+    () =>
+      getCurrentProgramWeek(
+        selectedMembership?.activatedAt || null,
+        durationWeeks,
+      ),
+    [selectedMembership?.activatedAt, durationWeeks],
   )
-  const streakAchieved = toNumber(
-    objectives.flashcardsStreakObjectivePct ??
-      objectives.flashcardsStreakAchievedPct ??
-      objectives.icaStreakAchievedPct,
-  )
-  const reportExerciseUrl = toString(objectives.reportExerciseUrl)
+
+  const unlockedWeeks = selectedMembership
+    ? selectedMembership.status === 'active'
+      ? currentProgramWeek
+      : durationWeeks
+    : 0
 
   return (
     <section className='mx-auto w-full max-w-5xl flex-1 overflow-y-auto px-5 py-8'>
@@ -301,8 +219,7 @@ export function CoachingPersonalizedView({
             Coaching Personalizado
           </h2>
           <p className='text-sm text-muted-foreground'>
-            Tu seguimiento semanal con clases, feedback de Notas Maestras y
-            objetivos ICA.
+            Programa de 12 semanas con tus clases, objetivos y feedback.
           </p>
         </div>
 
@@ -319,13 +236,13 @@ export function CoachingPersonalizedView({
       ) : !selectedMembership ? (
         <Card>
           <CardContent className='py-6 text-sm text-muted-foreground'>
-            Todavía no tienes una asignación activa en coaching.
+            Todavia no tienes una sesion activa en coaching.
           </CardContent>
         </Card>
       ) : (
         <div className='grid gap-4'>
           <Card>
-            <CardContent className='space-y-3 pt-6 text-sm text-muted-foreground'>
+            <CardContent className='space-y-2 pt-6 text-sm text-muted-foreground'>
               <p>
                 Idioma:{' '}
                 <span className='font-medium text-foreground'>
@@ -339,206 +256,222 @@ export function CoachingPersonalizedView({
                   ? ` · Coach: ${selectedMembership.coachDisplayName}`
                   : ''}
               </p>
-
-              <div className='flex flex-wrap items-end gap-2'>
-                <div className='space-y-1.5'>
-                  <p className='text-xs text-muted-foreground'>Año</p>
-                  <Select value={selectedYear} onValueChange={setSelectedYear}>
-                    <SelectTrigger className='w-24'>
-                      <SelectValue placeholder='Año' />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {years.map((year) => (
-                          <SelectItem key={year} value={year}>
-                            {year}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className='space-y-1.5'>
-                  <p className='text-xs text-muted-foreground'>Mes</p>
-                  <Select
-                    value={selectedMonth}
-                    onValueChange={setSelectedMonth}
-                  >
-                    <SelectTrigger className='w-36'>
-                      <SelectValue placeholder='Mes' />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {monthOptions.map((month) => (
-                          <SelectItem key={month.value} value={month.value}>
-                            {month.label}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className='space-y-1.5'>
-                  <p className='text-xs text-muted-foreground'>Semana</p>
-                  <Select value={selectedWeek} onValueChange={setSelectedWeek}>
-                    <SelectTrigger className='w-32'>
-                      <SelectValue placeholder='Semana' />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {weekOptions.map((week) => (
-                          <SelectItem key={String(week)} value={String(week)}>
-                            Semana {week}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <p className='text-xs text-muted-foreground'>
-                Semana seleccionada: {weekKey}
-              </p>
+              <p>Semana actual del programa: {currentProgramWeek}</p>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className='flex items-center gap-2'>
-                <BookOpenIcon className='h-4 w-4' />
-                👨‍🏫 Mis clases
-              </CardTitle>
-            </CardHeader>
-            <CardContent className='space-y-3 text-sm'>
-              {classSessionsForWeek.length === 0 ? (
-                <p className='text-muted-foreground'>
-                  Aún no hay grabaciones ni reportes cargados.
-                </p>
-              ) : (
-                classSessionsForWeek.map((session, index) => (
-                  <div
-                    key={`${session.title}-${index}`}
-                    className='rounded-md border p-3'
-                  >
-                    <p className='font-medium'>{session.title}</p>
-                    <p className='text-xs text-muted-foreground'>
-                      Semana: {session.key}
-                    </p>
-                    {getEmbeddableVideoUrl(session.loomUrl) && (
-                      <div className='mb-2 overflow-hidden rounded-md border'>
-                        <iframe
-                          src={getEmbeddableVideoUrl(session.loomUrl) || ''}
-                          title={`Video ${session.title}`}
-                          className='aspect-video w-full'
-                          allow='autoplay; fullscreen; picture-in-picture'
-                          allowFullScreen
-                        />
-                      </div>
-                    )}
-                    {session.loomUrl && (
-                      <a
-                        href={session.loomUrl}
-                        target='_blank'
-                        rel='noreferrer'
-                        className='text-sm text-blue-600 underline underline-offset-2'
-                      >
-                        Ver grabación en Loom
-                      </a>
-                    )}
-                    {session.report && (
-                      <p className='mt-1 text-sm'>{session.report}</p>
-                    )}
-                    {session.reportImageUrl && (
-                      <button
-                        type='button'
-                        onClick={() =>
-                          setImagePreviewUrl(session.reportImageUrl)
-                        }
-                        className='group relative mt-2 block cursor-zoom-in overflow-hidden rounded-md border text-left'
-                        aria-label='Expandir imagen del reporte'
-                      >
-                        <img
-                          src={session.reportImageUrl}
-                          alt='Imagen del reporte de clase'
-                          className='max-h-48 w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]'
-                        />
-                        <div className='absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100'>
-                          <SearchIcon className='h-5 w-5 text-white' />
-                        </div>
-                      </button>
-                    )}
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
+          <Accordion type='multiple' className='w-full rounded-md border px-4'>
+            {Array.from({ length: unlockedWeeks }, (_, index) => {
+              const week = index + 1
+              const weekKey = `W${String(week).padStart(2, '0')}`
+              const objectives = objectivesByWeek[weekKey] || {}
+              const progress = selectedMembership.weekProgress?.[weekKey] || {
+                wordsCreated: 0,
+                closedMasterNotes: 0,
+                icaStreakPct: 0,
+                flashcardsStreakPct: 0,
+              }
+              const weekClasses = classSessionsByWeek.get(weekKey) || []
+              const latestClass = weekClasses[0] || null
+              const closedNotes =
+                selectedMembership.closedMasterNotesByWeek?.[weekKey] || []
 
-          <Card>
-            <CardHeader>
-              <CardTitle className='flex items-center gap-2'>
-                <RepeatIcon className='h-4 w-4' />
-                🔁 Feedback Notas Maestras
-              </CardTitle>
-            </CardHeader>
-            <CardContent className='space-y-2 text-sm'>
-              {selectedMembership.feedbackNmUrl ? (
-                <a
-                  href={selectedMembership.feedbackNmUrl}
-                  target='_blank'
-                  rel='noreferrer'
-                  className='text-blue-600 underline underline-offset-2'
-                >
-                  Ver vídeo feedback de Notas Maestras
-                </a>
-              ) : (
-                <p className='text-muted-foreground'>
-                  Todavía no hay vídeo de feedback de Notas Maestras.
-                </p>
-              )}
-              {selectedMembership.feedbackNmNotes && (
-                <p>{selectedMembership.feedbackNmNotes}</p>
-              )}
-            </CardContent>
-          </Card>
+              const wordsTarget = toNumber(objectives.wordsTarget)
+              const nmTarget = toNumber(objectives.nmTarget)
+              const icaStreakTarget = toNumber(
+                objectives.icaStreakObjectivePct ??
+                  objectives.icaStreakTargetPct,
+              )
+              const flashcardsTarget = toNumber(
+                objectives.flashcardsStreakObjectivePct ??
+                  objectives.flashcardsStreakAchievedPct ??
+                  objectives.icaStreakAchievedPct,
+              )
 
-          <Card>
-            <CardHeader>
-              <CardTitle className='flex items-center gap-2'>
-                <GoalIcon className='h-4 w-4' />
-                🎯 Objetivos semanales
-              </CardTitle>
-            </CardHeader>
-            <CardContent className='space-y-2 text-sm'>
-              <p className='text-xs text-muted-foreground'>
-                Semana seleccionada: {weekKey}
-              </p>
-              <p>Palabras ICA objetivo: {wordsObjective ?? 'No definido'}</p>
-              <p>Notas Maestras objetivo: {nmObjective ?? 'No definido'}</p>
-              <p>
-                Objetivo % racha ICA:{' '}
-                {streakObjective !== null
-                  ? `${streakObjective}%`
-                  : 'No definido'}
-              </p>
-              <p>
-                Objetivo % racha flashcards:{' '}
-                {streakAchieved !== null ? `${streakAchieved}%` : 'No definido'}
-              </p>
-              {reportExerciseUrl && (
-                <a
-                  href={reportExerciseUrl}
-                  target='_blank'
-                  rel='noreferrer'
-                  className='text-blue-600 underline underline-offset-2'
-                >
-                  Abrir ejercicio de reporte
-                </a>
-              )}
-            </CardContent>
-          </Card>
+              const wordsStatus = objectiveStatus(
+                wordsTarget,
+                progress.wordsCreated,
+              )
+              const notesStatus = objectiveStatus(
+                nmTarget,
+                progress.closedMasterNotes,
+              )
+              const icaStatus = objectiveStatus(
+                icaStreakTarget,
+                progress.icaStreakPct,
+              )
+              const flashcardsStatus = objectiveStatus(
+                flashcardsTarget,
+                progress.flashcardsStreakPct,
+              )
+
+              return (
+                <AccordionItem value={weekKey} key={weekKey}>
+                  <AccordionTrigger>Semana {week}</AccordionTrigger>
+                  <AccordionContent className='space-y-3 pb-4 text-sm'>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Clase grabada</CardTitle>
+                      </CardHeader>
+                      <CardContent className='space-y-2'>
+                        {!latestClass ? (
+                          <p className='text-muted-foreground'>
+                            Aun no hay clase cargada para esta semana.
+                          </p>
+                        ) : (
+                          <>
+                            {getEmbeddableVideoUrl(latestClass.loomUrl) && (
+                              <div className='overflow-hidden rounded-md border'>
+                                <iframe
+                                  src={
+                                    getEmbeddableVideoUrl(
+                                      latestClass.loomUrl,
+                                    ) || ''
+                                  }
+                                  title={`Video semana ${week}`}
+                                  className='aspect-video w-full'
+                                  allow='autoplay; fullscreen; picture-in-picture'
+                                  allowFullScreen
+                                />
+                              </div>
+                            )}
+                            {latestClass.report && <p>{latestClass.report}</p>}
+                            {latestClass.reportImageUrl && (
+                              <div className='space-y-2'>
+                                <button
+                                  type='button'
+                                  onClick={() =>
+                                    setImagePreviewUrl(
+                                      latestClass.reportImageUrl,
+                                    )
+                                  }
+                                  className='group relative block cursor-zoom-in overflow-hidden rounded-md border text-left'
+                                >
+                                  <img
+                                    src={latestClass.reportImageUrl}
+                                    alt='Imagen del reporte de clase'
+                                    className='max-h-48 w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]'
+                                  />
+                                  <div className='absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100'>
+                                    <SearchIcon className='h-5 w-5 text-white' />
+                                  </div>
+                                </button>
+
+                                <a
+                                  href={latestClass.reportImageUrl}
+                                  download
+                                  target='_blank'
+                                  rel='noreferrer'
+                                  className='inline-flex items-center gap-1 text-blue-600 underline underline-offset-2'
+                                >
+                                  <DownloadIcon className='h-3.5 w-3.5' />
+                                  Descargar imagen del reporte
+                                </a>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className='flex items-center gap-2'>
+                          <GoalIcon className='h-4 w-4' /> Objetivos semanales
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className='space-y-1'>
+                        <p
+                          className={
+                            wordsStatus.done
+                              ? 'text-green-600'
+                              : 'text-foreground'
+                          }
+                        >
+                          {wordsStatus.done ? '✅' : '❌'} Palabras ICA:{' '}
+                          {wordsStatus.label}
+                        </p>
+                        <p
+                          className={
+                            notesStatus.done
+                              ? 'text-green-600'
+                              : 'text-foreground'
+                          }
+                        >
+                          {notesStatus.done ? '✅' : '❌'} Notas maestras
+                          cerradas: {notesStatus.label}
+                        </p>
+                        <p
+                          className={
+                            icaStatus.done
+                              ? 'text-green-600'
+                              : 'text-foreground'
+                          }
+                        >
+                          {icaStatus.done ? '✅' : '❌'} Objetivo % racha ICA:{' '}
+                          {icaStatus.label}
+                        </p>
+                        <p
+                          className={
+                            flashcardsStatus.done
+                              ? 'text-green-600'
+                              : 'text-foreground'
+                          }
+                        >
+                          {flashcardsStatus.done ? '✅' : '❌'} Objetivo % racha
+                          flashcards: {flashcardsStatus.label}
+                        </p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className='flex items-center gap-2'>
+                          <RepeatIcon className='h-4 w-4' /> Revision Notas
+                          Maestras
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className='space-y-2'>
+                        {closedNotes.length === 0 ? (
+                          <p className='text-muted-foreground'>
+                            Aun no hay notas maestras cerradas en esta semana.
+                          </p>
+                        ) : (
+                          closedNotes.map((note) => (
+                            <div
+                              key={note.id}
+                              className='rounded-md border p-3'
+                            >
+                              <p className='mb-2 font-medium'>{note.name}</p>
+                              {getEmbeddableVideoUrl(note.feedbackLoomUrl) ? (
+                                <div className='overflow-hidden rounded-md border'>
+                                  <iframe
+                                    src={
+                                      getEmbeddableVideoUrl(
+                                        note.feedbackLoomUrl,
+                                      ) || ''
+                                    }
+                                    title={`Revision ${note.name}`}
+                                    className='aspect-video w-full'
+                                    allow='autoplay; fullscreen; picture-in-picture'
+                                    allowFullScreen
+                                  />
+                                </div>
+                              ) : (
+                                <p className='text-muted-foreground'>
+                                  Aun no hay video de revision para esta nota.
+                                </p>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </CardContent>
+                    </Card>
+                  </AccordionContent>
+                </AccordionItem>
+              )
+            })}
+          </Accordion>
         </div>
       )}
 

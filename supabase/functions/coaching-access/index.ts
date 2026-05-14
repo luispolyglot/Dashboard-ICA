@@ -31,10 +31,12 @@ Deno.serve(async (req) => {
   }
 
   const { data: coachingRows, error: coachingError } = await auth.adminClient
-    .from('users_coaching')
+    .from('coaching_sessions')
     .select('id')
     .eq('user_id', auth.userId)
     .eq('is_active', true)
+    .eq('status', 'active')
+    .not('activated_at', 'is', null)
     .limit(1)
 
   if (coachingError) {

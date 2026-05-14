@@ -27,6 +27,27 @@ export type CoachingMembership = {
   feedbackNmNotes: string | null
   weeklyObjectives: Record<string, unknown>
   notes: string | null
+  status: 'draft' | 'active' | 'completed' | 'cancelled'
+  activatedAt: string | null
+  durationWeeks: number
+  weekProgress?: Record<
+    string,
+    {
+      wordsCreated: number
+      closedMasterNotes: number
+      icaStreakPct: number
+      flashcardsStreakPct: number
+    }
+  >
+  closedMasterNotesByWeek?: Record<
+    string,
+    Array<{
+      id: string
+      name: string
+      closedAt: string
+      feedbackLoomUrl: string | null
+    }>
+  >
   updatedAt: string
 }
 
@@ -47,6 +68,9 @@ export type CoachingManagedUser = {
   weeklyObjectives: Record<string, unknown>
   notes: string | null
   isActive: boolean
+  status: 'draft' | 'active' | 'completed' | 'cancelled'
+  activatedAt: string | null
+  durationWeeks: number
   updatedAt: string
   activeTargetLang: string | null
   activeNativeLang: string | null
@@ -75,7 +99,9 @@ export type CoachingInsightNote = {
   name: string
   state: 'open' | 'closed'
   created_at: string
+  updated_at: string
   closed_at: string | null
+  coachingFeedbackLoomUrl: string | null
   final_audio_path: string | null
   audioUrl: string | null
   audioChunks: Array<{
@@ -87,12 +113,22 @@ export type CoachingInsightNote = {
 }
 
 export type CoachingUserInsights = {
+  sessionId?: string
   targetLang: string
   wordsCount: number
   words: CoachingInsightWord[]
   masterNotesCount: number
   masterNotes: CoachingInsightNote[]
   weeklyObjectives: Record<string, unknown>
+  weekProgress?: Record<
+    string,
+    {
+      wordsCreated: number
+      closedMasterNotes: number
+      icaStreakPct: number
+      flashcardsStreakPct: number
+    }
+  >
 }
 
 export type CoachingUserMembership = {
@@ -109,6 +145,9 @@ export type CoachingUserMembership = {
   weeklyObjectives: Record<string, unknown>
   notes: string | null
   isActive: boolean
+  status: 'draft' | 'active' | 'completed' | 'cancelled'
+  activatedAt: string | null
+  durationWeeks: number
   updatedAt: string
 }
 
@@ -218,6 +257,7 @@ export async function fetchAvailableUsersForCoaching(): Promise<CoachingAvailabl
 }
 
 export async function upsertCoachingUser(input: {
+  sessionId?: string
   userId: string
   targetLang: string
   level: string
@@ -242,6 +282,7 @@ export async function upsertCoachingUser(input: {
 
 export async function fetchCoachingUserInsights(input: {
   userId: string
+  sessionId?: string
   targetLang?: string
 }): Promise<CoachingUserInsights> {
   return invokeCoachingFunction<CoachingUserInsights>(
@@ -249,9 +290,49 @@ export async function fetchCoachingUserInsights(input: {
     {
       action: 'get-user-insights',
       userId: input.userId,
+      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
       ...(input.targetLang ? { targetLang: input.targetLang } : {}),
     },
     'No se pudieron cargar las notas maestras y palabras ICA del usuario.',
+  )
+}
+
+export async function activateCoachingSession(sessionId: string): Promise<void> {
+  await invokeCoachingFunction<{ ok?: boolean }>(
+    'coaching-center',
+    {
+      action: 'activate-session',
+      sessionId,
+    },
+    'No se pudo comenzar la sesión de coaching.',
+  )
+}
+
+export async function deleteCoachingSession(sessionId: string): Promise<void> {
+  await invokeCoachingFunction<{ ok?: boolean }>(
+    'coaching-center',
+    {
+      action: 'delete-session',
+      sessionId,
+    },
+    'No se pudo eliminar la sesión de coaching.',
+  )
+}
+
+export async function upsertMasterNoteFeedbackLoom(input: {
+  sessionId: string
+  masterNoteId: string
+  feedbackLoomUrl: string | null
+}): Promise<void> {
+  await invokeCoachingFunction<{ ok?: boolean }>(
+    'coaching-center',
+    {
+      action: 'upsert-master-note-feedback-loom',
+      sessionId: input.sessionId,
+      masterNoteId: input.masterNoteId,
+      feedbackLoomUrl: input.feedbackLoomUrl,
+    },
+    'No se pudo guardar el video de feedback de la nota maestra.',
   )
 }
 

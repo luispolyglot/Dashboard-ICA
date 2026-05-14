@@ -70,11 +70,11 @@ export function getFlashcardsPlayRoute(
   return `${baseRoute}?${query}`
 }
 
-export function getManageCoachingUserRoute(userId: string, targetLang?: string): string {
+export function getManageCoachingUserRoute(userId: string, sessionId?: string): string {
   const base = `${DASHBOARD_ROUTES.manageCoaching}/${userId}`
-  if (!targetLang) return base
+  if (!sessionId) return base
 
   const params = new URLSearchParams()
-  params.set('targetLang', targetLang)
+  params.set('sessionId', sessionId)
   return `${base}?${params.toString()}`
 }

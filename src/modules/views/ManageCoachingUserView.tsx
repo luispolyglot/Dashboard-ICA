@@ -1,10 +1,26 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeftIcon, Trash2Icon } from 'lucide-react'
+import {
+  ArrowLeftIcon,
+  PauseIcon,
+  PlayIcon,
+  RotateCcwIcon,
+  RotateCwIcon,
+  SquareIcon,
+  Trash2Icon,
+  DownloadIcon,
+  Volume2Icon,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
 import {
   Select,
   SelectContent,
@@ -20,12 +36,35 @@ import {
   type CoachingUserInsights,
   type CoachingUserMembership,
   uploadCoachingClassReportImage,
+  upsertMasterNoteFeedbackLoom,
   upsertCoachingUser,
 } from '../services/coaching'
 
 type ManageCoachingUserViewProps = {
   userId: string
-  initialTargetLang?: string | null
+  initialSessionId?: string | null
+}
+
+type ClassSessionItem = {
+  id: string
+  key: string
+  loomUrl: string | null
+  report: string | null
+  reportImagePath: string | null
+  reportImageUrl: string | null
+}
+
+type ObjectiveDraft = {
+  wordsTarget: string
+  nmTarget: string
+  icaStreakObjectivePct: string
+  flashcardsStreakObjectivePct: string
+}
+
+type ClassDraft = {
+  loomUrl: string
+  report: string
+  imageFile: File | null
 }
 
 function formatDateTime(value: string): string {
@@ -34,10 +73,33 @@ function formatDateTime(value: string): string {
   return date.toLocaleString()
 }
 
-function toInputValue(value: unknown): string {
+function toString(value: unknown): string {
   if (typeof value === 'number' && Number.isFinite(value)) return String(value)
   if (typeof value === 'string') return value
   return ''
+}
+
+function normalizeProgramWeekKey(value: string): string {
+  const normalized = value.trim().toUpperCase()
+  const direct = normalized.match(/^W(\d{1,2})$/)
+  if (direct) {
+    const week = Number(direct[1])
+    if (Number.isFinite(week) && week >= 1 && week <= 12) {
+      return `W${String(week).padStart(2, '0')}`
+    }
+  }
+  const legacy = normalized.match(/-S(\d)$/)
+  if (legacy) {
+    const week = Number(legacy[1])
+    if (Number.isFinite(week) && week >= 1) {
+      return `W${String(week).padStart(2, '0')}`
+    }
+  }
+  return 'W01'
+}
+
+function weekKeyFromNumber(week: number): string {
+  return `W${String(Math.min(12, Math.max(1, week))).padStart(2, '0')}`
 }
 
 function normalizeWeeklyObjectiveMap(
@@ -47,305 +109,294 @@ function normalizeWeeklyObjectiveMap(
   const output: Record<string, Record<string, unknown>> = {}
   for (const [key, raw] of Object.entries(value)) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
-    output[key] = raw as Record<string, unknown>
+    output[normalizeProgramWeekKey(key)] = raw as Record<string, unknown>
   }
   return output
 }
 
-function getWeekOfMonth(date: Date): number {
-  return Math.min(5, Math.max(1, Math.ceil(date.getDate() / 7)))
-}
-
-type ClassSessionItem = {
-  id: string
-  key: string
-  title: string
-  loomUrl: string | null
-  report: string | null
-  reportImagePath: string | null
-  reportImageUrl: string | null
-  createdAt: string | null
-  updatedAt: string | null
-}
-
 function normalizeClassSessions(value: unknown): ClassSessionItem[] {
   if (!Array.isArray(value)) return []
-
   return value
     .filter((item) => item && typeof item === 'object')
     .map((item, index) => {
       const row = item as Record<string, unknown>
-      const createdAt = toInputValue(row.createdAt ?? row.created_at)
-      const fallbackSeed = toInputValue(row.title) || `session-${index + 1}`
-      const id =
-        toInputValue(row.id) ||
-        `${createdAt || 'legacy'}-${index + 1}-${fallbackSeed}`
-      const resolvedKey =
-        toInputValue(row.key) ||
-        toInputValue(row.weekKey) ||
-        toInputValue(row.week_key) ||
-        toInputValue(row.week) ||
-        `legacy-${index + 1}`
-
+      const id = toString(row.id) || `class-${index + 1}`
+      const key = normalizeProgramWeekKey(
+        toString(row.key || row.weekKey || row.week_key || row.week),
+      )
       return {
         id,
-        key: resolvedKey,
-        title: toInputValue(row.title) || 'Clase semanal',
-        loomUrl: toInputValue(row.loomUrl ?? row.loom_url) || null,
-        report: toInputValue(row.report) || null,
-        reportImagePath: toInputValue(row.reportImagePath ?? row.report_image_path) || null,
-        reportImageUrl: toInputValue(row.reportImageUrl ?? row.report_image_url) || null,
-        createdAt: createdAt || null,
-        updatedAt: toInputValue(row.updatedAt ?? row.updated_at) || null,
+        key,
+        loomUrl: toString(row.loomUrl ?? row.loom_url) || null,
+        report: toString(row.report) || null,
+        reportImagePath: toString(row.reportImagePath ?? row.report_image_path) || null,
+        reportImageUrl: toString(row.reportImageUrl ?? row.report_image_url) || null,
       }
     })
 }
 
-function appendClassSession(
-  current: ClassSessionItem[],
-  key: string,
-  payload: {
-    title: string
-    loomUrl: string | null
-    report: string | null
-    reportImagePath: string | null
-  },
-): ClassSessionItem[] {
-  const now = new Date().toISOString()
-  return [
-    {
-      id: crypto.randomUUID(),
-      key,
-      title: payload.title,
-      loomUrl: payload.loomUrl,
-      report: payload.report,
-      reportImagePath: payload.reportImagePath,
-      reportImageUrl: null,
-      createdAt: now,
-      updatedAt: now,
-    },
-    ...current,
-  ]
+function draftFromObjective(value?: Record<string, unknown>): ObjectiveDraft {
+  return {
+    wordsTarget: toString(value?.wordsTarget),
+    nmTarget: toString(value?.nmTarget),
+    icaStreakObjectivePct: toString(
+      value?.icaStreakObjectivePct ?? value?.icaStreakTargetPct,
+    ),
+    flashcardsStreakObjectivePct: toString(
+      value?.flashcardsStreakObjectivePct ??
+        value?.flashcardsStreakAchievedPct ??
+        value?.icaStreakAchievedPct,
+    ),
+  }
 }
 
-const MONTH_OPTIONS = [
-  { value: '01', label: 'Enero' },
-  { value: '02', label: 'Febrero' },
-  { value: '03', label: 'Marzo' },
-  { value: '04', label: 'Abril' },
-  { value: '05', label: 'Mayo' },
-  { value: '06', label: 'Junio' },
-  { value: '07', label: 'Julio' },
-  { value: '08', label: 'Agosto' },
-  { value: '09', label: 'Septiembre' },
-  { value: '10', label: 'Octubre' },
-  { value: '11', label: 'Noviembre' },
-  { value: '12', label: 'Diciembre' },
-]
+function weekFromDate(activatedAt: string | null, value: string | null): number | null {
+  if (!activatedAt || !value) return null
+  const start = new Date(activatedAt)
+  const current = new Date(value)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(current.getTime())) return null
+  const week = Math.floor((current.getTime() - start.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1
+  if (!Number.isFinite(week) || week < 1 || week > 12) return null
+  return week
+}
+
+function formatSeconds(seconds: number): string {
+  const safe = Math.max(0, Math.round(seconds))
+  const minutes = Math.floor(safe / 60)
+  const rest = safe % 60
+  return `${minutes}:${String(rest).padStart(2, '0')}`
+}
+
+function SeekBack10Icon() {
+  return (
+    <div className='relative'>
+      <RotateCcwIcon className='size-4' />
+      <span className='absolute -right-1 -bottom-1 text-[9px] font-bold'>10</span>
+    </div>
+  )
+}
+
+function SeekForward10Icon() {
+  return (
+    <div className='relative'>
+      <RotateCwIcon className='size-4' />
+      <span className='absolute -right-1 -bottom-1 text-[9px] font-bold'>10</span>
+    </div>
+  )
+}
+
+function MasterNoteCoachAudioPlayer({
+  noteId,
+  audioUrl,
+}: {
+  noteId: string
+  audioUrl: string | null
+}) {
+  const [playingId, setPlayingId] = useState<string | null>(null)
+  const [isPaused, setIsPaused] = useState(false)
+  const [positionSec, setPositionSec] = useState(0)
+  const [durationSec, setDurationSec] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const [audio, setAudio] = useState<HTMLAudioElement | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (audio) {
+        audio.pause()
+      }
+    }
+  }, [audio])
+
+  const stop = () => {
+    if (audio) {
+      audio.pause()
+      audio.currentTime = 0
+    }
+    setPlayingId(null)
+    setIsPaused(false)
+    setPositionSec(0)
+    setDurationSec(0)
+  }
+
+  const play = async () => {
+    if (!audioUrl) return
+    if (playingId === noteId) return
+
+    const nextAudio = new Audio(audioUrl)
+    nextAudio.ontimeupdate = () => {
+      setPositionSec(nextAudio.currentTime || 0)
+      setDurationSec(Number.isFinite(nextAudio.duration) ? nextAudio.duration : 0)
+    }
+    nextAudio.onloadedmetadata = () => {
+      setDurationSec(Number.isFinite(nextAudio.duration) ? nextAudio.duration : 0)
+    }
+    nextAudio.onended = () => {
+      setPlayingId(null)
+      setIsPaused(false)
+    }
+    nextAudio.onerror = () => {
+      setError('No se pudo reproducir el audio de la nota maestra.')
+      setPlayingId(null)
+      setIsPaused(false)
+    }
+
+    setAudio(nextAudio)
+    try {
+      await nextAudio.play()
+      setPlayingId(noteId)
+      setIsPaused(false)
+      setError(null)
+    } catch {
+      setError('No se pudo reproducir el audio de la nota maestra.')
+      setPlayingId(null)
+    }
+  }
+
+  const togglePause = async () => {
+    if (!audio || playingId !== noteId) return
+    if (audio.paused) {
+      await audio.play()
+      setIsPaused(false)
+      return
+    }
+    audio.pause()
+    setIsPaused(true)
+  }
+
+  const seekBy = (delta: number) => {
+    if (!audio || playingId !== noteId) return
+    audio.currentTime = Math.max(0, Math.min((audio.currentTime || 0) + delta, durationSec || 0))
+    setPositionSec(audio.currentTime)
+  }
+
+  return (
+    <div className='rounded-md border p-2'>
+      <div className='flex flex-wrap items-center gap-2'>
+        {playingId !== noteId ? (
+          <Button type='button' size='sm' variant='outline' onClick={() => void play()} disabled={!audioUrl}>
+            <Volume2Icon className='mr-1 size-4' /> Escuchar
+          </Button>
+        ) : (
+          <>
+            <Button type='button' size='sm' variant='outline' onClick={stop}>
+              <SquareIcon className='mr-1 size-4' /> Detener
+            </Button>
+            <Button type='button' size='sm' variant='outline' onClick={() => void togglePause()}>
+              {isPaused ? <PlayIcon className='mr-1 size-4' /> : <PauseIcon className='mr-1 size-4' />}
+              {isPaused ? 'Reanudar' : 'Pausar'}
+            </Button>
+            <Button type='button' size='sm' variant='outline' onClick={() => seekBy(-10)}>
+              <SeekBack10Icon />
+            </Button>
+            <Button type='button' size='sm' variant='outline' onClick={() => seekBy(10)}>
+              <SeekForward10Icon />
+            </Button>
+          </>
+        )}
+      </div>
+      {playingId === noteId && (
+        <p className='mt-2 text-xs text-muted-foreground'>
+          {formatSeconds(positionSec)} / {formatSeconds(durationSec)}
+        </p>
+      )}
+      {error && <p className='mt-1 text-xs text-destructive'>{error}</p>}
+    </div>
+  )
+}
 
 export function ManageCoachingUserView({
   userId,
-  initialTargetLang,
+  initialSessionId,
 }: ManageCoachingUserViewProps) {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [memberships, setMemberships] = useState<CoachingUserMembership[]>([])
-  const [selectedTargetLang, setSelectedTargetLang] = useState<string>('')
+  const [selectedSessionId, setSelectedSessionId] = useState<string>('')
   const [insights, setInsights] = useState<CoachingUserInsights | null>(null)
-  const [savingObjective, setSavingObjective] = useState(false)
 
-  const today = new Date()
-  const [objectiveYear, setObjectiveYear] = useState(
-    String(today.getFullYear()),
-  )
-  const [objectiveMonth, setObjectiveMonth] = useState(
-    String(today.getMonth() + 1).padStart(2, '0'),
-  )
-  const [objectiveWeek, setObjectiveWeek] = useState('1')
-  const [objectiveWords, setObjectiveWords] = useState('')
-  const [objectiveNm, setObjectiveNm] = useState('')
-  const [objectiveStreakTarget, setObjectiveStreakTarget] = useState('')
-  const [objectiveStreakAchieved, setObjectiveStreakAchieved] = useState('')
-  const [objectiveReportUrl, setObjectiveReportUrl] = useState('')
-  const [classTitle, setClassTitle] = useState('Clase semanal')
-  const [classLoomUrl, setClassLoomUrl] = useState('')
-  const [classReport, setClassReport] = useState('')
-  const [classReportImageFile, setClassReportImageFile] = useState<File | null>(null)
-  const [savingClass, setSavingClass] = useState(false)
-  const [classFeedback, setClassFeedback] = useState<string | null>(null)
-  const [classFeedbackIsError, setClassFeedbackIsError] = useState(false)
-
-  const objectiveKey = `${objectiveYear}-${objectiveMonth}-S${objectiveWeek}`
+  const [objectiveDrafts, setObjectiveDrafts] = useState<Record<string, ObjectiveDraft>>({})
+  const [classDrafts, setClassDrafts] = useState<Record<string, ClassDraft>>({})
+  const [savingObjectiveWeek, setSavingObjectiveWeek] = useState<string | null>(null)
+  const [savingClassWeek, setSavingClassWeek] = useState<string | null>(null)
+  const [classFeedbackByWeek, setClassFeedbackByWeek] = useState<Record<string, string>>({})
+  const [feedbackLoomDraftByNoteId, setFeedbackLoomDraftByNoteId] = useState<Record<string, string>>({})
+  const [savingFeedbackNoteId, setSavingFeedbackNoteId] = useState<string | null>(null)
 
   const selectedMembership = useMemo(
-    () =>
-      memberships.find((row) => row.targetLang === selectedTargetLang) || null,
-    [memberships, selectedTargetLang],
+    () => memberships.find((row) => row.id === selectedSessionId) || null,
+    [memberships, selectedSessionId],
   )
 
-  const membershipStartDate = useMemo(() => {
-    const raw = selectedMembership?.createdAt
-    if (!raw) return null
-    const parsed = new Date(raw)
-    if (Number.isNaN(parsed.getTime())) return null
-    return parsed
-  }, [selectedMembership?.createdAt])
+  const weekObjectives = useMemo(
+    () => normalizeWeeklyObjectiveMap(insights?.weeklyObjectives),
+    [insights?.weeklyObjectives],
+  )
 
   const classSessions = useMemo(
     () => normalizeClassSessions(selectedMembership?.classSessions),
     [selectedMembership?.classSessions],
   )
 
-  const classSessionsForWeek = useMemo(
-    () => classSessions.filter((session) => session.key === objectiveKey),
-    [classSessions, objectiveKey],
-  )
-
-  const weekData = useMemo(() => {
-    const map = normalizeWeeklyObjectiveMap(insights?.weeklyObjectives)
-    if (map[objectiveKey]) return map[objectiveKey]
-
-    if (
-      insights?.weeklyObjectives &&
-      typeof insights.weeklyObjectives === 'object' &&
-      !Array.isArray(insights.weeklyObjectives)
-    ) {
-      const asRecord = insights.weeklyObjectives as Record<string, unknown>
-      const hasFlatFields =
-        'wordsTarget' in asRecord ||
-        'nmTarget' in asRecord ||
-        'icaStreakObjectivePct' in asRecord ||
-        'icaStreakTargetPct' in asRecord ||
-        'flashcardsStreakObjectivePct' in asRecord ||
-        'flashcardsStreakAchievedPct' in asRecord ||
-        'icaStreakAchievedPct' in asRecord ||
-        'reportExerciseUrl' in asRecord
-      if (hasFlatFields) return asRecord
+  const classesByWeek = useMemo(() => {
+    const map = new Map<string, ClassSessionItem[]>()
+    for (const item of classSessions) {
+      const existing = map.get(item.key) || []
+      existing.push(item)
+      map.set(item.key, existing)
     }
-
-    return {}
-  }, [insights?.weeklyObjectives, objectiveKey])
+    return map
+  }, [classSessions])
 
   useEffect(() => {
-    setObjectiveWords(toInputValue(weekData.wordsTarget))
-    setObjectiveNm(toInputValue(weekData.nmTarget))
-    setObjectiveStreakTarget(
-      toInputValue(weekData.icaStreakObjectivePct ?? weekData.icaStreakTargetPct),
-    )
-    setObjectiveStreakAchieved(
-      toInputValue(
-        weekData.flashcardsStreakObjectivePct ??
-          weekData.flashcardsStreakAchievedPct ??
-          weekData.icaStreakAchievedPct,
-      ),
-    )
-    setObjectiveReportUrl(toInputValue(weekData.reportExerciseUrl))
-  }, [weekData])
-
-  const minYear = membershipStartDate
-    ? membershipStartDate.getFullYear()
-    : today.getFullYear()
-  const minMonth = membershipStartDate
-    ? membershipStartDate.getMonth() + 1
-    : today.getMonth() + 1
-  const minWeek = membershipStartDate ? getWeekOfMonth(membershipStartDate) : 1
-  const maxYear = today.getFullYear()
-  const maxMonth = today.getMonth() + 1
-
-  const yearOptions = useMemo(() => {
-    const values: string[] = []
-    for (let year = minYear; year <= maxYear; year += 1) {
-      values.push(String(year))
+    const nextObjectives: Record<string, ObjectiveDraft> = {}
+    const nextClassDrafts: Record<string, ClassDraft> = {}
+    const nextFeedbackLoomDrafts: Record<string, string> = {}
+    for (let week = 1; week <= 12; week += 1) {
+      const key = weekKeyFromNumber(week)
+      nextObjectives[key] = draftFromObjective(weekObjectives[key])
+      nextClassDrafts[key] = { loomUrl: '', report: '', imageFile: null }
     }
-    return values
-  }, [minYear, maxYear])
-
-  const selectedYearNumber = Number(objectiveYear)
-  const monthOptions = useMemo(() => {
-    return MONTH_OPTIONS.filter((month) => {
-      const numeric = Number(month.value)
-      if (selectedYearNumber === minYear && numeric < minMonth) return false
-      if (selectedYearNumber === maxYear && numeric > maxMonth) return false
-      return true
-    })
-  }, [selectedYearNumber, minYear, minMonth, maxYear, maxMonth])
-
-  const selectedMonthNumber = Number(objectiveMonth)
-  const weekOptions = useMemo(() => {
-    const values = [1, 2, 3, 4, 5]
-    return values.filter((week) => {
-      if (
-        selectedYearNumber === minYear &&
-        selectedMonthNumber === minMonth &&
-        week < minWeek
-      ) {
-        return false
-      }
-
-      return true
-    })
-  }, [selectedYearNumber, selectedMonthNumber, minYear, minMonth, minWeek])
-
-  useEffect(() => {
-    if (yearOptions.length === 0) return
-    if (!yearOptions.includes(objectiveYear)) {
-      setObjectiveYear(yearOptions[0])
+    for (const note of insights?.masterNotes || []) {
+      nextFeedbackLoomDrafts[note.id] = note.coachingFeedbackLoomUrl || ''
     }
-  }, [yearOptions, objectiveYear])
-
-  useEffect(() => {
-    if (monthOptions.length === 0) return
-    const allowed = monthOptions.some((month) => month.value === objectiveMonth)
-    if (!allowed) {
-      setObjectiveMonth(monthOptions[0].value)
-    }
-  }, [monthOptions, objectiveMonth])
-
-  useEffect(() => {
-    if (weekOptions.length === 0) return
-    const numericWeek = Number(objectiveWeek)
-    if (!weekOptions.includes(numericWeek)) {
-      setObjectiveWeek(String(weekOptions[0]))
-    }
-  }, [weekOptions, objectiveWeek])
-
-  useEffect(() => {
-    setClassReportImageFile(null)
-  }, [objectiveKey])
+    setObjectiveDrafts(nextObjectives)
+    setClassDrafts(nextClassDrafts)
+    setFeedbackLoomDraftByNoteId(nextFeedbackLoomDrafts)
+  }, [selectedMembership?.id, insights?.weeklyObjectives, insights?.masterNotes])
 
   const loadAll = async () => {
     setLoading(true)
     setError(null)
-
     try {
       const membershipRows = await fetchCoachingUserMemberships(userId)
       setMemberships(membershipRows)
 
-      const targetLang =
-        initialTargetLang &&
-        membershipRows.some((row) => row.targetLang === initialTargetLang)
-          ? initialTargetLang
-          : membershipRows[0]?.targetLang || ''
+      const sessionId =
+        initialSessionId && membershipRows.some((row) => row.id === initialSessionId)
+          ? initialSessionId
+          : membershipRows[0]?.id || ''
 
-      setSelectedTargetLang(targetLang)
+      setSelectedSessionId(sessionId)
 
-      if (targetLang) {
+      const selected = membershipRows.find((row) => row.id === sessionId)
+      if (selected) {
         const insightsData = await fetchCoachingUserInsights({
           userId,
-          targetLang,
+          sessionId: selected.id,
+          targetLang: selected.targetLang,
         })
         setInsights(insightsData)
       } else {
         setInsights(null)
       }
     } catch (err) {
-      const message =
+      setError(
         err instanceof Error
           ? err.message
-          : 'No se pudo cargar el usuario de coaching.'
-      setError(message)
+          : 'No se pudo cargar el usuario de coaching.',
+      )
     } finally {
       setLoading(false)
     }
@@ -356,24 +407,27 @@ export function ManageCoachingUserView({
   }, [userId])
 
   useEffect(() => {
-    if (!selectedTargetLang) return
-
+    if (!selectedSessionId || !selectedMembership) return
     let active = true
     setLoading(true)
     setError(null)
 
-    void fetchCoachingUserInsights({ userId, targetLang: selectedTargetLang })
+    void fetchCoachingUserInsights({
+      userId,
+      sessionId: selectedSessionId,
+      targetLang: selectedMembership.targetLang,
+    })
       .then((data) => {
         if (!active) return
         setInsights(data)
       })
       .catch((err) => {
         if (!active) return
-        const message =
+        setError(
           err instanceof Error
             ? err.message
-            : 'No se pudo cargar el detalle del usuario.'
-        setError(message)
+            : 'No se pudo cargar el detalle del usuario.',
+        )
       })
       .finally(() => {
         if (!active) return
@@ -383,184 +437,241 @@ export function ManageCoachingUserView({
     return () => {
       active = false
     }
-  }, [selectedTargetLang, userId])
+  }, [selectedSessionId, selectedMembership?.targetLang, userId])
 
-  const handleSaveObjective = async () => {
+  const handleSaveObjective = async (weekKey: string) => {
     if (!selectedMembership || !insights) return
+    const draft = objectiveDrafts[weekKey]
+    if (!draft) return
 
-    setSavingObjective(true)
+    setSavingObjectiveWeek(weekKey)
     setFeedback(null)
 
     try {
       const existing = normalizeWeeklyObjectiveMap(insights.weeklyObjectives)
       const nextWeekly = {
         ...existing,
-        [objectiveKey]: {
-          wordsTarget: objectiveWords.trim() || null,
-          nmTarget: objectiveNm.trim() || null,
-          icaStreakObjectivePct: objectiveStreakTarget.trim() || null,
-          flashcardsStreakObjectivePct: objectiveStreakAchieved.trim() || null,
-          reportExerciseUrl: objectiveReportUrl.trim() || null,
+        [weekKey]: {
+          wordsTarget: draft.wordsTarget.trim() ? Number(draft.wordsTarget) : null,
+          nmTarget: draft.nmTarget.trim() ? Number(draft.nmTarget) : null,
+          icaStreakObjectivePct: draft.icaStreakObjectivePct.trim()
+            ? Number(draft.icaStreakObjectivePct)
+            : null,
+          flashcardsStreakObjectivePct: draft.flashcardsStreakObjectivePct.trim()
+            ? Number(draft.flashcardsStreakObjectivePct)
+            : null,
         },
       }
 
       await upsertCoachingUser({
+        sessionId: selectedMembership.id,
         userId: selectedMembership.userId,
         targetLang: selectedMembership.targetLang,
         nativeLang: selectedMembership.nativeLang,
         level: selectedMembership.level,
-        classSessions: selectedMembership.classSessions,
-        feedbackNmUrl: selectedMembership.feedbackNmUrl,
-        feedbackNmNotes: selectedMembership.feedbackNmNotes,
         weeklyObjectives: nextWeekly,
-        notes: selectedMembership.notes,
-        isActive: selectedMembership.isActive,
       })
 
-      setInsights((prev) =>
-        prev ? { ...prev, weeklyObjectives: nextWeekly } : prev,
-      )
-      setMemberships((prev) =>
-        prev.map((membership) =>
-          membership.id !== selectedMembership.id
-            ? membership
-            : { ...membership, weeklyObjectives: nextWeekly },
-        ),
-      )
-      setFeedback('Objetivo semanal guardado.')
+      setInsights((prev) => (prev ? { ...prev, weeklyObjectives: nextWeekly } : prev))
+      setFeedback(`Objetivos guardados para semana ${weekKey}.`)
     } catch (err) {
-      const message =
+      setFeedback(
         err instanceof Error
           ? err.message
-          : 'No se pudo guardar el objetivo semanal.'
-      setFeedback(message)
+          : 'No se pudo guardar el objetivo semanal.',
+      )
     } finally {
-      setSavingObjective(false)
+      setSavingObjectiveWeek(null)
     }
   }
 
-  const handleSaveClassSession = async () => {
+  const handleSaveClass = async (weekKey: string) => {
     if (!selectedMembership) return
+    const draft = classDrafts[weekKey]
+    if (!draft) return
 
-    setSavingClass(true)
-    setClassFeedback(null)
+    setSavingClassWeek(weekKey)
+    setClassFeedbackByWeek((prev) => ({ ...prev, [weekKey]: '' }))
 
     try {
-      const currentSessions = normalizeClassSessions(
-        selectedMembership.classSessions,
-      )
-
       let reportImagePath: string | null = null
-      if (classReportImageFile) {
+      if (draft.imageFile) {
         reportImagePath = await uploadCoachingClassReportImage({
-          file: classReportImageFile,
+          file: draft.imageFile,
           userId: selectedMembership.userId,
           targetLang: selectedMembership.targetLang,
-          weekKey: objectiveKey,
+          weekKey,
         })
       }
 
-      const nextSessions = appendClassSession(currentSessions, objectiveKey, {
-        title: classTitle.trim() || 'Clase semanal',
-        loomUrl: classLoomUrl.trim() || null,
-        report: classReport.trim() || null,
-        reportImagePath,
-      })
+      const nextSessions = [
+        {
+          id: crypto.randomUUID(),
+          key: weekKey,
+          weekKey,
+          title: 'Clase semanal',
+          loomUrl: draft.loomUrl.trim() || null,
+          report: draft.report.trim() || null,
+          reportImagePath,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        ...classSessions,
+      ]
 
       await upsertCoachingUser({
+        sessionId: selectedMembership.id,
         userId: selectedMembership.userId,
         targetLang: selectedMembership.targetLang,
         nativeLang: selectedMembership.nativeLang,
         level: selectedMembership.level,
         classSessions: nextSessions,
-        feedbackNmUrl: selectedMembership.feedbackNmUrl,
-        feedbackNmNotes: selectedMembership.feedbackNmNotes,
-        weeklyObjectives: selectedMembership.weeklyObjectives,
-        notes: selectedMembership.notes,
-        isActive: selectedMembership.isActive,
       })
 
       setMemberships((prev) =>
         prev.map((membership) =>
-          membership.id !== selectedMembership.id
-            ? membership
-            : { ...membership, classSessions: nextSessions },
+          membership.id === selectedMembership.id
+            ? { ...membership, classSessions: nextSessions }
+            : membership,
         ),
       )
-      setClassTitle('Clase semanal')
-      setClassLoomUrl('')
-      setClassReport('')
-      setClassReportImageFile(null)
-      setClassFeedbackIsError(false)
-      setClassFeedback('Grabación guardada.')
+
+      setClassDrafts((prev) => ({
+        ...prev,
+        [weekKey]: { loomUrl: '', report: '', imageFile: null },
+      }))
+      setClassFeedbackByWeek((prev) => ({
+        ...prev,
+        [weekKey]: 'Clase guardada correctamente.',
+      }))
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : 'No se pudo guardar la clase semanal.'
-      setClassFeedbackIsError(true)
-      setClassFeedback(message)
+      setClassFeedbackByWeek((prev) => ({
+        ...prev,
+        [weekKey]:
+          err instanceof Error ? err.message : 'No se pudo guardar la clase.',
+      }))
     } finally {
-      setSavingClass(false)
+      setSavingClassWeek(null)
     }
   }
 
-  const handleDeleteClassSession = async (sessionId: string) => {
+  const handleDeleteClass = async (weekKey: string, classId: string) => {
     if (!selectedMembership) return
-
-    setSavingClass(true)
-    setClassFeedback(null)
+    setSavingClassWeek(weekKey)
 
     try {
-      const currentSessions = normalizeClassSessions(
-        selectedMembership.classSessions,
-      )
-      const nextSessions = currentSessions.filter(
-        (session) => session.id !== sessionId,
-      )
+      const sessionToDelete = classSessions.find((item) => item.id === classId)
+      const nextSessions = classSessions.filter((item) => item.id !== classId)
 
-      const sessionToDelete = currentSessions.find((session) => session.id === sessionId)
       if (sessionToDelete?.reportImagePath) {
         await deleteCoachingClassReportImage(sessionToDelete.reportImagePath)
       }
 
       await upsertCoachingUser({
+        sessionId: selectedMembership.id,
         userId: selectedMembership.userId,
         targetLang: selectedMembership.targetLang,
         nativeLang: selectedMembership.nativeLang,
         level: selectedMembership.level,
         classSessions: nextSessions,
-        feedbackNmUrl: selectedMembership.feedbackNmUrl,
-        feedbackNmNotes: selectedMembership.feedbackNmNotes,
-        weeklyObjectives: selectedMembership.weeklyObjectives,
-        notes: selectedMembership.notes,
-        isActive: selectedMembership.isActive,
       })
 
       setMemberships((prev) =>
         prev.map((membership) =>
-          membership.id !== selectedMembership.id
-            ? membership
-            : { ...membership, classSessions: nextSessions },
+          membership.id === selectedMembership.id
+            ? { ...membership, classSessions: nextSessions }
+            : membership,
         ),
       )
-      setClassFeedbackIsError(false)
-      setClassFeedback('Grabación eliminada correctamente.')
+      setClassFeedbackByWeek((prev) => ({
+        ...prev,
+        [weekKey]: 'Clase eliminada correctamente.',
+      }))
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'No se pudo eliminar la clase.'
-      setClassFeedbackIsError(true)
-      setClassFeedback(message)
+      setClassFeedbackByWeek((prev) => ({
+        ...prev,
+        [weekKey]:
+          err instanceof Error ? err.message : 'No se pudo eliminar la clase.',
+      }))
     } finally {
-      setSavingClass(false)
+      setSavingClassWeek(null)
     }
   }
 
-  useEffect(() => {
-    if (!classFeedback) return
-    const timeout = window.setTimeout(() => setClassFeedback(null), 2200)
-    return () => window.clearTimeout(timeout)
-  }, [classFeedback])
+  const handleSaveFeedbackLoom = async (masterNoteId: string) => {
+    if (!selectedMembership) return
+    setSavingFeedbackNoteId(masterNoteId)
+    setFeedback(null)
+
+    try {
+      await upsertMasterNoteFeedbackLoom({
+        sessionId: selectedMembership.id,
+        masterNoteId,
+        feedbackLoomUrl: feedbackLoomDraftByNoteId[masterNoteId]?.trim() || null,
+      })
+
+      setInsights((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          masterNotes: prev.masterNotes.map((note) =>
+            note.id !== masterNoteId
+              ? note
+              : {
+                  ...note,
+                  coachingFeedbackLoomUrl:
+                    feedbackLoomDraftByNoteId[masterNoteId]?.trim() || null,
+                },
+          ),
+        }
+      })
+
+      setFeedback('Video de feedback guardado.')
+    } catch (err) {
+      setFeedback(
+        err instanceof Error
+          ? err.message
+          : 'No se pudo guardar el video de feedback.',
+      )
+    } finally {
+      setSavingFeedbackNoteId(null)
+    }
+  }
+
+  const closedNotesByWeek = useMemo(() => {
+    const map = new Map<
+      string,
+      Array<{
+        id: string
+        name: string
+        closedAt: string
+        audioUrl: string | null
+        feedbackLoomUrl: string | null
+      }>
+    >()
+    if (!insights || !selectedMembership?.activatedAt) return map
+
+    for (const note of insights.masterNotes) {
+      if (note.state !== 'closed') continue
+      const weekNumber = weekFromDate(
+        selectedMembership.activatedAt,
+        note.closed_at || note.updated_at,
+      )
+      if (!weekNumber) continue
+      const key = weekKeyFromNumber(weekNumber)
+      const existing = map.get(key) || []
+      existing.push({
+        id: note.id,
+        name: note.name,
+        closedAt: note.closed_at || note.updated_at,
+        audioUrl: note.audioUrl || note.audioChunks.find((item) => item.audioUrl)?.audioUrl || null,
+        feedbackLoomUrl: note.coachingFeedbackLoomUrl || null,
+      })
+      map.set(key, existing)
+    }
+
+    return map
+  }, [insights, selectedMembership?.activatedAt])
 
   return (
     <section className='mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-5 py-8'>
@@ -576,31 +687,25 @@ export function ManageCoachingUserView({
       </div>
 
       {(error || feedback) && (
-        <p
-          className={`mb-4 text-sm ${error ? 'text-destructive' : 'text-muted-foreground'}`}
-        >
+        <p className={`mb-4 text-sm ${error ? 'text-destructive' : 'text-muted-foreground'}`}>
           {error || feedback}
         </p>
       )}
 
       <Card className='mb-4'>
         <CardHeader>
-          <CardTitle>Usuario de coaching</CardTitle>
+          <CardTitle>Sesion de coaching</CardTitle>
         </CardHeader>
         <CardContent className='flex flex-wrap items-center gap-3'>
-          <Select
-            value={selectedTargetLang}
-            onValueChange={setSelectedTargetLang}
-          >
-            <SelectTrigger className='min-w-56'>
-              <SelectValue placeholder='Selecciona idioma coaching' />
+          <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
+            <SelectTrigger className='min-w-72'>
+              <SelectValue placeholder='Selecciona sesion coaching' />
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
                 {memberships.map((membership) => (
-                  <SelectItem key={membership.id} value={membership.targetLang}>
-                    {membership.userDisplayName} · {membership.targetLang} (
-                    {membership.level})
+                  <SelectItem key={membership.id} value={membership.id}>
+                    {membership.userDisplayName} · {membership.targetLang} ({membership.level}) · {membership.status}
                   </SelectItem>
                 ))}
               </SelectGroup>
@@ -609,14 +714,9 @@ export function ManageCoachingUserView({
 
           {selectedMembership && (
             <p className='text-sm text-muted-foreground'>
-              Idioma:{' '}
-              <span className='font-medium text-foreground'>
-                {selectedMembership.targetLang}
-              </span>{' '}
-              · Nivel:{' '}
-              <span className='font-medium text-foreground'>
-                {selectedMembership.level}
-              </span>
+              Idioma: <span className='font-medium text-foreground'>{selectedMembership.targetLang}</span> · Nivel:{' '}
+              <span className='font-medium text-foreground'>{selectedMembership.level}</span> · Estado:{' '}
+              <span className='font-medium text-foreground'>{selectedMembership.status}</span>
             </p>
           )}
         </CardContent>
@@ -624,340 +724,328 @@ export function ManageCoachingUserView({
 
       {loading ? (
         <p className='text-sm text-muted-foreground'>Cargando detalle...</p>
-      ) : !insights ? (
-        <p className='text-sm text-muted-foreground'>
-          No hay datos disponibles para este usuario.
-        </p>
+      ) : !insights || !selectedMembership ? (
+        <p className='text-sm text-muted-foreground'>No hay datos disponibles para este usuario.</p>
       ) : (
         <div className='grid gap-4'>
-          <Card>
-            <CardHeader>
-              <CardTitle>Objetivos semanales</CardTitle>
-            </CardHeader>
-            <CardContent className='space-y-3'>
-              <div className='flex flex-wrap items-end gap-2'>
-                <div className='space-y-1.5'>
-                  <Label>Año</Label>
-                  <Select
-                    value={objectiveYear}
-                    onValueChange={setObjectiveYear}
-                  >
-                    <SelectTrigger className='w-24'>
-                      <SelectValue placeholder='Año' />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {yearOptions.map((year) => (
-                          <SelectItem key={year} value={year}>
-                            {year}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
+          <Accordion type='multiple' className='w-full rounded-md border px-4'>
+            {Array.from({ length: 12 }, (_, index) => {
+              const week = index + 1
+              const weekKey = weekKeyFromNumber(week)
+              const objectiveDraft = objectiveDrafts[weekKey] || draftFromObjective()
+              const weekClasses = classesByWeek.get(weekKey) || []
+              const closedNotes = closedNotesByWeek.get(weekKey) || []
 
-                <div className='space-y-1.5'>
-                  <Label>Mes</Label>
-                  <Select
-                    value={objectiveMonth}
-                    onValueChange={setObjectiveMonth}
-                  >
-                    <SelectTrigger className='w-40'>
-                      <SelectValue placeholder='Mes' />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {monthOptions.map((month) => (
-                          <SelectItem key={month.value} value={month.value}>
-                            {month.label}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className='space-y-1.5'>
-                  <Label>Semana</Label>
-                  <Select
-                    value={objectiveWeek}
-                    onValueChange={setObjectiveWeek}
-                  >
-                    <SelectTrigger className='w-32'>
-                      <SelectValue placeholder='Semana' />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {weekOptions.map((week) => (
-                          <SelectItem key={String(week)} value={String(week)}>
-                            Semana {week}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <p className='text-xs text-muted-foreground'>
-                Clave objetivo: {objectiveKey}
-              </p>
-
-              <div className='grid gap-2 md:grid-cols-2'>
-                <div className='space-y-1.5'>
-                  <Label>Objetivo palabras ICA</Label>
-                  <Input
-                    value={objectiveWords}
-                    onChange={(event) => setObjectiveWords(event.target.value)}
-                    placeholder='Ej: 50'
-                  />
-                </div>
-                <div className='space-y-1.5'>
-                  <Label>Objetivo Notas Maestras</Label>
-                  <Input
-                    value={objectiveNm}
-                    onChange={(event) => setObjectiveNm(event.target.value)}
-                    placeholder='Ej: 2'
-                  />
-                </div>
-                <div className='space-y-1.5'>
-                  <Label>Objetivo % racha ICA</Label>
-                  <Input
-                    value={objectiveStreakTarget}
-                    onChange={(event) =>
-                      setObjectiveStreakTarget(event.target.value)
-                    }
-                    placeholder='Ej: 70'
-                  />
-                </div>
-                <div className='space-y-1.5'>
-                  <Label>Objetivo % racha flashcards</Label>
-                  <Input
-                    value={objectiveStreakAchieved}
-                    onChange={(event) =>
-                      setObjectiveStreakAchieved(event.target.value)
-                    }
-                    placeholder='Ej: 55'
-                  />
-                </div>
-              </div>
-
-              <div className='space-y-1.5'>
-                <Label>Link ejercicio reporte</Label>
-                <Input
-                  value={objectiveReportUrl}
-                  onChange={(event) => setObjectiveReportUrl(event.target.value)}
-                  placeholder='Ej: https://claude.ai/artifact/...'
-                />
-              </div>
-
-              <Button
-                type='button'
-                variant='outline'
-                onClick={() => void handleSaveObjective()}
-                disabled={savingObjective}
-              >
-                {savingObjective ? 'Guardando...' : 'Guardar objetivo semanal'}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Clases grabadas por semana</CardTitle>
-            </CardHeader>
-            <CardContent className='space-y-3'>
-              {classFeedback && (
-                <p
-                  className={`text-sm ${classFeedbackIsError ? 'text-destructive' : 'text-muted-foreground'}`}
-                >
-                  {classFeedback}
-                </p>
-              )}
-              <p className='text-xs text-muted-foreground'>
-                Semana seleccionada: {objectiveKey}
-              </p>
-
-              <div className='space-y-1.5'>
-                <Label>Título clase semanal</Label>
-                <Input
-                  value={classTitle}
-                  onChange={(event) => setClassTitle(event.target.value)}
-                  placeholder='Ej: Clase speaking mayo semana 2'
-                />
-              </div>
-              <div className='space-y-1.5'>
-                <Label>Loom URL de la clase</Label>
-                <Input
-                  value={classLoomUrl}
-                  onChange={(event) => setClassLoomUrl(event.target.value)}
-                  placeholder='Ej: https://www.loom.com/share/...'
-                />
-              </div>
-              <div className='space-y-1.5'>
-                <Label>Reporte clase</Label>
-                <Input
-                  value={classReport}
-                  onChange={(event) => setClassReport(event.target.value)}
-                  placeholder='Ej: Repasó 25 palabras ICA y 2 notas maestras'
-                />
-              </div>
-              <div className='space-y-1.5'>
-                <Label>Imagen reporte clase</Label>
-                <Input
-                  type='file'
-                  accept='image/*'
-                  onChange={(event) => setClassReportImageFile(event.target.files?.[0] || null)}
-                />
-              </div>
-
-              <Button
-                type='button'
-                variant='outline'
-                onClick={() => void handleSaveClassSession()}
-                disabled={savingClass}
-              >
-                {savingClass ? 'Guardando...' : 'Guardar clase semanal'}
-              </Button>
-
-              <div className='max-h-52 space-y-2 overflow-y-auto rounded-md border p-2'>
-                {classSessionsForWeek.length === 0 ? (
-                  <p className='text-sm text-muted-foreground'>
-                    No hay clases cargadas.
-                  </p>
-                ) : (
-                  classSessionsForWeek.map((session) => (
-                    <div
-                      key={session.id}
-                      className='flex items-start justify-between gap-3 rounded border p-2 text-sm'
-                    >
-                      <div className='min-w-0 space-y-1'>
-                        <p className='font-medium'>{session.title}</p>
-                        <p className='text-xs text-muted-foreground'>
-                          Semana: {session.key}
-                        </p>
-                        {session.loomUrl && (
-                          <a
-                            href={session.loomUrl}
-                            target='_blank'
-                            rel='noreferrer'
-                            className='text-blue-600 underline underline-offset-2'
-                          >
-                            Ver en Loom
-                          </a>
+              return (
+                <AccordionItem key={weekKey} value={weekKey}>
+                  <AccordionTrigger>Semana {week}</AccordionTrigger>
+                  <AccordionContent className='space-y-4'>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Clase de la semana</CardTitle>
+                      </CardHeader>
+                      <CardContent className='space-y-3'>
+                        {classFeedbackByWeek[weekKey] && (
+                          <p className='text-sm text-muted-foreground'>
+                            {classFeedbackByWeek[weekKey]}
+                          </p>
                         )}
-                        {session.report && <p>{session.report}</p>}
-                        {session.reportImageUrl && (
-                          <a
-                            href={session.reportImageUrl}
-                            target='_blank'
-                            rel='noreferrer'
-                            className='text-blue-600 underline underline-offset-2'
+
+                        <div className='space-y-1.5'>
+                          <Label>Loom URL</Label>
+                          <Input
+                            value={classDrafts[weekKey]?.loomUrl || ''}
+                            onChange={(event) =>
+                              setClassDrafts((prev) => ({
+                                ...prev,
+                                [weekKey]: {
+                                  ...(prev[weekKey] || {
+                                    loomUrl: '',
+                                    report: '',
+                                    imageFile: null,
+                                  }),
+                                  loomUrl: event.target.value,
+                                },
+                              }))
+                            }
+                            placeholder='Ej: https://www.loom.com/share/...'
+                          />
+                        </div>
+
+                        <div className='space-y-1.5'>
+                          <Label>Reporte clase (opcional)</Label>
+                          <Input
+                            value={classDrafts[weekKey]?.report || ''}
+                            onChange={(event) =>
+                              setClassDrafts((prev) => ({
+                                ...prev,
+                                [weekKey]: {
+                                  ...(prev[weekKey] || {
+                                    loomUrl: '',
+                                    report: '',
+                                    imageFile: null,
+                                  }),
+                                  report: event.target.value,
+                                },
+                              }))
+                            }
+                            placeholder='Ej: Practico speaking y corrigio errores clave'
+                          />
+                        </div>
+
+                        <div className='space-y-1.5'>
+                          <Label>Imagen de reporte</Label>
+                          <Input
+                            type='file'
+                            accept='image/*'
+                            onChange={(event) =>
+                              setClassDrafts((prev) => ({
+                                ...prev,
+                                [weekKey]: {
+                                  ...(prev[weekKey] || {
+                                    loomUrl: '',
+                                    report: '',
+                                    imageFile: null,
+                                  }),
+                                  imageFile: event.target.files?.[0] || null,
+                                },
+                              }))
+                            }
+                          />
+                        </div>
+
+                        <Button
+                          type='button'
+                          variant='outline'
+                          onClick={() => void handleSaveClass(weekKey)}
+                          disabled={savingClassWeek === weekKey}
+                        >
+                          {savingClassWeek === weekKey ? 'Guardando...' : 'Guardar clase'}
+                        </Button>
+
+                        <div className='space-y-2 rounded-md border p-2'>
+                          {weekClasses.length === 0 ? (
+                            <p className='text-sm text-muted-foreground'>Sin clases cargadas.</p>
+                          ) : (
+                            weekClasses.map((session) => (
+                              <div key={session.id} className='flex items-start justify-between gap-3 rounded border p-2 text-sm'>
+                                <div className='min-w-0 space-y-1'>
+                                  {session.loomUrl && (
+                                    <a href={session.loomUrl} target='_blank' rel='noreferrer' className='text-blue-600 underline underline-offset-2'>
+                                      Ver clase en Loom
+                                    </a>
+                                  )}
+                                  {session.report && <p>{session.report}</p>}
+                                  {session.reportImageUrl && (
+                                    <div className='flex flex-wrap gap-2'>
+                                      <a href={session.reportImageUrl} target='_blank' rel='noreferrer' className='text-blue-600 underline underline-offset-2'>
+                                        Ver imagen de reporte
+                                      </a>
+                                      <a
+                                        href={session.reportImageUrl}
+                                        download
+                                        target='_blank'
+                                        rel='noreferrer'
+                                        className='inline-flex items-center gap-1 text-blue-600 underline underline-offset-2'
+                                      >
+                                        <DownloadIcon className='h-3.5 w-3.5' />
+                                        Descargar imagen
+                                      </a>
+                                    </div>
+                                  )}
+                                </div>
+                                <Button
+                                  type='button'
+                                  variant='destructive'
+                                  size='icon'
+                                  onClick={() => void handleDeleteClass(weekKey, session.id)}
+                                  disabled={savingClassWeek === weekKey}
+                                >
+                                  <Trash2Icon className='h-4 w-4' />
+                                </Button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Objetivos semanales</CardTitle>
+                      </CardHeader>
+                      <CardContent className='grid gap-2 md:grid-cols-2'>
+                        <div className='space-y-1.5'>
+                          <Label>Objetivo palabras ICA</Label>
+                          <Input
+                            type='number'
+                            min={0}
+                            step={1}
+                            value={objectiveDraft.wordsTarget}
+                            onChange={(event) =>
+                              setObjectiveDrafts((prev) => ({
+                                ...prev,
+                                [weekKey]: {
+                                  ...prev[weekKey],
+                                  wordsTarget: event.target.value,
+                                },
+                              }))
+                            }
+                            placeholder='Ej: 40'
+                          />
+                        </div>
+                        <div className='space-y-1.5'>
+                          <Label>Objetivo notas maestras cerradas</Label>
+                          <Input
+                            type='number'
+                            min={0}
+                            step={1}
+                            value={objectiveDraft.nmTarget}
+                            onChange={(event) =>
+                              setObjectiveDrafts((prev) => ({
+                                ...prev,
+                                [weekKey]: { ...prev[weekKey], nmTarget: event.target.value },
+                              }))
+                            }
+                            placeholder='Ej: 2'
+                          />
+                        </div>
+                        <div className='space-y-1.5'>
+                          <Label>Objetivo % racha ICA</Label>
+                          <Input
+                            type='number'
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={objectiveDraft.icaStreakObjectivePct}
+                            onChange={(event) =>
+                              setObjectiveDrafts((prev) => ({
+                                ...prev,
+                                [weekKey]: {
+                                  ...prev[weekKey],
+                                  icaStreakObjectivePct: event.target.value,
+                                },
+                              }))
+                            }
+                            placeholder='Ej: 70'
+                          />
+                        </div>
+                        <div className='space-y-1.5'>
+                          <Label>Objetivo % racha flashcards</Label>
+                          <Input
+                            type='number'
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={objectiveDraft.flashcardsStreakObjectivePct}
+                            onChange={(event) =>
+                              setObjectiveDrafts((prev) => ({
+                                ...prev,
+                                [weekKey]: {
+                                  ...prev[weekKey],
+                                  flashcardsStreakObjectivePct: event.target.value,
+                                },
+                              }))
+                            }
+                            placeholder='Ej: 55'
+                          />
+                        </div>
+
+                        <div className='md:col-span-2'>
+                          <Button
+                            type='button'
+                            variant='outline'
+                            onClick={() => void handleSaveObjective(weekKey)}
+                            disabled={savingObjectiveWeek === weekKey}
                           >
-                            Ver imagen de reporte
-                          </a>
+                            {savingObjectiveWeek === weekKey ? 'Guardando...' : 'Guardar objetivos'}
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Notas maestras cerradas de esta semana</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {closedNotes.length === 0 ? (
+                          <p className='text-sm text-muted-foreground'>
+                            No hay notas maestras cerradas en esta semana.
+                          </p>
+                        ) : (
+                          <div className='space-y-3 text-sm'>
+                            {closedNotes.map((note) => (
+                              <div key={note.id} className='space-y-2 rounded-md border p-3'>
+                                <p>
+                                  {note.name} · {formatDateTime(note.closedAt)}
+                                </p>
+
+                                <MasterNoteCoachAudioPlayer
+                                  noteId={note.id}
+                                  audioUrl={note.audioUrl}
+                                />
+
+                                <div className='space-y-1.5'>
+                                  <Label>Video feedback (Loom)</Label>
+                                  <div className='flex flex-wrap gap-2'>
+                                    <Input
+                                      value={feedbackLoomDraftByNoteId[note.id] || ''}
+                                      onChange={(event) =>
+                                        setFeedbackLoomDraftByNoteId((prev) => ({
+                                          ...prev,
+                                          [note.id]: event.target.value,
+                                        }))
+                                      }
+                                      placeholder='Ej: https://www.loom.com/share/...'
+                                    />
+                                    <Button
+                                      type='button'
+                                      variant='outline'
+                                      onClick={() => void handleSaveFeedbackLoom(note.id)}
+                                      disabled={savingFeedbackNoteId === note.id}
+                                    >
+                                      {savingFeedbackNoteId === note.id
+                                        ? 'Guardando...'
+                                        : 'Guardar video'}
+                                    </Button>
+                                  </div>
+                                  {note.feedbackLoomUrl && (
+                                    <a
+                                      href={note.feedbackLoomUrl}
+                                      target='_blank'
+                                      rel='noreferrer'
+                                      className='text-blue-600 underline underline-offset-2'
+                                    >
+                                      Abrir video actual
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         )}
-                      </div>
-                      <Button
-                        type='button'
-                        variant='destructive'
-                        size='icon'
-                        aria-label='Eliminar clase'
-                        onClick={() =>
-                          void handleDeleteClassSession(session.id)
-                        }
-                        disabled={savingClass}
-                      >
-                        <Trash2Icon className='h-4 w-4' />
-                      </Button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                      </CardContent>
+                    </Card>
+                  </AccordionContent>
+                </AccordionItem>
+              )
+            })}
+          </Accordion>
 
           <Card>
             <CardHeader>
-              <CardTitle>
-                Todas las palabras ICA ({insights.wordsCount})
-              </CardTitle>
+              <CardTitle>Todas las palabras ICA ({insights.wordsCount})</CardTitle>
             </CardHeader>
             <CardContent>
               {insights.words.length === 0 ? (
-                <p className='text-sm text-muted-foreground'>
-                  Sin palabras ICA.
-                </p>
+                <p className='text-sm text-muted-foreground'>Sin palabras ICA.</p>
               ) : (
                 <div className='max-h-72 space-y-1 overflow-y-auto rounded-md border p-2 text-sm'>
                   {insights.words.map((word) => (
                     <p key={word.id}>
                       {word.target} → {word.native} ({word.importance})
                     </p>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                Todas las notas maestras ({insights.masterNotesCount})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {insights.masterNotes.length === 0 ? (
-                <p className='text-sm text-muted-foreground'>
-                  Sin notas maestras.
-                </p>
-              ) : (
-                <div className='max-h-[60dvh] space-y-2 overflow-y-auto'>
-                  {insights.masterNotes.map((note) => (
-                    <div
-                      key={note.id}
-                      className='rounded-md border p-3 text-sm'
-                    >
-                      <p>
-                        {note.name} · {note.state} ·{' '}
-                        {formatDateTime(note.created_at)}
-                      </p>
-
-                      {note.audioUrl ? (
-                        <audio controls className='mt-2 w-full'>
-                          <source src={note.audioUrl} />
-                        </audio>
-                      ) : (
-                        <p className='mt-2 text-xs text-muted-foreground'>
-                          Sin audio principal disponible.
-                        </p>
-                      )}
-
-                      {note.audioChunks.length > 0 && (
-                        <div className='mt-2 space-y-1'>
-                          <p className='text-xs text-muted-foreground'>
-                            Fragmentos disponibles:
-                          </p>
-                          {note.audioChunks.map((chunk) => (
-                            <div key={chunk.id} className='rounded border p-2'>
-                              <p className='mb-1 text-xs text-muted-foreground'>
-                                Chunk #{chunk.sort_order}
-                              </p>
-                              {chunk.audioUrl ? (
-                                <audio controls className='w-full'>
-                                  <source src={chunk.audioUrl} />
-                                </audio>
-                              ) : (
-                                <p className='text-xs text-muted-foreground'>
-                                  Sin URL de audio para este fragmento.
-                                </p>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
                   ))}
                 </div>
               )}
