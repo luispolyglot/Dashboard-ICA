@@ -7,6 +7,7 @@ import { LangEditModal } from '../components/LangEditModal'
 import { MobileBottomNav } from '../components/MobileBottomNav'
 import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
+import { fetchTodayVoiceActivationCount } from '../services/phraseVoiceActivations'
 import { LanguageSetup } from '../views/LanguageSetup'
 
 type DailyMilestones = {
@@ -88,6 +89,26 @@ export function DashboardLayout() {
   const milestonesReadyRef = useRef(false)
   const [flightQueue, setFlightQueue] = useState(0)
   const [activeFlight, setActiveFlight] = useState(0)
+  const [voiceActivationsToday, setVoiceActivationsToday] = useState(0)
+
+  useEffect(() => {
+    if (loading) return
+    let active = true
+
+    fetchTodayVoiceActivationCount()
+      .then((count) => {
+        if (!active) return
+        setVoiceActivationsToday(count)
+      })
+      .catch(() => {
+        if (!active) return
+        setVoiceActivationsToday(0)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [dailyProgress, loading])
 
   useEffect(() => {
     if (loading) return
@@ -96,7 +117,7 @@ export function DashboardLayout() {
     const hasFiveWords = progress.wordsAdded >= CREATION_WORDS_GOAL
     const currentMilestones: DailyMilestones = {
       flash: progress.reviewCorrect >= GOAL,
-      ica: hasFiveWords && progress.phraseGenerated,
+      ica: hasFiveWords && progress.phraseGenerated && voiceActivationsToday > 0,
     }
 
     if (!milestonesReadyRef.current) {
@@ -118,7 +139,7 @@ export function DashboardLayout() {
     }
 
     previousMilestonesRef.current = currentMilestones
-  }, [dailyProgress, loading])
+  }, [dailyProgress, loading, voiceActivationsToday])
 
   useEffect(() => {
     if (activeFlight !== 0 || flightQueue <= 0) return
@@ -143,6 +164,7 @@ export function DashboardLayout() {
       <div className='bg-background flex h-[calc(100dvh-0rem)] min-w-0 flex-1 flex-col'>
         <Header
           dailyProgress={dailyProgress}
+          voiceActivationsToday={voiceActivationsToday}
           boltButtonRef={(node) => {
             boltButtonRef.current = node
           }}

@@ -51,6 +51,7 @@ type MasterNoteChunkRow = {
   master_note_id: string
   storage_path: string
   sort_order: number
+  duration_ms: number | null
 }
 
 type CoachingSessionWeeklyObjectiveRow = {
@@ -1342,7 +1343,7 @@ Deno.serve(async (req) => {
         .eq('user_id', userId),
       admin.adminClient
         .from('master_notes')
-        .select('id, name, state, created_at, updated_at, closed_at, final_audio_path, coaching_feedback_loom_url')
+        .select('id, name, state, total_duration_ms, created_at, updated_at, closed_at, final_audio_path, coaching_feedback_loom_url')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(1000),
@@ -1360,7 +1361,7 @@ Deno.serve(async (req) => {
     if (noteIds.length > 0) {
       const { data: chunksData, error: chunksError } = await admin.adminClient
         .from('master_note_chunks')
-        .select('id, master_note_id, storage_path, sort_order')
+        .select('id, master_note_id, storage_path, sort_order, duration_ms')
         .eq('user_id', userId)
         .in('master_note_id', noteIds)
         .order('sort_order', { ascending: true })
@@ -1397,6 +1398,7 @@ Deno.serve(async (req) => {
               id: chunk.id,
               storage_path: chunk.storage_path,
               sort_order: chunk.sort_order,
+              duration_ms: chunk.duration_ms,
               audioUrl: signedChunkError || !signedChunkData?.signedUrl ? null : signedChunkData.signedUrl,
             }
           }),

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeftIcon,
@@ -188,71 +188,143 @@ function SeekForward10Icon() {
 function MasterNoteCoachAudioPlayer({
   noteId,
   audioUrl,
+  audioChunks,
+  totalDurationMs,
 }: {
   noteId: string
   audioUrl: string | null
+  audioChunks: Array<{ audioUrl: string | null; durationMs: number }>
+  totalDurationMs: number
 }) {
   const [playingId, setPlayingId] = useState<string | null>(null)
   const [isPaused, setIsPaused] = useState(false)
   const [positionSec, setPositionSec] = useState(0)
   const [durationSec, setDurationSec] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const [audio, setAudio] = useState<HTMLAudioElement | null>(null)
+  const [trackIndex, setTrackIndex] = useState(0)
+  const [trackBaseSec, setTrackBaseSec] = useState(0)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  const tracks = useMemo(() => {
+    if (audioUrl) {
+      return [
+        {
+          url: audioUrl,
+          durationSec: totalDurationMs > 0 ? totalDurationMs / 1000 : 0,
+        },
+      ]
+    }
+
+    return audioChunks
+      .filter((chunk) => Boolean(chunk.audioUrl))
+      .map((chunk) => ({
+        url: chunk.audioUrl as string,
+        durationSec: Math.max(0, chunk.durationMs) / 1000,
+      }))
+  }, [audioChunks, audioUrl, totalDurationMs])
+
+  const expectedTotalSec = useMemo(() => {
+    if (totalDurationMs > 0) return totalDurationMs / 1000
+    return tracks.reduce((sum, track) => sum + Math.max(0, track.durationSec), 0)
+  }, [totalDurationMs, tracks])
 
   useEffect(() => {
     return () => {
-      if (audio) {
-        audio.pause()
+      if (audioRef.current) {
+        audioRef.current.pause()
       }
     }
-  }, [audio])
+  }, [])
 
   const stop = () => {
-    if (audio) {
-      audio.pause()
-      audio.currentTime = 0
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.currentTime = 0
     }
+    audioRef.current = null
     setPlayingId(null)
     setIsPaused(false)
     setPositionSec(0)
-    setDurationSec(0)
+    setDurationSec(expectedTotalSec)
+    setTrackBaseSec(0)
+    setTrackIndex(0)
   }
 
+  const playTrack = useCallback(
+    async (nextTrackIndex: number, baseSec: number) => {
+      const track = tracks[nextTrackIndex]
+      if (!track) return
+
+      const nextAudio = new Audio(track.url)
+      nextAudio.ontimeupdate = () => {
+        setPositionSec(baseSec + (nextAudio.currentTime || 0))
+      }
+      nextAudio.onloadedmetadata = () => {
+        if (expectedTotalSec > 0) {
+          setDurationSec(expectedTotalSec)
+          return
+        }
+        const remaining = tracks
+          .slice(nextTrackIndex + 1)
+          .reduce((sum, item) => sum + Math.max(0, item.durationSec), 0)
+        const thisDuration = Number.isFinite(nextAudio.duration)
+          ? nextAudio.duration
+          : Math.max(0, track.durationSec)
+        setDurationSec(baseSec + thisDuration + remaining)
+      }
+      nextAudio.onended = () => {
+        const finishedDuration =
+          track.durationSec > 0
+            ? track.durationSec
+            : Number.isFinite(nextAudio.duration)
+              ? nextAudio.duration
+              : 0
+        const nextBase = baseSec + finishedDuration
+        if (nextTrackIndex + 1 < tracks.length) {
+          setTrackBaseSec(nextBase)
+          void playTrack(nextTrackIndex + 1, nextBase)
+          return
+        }
+        setPlayingId(null)
+        setIsPaused(false)
+        setPositionSec(expectedTotalSec > 0 ? expectedTotalSec : nextBase)
+      }
+      nextAudio.onerror = () => {
+        setError('No se pudo reproducir el audio de la nota maestra.')
+        setPlayingId(null)
+        setIsPaused(false)
+      }
+
+      if (audioRef.current) {
+        audioRef.current.pause()
+      }
+
+      audioRef.current = nextAudio
+      setTrackIndex(nextTrackIndex)
+      setTrackBaseSec(baseSec)
+
+      try {
+        await nextAudio.play()
+        setPlayingId(noteId)
+        setIsPaused(false)
+        setError(null)
+      } catch {
+        setError('No se pudo reproducir el audio de la nota maestra.')
+        setPlayingId(null)
+      }
+    },
+    [expectedTotalSec, noteId, tracks],
+  )
+
   const play = async () => {
-    if (!audioUrl) return
+    if (tracks.length === 0) return
     if (playingId === noteId) return
-
-    const nextAudio = new Audio(audioUrl)
-    nextAudio.ontimeupdate = () => {
-      setPositionSec(nextAudio.currentTime || 0)
-      setDurationSec(Number.isFinite(nextAudio.duration) ? nextAudio.duration : 0)
-    }
-    nextAudio.onloadedmetadata = () => {
-      setDurationSec(Number.isFinite(nextAudio.duration) ? nextAudio.duration : 0)
-    }
-    nextAudio.onended = () => {
-      setPlayingId(null)
-      setIsPaused(false)
-    }
-    nextAudio.onerror = () => {
-      setError('No se pudo reproducir el audio de la nota maestra.')
-      setPlayingId(null)
-      setIsPaused(false)
-    }
-
-    setAudio(nextAudio)
-    try {
-      await nextAudio.play()
-      setPlayingId(noteId)
-      setIsPaused(false)
-      setError(null)
-    } catch {
-      setError('No se pudo reproducir el audio de la nota maestra.')
-      setPlayingId(null)
-    }
+    setDurationSec(expectedTotalSec)
+    void playTrack(0, 0)
   }
 
   const togglePause = async () => {
+    const audio = audioRef.current
     if (!audio || playingId !== noteId) return
     if (audio.paused) {
       await audio.play()
@@ -264,16 +336,32 @@ function MasterNoteCoachAudioPlayer({
   }
 
   const seekBy = (delta: number) => {
+    const audio = audioRef.current
     if (!audio || playingId !== noteId) return
-    audio.currentTime = Math.max(0, Math.min((audio.currentTime || 0) + delta, durationSec || 0))
-    setPositionSec(audio.currentTime)
+    const trackMaxSec =
+      tracks[trackIndex]?.durationSec > 0
+        ? tracks[trackIndex].durationSec
+        : Number.isFinite(audio.duration)
+          ? audio.duration
+          : 0
+    audio.currentTime = Math.max(
+      0,
+      Math.min((audio.currentTime || 0) + delta, trackMaxSec || 0),
+    )
+    setPositionSec(trackBaseSec + audio.currentTime)
   }
 
   return (
     <div className='rounded-md border p-2'>
       <div className='flex flex-wrap items-center gap-2'>
         {playingId !== noteId ? (
-          <Button type='button' size='sm' variant='outline' onClick={() => void play()} disabled={!audioUrl}>
+          <Button
+            type='button'
+            size='sm'
+            variant='outline'
+            onClick={() => void play()}
+            disabled={tracks.length === 0}
+          >
             <Volume2Icon className='mr-1 size-4' /> Escuchar
           </Button>
         ) : (
@@ -646,6 +734,8 @@ export function ManageCoachingUserView({
         name: string
         closedAt: string
         audioUrl: string | null
+        audioChunks: Array<{ audioUrl: string | null; durationMs: number }>
+        totalDurationMs: number
         feedbackLoomUrl: string | null
       }>
     >()
@@ -664,7 +754,15 @@ export function ManageCoachingUserView({
         id: note.id,
         name: note.name,
         closedAt: note.closed_at || note.updated_at,
-        audioUrl: note.audioUrl || note.audioChunks.find((item) => item.audioUrl)?.audioUrl || null,
+        audioUrl:
+          note.audioUrl ||
+          note.audioChunks.find((item) => item.audioUrl)?.audioUrl ||
+          null,
+        audioChunks: (note.audioChunks || []).map((item) => ({
+          audioUrl: item.audioUrl || null,
+          durationMs: item.duration_ms || 0,
+        })),
+        totalDurationMs: note.total_duration_ms || 0,
         feedbackLoomUrl: note.coachingFeedbackLoomUrl || null,
       })
       map.set(key, existing)
@@ -984,6 +1082,8 @@ export function ManageCoachingUserView({
                                 <MasterNoteCoachAudioPlayer
                                   noteId={note.id}
                                   audioUrl={note.audioUrl}
+                                  audioChunks={note.audioChunks}
+                                  totalDurationMs={note.totalDurationMs}
                                 />
 
                                 <div className='space-y-1.5'>
