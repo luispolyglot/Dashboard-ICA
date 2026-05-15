@@ -98,6 +98,7 @@ export type CoachingInsightNote = {
   id: string
   name: string
   state: 'open' | 'closed'
+  total_duration_ms: number
   created_at: string
   updated_at: string
   closed_at: string | null
@@ -108,6 +109,7 @@ export type CoachingInsightNote = {
     id: string
     storage_path: string
     sort_order: number
+    duration_ms: number | null
     audioUrl: string | null
   }>
 }

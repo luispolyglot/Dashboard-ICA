@@ -15,6 +15,7 @@ import { useTheme } from '@/theme/ThemeContext'
 
 type HeaderProps = {
   dailyProgress: DailyProgressMap
+  voiceActivationsToday: number
   boltButtonRef: (node: HTMLButtonElement | null) => void
 }
 
@@ -83,6 +84,7 @@ function HeaderBoltIcon({ segments, size = 28 }: HeaderBoltIconProps) {
 
 export function Header({
   dailyProgress,
+  voiceActivationsToday,
   boltButtonRef,
 }: HeaderProps) {
   const navigate = useNavigate()
@@ -90,7 +92,7 @@ export function Header({
   const flashDone = todayProgress.reviewCorrect >= GOAL
   const phraseDone = todayProgress.phraseGenerated
   const hasFiveWords = todayProgress.wordsAdded >= CREATION_WORDS_GOAL
-  const icaTopDone = hasFiveWords && phraseDone
+  const icaTopDone = hasFiveWords && phraseDone && voiceActivationsToday > 0
   const completedSegments = (Number(flashDone) + Number(icaTopDone)) as
     | 0
     | 1
