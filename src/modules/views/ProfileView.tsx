@@ -32,7 +32,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useTheme } from '@/theme/ThemeContext'
 import { fetchAdminRole } from '../services/adminAnalytics'
-import { fetchCoachingAccess } from '../services/coaching'
+import { fetchCoachingAccess, fetchMyCoachingDashboard } from '../services/coaching'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import type { AppConfig } from '../types'
 
@@ -93,16 +93,19 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
     let isMounted = true
 
     const run = async () => {
-      const [role, coachingAccess] = await Promise.all([
+      const [role, coachingAccess, coachingMemberships] = await Promise.all([
         fetchAdminRole(),
         fetchCoachingAccess().catch(() => null),
+        fetchMyCoachingDashboard(config?.targetLang).catch(() => []),
       ])
       if (!isMounted) return
 
       setCanSeeAdminAnalytics(role === 'admin' || role === 'super_admin')
       setCanManageWhitelist(role === 'super_admin')
       setCanSeeHistoricLeaderboard(role === 'super_admin')
-      setCanSeeCoachingPersonalized(Boolean(coachingAccess?.isCoachingUser))
+      setCanSeeCoachingPersonalized(
+        Array.isArray(coachingMemberships) && coachingMemberships.length > 0,
+      )
       setCanManageCoaching(Boolean(coachingAccess?.isCoachingAdmin))
     }
 
@@ -111,7 +114,7 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
     return () => {
       isMounted = false
     }
-  }, [user?.id])
+  }, [user?.id, config?.targetLang])
 
   const handleLogout = async (): Promise<void> => {
     if (isLoggingOut) return

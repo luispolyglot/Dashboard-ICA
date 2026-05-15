@@ -4,8 +4,9 @@ import { FullscreenLoading } from '@/components/ui/fullscreen-loading'
 import { checkAdminAccess, checkSuperAdminAccess } from '@/modules/services/adminAnalytics'
 import {
   checkCoachingAdminAccess,
-  checkCoachingMemberAccess,
+  fetchMyCoachingDashboard,
 } from '@/modules/services/coaching'
+import { useDashboardContext } from '@/modules/context/DashboardContext'
 import { useAuth } from '../auth/AuthContext'
 
 function FullscreenMessage({ message }: { message: string }) {
@@ -145,6 +146,7 @@ export function SuperAdminRoute() {
 
 export function CoachingMemberRoute() {
   const { user, loading, hasSupabaseConfig } = useAuth()
+  const { config, loading: dashboardLoading } = useDashboardContext()
   const [checking, setChecking] = useState(true)
   const [hasAccess, setHasAccess] = useState(false)
   const location = useLocation()
@@ -161,22 +163,27 @@ export function CoachingMemberRoute() {
         return
       }
 
+      if (dashboardLoading) {
+        return
+      }
+
       setChecking(true)
-      const allowed = await checkCoachingMemberAccess()
+      const memberships = await fetchMyCoachingDashboard(config?.targetLang)
+      const allowed = memberships.length > 0
       if (isMounted) {
         setHasAccess(allowed)
         setChecking(false)
       }
     }
 
-    if (!loading) {
+    if (!loading && !dashboardLoading) {
       void run()
     }
 
     return () => {
       isMounted = false
     }
-  }, [loading, user?.id])
+  }, [loading, dashboardLoading, user?.id, config?.targetLang])
 
   if (!hasSupabaseConfig) {
     return (
@@ -184,7 +191,7 @@ export function CoachingMemberRoute() {
     )
   }
 
-  if (loading || checking) {
+  if (loading || dashboardLoading || checking) {
     return <FullscreenLoading label='Verificando acceso a coaching...' />
   }
 

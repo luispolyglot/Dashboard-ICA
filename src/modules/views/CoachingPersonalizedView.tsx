@@ -169,12 +169,16 @@ export function CoachingPersonalizedView({
   const selectedMembership = useMemo(() => {
     const activeSessions = memberships.filter((row) => row.status === 'active')
     if (activeSessions.length === 0) return null
-    if (!targetLang) return activeSessions[0]
-    return (
-      activeSessions.find(
-        (row) => row.targetLang.toLowerCase() === targetLang.toLowerCase(),
-      ) || activeSessions[0]
-    )
+
+    if (targetLang) {
+      return (
+        activeSessions.find(
+          (row) => row.targetLang.toLowerCase() === targetLang.toLowerCase(),
+        ) || null
+      )
+    }
+
+    return activeSessions[0]
   }, [memberships, targetLang])
 
   const classSessionsByWeek = useMemo(() => {
@@ -242,7 +246,7 @@ export function CoachingPersonalizedView({
       ) : (
         <div className='grid gap-4'>
           <Card>
-            <CardContent className='space-y-2 pt-6 text-sm text-muted-foreground'>
+            <CardContent className='space-y-2 text-sm text-muted-foreground'>
               <p>
                 Idioma:{' '}
                 <span className='font-medium text-foreground'>
