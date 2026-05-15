@@ -102,12 +102,17 @@ type PhraseEventParams = {
   source?: 'generated' | 'manual'
 }
 
+type PhraseGeneratedEventResult = {
+  activationWordsTotal: number | null
+  phraseGenerationId: string | null
+}
+
 export async function recordPhraseGeneratedEvent(
   params: PhraseEventParams,
-): Promise<number | null> {
-  if (!supabase) return null
+): Promise<PhraseGeneratedEventResult> {
+  if (!supabase) return { activationWordsTotal: null, phraseGenerationId: null }
   const userId = await getCurrentUserId()
-  if (!userId) return null
+  if (!userId) return { activationWordsTotal: null, phraseGenerationId: null }
 
   const day = todayKey()
   const metric = await getDailyMetrics(userId, day)
@@ -129,18 +134,36 @@ export async function recordPhraseGeneratedEvent(
   }
 
   let phraseError: Error | null = null
-  const insertWithLang = await supabase.from('phrase_generations').insert(phrasePayload)
+  let phraseGenerationId: string | null = null
+
+  const insertWithLang = await supabase
+    .from('phrase_generations')
+    .insert(phrasePayload)
+    .select('id')
+    .single()
+
   if (insertWithLang.error) {
-    const insertLegacy = await supabase.from('phrase_generations').insert({
+    const insertLegacy = await supabase
+      .from('phrase_generations')
+      .insert({
       user_id: userId,
       source_words: params.words,
       generated_phrase: params.phrase,
       translation: params.translation,
-      model: import.meta.env.VITE_ANTHROPIC_MODEL || null,
+      model:
+        params.source === 'manual'
+          ? 'manual'
+          : import.meta.env.VITE_ANTHROPIC_MODEL || null,
       success: true,
     })
+      .select('id')
+      .single()
     phraseError = insertLegacy.error
+    phraseGenerationId = insertLegacy.data?.id || null
+  } else {
+    phraseGenerationId = insertWithLang.data?.id || null
   }
+
   if (phraseError) throw phraseError
 
   let activationTotal = await registerWordActivations(
@@ -210,5 +233,5 @@ export async function recordPhraseGeneratedEvent(
   if (goalError) throw goalError
 
   await evaluateAndUnlockAchievements(userId)
-  return activationTotal
+  return { activationWordsTotal: activationTotal, phraseGenerationId }
 }
