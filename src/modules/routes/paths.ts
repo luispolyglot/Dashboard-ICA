@@ -13,6 +13,7 @@ export const DASHBOARD_ROUTES = {
   flashcardsPlay: '/flashcards/play',
   activationPhrase: '/activation-phrase',
   phraseHistory: '/phrase-history',
+  masterNotes: '/master-notes',
   leaderboard: '/leaderboard',
   streaks: '/streaks',
   profile: '/profile',
@@ -21,16 +22,21 @@ export const DASHBOARD_ROUTES = {
   analytics: '/analytics',
   manageWhitelist: '/manage-whitelist',
   historicLeaderboard: '/historic-leaderboard',
+  coachingPersonalized: '/coaching-personalized',
+  manageCoaching: '/manage-coaching',
 } as const
 
 export const DASHBOARD_LABELS: Record<string, string> = {
   '/': 'Inicio',
   '/new-ica-words': 'Añadir palabras ICA',
-  '/my-ica-words': 'Mi creación ICA',
+  '/my-ica-words': 'Historial de palabras ICA',
   '/flashcards': 'Flashcards',
   '/flashcards/play': 'Práctica Flashcards',
-  '/activation-phrase': 'Mi frase de activación',
-  '/phrase-history': 'Mi historial de frases',
+  '/activation-phrase': 'Creación de frases ICA',
+  '/phrase-history': 'Historial de frases ICA',
+  '/master-notes': 'Notas maestras',
+  '/master-notes/note': 'Nota Maestra',
+  '/master-notes/note/activate': 'Activar frase',
   '/leaderboard': 'Leaderboard',
   '/streaks': 'Rachas',
   '/profile': 'Perfil',
@@ -39,6 +45,8 @@ export const DASHBOARD_LABELS: Record<string, string> = {
   '/analytics': 'Analíticas Admin',
   '/manage-whitelist': 'Gestionar whitelist',
   '/historic-leaderboard': 'Histórico leaderboard',
+  '/coaching-personalized': 'Coaching Personalizado',
+  '/manage-coaching': 'Administrar Coaching',
 }
 
 export function getFlashcardsPlayRoute(
@@ -60,4 +68,13 @@ export function getFlashcardsPlayRoute(
   const query = params.toString()
   if (!query) return baseRoute
   return `${baseRoute}?${query}`
+}
+
+export function getManageCoachingUserRoute(userId: string, sessionId?: string): string {
+  const base = `${DASHBOARD_ROUTES.manageCoaching}/${userId}`
+  if (!sessionId) return base
+
+  const params = new URLSearchParams()
+  params.set('sessionId', sessionId)
+  return `${base}?${params.toString()}`
 }

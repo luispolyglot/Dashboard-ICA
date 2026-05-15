@@ -1,0 +1,503 @@
+import { useEffect, useMemo, useState } from 'react'
+import {
+  DownloadIcon,
+  GoalIcon,
+  RefreshCwIcon,
+  RepeatIcon,
+  SearchIcon,
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  fetchMyCoachingDashboard,
+  type CoachingMembership,
+} from '../services/coaching'
+
+type CoachingPersonalizedViewProps = {
+  targetLang?: string
+}
+
+type ClassSession = {
+  key: string
+  loomUrl: string | null
+  report: string | null
+  reportImageUrl: string | null
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+function toString(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim()
+  return normalized.length > 0 ? normalized : null
+}
+
+function normalizeProgramWeekKey(value: string | null): string | null {
+  if (!value) return null
+  const normalized = value.trim().toUpperCase()
+  const direct = normalized.match(/^W(\d{1,2})$/)
+  if (direct) {
+    const week = Number(direct[1])
+    if (Number.isFinite(week) && week >= 1 && week <= 12) {
+      return `W${String(week).padStart(2, '0')}`
+    }
+  }
+
+  const legacy = normalized.match(/-S(\d)$/)
+  if (legacy) {
+    const week = Number(legacy[1])
+    if (Number.isFinite(week) && week >= 1) {
+      return `W${String(week).padStart(2, '0')}`
+    }
+  }
+
+  return null
+}
+
+function normalizeWeeklyObjectiveMap(
+  value: unknown,
+): Record<string, Record<string, unknown>> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+
+  const output: Record<string, Record<string, unknown>> = {}
+  for (const [key, raw] of Object.entries(value)) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
+    output[normalizeProgramWeekKey(key) || key] = raw as Record<string, unknown>
+  }
+  return output
+}
+
+function normalizeClassSessions(value: unknown[]): ClassSession[] {
+  return value
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => item as Record<string, unknown>)
+    .map((item) => ({
+      key:
+        normalizeProgramWeekKey(toString(item.key)) ||
+        normalizeProgramWeekKey(toString(item.weekKey)) ||
+        normalizeProgramWeekKey(toString(item.week_key)) ||
+        normalizeProgramWeekKey(toString(item.week)) ||
+        'W01',
+      loomUrl: toString(item.loomUrl ?? item.loom_url),
+      report: toString(item.report),
+      reportImageUrl: toString(item.reportImageUrl ?? item.report_image_url),
+    }))
+}
+
+function getEmbeddableVideoUrl(value: string | null): string | null {
+  if (!value) return null
+  if (/loom\.com/i.test(value)) {
+    return value.replace('/share/', '/embed/').replace('/shared/', '/embed/')
+  }
+  return null
+}
+
+function getCurrentProgramWeek(
+  activatedAt: string | null,
+  durationWeeks = 12,
+): number {
+  if (!activatedAt) return 1
+  const start = new Date(activatedAt)
+  if (Number.isNaN(start.getTime())) return 1
+  const week =
+    Math.floor((Date.now() - start.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1
+  return Math.min(durationWeeks, Math.max(1, week))
+}
+
+function objectiveStatus(
+  target: number | null,
+  actual: number,
+): {
+  label: string
+  done: boolean
+} {
+  if (target === null) return { label: 'No definido', done: false }
+  return {
+    label: `${actual}/${target}`,
+    done: actual >= target,
+  }
+}
+
+export function CoachingPersonalizedView({
+  targetLang,
+}: CoachingPersonalizedViewProps) {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [memberships, setMemberships] = useState<CoachingMembership[]>([])
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
+
+  const loadData = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await fetchMyCoachingDashboard(targetLang)
+      setMemberships(data)
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'No se pudo cargar tu sección de coaching.'
+      setError(message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadData()
+  }, [targetLang])
+
+  const selectedMembership = useMemo(() => {
+    const activeSessions = memberships.filter((row) => row.status === 'active')
+    if (activeSessions.length === 0) return null
+
+    if (targetLang) {
+      return (
+        activeSessions.find(
+          (row) => row.targetLang.toLowerCase() === targetLang.toLowerCase(),
+        ) || null
+      )
+    }
+
+    return activeSessions[0]
+  }, [memberships, targetLang])
+
+  const classSessionsByWeek = useMemo(() => {
+    const map = new Map<string, ClassSession[]>()
+    if (!selectedMembership) return map
+    for (const session of normalizeClassSessions(
+      selectedMembership.classSessions,
+    )) {
+      const existing = map.get(session.key) || []
+      existing.push(session)
+      map.set(session.key, existing)
+    }
+    return map
+  }, [selectedMembership])
+
+  const objectivesByWeek = useMemo(
+    () => normalizeWeeklyObjectiveMap(selectedMembership?.weeklyObjectives),
+    [selectedMembership?.weeklyObjectives],
+  )
+
+  const durationWeeks = selectedMembership?.durationWeeks || 12
+  const currentProgramWeek = useMemo(
+    () =>
+      getCurrentProgramWeek(
+        selectedMembership?.activatedAt || null,
+        durationWeeks,
+      ),
+    [selectedMembership?.activatedAt, durationWeeks],
+  )
+
+  const unlockedWeeks = selectedMembership
+    ? selectedMembership.status === 'active'
+      ? currentProgramWeek
+      : durationWeeks
+    : 0
+
+  return (
+    <section className='mx-auto w-full max-w-5xl flex-1 overflow-y-auto px-5 py-8'>
+      <div className='mb-6 flex flex-wrap items-center justify-between gap-3'>
+        <div>
+          <h2 className='mb-1 font-serif text-3xl font-bold'>
+            Coaching Personalizado
+          </h2>
+          <p className='text-sm text-muted-foreground'>
+            Programa de 12 semanas con tus clases, objetivos y feedback.
+          </p>
+        </div>
+
+        <Button type='button' variant='outline' onClick={() => void loadData()}>
+          <RefreshCwIcon className='h-4 w-4' />
+          Recargar
+        </Button>
+      </div>
+
+      {loading ? (
+        <p className='text-sm text-muted-foreground'>Cargando coaching...</p>
+      ) : error ? (
+        <p className='text-sm text-destructive'>{error}</p>
+      ) : !selectedMembership ? (
+        <Card>
+          <CardContent className='py-6 text-sm text-muted-foreground'>
+            Todavia no tienes una sesion activa en coaching.
+          </CardContent>
+        </Card>
+      ) : (
+        <div className='grid gap-4'>
+          <Card>
+            <CardContent className='space-y-2 text-sm text-muted-foreground'>
+              <p>
+                Idioma:{' '}
+                <span className='font-medium text-foreground'>
+                  {selectedMembership.targetLang}
+                </span>{' '}
+                · Nivel:{' '}
+                <span className='font-medium text-foreground'>
+                  {selectedMembership.level}
+                </span>
+                {selectedMembership.coachDisplayName
+                  ? ` · Coach: ${selectedMembership.coachDisplayName}`
+                  : ''}
+              </p>
+              <p>Semana actual del programa: {currentProgramWeek}</p>
+            </CardContent>
+          </Card>
+
+          <Accordion type='multiple' className='w-full rounded-md border px-4'>
+            {Array.from({ length: unlockedWeeks }, (_, index) => {
+              const week = index + 1
+              const weekKey = `W${String(week).padStart(2, '0')}`
+              const objectives = objectivesByWeek[weekKey] || {}
+              const progress = selectedMembership.weekProgress?.[weekKey] || {
+                wordsCreated: 0,
+                closedMasterNotes: 0,
+                icaStreakPct: 0,
+                flashcardsStreakPct: 0,
+              }
+              const weekClasses = classSessionsByWeek.get(weekKey) || []
+              const latestClass = weekClasses[0] || null
+              const closedNotes =
+                selectedMembership.closedMasterNotesByWeek?.[weekKey] || []
+
+              const wordsTarget = toNumber(objectives.wordsTarget)
+              const nmTarget = toNumber(objectives.nmTarget)
+              const icaStreakTarget = toNumber(
+                objectives.icaStreakObjectivePct ??
+                  objectives.icaStreakTargetPct,
+              )
+              const flashcardsTarget = toNumber(
+                objectives.flashcardsStreakObjectivePct ??
+                  objectives.flashcardsStreakAchievedPct ??
+                  objectives.icaStreakAchievedPct,
+              )
+
+              const wordsStatus = objectiveStatus(
+                wordsTarget,
+                progress.wordsCreated,
+              )
+              const notesStatus = objectiveStatus(
+                nmTarget,
+                progress.closedMasterNotes,
+              )
+              const icaStatus = objectiveStatus(
+                icaStreakTarget,
+                progress.icaStreakPct,
+              )
+              const flashcardsStatus = objectiveStatus(
+                flashcardsTarget,
+                progress.flashcardsStreakPct,
+              )
+
+              return (
+                <AccordionItem value={weekKey} key={weekKey}>
+                  <AccordionTrigger>Semana {week}</AccordionTrigger>
+                  <AccordionContent className='space-y-3 pb-4 text-sm'>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Clase grabada</CardTitle>
+                      </CardHeader>
+                      <CardContent className='space-y-2'>
+                        {!latestClass ? (
+                          <p className='text-muted-foreground'>
+                            Aun no hay clase cargada para esta semana.
+                          </p>
+                        ) : (
+                          <>
+                            {getEmbeddableVideoUrl(latestClass.loomUrl) && (
+                              <div className='overflow-hidden rounded-md border'>
+                                <iframe
+                                  src={
+                                    getEmbeddableVideoUrl(
+                                      latestClass.loomUrl,
+                                    ) || ''
+                                  }
+                                  title={`Video semana ${week}`}
+                                  className='aspect-video w-full'
+                                  allow='autoplay; fullscreen; picture-in-picture'
+                                  allowFullScreen
+                                />
+                              </div>
+                            )}
+                            {latestClass.report && <p>{latestClass.report}</p>}
+                            {latestClass.reportImageUrl && (
+                              <div className='space-y-2'>
+                                <button
+                                  type='button'
+                                  onClick={() =>
+                                    setImagePreviewUrl(
+                                      latestClass.reportImageUrl,
+                                    )
+                                  }
+                                  className='group relative block cursor-zoom-in overflow-hidden rounded-md border text-left'
+                                >
+                                  <img
+                                    src={latestClass.reportImageUrl}
+                                    alt='Imagen del reporte de clase'
+                                    className='max-h-48 w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]'
+                                  />
+                                  <div className='absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100'>
+                                    <SearchIcon className='h-5 w-5 text-white' />
+                                  </div>
+                                </button>
+
+                                <a
+                                  href={latestClass.reportImageUrl}
+                                  download
+                                  target='_blank'
+                                  rel='noreferrer'
+                                  className='inline-flex items-center gap-1 text-blue-600 underline underline-offset-2'
+                                >
+                                  <DownloadIcon className='h-3.5 w-3.5' />
+                                  Descargar imagen del reporte
+                                </a>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className='flex items-center gap-2'>
+                          <GoalIcon className='h-4 w-4' /> Objetivos semanales
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className='space-y-1'>
+                        <p
+                          className={
+                            wordsStatus.done
+                              ? 'text-green-600'
+                              : 'text-foreground'
+                          }
+                        >
+                          {wordsStatus.done ? '✅' : '❌'} Palabras ICA:{' '}
+                          {wordsStatus.label}
+                        </p>
+                        <p
+                          className={
+                            notesStatus.done
+                              ? 'text-green-600'
+                              : 'text-foreground'
+                          }
+                        >
+                          {notesStatus.done ? '✅' : '❌'} Notas maestras
+                          cerradas: {notesStatus.label}
+                        </p>
+                        <p
+                          className={
+                            icaStatus.done
+                              ? 'text-green-600'
+                              : 'text-foreground'
+                          }
+                        >
+                          {icaStatus.done ? '✅' : '❌'} Objetivo % racha ICA:{' '}
+                          {icaStatus.label}
+                        </p>
+                        <p
+                          className={
+                            flashcardsStatus.done
+                              ? 'text-green-600'
+                              : 'text-foreground'
+                          }
+                        >
+                          {flashcardsStatus.done ? '✅' : '❌'} Objetivo % racha
+                          flashcards: {flashcardsStatus.label}
+                        </p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className='flex items-center gap-2'>
+                          <RepeatIcon className='h-4 w-4' /> Revision Notas
+                          Maestras
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className='space-y-2'>
+                        {closedNotes.length === 0 ? (
+                          <p className='text-muted-foreground'>
+                            Aun no hay notas maestras cerradas en esta semana.
+                          </p>
+                        ) : (
+                          closedNotes.map((note) => (
+                            <div
+                              key={note.id}
+                              className='rounded-md border p-3'
+                            >
+                              <p className='mb-2 font-medium'>{note.name}</p>
+                              {getEmbeddableVideoUrl(note.feedbackLoomUrl) ? (
+                                <div className='overflow-hidden rounded-md border'>
+                                  <iframe
+                                    src={
+                                      getEmbeddableVideoUrl(
+                                        note.feedbackLoomUrl,
+                                      ) || ''
+                                    }
+                                    title={`Revision ${note.name}`}
+                                    className='aspect-video w-full'
+                                    allow='autoplay; fullscreen; picture-in-picture'
+                                    allowFullScreen
+                                  />
+                                </div>
+                              ) : (
+                                <p className='text-muted-foreground'>
+                                  Aun no hay video de revision para esta nota.
+                                </p>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </CardContent>
+                    </Card>
+                  </AccordionContent>
+                </AccordionItem>
+              )
+            })}
+          </Accordion>
+        </div>
+      )}
+
+      <Dialog
+        open={Boolean(imagePreviewUrl)}
+        onOpenChange={(open) => {
+          if (!open) setImagePreviewUrl(null)
+        }}
+      >
+        <DialogContent className='max-h-[92dvh] overflow-y-auto sm:max-w-4xl'>
+          <DialogHeader>
+            <DialogTitle>Imagen del reporte</DialogTitle>
+          </DialogHeader>
+          {imagePreviewUrl && (
+            <img
+              src={imagePreviewUrl}
+              alt='Imagen ampliada del reporte de clase'
+              className='h-auto w-full rounded-md border object-contain'
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </section>
+  )
+}

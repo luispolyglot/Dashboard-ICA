@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ComponentType } from 'react'
 import { CopyIcon } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -12,12 +20,14 @@ import { getImportance } from '../constants'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchActivationPhrase } from '../services/anthropic'
 import { recordPhraseGeneratedEvent } from '../services/gamification'
+import { createMasterNote, fetchMasterNotes } from '../services/masterNotes'
 import { fetchWordActivationCounts } from '../services/metaTracker'
 import type {
   ActivationPhraseResult,
   AppConfig,
   CEFRLevel,
   Lexicard,
+  MasterNote,
 } from '../types'
 
 type PhraseViewProps = {
@@ -39,6 +49,9 @@ const IMPORTANCE_DOT = {
   irrelevant: 'bg-red-400',
 } as const
 
+const MAX_MASTER_NOTE_DURATION_MS = 3 * 60 * 1000 + 30 * 1000
+const MAX_EXTRA_GENERATIONS = 2
+
 export function PhraseView({
   cards,
   config,
@@ -46,6 +59,7 @@ export function PhraseView({
   onActivationWordsTotalChange,
   LevelBadge,
 }: PhraseViewProps) {
+  const navigate = useNavigate()
   const [wordCount, setWordCount] = useState(5)
   const [mode, setMode] = useState<'automatic' | 'manual' | 'manualPhrase'>(
     'automatic',
@@ -64,6 +78,16 @@ export function PhraseView({
   >({})
   const [copyingResult, setCopyingResult] = useState(false)
   const [resultCopied, setResultCopied] = useState(false)
+  const [resultPhraseId, setResultPhraseId] = useState<string | null>(null)
+  const [activateModalOpen, setActivateModalOpen] = useState(false)
+  const [openMasterNotes, setOpenMasterNotes] = useState<MasterNote[]>([])
+  const [loadingMasterNotes, setLoadingMasterNotes] = useState(false)
+  const [masterNotesError, setMasterNotesError] = useState<string | null>(null)
+  const [activatingInNoteId, setActivatingInNoteId] = useState<string | null>(
+    null,
+  )
+  const [creatingAndActivating, setCreatingAndActivating] = useState(false)
+  const [extraGenerationsCount, setExtraGenerationsCount] = useState(0)
 
   const level = config.level || 'A1'
   const allWords = cards.slice().reverse()
@@ -198,7 +222,13 @@ export function PhraseView({
     })
   }
 
-  const handleGenerate = async (): Promise<void> => {
+  const handleGenerate = async (options?: { isRegeneration?: boolean }): Promise<void> => {
+    const isRegeneration = options?.isRegeneration === true
+
+    if (isRegeneration && extraGenerationsCount >= MAX_EXTRA_GENERATIONS) {
+      return
+    }
+
     if (
       mode === 'manualPhrase' &&
       (!manualPhraseTarget.trim() || !manualPhraseNative.trim())
@@ -209,6 +239,7 @@ export function PhraseView({
 
     setLoading(true)
     setResult(null)
+    setResultPhraseId(null)
     setManualPhraseApproved(false)
 
     try {
@@ -220,27 +251,37 @@ export function PhraseView({
           words_used: selectedWords.map((word) => word.target),
         }
       } else {
+        const previousPhrase = isRegeneration ? result?.phrase : undefined
         response = await fetchActivationPhrase(
           selectedWords,
           config.targetLang,
           config.nativeLang,
           level,
+          previousPhrase,
         )
       }
 
       setResult(response)
       if (response) {
+        if (isRegeneration) {
+          setExtraGenerationsCount((prev) => prev + 1)
+        } else {
+          setExtraGenerationsCount(0)
+        }
+
         const progress = await onPhraseGenerated()
-        const activationWordsTotal = await recordPhraseGeneratedEvent({
-          wordIds: selectedWords.map((word) => word.id),
-          words: selectedWords.map((word) => word.target),
-          phrase: response.phrase,
-          translation: response.translation,
-          wordsAdded: progress.wordsAdded,
-          targetLang: config.targetLang,
-          nativeLang: config.nativeLang,
-          source: mode === 'manualPhrase' ? 'manual' : 'generated',
-        })
+        const { activationWordsTotal, phraseGenerationId } =
+          await recordPhraseGeneratedEvent({
+            wordIds: selectedWords.map((word) => word.id),
+            words: selectedWords.map((word) => word.target),
+            phrase: response.phrase,
+            translation: response.translation,
+            wordsAdded: progress.wordsAdded,
+            targetLang: config.targetLang,
+            nativeLang: config.nativeLang,
+            source: mode === 'manualPhrase' ? 'manual' : 'generated',
+          })
+        setResultPhraseId(phraseGenerationId)
         if (typeof activationWordsTotal === 'number') {
           onActivationWordsTotalChange(activationWordsTotal)
         }
@@ -267,7 +308,60 @@ export function PhraseView({
     setManualPhraseNative('')
     setManualPhraseApproved(false)
     setResult(null)
+    setResultPhraseId(null)
     setResultCopied(false)
+    setExtraGenerationsCount(0)
+  }
+
+  const loadOpenMasterNotes = async (): Promise<void> => {
+    setLoadingMasterNotes(true)
+    setMasterNotesError(null)
+    try {
+      const allNotes = await fetchMasterNotes()
+      const available = allNotes.filter(
+        (note) =>
+          note.state === 'open' &&
+          note.total_duration_ms < MAX_MASTER_NOTE_DURATION_MS,
+      )
+      setOpenMasterNotes(available)
+    } catch (error) {
+      console.error(error)
+      setMasterNotesError('No se pudieron cargar las notas maestras abiertas')
+      setOpenMasterNotes([])
+    } finally {
+      setLoadingMasterNotes(false)
+    }
+  }
+
+  const openActivateModal = (): void => {
+    if (!resultPhraseId) return
+    setActivateModalOpen(true)
+    void loadOpenMasterNotes()
+  }
+
+  const handleActivateInExistingNote = (noteId: string): void => {
+    if (!resultPhraseId || activatingInNoteId || creatingAndActivating) return
+    setActivatingInNoteId(noteId)
+    navigate(
+      `${DASHBOARD_ROUTES.masterNotes}/note/${noteId}/activate/${resultPhraseId}`,
+    )
+  }
+
+  const handleActivateInNewNote = async (): Promise<void> => {
+    if (!resultPhraseId || creatingAndActivating || activatingInNoteId) return
+    setCreatingAndActivating(true)
+    setMasterNotesError(null)
+    try {
+      const created = await createMasterNote()
+      navigate(
+        `${DASHBOARD_ROUTES.masterNotes}/note/${created.id}/activate/${resultPhraseId}`,
+      )
+    } catch (error) {
+      console.error(error)
+      setMasterNotesError('No se pudo crear la nota maestra nueva')
+    } finally {
+      setCreatingAndActivating(false)
+    }
   }
 
   const handlePrimaryAction = (): void => {
@@ -308,7 +402,7 @@ export function PhraseView({
       <div className='mb-4 w-full flex items-start justify-between gap-3'>
         <div>
           <h2 className='mb-1 font-serif text-2xl lg:text-3xl font-bold'>
-            🗣️ Frase de Activación
+            🧩 Creación de Frases ICA
           </h2>
           <p className='text-sm text-muted-foreground'>
             Genera una frase natural en {config.targetLang} usando tus palabras
@@ -540,7 +634,7 @@ export function PhraseView({
           manualPhraseApproved ? (
             '🔄 Generar otra frase manual'
           ) : (
-            `✅ Aprobar frase manual · ${selectedWords.length}/${minWordsRequired}`
+            `✅ Guardar frase manual · ${selectedWords.length}/${minWordsRequired}`
           )
         ) : (
           `⚡ Generar Frase · ${level}`
@@ -611,20 +705,123 @@ export function PhraseView({
               </div>
             </div>
           )}
+
+          {resultPhraseId && (
+            <div className='border-t border-border bg-muted/20 p-5'>
+              <Button
+                type='button'
+                onClick={openActivateModal}
+                variant='outline'
+                className='w-full'
+              >
+                🗣️ Activar frase
+              </Button>
+            </div>
+          )}
         </article>
       )}
 
-      {result && mode !== 'manualPhrase' && (
+      {result &&
+        mode !== 'manualPhrase' &&
+        extraGenerationsCount < MAX_EXTRA_GENERATIONS && (
         <Button
           type='button'
-          onClick={handleGenerate}
+          onClick={() => void handleGenerate({ isRegeneration: true })}
           disabled={loading}
           variant='outline'
-          className='mt-4 w-full'
+          className='mt-2 w-full'
         >
           🔄 Generar otra frase
         </Button>
       )}
+
+      <Dialog
+        open={activateModalOpen}
+        onOpenChange={(open) => {
+          if (!creatingAndActivating && !activatingInNoteId) {
+            setActivateModalOpen(open)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Activar frase en Nota Maestra</DialogTitle>
+            <DialogDescription>
+              Elige una nota maestra abierta para grabar esta frase, o crea una
+              nueva.
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingMasterNotes && (
+            <p className='text-sm text-muted-foreground'>
+              Cargando notas abiertas...
+            </p>
+          )}
+
+          {!loadingMasterNotes && masterNotesError && (
+            <p className='text-sm text-red-400'>{masterNotesError}</p>
+          )}
+
+          {!loadingMasterNotes &&
+            !masterNotesError &&
+            openMasterNotes.length === 0 && (
+              <p className='text-sm text-muted-foreground'>
+                No tienes notas maestras abiertas con tiempo disponible para
+                grabar.
+              </p>
+            )}
+
+          {!loadingMasterNotes && openMasterNotes.length > 0 && (
+            <div className='max-h-60 space-y-2 overflow-y-auto pr-1'>
+              {openMasterNotes.map((note) => {
+                const isActivatingThis = activatingInNoteId === note.id
+                return (
+                  <div
+                    key={note.id}
+                    className='rounded-lg border border-border/70 bg-muted/20 p-3 flex items-center justify-between'
+                  >
+                    <p className='text-sm font-semibold'>{note.name}</p>
+                    <Button
+                      type='button'
+                      size='sm'
+                      variant='outline'
+                      className='mt-2'
+                      disabled={
+                        Boolean(activatingInNoteId) || creatingAndActivating
+                      }
+                      onClick={() => handleActivateInExistingNote(note.id)}
+                    >
+                      {isActivatingThis
+                        ? 'Abriendo...'
+                        : 'Activar en esta nota'}
+                    </Button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setActivateModalOpen(false)}
+              disabled={creatingAndActivating || Boolean(activatingInNoteId)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type='button'
+              onClick={() => void handleActivateInNewNote()}
+              disabled={creatingAndActivating || Boolean(activatingInNoteId)}
+            >
+              {creatingAndActivating
+                ? 'Creando nota maestra...'
+                : 'Activar en nota maestra nueva'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

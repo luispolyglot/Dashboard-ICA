@@ -43,6 +43,7 @@ type ActivationPhrasePayload = {
   targetLang: string
   nativeLang: string
   level: string
+  previousPhrase?: string
 }
 
 type SpellcheckPayload = {
@@ -283,17 +284,35 @@ Deno.serve(async (req) => {
         return jsonResponse(400, { error: 'Words are required' })
       }
 
+      const sentenceLengthByWordCount: Record<number, string> = {
+        5: '20-25 words long',
+        6: '20-30 words long',
+        7: '20-35 words long',
+        8: '20-40 words long',
+      }
+      const sentenceLengthRule =
+        sentenceLengthByWordCount[words.length] || '20-28 words long'
+
       const levelDescription = LEVEL_DESCRIPTIONS[payload.level] || LEVEL_DESCRIPTIONS.A2
       const intendedMeanings = normalizedWords
         .filter((word) => word.native)
         .map((word) => `${word.target} = ${word.native}`)
+      const previousPhrase = typeof payload.previousPhrase === 'string'
+        ? payload.previousPhrase.trim()
+        : ''
 
       const prompt = [
         `Generate one sentence in ${payload.targetLang} including ALL words: ${words.join(', ')}.`,
         'Rules:',
         `- CEFR ${payload.level} level. Description: ${levelDescription}`,
-        '- 20-28 words long',
+        `- ${sentenceLengthRule}`,
         '- Natural, native-sounding',
+        previousPhrase
+          ? `- Do NOT repeat this previous sentence (or tiny variations): ${JSON.stringify(previousPhrase)}`
+          : '',
+        previousPhrase
+          ? '- Generate a clearly different sentence while still using all required words.'
+          : '',
         '- Respect the intended meanings from the learner; do not switch to another sense if a word is polysemous.',
         intendedMeanings.length
           ? `- Intended meanings (${payload.targetLang} -> ${payload.nativeLang}): ${intendedMeanings.join('; ')}`

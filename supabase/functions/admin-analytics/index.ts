@@ -11,9 +11,11 @@ type SummaryPayload = {
   totalLexicards: number
   totalReviews: number
   totalPhrases: number
+  totalVoiceActivations: number
   activeUsersToday: number
   wordsAddedToday: number
   reviewsToday: number
+  voiceActivationsToday: number
 }
 
 type RecentUserPayload = {
@@ -119,7 +121,9 @@ Deno.serve(async (req) => {
     lexicardsCountResult,
     reviewsCountResult,
     phrasesCountResult,
+    voiceActivationsCountResult,
     todayMetricsResult,
+    todayVoiceActivationsResult,
     recentProfilesResult,
     profileSignupsResult,
   ] = await Promise.all([
@@ -127,7 +131,12 @@ Deno.serve(async (req) => {
     adminClient.from('lexicards').select('*', { count: 'exact', head: true }),
     adminClient.from('lexicard_reviews').select('*', { count: 'exact', head: true }),
     adminClient.from('phrase_generations').select('*', { count: 'exact', head: true }),
+    adminClient.from('phrase_voice_activations').select('*', { count: 'exact', head: true }),
     adminClient.from('daily_metrics').select('user_id, words_added, reviews_done').eq('day', today),
+    adminClient
+      .from('phrase_voice_activations')
+      .select('id', { count: 'exact', head: true })
+      .gte('created_at', `${today}T00:00:00.000Z`),
     adminClient
       .from('profiles')
       .select('id, display_name, created_at')
@@ -141,7 +150,9 @@ Deno.serve(async (req) => {
     lexicardsCountResult.error,
     reviewsCountResult.error,
     phrasesCountResult.error,
+    voiceActivationsCountResult.error,
     todayMetricsResult.error,
+    todayVoiceActivationsResult.error,
     recentProfilesResult.error,
     profileSignupsResult.error,
   ].filter(Boolean)
@@ -162,9 +173,11 @@ Deno.serve(async (req) => {
     totalLexicards: lexicardsCountResult.count || 0,
     totalReviews: reviewsCountResult.count || 0,
     totalPhrases: phrasesCountResult.count || 0,
+    totalVoiceActivations: voiceActivationsCountResult.count || 0,
     activeUsersToday: todayMetricsRows.length,
     wordsAddedToday,
     reviewsToday,
+    voiceActivationsToday: todayVoiceActivationsResult.count || 0,
   }
 
   const recentUsers: RecentUserPayload[] = recentProfilesRows.map((row) => ({

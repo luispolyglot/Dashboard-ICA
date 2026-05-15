@@ -117,6 +117,7 @@ export async function fetchActivationPhrase(
   targetLang: string,
   nativeLang: string,
   level: CEFRLevel,
+  previousPhrase?: string,
 ): Promise<ActivationPhraseResult | null> {
   if (!supabase) return null
 
@@ -131,6 +132,7 @@ export async function fetchActivationPhrase(
         targetLang,
         nativeLang,
         level,
+        previousPhrase,
       },
     })
 
