@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-const DISMISS_STORAGE_KEY = 'important_info_master_notes_modal_dismissed_v1'
+const DISMISS_STORAGE_KEY = 'important_info_master_notes_modal_dismissed_v2'
 const DISMISS_DELAY_SECONDS = 10
 
 type ConfirmAction = 'close_once' | 'dismiss_forever' | null
@@ -95,9 +95,9 @@ export function ImportantInfoModal() {
 
           <div className='mt-4 overflow-hidden rounded-lg border border-border/70'>
             <iframe
-              src='https://www.loom.com/embed/0567149f66ac4342a9d81106e09a2131'
+              src='https://www.loom.com/embed/4d2ca7c959f44ea392ba944f53b8a442'
               title='Informacion importante sobre Notas Maestras'
-              className='h-[260px] w-full sm:h-[420px]'
+              className='h-65 w-full sm:h-105'
               allow='autoplay; fullscreen; picture-in-picture'
               allowFullScreen
             />
@@ -117,7 +117,9 @@ export function ImportantInfoModal() {
               </Button>
             ) : (
               <div className='space-y-2'>
-                <p className='text-sm font-semibold'>Estas seguro?</p>
+                <p className='text-sm font-semibold'>
+                  ¿Estás seguro/a que has visto el vídeo hasta el final?
+                </p>
                 <div className='grid grid-cols-2 gap-2'>
                   <Button
                     type='button'
@@ -126,7 +128,11 @@ export function ImportantInfoModal() {
                   >
                     SI
                   </Button>
-                  <Button type='button' variant='outline' onClick={handleKeepOpen}>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    onClick={handleKeepOpen}
+                  >
                     NO
                   </Button>
                 </div>
