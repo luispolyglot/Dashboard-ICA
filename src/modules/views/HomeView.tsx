@@ -71,7 +71,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
       {
         initial: 'I',
         title: 'INMERSIÓN',
-        description: 'Añade palabras ICA filtradas mediante la inmersión.',
+        description: 'Añade palabras ICA filtradas con inmersión.',
         emoji: '✍️',
         tone: '#3B82F6',
         statusLabel: hasFiveWordsToday

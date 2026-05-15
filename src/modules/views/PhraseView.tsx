@@ -50,6 +50,7 @@ const IMPORTANCE_DOT = {
 } as const
 
 const MAX_MASTER_NOTE_DURATION_MS = 3 * 60 * 1000 + 30 * 1000
+const MAX_EXTRA_GENERATIONS = 2
 
 export function PhraseView({
   cards,
@@ -86,6 +87,7 @@ export function PhraseView({
     null,
   )
   const [creatingAndActivating, setCreatingAndActivating] = useState(false)
+  const [extraGenerationsCount, setExtraGenerationsCount] = useState(0)
 
   const level = config.level || 'A1'
   const allWords = cards.slice().reverse()
@@ -220,7 +222,13 @@ export function PhraseView({
     })
   }
 
-  const handleGenerate = async (): Promise<void> => {
+  const handleGenerate = async (options?: { isRegeneration?: boolean }): Promise<void> => {
+    const isRegeneration = options?.isRegeneration === true
+
+    if (isRegeneration && extraGenerationsCount >= MAX_EXTRA_GENERATIONS) {
+      return
+    }
+
     if (
       mode === 'manualPhrase' &&
       (!manualPhraseTarget.trim() || !manualPhraseNative.trim())
@@ -243,16 +251,24 @@ export function PhraseView({
           words_used: selectedWords.map((word) => word.target),
         }
       } else {
+        const previousPhrase = isRegeneration ? result?.phrase : undefined
         response = await fetchActivationPhrase(
           selectedWords,
           config.targetLang,
           config.nativeLang,
           level,
+          previousPhrase,
         )
       }
 
       setResult(response)
       if (response) {
+        if (isRegeneration) {
+          setExtraGenerationsCount((prev) => prev + 1)
+        } else {
+          setExtraGenerationsCount(0)
+        }
+
         const progress = await onPhraseGenerated()
         const { activationWordsTotal, phraseGenerationId } =
           await recordPhraseGeneratedEvent({
@@ -294,6 +310,7 @@ export function PhraseView({
     setResult(null)
     setResultPhraseId(null)
     setResultCopied(false)
+    setExtraGenerationsCount(0)
   }
 
   const loadOpenMasterNotes = async (): Promise<void> => {
@@ -704,10 +721,12 @@ export function PhraseView({
         </article>
       )}
 
-      {result && mode !== 'manualPhrase' && (
+      {result &&
+        mode !== 'manualPhrase' &&
+        extraGenerationsCount < MAX_EXTRA_GENERATIONS && (
         <Button
           type='button'
-          onClick={handleGenerate}
+          onClick={() => void handleGenerate({ isRegeneration: true })}
           disabled={loading}
           variant='outline'
           className='mt-2 w-full'
