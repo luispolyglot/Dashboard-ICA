@@ -292,7 +292,8 @@ export function MasterNoteActivatePhraseView({
     remainingBeforeRecordingMs > 0 &&
     !error?.includes('ya fue activada')
 
-  const exceededLimitWhileRecording = recording && remainingDuringRecordingMs === 0
+  const exceededLimitWhileRecording =
+    recording && remainingDuringRecordingMs === 0
   const exceededLimitForNewRecordings =
     !recording && remainingBeforeRecordingMs === 0
 
@@ -531,9 +532,21 @@ export function MasterNoteActivatePhraseView({
                 language={targetLang}
               />
             )}
-            <p className='mt-2 text-sm text-muted-foreground'>
+            <p className='mt-2 text-lg text-muted-foreground'>
               {phrase.translation || 'Sin traducción'}
             </p>
+            {phrase.source_words && phrase.source_words.length > 0 && (
+              <div className='mt-3 flex flex-wrap gap-2'>
+                {phrase.source_words.map((word) => (
+                  <span
+                    key={word}
+                    className='rounded-md bg-primary/30 px-2.5 py-0.5 text-xs font-semibold text-white'
+                  >
+                    {word}
+                  </span>
+                ))}
+              </div>
+            )}
 
             {phrase.generated_phrase && (
               <div className='mt-3'>
@@ -562,7 +575,8 @@ export function MasterNoteActivatePhraseView({
                   </p>
                   {exceededLimitWhileRecording && (
                     <p className='text-xs font-semibold text-red-400'>
-                      Superaste 3:30. Puedes guardar este audio, pero no podrás grabar más.
+                      Superaste 3:30. Puedes guardar este audio, pero no podrás
+                      grabar más.
                     </p>
                   )}
                   <canvas
@@ -651,7 +665,11 @@ export function MasterNoteActivatePhraseView({
             >
               Seguir grabando
             </Button>
-            <Button type='button' variant='destructive' onClick={handleLeaveAnyway}>
+            <Button
+              type='button'
+              variant='destructive'
+              onClick={handleLeaveAnyway}
+            >
               Salir igual
             </Button>
           </DialogFooter>
