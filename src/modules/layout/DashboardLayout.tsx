@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, RefObject } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import { FullscreenLoading } from '@/components/ui/fullscreen-loading'
 import { Header } from '../components/Header'
 import { LangEditModal } from '../components/LangEditModal'
@@ -74,6 +74,7 @@ function BoltFlightFx({ trigger, boltButtonRef, onDone }: BoltFlightFxProps) {
 }
 
 export function DashboardLayout() {
+  const location = useLocation()
   const {
     config,
     loading,
@@ -95,20 +96,37 @@ export function DashboardLayout() {
     if (loading) return
     let active = true
 
-    fetchTodayVoiceActivationCount()
-      .then((count) => {
+    const refreshVoiceActivations = async (): Promise<void> => {
+      try {
+        const count = await fetchTodayVoiceActivationCount()
         if (!active) return
         setVoiceActivationsToday(count)
-      })
-      .catch(() => {
+      } catch {
         if (!active) return
         setVoiceActivationsToday(0)
-      })
+      }
+    }
+
+    void refreshVoiceActivations()
+
+    const onFocus = () => {
+      void refreshVoiceActivations()
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshVoiceActivations()
+      }
+    }
+
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibilityChange)
 
     return () => {
       active = false
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  }, [dailyProgress, loading])
+  }, [dailyProgress, loading, location.pathname])
 
   useEffect(() => {
     if (loading) return

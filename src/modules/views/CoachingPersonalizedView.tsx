@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  CheckSquareIcon,
   DownloadIcon,
   GoalIcon,
   RefreshCwIcon,
   RepeatIcon,
   SearchIcon,
+  SquareIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,6 +23,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
+  completeCoachingExerciseObjective,
   fetchMyCoachingDashboard,
   type CoachingMembership,
 } from '../services/coaching'
@@ -34,6 +37,12 @@ type ClassSession = {
   loomUrl: string | null
   report: string | null
   reportImageUrl: string | null
+}
+
+type ExerciseObjective = {
+  url: string | null
+  status: 'pending' | 'completed'
+  completedAt: string | null
 }
 
 function toNumber(value: unknown): number | null {
@@ -137,6 +146,21 @@ function objectiveStatus(
   }
 }
 
+function normalizeExerciseObjective(value: unknown): ExerciseObjective {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { url: null, status: 'pending', completedAt: null }
+  }
+  const record = value as Record<string, unknown>
+  const url = toString(record.url)
+  const status = record.status === 'completed' ? 'completed' : 'pending'
+  const completedAt = toString(record.completedAt ?? record.completed_at)
+  return {
+    url,
+    status: url && status === 'completed' ? 'completed' : 'pending',
+    completedAt: url && status === 'completed' ? completedAt : null,
+  }
+}
+
 export function CoachingPersonalizedView({
   targetLang,
 }: CoachingPersonalizedViewProps) {
@@ -144,6 +168,7 @@ export function CoachingPersonalizedView({
   const [error, setError] = useState<string | null>(null)
   const [memberships, setMemberships] = useState<CoachingMembership[]>([])
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
+  const [completingExerciseWeek, setCompletingExerciseWeek] = useState<string | null>(null)
 
   const loadData = async () => {
     setLoading(true)
@@ -291,6 +316,7 @@ export function CoachingPersonalizedView({
                   objectives.flashcardsStreakAchievedPct ??
                   objectives.icaStreakAchievedPct,
               )
+              const exercise = normalizeExerciseObjective(objectives.exercise)
 
               const wordsStatus = objectiveStatus(
                 wordsTarget,
@@ -308,6 +334,7 @@ export function CoachingPersonalizedView({
                 flashcardsTarget,
                 progress.flashcardsStreakPct,
               )
+              const exerciseDone = exercise.status === 'completed'
 
               return (
                 <AccordionItem value={weekKey} key={weekKey}>
@@ -425,6 +452,78 @@ export function CoachingPersonalizedView({
                           {flashcardsStatus.done ? '✅' : '❌'} Objetivo % racha
                           flashcards: {flashcardsStatus.label}
                         </p>
+                        <div
+                          className={exerciseDone ? 'text-green-600' : 'text-foreground'}
+                        >
+                          <p>
+                            {exerciseDone ? '✅' : '❌'} Objetivo Ejercicio:{' '}
+                            {exercise.url ? (exerciseDone ? 'Completado' : 'Pendiente') : 'No definido'}
+                          </p>
+                          {exercise.url && (
+                            <div className='mt-1 flex flex-wrap items-center gap-3'>
+                              <a
+                                href={exercise.url}
+                                target='_blank'
+                                rel='noreferrer'
+                                className='text-blue-600 underline underline-offset-2'
+                              >
+                                Abrir ejercicio
+                              </a>
+                              <button
+                                type='button'
+                                onClick={() => {
+                                  if (!selectedMembership || exerciseDone) return
+                                  setCompletingExerciseWeek(weekKey)
+                                  void completeCoachingExerciseObjective({
+                                    sessionId: selectedMembership.id,
+                                    weekKey,
+                                  })
+                                    .then(() => {
+                                      setMemberships((prev) =>
+                                        prev.map((membership) => {
+                                          if (membership.id !== selectedMembership.id) return membership
+                                          const nextObjectivesByWeek = normalizeWeeklyObjectiveMap(membership.weeklyObjectives)
+                                          const weekObjective = nextObjectivesByWeek[weekKey] || {}
+                                          nextObjectivesByWeek[weekKey] = {
+                                            ...weekObjective,
+                                            exercise: {
+                                              ...normalizeExerciseObjective(weekObjective.exercise),
+                                              url: exercise.url,
+                                              status: 'completed',
+                                              completedAt: new Date().toISOString(),
+                                            },
+                                          }
+
+                                          return {
+                                            ...membership,
+                                            weeklyObjectives: nextObjectivesByWeek,
+                                          }
+                                        }),
+                                      )
+                                    })
+                                    .finally(() => {
+                                      setCompletingExerciseWeek((current) =>
+                                        current === weekKey ? null : current,
+                                      )
+                                    })
+                                }}
+                                disabled={exerciseDone || completingExerciseWeek === weekKey}
+                                className='inline-flex items-center gap-1 text-xs text-foreground disabled:opacity-50'
+                              >
+                                {exerciseDone ? (
+                                  <CheckSquareIcon className='h-4 w-4' />
+                                ) : (
+                                  <SquareIcon className='h-4 w-4' />
+                                )}
+                                {exerciseDone
+                                  ? 'Confirmado por ti'
+                                  : completingExerciseWeek === weekKey
+                                    ? 'Guardando...'
+                                    : 'Marcar como hecho'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </CardContent>
                     </Card>
 

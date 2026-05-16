@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
+  ArchiveIcon,
   ArrowLeftIcon,
+  CheckCheckIcon,
+  MoreHorizontalIcon,
   PauseIcon,
   PlayIcon,
   RotateCcwIcon,
@@ -13,6 +16,14 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -30,12 +41,21 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   deleteCoachingClassReportImage,
+  deleteCoachingSession,
   fetchCoachingUserInsights,
   fetchCoachingUserMemberships,
   type CoachingUserInsights,
   type CoachingUserMembership,
   uploadCoachingClassReportImage,
+  closeCoachingSession,
+  hardDeleteCoachingSession,
   upsertMasterNoteFeedbackLoom,
   upsertCoachingUser,
 } from '../services/coaching'
@@ -59,6 +79,7 @@ type ObjectiveDraft = {
   nmTarget: string
   icaStreakObjectivePct: string
   flashcardsStreakObjectivePct: string
+  exerciseUrl: string
 }
 
 type ClassDraft = {
@@ -66,6 +87,8 @@ type ClassDraft = {
   report: string
   imageFile: File | null
 }
+
+type SessionActionType = 'archive' | 'close' | 'hard-delete'
 
 function formatDateTime(value: string): string {
   const date = new Date(value)
@@ -136,6 +159,12 @@ function normalizeClassSessions(value: unknown): ClassSessionItem[] {
 }
 
 function draftFromObjective(value?: Record<string, unknown>): ObjectiveDraft {
+  const exerciseRaw = value?.exercise
+  const exerciseUrl =
+    exerciseRaw && typeof exerciseRaw === 'object' && !Array.isArray(exerciseRaw)
+      ? toString((exerciseRaw as Record<string, unknown>).url)
+      : toString(value?.reportExerciseUrl)
+
   return {
     wordsTarget: toString(value?.wordsTarget),
     nmTarget: toString(value?.nmTarget),
@@ -147,6 +176,7 @@ function draftFromObjective(value?: Record<string, unknown>): ObjectiveDraft {
         value?.flashcardsStreakAchievedPct ??
         value?.icaStreakAchievedPct,
     ),
+    exerciseUrl,
   }
 }
 
@@ -411,6 +441,10 @@ export function ManageCoachingUserView({
   const [classFeedbackByWeek, setClassFeedbackByWeek] = useState<Record<string, string>>({})
   const [feedbackLoomDraftByNoteId, setFeedbackLoomDraftByNoteId] = useState<Record<string, string>>({})
   const [savingFeedbackNoteId, setSavingFeedbackNoteId] = useState<string | null>(null)
+  const [sessionActionModalOpen, setSessionActionModalOpen] = useState(false)
+  const [sessionActionType, setSessionActionType] = useState<SessionActionType | null>(null)
+  const [sessionActionReason, setSessionActionReason] = useState('')
+  const [isApplyingSessionAction, setIsApplyingSessionAction] = useState(false)
 
   const selectedMembership = useMemo(
     () => memberships.find((row) => row.id === selectedSessionId) || null,
@@ -438,7 +472,7 @@ export function ManageCoachingUserView({
   }, [classSessions])
 
   useEffect(() => {
-    const nextObjectives: Record<string, ObjectiveDraft> = {}
+      const nextObjectives: Record<string, ObjectiveDraft> = {}
     const nextClassDrafts: Record<string, ClassDraft> = {}
     const nextFeedbackLoomDrafts: Record<string, string> = {}
     for (let week = 1; week <= 12; week += 1) {
@@ -537,6 +571,15 @@ export function ManageCoachingUserView({
 
     try {
       const existing = normalizeWeeklyObjectiveMap(insights.weeklyObjectives)
+      const previousWeek = existing[weekKey] || {}
+      const previousExercise =
+        previousWeek.exercise && typeof previousWeek.exercise === 'object'
+          ? (previousWeek.exercise as Record<string, unknown>)
+          : {}
+      const previousExerciseUrl = toString(previousExercise.url)
+      const nextExerciseUrl = draft.exerciseUrl.trim() || null
+      const shouldResetExerciseState = nextExerciseUrl !== previousExerciseUrl
+
       const nextWeekly = {
         ...existing,
         [weekKey]: {
@@ -547,6 +590,21 @@ export function ManageCoachingUserView({
             : null,
           flashcardsStreakObjectivePct: draft.flashcardsStreakObjectivePct.trim()
             ? Number(draft.flashcardsStreakObjectivePct)
+            : null,
+          reportExerciseUrl: nextExerciseUrl,
+          exercise: nextExerciseUrl
+            ? {
+                url: nextExerciseUrl,
+                status: shouldResetExerciseState
+                  ? 'pending'
+                  : previousExercise.status === 'completed'
+                    ? 'completed'
+                    : 'pending',
+                completedAt:
+                  shouldResetExerciseState || previousExercise.status !== 'completed'
+                    ? null
+                    : toString(previousExercise.completedAt),
+              }
             : null,
         },
       }
@@ -771,6 +829,60 @@ export function ManageCoachingUserView({
     return map
   }, [insights, selectedMembership?.activatedAt])
 
+  const sessionCurrentWeek = useMemo(() => {
+    if (!selectedMembership?.activatedAt) return null
+    const activated = new Date(selectedMembership.activatedAt)
+    if (Number.isNaN(activated.getTime())) return null
+    return Math.min(
+      12,
+      Math.max(
+        1,
+        Math.floor((Date.now() - activated.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1,
+      ),
+    )
+  }, [selectedMembership?.activatedAt])
+
+  const handleOpenSessionAction = (type: SessionActionType) => {
+    setSessionActionType(type)
+    setSessionActionReason('')
+    setSessionActionModalOpen(true)
+  }
+
+  const handleConfirmSessionAction = async () => {
+    if (!selectedMembership || !sessionActionType) return
+    setIsApplyingSessionAction(true)
+    setFeedback(null)
+
+    try {
+      if (sessionActionType === 'archive') {
+        await deleteCoachingSession(selectedMembership.id)
+        setFeedback('Sesion archivada correctamente.')
+      } else if (sessionActionType === 'hard-delete') {
+        await hardDeleteCoachingSession(selectedMembership.id)
+        setFeedback('Sesion eliminada definitivamente.')
+      } else {
+        const result = await closeCoachingSession({
+          sessionId: selectedMembership.id,
+          closureReason: sessionActionReason.trim() || null,
+        })
+        setFeedback(
+          `Sesion cerrada correctamente (semanas completadas: ${result.completedWeeks ?? 'n/d'}).`,
+        )
+      }
+
+      setSessionActionModalOpen(false)
+      await loadAll()
+    } catch (err) {
+      setFeedback(
+        err instanceof Error
+          ? err.message
+          : 'No se pudo aplicar la accion sobre la sesion.',
+      )
+    } finally {
+      setIsApplyingSessionAction(false)
+    }
+  }
+
   return (
     <section className='mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-5 py-8'>
       <div className='mb-5 flex flex-wrap items-center justify-between gap-2'>
@@ -809,6 +921,32 @@ export function ManageCoachingUserView({
               </SelectGroup>
             </SelectContent>
           </Select>
+
+          {selectedMembership && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type='button' variant='outline' size='icon' aria-label='Acciones de sesion'>
+                  <MoreHorizontalIcon className='h-4 w-4' />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='end'>
+                {selectedMembership.status !== 'draft' && (
+                  <DropdownMenuItem onClick={() => handleOpenSessionAction('close')}>
+                    <CheckCheckIcon className='h-4 w-4' />
+                    Cerrar coaching
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => handleOpenSessionAction('archive')}>
+                  <ArchiveIcon className='h-4 w-4' />
+                  Archivar sesion
+                </DropdownMenuItem>
+                <DropdownMenuItem variant='destructive' onClick={() => handleOpenSessionAction('hard-delete')}>
+                  <Trash2Icon className='h-4 w-4' />
+                  Eliminar definitivo
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           {selectedMembership && (
             <p className='text-sm text-muted-foreground'>
@@ -1049,6 +1187,23 @@ export function ManageCoachingUserView({
                           />
                         </div>
 
+                        <div className='space-y-1.5 md:col-span-2'>
+                          <Label>Objetivo Ejercicio (link)</Label>
+                          <Input
+                            value={objectiveDraft.exerciseUrl}
+                            onChange={(event) =>
+                              setObjectiveDrafts((prev) => ({
+                                ...prev,
+                                [weekKey]: {
+                                  ...prev[weekKey],
+                                  exerciseUrl: event.target.value,
+                                },
+                              }))
+                            }
+                            placeholder='Ej: https://claude.ai/artifact/...'
+                          />
+                        </div>
+
                         <div className='md:col-span-2'>
                           <Button
                             type='button'
@@ -1153,6 +1308,52 @@ export function ManageCoachingUserView({
           </Card>
         </div>
       )}
+
+      <Dialog open={sessionActionModalOpen} onOpenChange={setSessionActionModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {sessionActionType === 'archive'
+                ? 'Archivar sesion'
+                : sessionActionType === 'hard-delete'
+                  ? 'Eliminar sesion definitivamente'
+                  : 'Cerrar coaching'}
+            </DialogTitle>
+            <DialogDescription>
+              {sessionActionType === 'archive'
+                ? 'La sesion pasara a estado cancelled y se conservaran sus datos.'
+                : sessionActionType === 'hard-delete'
+                  ? 'Esta accion es irreversible y elimina toda la sesion.'
+                  : `Se cerrara el coaching en la semana ${sessionCurrentWeek ?? 'n/d'} del programa.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {sessionActionType === 'close' && (
+            <div className='space-y-1.5'>
+              <Label>Motivo de cierre (opcional)</Label>
+              <Input
+                value={sessionActionReason}
+                onChange={(event) => setSessionActionReason(event.target.value)}
+                placeholder='Ej: usuario finalizo antes por objetivos cumplidos'
+              />
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button type='button' variant='outline' onClick={() => setSessionActionModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type='button'
+              variant={sessionActionType === 'hard-delete' ? 'destructive' : 'default'}
+              onClick={() => void handleConfirmSessionAction()}
+              disabled={isApplyingSessionAction}
+            >
+              {isApplyingSessionAction ? 'Aplicando...' : 'Confirmar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

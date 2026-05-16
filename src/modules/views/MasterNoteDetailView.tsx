@@ -576,9 +576,21 @@ export function MasterNoteDetailView({
                             </span>
                           )}
                         </div>
-                        <p className='text-xs text-muted-foreground'>
+                        <p className='text-base text-muted-foreground'>
                           {item.translation || 'Sin traducción'}
                         </p>
+                        {item.source_words && item.source_words.length > 0 && (
+                          <div className='mt-2 flex flex-wrap gap-2'>
+                            {item.source_words.map((word) => (
+                              <span
+                                key={word}
+                                className='rounded-md bg-primary/30 px-2.5 py-0.5 text-xs font-semibold text-white'
+                              >
+                                {word}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <Button
                         asChild={canActivateMorePhrases}

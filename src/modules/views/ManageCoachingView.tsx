@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { EyeIcon, PlayIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react'
+import {
+  ArchiveIcon,
+  CheckCheckIcon,
+  EyeIcon,
+  MoreHorizontalIcon,
+  PlayIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  Trash2Icon,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
@@ -17,7 +26,9 @@ import { Label } from '@/components/ui/label'
 import {
   fetchAvailableUsersForCoaching,
   activateCoachingSession,
+  closeCoachingSession,
   deleteCoachingSession,
+  hardDeleteCoachingSession,
   fetchCoachingAccess,
   fetchCoachingAdmins,
   fetchCoachingManagedUsers,
@@ -30,6 +41,12 @@ import {
 } from '../services/coaching'
 import { LANGUAGES, LEVELS } from '../constants'
 import { getManageCoachingUserRoute } from '../routes/paths'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 function formatDateTime(value: string): string {
   const date = new Date(value)
@@ -63,6 +80,11 @@ export function ManageCoachingView() {
   const [userToDelete, setUserToDelete] = useState<CoachingManagedUser | null>(
     null,
   )
+  const [hardDeleteModalOpen, setHardDeleteModalOpen] = useState(false)
+  const [userToHardDelete, setUserToHardDelete] = useState<CoachingManagedUser | null>(null)
+  const [closeModalOpen, setCloseModalOpen] = useState(false)
+  const [userToClose, setUserToClose] = useState<CoachingManagedUser | null>(null)
+  const [closeReason, setCloseReason] = useState('')
 
   const [isCreateAdminModalOpen, setIsCreateAdminModalOpen] = useState(false)
   const [createAdminUserId, setCreateAdminUserId] = useState('')
@@ -75,6 +97,9 @@ export function ManageCoachingView() {
   const [createAdminScopeLanguage, setCreateAdminScopeLanguage] = useState('')
   const [createAdminScopeLevel, setCreateAdminScopeLevel] = useState('')
   const [isSavingAdmin, setIsSavingAdmin] = useState(false)
+  const [filterTargetLang, setFilterTargetLang] = useState('all')
+  const [filterStatus, setFilterStatus] = useState('all')
+  const [filterCoach, setFilterCoach] = useState('all')
 
   const loadData = async () => {
     setLoading(true)
@@ -227,13 +252,61 @@ export function ManageCoachingView() {
 
       setDeleteModalOpen(false)
       setUserToDelete(null)
-      setFeedback('Sesión de coaching eliminada correctamente.')
+      setFeedback('Sesion de coaching archivada correctamente.')
       await loadData()
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
-          : 'No se pudo eliminar el usuario de coaching.'
+          : 'No se pudo archivar la sesion de coaching.'
+      setFeedback(message)
+    } finally {
+      setIsSavingUser(false)
+    }
+  }
+
+  const handleConfirmHardDeleteUser = async () => {
+    if (!userToHardDelete) return
+    setIsSavingUser(true)
+    setFeedback(null)
+
+    try {
+      await hardDeleteCoachingSession(userToHardDelete.id)
+      setHardDeleteModalOpen(false)
+      setUserToHardDelete(null)
+      setFeedback('Sesion eliminada definitivamente.')
+      await loadData()
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'No se pudo eliminar definitivamente la sesion.'
+      setFeedback(message)
+    } finally {
+      setIsSavingUser(false)
+    }
+  }
+
+  const handleConfirmCloseSession = async () => {
+    if (!userToClose) return
+    setIsSavingUser(true)
+    setFeedback(null)
+
+    try {
+      const result = await closeCoachingSession({
+        sessionId: userToClose.id,
+        closureReason: closeReason.trim() || null,
+      })
+      setCloseModalOpen(false)
+      setUserToClose(null)
+      setCloseReason('')
+      setFeedback(
+        `Coaching cerrado correctamente (semanas completadas: ${result.completedWeeks ?? 'n/d'}).`,
+      )
+      await loadData()
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'No se pudo cerrar la sesion.'
       setFeedback(message)
     } finally {
       setIsSavingUser(false)
@@ -343,6 +416,45 @@ export function ManageCoachingView() {
     )
   }
 
+  const filteredUsers = useMemo(() => {
+    return users.filter((row) => {
+      if (filterTargetLang !== 'all' && row.targetLang !== filterTargetLang) {
+        return false
+      }
+      if (filterStatus !== 'all' && row.status !== filterStatus) {
+        return false
+      }
+      if (filterCoach !== 'all' && (row.coachUserId || 'none') !== filterCoach) {
+        return false
+      }
+      return true
+    })
+  }, [users, filterCoach, filterStatus, filterTargetLang])
+
+  const coachFilterOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const row of users) {
+      if (!row.coachUserId) continue
+      seen.set(row.coachUserId, row.coachDisplayName || row.coachUserId)
+    }
+    return Array.from(seen.entries()).sort((a, b) =>
+      a[1].localeCompare(b[1], 'es', { sensitivity: 'base' }),
+    )
+  }, [users])
+
+  const closePreviewWeek = useMemo(() => {
+    if (!userToClose?.activatedAt) return null
+    const activated = new Date(userToClose.activatedAt)
+    if (Number.isNaN(activated.getTime())) return null
+    return Math.min(
+      12,
+      Math.max(
+        1,
+        Math.floor((Date.now() - activated.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1,
+      ),
+    )
+  }, [userToClose?.activatedAt])
+
   return (
     <section className='mx-auto w-full max-w-7xl flex-1 overflow-y-auto px-5 py-8'>
       <div className='mb-6 flex flex-wrap items-center justify-between gap-3'>
@@ -389,16 +501,70 @@ export function ManageCoachingView() {
         </p>
       )}
 
+      <Card className='mb-4'>
+        <CardContent className='grid gap-3 pt-4 md:grid-cols-3'>
+          <div className='space-y-1.5'>
+            <Label>Filtrar por idioma</Label>
+            <select
+              className='h-10 w-full rounded-md border bg-background px-3 text-sm'
+              value={filterTargetLang}
+              onChange={(event) => setFilterTargetLang(event.target.value)}
+            >
+              <option value='all'>Todos</option>
+              {LANGUAGES.map((language) => (
+                <option key={language} value={language}>
+                  {language}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className='space-y-1.5'>
+            <Label>Filtrar por estado</Label>
+            <select
+              className='h-10 w-full rounded-md border bg-background px-3 text-sm'
+              value={filterStatus}
+              onChange={(event) => setFilterStatus(event.target.value)}
+            >
+              <option value='all'>Todos</option>
+              <option value='draft'>draft</option>
+              <option value='active'>active</option>
+              <option value='completed'>completed</option>
+              <option value='cancelled'>cancelled</option>
+            </select>
+          </div>
+
+          {isSuperAdmin && (
+            <div className='space-y-1.5'>
+              <Label>Filtrar por coach</Label>
+              <select
+                className='h-10 w-full rounded-md border bg-background px-3 text-sm'
+                value={filterCoach}
+                onChange={(event) => setFilterCoach(event.target.value)}
+              >
+                <option value='all'>Todos</option>
+                <option value='none'>Sin coach</option>
+                {coachFilterOptions.map(([coachId, coachName]) => (
+                  <option key={coachId} value={coachId}>
+                    {coachName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
-          <CardTitle>Sesiones de coaching ({users.length})</CardTitle>
+          <CardTitle>Sesiones de coaching ({filteredUsers.length})</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
             <p className='text-sm text-muted-foreground'>Cargando tabla...</p>
-          ) : users.length === 0 ? (
+          ) : filteredUsers.length === 0 ? (
             <p className='text-sm text-muted-foreground'>
-              No hay usuarios asignados todavía.
+              No hay sesiones para los filtros seleccionados.
             </p>
           ) : (
             <div className='overflow-x-auto'>
@@ -418,7 +584,7 @@ export function ManageCoachingView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((row) => (
+                  {filteredUsers.map((row) => (
                     <tr key={row.id} className='border-b align-middle last:border-b-0'>
                       <td className='py-2'>
                         <p className='font-medium'>{row.userDisplayName}</p>
@@ -461,26 +627,47 @@ export function ManageCoachingView() {
                           >
                             <EyeIcon className='h-4 w-4' />
                           </Button>
-                          {row.status === 'draft' && (
-                            <Button
-                              type='button'
-                              variant='outline'
-                              size='icon'
-                              aria-label='Comenzar sesión coaching'
-                              onClick={() => void handleStartSession(row)}
-                            >
-                              <PlayIcon className='h-4 w-4' />
-                            </Button>
-                          )}
-                          <Button
-                            type='button'
-                            variant='destructive'
-                            size='icon'
-                            aria-label='Eliminar usuario coaching'
-                            onClick={() => handleAskDeleteUser(row)}
-                          >
-                            <Trash2Icon className='h-4 w-4' />
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button type='button' variant='outline' size='icon' aria-label='Mas acciones de sesion'>
+                                <MoreHorizontalIcon className='h-4 w-4' />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align='end'>
+                              {row.status === 'draft' && (
+                                <DropdownMenuItem onClick={() => void handleStartSession(row)}>
+                                  <PlayIcon className='h-4 w-4' />
+                                  Comenzar
+                                </DropdownMenuItem>
+                              )}
+                              {row.status !== 'draft' && (
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setUserToClose(row)
+                                    setCloseReason('')
+                                    setCloseModalOpen(true)
+                                  }}
+                                >
+                                  <CheckCheckIcon className='h-4 w-4' />
+                                  Cerrar coaching
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuItem onClick={() => handleAskDeleteUser(row)}>
+                                <ArchiveIcon className='h-4 w-4' />
+                                Archivar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                variant='destructive'
+                                onClick={() => {
+                                  setUserToHardDelete(row)
+                                  setHardDeleteModalOpen(true)
+                                }}
+                              >
+                                <Trash2Icon className='h-4 w-4' />
+                                Eliminar definitivo
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </td>
                     </tr>
@@ -615,9 +802,9 @@ export function ManageCoachingView() {
       <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Eliminar sesión de coaching</DialogTitle>
+            <DialogTitle>Archivar sesión de coaching</DialogTitle>
             <DialogDescription>
-              Esta acción elimina la sesión de coaching seleccionada.
+              Esta accion mueve la sesion a estado cancelled y conserva sus datos.
             </DialogDescription>
           </DialogHeader>
 
@@ -648,7 +835,89 @@ export function ManageCoachingView() {
               onClick={() => void handleConfirmDeleteUser()}
               disabled={isSavingUser}
             >
-              {isSavingUser ? 'Eliminando...' : 'Confirmar eliminación'}
+              {isSavingUser ? 'Archivando...' : 'Confirmar archivado'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={hardDeleteModalOpen} onOpenChange={setHardDeleteModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Eliminar sesión definitivamente</DialogTitle>
+            <DialogDescription>
+              Esta accion es irreversible. Se eliminaran datos y adjuntos de la sesion.
+            </DialogDescription>
+          </DialogHeader>
+
+          <p className='text-sm text-muted-foreground'>
+            Sesion:{' '}
+            <span className='font-medium text-foreground'>
+              {userToHardDelete?.userDisplayName || '-'} · {userToHardDelete?.targetLang || '-'}
+            </span>
+          </p>
+
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => {
+                setHardDeleteModalOpen(false)
+                setUserToHardDelete(null)
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type='button'
+              variant='destructive'
+              onClick={() => void handleConfirmHardDeleteUser()}
+              disabled={isSavingUser}
+            >
+              {isSavingUser ? 'Eliminando...' : 'Eliminar definitivo'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={closeModalOpen} onOpenChange={setCloseModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cerrar coaching</DialogTitle>
+            <DialogDescription>
+              {userToClose?.activatedAt
+                ? `Esta sesion va por la semana ${closePreviewWeek || 1}. ¿Deseas cerrarla ahora?`
+                : 'La sesion no tiene activacion registrada. Se cerrara igualmente.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className='space-y-1.5'>
+            <Label>Motivo de cierre (opcional)</Label>
+            <Input
+              value={closeReason}
+              onChange={(event) => setCloseReason(event.target.value)}
+              placeholder='Ej: usuario completo objetivos principales'
+            />
+          </div>
+
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => {
+                setCloseModalOpen(false)
+                setUserToClose(null)
+                setCloseReason('')
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type='button'
+              onClick={() => void handleConfirmCloseSession()}
+              disabled={isSavingUser}
+            >
+              {isSavingUser ? 'Cerrando...' : 'Confirmar cierre'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -11,6 +11,8 @@ type CoachingCenterPayload = {
   sessionId?: string
   masterNoteId?: string
   feedbackLoomUrl?: string | null
+  weekKey?: string
+  closureReason?: string | null
   targetLang?: string
   userId?: string
   level?: string
@@ -62,6 +64,7 @@ type CoachingSessionWeeklyObjectiveRow = {
   ica_streak_objective_pct: number | null
   flashcards_streak_objective_pct: number | null
   report_exercise_url: string | null
+  exercise: unknown
 }
 
 type CoachingSessionClassRow = {
@@ -81,6 +84,12 @@ type WeekProgressItem = {
   closedMasterNotes: number
   icaStreakPct: number
   flashcardsStreakPct: number
+}
+
+type ExerciseObjective = {
+  url: string | null
+  status: 'pending' | 'completed'
+  completedAt: string | null
 }
 
 type CoachingClosedNoteItem = {
@@ -108,6 +117,23 @@ function safeInteger(value: unknown): number | null {
     return Math.trunc(parsed)
   }
   return null
+}
+
+function normalizeExerciseObjective(value: unknown): ExerciseObjective {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { url: null, status: 'pending', completedAt: null }
+  }
+
+  const record = value as Record<string, unknown>
+  const url = safeString(record.url)
+  const status = record.status === 'completed' ? 'completed' : 'pending'
+  const completedAt = safeString(record.completedAt ?? record.completed_at)
+
+  return {
+    url,
+    status: status === 'completed' && url ? 'completed' : 'pending',
+    completedAt: status === 'completed' && url ? completedAt || new Date().toISOString() : null,
+  }
 }
 
 function normalizeUrl(value: string | null): string | null {
@@ -449,6 +475,7 @@ function serializeWeeklyObjectives(
       icaStreakObjectivePct: row.ica_streak_objective_pct,
       flashcardsStreakObjectivePct: row.flashcards_streak_objective_pct,
       reportExerciseUrl: row.report_exercise_url,
+      exercise: normalizeExerciseObjective(row.exercise),
     }
   }
 
@@ -480,6 +507,7 @@ function objectiveRowsFromPayload(
   ica_streak_objective_pct: number | null
   flashcards_streak_objective_pct: number | null
   report_exercise_url: string | null
+  exercise: ExerciseObjective
 }> {
   const normalized = normalizeWeeklyObjectives(value)
 
@@ -487,6 +515,16 @@ function objectiveRowsFromPayload(
     .filter(([, raw]) => raw && typeof raw === 'object' && !Array.isArray(raw))
     .map(([key, raw]) => {
       const record = raw as Record<string, unknown>
+      const nextExercise = normalizeExerciseObjective(
+        record.exercise ||
+          (safeString(record.reportExerciseUrl)
+            ? {
+                url: safeString(record.reportExerciseUrl),
+                status: 'pending',
+                completedAt: null,
+              }
+            : null),
+      )
       return {
         session_id: sessionId,
         week_number: weekNumberFromKey(key),
@@ -500,7 +538,8 @@ function objectiveRowsFromPayload(
             record.flashcardsStreakAchievedPct ??
             record.icaStreakAchievedPct,
         ),
-        report_exercise_url: safeString(record.reportExerciseUrl),
+        report_exercise_url: nextExercise.url,
+        exercise: nextExercise,
       }
     })
 }
@@ -608,7 +647,7 @@ async function fetchProgramDataBySessionIds(
     adminClient
       .from('coaching_session_weekly_objectives')
       .select(
-        'session_id, week_number, words_target, nm_target, ica_streak_objective_pct, flashcards_streak_objective_pct, report_exercise_url',
+        'session_id, week_number, words_target, nm_target, ica_streak_objective_pct, flashcards_streak_objective_pct, report_exercise_url, exercise',
       )
       .in('session_id', sessionIds),
     adminClient
@@ -770,6 +809,81 @@ Deno.serve(async (req) => {
     )
 
     return jsonResponse(200, { memberships })
+  }
+
+  if (action === 'complete-exercise-objective') {
+    const sessionId = safeString(payload.sessionId)
+    const weekKey = normalizeProgramWeekKey(safeString(payload.weekKey))
+    if (!sessionId || !weekKey) {
+      return jsonResponse(400, { error: 'sessionId and weekKey are required' })
+    }
+
+    const weekNumber = weekNumberFromKey(weekKey)
+
+    const { data: sessionRow, error: sessionError } = await auth.adminClient
+      .from('coaching_sessions')
+      .select('id, user_id')
+      .eq('id', sessionId)
+      .eq('user_id', auth.userId)
+      .eq('status', 'active')
+      .maybeSingle<{ id: string; user_id: string }>()
+
+    if (sessionError) {
+      return jsonResponse(500, { error: sessionError.message })
+    }
+    if (!sessionRow) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+
+    const { data: objectiveRow, error: objectiveError } = await auth.adminClient
+      .from('coaching_session_weekly_objectives')
+      .select('exercise, report_exercise_url')
+      .eq('session_id', sessionId)
+      .eq('week_number', weekNumber)
+      .maybeSingle<{ exercise: unknown; report_exercise_url: string | null }>()
+
+    if (objectiveError) {
+      return jsonResponse(500, { error: objectiveError.message })
+    }
+
+    const normalizedExercise = normalizeExerciseObjective(
+      objectiveRow?.exercise ||
+        (safeString(objectiveRow?.report_exercise_url)
+          ? {
+              url: safeString(objectiveRow?.report_exercise_url),
+              status: 'pending',
+              completedAt: null,
+            }
+          : null),
+    )
+
+    if (!normalizedExercise.url) {
+      return jsonResponse(400, { error: 'Exercise objective link is missing' })
+    }
+
+    const completedExercise: ExerciseObjective = {
+      ...normalizedExercise,
+      status: 'completed',
+      completedAt: new Date().toISOString(),
+    }
+
+    const { error: upsertError } = await auth.adminClient
+      .from('coaching_session_weekly_objectives')
+      .upsert(
+        {
+          session_id: sessionId,
+          week_number: weekNumber,
+          report_exercise_url: completedExercise.url,
+          exercise: completedExercise,
+        },
+        { onConflict: 'session_id,week_number' },
+      )
+
+    if (upsertError) {
+      return jsonResponse(500, { error: upsertError.message })
+    }
+
+    return jsonResponse(200, { ok: true })
   }
 
   const admin = await ensureCoachingAdmin(req)
@@ -1183,7 +1297,7 @@ Deno.serve(async (req) => {
     return jsonResponse(200, { ok: true })
   }
 
-  if (action === 'delete-session') {
+  if (action === 'archive-session' || action === 'delete-session') {
     const sessionId = safeString(payload.sessionId)
     if (!sessionId) {
       return jsonResponse(400, { error: 'sessionId is required' })
@@ -1211,6 +1325,7 @@ Deno.serve(async (req) => {
       .update({
         is_active: false,
         status: 'cancelled',
+        archived_at: new Date().toISOString(),
       })
       .eq('id', sessionId)
 
@@ -1219,6 +1334,165 @@ Deno.serve(async (req) => {
     }
 
     return jsonResponse(200, { ok: true })
+  }
+
+  if (action === 'hard-delete-session') {
+    const sessionId = safeString(payload.sessionId)
+    if (!sessionId) {
+      return jsonResponse(400, { error: 'sessionId is required' })
+    }
+
+    const { data: row, error: rowError } = await admin.adminClient
+      .from('coaching_sessions')
+      .select('id, target_lang, level')
+      .eq('id', sessionId)
+      .maybeSingle<{ id: string; target_lang: string; level: string }>()
+
+    if (rowError) {
+      return jsonResponse(500, { error: rowError.message })
+    }
+    if (!row) {
+      return jsonResponse(404, { error: 'Coaching session not found' })
+    }
+
+    if (!scopeAllows(admin.adminRole, admin.scopes, row.target_lang, row.level)) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+
+    const { data: classRows } = await admin.adminClient
+      .from('coaching_session_classes')
+      .select('report_image_path')
+      .eq('session_id', sessionId)
+
+    const reportPaths = (classRows || [])
+      .map((item) => safeString((item as { report_image_path?: unknown }).report_image_path))
+      .filter((value): value is string => Boolean(value))
+
+    if (reportPaths.length > 0) {
+      await admin.adminClient.storage.from('coaching-class-reports').remove(reportPaths)
+    }
+
+    const { error } = await admin.adminClient
+      .from('coaching_sessions')
+      .delete()
+      .eq('id', sessionId)
+
+    if (error) {
+      return jsonResponse(500, { error: error.message })
+    }
+
+    return jsonResponse(200, { ok: true })
+  }
+
+  if (action === 'close-session') {
+    const sessionId = safeString(payload.sessionId)
+    if (!sessionId) {
+      return jsonResponse(400, { error: 'sessionId is required' })
+    }
+
+    const { data: row, error: rowError } = await admin.adminClient
+      .from('coaching_sessions')
+      .select('id, user_id, coach_user_id, target_lang, level, activated_at, duration_weeks, status')
+      .eq('id', sessionId)
+      .maybeSingle<{
+        id: string
+        user_id: string
+        coach_user_id: string | null
+        target_lang: string
+        level: string
+        activated_at: string | null
+        duration_weeks: number
+        status: string
+      }>()
+
+    if (rowError) {
+      return jsonResponse(500, { error: rowError.message })
+    }
+    if (!row) {
+      return jsonResponse(404, { error: 'Coaching session not found' })
+    }
+
+    if (!scopeAllows(admin.adminRole, admin.scopes, row.target_lang, row.level)) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+
+    if (row.status === 'draft') {
+      return jsonResponse(400, { error: 'Draft session cannot be closed' })
+    }
+
+    const nowIso = new Date().toISOString()
+    const activated = row.activated_at ? toUtcDate(row.activated_at) : null
+    const completedWeeks = activated
+      ? Math.min(
+          12,
+          Math.max(
+            0,
+            Math.floor((Date.now() - activated.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1,
+          ),
+        )
+      : 0
+
+    const [objectiveCount, classCount] = await Promise.all([
+      admin.adminClient
+        .from('coaching_session_weekly_objectives')
+        .select('id', { count: 'exact', head: true })
+        .eq('session_id', sessionId),
+      admin.adminClient
+        .from('coaching_session_classes')
+        .select('id', { count: 'exact', head: true })
+        .eq('session_id', sessionId),
+    ])
+
+    if (objectiveCount.error || classCount.error) {
+      return jsonResponse(500, {
+        error: objectiveCount.error?.message || classCount.error?.message,
+      })
+    }
+
+    const summary = {
+      objectiveWeeksConfigured: objectiveCount.count || 0,
+      classesRecorded: classCount.count || 0,
+      closedEarly: completedWeeks < 12,
+      closedBy: admin.userId,
+    }
+
+    const { error: closureError } = await admin.adminClient
+      .from('coaching_session_closures')
+      .upsert(
+        {
+          session_id: row.id,
+          user_id: row.user_id,
+          coach_user_id: row.coach_user_id,
+          target_lang: row.target_lang,
+          level: row.level,
+          started_at: row.activated_at,
+          closed_at: nowIso,
+          completed_weeks: completedWeeks,
+          total_weeks: 12,
+          closure_reason: safeString(payload.closureReason),
+          summary,
+        },
+        { onConflict: 'session_id' },
+      )
+
+    if (closureError) {
+      return jsonResponse(500, { error: closureError.message })
+    }
+
+    const { error } = await admin.adminClient
+      .from('coaching_sessions')
+      .update({
+        status: 'completed',
+        closed_at: nowIso,
+        is_active: false,
+      })
+      .eq('id', sessionId)
+
+    if (error) {
+      return jsonResponse(500, { error: error.message })
+    }
+
+    return jsonResponse(200, { ok: true, completedWeeks })
   }
 
   if (action === 'upsert-master-note-feedback-loom') {
