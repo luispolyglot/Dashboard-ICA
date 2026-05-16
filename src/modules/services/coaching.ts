@@ -314,10 +314,51 @@ export async function deleteCoachingSession(sessionId: string): Promise<void> {
   await invokeCoachingFunction<{ ok?: boolean }>(
     'coaching-center',
     {
-      action: 'delete-session',
+      action: 'archive-session',
       sessionId,
     },
-    'No se pudo eliminar la sesión de coaching.',
+    'No se pudo archivar la sesión de coaching.',
+  )
+}
+
+export async function hardDeleteCoachingSession(sessionId: string): Promise<void> {
+  await invokeCoachingFunction<{ ok?: boolean }>(
+    'coaching-center',
+    {
+      action: 'hard-delete-session',
+      sessionId,
+    },
+    'No se pudo eliminar definitivamente la sesión de coaching.',
+  )
+}
+
+export async function closeCoachingSession(input: {
+  sessionId: string
+  closureReason?: string | null
+}): Promise<{ completedWeeks: number | null }> {
+  return invokeCoachingFunction<{ completedWeeks?: number | null }>(
+    'coaching-center',
+    {
+      action: 'close-session',
+      sessionId: input.sessionId,
+      closureReason: input.closureReason || null,
+    },
+    'No se pudo cerrar la sesión de coaching.',
+  ).then((data) => ({ completedWeeks: data.completedWeeks ?? null }))
+}
+
+export async function completeCoachingExerciseObjective(input: {
+  sessionId: string
+  weekKey: string
+}): Promise<void> {
+  await invokeCoachingFunction<{ ok?: boolean }>(
+    'coaching-center',
+    {
+      action: 'complete-exercise-objective',
+      sessionId: input.sessionId,
+      weekKey: input.weekKey,
+    },
+    'No se pudo marcar el ejercicio como completado.',
   )
 }
 
