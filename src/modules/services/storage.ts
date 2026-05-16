@@ -451,27 +451,6 @@ async function saveGoalDays(
       .upsert(payload, { onConflict: 'user_id,day,goal_type' })
     if (error) throw error
   }
-
-  const { data: existing, error: existingError } = await supabase
-    .from('goal_completions')
-    .select('day')
-    .eq('user_id', userId)
-    .eq('goal_type', goalType)
-
-  if (existingError) throw existingError
-
-  const nextDaySet = new Set(uniqueDays)
-  const daysToDelete = (existing || []).map((row) => row.day).filter((day) => !nextDaySet.has(day))
-
-  if (daysToDelete.length > 0) {
-    const { error } = await supabase
-      .from('goal_completions')
-      .delete()
-      .eq('user_id', userId)
-      .eq('goal_type', goalType)
-      .in('day', daysToDelete)
-    if (error) throw error
-  }
 }
 
 async function loadDailyProgress(userId: string): Promise<DailyProgressMap> {
@@ -513,25 +492,6 @@ async function saveDailyProgress(userId: string, progress: DailyProgressMap): Pr
     const { error } = await supabase
       .from('daily_metrics')
       .upsert(payload, { onConflict: 'user_id,day' })
-    if (error) throw error
-  }
-
-  const { data: existing, error: existingError } = await supabase
-    .from('daily_metrics')
-    .select('day')
-    .eq('user_id', userId)
-
-  if (existingError) throw existingError
-
-  const nextDaySet = new Set(entries.map(([day]) => day))
-  const daysToDelete = (existing || []).map((row) => row.day).filter((day) => !nextDaySet.has(day))
-
-  if (daysToDelete.length > 0) {
-    const { error } = await supabase
-      .from('daily_metrics')
-      .delete()
-      .eq('user_id', userId)
-      .in('day', daysToDelete)
     if (error) throw error
   }
 }
