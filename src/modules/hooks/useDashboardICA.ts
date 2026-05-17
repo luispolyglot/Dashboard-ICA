@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CREATION_WORDS_GOAL } from '../constants'
 import {
   loadMetaTrackerProfile,
   saveMetaTrackerProfile,
@@ -139,23 +138,10 @@ export function useDashboardICA() {
     [config],
   )
 
-  const checkCreationStreak = async (updatedProgress: DailyProgressMap): Promise<void> => {
-    const tk = todayKey()
-    const todayProgress = updatedProgress[tk] || {
-      wordsAdded: 0,
-      phraseGenerated: false,
-      reviewCorrect: 0,
-    }
-    if (
-      todayProgress.wordsAdded >= CREATION_WORDS_GOAL
-      && todayProgress.phraseGenerated
-      && !creationDays.includes(tk)
-    ) {
-      const nextDays = [...creationDays, tk]
-      setCreationDays(nextDays)
-      await saveData('dashboard-ICA-creation-days', nextDays)
-    }
-  }
+  const refreshCreationDaysFromSource = useCallback(async (): Promise<void> => {
+    const sourceDays = await loadData('dashboard-ICA-creation-days', [] as string[])
+    setCreationDays(sourceDays || [])
+  }, [])
 
   const handleWordAdded = async () => {
     const tk = todayKey()
@@ -166,7 +152,7 @@ export function useDashboardICA() {
     updated[tk] = { ...updated[tk], wordsAdded: updated[tk].wordsAdded + 1 }
     setDailyProgress(updated)
     await saveData('dashboard-ICA-daily-progress', updated)
-    await checkCreationStreak(updated)
+    await refreshCreationDaysFromSource()
     return updated[tk]
   }
 
@@ -179,7 +165,7 @@ export function useDashboardICA() {
     updated[tk] = { ...updated[tk], phraseGenerated: true }
     setDailyProgress(updated)
     await saveData('dashboard-ICA-daily-progress', updated)
-    await checkCreationStreak(updated)
+    await refreshCreationDaysFromSource()
     return updated[tk]
   }
 

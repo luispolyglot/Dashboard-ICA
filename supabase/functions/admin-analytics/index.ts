@@ -132,7 +132,7 @@ Deno.serve(async (req) => {
     adminClient.from('lexicard_reviews').select('*', { count: 'exact', head: true }),
     adminClient.from('phrase_generations').select('*', { count: 'exact', head: true }),
     adminClient.from('phrase_voice_activations').select('*', { count: 'exact', head: true }),
-    adminClient.from('daily_metrics').select('user_id, words_added, reviews_done').eq('day', today),
+    adminClient.from('daily_metrics').select('user_id, words_added, correct_reviews').eq('day', today),
     adminClient
       .from('phrase_voice_activations')
       .select('id', { count: 'exact', head: true })
@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
   const profileSignupsRows = profileSignupsResult.data || []
 
   const wordsAddedToday = todayMetricsRows.reduce((sum, row) => sum + (row.words_added || 0), 0)
-  const reviewsToday = todayMetricsRows.reduce((sum, row) => sum + (row.reviews_done || 0), 0)
+  const reviewsToday = todayMetricsRows.reduce((sum, row) => sum + (row.correct_reviews || 0), 0)
 
   const summary: SummaryPayload = {
     totalUsers: profilesCountResult.count || 0,

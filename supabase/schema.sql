@@ -101,7 +101,6 @@ create table if not exists public.daily_metrics (
   user_id uuid not null references auth.users (id) on delete cascade,
   day date not null,
   words_added integer not null default 0,
-  reviews_done integer not null default 0,
   correct_reviews integer not null default 0,
   phrase_generated boolean not null default false,
   xp_earned integer not null default 0,
