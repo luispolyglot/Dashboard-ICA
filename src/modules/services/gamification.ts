@@ -38,6 +38,23 @@ async function getDailyMetrics(userId: string, day: string): Promise<DailyMetric
   }
 }
 
+async function hasVoiceActivationForDay(userId: string, day: string): Promise<boolean> {
+  if (!supabase) return false
+
+  const start = new Date(`${day}T00:00:00`)
+  const end = new Date(`${day}T23:59:59.999`)
+
+  const { count, error } = await supabase
+    .from('phrase_voice_activations')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .gte('created_at', start.toISOString())
+    .lte('created_at', end.toISOString())
+
+  if (error) throw error
+  return (count || 0) > 0
+}
+
 type WordAddedEventParams = {
   wordsAdded: number
   phraseGenerated: boolean
@@ -52,7 +69,9 @@ export async function recordWordAddedEvent(params: WordAddedEventParams): Promis
   const metric = await getDailyMetrics(userId, day)
   const nextWords = params.wordsAdded
   const nextXp = metric.xp_earned + WORD_ADD_POINTS
-  const creationCompleted = nextWords >= CREATION_WORDS_GOAL && params.phraseGenerated
+  const hasActivation = await hasVoiceActivationForDay(userId, day)
+  const creationCompleted =
+    nextWords >= CREATION_WORDS_GOAL && params.phraseGenerated && hasActivation
 
   const { error: xpError } = await supabase.from('xp_events').insert({
     user_id: userId,
@@ -117,7 +136,9 @@ export async function recordPhraseGeneratedEvent(
   const day = todayKey()
   const metric = await getDailyMetrics(userId, day)
   const nextXp = metric.xp_earned + PHRASE_POINTS
-  const creationCompleted = params.wordsAdded >= CREATION_WORDS_GOAL
+  const hasActivation = await hasVoiceActivationForDay(userId, day)
+  const creationCompleted =
+    params.wordsAdded >= CREATION_WORDS_GOAL && hasActivation
 
   const phrasePayload = {
     user_id: userId,

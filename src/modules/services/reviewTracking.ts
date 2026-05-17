@@ -52,13 +52,12 @@ export async function recordReviewEvent({ previousCard, nextCard, knew }: Record
 
   const { data: metric, error: metricError } = await supabase
     .from('daily_metrics')
-    .select('reviews_done, correct_reviews, xp_earned')
+    .select('correct_reviews, xp_earned')
     .eq('user_id', userId)
     .eq('day', day)
     .maybeSingle()
   if (metricError) throw metricError
 
-  const nextReviewsDone = (metric?.reviews_done ?? 0) + 1
   const nextCorrect = (metric?.correct_reviews ?? 0) + (knew ? 1 : 0)
   const nextXp = (metric?.xp_earned ?? 0) + points
 
@@ -66,7 +65,6 @@ export async function recordReviewEvent({ previousCard, nextCard, knew }: Record
     {
       user_id: userId,
       day,
-      reviews_done: nextReviewsDone,
       correct_reviews: nextCorrect,
       xp_earned: nextXp,
       review_goal_completed: nextCorrect >= GOAL,

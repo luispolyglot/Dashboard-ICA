@@ -416,12 +416,12 @@ function toGoalType(key: DashboardStorageKey): 'review_goal' | 'creation_goal' |
 async function loadGoalDays(userId: string, goalType: 'review_goal' | 'creation_goal'): Promise<string[]> {
   if (!supabase) return []
 
+  const column = goalType === 'review_goal' ? 'review_goal_completed' : 'creation_goal_completed'
   const { data, error } = await supabase
-    .from('goal_completions')
-    .select('day')
+    .from('daily_metrics')
+    .select(`day, ${column}`)
     .eq('user_id', userId)
-    .eq('goal_type', goalType)
-    .eq('completed', true)
+    .eq(column, true)
     .order('day', { ascending: true })
 
   if (error) throw error
