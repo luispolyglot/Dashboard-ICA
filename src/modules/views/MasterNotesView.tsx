@@ -35,6 +35,7 @@ import type { MasterNote } from '../types'
 
 type MasterNotesViewProps = {
   targetLang: string
+  nativeLang: string
 }
 
 function formatDuration(durationMs: number): string {
@@ -83,7 +84,7 @@ function SeekForward10Icon() {
   )
 }
 
-export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
+export function MasterNotesView({ targetLang, nativeLang }: MasterNotesViewProps) {
   const navigate = useNavigate()
   const [items, setItems] = useState<MasterNote[]>([])
   const [loading, setLoading] = useState(true)
@@ -109,7 +110,7 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
   } = useMasterNotePlayback()
 
   useEffect(() => {
-    fetchMasterNotes()
+    fetchMasterNotes(targetLang, nativeLang)
       .then((rows) => {
         setItems(rows)
         setError(null)
@@ -120,7 +121,7 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
         setError('No se pudieron cargar las notas maestras')
       })
       .finally(() => setLoading(false))
-  }, [])
+  }, [nativeLang, targetLang])
 
   const openItems = useMemo(
     () =>
@@ -143,7 +144,7 @@ export function MasterNotesView({ targetLang }: MasterNotesViewProps) {
     if (creating) return
     setCreating(true)
     try {
-      const created = await createMasterNote()
+      const created = await createMasterNote(targetLang, nativeLang)
       setItems((prev) => [created, ...prev])
       setError(null)
       navigate(`${DASHBOARD_ROUTES.masterNotes}/note/${created.id}`)

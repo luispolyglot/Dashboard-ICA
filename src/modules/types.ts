@@ -89,6 +89,8 @@ export interface MasterNote {
   close_type: 'final' | 'temporal'
   total_duration_ms: number
   final_audio_path: string | null
+  target_lang: string | null
+  native_lang: string | null
   created_at: string
   updated_at: string
   closed_at: string | null

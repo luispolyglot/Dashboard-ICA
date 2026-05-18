@@ -384,6 +384,7 @@ async function fetchWeekProgressForSession(
       .from('master_notes')
       .select('state, closed_at, updated_at')
       .eq('user_id', session.user_id)
+      .eq('target_lang', session.target_lang)
       .eq('state', 'closed'),
     adminClient
       .from('daily_metrics')
@@ -415,6 +416,7 @@ async function fetchClosedNotesByWeekForSession(
   adminClient: any,
   session: {
     user_id: string
+    target_lang: string
     activated_at: string | null
     duration_weeks: number
   },
@@ -431,6 +433,7 @@ async function fetchClosedNotesByWeekForSession(
     .from('master_notes')
     .select('id, name, state, closed_at, updated_at, coaching_feedback_loom_url')
     .eq('user_id', session.user_id)
+    .eq('target_lang', session.target_lang)
     .eq('state', 'closed')
     .order('updated_at', { ascending: false })
 
@@ -1614,11 +1617,13 @@ Deno.serve(async (req) => {
       admin.adminClient
         .from('master_notes')
         .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId),
+        .eq('user_id', userId)
+        .eq('target_lang', targetLang),
       admin.adminClient
         .from('master_notes')
         .select('id, name, state, total_duration_ms, created_at, updated_at, closed_at, final_audio_path, coaching_feedback_loom_url')
         .eq('user_id', userId)
+        .eq('target_lang', targetLang)
         .order('created_at', { ascending: false })
         .limit(1000),
     ])

@@ -131,7 +131,7 @@ export function MasterNoteDetailView({
       setLoading(true)
       try {
         const [foundNote, phraseRows, chunkRows] = await Promise.all([
-          fetchMasterNoteById(noteId),
+          fetchMasterNoteById(noteId, targetLang),
           fetchPhraseHistory(80, targetLang),
           fetchMasterNoteChunks(noteId),
         ])

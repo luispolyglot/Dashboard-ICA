@@ -6,7 +6,11 @@ declare global {
   interface Window {
     storage?: BridgeStorage
   }
+
+  const __APP_BUILD_ID__: string
 }
+
+export {}
 
 interface ImportMetaEnv {
   readonly VITE_ANTHROPIC_MODEL?: string
