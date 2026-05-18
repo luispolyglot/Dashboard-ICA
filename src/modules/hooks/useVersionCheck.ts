@@ -8,8 +8,7 @@ export function useVersionCheck(intervalMs = 60_000): boolean {
   const [updateAvailable, setUpdateAvailable] = useState(false)
 
   useEffect(() => {
-    console.log('Setting up version check with interval', intervalMs)
-    //if (import.meta.env.DEV) return
+    if (import.meta.env.DEV) return
 
     let mounted = true
 
@@ -18,7 +17,6 @@ export function useVersionCheck(intervalMs = 60_000): boolean {
         const response = await fetch(`/version.json?t=${Date.now()}`, {
           cache: 'no-store',
         })
-        console.log('Version check response', response)
         if (!response.ok) return
         const payload = (await response.json()) as VersionPayload
         if (!mounted) return
