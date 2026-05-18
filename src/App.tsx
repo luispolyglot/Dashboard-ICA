@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { FullscreenLoading } from './components/ui/fullscreen-loading'
 import { useAuth } from './auth/AuthContext'
+import { AppVersionUpdateNotice } from './modules/components/AppVersionUpdateNotice'
 import { ImportantInfoModal } from './modules/components/ImportantInfoModal'
 import { DashboardProvider } from './modules/context/DashboardContext'
 import { DashboardLayout } from './modules/layout/DashboardLayout'
@@ -62,6 +63,7 @@ function DashboardShell() {
 export function App() {
   return (
     <>
+      <AppVersionUpdateNotice />
       <ImportantInfoModal />
       <Routes>
         <Route path='/reset-password' element={<ResetPasswordPage />} />
