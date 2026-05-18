@@ -59,6 +59,7 @@ import {
   upsertMasterNoteFeedbackLoom,
   upsertCoachingUser,
 } from '../services/coaching'
+import { CoachingProgramPreview } from './CoachingProgramPreview'
 
 type ManageCoachingUserViewProps = {
   userId: string
@@ -89,6 +90,7 @@ type ClassDraft = {
 }
 
 type SessionActionType = 'archive' | 'close' | 'hard-delete'
+type CoachingViewMode = 'coach' | 'user-preview'
 
 function formatDateTime(value: string): string {
   const date = new Date(value)
@@ -445,6 +447,7 @@ export function ManageCoachingUserView({
   const [sessionActionType, setSessionActionType] = useState<SessionActionType | null>(null)
   const [sessionActionReason, setSessionActionReason] = useState('')
   const [isApplyingSessionAction, setIsApplyingSessionAction] = useState(false)
+  const [viewMode, setViewMode] = useState<CoachingViewMode>('coach')
 
   const selectedMembership = useMemo(
     () => memberships.find((row) => row.id === selectedSessionId) || null,
@@ -842,6 +845,42 @@ export function ManageCoachingUserView({
     )
   }, [selectedMembership?.activatedAt])
 
+  const previewMembership = useMemo(() => {
+    if (!selectedMembership || !insights) return null
+
+    const closedMasterNotesByWeek: Record<
+      string,
+      Array<{
+        id: string
+        name: string
+        closedAt: string
+        feedbackLoomUrl: string | null
+      }>
+    > = {}
+
+    for (const [weekKey, notes] of closedNotesByWeek.entries()) {
+      closedMasterNotesByWeek[weekKey] = notes.map((note) => ({
+        id: note.id,
+        name: note.name,
+        closedAt: note.closedAt,
+        feedbackLoomUrl: note.feedbackLoomUrl,
+      }))
+    }
+
+    return {
+      id: selectedMembership.id,
+      targetLang: selectedMembership.targetLang,
+      level: selectedMembership.level,
+      status: selectedMembership.status,
+      activatedAt: selectedMembership.activatedAt,
+      durationWeeks: selectedMembership.durationWeeks,
+      classSessions: selectedMembership.classSessions,
+      weeklyObjectives: insights.weeklyObjectives,
+      weekProgress: insights.weekProgress,
+      closedMasterNotesByWeek,
+    }
+  }, [selectedMembership, insights, closedNotesByWeek])
+
   const handleOpenSessionAction = (type: SessionActionType) => {
     setSessionActionType(type)
     setSessionActionReason('')
@@ -955,6 +994,27 @@ export function ManageCoachingUserView({
               <span className='font-medium text-foreground'>{selectedMembership.status}</span>
             </p>
           )}
+
+          {selectedMembership && (
+            <div className='ml-auto flex flex-wrap items-center gap-2'>
+              <Button
+                type='button'
+                variant={viewMode === 'coach' ? 'default' : 'outline'}
+                size='sm'
+                onClick={() => setViewMode('coach')}
+              >
+                Edicion coach
+              </Button>
+              <Button
+                type='button'
+                variant={viewMode === 'user-preview' ? 'default' : 'outline'}
+                size='sm'
+                onClick={() => setViewMode('user-preview')}
+              >
+                Como lo ve el usuario
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -964,7 +1024,11 @@ export function ManageCoachingUserView({
         <p className='text-sm text-muted-foreground'>No hay datos disponibles para este usuario.</p>
       ) : (
         <div className='grid gap-4'>
-          <Accordion type='multiple' className='w-full rounded-md border px-4'>
+          {viewMode === 'user-preview' && previewMembership ? (
+            <CoachingProgramPreview membership={previewMembership} />
+          ) : (
+            <>
+              <Accordion type='multiple' className='w-full rounded-md border px-4'>
             {Array.from({ length: 12 }, (_, index) => {
               const week = index + 1
               const weekKey = weekKeyFromNumber(week)
@@ -1286,26 +1350,28 @@ export function ManageCoachingUserView({
                 </AccordionItem>
               )
             })}
-          </Accordion>
+              </Accordion>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Todas las palabras ICA ({insights.wordsCount})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {insights.words.length === 0 ? (
-                <p className='text-sm text-muted-foreground'>Sin palabras ICA.</p>
-              ) : (
-                <div className='max-h-72 space-y-1 overflow-y-auto rounded-md border p-2 text-sm'>
-                  {insights.words.map((word) => (
-                    <p key={word.id}>
-                      {word.target} → {word.native} ({word.importance})
-                    </p>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Todas las palabras ICA ({insights.wordsCount})</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {insights.words.length === 0 ? (
+                    <p className='text-sm text-muted-foreground'>Sin palabras ICA.</p>
+                  ) : (
+                    <div className='max-h-72 space-y-1 overflow-y-auto rounded-md border p-2 text-sm'>
+                      {insights.words.map((word) => (
+                        <p key={word.id}>
+                          {word.target} → {word.native} ({word.importance})
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
         </div>
       )}
 
