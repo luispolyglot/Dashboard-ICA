@@ -67,6 +67,8 @@ export async function createMasterNote(
   const { data: existingRows, error: existingError } = await supabase
     .from('master_notes')
     .select('name')
+    .eq('target_lang', targetLang)
+    .eq('native_lang', nativeLang)
 
   if (existingError) throw existingError
 
