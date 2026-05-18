@@ -317,7 +317,7 @@ export function PhraseView({
     setLoadingMasterNotes(true)
     setMasterNotesError(null)
     try {
-      const allNotes = await fetchMasterNotes()
+      const allNotes = await fetchMasterNotes(config.targetLang, config.nativeLang)
       const available = allNotes.filter(
         (note) =>
           note.state === 'open' &&
@@ -352,7 +352,7 @@ export function PhraseView({
     setCreatingAndActivating(true)
     setMasterNotesError(null)
     try {
-      const created = await createMasterNote()
+      const created = await createMasterNote(config.targetLang, config.nativeLang)
       navigate(
         `${DASHBOARD_ROUTES.masterNotes}/note/${created.id}/activate/${resultPhraseId}`,
       )

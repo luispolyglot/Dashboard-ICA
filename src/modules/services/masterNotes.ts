@@ -29,21 +29,36 @@ async function getCurrentUserId(): Promise<string | null> {
   return data.session?.user?.id || null
 }
 
-export async function fetchMasterNotes(): Promise<MasterNote[]> {
+export async function fetchMasterNotes(
+  targetLang?: string,
+  nativeLang?: string,
+): Promise<MasterNote[]> {
   if (!supabase) return []
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('master_notes')
     .select(
-      'id, name, state, close_type, total_duration_ms, final_audio_path, created_at, updated_at, closed_at',
+      'id, name, state, close_type, total_duration_ms, final_audio_path, target_lang, native_lang, created_at, updated_at, closed_at',
     )
     .order('created_at', { ascending: false })
+
+  if (targetLang) {
+    query = query.eq('target_lang', targetLang)
+  }
+  if (nativeLang) {
+    query = query.eq('native_lang', nativeLang)
+  }
+
+  const { data, error } = await query
 
   if (error) throw error
   return (data || []) as MasterNote[]
 }
 
-export async function createMasterNote(): Promise<MasterNote> {
+export async function createMasterNote(
+  targetLang: string,
+  nativeLang: string,
+): Promise<MasterNote> {
   if (!supabase) throw new Error('Falta configurar Supabase')
 
   const userId = await getCurrentUserId()
@@ -62,9 +77,15 @@ export async function createMasterNote(): Promise<MasterNote> {
 
   const { data, error } = await supabase
     .from('master_notes')
-    .insert({ user_id: userId, name: generatedName, state: 'open' })
+    .insert({
+      user_id: userId,
+      name: generatedName,
+      state: 'open',
+      target_lang: targetLang,
+      native_lang: nativeLang,
+    })
     .select(
-      'id, name, state, close_type, total_duration_ms, final_audio_path, created_at, updated_at, closed_at',
+      'id, name, state, close_type, total_duration_ms, final_audio_path, target_lang, native_lang, created_at, updated_at, closed_at',
     )
     .single()
 
@@ -72,16 +93,24 @@ export async function createMasterNote(): Promise<MasterNote> {
   return data as MasterNote
 }
 
-export async function fetchMasterNoteById(noteId: string): Promise<MasterNote | null> {
+export async function fetchMasterNoteById(
+  noteId: string,
+  targetLang?: string,
+): Promise<MasterNote | null> {
   if (!supabase) return null
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('master_notes')
     .select(
-      'id, name, state, close_type, total_duration_ms, final_audio_path, created_at, updated_at, closed_at',
+      'id, name, state, close_type, total_duration_ms, final_audio_path, target_lang, native_lang, created_at, updated_at, closed_at',
     )
     .eq('id', noteId)
-    .maybeSingle()
+
+  if (targetLang) {
+    query = query.eq('target_lang', targetLang)
+  }
+
+  const { data, error } = await query.maybeSingle()
 
   if (error) throw error
   return (data as MasterNote | null) || null
@@ -261,7 +290,7 @@ export async function addMasterNoteChunk({
 
   const { data: noteRow, error: noteError } = await supabase
     .from('master_notes')
-    .select('id, state, total_duration_ms')
+    .select('id, state, total_duration_ms, target_lang, native_lang')
     .eq('id', noteId)
     .maybeSingle()
 
@@ -269,6 +298,40 @@ export async function addMasterNoteChunk({
   if (!noteRow) throw new Error('No se encontró la nota maestra')
   if (noteRow.state !== 'open') {
     throw new Error('La nota maestra está cerrada')
+  }
+
+  const { data: phraseRow, error: phraseError } = await supabase
+    .from('phrase_generations')
+    .select('id, target_lang, native_lang')
+    .eq('id', phraseGenerationId)
+    .maybeSingle()
+
+  if (phraseError) throw phraseError
+  if (!phraseRow) {
+    throw new Error('No se encontró la frase a activar')
+  }
+
+  const noteTargetLang = typeof noteRow.target_lang === 'string' ? noteRow.target_lang.trim() : ''
+  const noteNativeLang = typeof noteRow.native_lang === 'string' ? noteRow.native_lang.trim() : ''
+  const phraseTargetLang = typeof phraseRow.target_lang === 'string' ? phraseRow.target_lang.trim() : ''
+  const phraseNativeLang = typeof phraseRow.native_lang === 'string' ? phraseRow.native_lang.trim() : ''
+
+  if (noteTargetLang && noteNativeLang && phraseTargetLang && phraseNativeLang) {
+    if (noteTargetLang !== phraseTargetLang || noteNativeLang !== phraseNativeLang) {
+      throw new Error('La frase pertenece a otro idioma y no puede activarse en esta nota')
+    }
+  }
+
+  if (!noteTargetLang && !noteNativeLang && phraseTargetLang && phraseNativeLang) {
+    const { error: updateLangError } = await supabase
+      .from('master_notes')
+      .update({
+        target_lang: phraseTargetLang,
+        native_lang: phraseNativeLang,
+      })
+      .eq('id', noteId)
+
+    if (updateLangError) throw updateLangError
   }
 
   const { data: existingChunk, error: existingChunkError } = await supabase

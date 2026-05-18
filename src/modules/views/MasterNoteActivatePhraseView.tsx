@@ -225,7 +225,7 @@ export function MasterNoteActivatePhraseView({
       setLoading(true)
       try {
         const [foundNote, foundPhrase, noteChunks] = await Promise.all([
-          fetchMasterNoteById(noteId),
+          fetchMasterNoteById(noteId, targetLang),
           fetchPhraseHistoryEntry(phraseId),
           fetchMasterNoteChunks(noteId),
         ])
@@ -276,7 +276,7 @@ export function MasterNoteActivatePhraseView({
       stopWave()
       if (recordingDraft) URL.revokeObjectURL(recordingDraft.url)
     }
-  }, [noteId, phraseId])
+  }, [noteId, phraseId, targetLang])
 
   const remainingBeforeRecordingMs = Math.max(
     0,

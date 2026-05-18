@@ -223,7 +223,10 @@ export function MasterNotesPage() {
 
   return (
     <PageLayout>
-      <MasterNotesView targetLang={config.targetLang} />
+      <MasterNotesView
+        targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+      />
     </PageLayout>
   )
 }
