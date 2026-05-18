@@ -168,7 +168,9 @@ export function CoachingPersonalizedView({
   const [error, setError] = useState<string | null>(null)
   const [memberships, setMemberships] = useState<CoachingMembership[]>([])
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
-  const [completingExerciseWeek, setCompletingExerciseWeek] = useState<string | null>(null)
+  const [completingExerciseWeek, setCompletingExerciseWeek] = useState<
+    string | null
+  >(null)
 
   const loadData = async () => {
     setLoading(true)
@@ -342,7 +344,7 @@ export function CoachingPersonalizedView({
                   <AccordionContent className='space-y-3 pb-4 text-sm'>
                     <Card>
                       <CardHeader>
-                        <CardTitle>Clase grabada</CardTitle>
+                        <CardTitle>🧑‍🏫 Mis Clases</CardTitle>
                       </CardHeader>
                       <CardContent className='space-y-2'>
                         {!latestClass ? (
@@ -453,11 +455,17 @@ export function CoachingPersonalizedView({
                           flashcards: {flashcardsStatus.label}
                         </p>
                         <div
-                          className={exerciseDone ? 'text-green-600' : 'text-foreground'}
+                          className={
+                            exerciseDone ? 'text-green-600' : 'text-foreground'
+                          }
                         >
                           <p>
                             {exerciseDone ? '✅' : '❌'} Objetivo Ejercicio:{' '}
-                            {exercise.url ? (exerciseDone ? 'Completado' : 'Pendiente') : 'No definido'}
+                            {exercise.url
+                              ? exerciseDone
+                                ? 'Completado'
+                                : 'Pendiente'
+                              : 'No definido'}
                           </p>
                           {exercise.url && (
                             <div className='mt-1 flex flex-wrap items-center gap-3'>
@@ -472,7 +480,8 @@ export function CoachingPersonalizedView({
                               <button
                                 type='button'
                                 onClick={() => {
-                                  if (!selectedMembership || exerciseDone) return
+                                  if (!selectedMembership || exerciseDone)
+                                    return
                                   setCompletingExerciseWeek(weekKey)
                                   void completeCoachingExerciseObjective({
                                     sessionId: selectedMembership.id,
@@ -481,22 +490,34 @@ export function CoachingPersonalizedView({
                                     .then(() => {
                                       setMemberships((prev) =>
                                         prev.map((membership) => {
-                                          if (membership.id !== selectedMembership.id) return membership
-                                          const nextObjectivesByWeek = normalizeWeeklyObjectiveMap(membership.weeklyObjectives)
-                                          const weekObjective = nextObjectivesByWeek[weekKey] || {}
+                                          if (
+                                            membership.id !==
+                                            selectedMembership.id
+                                          )
+                                            return membership
+                                          const nextObjectivesByWeek =
+                                            normalizeWeeklyObjectiveMap(
+                                              membership.weeklyObjectives,
+                                            )
+                                          const weekObjective =
+                                            nextObjectivesByWeek[weekKey] || {}
                                           nextObjectivesByWeek[weekKey] = {
                                             ...weekObjective,
                                             exercise: {
-                                              ...normalizeExerciseObjective(weekObjective.exercise),
+                                              ...normalizeExerciseObjective(
+                                                weekObjective.exercise,
+                                              ),
                                               url: exercise.url,
                                               status: 'completed',
-                                              completedAt: new Date().toISOString(),
+                                              completedAt:
+                                                new Date().toISOString(),
                                             },
                                           }
 
                                           return {
                                             ...membership,
-                                            weeklyObjectives: nextObjectivesByWeek,
+                                            weeklyObjectives:
+                                              nextObjectivesByWeek,
                                           }
                                         }),
                                       )
@@ -507,7 +528,10 @@ export function CoachingPersonalizedView({
                                       )
                                     })
                                 }}
-                                disabled={exerciseDone || completingExerciseWeek === weekKey}
+                                disabled={
+                                  exerciseDone ||
+                                  completingExerciseWeek === weekKey
+                                }
                                 className='inline-flex items-center gap-1 text-xs text-foreground disabled:opacity-50'
                               >
                                 {exerciseDone ? (
