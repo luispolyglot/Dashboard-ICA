@@ -825,17 +825,37 @@ Deno.serve(async (req) => {
 
     const { data: sessionRow, error: sessionError } = await auth.adminClient
       .from('coaching_sessions')
-      .select('id, user_id')
+      .select('id, user_id, activated_at, duration_weeks')
       .eq('id', sessionId)
       .eq('user_id', auth.userId)
       .eq('status', 'active')
-      .maybeSingle<{ id: string; user_id: string }>()
+      .maybeSingle<{
+        id: string
+        user_id: string
+        activated_at: string | null
+        duration_weeks: number
+      }>()
 
     if (sessionError) {
       return jsonResponse(500, { error: sessionError.message })
     }
     if (!sessionRow) {
       return jsonResponse(403, { error: 'Forbidden' })
+    }
+
+    const durationWeeks = Math.min(12, Math.max(1, sessionRow.duration_weeks || 12))
+    const currentProgramWeek = getWeekFromActivatedAt(
+      sessionRow.activated_at,
+      new Date().toISOString(),
+      durationWeeks,
+    )
+
+    if (!currentProgramWeek) {
+      return jsonResponse(400, { error: 'Exercise completion is only allowed during its assigned week' })
+    }
+
+    if (weekNumber !== currentProgramWeek) {
+      return jsonResponse(400, { error: 'Exercise completion is only allowed during its assigned week' })
     }
 
     const { data: objectiveRow, error: objectiveError } = await auth.adminClient

@@ -404,6 +404,10 @@ export function CoachingProgramPreview({
             progress.flashcardsStreakPct,
           )
           const exerciseDone = exercise.status === 'completed'
+          const canCompleteExerciseThisWeek =
+            allowExerciseCompletion &&
+            membership.status === 'active' &&
+            week === currentProgramWeek
           const objectiveTotal = exercise.url ? 5 : 4
           const objectiveDone = [
             wordsStatus.done,
@@ -631,6 +635,7 @@ export function CoachingProgramPreview({
                                 }}
                                 disabled={
                                   exerciseDone ||
+                                  !canCompleteExerciseThisWeek ||
                                   completingExerciseWeek === weekKey
                                 }
                                 className='w-full justify-start'
@@ -646,6 +651,12 @@ export function CoachingProgramPreview({
                                     ? 'Guardando...'
                                     : 'Marcar como hecho'}
                               </Button>
+                            )}
+
+                            {allowExerciseCompletion && !canCompleteExerciseThisWeek && !exerciseDone && (
+                              <p className='text-xs text-muted-foreground'>
+                                Solo puedes marcar este ejercicio durante la semana {week}.
+                              </p>
                             )}
                           </div>
                         ) : (
