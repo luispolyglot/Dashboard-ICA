@@ -704,6 +704,10 @@ export function ManageCoachingUserView({
               loomUrl: nextLoomUrl,
               report: nextReport,
               reportImagePath: nextImagePath,
+              reportImageUrl:
+                nextImagePath && nextImagePath === existingImagePath
+                  ? existingWeekClass?.reportImageUrl || null
+                  : null,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             }
@@ -746,6 +750,8 @@ export function ManageCoachingUserView({
             : 'Clase guardada correctamente.'
           : 'Clase eliminada correctamente.',
       }))
+
+      await loadAll()
     } catch (err) {
       setClassFeedbackByWeek((prev) => ({
         ...prev,
