@@ -109,6 +109,13 @@ export function CoachingPersonalizedView({
           }),
         )
       })
+      .catch((err) => {
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'No se pudo marcar el ejercicio como completado.',
+        )
+      })
       .finally(() => {
         setCompletingExerciseWeek((current) =>
           current === weekKey ? null : current,
