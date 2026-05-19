@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Accordion,
   AccordionContent,
@@ -87,6 +88,7 @@ type ClassDraft = {
   loomUrl: string
   report: string
   imageFile: File | null
+  removeImage: boolean
 }
 
 type SessionActionType = 'archive' | 'close' | 'hard-delete'
@@ -475,13 +477,19 @@ export function ManageCoachingUserView({
   }, [classSessions])
 
   useEffect(() => {
-      const nextObjectives: Record<string, ObjectiveDraft> = {}
+    const nextObjectives: Record<string, ObjectiveDraft> = {}
     const nextClassDrafts: Record<string, ClassDraft> = {}
     const nextFeedbackLoomDrafts: Record<string, string> = {}
     for (let week = 1; week <= 12; week += 1) {
       const key = weekKeyFromNumber(week)
       nextObjectives[key] = draftFromObjective(weekObjectives[key])
-      nextClassDrafts[key] = { loomUrl: '', report: '', imageFile: null }
+      const currentClass = (classesByWeek.get(key) || [])[0]
+      nextClassDrafts[key] = {
+        loomUrl: currentClass?.loomUrl || '',
+        report: currentClass?.report || '',
+        imageFile: null,
+        removeImage: false,
+      }
     }
     for (const note of insights?.masterNotes || []) {
       nextFeedbackLoomDrafts[note.id] = note.coachingFeedbackLoomUrl || ''
@@ -489,7 +497,12 @@ export function ManageCoachingUserView({
     setObjectiveDrafts(nextObjectives)
     setClassDrafts(nextClassDrafts)
     setFeedbackLoomDraftByNoteId(nextFeedbackLoomDrafts)
-  }, [selectedMembership?.id, insights?.weeklyObjectives, insights?.masterNotes])
+  }, [
+    selectedMembership?.id,
+    weekObjectives,
+    classesByWeek,
+    insights?.masterNotes,
+  ])
 
   const loadAll = async () => {
     setLoading(true)
@@ -643,30 +656,61 @@ export function ManageCoachingUserView({
     setClassFeedbackByWeek((prev) => ({ ...prev, [weekKey]: '' }))
 
     try {
-      let reportImagePath: string | null = null
+      const existingWeekClass = (classesByWeek.get(weekKey) || [])[0] || null
+      const existingImagePath = existingWeekClass?.reportImagePath || null
+
+      const nextLoomUrl = draft.loomUrl.trim() || null
+      const nextReport = draft.report.trim() || null
+
+      const previousLoomUrl = existingWeekClass?.loomUrl || null
+      const previousReport = existingWeekClass?.report || null
+
+      let nextImagePath = existingImagePath
       if (draft.imageFile) {
-        reportImagePath = await uploadCoachingClassReportImage({
+        nextImagePath = await uploadCoachingClassReportImage({
           file: draft.imageFile,
           userId: selectedMembership.userId,
           targetLang: selectedMembership.targetLang,
           weekKey,
         })
+      } else if (draft.removeImage) {
+        nextImagePath = null
       }
 
-      const nextSessions = [
-        {
-          id: crypto.randomUUID(),
-          key: weekKey,
-          weekKey,
-          title: 'Clase semanal',
-          loomUrl: draft.loomUrl.trim() || null,
-          report: draft.report.trim() || null,
-          reportImagePath,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        },
-        ...classSessions,
-      ]
+      const textChanged = nextLoomUrl !== previousLoomUrl || nextReport !== previousReport
+      const imageChanged =
+        Boolean(draft.imageFile) ||
+        (draft.removeImage && Boolean(existingImagePath))
+
+      if (!textChanged && !imageChanged) {
+        setClassFeedbackByWeek((prev) => ({
+          ...prev,
+          [weekKey]: 'No hay cambios para guardar.',
+        }))
+        return
+      }
+
+      if (existingImagePath && nextImagePath !== existingImagePath) {
+        await deleteCoachingClassReportImage(existingImagePath)
+      }
+
+      const nextWeekClass =
+        nextLoomUrl || nextReport || nextImagePath
+          ? {
+              id: existingWeekClass?.id || crypto.randomUUID(),
+              key: weekKey,
+              weekKey,
+              title: 'Clase semanal',
+              loomUrl: nextLoomUrl,
+              report: nextReport,
+              reportImagePath: nextImagePath,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }
+          : null
+
+      const otherWeeks = classSessions.filter((item) => item.key !== weekKey)
+      const nextSessions = nextWeekClass ? [nextWeekClass, ...otherWeeks] : otherWeeks
 
       await upsertCoachingUser({
         sessionId: selectedMembership.id,
@@ -687,60 +731,26 @@ export function ManageCoachingUserView({
 
       setClassDrafts((prev) => ({
         ...prev,
-        [weekKey]: { loomUrl: '', report: '', imageFile: null },
+        [weekKey]: {
+          loomUrl: nextLoomUrl || '',
+          report: nextReport || '',
+          imageFile: null,
+          removeImage: false,
+        },
       }))
       setClassFeedbackByWeek((prev) => ({
         ...prev,
-        [weekKey]: 'Clase guardada correctamente.',
+        [weekKey]: nextWeekClass
+          ? existingWeekClass
+            ? 'Clase actualizada correctamente.'
+            : 'Clase guardada correctamente.'
+          : 'Clase eliminada correctamente.',
       }))
     } catch (err) {
       setClassFeedbackByWeek((prev) => ({
         ...prev,
         [weekKey]:
           err instanceof Error ? err.message : 'No se pudo guardar la clase.',
-      }))
-    } finally {
-      setSavingClassWeek(null)
-    }
-  }
-
-  const handleDeleteClass = async (weekKey: string, classId: string) => {
-    if (!selectedMembership) return
-    setSavingClassWeek(weekKey)
-
-    try {
-      const sessionToDelete = classSessions.find((item) => item.id === classId)
-      const nextSessions = classSessions.filter((item) => item.id !== classId)
-
-      if (sessionToDelete?.reportImagePath) {
-        await deleteCoachingClassReportImage(sessionToDelete.reportImagePath)
-      }
-
-      await upsertCoachingUser({
-        sessionId: selectedMembership.id,
-        userId: selectedMembership.userId,
-        targetLang: selectedMembership.targetLang,
-        nativeLang: selectedMembership.nativeLang,
-        level: selectedMembership.level,
-        classSessions: nextSessions,
-      })
-
-      setMemberships((prev) =>
-        prev.map((membership) =>
-          membership.id === selectedMembership.id
-            ? { ...membership, classSessions: nextSessions }
-            : membership,
-        ),
-      )
-      setClassFeedbackByWeek((prev) => ({
-        ...prev,
-        [weekKey]: 'Clase eliminada correctamente.',
-      }))
-    } catch (err) {
-      setClassFeedbackByWeek((prev) => ({
-        ...prev,
-        [weekKey]:
-          err instanceof Error ? err.message : 'No se pudo eliminar la clase.',
       }))
     } finally {
       setSavingClassWeek(null)
@@ -1034,6 +1044,23 @@ export function ManageCoachingUserView({
               const weekKey = weekKeyFromNumber(week)
               const objectiveDraft = objectiveDrafts[weekKey] || draftFromObjective()
               const weekClasses = classesByWeek.get(weekKey) || []
+              const weekClass = weekClasses[0] || null
+              const classDraft = classDrafts[weekKey] || {
+                loomUrl: weekClass?.loomUrl || '',
+                report: weekClass?.report || '',
+                imageFile: null,
+                removeImage: false,
+              }
+              const draftLoom = classDraft.loomUrl.trim()
+              const draftReport = classDraft.report.trim()
+              const previousLoom = (weekClass?.loomUrl || '').trim()
+              const previousReport = (weekClass?.report || '').trim()
+              const hasExistingImage = Boolean(weekClass?.reportImagePath || weekClass?.reportImageUrl)
+              const hasClassChanges =
+                draftLoom !== previousLoom ||
+                draftReport !== previousReport ||
+                Boolean(classDraft.imageFile) ||
+                (classDraft.removeImage && hasExistingImage)
               const closedNotes = closedNotesByWeek.get(weekKey) || []
 
               return (
@@ -1054,7 +1081,7 @@ export function ManageCoachingUserView({
                         <div className='space-y-1.5'>
                           <Label>Loom URL</Label>
                           <Input
-                            value={classDrafts[weekKey]?.loomUrl || ''}
+                            value={classDraft.loomUrl}
                             onChange={(event) =>
                               setClassDrafts((prev) => ({
                                 ...prev,
@@ -1063,6 +1090,7 @@ export function ManageCoachingUserView({
                                     loomUrl: '',
                                     report: '',
                                     imageFile: null,
+                                    removeImage: false,
                                   }),
                                   loomUrl: event.target.value,
                                 },
@@ -1070,12 +1098,22 @@ export function ManageCoachingUserView({
                             }
                             placeholder='Ej: https://www.loom.com/share/...'
                           />
+                          {draftLoom && (
+                            <a
+                              href={draftLoom}
+                              target='_blank'
+                              rel='noreferrer'
+                              className='inline-flex text-sm text-blue-600 underline underline-offset-2'
+                            >
+                              Ver clase en Loom
+                            </a>
+                          )}
                         </div>
 
                         <div className='space-y-1.5'>
                           <Label>Reporte clase (opcional)</Label>
-                          <Input
-                            value={classDrafts[weekKey]?.report || ''}
+                          <Textarea
+                            value={classDraft.report}
                             onChange={(event) =>
                               setClassDrafts((prev) => ({
                                 ...prev,
@@ -1084,12 +1122,14 @@ export function ManageCoachingUserView({
                                     loomUrl: '',
                                     report: '',
                                     imageFile: null,
+                                    removeImage: false,
                                   }),
                                   report: event.target.value,
                                 },
                               }))
                             }
                             placeholder='Ej: Practico speaking y corrigio errores clave'
+                            rows={4}
                           />
                         </div>
 
@@ -1106,67 +1146,116 @@ export function ManageCoachingUserView({
                                     loomUrl: '',
                                     report: '',
                                     imageFile: null,
+                                    removeImage: false,
                                   }),
                                   imageFile: event.target.files?.[0] || null,
+                                  removeImage: false,
                                 },
                               }))
                             }
                           />
+
+                          {classDraft.imageFile && (
+                            <div className='flex flex-wrap items-center gap-2 text-sm'>
+                              <p className='text-muted-foreground'>Nueva imagen: {classDraft.imageFile.name}</p>
+                              <Button
+                                type='button'
+                                variant='outline'
+                                size='sm'
+                                onClick={() =>
+                                  setClassDrafts((prev) => ({
+                                    ...prev,
+                                    [weekKey]: {
+                                      ...(prev[weekKey] || classDraft),
+                                      imageFile: null,
+                                    },
+                                  }))
+                                }
+                              >
+                                Quitar seleccion
+                              </Button>
+                            </div>
+                          )}
+
+                          {!classDraft.imageFile && hasExistingImage && !classDraft.removeImage && (
+                            <div className='flex flex-wrap items-center gap-2 text-sm'>
+                              {weekClass?.reportImageUrl && (
+                                <>
+                                  <a
+                                    href={weekClass.reportImageUrl}
+                                    target='_blank'
+                                    rel='noreferrer'
+                                    className='text-blue-600 underline underline-offset-2'
+                                  >
+                                    Ver imagen actual
+                                  </a>
+                                  <a
+                                    href={weekClass.reportImageUrl}
+                                    download
+                                    target='_blank'
+                                    rel='noreferrer'
+                                    className='inline-flex items-center gap-1 text-blue-600 underline underline-offset-2'
+                                  >
+                                    <DownloadIcon className='h-3.5 w-3.5' />
+                                    Descargar imagen
+                                  </a>
+                                </>
+                              )}
+                              <Button
+                                type='button'
+                                variant='destructive'
+                                size='sm'
+                                onClick={() =>
+                                  setClassDrafts((prev) => ({
+                                    ...prev,
+                                    [weekKey]: {
+                                      ...(prev[weekKey] || classDraft),
+                                      removeImage: true,
+                                    },
+                                  }))
+                                }
+                              >
+                                <Trash2Icon className='h-3.5 w-3.5' />
+                                Quitar imagen
+                              </Button>
+                            </div>
+                          )}
+
+                          {classDraft.removeImage && (
+                            <div className='flex flex-wrap items-center gap-2 text-sm'>
+                              <p className='text-muted-foreground'>La imagen actual se eliminara al guardar.</p>
+                              <Button
+                                type='button'
+                                variant='outline'
+                                size='sm'
+                                onClick={() =>
+                                  setClassDrafts((prev) => ({
+                                    ...prev,
+                                    [weekKey]: {
+                                      ...(prev[weekKey] || classDraft),
+                                      removeImage: false,
+                                    },
+                                  }))
+                                }
+                              >
+                                Deshacer
+                              </Button>
+                            </div>
+                          )}
                         </div>
 
                         <Button
                           type='button'
                           variant='outline'
                           onClick={() => void handleSaveClass(weekKey)}
-                          disabled={savingClassWeek === weekKey}
+                          disabled={savingClassWeek === weekKey || !hasClassChanges}
                         >
-                          {savingClassWeek === weekKey ? 'Guardando...' : 'Guardar clase'}
+                          {savingClassWeek === weekKey
+                            ? 'Guardando...'
+                            : weekClass
+                              ? 'Actualizar clase'
+                              : 'Guardar clase'}
                         </Button>
-
-                        <div className='space-y-2 rounded-md border p-2'>
-                          {weekClasses.length === 0 ? (
-                            <p className='text-sm text-muted-foreground'>Sin clases cargadas.</p>
-                          ) : (
-                            weekClasses.map((session) => (
-                              <div key={session.id} className='flex items-start justify-between gap-3 rounded border p-2 text-sm'>
-                                <div className='min-w-0 space-y-1'>
-                                  {session.loomUrl && (
-                                    <a href={session.loomUrl} target='_blank' rel='noreferrer' className='text-blue-600 underline underline-offset-2'>
-                                      Ver clase en Loom
-                                    </a>
-                                  )}
-                                  {session.report && <p>{session.report}</p>}
-                                  {session.reportImageUrl && (
-                                    <div className='flex flex-wrap gap-2'>
-                                      <a href={session.reportImageUrl} target='_blank' rel='noreferrer' className='text-blue-600 underline underline-offset-2'>
-                                        Ver imagen de reporte
-                                      </a>
-                                      <a
-                                        href={session.reportImageUrl}
-                                        download
-                                        target='_blank'
-                                        rel='noreferrer'
-                                        className='inline-flex items-center gap-1 text-blue-600 underline underline-offset-2'
-                                      >
-                                        <DownloadIcon className='h-3.5 w-3.5' />
-                                        Descargar imagen
-                                      </a>
-                                    </div>
-                                  )}
-                                </div>
-                                <Button
-                                  type='button'
-                                  variant='destructive'
-                                  size='icon'
-                                  onClick={() => void handleDeleteClass(weekKey, session.id)}
-                                  disabled={savingClassWeek === weekKey}
-                                >
-                                  <Trash2Icon className='h-4 w-4' />
-                                </Button>
-                              </div>
-                            ))
-                          )}
-                        </div>
                       </CardContent>
                     </Card>
 
