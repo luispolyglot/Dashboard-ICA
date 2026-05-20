@@ -23,14 +23,19 @@ const ICA_TESTS_TABLE_DEV =
   'ica_tests_dev'
 const ICA_TEST_WINDOW_START_DAY_DEV = 15
 
+function isIcaTestsDevMode(): boolean {
+  return (
+    import.meta.env.DEV ||
+    import.meta.env.VITE_ICA_TESTS_DEV_MODE === '1'
+  )
+}
+
 function getIcaTestsTableName(): string {
-  return import.meta.env.DEV ? ICA_TESTS_TABLE_DEV : ICA_TESTS_TABLE_PROD
+  return isIcaTestsDevMode() ? ICA_TESTS_TABLE_DEV : ICA_TESTS_TABLE_PROD
 }
 
 export function getIcaTestWindowStartDay(): number {
-  return import.meta.env.DEV
-    ? ICA_TEST_WINDOW_START_DAY_DEV
-    : ICA_TEST_WINDOW_START_DAY
+  return isIcaTestsDevMode() ? ICA_TEST_WINDOW_START_DAY_DEV : ICA_TEST_WINDOW_START_DAY
 }
 
 type IcaTestRow = {
@@ -264,7 +269,7 @@ export function parseIcaTestMonthCode(monthCode: string): string | null {
 }
 
 export function isIcaTestsFeatureAvailable(now = new Date()): boolean {
-  if (import.meta.env.DEV) return true
+  if (isIcaTestsDevMode()) return true
   return getCurrentIcaTestMonthDate(now) >= ICA_TEST_MIN_MONTH_DATE
 }
 
