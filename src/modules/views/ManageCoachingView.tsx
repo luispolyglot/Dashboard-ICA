@@ -81,9 +81,12 @@ export function ManageCoachingView() {
     null,
   )
   const [hardDeleteModalOpen, setHardDeleteModalOpen] = useState(false)
-  const [userToHardDelete, setUserToHardDelete] = useState<CoachingManagedUser | null>(null)
+  const [userToHardDelete, setUserToHardDelete] =
+    useState<CoachingManagedUser | null>(null)
   const [closeModalOpen, setCloseModalOpen] = useState(false)
-  const [userToClose, setUserToClose] = useState<CoachingManagedUser | null>(null)
+  const [userToClose, setUserToClose] = useState<CoachingManagedUser | null>(
+    null,
+  )
   const [closeReason, setCloseReason] = useState('')
 
   const [isCreateAdminModalOpen, setIsCreateAdminModalOpen] = useState(false)
@@ -98,7 +101,7 @@ export function ManageCoachingView() {
   const [createAdminScopeLevel, setCreateAdminScopeLevel] = useState('')
   const [isSavingAdmin, setIsSavingAdmin] = useState(false)
   const [filterTargetLang, setFilterTargetLang] = useState('all')
-  const [filterStatus, setFilterStatus] = useState('all')
+  const [filterStatus, setFilterStatus] = useState('active')
   const [filterCoach, setFilterCoach] = useState('all')
 
   const loadData = async () => {
@@ -424,12 +427,22 @@ export function ManageCoachingView() {
       if (filterStatus !== 'all' && row.status !== filterStatus) {
         return false
       }
-      if (filterCoach !== 'all' && (row.coachUserId || 'none') !== filterCoach) {
+      if (
+        filterCoach !== 'all' &&
+        (row.coachUserId || 'none') !== filterCoach
+      ) {
         return false
       }
       return true
     })
   }, [users, filterCoach, filterStatus, filterTargetLang])
+
+  const statusLabels: Record<string, string> = {
+    draft: 'Borrador',
+    active: 'Activo',
+    completed: 'Completado',
+    cancelled: 'Cancelado',
+  }
 
   const coachFilterOptions = useMemo(() => {
     const seen = new Map<string, string>()
@@ -450,7 +463,9 @@ export function ManageCoachingView() {
       12,
       Math.max(
         1,
-        Math.floor((Date.now() - activated.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1,
+        Math.floor(
+          (Date.now() - activated.getTime()) / (7 * 24 * 60 * 60 * 1000),
+        ) + 1,
       ),
     )
   }, [userToClose?.activatedAt])
@@ -468,14 +483,14 @@ export function ManageCoachingView() {
           </p>
         </div>
         <div className='flex flex-wrap gap-2'>
-            <Button
-              type='button'
-              variant='outline'
-              onClick={() => setIsCreateUserModalOpen(true)}
-            >
-              <PlusIcon className='h-4 w-4' />
-              Crear sesión
-            </Button>
+          <Button
+            type='button'
+            variant='outline'
+            onClick={() => setIsCreateUserModalOpen(true)}
+          >
+            <PlusIcon className='h-4 w-4' />
+            Crear sesión
+          </Button>
           {isSuperAdmin && (
             <Button
               type='button'
@@ -527,10 +542,10 @@ export function ManageCoachingView() {
               onChange={(event) => setFilterStatus(event.target.value)}
             >
               <option value='all'>Todos</option>
-              <option value='draft'>draft</option>
-              <option value='active'>active</option>
-              <option value='completed'>completed</option>
-              <option value='cancelled'>cancelled</option>
+              <option value='draft'>Borrador</option>
+              <option value='active'>Activo</option>
+              <option value='completed'>Completado</option>
+              <option value='cancelled'>Cancelado</option>
             </select>
           </div>
 
@@ -585,7 +600,10 @@ export function ManageCoachingView() {
                 </thead>
                 <tbody>
                   {filteredUsers.map((row) => (
-                    <tr key={row.id} className='border-b align-middle last:border-b-0'>
+                    <tr
+                      key={row.id}
+                      className='border-b align-middle last:border-b-0'
+                    >
                       <td className='py-2'>
                         <p className='font-medium'>{row.userDisplayName}</p>
                       </td>
@@ -601,9 +619,13 @@ export function ManageCoachingView() {
                       </td>
                       <td className='py-2'>{row.level}</td>
                       <td className='py-2'>{row.coachDisplayName || '-'}</td>
-                      <td className='py-2'>{row.status}</td>
+                      <td className='py-2'>
+                        {statusLabels[row.status] || row.status}
+                      </td>
                       <td className='py-2 text-xs text-muted-foreground'>
-                        {row.activatedAt ? formatDateTime(row.activatedAt) : '-'}
+                        {row.activatedAt
+                          ? formatDateTime(row.activatedAt)
+                          : '-'}
                       </td>
                       <td className='py-2'>{row.isActive ? 'Sí' : 'No'}</td>
                       <td className='py-2 text-xs text-muted-foreground'>
@@ -618,10 +640,7 @@ export function ManageCoachingView() {
                             aria-label='Ver usuario coaching'
                             onClick={() =>
                               navigate(
-                                getManageCoachingUserRoute(
-                                  row.userId,
-                                  row.id,
-                                ),
+                                getManageCoachingUserRoute(row.userId, row.id),
                               )
                             }
                           >
@@ -629,13 +648,20 @@ export function ManageCoachingView() {
                           </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button type='button' variant='outline' size='icon' aria-label='Mas acciones de sesion'>
+                              <Button
+                                type='button'
+                                variant='outline'
+                                size='icon'
+                                aria-label='Mas acciones de sesion'
+                              >
                                 <MoreHorizontalIcon className='h-4 w-4' />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align='end'>
                               {row.status === 'draft' && (
-                                <DropdownMenuItem onClick={() => void handleStartSession(row)}>
+                                <DropdownMenuItem
+                                  onClick={() => void handleStartSession(row)}
+                                >
                                   <PlayIcon className='h-4 w-4' />
                                   Comenzar
                                 </DropdownMenuItem>
@@ -652,7 +678,9 @@ export function ManageCoachingView() {
                                   Cerrar coaching
                                 </DropdownMenuItem>
                               )}
-                              <DropdownMenuItem onClick={() => handleAskDeleteUser(row)}>
+                              <DropdownMenuItem
+                                onClick={() => handleAskDeleteUser(row)}
+                              >
                                 <ArchiveIcon className='h-4 w-4' />
                                 Archivar
                               </DropdownMenuItem>
@@ -745,8 +773,8 @@ export function ManageCoachingView() {
           <DialogHeader>
             <DialogTitle>Agregar usuario al coaching</DialogTitle>
             <DialogDescription>
-              Selecciona un usuario y su idioma activo para crear una sesión
-              de coaching en borrador.
+              Selecciona un usuario y su idioma activo para crear una sesión de
+              coaching en borrador.
             </DialogDescription>
           </DialogHeader>
 
@@ -804,7 +832,8 @@ export function ManageCoachingView() {
           <DialogHeader>
             <DialogTitle>Archivar sesión de coaching</DialogTitle>
             <DialogDescription>
-              Esta accion mueve la sesion a estado cancelled y conserva sus datos.
+              Esta accion mueve la sesion a estado cancelled y conserva sus
+              datos.
             </DialogDescription>
           </DialogHeader>
 
@@ -846,14 +875,16 @@ export function ManageCoachingView() {
           <DialogHeader>
             <DialogTitle>Eliminar sesión definitivamente</DialogTitle>
             <DialogDescription>
-              Esta accion es irreversible. Se eliminaran datos y adjuntos de la sesion.
+              Esta accion es irreversible. Se eliminaran datos y adjuntos de la
+              sesion.
             </DialogDescription>
           </DialogHeader>
 
           <p className='text-sm text-muted-foreground'>
             Sesion:{' '}
             <span className='font-medium text-foreground'>
-              {userToHardDelete?.userDisplayName || '-'} · {userToHardDelete?.targetLang || '-'}
+              {userToHardDelete?.userDisplayName || '-'} ·{' '}
+              {userToHardDelete?.targetLang || '-'}
             </span>
           </p>
 
