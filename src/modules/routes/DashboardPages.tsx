@@ -26,6 +26,8 @@ import { ReviewView } from '../views/ReviewView'
 import { StreaksView } from '../views/StreaksView'
 import { TrackerDetailView } from '../views/TrackerDetailView'
 import { TrackersView } from '../views/TrackersView'
+import { IcaTestsView } from '../views/IcaTestsView'
+import { IcaTestMonthView } from '../views/IcaTestMonthView'
 import {
   getReviewPendingOnlyFromQuery,
   loadSavedReviewPendingOnly,
@@ -278,13 +280,65 @@ export function StreaksPage() {
 }
 
 export function ProfilePage() {
-  const { config, setShowLangModal } = useDashboardContext()
+  const { config, cards, setShowLangModal } = useDashboardContext()
 
   return (
     <PageLayout>
       <ProfileView
         config={config}
+        cards={cards}
         onEditLanguages={() => setShowLangModal(true)}
+      />
+    </PageLayout>
+  )
+}
+
+export function IcaTestsPage() {
+  const { config, cards } = useDashboardContext()
+  if (!config) return null
+
+  return (
+    <PageLayout>
+      <IcaTestsView
+        targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+        cards={cards}
+      />
+    </PageLayout>
+  )
+}
+
+export function IcaTestMonthPage() {
+  const { config, cards } = useDashboardContext()
+  const { monthCode } = useParams<{ monthCode: string }>()
+  if (!config || !monthCode) return null
+
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.testsIca}>
+      <IcaTestMonthView
+        targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+        cards={cards}
+        monthCode={monthCode}
+        mode='official'
+      />
+    </PageLayout>
+  )
+}
+
+export function IcaTestMonthRedoPage() {
+  const { config, cards } = useDashboardContext()
+  const { monthCode } = useParams<{ monthCode: string }>()
+  if (!config || !monthCode) return null
+
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.testsIca}>
+      <IcaTestMonthView
+        targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+        cards={cards}
+        monthCode={monthCode}
+        mode='redo'
       />
     </PageLayout>
   )

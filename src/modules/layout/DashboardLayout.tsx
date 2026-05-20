@@ -3,6 +3,7 @@ import type { CSSProperties, RefObject } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { FullscreenLoading } from '@/components/ui/fullscreen-loading'
 import { Header } from '../components/Header'
+import { IcaTestsAvailableModal } from '../components/IcaTestsAvailableModal'
 import { LangEditModal } from '../components/LangEditModal'
 import { MobileBottomNav } from '../components/MobileBottomNav'
 import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
@@ -77,6 +78,7 @@ export function DashboardLayout() {
   const location = useLocation()
   const {
     config,
+    cards,
     loading,
     showLangModal,
     setShowLangModal,
@@ -195,6 +197,8 @@ export function DashboardLayout() {
             onClose={() => setShowLangModal(false)}
           />
         )}
+
+        <IcaTestsAvailableModal config={config} cards={cards} />
 
         <main className='flex flex-1 overflow-y-auto pb-20 md:pb-0'>
           <Outlet />

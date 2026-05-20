@@ -3,6 +3,7 @@ import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   BarChart3Icon,
   CheckIcon,
+  ClipboardCheckIcon,
   GraduationCapIcon,
   LanguagesIcon,
   LineChartIcon,
@@ -31,13 +32,19 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useTheme } from '@/theme/ThemeContext'
+import { useIcaTestsOverview } from '../hooks/useIcaTestsOverview'
 import { fetchAdminRole } from '../services/adminAnalytics'
-import { fetchCoachingAccess, fetchMyCoachingDashboard } from '../services/coaching'
+import {
+  fetchCoachingAccess,
+  fetchMyCoachingDashboard,
+} from '../services/coaching'
 import { DASHBOARD_ROUTES } from '../routes/paths'
-import type { AppConfig } from '../types'
+import { ICA_TEST_REQUIRED_WORDS } from '../services/icaTests'
+import type { AppConfig, Lexicard } from '../types'
 
 type ProfileViewProps = {
   config: AppConfig | null
+  cards: Lexicard[]
   onEditLanguages: () => void
 }
 
@@ -48,7 +55,11 @@ function formatDate(value?: string): string {
   return date.toLocaleString()
 }
 
-export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
+export function ProfileView({
+  config,
+  cards,
+  onEditLanguages,
+}: ProfileViewProps) {
   const { user, signOut, changePassword, updateDisplayName } = useAuth()
   const { theme, resolvedTheme, setTheme } = useTheme()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
@@ -71,6 +82,19 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
   const [nameError, setNameError] = useState<string | null>(null)
   const [nameSuccess, setNameSuccess] = useState<string | null>(null)
   const [isSavingName, setIsSavingName] = useState(false)
+
+  const {
+    currentMonthCode,
+    hasCurrentMonthTest,
+    canTakeCurrentMonth,
+    canHighlightCurrentMonth,
+    featureAvailable,
+    wordPool,
+  } = useIcaTestsOverview({
+    targetLang: config?.targetLang,
+    nativeLang: config?.nativeLang,
+    cards,
+  })
 
   const metadata = useMemo(
     () => user?.user_metadata ?? {},
@@ -372,8 +396,63 @@ export function ProfileView({ config, onEditLanguages }: ProfileViewProps) {
               improvisación.
             </p>
             <Button type='button' variant='outline' asChild>
-              <Link to={DASHBOARD_ROUTES.trackers}>Trackers de mejora</Link>
+              <Link to={DASHBOARD_ROUTES.trackers}>
+                Abrir Trackers de mejora
+              </Link>
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className='flex items-center gap-2'>
+              <ClipboardCheckIcon className='h-4 w-4' />
+              Tests ICA
+              {canHighlightCurrentMonth && !hasCurrentMonthTest && (
+                <div className='ml-4 relative size-4'>
+                  <div className='absolute top-0 size-4 rounded-full animate-pulse bg-amber-300 delay-300'></div>
+                  <div className='absolute top-0 size-4 rounded-full animate-ping bg-primary'></div>
+                </div>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className='space-y-3'>
+            <p className='text-sm text-muted-foreground'>
+              Evalúa tu vocabulario mensual con 15 equivalencias (6 segundos por
+              pregunta).
+            </p>
+
+            {!featureAvailable && (
+              <p className='text-sm text-muted-foreground'>
+                Disponible desde mayo de 2026.
+              </p>
+            )}
+
+            {featureAvailable && hasCurrentMonthTest && (
+              <p className='text-sm text-emerald-600'>
+                Ya completaste el test del mes actual.
+              </p>
+            )}
+
+            {featureAvailable && !hasCurrentMonthTest && !wordPool.eligible && (
+              <p className='text-sm text-amber-600'>
+                Necesitas {ICA_TEST_REQUIRED_WORDS} palabras ICA (este mes +
+                anterior). Tienes {wordPool.availableWords}.
+              </p>
+            )}
+
+            <div className='flex flex-wrap gap-2'>
+              <Button type='button' variant='outline' asChild>
+                <Link to={DASHBOARD_ROUTES.testsIca}>Abrir Tests ICA</Link>
+              </Button>
+              {canTakeCurrentMonth && (
+                <Button type='button' asChild>
+                  <Link to={`${DASHBOARD_ROUTES.testsIca}/${currentMonthCode}`}>
+                    Hacer test del mes
+                  </Link>
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
 

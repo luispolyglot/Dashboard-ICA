@@ -17,6 +17,7 @@ export const DASHBOARD_ROUTES = {
   leaderboard: '/leaderboard',
   streaks: '/streaks',
   profile: '/profile',
+  testsIca: '/tests-ica',
   trackers: '/trackers',
   trackersNew: '/trackers/new',
   analytics: '/analytics',
@@ -40,6 +41,7 @@ export const DASHBOARD_LABELS: Record<string, string> = {
   '/leaderboard': 'Leaderboard',
   '/streaks': 'Rachas',
   '/profile': 'Perfil',
+  '/tests-ica': 'Tests ICA',
   '/trackers': 'Trackers de mejora',
   '/trackers/new': 'Nuevo tracker de mejora',
   '/analytics': 'Analíticas Admin',
@@ -77,4 +79,9 @@ export function getManageCoachingUserRoute(userId: string, sessionId?: string): 
   const params = new URLSearchParams()
   params.set('sessionId', sessionId)
   return `${base}?${params.toString()}`
+}
+
+export function getIcaTestMonthRoute(monthCode: string, redo = false): string {
+  const base = `${DASHBOARD_ROUTES.testsIca}/${monthCode}`
+  return redo ? `${base}/redo` : base
 }

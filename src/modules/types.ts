@@ -151,6 +151,43 @@ export interface ImprovementTrackerInput {
   improvisationPct: number
 }
 
+export interface IcaTestQuestion {
+  promptNative: string
+  correctTarget: string
+  options: string[]
+  correctOptionIndex: number
+  promptLexicardId: string
+  optionLexicardIds: string[]
+}
+
+export interface IcaTestAnswer {
+  questionIndex: number
+  selectedOptionIndex: number | null
+  isCorrect: boolean
+  timedOut: boolean
+}
+
+export type IcaTestStatus = 'running' | 'completed' | 'failed'
+
+export interface IcaTestRecord {
+  id: string
+  targetLang: string
+  nativeLang: string
+  testMonth: string
+  monthCode: string
+  status: IcaTestStatus
+  score: number
+  totalQuestions: number
+  startedAt: string
+  finalizedAt: string | null
+  completedAt: string | null
+  currentQuestionIndex: number
+  answers: IcaTestAnswer[]
+  failReason: string | null
+  questions: IcaTestQuestion[]
+  wordsUsed: string[]
+}
+
 export type DailyProgressMap = Record<string, DailyProgressEntry>
 
 export interface AppConfig {
