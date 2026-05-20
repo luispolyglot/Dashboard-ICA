@@ -343,31 +343,42 @@ export function buildIcaTestQuestions(
 ): IcaTestQuestion[] {
   if (wordPool.length < ICA_TEST_REQUIRED_WORDS) return []
 
-  const shuffledPool = shuffle(wordPool, random).slice(0, ICA_TEST_REQUIRED_WORDS)
-  const prompts = shuffledPool.slice(0, ICA_TEST_TOTAL_QUESTIONS)
-  const distractors = shuffledPool.slice(ICA_TEST_TOTAL_QUESTIONS)
+  const selectedSixty = shuffle(wordPool, random).slice(0, ICA_TEST_REQUIRED_WORDS)
 
-  if (
-    prompts.length !== ICA_TEST_TOTAL_QUESTIONS ||
-    distractors.length !==
-      ICA_TEST_TOTAL_QUESTIONS * (ICA_TEST_OPTIONS_PER_QUESTION - 1)
-  ) {
-    return []
+  const byTargetLength = selectedSixty
+    .slice()
+    .sort((a, b) => {
+      const aLen = a.target.trim().length
+      const bLen = b.target.trim().length
+      if (aLen !== bLen) return aLen - bLen
+      return a.target.localeCompare(b.target)
+    })
+
+  const groupedByFour: Lexicard[][] = []
+  for (let index = 0; index < byTargetLength.length; index += 4) {
+    const group = byTargetLength.slice(index, index + 4)
+    if (group.length === 4) {
+      groupedByFour.push(group)
+    }
   }
 
-  return prompts.map((prompt, index) => {
-    const wrongOptions = distractors.slice(index * 3, index * 3 + 3)
-    const optionsCards = shuffle([prompt, ...wrongOptions], random)
+  if (groupedByFour.length !== ICA_TEST_TOTAL_QUESTIONS) return []
+
+  const shuffledGroups = shuffle(groupedByFour, random)
+
+  return shuffledGroups.map((group) => {
+    const correctCard = group[Math.floor(random() * group.length)]
+    const optionsCards = shuffle(group, random)
     const correctOptionIndex = optionsCards.findIndex(
-      (card) => card.id === prompt.id,
+      (card) => card.id === correctCard.id,
     )
 
     return {
-      promptNative: prompt.native,
-      correctTarget: prompt.target,
+      promptNative: correctCard.native,
+      correctTarget: correctCard.target,
       options: optionsCards.map((card) => card.target),
       correctOptionIndex,
-      promptLexicardId: prompt.id,
+      promptLexicardId: correctCard.id,
       optionLexicardIds: optionsCards.map((card) => card.id),
     }
   })
