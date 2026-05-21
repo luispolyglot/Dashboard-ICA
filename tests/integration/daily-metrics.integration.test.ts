@@ -167,27 +167,41 @@ describe('daily metrics DB integration', () => {
     const { data: secondData, error: secondError } = await client.rpc('bump_daily_creation_metrics', {
       p_day: day,
       p_words_added: 1,
+      p_words_added_delta: 1,
       p_phrase_generated: true,
       p_xp_delta: 20,
     })
     expect(secondError).toBeNull()
     const secondRow = Array.isArray(secondData) ? secondData[0] : secondData
-    expect(Number(secondRow?.words_added ?? 0)).toBe(2)
+    expect(Number(secondRow?.words_added ?? 0)).toBe(3)
     expect(Boolean(secondRow?.phrase_generated ?? false)).toBe(true)
     expect(Number(secondRow?.xp_earned ?? 0)).toBe(25)
 
     const { data: thirdData, error: thirdError } = await client.rpc('bump_daily_creation_metrics', {
       p_day: day,
-      p_words_added: 6,
+      p_words_added: 2,
+      p_words_added_delta: 1,
       p_phrase_generated: true,
       p_xp_delta: 0,
     })
     expect(thirdError).toBeNull()
     const thirdRow = Array.isArray(thirdData) ? thirdData[0] : thirdData
-    expect(Number(thirdRow?.words_added ?? 0)).toBe(6)
+    expect(Number(thirdRow?.words_added ?? 0)).toBe(4)
     expect(Boolean(thirdRow?.phrase_generated ?? false)).toBe(true)
     expect(Number(thirdRow?.xp_earned ?? 0)).toBe(25)
-    expect(Boolean(thirdRow?.creation_goal_completed ?? false)).toBe(true)
+    expect(Boolean(thirdRow?.creation_goal_completed ?? false)).toBe(false)
+
+    const { data: fourthData, error: fourthError } = await client.rpc('bump_daily_creation_metrics', {
+      p_day: day,
+      p_words_added: 3,
+      p_words_added_delta: 1,
+      p_phrase_generated: true,
+      p_xp_delta: 0,
+    })
+    expect(fourthError).toBeNull()
+    const fourthRow = Array.isArray(fourthData) ? fourthData[0] : fourthData
+    expect(Number(fourthRow?.words_added ?? 0)).toBe(5)
+    expect(Boolean(fourthRow?.creation_goal_completed ?? false)).toBe(true)
 
     const { data: metricRow, error: metricError } = await client
       .from('daily_metrics')
@@ -196,7 +210,7 @@ describe('daily metrics DB integration', () => {
       .eq('day', day)
       .single()
     expect(metricError).toBeNull()
-    expect(metricRow?.words_added).toBe(6)
+    expect(metricRow?.words_added).toBe(5)
     expect(metricRow?.phrase_generated).toBe(true)
     expect(metricRow?.xp_earned).toBe(25)
   })

@@ -22,6 +22,7 @@ type DailyMetricRow = {
 async function bumpCreationDailyMetrics(params: {
   day: string
   wordsAdded: number
+  wordsAddedDelta: number
   phraseGenerated: boolean
   xpDelta: number
 }): Promise<DailyMetricRow> {
@@ -30,6 +31,7 @@ async function bumpCreationDailyMetrics(params: {
   const { data, error } = await supabase.rpc('bump_daily_creation_metrics', {
     p_day: params.day,
     p_words_added: params.wordsAdded,
+    p_words_added_delta: params.wordsAddedDelta,
     p_phrase_generated: params.phraseGenerated,
     p_xp_delta: params.xpDelta,
   })
@@ -68,6 +70,7 @@ export async function recordWordAddedEvent(params: WordAddedEventParams): Promis
   const metric = await bumpCreationDailyMetrics({
     day,
     wordsAdded: nextWords,
+    wordsAddedDelta: 1,
     phraseGenerated: params.phraseGenerated,
     xpDelta: WORD_ADD_POINTS,
   })
@@ -203,6 +206,7 @@ export async function recordPhraseGeneratedEvent(
   const metric = await bumpCreationDailyMetrics({
     day,
     wordsAdded: Math.max(0, Math.floor(params.wordsAdded || 0)),
+    wordsAddedDelta: 0,
     phraseGenerated: true,
     xpDelta: PHRASE_POINTS,
   })

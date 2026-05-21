@@ -76,6 +76,7 @@ describe('gamification service', () => {
     expect(mockSupabase.rpc).toHaveBeenCalledWith('bump_daily_creation_metrics', {
       p_day: '2026-05-21',
       p_words_added: 7,
+      p_words_added_delta: 1,
       p_phrase_generated: true,
       p_xp_delta: 5,
     })
@@ -129,6 +130,7 @@ describe('gamification service', () => {
     expect(mockSupabase.rpc).toHaveBeenCalledWith('bump_daily_creation_metrics', {
       p_day: '2026-05-21',
       p_words_added: 5,
+      p_words_added_delta: 0,
       p_phrase_generated: true,
       p_xp_delta: 20,
     })
