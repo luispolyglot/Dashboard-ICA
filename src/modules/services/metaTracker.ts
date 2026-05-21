@@ -22,6 +22,10 @@ function normalizeActivationToken(value: string): string {
     .toLowerCase()
 }
 
+function normalizeLanguageToken(value: string | null | undefined): string {
+  return String(value || '').trim().toLowerCase()
+}
+
 function toProfile(row: {
   start_level: string
   prior_ica_words: number
@@ -253,8 +257,8 @@ export async function registerWordActivations(
 
     const validRows = (rows || []).filter(
       (row) =>
-        (row.target_lang || targetLang) === targetLang
-        && (row.native_lang || nativeLang) === nativeLang,
+        normalizeLanguageToken(row.target_lang || targetLang) === normalizeLanguageToken(targetLang)
+        && normalizeLanguageToken(row.native_lang || nativeLang) === normalizeLanguageToken(nativeLang),
     )
 
     let newlyActivated = 0

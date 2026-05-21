@@ -15,44 +15,33 @@ async function getCurrentUserId(): Promise<string | null> {
 
 type DailyMetricRow = {
   words_added: number
-  phrase_generated: boolean
+  creation_goal_completed: boolean
   xp_earned: number
 }
 
-async function getDailyMetrics(userId: string, day: string): Promise<DailyMetricRow> {
-  if (!supabase) return { words_added: 0, phrase_generated: false, xp_earned: 0 }
+async function bumpCreationDailyMetrics(params: {
+  day: string
+  wordsAdded: number
+  phraseGenerated: boolean
+  xpDelta: number
+}): Promise<DailyMetricRow> {
+  if (!supabase) return { words_added: 0, creation_goal_completed: false, xp_earned: 0 }
 
-  const { data, error } = await supabase
-    .from('daily_metrics')
-    .select('words_added, phrase_generated, xp_earned')
-    .eq('user_id', userId)
-    .eq('day', day)
-    .maybeSingle()
+  const { data, error } = await supabase.rpc('bump_daily_creation_metrics', {
+    p_day: params.day,
+    p_words_added: params.wordsAdded,
+    p_phrase_generated: params.phraseGenerated,
+    p_xp_delta: params.xpDelta,
+  })
 
   if (error) throw error
 
+  const row = Array.isArray(data) ? data[0] : data
   return {
-    words_added: data?.words_added ?? 0,
-    phrase_generated: data?.phrase_generated ?? false,
-    xp_earned: data?.xp_earned ?? 0,
+    words_added: Number(row?.words_added ?? 0),
+    creation_goal_completed: Boolean(row?.creation_goal_completed ?? false),
+    xp_earned: Number(row?.xp_earned ?? 0),
   }
-}
-
-async function hasVoiceActivationForDay(userId: string, day: string): Promise<boolean> {
-  if (!supabase) return false
-
-  const start = new Date(`${day}T00:00:00`)
-  const end = new Date(`${day}T23:59:59.999`)
-
-  const { count, error } = await supabase
-    .from('phrase_voice_activations')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .gte('created_at', start.toISOString())
-    .lte('created_at', end.toISOString())
-
-  if (error) throw error
-  return (count || 0) > 0
 }
 
 type WordAddedEventParams = {
@@ -66,12 +55,7 @@ export async function recordWordAddedEvent(params: WordAddedEventParams): Promis
   if (!userId) return
 
   const day = todayKey()
-  const metric = await getDailyMetrics(userId, day)
-  const nextWords = params.wordsAdded
-  const nextXp = metric.xp_earned + WORD_ADD_POINTS
-  const hasActivation = await hasVoiceActivationForDay(userId, day)
-  const creationCompleted =
-    nextWords >= CREATION_WORDS_GOAL && params.phraseGenerated && hasActivation
+  const nextWords = Math.max(0, Math.floor(params.wordsAdded || 0))
 
   const { error: xpError } = await supabase.from('xp_events').insert({
     user_id: userId,
@@ -81,26 +65,20 @@ export async function recordWordAddedEvent(params: WordAddedEventParams): Promis
   })
   if (xpError) throw xpError
 
-  const { error: dailyError } = await supabase.from('daily_metrics').upsert(
-    {
-      user_id: userId,
-      day,
-      words_added: nextWords,
-      phrase_generated: params.phraseGenerated,
-      xp_earned: nextXp,
-      creation_goal_completed: creationCompleted,
-    },
-    { onConflict: 'user_id,day' },
-  )
-  if (dailyError) throw dailyError
+  const metric = await bumpCreationDailyMetrics({
+    day,
+    wordsAdded: nextWords,
+    phraseGenerated: params.phraseGenerated,
+    xpDelta: WORD_ADD_POINTS,
+  })
 
   const { error: goalError } = await supabase.from('goal_completions').upsert(
     {
       user_id: userId,
       day,
       goal_type: 'creation_goal',
-      completed: creationCompleted,
-      progress_value: nextWords,
+      completed: metric.creation_goal_completed,
+      progress_value: metric.words_added,
       target_value: CREATION_WORDS_GOAL,
     },
     { onConflict: 'user_id,day,goal_type' },
@@ -134,11 +112,6 @@ export async function recordPhraseGeneratedEvent(
   if (!userId) return { activationWordsTotal: null, phraseGenerationId: null }
 
   const day = todayKey()
-  const metric = await getDailyMetrics(userId, day)
-  const nextXp = metric.xp_earned + PHRASE_POINTS
-  const hasActivation = await hasVoiceActivationForDay(userId, day)
-  const creationCompleted =
-    params.wordsAdded >= CREATION_WORDS_GOAL && hasActivation
 
   const phrasePayload = {
     user_id: userId,
@@ -227,26 +200,20 @@ export async function recordPhraseGeneratedEvent(
   })
   if (xpError) throw xpError
 
-  const { error: dailyError } = await supabase.from('daily_metrics').upsert(
-    {
-      user_id: userId,
-      day,
-      words_added: params.wordsAdded,
-      phrase_generated: true,
-      xp_earned: nextXp,
-      creation_goal_completed: creationCompleted,
-    },
-    { onConflict: 'user_id,day' },
-  )
-  if (dailyError) throw dailyError
+  const metric = await bumpCreationDailyMetrics({
+    day,
+    wordsAdded: Math.max(0, Math.floor(params.wordsAdded || 0)),
+    phraseGenerated: true,
+    xpDelta: PHRASE_POINTS,
+  })
 
   const { error: goalError } = await supabase.from('goal_completions').upsert(
     {
       user_id: userId,
       day,
       goal_type: 'creation_goal',
-      completed: creationCompleted,
-      progress_value: params.wordsAdded,
+      completed: metric.creation_goal_completed,
+      progress_value: metric.words_added,
       target_value: CREATION_WORDS_GOAL,
     },
     { onConflict: 'user_id,day,goal_type' },

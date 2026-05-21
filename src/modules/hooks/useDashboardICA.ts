@@ -151,7 +151,6 @@ export function useDashboardICA() {
     }
     updated[tk] = { ...updated[tk], wordsAdded: updated[tk].wordsAdded + 1 }
     setDailyProgress(updated)
-    await saveData('dashboard-ICA-daily-progress', updated)
     await refreshCreationDaysFromSource()
     return updated[tk]
   }
@@ -164,7 +163,6 @@ export function useDashboardICA() {
     }
     updated[tk] = { ...updated[tk], phraseGenerated: true }
     setDailyProgress(updated)
-    await saveData('dashboard-ICA-daily-progress', updated)
     await refreshCreationDaysFromSource()
     return updated[tk]
   }
@@ -199,7 +197,6 @@ export function useDashboardICA() {
     }
 
     setDailyProgress(updated)
-    await saveData('dashboard-ICA-daily-progress', updated)
   }
 
   const startReviewSession = useCallback(async (): Promise<void> => {
