@@ -4,6 +4,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { FullscreenLoading } from '@/components/ui/fullscreen-loading'
 import { Header } from '../components/Header'
 import { IcaTestsAvailableModal } from '../components/IcaTestsAvailableModal'
+import { useIcaTestsOverview } from '../hooks/useIcaTestsOverview'
 import { LangEditModal } from '../components/LangEditModal'
 import { MobileBottomNav } from '../components/MobileBottomNav'
 import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
@@ -93,6 +94,11 @@ export function DashboardLayout() {
   const [flightQueue, setFlightQueue] = useState(0)
   const [activeFlight, setActiveFlight] = useState(0)
   const [voiceActivationsToday, setVoiceActivationsToday] = useState(0)
+  const { canHighlightCurrentMonth } = useIcaTestsOverview({
+    targetLang: config?.targetLang,
+    nativeLang: config?.nativeLang,
+    cards,
+  })
 
   useEffect(() => {
     if (loading) return
@@ -185,6 +191,7 @@ export function DashboardLayout() {
         <Header
           dailyProgress={dailyProgress}
           voiceActivationsToday={voiceActivationsToday}
+          shouldHighlightProfileButton={canHighlightCurrentMonth}
           boltButtonRef={(node) => {
             boltButtonRef.current = node
           }}

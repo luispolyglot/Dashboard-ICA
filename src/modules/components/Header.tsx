@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { AppBreadcrumbs } from './AppBreadcrumbs'
 import { LeaderboardMenu } from './LeaderboardMenu'
 import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
@@ -16,6 +16,7 @@ import { useTheme } from '@/theme/ThemeContext'
 type HeaderProps = {
   dailyProgress: DailyProgressMap
   voiceActivationsToday: number
+  shouldHighlightProfileButton: boolean
   boltButtonRef: (node: HTMLButtonElement | null) => void
 }
 
@@ -85,9 +86,11 @@ function HeaderBoltIcon({ segments, size = 28 }: HeaderBoltIconProps) {
 export function Header({
   dailyProgress,
   voiceActivationsToday,
+  shouldHighlightProfileButton,
   boltButtonRef,
 }: HeaderProps) {
   const navigate = useNavigate()
+  const location = useLocation()
   const todayProgress = getTodayProgress(dailyProgress)
   const flashDone = todayProgress.reviewCorrect >= GOAL
   const phraseDone = todayProgress.phraseGenerated
@@ -99,6 +102,10 @@ export function Header({
     | 2
 
   const { theme } = useTheme()
+  const isOnProfileRoute = location.pathname === DASHBOARD_ROUTES.profile
+  const isOnIcaTestsRoute = location.pathname.startsWith(DASHBOARD_ROUTES.testsIca)
+  const shouldPulseProfileButton =
+    shouldHighlightProfileButton && !isOnProfileRoute && !isOnIcaTestsRoute
 
   return (
     <header className='bg-background'>
@@ -128,7 +135,21 @@ export function Header({
           <div className='hidden md:block'>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button size='icon' variant='outline'>
+                <Button
+                  size='icon'
+                  variant='outline'
+                  className={
+                    shouldPulseProfileButton
+                      ? 'relative overflow-visible border-amber-300 shadow-[0_0_0_1px_rgba(252,211,77,0.35),0_0_18px_rgba(251,191,36,0.25)]'
+                      : undefined
+                  }
+                >
+                  {shouldPulseProfileButton && (
+                    <span className='pointer-events-none absolute -right-0.5 -top-0.5 size-3'>
+                      <span className='absolute inset-0 rounded-full bg-amber-300/80 animate-pulse' />
+                      <span className='absolute inset-0 rounded-full bg-primary animate-ping' />
+                    </span>
+                  )}
                   <Link
                     to={DASHBOARD_ROUTES.profile}
                     aria-label='Ir al perfil'

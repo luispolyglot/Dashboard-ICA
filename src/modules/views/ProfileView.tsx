@@ -107,6 +107,8 @@ export function ProfileView({
   const isNameChanged = cleanNameDraft !== cleanCurrentDisplayName
   const canSaveName = cleanNameDraft.length >= 3 && isNameChanged
 
+  const isDEV = import.meta.env.VITE_ICA_TESTS_DEV_MODE === '1'
+
   useEffect(() => {
     if (!isEditingName) {
       setNameDraft(displayName)
@@ -403,7 +405,7 @@ export function ProfileView({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={!isDEV ? 'hidden' : ''}>
           <CardHeader>
             <CardTitle className='flex items-center gap-2'>
               <ClipboardCheckIcon className='h-4 w-4' />
