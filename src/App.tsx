@@ -13,6 +13,9 @@ import {
   FlashcardsPlayPage,
   HistoricLeaderboardPage,
   HomePage,
+  IcaTestMonthPage,
+  IcaTestMonthRedoPage,
+  IcaTestsPage,
   LeaderboardPage,
   ManageWhitelistPage,
   ManageCoachingPage,
@@ -92,6 +95,12 @@ export function App() {
             <Route path='leaderboard' element={<LeaderboardPage />} />
             <Route path='streaks' element={<StreaksPage />} />
             <Route path='profile' element={<ProfilePage />} />
+            <Route path='tests-ica' element={<IcaTestsPage />} />
+            <Route path='tests-ica/:monthCode' element={<IcaTestMonthPage />} />
+            <Route
+              path='tests-ica/:monthCode/redo'
+              element={<IcaTestMonthRedoPage />}
+            />
             <Route path='trackers' element={<TrackersPage />} />
             <Route path='trackers/new' element={<NewTrackerPage />} />
             <Route path='trackers/:trackerId' element={<TrackerDetailPage />} />

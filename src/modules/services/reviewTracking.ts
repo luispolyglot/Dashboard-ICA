@@ -20,6 +20,28 @@ async function getCurrentUserId(): Promise<string | null> {
   return data.session?.user.id ?? null
 }
 
+async function bumpReviewDailyMetrics(params: {
+  day: string
+  correctDelta: number
+  xpDelta: number
+}): Promise<{ correctReviews: number; reviewGoalCompleted: boolean }> {
+  if (!supabase) return { correctReviews: 0, reviewGoalCompleted: false }
+
+  const { data, error } = await supabase.rpc('bump_daily_review_metrics', {
+    p_day: params.day,
+    p_correct_delta: params.correctDelta,
+    p_xp_delta: params.xpDelta,
+  })
+
+  if (error) throw error
+
+  const row = Array.isArray(data) ? data[0] : data
+  return {
+    correctReviews: Number(row?.correct_reviews ?? 0),
+    reviewGoalCompleted: Boolean(row?.review_goal_completed ?? false),
+  }
+}
+
 export async function recordReviewEvent({ previousCard, nextCard, knew }: RecordReviewEventParams): Promise<void> {
   if (!supabase) return
   const userId = await getCurrentUserId()
@@ -50,36 +72,19 @@ export async function recordReviewEvent({ previousCard, nextCard, knew }: Record
   })
   if (xpError) throw xpError
 
-  const { data: metric, error: metricError } = await supabase
-    .from('daily_metrics')
-    .select('correct_reviews, xp_earned')
-    .eq('user_id', userId)
-    .eq('day', day)
-    .maybeSingle()
-  if (metricError) throw metricError
-
-  const nextCorrect = (metric?.correct_reviews ?? 0) + (knew ? 1 : 0)
-  const nextXp = (metric?.xp_earned ?? 0) + points
-
-  const { error: dailyError } = await supabase.from('daily_metrics').upsert(
-    {
-      user_id: userId,
-      day,
-      correct_reviews: nextCorrect,
-      xp_earned: nextXp,
-      review_goal_completed: nextCorrect >= GOAL,
-    },
-    { onConflict: 'user_id,day' },
-  )
-  if (dailyError) throw dailyError
+  const metric = await bumpReviewDailyMetrics({
+    day,
+    correctDelta: knew ? 1 : 0,
+    xpDelta: points,
+  })
 
   const { error: goalError } = await supabase.from('goal_completions').upsert(
     {
       user_id: userId,
       day,
       goal_type: 'review_goal',
-      completed: nextCorrect >= GOAL,
-      progress_value: nextCorrect,
+      completed: metric.reviewGoalCompleted,
+      progress_value: metric.correctReviews,
       target_value: GOAL,
     },
     { onConflict: 'user_id,day,goal_type' },

@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { RomanizationHint } from '../components/RomanizationHint'
 import { SpeakButton } from '../components/SpeakButton'
+import { useDashboardContext } from '../context/DashboardContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchPhraseHistoryEntry } from '../services/phraseHistory'
 import {
@@ -77,6 +78,7 @@ export function MasterNoteActivatePhraseView({
   targetLang,
 }: MasterNoteActivatePhraseViewProps) {
   const navigate = useNavigate()
+  const { refreshCreationDaysFromSource } = useDashboardContext()
   const [note, setNote] = useState<MasterNote | null>(null)
   const [phrase, setPhrase] = useState<PhraseGenerationEntry | null>(null)
   const [recordingDraft, setRecordingDraft] = useState<RecordingDraft | null>(
@@ -460,6 +462,7 @@ export function MasterNoteActivatePhraseView({
         mimeType: recordingDraft.mimeType,
         durationMs: recordingDraft.durationMs,
       })
+      await refreshCreationDaysFromSource()
       navigate(`${DASHBOARD_ROUTES.masterNotes}/note/${note.id}`)
     } catch (err) {
       console.error(err)

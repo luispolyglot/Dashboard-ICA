@@ -1,8 +1,6 @@
 import { supabase } from '../../lib/supabase'
 import type { AppConfig, DailyProgressMap, Lexicard } from '../types'
 
-const CREATION_GOAL_DEFAULT = 5
-const REVIEW_GOAL_DEFAULT = 10
 const MAX_SAFE_WORD_DELETES_PER_SAVE = 5
 
 type DashboardStorageKey =
@@ -475,25 +473,8 @@ async function loadDailyProgress(userId: string): Promise<DailyProgressMap> {
 }
 
 async function saveDailyProgress(userId: string, progress: DailyProgressMap): Promise<void> {
-  if (!supabase) return
-
-  const entries = Object.entries(progress)
-  const payload = entries.map(([day, value]) => ({
-    user_id: userId,
-    day,
-    words_added: value.wordsAdded,
-    phrase_generated: value.phraseGenerated,
-    correct_reviews: value.reviewCorrect,
-    review_goal_completed: value.reviewCorrect >= REVIEW_GOAL_DEFAULT,
-    creation_goal_completed: value.wordsAdded >= CREATION_GOAL_DEFAULT && value.phraseGenerated,
-  }))
-
-  if (payload.length > 0) {
-    const { error } = await supabase
-      .from('daily_metrics')
-      .upsert(payload, { onConflict: 'user_id,day' })
-    if (error) throw error
-  }
+  void userId
+  void progress
 }
 
 export async function loadData<T>(key: string, fallback: T): Promise<T> {

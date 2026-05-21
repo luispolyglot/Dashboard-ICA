@@ -1,5 +1,182 @@
 begin;
 
+create extension if not exists "pgcrypto";
+
+create table if not exists public.profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  username text unique,
+  display_name text,
+  avatar_url text,
+  country text,
+  timezone text default 'UTC',
+  onboarded_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.user_settings (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  native_lang text not null,
+  target_lang text not null,
+  cefr_level text not null default 'A2',
+  review_goal integer not null default 10,
+  creation_goal integer not null default 5,
+  notifications_enabled boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.lexicards (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  target text not null,
+  native text not null,
+  importance text not null,
+  interval integer not null default 1,
+  ease_factor numeric(4,2) not null default 2.50,
+  streak integer not null default 0,
+  last_reviewed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.review_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  started_at timestamptz not null default now(),
+  ended_at timestamptz,
+  total_attempts integer not null default 0,
+  correct_attempts integer not null default 0,
+  accuracy numeric(5,2),
+  xp_gained integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.lexicard_reviews (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  lexicard_id uuid not null references public.lexicards (id) on delete cascade,
+  session_id uuid references public.review_sessions (id) on delete set null,
+  knew boolean not null,
+  response_time_ms integer,
+  previous_interval integer,
+  next_interval integer,
+  previous_ease_factor numeric(4,2),
+  next_ease_factor numeric(4,2),
+  reviewed_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.phrase_generations (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  source_words text[] not null,
+  generated_phrase text,
+  translation text,
+  model text,
+  latency_ms integer,
+  success boolean not null default true,
+  error_message text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.daily_metrics (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  day date not null,
+  words_added integer not null default 0,
+  correct_reviews integer not null default 0,
+  phrase_generated boolean not null default false,
+  xp_earned integer not null default 0,
+  review_goal_completed boolean not null default false,
+  creation_goal_completed boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, day)
+);
+
+create table if not exists public.goal_completions (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  day date not null,
+  goal_type text not null,
+  completed boolean not null default false,
+  progress_value integer not null default 0,
+  target_value integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, day, goal_type)
+);
+
+create table if not exists public.xp_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  source text not null,
+  points integer not null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.achievements (
+  id text primary key,
+  title text not null,
+  description text not null,
+  icon text,
+  category text not null,
+  threshold integer,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.user_achievements (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  achievement_id text not null references public.achievements (id) on delete cascade,
+  unlocked_at timestamptz not null default now(),
+  progress integer not null default 0,
+  created_at timestamptz not null default now(),
+  primary key (user_id, achievement_id)
+);
+
+create table if not exists public.leaderboard_snapshots (
+  id bigserial primary key,
+  period text not null,
+  period_start date not null,
+  period_end date not null,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  score integer not null,
+  rank integer not null,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.activity_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  event_name text not null,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.auth_whitelist (
+  email text primary key,
+  can_register boolean not null default true,
+  can_login boolean not null default true,
+  source text not null default 'manual',
+  last_synced_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+alter table public.daily_metrics enable row level security;
+alter table public.goal_completions enable row level security;
+
 alter table public.lexicards
   add column if not exists last_seen_session integer,
   add column if not exists target_lang text,
