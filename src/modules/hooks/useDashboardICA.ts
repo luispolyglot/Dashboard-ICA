@@ -235,5 +235,6 @@ export function useDashboardICA() {
     saveMetaTracker,
     setMetaTrackerActivationWordsTotal,
     startReviewSession,
+    refreshCreationDaysFromSource,
   }
 }
