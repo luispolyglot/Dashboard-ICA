@@ -98,6 +98,7 @@ export function MetaTrackerBar({
     <div className='relative box-border mx-auto mb-2 rounded-[14px] border border-slate-300 px-4.5 py-3.5 bg-[linear-gradient(160deg,#ffffff,#eef3f9)] dark:border-[#1e293b] dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'>
       <style>
         {`@keyframes metaWalkerBob { 0%,100% { transform: translateY(0) translateX(-50%); } 50% { transform: translateY(-3px) translateX(-50%); } }
+          @keyframes metaWalkerCelebrate { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }
           @keyframes metaLevelPulse { 0% { box-shadow: 0 0 0 0 #EAB30880; } 70% { box-shadow: 0 0 0 14px #EAB30800; } 100% { box-shadow: 0 0 0 0 #EAB30800; } }
         `}
       </style>
@@ -146,7 +147,7 @@ export function MetaTrackerBar({
                 fontWeight: 600,
               }}
             >
-              {pos.nextLevelKey}
+              {pos.isNativePath ? 'Nativo' : pos.nextLevelKey}
             </span>
           </div>
         </div>
@@ -180,17 +181,24 @@ export function MetaTrackerBar({
                 fontWeight: 600,
               }}
             >
-              {pos.nextLevelKey}
+              {pos.isNativePath ? 'Nativo' : pos.nextLevelKey}
             </span>
           </div>
           <div className='text-[11px] text-slate-500 dark:text-[#64748b]'>
             <span className='text-[13px] font-bold text-slate-900 dark:text-[#f1f5f9]'>
               {pos.total.toLocaleString()}
             </span>
-            <span className='text-slate-600 dark:text-[#475569]'>
-              {' '}
-              / {pos.segEnd.toLocaleString()} palabras
-            </span>
+            {pos.isNativePath ? (
+              <span className='text-slate-600 dark:text-[#475569]'>
+                {' '}
+                palabras · Camino a nivel nativo
+              </span>
+            ) : (
+              <span className='text-slate-600 dark:text-[#475569]'>
+                {' '}
+                / {pos.segEnd.toLocaleString()} palabras
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -257,20 +265,29 @@ export function MetaTrackerBar({
             transform: 'translateY(0) translateX(-50%)',
             zIndex: 3,
             transition: 'left 1s cubic-bezier(.25,1,.5,1)',
-            fontSize: 24,
-            animation: 'metaWalkerBob 1.6s ease-in-out infinite',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
           }}
         >
-          🚶‍➡️
           <div
-            className='ml-2'
+            style={{
+              fontSize: 24,
+              animation: pos.isNativePath
+                ? 'metaWalkerCelebrate 1.2s ease-in-out infinite'
+                : 'metaWalkerBob 1.6s ease-in-out infinite',
+            }}
+          >
+            {pos.isNativePath ? '🕺' : '🚶‍➡️'}
+          </div>
+          <div
             style={{
               width: 0,
               height: 0,
               borderLeft: '5px solid transparent',
               borderRight: '5px solid transparent',
               borderTop: `6px solid ${walkerColor}`,
-              marginTop: -4,
+              marginTop: -2,
             }}
           />
         </div>
