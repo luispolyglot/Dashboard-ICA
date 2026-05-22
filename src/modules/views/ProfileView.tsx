@@ -107,8 +107,6 @@ export function ProfileView({
   const isNameChanged = cleanNameDraft !== cleanCurrentDisplayName
   const canSaveName = cleanNameDraft.length >= 3 && isNameChanged
 
-  const isDEV = import.meta.env.VITE_ICA_TESTS_DEV_MODE === '1'
-
   useEffect(() => {
     if (!isEditingName) {
       setNameDraft(displayName)
@@ -405,7 +403,27 @@ export function ProfileView({
           </CardContent>
         </Card>
 
-        <Card className={!isDEV ? 'hidden' : ''}>
+        <Card>
+          <CardHeader>
+            <CardTitle className='flex items-center gap-2'>
+              <BarChart3Icon className='h-4 w-4' />
+              Mis estadísticas mensuales
+            </CardTitle>
+          </CardHeader>
+          <CardContent className='space-y-3'>
+            <p className='text-sm text-muted-foreground'>
+              Revisa tu actividad mensual: palabras, frases, notas maestras y
+              flashcards correctas.
+            </p>
+            <Button type='button' variant='outline' asChild>
+              <Link to={DASHBOARD_ROUTES.myAnalytics}>
+                Abrir mis estadísticas
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
           <CardHeader>
             <CardTitle className='flex items-center gap-2'>
               <ClipboardCheckIcon className='h-4 w-4' />

@@ -23,6 +23,7 @@ import {
   MasterNoteActivatePhrasePage,
   MasterNoteDetailPage,
   MasterNotesPage,
+  MyAnalyticsPage,
   MyIcaWordsPage,
   NewTrackerPage,
   NewIcaWordsPage,
@@ -95,6 +96,7 @@ export function App() {
             <Route path='leaderboard' element={<LeaderboardPage />} />
             <Route path='streaks' element={<StreaksPage />} />
             <Route path='profile' element={<ProfilePage />} />
+            <Route path='my-analytics' element={<MyAnalyticsPage />} />
             <Route path='tests-ica' element={<IcaTestsPage />} />
             <Route path='tests-ica/:monthCode' element={<IcaTestMonthPage />} />
             <Route
