@@ -14,6 +14,11 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  MetaTrackerLevelUpModal,
+  type MetaTrackerLevelUpCelebration,
+} from '../components/MetaTracker/MetaTrackerLevelUpModal'
+import { getMetaTrackerSnapshot } from '../components/MetaTracker/progress'
 import { RomanizationHint } from '../components/RomanizationHint'
 import { SpeakButton } from '../components/SpeakButton'
 import { getImportance } from '../constants'
@@ -28,6 +33,7 @@ import type {
   CEFRLevel,
   Lexicard,
   MasterNote,
+  MetaTrackerProfile,
 } from '../types'
 
 type PhraseViewProps = {
@@ -37,6 +43,7 @@ type PhraseViewProps = {
     wordsAdded: number
     phraseGenerated: boolean
   }>
+  metaTrackerProfile: MetaTrackerProfile | null
   onActivationWordsTotalChange: (activationWordsTotal: number) => void
   LevelBadge: ComponentType<{ level: CEFRLevel; size?: 'normal' | 'small' }>
 }
@@ -56,6 +63,7 @@ export function PhraseView({
   cards,
   config,
   onPhraseGenerated,
+  metaTrackerProfile,
   onActivationWordsTotalChange,
   LevelBadge,
 }: PhraseViewProps) {
@@ -88,8 +96,13 @@ export function PhraseView({
   )
   const [creatingAndActivating, setCreatingAndActivating] = useState(false)
   const [extraGenerationsCount, setExtraGenerationsCount] = useState(0)
+  const [levelUpCelebration, setLevelUpCelebration] =
+    useState<MetaTrackerLevelUpCelebration | null>(null)
 
   const level = config.level || 'A1'
+  const trackerSnapshot = metaTrackerProfile?.confirmedAt
+    ? getMetaTrackerSnapshot(metaTrackerProfile, config.targetLang)
+    : null
   const allWords = cards.slice().reverse()
   const automaticPool = cards.slice(-8).reverse()
   const manualPool = cards.slice(-25).reverse()
@@ -222,7 +235,9 @@ export function PhraseView({
     })
   }
 
-  const handleGenerate = async (options?: { isRegeneration?: boolean }): Promise<void> => {
+  const handleGenerate = async (options?: {
+    isRegeneration?: boolean
+  }): Promise<void> => {
     const isRegeneration = options?.isRegeneration === true
 
     if (isRegeneration && extraGenerationsCount >= MAX_EXTRA_GENERATIONS) {
@@ -283,6 +298,36 @@ export function PhraseView({
           })
         setResultPhraseId(phraseGenerationId)
         if (typeof activationWordsTotal === 'number') {
+          if (metaTrackerProfile?.confirmedAt && trackerSnapshot) {
+            const nextSnapshot = getMetaTrackerSnapshot(
+              {
+                ...metaTrackerProfile,
+                activationWordsTotal,
+              },
+              config.targetLang,
+            )
+
+            const crossedToNewLevel =
+              nextSnapshot.currentLevelKey !== trackerSnapshot.currentLevelKey
+            const wordsActivatedNow = Math.max(
+              0,
+              nextSnapshot.totalWords - trackerSnapshot.totalWords,
+            )
+
+            if (crossedToNewLevel && wordsActivatedNow > 0) {
+              setLevelUpCelebration({
+                targetLang: config.targetLang,
+                fromLevel: trackerSnapshot.currentLevelKey,
+                toLevel: nextSnapshot.currentLevelKey,
+                fromTotalWords: trackerSnapshot.totalWords,
+                toTotalWords: nextSnapshot.totalWords,
+                activatedWords: wordsActivatedNow,
+                nextLevel: nextSnapshot.nextLevelKey,
+                wordsToNext: nextSnapshot.wordsToNext,
+              })
+            }
+          }
+
           onActivationWordsTotalChange(activationWordsTotal)
         }
         setWordUsageCounts((prev) => {
@@ -317,7 +362,10 @@ export function PhraseView({
     setLoadingMasterNotes(true)
     setMasterNotesError(null)
     try {
-      const allNotes = await fetchMasterNotes(config.targetLang, config.nativeLang)
+      const allNotes = await fetchMasterNotes(
+        config.targetLang,
+        config.nativeLang,
+      )
       const available = allNotes.filter(
         (note) =>
           note.state === 'open' &&
@@ -352,7 +400,10 @@ export function PhraseView({
     setCreatingAndActivating(true)
     setMasterNotesError(null)
     try {
-      const created = await createMasterNote(config.targetLang, config.nativeLang)
+      const created = await createMasterNote(
+        config.targetLang,
+        config.nativeLang,
+      )
       navigate(
         `${DASHBOARD_ROUTES.masterNotes}/note/${created.id}/activate/${resultPhraseId}`,
       )
@@ -724,16 +775,16 @@ export function PhraseView({
       {result &&
         mode !== 'manualPhrase' &&
         extraGenerationsCount < MAX_EXTRA_GENERATIONS && (
-        <Button
-          type='button'
-          onClick={() => void handleGenerate({ isRegeneration: true })}
-          disabled={loading}
-          variant='outline'
-          className='mt-2 w-full'
-        >
-          🔄 Generar otra frase
-        </Button>
-      )}
+          <Button
+            type='button'
+            onClick={() => void handleGenerate({ isRegeneration: true })}
+            disabled={loading}
+            variant='outline'
+            className='mt-2 w-full'
+          >
+            🔄 Generar otra frase
+          </Button>
+        )}
 
       <Dialog
         open={activateModalOpen}
@@ -822,6 +873,14 @@ export function PhraseView({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <MetaTrackerLevelUpModal
+        open={Boolean(levelUpCelebration)}
+        celebration={levelUpCelebration}
+        onOpenChange={(open) => {
+          if (!open) setLevelUpCelebration(null)
+        }}
+      />
     </section>
   )
 }

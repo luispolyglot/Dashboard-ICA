@@ -191,6 +191,7 @@ export function ActivationPhrasePage() {
     cards,
     config,
     handlePhraseGenerated,
+    metaTrackerProfile,
     setMetaTrackerActivationWordsTotal,
   } = useDashboardContext()
   if (!config) return null
@@ -201,6 +202,7 @@ export function ActivationPhrasePage() {
         cards={cards}
         config={config}
         onPhraseGenerated={handlePhraseGenerated}
+        metaTrackerProfile={metaTrackerProfile}
         onActivationWordsTotalChange={setMetaTrackerActivationWordsTotal}
         LevelBadge={LevelBadge}
       />

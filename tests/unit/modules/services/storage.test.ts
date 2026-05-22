@@ -13,7 +13,7 @@ vi.mock('@/lib/supabase', () => ({
   supabase: mockSupabase,
 }))
 
-import { loadData, saveData } from '@/modules/services/storage'
+import { loadData, saveData, updateWord } from '@/modules/services/storage'
 
 describe('storage service', () => {
   beforeEach(() => {
@@ -75,5 +75,39 @@ describe('storage service', () => {
 
     expect(localStorage.getItem('dashboard-ICA-review-session')).toBe('42')
     expect(mockSupabase.auth.getSession).not.toHaveBeenCalled()
+  })
+
+  it('does not send activation fields when updating lexicard', async () => {
+    const eqId = vi.fn().mockResolvedValue({ error: null })
+    const eqUser = vi.fn().mockReturnValue({ eq: eqId })
+    const update = vi.fn().mockReturnValue({ eq: eqUser })
+
+    mockSupabase.from.mockImplementation((table: string) => {
+      if (table === 'lexicards') return { update }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    await updateWord({
+      id: 'card-1',
+      target: 'hustle',
+      native: 'ajetreo',
+      importance: 'frequent',
+      interval: 2,
+      easeFactor: 2.6,
+      streak: 1,
+      createdAt: Date.now(),
+      lastReviewed: Date.now(),
+      targetLang: 'Inglés',
+      nativeLang: 'Español',
+      activationCount: 0,
+      firstActivatedAt: null,
+      lastActivatedAt: null,
+    } as any)
+
+    const patch = update.mock.calls[0]?.[0] || {}
+    expect(patch.activation_count).toBeUndefined()
+    expect(patch.first_activated_at).toBeUndefined()
+    expect(patch.last_activated_at).toBeUndefined()
+    expect(typeof patch.last_reviewed_at).toBe('string')
   })
 })

@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useDashboardContext } from '../../context/DashboardContext'
-import type { AppConfig } from '../../types'
+import type { AppConfig, MetaTrackerStartLevel } from '../../types'
 import { MetaTrackerBar } from './MetaTrackerBar'
-import { getLevelThresholds } from './leveling'
+import { getMetaTrackerTotalWords } from './progress'
 import { MetaTrackerSetupModal } from './MetaTrackerSetupModal'
 
 type MetaTrackerSectionProps = {
@@ -18,15 +18,12 @@ export function MetaTrackerSection({ config }: MetaTrackerSectionProps) {
   } = useDashboardContext()
   const [showSetup, setShowSetup] = useState(false)
 
-  const thresholds = getLevelThresholds(config.targetLang)
-  const startLevel = metaTrackerProfile?.startLevel || '0'
-  const baseWords = startLevel === '0' ? 0 : (thresholds[startLevel] ?? 0)
-  const priorWords = metaTrackerProfile?.priorIcaWords ?? 0
-  const activationWords = metaTrackerProfile?.activationWordsTotal ?? 0
-  const totalWords = baseWords + priorWords + activationWords
+  const totalWords = metaTrackerProfile
+    ? getMetaTrackerTotalWords(metaTrackerProfile, config.targetLang)
+    : 0
 
   const handleSave = async (payload: {
-    startLevel: typeof startLevel
+    startLevel: MetaTrackerStartLevel
     priorIcaWords: number
   }) => {
     await saveMetaTracker(payload)
