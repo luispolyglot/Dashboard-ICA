@@ -332,9 +332,6 @@ async function updateWordRecord(userId: string, card: Lexicard): Promise<void> {
     streak: card.streak,
     last_reviewed_at: toIsoFromMillis(card.lastReviewed),
     last_seen_session: card.lastSeenSession ?? null,
-    activation_count: card.activationCount ?? 0,
-    first_activated_at: toIsoFromMillis(card.firstActivatedAt ?? null),
-    last_activated_at: toIsoFromMillis(card.lastActivatedAt ?? null),
     created_at: new Date(card.createdAt).toISOString(),
   }
 

@@ -207,4 +207,59 @@ describe('register_lexicard_activations integration', () => {
     expect(cardRowError).toBeNull()
     expect(cardRow?.activation_count).toBe(0)
   })
+
+  it('keeps activation fields after stale client update', async () => {
+    const { client, userId } = await createAuthenticatedUser()
+
+    const { data: cardData, error: cardError } = await adminClient
+      .from('lexicards')
+      .insert({
+        user_id: userId,
+        target: 'hustle',
+        native: 'ajetreo',
+        importance: 'frequent',
+        target_lang: 'Inglés',
+        native_lang: 'Español',
+      })
+      .select('id')
+      .single()
+    expect(cardError).toBeNull()
+    const lexicardId = String(cardData?.id || '')
+
+    const { error: activationError } = await client.rpc('register_lexicard_activations', {
+      p_lexicard_ids: [lexicardId],
+      p_target_lang: 'Inglés',
+      p_native_lang: 'Español',
+    })
+    expect(activationError).toBeNull()
+
+    const { data: beforeRow, error: beforeError } = await adminClient
+      .from('lexicards')
+      .select('activation_count, first_activated_at, last_activated_at')
+      .eq('id', lexicardId)
+      .single()
+    expect(beforeError).toBeNull()
+    expect(beforeRow?.activation_count).toBe(1)
+
+    const { error: staleUpdateError } = await client
+      .from('lexicards')
+      .update({
+        activation_count: 0,
+        first_activated_at: null,
+        last_activated_at: null,
+        last_reviewed_at: new Date().toISOString(),
+      })
+      .eq('id', lexicardId)
+    expect(staleUpdateError).toBeNull()
+
+    const { data: afterRow, error: afterError } = await adminClient
+      .from('lexicards')
+      .select('activation_count, first_activated_at, last_activated_at')
+      .eq('id', lexicardId)
+      .single()
+    expect(afterError).toBeNull()
+    expect(afterRow?.activation_count).toBe(1)
+    expect(afterRow?.first_activated_at).toBe(beforeRow?.first_activated_at)
+    expect(afterRow?.last_activated_at).toBe(beforeRow?.last_activated_at)
+  })
 })
