@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { MouseEvent } from 'react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { speakNatural, stopTTS } from '../services/tts'
 import { Volume1Icon, SquareIcon } from 'lucide-react'
 
@@ -58,9 +59,7 @@ export function SpeakButton({
   }
 
   return (
-    <div
-      className={`mt-4 flex flex-wrap items-center gap-2 ${className || ''}`}
-    >
+    <div className={cn('mt-4 flex flex-wrap items-center gap-2', className)}>
       <span className='text-xs text-muted-foreground'>
         {label || `Escuchar ${langName}`}
       </span>
