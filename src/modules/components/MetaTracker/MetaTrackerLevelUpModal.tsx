@@ -11,7 +11,7 @@ export type MetaTrackerLevelUpCelebration = {
   toTotalWords: number
   activatedWords: number
   nextLevel: string
-  wordsToNext: number
+  wordsToNext: number | null
 }
 
 type MetaTrackerLevelUpModalProps = {
@@ -166,13 +166,24 @@ export function MetaTrackerLevelUpModal({
             </p>
           </div>
 
-          {celebration.wordsToNext > 0 && (
+          {typeof celebration.wordsToNext === 'number' && celebration.wordsToNext > 0 && (
             <div className='mt-3 rounded-lg border border-cyan-300/30 bg-cyan-500/8 p-4'>
               <p className='text-sm font-semibold text-cyan-200'>
                 Proximo nivel: {formatLevelLabel(celebration.nextLevel)}
               </p>
               <p className='mt-1 text-sm text-slate-200'>
                 Te faltan {celebration.wordsToNext} palabras para alcanzarlo.
+              </p>
+            </div>
+          )}
+
+          {celebration.wordsToNext === null && (
+            <div className='mt-3 rounded-lg border border-cyan-300/30 bg-cyan-500/8 p-4'>
+              <p className='text-sm font-semibold text-cyan-200'>
+                Llegaste a C1 en {celebration.targetLang}
+              </p>
+              <p className='mt-1 text-sm text-slate-200'>
+                Ahora comienza tu camino hacia un nivel nativo.
               </p>
             </div>
           )}

@@ -5,7 +5,8 @@ type MetaTrackerSnapshot = {
   totalWords: number
   currentLevelKey: string
   nextLevelKey: string
-  wordsToNext: number
+  wordsToNext: number | null
+  isNativePath: boolean
 }
 
 export function getMetaTrackerTotalWords(
@@ -32,5 +33,6 @@ export function getMetaTrackerSnapshot(
     currentLevelKey: position.currentLevelKey,
     nextLevelKey: position.nextLevelKey,
     wordsToNext: position.wordsToNext,
+    isNativePath: position.isNativePath,
   }
 }

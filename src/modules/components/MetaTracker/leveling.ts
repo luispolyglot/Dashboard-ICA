@@ -1,4 +1,5 @@
 export const LEVEL_KEYS = ['A1', 'A1+', 'A2', 'A2+', 'B1', 'B1+', 'B2', 'B2+', 'C1'] as const
+export const NATIVE_PATH_LABEL = 'Camino nativo'
 
 type LevelKey = (typeof LEVEL_KEYS)[number]
 
@@ -99,7 +100,22 @@ export function getLevelThresholds(language: string): Record<LevelKey, number> {
 export function computeLevelPosition(total: number, thresholds: Record<LevelKey, number>) {
   const stops = [0, ...LEVEL_KEYS.map((key) => thresholds[key])]
   const max = stops[stops.length - 1]
-  const clamped = Math.max(0, Math.min(total, max))
+  const safeTotal = Math.max(0, total)
+  const clamped = Math.max(0, Math.min(safeTotal, max))
+
+  if (safeTotal >= max) {
+    return {
+      currentLevelKey: 'C1',
+      nextLevelKey: NATIVE_PATH_LABEL,
+      pctWithin: 1,
+      pctOverall: 1,
+      segStart: max,
+      segEnd: max,
+      wordsToNext: null,
+      total: safeTotal,
+      isNativePath: true,
+    }
+  }
 
   let idx = 0
   for (let i = 0; i < stops.length - 1; i += 1) {
@@ -126,6 +142,7 @@ export function computeLevelPosition(total: number, thresholds: Record<LevelKey,
     segStart,
     segEnd,
     wordsToNext,
-    total: clamped,
+    total: safeTotal,
+    isNativePath: false,
   }
 }
