@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { MouseEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -14,6 +14,15 @@ type SpeakButtonProps = {
   disabled?: boolean
 }
 
+const SPEAK_RATE_STORAGE_KEY = 'speak-button-rate'
+
+function getInitialRate(): 0.75 | 1 {
+  if (typeof window === 'undefined') return 1
+
+  const stored = window.localStorage.getItem(SPEAK_RATE_STORAGE_KEY)
+  return stored === '0.75' ? 0.75 : 1
+}
+
 export function SpeakButton({
   text,
   langName,
@@ -23,7 +32,12 @@ export function SpeakButton({
   disabled,
 }: SpeakButtonProps) {
   const [s, setS] = useState(false)
-  const [rate, setRate] = useState<0.75 | 1>(1)
+  const [rate, setRate] = useState<0.75 | 1>(getInitialRate)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(SPEAK_RATE_STORAGE_KEY, String(rate))
+  }, [rate])
 
   const tone =
     color === '#EF4444'
