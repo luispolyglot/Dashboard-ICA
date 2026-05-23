@@ -16,6 +16,7 @@ import { recordWordAddedEvent } from '../services/gamification'
 import { insertWord } from '../services/storage'
 import { generateId } from '../utils'
 import { RomanizationHint } from '../components/RomanizationHint'
+import { SpeakButton } from '../components/SpeakButton'
 import { TranslationSuggestion } from '../components/TranslationSuggestion'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { Badge } from '@/components/ui/badge'
@@ -354,6 +355,16 @@ export function AddView({
               className='h-11'
             />
             <RomanizationHint text={target} language={config.targetLang} />
+            {trimmedTarget && (
+              <SpeakButton
+                text={trimmedTarget}
+                langName={config.targetLang}
+                color='#3B82F6'
+                label={`Escuchar en ${config.targetLang}`}
+                className='mt-2'
+                disabled={saving}
+              />
+            )}
             {(checkingSpelling || spellingSuggestion) && (
               <div className='mt-1.5 flex items-center gap-2 text-xs'>
                 {checkingSpelling && (

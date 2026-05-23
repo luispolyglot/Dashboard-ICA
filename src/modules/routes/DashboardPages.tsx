@@ -18,6 +18,7 @@ import { ManageView } from '../views/ManageView'
 import { MasterNoteActivatePhraseView } from '../views/MasterNoteActivatePhraseView'
 import { MasterNoteDetailView } from '../views/MasterNoteDetailView'
 import { MasterNotesView } from '../views/MasterNotesView'
+import { MyAnalyticsView } from '../views/MyAnalyticsView'
 import { NewTrackerView } from '../views/NewTrackerView'
 import { ProfileView } from '../views/ProfileView'
 import { PhraseHistoryView } from '../views/PhraseHistoryView'
@@ -291,6 +292,14 @@ export function ProfilePage() {
         cards={cards}
         onEditLanguages={() => setShowLangModal(true)}
       />
+    </PageLayout>
+  )
+}
+
+export function MyAnalyticsPage() {
+  return (
+    <PageLayout>
+      <MyAnalyticsView />
     </PageLayout>
   )
 }

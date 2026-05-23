@@ -85,6 +85,7 @@ export function MasterNoteActivatePhraseView({
     null,
   )
   const [recording, setRecording] = useState(false)
+  const [recordingPaused, setRecordingPaused] = useState(false)
   const [recordingElapsedMs, setRecordingElapsedMs] = useState(0)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -112,6 +113,8 @@ export function MasterNoteActivatePhraseView({
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const recordedChunksRef = useRef<Blob[]>([])
   const recordingStartedAtRef = useRef<number | null>(null)
+  const recordingPausedAtRef = useRef<number | null>(null)
+  const recordingTotalPausedMsRef = useRef(0)
   const recordingIntervalRef = useRef<number | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
@@ -220,6 +223,39 @@ export function MasterNoteActivatePhraseView({
     const recorder = mediaRecorderRef.current
     if (!recorder) return
     if (recorder.state !== 'inactive') recorder.stop()
+  }
+
+  const getRecordingElapsedMs = (now: number): number => {
+    const startedAt = recordingStartedAtRef.current
+    if (!startedAt) return 0
+
+    const pausedAt = recordingPausedAtRef.current
+    const inFlightPauseMs = pausedAt ? now - pausedAt : 0
+    return Math.max(
+      0,
+      now - startedAt - recordingTotalPausedMsRef.current - inFlightPauseMs,
+    )
+  }
+
+  const pauseRecording = (): void => {
+    const recorder = mediaRecorderRef.current
+    if (!recorder || recorder.state !== 'recording' || recordingPaused) return
+    recorder.pause()
+    recordingPausedAtRef.current = Date.now()
+    setRecordingPaused(true)
+  }
+
+  const resumeRecording = (): void => {
+    const recorder = mediaRecorderRef.current
+    if (!recorder || recorder.state !== 'paused' || !recordingPaused) return
+
+    const pausedAt = recordingPausedAtRef.current
+    if (pausedAt) {
+      recordingTotalPausedMsRef.current += Date.now() - pausedAt
+    }
+    recordingPausedAtRef.current = null
+    recorder.resume()
+    setRecordingPaused(false)
   }
 
   useEffect(() => {
@@ -379,9 +415,12 @@ export function MasterNoteActivatePhraseView({
 
       recordedChunksRef.current = []
       recordingStartedAtRef.current = Date.now()
+      recordingPausedAtRef.current = null
+      recordingTotalPausedMsRef.current = 0
       mediaRecorderRef.current = recorder
       mediaStreamRef.current = stream
       setRecording(true)
+      setRecordingPaused(false)
       setRecordingElapsedMs(0)
       setError(null)
       startWave(stream)
@@ -390,9 +429,7 @@ export function MasterNoteActivatePhraseView({
         window.clearInterval(recordingIntervalRef.current)
       }
       recordingIntervalRef.current = window.setInterval(() => {
-        const startedAt = recordingStartedAtRef.current
-        if (!startedAt) return
-        setRecordingElapsedMs(Date.now() - startedAt)
+        setRecordingElapsedMs(getRecordingElapsedMs(Date.now()))
       }, 200)
 
       recorder.ondataavailable = (event: BlobEvent) => {
@@ -403,7 +440,7 @@ export function MasterNoteActivatePhraseView({
         const startedAt = recordingStartedAtRef.current
         const mimeType = recorder.mimeType || preferredMimeType
         if (startedAt) {
-          const durationMs = Date.now() - startedAt
+          const durationMs = getRecordingElapsedMs(Date.now())
           const blob = new Blob(recordedChunksRef.current, { type: mimeType })
           if (blob.size > 0) {
             const url = URL.createObjectURL(blob)
@@ -424,8 +461,11 @@ export function MasterNoteActivatePhraseView({
         mediaStreamRef.current = null
         mediaRecorderRef.current = null
         recordingStartedAtRef.current = null
+        recordingPausedAtRef.current = null
+        recordingTotalPausedMsRef.current = 0
         recordedChunksRef.current = []
         setRecording(false)
+        setRecordingPaused(false)
         if (recordingIntervalRef.current !== null) {
           window.clearInterval(recordingIntervalRef.current)
           recordingIntervalRef.current = null
@@ -441,12 +481,15 @@ export function MasterNoteActivatePhraseView({
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
       mediaStreamRef.current = null
       mediaRecorderRef.current = null
+      recordingPausedAtRef.current = null
+      recordingTotalPausedMsRef.current = 0
       if (recordingIntervalRef.current !== null) {
         window.clearInterval(recordingIntervalRef.current)
         recordingIntervalRef.current = null
       }
       stopWave()
       setRecording(false)
+      setRecordingPaused(false)
       setRecordingElapsedMs(0)
     }
   }
@@ -515,7 +558,7 @@ export function MasterNoteActivatePhraseView({
     <>
       <section className='mx-auto w-full max-w-3xl flex-1 px-5 pt-8 pb-24 lg:pb-8'>
         <h2 className='mb-1 font-serif text-2xl lg:text-3xl font-bold'>
-          Activar frase
+          🗣️ Activar frase
         </h2>
         <p className='mb-2 text-sm text-muted-foreground'>Nota: {note.name}</p>
         <p className='mb-4 text-sm text-muted-foreground'>
@@ -570,7 +613,8 @@ export function MasterNoteActivatePhraseView({
               {recording && (
                 <div className='mb-2 space-y-1'>
                   <p className='text-sm'>
-                    Grabando: {formatDuration(recordingElapsedMs)}
+                    {recordingPaused ? 'Grabación pausada' : 'Grabando'}:{' '}
+                    {formatDuration(recordingElapsedMs)}
                   </p>
                   <p className='text-xs text-muted-foreground'>
                     Tiempo restante para la nota:{' '}
@@ -592,9 +636,30 @@ export function MasterNoteActivatePhraseView({
               )}
 
               {recording ? (
-                <Button type='button' onClick={stopRecording} size='sm'>
-                  ⏹️ Detener
-                </Button>
+                <div className='flex gap-2'>
+                  {recordingPaused ? (
+                    <Button
+                      type='button'
+                      onClick={resumeRecording}
+                      size='sm'
+                      variant='outline'
+                    >
+                      ▶️ Reanudar grabación
+                    </Button>
+                  ) : (
+                    <Button
+                      type='button'
+                      onClick={pauseRecording}
+                      size='sm'
+                      variant='outline'
+                    >
+                      ⏸️ Pausar grabación
+                    </Button>
+                  )}
+                  <Button type='button' onClick={stopRecording} size='sm'>
+                    ⏹️ Detener grabación
+                  </Button>
+                </div>
               ) : (
                 <Button
                   type='button'
