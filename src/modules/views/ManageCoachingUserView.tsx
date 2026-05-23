@@ -831,10 +831,7 @@ export function ManageCoachingUserView({
         id: note.id,
         name: note.name,
         closedAt: note.closed_at || note.updated_at,
-        audioUrl:
-          note.audioUrl ||
-          note.audioChunks.find((item) => item.audioUrl)?.audioUrl ||
-          null,
+        audioUrl: note.final_audio_path ? note.audioUrl : null,
         audioChunks: (note.audioChunks || []).map((item) => ({
           audioUrl: item.audioUrl || null,
           durationMs: item.duration_ms || 0,
