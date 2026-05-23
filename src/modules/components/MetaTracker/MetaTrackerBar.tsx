@@ -277,6 +277,7 @@ export function MetaTrackerBar({
                 ? 'metaWalkerCelebrate 1.2s ease-in-out infinite'
                 : 'metaWalkerBob 1.6s ease-in-out infinite',
             }}
+            className={pos.isNativePath ? '-ml-2' : 'ml-7'}
           >
             {pos.isNativePath ? '🕺' : '🚶‍➡️'}
           </div>
@@ -287,7 +288,11 @@ export function MetaTrackerBar({
               borderLeft: '5px solid transparent',
               borderRight: '5px solid transparent',
               borderTop: `6px solid ${walkerColor}`,
-              marginTop: -2,
+              marginTop: -4,
+              marginLeft: pos.isNativePath ? -6 : 12,
+              animation: pos.isNativePath
+                ? 'metaWalkerCelebrate 1.2s ease-in-out infinite'
+                : 'metaWalkerBob 1.6s ease-in-out infinite',
             }}
           />
         </div>
