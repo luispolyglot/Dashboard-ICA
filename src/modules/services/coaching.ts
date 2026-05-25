@@ -47,6 +47,7 @@ export type CoachingMembership = {
       createdAt: string
       closedAt: string
       feedbackLoomUrl: string | null
+      feedbackNotes?: string | null
     }>
   >
   updatedAt: string

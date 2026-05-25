@@ -900,6 +900,7 @@ export function ManageCoachingUserView({
         createdAt: string
         closedAt: string
         feedbackLoomUrl: string | null
+        feedbackNotes?: string | null
       }>
     > = {}
 
@@ -910,6 +911,7 @@ export function ManageCoachingUserView({
         createdAt: note.createdAt,
         closedAt: note.closedAt,
         feedbackLoomUrl: note.feedbackLoomUrl,
+        feedbackNotes: note.feedbackNotes,
       }))
     }
 

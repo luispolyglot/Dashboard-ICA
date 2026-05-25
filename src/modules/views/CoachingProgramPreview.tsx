@@ -62,6 +62,7 @@ type ProgramPreviewMembership = {
       createdAt?: string
       closedAt: string
       feedbackLoomUrl: string | null
+      feedbackNotes?: string | null
     }>
   >
 }
@@ -579,6 +580,21 @@ export function CoachingProgramPreview({
                                   Aun no hay video de revision para esta nota.
                                 </p>
                               )}
+
+                              <div className='mt-3 border-t pt-3'>
+                                <p className='mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground'>
+                                  Notas del coach
+                                </p>
+                                {note.feedbackNotes ? (
+                                  <p className='whitespace-pre-wrap text-sm text-foreground'>
+                                    {note.feedbackNotes}
+                                  </p>
+                                ) : (
+                                  <p className='text-sm text-muted-foreground'>
+                                    Aun no hay notas del coach para esta nota.
+                                  </p>
+                                )}
+                              </div>
                             </div>
                           ))
                         )}
