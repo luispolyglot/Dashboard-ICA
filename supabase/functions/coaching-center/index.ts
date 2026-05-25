@@ -3,7 +3,6 @@ import {
   ensureAuthenticated,
   ensureCoachingAdmin,
   parseCoachScopes,
-  scopeAllows,
 } from '../_shared/coaching-auth.ts'
 
 type CoachingCenterPayload = {
@@ -297,6 +296,14 @@ function weekNumberFromKey(value: string | null, fallback = 1): number {
 function weekKeyFromNumber(value: number): string {
   const week = Math.min(12, Math.max(1, Number.isFinite(value) ? value : 1))
   return `W${String(week).padStart(2, '0')}`
+}
+
+function canManageSession(
+  admin: { adminRole: 'coach_admin' | 'super_admin'; userId: string },
+  coachUserId: string | null,
+): boolean {
+  if (admin.adminRole === 'super_admin') return true
+  return Boolean(coachUserId) && coachUserId === admin.userId
 }
 
 function toUtcDate(value: string): Date | null {
@@ -923,7 +930,7 @@ Deno.serve(async (req) => {
     }
 
     const visibleRows = ((data || []) as CoachingUserRow[]).filter((row) =>
-      scopeAllows(admin.adminRole, admin.scopes, row.target_lang, row.level),
+      canManageSession(admin, row.coach_user_id),
     )
 
     const profileIds = Array.from(
@@ -1015,6 +1022,10 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'list-available-users') {
+    if (admin.adminRole !== 'super_admin') {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+
     const [profilesResult, settingsResult, trackersResult, cardsResult, coachedResult] = await Promise.all([
       admin.adminClient
         .from('profiles')
@@ -1138,9 +1149,6 @@ Deno.serve(async (req) => {
       if (userLanguages.length === 0) return []
 
       return userLanguages
-        .filter((language) =>
-          scopeAllows(admin.adminRole, admin.scopes, language.targetLang, language.level),
-        )
         .map((language) => ({
           userId,
           userDisplayName: displayName,
@@ -1167,17 +1175,14 @@ Deno.serve(async (req) => {
     const weeklyObjectives = hasWeeklyObjectives
       ? normalizeWeeklyObjectives(payload.weeklyObjectives)
       : undefined
-    const coachUserId =
-      admin.adminRole === 'super_admin'
-        ? safeString(payload.coachUserId) || admin.userId
-        : admin.userId
+    const requestedCoachUserId = safeString(payload.coachUserId)
 
     if (sessionId) {
       const { data: existingRow, error: existingError } = await admin.adminClient
         .from('coaching_sessions')
-        .select('id, target_lang, level')
+        .select('id, target_lang, level, coach_user_id')
         .eq('id', sessionId)
-        .maybeSingle<{ id: string; target_lang: string; level: string }>()
+        .maybeSingle<{ id: string; target_lang: string; level: string; coach_user_id: string | null }>()
 
       if (existingError) {
         return jsonResponse(500, { error: existingError.message })
@@ -1186,16 +1191,14 @@ Deno.serve(async (req) => {
         return jsonResponse(404, { error: 'Coaching session not found' })
       }
 
-      if (
-        !scopeAllows(
-          admin.adminRole,
-          admin.scopes,
-          existingRow.target_lang,
-          existingRow.level,
-        )
-      ) {
-        return jsonResponse(403, { error: 'Forbidden for selected language/level scope' })
+      if (!canManageSession(admin, existingRow.coach_user_id)) {
+        return jsonResponse(403, { error: 'Forbidden for selected session' })
       }
+
+      const coachUserId =
+        admin.adminRole === 'super_admin'
+          ? requestedCoachUserId || existingRow.coach_user_id
+          : admin.userId
 
       const updatePayload: Record<string, unknown> = {
         coach_user_id: coachUserId,
@@ -1238,9 +1241,15 @@ Deno.serve(async (req) => {
       return jsonResponse(400, { error: 'userId and targetLang are required' })
     }
 
-    if (!scopeAllows(admin.adminRole, admin.scopes, targetLang, level)) {
-      return jsonResponse(403, { error: 'Forbidden for selected language/level scope' })
+    if (admin.adminRole !== 'super_admin') {
+      return jsonResponse(403, { error: 'Only super admins can create coaching sessions' })
     }
+
+    if (!requestedCoachUserId) {
+      return jsonResponse(400, { error: 'coachUserId is required' })
+    }
+
+    const coachUserId = requestedCoachUserId
 
     const { data, error } = await admin.adminClient
       .from('coaching_sessions')
@@ -1290,9 +1299,9 @@ Deno.serve(async (req) => {
 
     const { data: row, error: rowError } = await admin.adminClient
       .from('coaching_sessions')
-      .select('id, target_lang, level, status')
+      .select('id, target_lang, level, status, coach_user_id')
       .eq('id', sessionId)
-      .maybeSingle<{ id: string; target_lang: string; level: string; status: string }>()
+      .maybeSingle<{ id: string; target_lang: string; level: string; status: string; coach_user_id: string | null }>()
 
     if (rowError) {
       return jsonResponse(500, { error: rowError.message })
@@ -1301,7 +1310,7 @@ Deno.serve(async (req) => {
       return jsonResponse(404, { error: 'Coaching session not found' })
     }
 
-    if (!scopeAllows(admin.adminRole, admin.scopes, row.target_lang, row.level)) {
+    if (!canManageSession(admin, row.coach_user_id)) {
       return jsonResponse(403, { error: 'Forbidden' })
     }
 
@@ -1328,9 +1337,9 @@ Deno.serve(async (req) => {
 
     const { data: row, error: rowError } = await admin.adminClient
       .from('coaching_sessions')
-      .select('id, target_lang, level')
+      .select('id, target_lang, level, coach_user_id')
       .eq('id', sessionId)
-      .maybeSingle<{ id: string; target_lang: string; level: string }>()
+      .maybeSingle<{ id: string; target_lang: string; level: string; coach_user_id: string | null }>()
 
     if (rowError) {
       return jsonResponse(500, { error: rowError.message })
@@ -1339,7 +1348,7 @@ Deno.serve(async (req) => {
       return jsonResponse(404, { error: 'Coaching session not found' })
     }
 
-    if (!scopeAllows(admin.adminRole, admin.scopes, row.target_lang, row.level)) {
+    if (!canManageSession(admin, row.coach_user_id)) {
       return jsonResponse(403, { error: 'Forbidden' })
     }
 
@@ -1367,9 +1376,9 @@ Deno.serve(async (req) => {
 
     const { data: row, error: rowError } = await admin.adminClient
       .from('coaching_sessions')
-      .select('id, target_lang, level')
+      .select('id, target_lang, level, coach_user_id')
       .eq('id', sessionId)
-      .maybeSingle<{ id: string; target_lang: string; level: string }>()
+      .maybeSingle<{ id: string; target_lang: string; level: string; coach_user_id: string | null }>()
 
     if (rowError) {
       return jsonResponse(500, { error: rowError.message })
@@ -1378,7 +1387,7 @@ Deno.serve(async (req) => {
       return jsonResponse(404, { error: 'Coaching session not found' })
     }
 
-    if (!scopeAllows(admin.adminRole, admin.scopes, row.target_lang, row.level)) {
+    if (!canManageSession(admin, row.coach_user_id)) {
       return jsonResponse(403, { error: 'Forbidden' })
     }
 
@@ -1435,7 +1444,7 @@ Deno.serve(async (req) => {
       return jsonResponse(404, { error: 'Coaching session not found' })
     }
 
-    if (!scopeAllows(admin.adminRole, admin.scopes, row.target_lang, row.level)) {
+    if (!canManageSession(admin, row.coach_user_id)) {
       return jsonResponse(403, { error: 'Forbidden' })
     }
 
@@ -1527,9 +1536,9 @@ Deno.serve(async (req) => {
 
     const { data: sessionRow, error: sessionError } = await admin.adminClient
       .from('coaching_sessions')
-      .select('id, user_id, target_lang, level')
+      .select('id, user_id, target_lang, level, coach_user_id')
       .eq('id', sessionId)
-      .maybeSingle<{ id: string; user_id: string; target_lang: string; level: string }>()
+      .maybeSingle<{ id: string; user_id: string; target_lang: string; level: string; coach_user_id: string | null }>()
 
     if (sessionError) {
       return jsonResponse(500, { error: sessionError.message })
@@ -1537,7 +1546,7 @@ Deno.serve(async (req) => {
     if (!sessionRow) {
       return jsonResponse(404, { error: 'Coaching session not found' })
     }
-    if (!scopeAllows(admin.adminRole, admin.scopes, sessionRow.target_lang, sessionRow.level)) {
+    if (!canManageSession(admin, sessionRow.coach_user_id)) {
       return jsonResponse(403, { error: 'Forbidden' })
     }
 
@@ -1579,10 +1588,14 @@ Deno.serve(async (req) => {
     const requestedTargetLang = safeString(payload.targetLang)
     let coachingQuery = admin.adminClient
       .from('coaching_sessions')
-      .select('id, target_lang, level, activated_at, duration_weeks')
+      .select('id, target_lang, level, activated_at, duration_weeks, coach_user_id')
       .eq('is_active', true)
       .order('updated_at', { ascending: false })
       .limit(1)
+
+    if (admin.adminRole !== 'super_admin') {
+      coachingQuery = coachingQuery.eq('coach_user_id', admin.userId)
+    }
 
     if (sessionId) {
       coachingQuery = coachingQuery.eq('id', sessionId)
@@ -1603,7 +1616,7 @@ Deno.serve(async (req) => {
       return jsonResponse(404, { error: 'Coaching user not found' })
     }
 
-    if (!scopeAllows(admin.adminRole, admin.scopes, coachingRow.target_lang, coachingRow.level)) {
+    if (!canManageSession(admin, coachingRow.coach_user_id || null)) {
       return jsonResponse(403, { error: 'Forbidden' })
     }
 
@@ -1772,7 +1785,7 @@ Deno.serve(async (req) => {
     }
 
     const visibleRows = ((data || []) as CoachingUserRow[]).filter((row) =>
-      scopeAllows(admin.adminRole, admin.scopes, row.target_lang, row.level),
+      canManageSession(admin, row.coach_user_id),
     )
 
     const sessionIds = visibleRows.map((row) => row.id)

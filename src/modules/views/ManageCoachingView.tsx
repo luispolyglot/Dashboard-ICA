@@ -35,12 +35,11 @@ import {
   type CoachingAdminRow,
   type CoachingAvailableUser,
   type CoachingManagedUser,
-  type CoachingScope,
   upsertCoachingAdmin,
   upsertCoachingUser,
 } from '../services/coaching'
-import { LANGUAGES, LEVELS } from '../constants'
-import { getManageCoachingUserRoute } from '../routes/paths'
+import { LANGUAGES } from '../constants'
+import { getManageCoacherSessionsRoute, getManageCoachingUserRoute } from '../routes/paths'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,10 +51,6 @@ function formatDateTime(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return 'No disponible'
   return date.toLocaleString()
-}
-
-function createScopeKey(targetLang: string, level: string): string {
-  return `${targetLang.trim().toLowerCase()}::${level.trim().toUpperCase()}`
 }
 
 export function ManageCoachingView() {
@@ -74,6 +69,7 @@ export function ManageCoachingView() {
   const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false)
   const [createUserSelection, setCreateUserSelection] = useState('')
   const [createUserLevel, setCreateUserLevel] = useState('')
+  const [createUserCoachUserId, setCreateUserCoachUserId] = useState('')
   const [isSavingUser, setIsSavingUser] = useState(false)
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
@@ -91,14 +87,6 @@ export function ManageCoachingView() {
 
   const [isCreateAdminModalOpen, setIsCreateAdminModalOpen] = useState(false)
   const [createAdminUserId, setCreateAdminUserId] = useState('')
-  const [createAdminRole, setCreateAdminRole] = useState<
-    'coach_admin' | 'super_admin'
-  >('coach_admin')
-  const [createAdminScopes, setCreateAdminScopes] = useState<CoachingScope[]>(
-    [],
-  )
-  const [createAdminScopeLanguage, setCreateAdminScopeLanguage] = useState('')
-  const [createAdminScopeLevel, setCreateAdminScopeLevel] = useState('')
   const [isSavingAdmin, setIsSavingAdmin] = useState(false)
   const [filterTargetLang, setFilterTargetLang] = useState('all')
   const [filterStatus, setFilterStatus] = useState('active')
@@ -110,20 +98,23 @@ export function ManageCoachingView() {
     setFeedback(null)
 
     try {
-      const [access, usersData, availableData] = await Promise.all([
+      const [access, usersData] = await Promise.all([
         fetchCoachingAccess(),
         fetchCoachingManagedUsers(),
-        fetchAvailableUsersForCoaching(),
       ])
 
       setUsers(usersData)
-      setAvailableUsers(availableData)
       setIsSuperAdmin(Boolean(access?.isCoachingSuperAdmin))
 
       if (access?.isCoachingSuperAdmin) {
-        const adminRows = await fetchCoachingAdmins()
+        const [availableData, adminRows] = await Promise.all([
+          fetchAvailableUsersForCoaching(),
+          fetchCoachingAdmins(),
+        ])
+        setAvailableUsers(availableData)
         setAdmins(adminRows)
       } else {
+        setAvailableUsers([])
         setAdmins([])
       }
     } catch (err) {
@@ -189,26 +180,45 @@ export function ManageCoachingView() {
     )
   }, [availableUsers])
 
-  const coachingLevels = useMemo(() => LEVELS, [])
-
-  const scopeList = useMemo(
-    () =>
-      createAdminScopes.flatMap((scope) =>
-        scope.levels.map((level) => ({
-          targetLang: scope.targetLang,
-          level,
-          key: createScopeKey(scope.targetLang, level),
-        })),
-      ),
-    [createAdminScopes],
+  const coacherRows = useMemo(
+    () => admins.filter((row) => row.role === 'coach_admin' && row.isActive),
+    [admins],
   )
 
+  const assignableCoachRows = useMemo(
+    () =>
+      admins.filter(
+        (row) =>
+          row.isActive &&
+          (row.role === 'coach_admin' || row.role === 'super_admin'),
+      ),
+    [admins],
+  )
+
+  const createCoacherOptions = useMemo(() => {
+    const existingAdmins = new Set(admins.map((row) => row.userId))
+    return uniqueAvailableUsers.map((row) => ({
+      ...row,
+      isAlreadyCoacher: existingAdmins.has(row.userId),
+    }))
+  }, [admins, uniqueAvailableUsers])
+
   const handleCreateUser = async () => {
+    if (!isSuperAdmin) {
+      setFeedback('Solo super admin puede crear sesiones de coaching.')
+      return
+    }
+
     const selected = availableOptions.find(
       (item) => item.key === createUserSelection,
     )
     if (!selected) {
       setFeedback('Selecciona un usuario con idioma activo.')
+      return
+    }
+
+    if (!createUserCoachUserId) {
+      setFeedback('Selecciona un coacher para asignar la sesion.')
       return
     }
 
@@ -221,11 +231,13 @@ export function ManageCoachingView() {
         targetLang: selected.row.targetLang,
         nativeLang: selected.row.nativeLang,
         level: createUserLevel.trim() || selected.row.activeLevel,
+        coachUserId: createUserCoachUserId,
         isActive: true,
       })
       setIsCreateUserModalOpen(false)
       setCreateUserSelection('')
       setCreateUserLevel('')
+      setCreateUserCoachUserId('')
       setFeedback('Sesión de coaching creada en borrador.')
       await loadData()
     } catch (err) {
@@ -331,7 +343,12 @@ export function ManageCoachingView() {
 
   const handleCreateAdmin = async () => {
     if (!createAdminUserId.trim()) {
-      setFeedback('Debes seleccionar un usuario para crear coach admin.')
+      setFeedback('Debes seleccionar un usuario para crear coacher.')
+      return
+    }
+
+    if (admins.some((row) => row.userId === createAdminUserId)) {
+      setFeedback('Ese usuario ya tiene rol admin de coaching.')
       return
     }
 
@@ -339,84 +356,24 @@ export function ManageCoachingView() {
     setFeedback(null)
 
     try {
-      if (createAdminRole === 'coach_admin' && createAdminScopes.length === 0) {
-        setFeedback('Agrega al menos un scope de idioma y nivel para el coach.')
-        setIsSavingAdmin(false)
-        return
-      }
-
       await upsertCoachingAdmin({
         userId: createAdminUserId,
-        role: createAdminRole,
-        scopes: createAdminRole === 'super_admin' ? [] : createAdminScopes,
+        role: 'coach_admin',
+        scopes: [],
       })
       setIsCreateAdminModalOpen(false)
       setCreateAdminUserId('')
-      setCreateAdminRole('coach_admin')
-      setCreateAdminScopes([])
-      setCreateAdminScopeLanguage('')
-      setCreateAdminScopeLevel('')
-      setFeedback('Coach admin guardado correctamente.')
+      setFeedback('Coacher creado correctamente.')
       await loadData()
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
-          : 'No se pudo guardar el coach admin.'
+          : 'No se pudo guardar el coacher.'
       setFeedback(message)
     } finally {
       setIsSavingAdmin(false)
     }
-  }
-
-  const handleAddScope = () => {
-    const targetLang = createAdminScopeLanguage.trim()
-    const level = createAdminScopeLevel.trim().toUpperCase()
-    if (!targetLang || !level) {
-      setFeedback('Selecciona idioma y nivel para agregar un scope.')
-      return
-    }
-
-    const nextKey = createScopeKey(targetLang, level)
-    const exists = createAdminScopes.some((scope) =>
-      scope.levels.some(
-        (itemLevel) => createScopeKey(scope.targetLang, itemLevel) === nextKey,
-      ),
-    )
-
-    if (exists) {
-      setFeedback('Ese scope ya fue agregado.')
-      return
-    }
-
-    setFeedback(null)
-    setCreateAdminScopes((prev) => {
-      const existing = prev.find((scope) => scope.targetLang === targetLang)
-      if (!existing) {
-        return [...prev, { targetLang, levels: [level] }]
-      }
-
-      return prev.map((scope) =>
-        scope.targetLang !== targetLang
-          ? scope
-          : { ...scope, levels: Array.from(new Set([...scope.levels, level])) },
-      )
-    })
-  }
-
-  const handleRemoveScope = (targetLang: string, level: string) => {
-    setCreateAdminScopes((prev) =>
-      prev
-        .map((scope) =>
-          scope.targetLang !== targetLang
-            ? scope
-            : {
-                ...scope,
-                levels: scope.levels.filter((item) => item !== level),
-              },
-        )
-        .filter((scope) => scope.levels.length > 0),
-    )
   }
 
   const filteredUsers = useMemo(() => {
@@ -483,14 +440,16 @@ export function ManageCoachingView() {
           </p>
         </div>
         <div className='flex flex-wrap gap-2'>
-          <Button
-            type='button'
-            variant='outline'
-            onClick={() => setIsCreateUserModalOpen(true)}
-          >
-            <PlusIcon className='h-4 w-4' />
-            Crear sesión
-          </Button>
+          {isSuperAdmin && (
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setIsCreateUserModalOpen(true)}
+            >
+              <PlusIcon className='h-4 w-4' />
+              Crear sesión
+            </Button>
+          )}
           {isSuperAdmin && (
             <Button
               type='button'
@@ -498,7 +457,7 @@ export function ManageCoachingView() {
               onClick={() => setIsCreateAdminModalOpen(true)}
             >
               <PlusIcon className='h-4 w-4' />
-              Crear coach
+              Crear Coacher
             </Button>
           )}
           <Button type='button' variant='ghost' onClick={() => void loadData()}>
@@ -710,12 +669,12 @@ export function ManageCoachingView() {
       {isSuperAdmin && (
         <Card className='mt-4'>
           <CardHeader>
-            <CardTitle>Coaches admin ({admins.length})</CardTitle>
+            <CardTitle>Coachers ({coacherRows.length})</CardTitle>
           </CardHeader>
           <CardContent>
-            {admins.length === 0 ? (
+            {coacherRows.length === 0 ? (
               <p className='text-sm text-muted-foreground'>
-                No hay coaches admin creados.
+                No hay coachers creados.
               </p>
             ) : (
               <div className='overflow-x-auto'>
@@ -723,14 +682,13 @@ export function ManageCoachingView() {
                   <thead>
                     <tr className='border-b text-muted-foreground'>
                       <th className='pb-2 font-medium'>Usuario</th>
-                      <th className='pb-2 font-medium'>Rol</th>
-                      <th className='pb-2 font-medium'>Scopes</th>
                       <th className='pb-2 font-medium'>Estado</th>
                       <th className='pb-2 font-medium'>Creado</th>
+                      <th className='pb-2 font-medium'>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {admins.map((row) => (
+                    {coacherRows.map((row) => (
                       <tr key={row.userId} className='border-b last:border-b-0'>
                         <td className='py-2'>
                           <p className='font-medium'>{row.userDisplayName}</p>
@@ -738,22 +696,24 @@ export function ManageCoachingView() {
                             {row.userId}
                           </p>
                         </td>
-                        <td className='py-2'>{row.role}</td>
-                        <td className='py-2'>
-                          {row.scopes.length === 0
-                            ? 'Sin scopes (acceso completo por rol)'
-                            : row.scopes
-                                .map(
-                                  (scope) =>
-                                    `${scope.targetLang} [${scope.levels.join(', ') || 'todos'}]`,
-                                )
-                                .join(' · ')}
-                        </td>
                         <td className='py-2'>
                           {row.isActive ? 'Activo' : 'Inactivo'}
                         </td>
                         <td className='py-2 text-xs text-muted-foreground'>
                           {formatDateTime(row.createdAt)}
+                        </td>
+                        <td className='py-2'>
+                          <Button
+                            type='button'
+                            variant='outline'
+                            size='icon'
+                            aria-label='Ver sesiones del coacher'
+                            onClick={() =>
+                              navigate(getManageCoacherSessionsRoute(row.userId))
+                            }
+                          >
+                            <EyeIcon className='h-4 w-4' />
+                          </Button>
                         </td>
                       </tr>
                     ))}
@@ -767,18 +727,42 @@ export function ManageCoachingView() {
 
       <Dialog
         open={isCreateUserModalOpen}
-        onOpenChange={setIsCreateUserModalOpen}
+        onOpenChange={(open) => {
+          setIsCreateUserModalOpen(open)
+          if (!open) {
+            setCreateUserSelection('')
+            setCreateUserLevel('')
+            setCreateUserCoachUserId('')
+          }
+        }}
       >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Agregar usuario al coaching</DialogTitle>
             <DialogDescription>
               Selecciona un usuario y su idioma activo para crear una sesión de
-              coaching en borrador.
+              coaching en borrador y asignarle su coacher.
             </DialogDescription>
           </DialogHeader>
 
           <div className='space-y-3'>
+            <div className='space-y-1.5'>
+              <Label htmlFor='coaching-coacher'>Coacher</Label>
+              <select
+                id='coaching-coacher'
+                className='h-10 w-full rounded-md border bg-background px-3 text-sm'
+                value={createUserCoachUserId}
+                onChange={(event) => setCreateUserCoachUserId(event.target.value)}
+              >
+                <option value=''>Selecciona coacher</option>
+                {assignableCoachRows.map((row) => (
+                  <option key={row.userId} value={row.userId}>
+                    {row.userDisplayName} {row.role === 'super_admin' ? '(super_admin)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className='space-y-1.5'>
               <Label>Usuario + idioma</Label>
               <Combobox
@@ -819,7 +803,12 @@ export function ManageCoachingView() {
             <Button
               type='button'
               onClick={() => void handleCreateUser()}
-              disabled={isSavingUser}
+              disabled={
+                isSavingUser ||
+                !createUserCoachUserId ||
+                !createUserSelection ||
+                !createUserLevel.trim()
+              }
             >
               {isSavingUser ? 'Guardando...' : 'Agregar'}
             </Button>
@@ -956,19 +945,22 @@ export function ManageCoachingView() {
 
       <Dialog
         open={isCreateAdminModalOpen}
-        onOpenChange={setIsCreateAdminModalOpen}
+        onOpenChange={(open) => {
+          setIsCreateAdminModalOpen(open)
+          if (!open) setCreateAdminUserId('')
+        }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Crear coach admin</DialogTitle>
+            <DialogTitle>Crear Coacher</DialogTitle>
             <DialogDescription>
-              Define rol y agrega scopes con idioma y nivel válidos.
+              Selecciona el usuario para asignarlo como coacher.
             </DialogDescription>
           </DialogHeader>
 
           <div className='space-y-3'>
             <div className='space-y-1.5'>
-              <Label htmlFor='create-admin-user'>Usuario</Label>
+              <Label htmlFor='create-admin-user'>Coacher</Label>
               <select
                 id='create-admin-user'
                 className='h-10 w-full rounded-md border bg-background px-3 text-sm'
@@ -976,122 +968,18 @@ export function ManageCoachingView() {
                 onChange={(event) => setCreateAdminUserId(event.target.value)}
               >
                 <option value=''>Selecciona usuario</option>
-                {uniqueAvailableUsers.map((row) => (
-                  <option key={row.userId} value={row.userId}>
+                {createCoacherOptions.map((row) => (
+                  <option
+                    key={row.userId}
+                    value={row.userId}
+                    disabled={row.isAlreadyCoacher}
+                  >
                     {row.label}
+                    {row.isAlreadyCoacher ? ' - Ya es coacher' : ''}
                   </option>
                 ))}
               </select>
             </div>
-
-            <div className='space-y-1.5'>
-              <Label htmlFor='create-admin-role'>Rol</Label>
-              <select
-                id='create-admin-role'
-                className='h-10 w-full rounded-md border bg-background px-3 text-sm'
-                value={createAdminRole}
-                onChange={(event) =>
-                  setCreateAdminRole(
-                    event.target.value as 'coach_admin' | 'super_admin',
-                  )
-                }
-              >
-                <option value='coach_admin'>coach_admin</option>
-                <option value='super_admin'>super_admin</option>
-              </select>
-            </div>
-
-            {createAdminRole === 'coach_admin' && (
-              <div className='space-y-3 rounded-md border p-3'>
-                <p className='text-sm font-medium'>Scopes del coach</p>
-
-                <div className='flex w-full flex-row gap-2'>
-                  <div className='space-y-1.5'>
-                    <Label htmlFor='create-admin-scope-language'>Idioma</Label>
-                    <select
-                      id='create-admin-scope-language'
-                      className='h-10 w-full rounded-md border bg-background px-3 text-sm'
-                      value={createAdminScopeLanguage}
-                      onChange={(event) =>
-                        setCreateAdminScopeLanguage(event.target.value)
-                      }
-                    >
-                      <option value=''>Selecciona idioma</option>
-                      {LANGUAGES.map((language) => (
-                        <option key={language} value={language}>
-                          {language}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className='space-y-1.5'>
-                    <Label htmlFor='create-admin-scope-level'>Nivel</Label>
-                    <select
-                      id='create-admin-scope-level'
-                      className='h-10 w-full max-w-14 rounded-md border bg-background px-3 text-sm'
-                      value={createAdminScopeLevel}
-                      onChange={(event) =>
-                        setCreateAdminScopeLevel(event.target.value)
-                      }
-                    >
-                      <option value=''>-</option>
-                      {coachingLevels.map((level) => (
-                        <option key={level} value={level}>
-                          {level === '0' ? '0 (Pre-A1)' : level}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className='flex items-end'>
-                    <Button
-                      type='button'
-                      variant='outline'
-                      onClick={handleAddScope}
-                      disabled={
-                        !createAdminScopeLanguage || !createAdminScopeLevel
-                      }
-                    >
-                      <PlusIcon className='h-4 w-4' />
-                      Añadir
-                    </Button>
-                  </div>
-                </div>
-
-                {scopeList.length === 0 ? (
-                  <p className='text-sm text-muted-foreground'>
-                    No hay scopes agregados.
-                  </p>
-                ) : (
-                  <div className='space-y-2'>
-                    {scopeList.map((scopeItem) => (
-                      <div
-                        key={scopeItem.key}
-                        className='flex items-center justify-between rounded-md border px-3 py-2 text-sm'
-                      >
-                        <span>
-                          {scopeItem.targetLang} · {scopeItem.level}
-                        </span>
-                        <Button
-                          type='button'
-                          variant='ghost'
-                          size='sm'
-                          onClick={() =>
-                            handleRemoveScope(
-                              scopeItem.targetLang,
-                              scopeItem.level,
-                            )
-                          }
-                        >
-                          Quitar
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
           <DialogFooter>
@@ -1105,9 +993,9 @@ export function ManageCoachingView() {
             <Button
               type='button'
               onClick={() => void handleCreateAdmin()}
-              disabled={isSavingAdmin}
+              disabled={isSavingAdmin || !createAdminUserId}
             >
-              {isSavingAdmin ? 'Guardando...' : 'Crear coach'}
+              {isSavingAdmin ? 'Guardando...' : 'Crear Coacher'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -13,6 +13,7 @@ import { LeaderboardView } from '../views/LeaderboardView'
 import { HomeView } from '../views/HomeView'
 import { ManageCoachingView } from '../views/ManageCoachingView'
 import { ManageCoachingUserView } from '../views/ManageCoachingUserView'
+import { ManageCoacherSessionsView } from '../views/ManageCoacherSessionsView'
 import { ManageWhitelistView } from '../views/ManageWhitelistView'
 import { ManageView } from '../views/ManageView'
 import { MasterNoteActivatePhraseView } from '../views/MasterNoteActivatePhraseView'
@@ -447,6 +448,17 @@ export function ManageCoachingUserPage() {
         userId={userId}
         initialSessionId={searchParams.get('sessionId')}
       />
+    </PageLayout>
+  )
+}
+
+export function ManageCoacherSessionsPage() {
+  const { coachUserId } = useParams<{ coachUserId: string }>()
+  if (!coachUserId) return null
+
+  return (
+    <PageLayout withBackButton={false}>
+      <ManageCoacherSessionsView coachUserId={coachUserId} />
     </PageLayout>
   )
 }

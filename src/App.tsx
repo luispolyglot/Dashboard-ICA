@@ -19,6 +19,7 @@ import {
   LeaderboardPage,
   ManageWhitelistPage,
   ManageCoachingPage,
+  ManageCoacherSessionsPage,
   ManageCoachingUserPage,
   MasterNoteActivatePhrasePage,
   MasterNoteDetailPage,
@@ -115,6 +116,7 @@ export function App() {
             <Route element={<CoachingAdminRoute />}>
               <Route path='manage-coaching' element={<ManageCoachingPage />} />
               <Route path='manage-coaching/:userId' element={<ManageCoachingUserPage />} />
+              <Route path='manage-coaching/coacher/:coachUserId' element={<ManageCoacherSessionsPage />} />
             </Route>
             <Route element={<SuperAdminRoute />}>
               <Route path='manage-whitelist' element={<ManageWhitelistPage />} />
