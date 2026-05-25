@@ -444,6 +444,7 @@ export function ManageCoachingUserView({
   const [savingClassWeek, setSavingClassWeek] = useState<string | null>(null)
   const [classFeedbackByWeek, setClassFeedbackByWeek] = useState<Record<string, string>>({})
   const [feedbackLoomDraftByNoteId, setFeedbackLoomDraftByNoteId] = useState<Record<string, string>>({})
+  const [feedbackNotesDraftByNoteId, setFeedbackNotesDraftByNoteId] = useState<Record<string, string>>({})
   const [savingFeedbackNoteId, setSavingFeedbackNoteId] = useState<string | null>(null)
   const [sessionActionModalOpen, setSessionActionModalOpen] = useState(false)
   const [sessionActionType, setSessionActionType] = useState<SessionActionType | null>(null)
@@ -480,6 +481,7 @@ export function ManageCoachingUserView({
     const nextObjectives: Record<string, ObjectiveDraft> = {}
     const nextClassDrafts: Record<string, ClassDraft> = {}
     const nextFeedbackLoomDrafts: Record<string, string> = {}
+    const nextFeedbackNotesDrafts: Record<string, string> = {}
     for (let week = 1; week <= 12; week += 1) {
       const key = weekKeyFromNumber(week)
       nextObjectives[key] = draftFromObjective(weekObjectives[key])
@@ -493,10 +495,12 @@ export function ManageCoachingUserView({
     }
     for (const note of insights?.masterNotes || []) {
       nextFeedbackLoomDrafts[note.id] = note.coachingFeedbackLoomUrl || ''
+      nextFeedbackNotesDrafts[note.id] = note.coachingFeedbackNotes || ''
     }
     setObjectiveDrafts(nextObjectives)
     setClassDrafts(nextClassDrafts)
     setFeedbackLoomDraftByNoteId(nextFeedbackLoomDrafts)
+    setFeedbackNotesDraftByNoteId(nextFeedbackNotesDrafts)
   }, [
     selectedMembership?.id,
     weekObjectives,
@@ -763,7 +767,10 @@ export function ManageCoachingUserView({
     }
   }
 
-  const handleSaveFeedbackLoom = async (masterNoteId: string) => {
+  const handleSaveFeedback = async (
+    masterNoteId: string,
+    kind: 'video' | 'notes',
+  ) => {
     if (!selectedMembership) return
     setSavingFeedbackNoteId(masterNoteId)
     setFeedback(null)
@@ -773,6 +780,7 @@ export function ManageCoachingUserView({
         sessionId: selectedMembership.id,
         masterNoteId,
         feedbackLoomUrl: feedbackLoomDraftByNoteId[masterNoteId]?.trim() || null,
+        feedbackNotes: feedbackNotesDraftByNoteId[masterNoteId]?.trim() || null,
       })
 
       setInsights((prev) => {
@@ -782,21 +790,29 @@ export function ManageCoachingUserView({
           masterNotes: prev.masterNotes.map((note) =>
             note.id !== masterNoteId
               ? note
-              : {
+                : {
                   ...note,
                   coachingFeedbackLoomUrl:
                     feedbackLoomDraftByNoteId[masterNoteId]?.trim() || null,
+                  coachingFeedbackNotes:
+                    feedbackNotesDraftByNoteId[masterNoteId]?.trim() || null,
                 },
           ),
         }
       })
 
-      setFeedback('Video de feedback guardado.')
+      setFeedback(
+        kind === 'video'
+          ? 'Video de feedback guardado.'
+          : 'Notas del coach guardadas.',
+      )
     } catch (err) {
       setFeedback(
         err instanceof Error
           ? err.message
-          : 'No se pudo guardar el video de feedback.',
+          : kind === 'video'
+            ? 'No se pudo guardar el video de feedback.'
+            : 'No se pudieron guardar las notas del coach.',
       )
     } finally {
       setSavingFeedbackNoteId(null)
@@ -809,11 +825,13 @@ export function ManageCoachingUserView({
       Array<{
         id: string
         name: string
+        createdAt: string
         closedAt: string
         audioUrl: string | null
         audioChunks: Array<{ audioUrl: string | null; durationMs: number }>
         totalDurationMs: number
         feedbackLoomUrl: string | null
+        feedbackNotes: string | null
       }>
     >()
     if (!insights || !selectedMembership?.activatedAt) return map
@@ -830,6 +848,7 @@ export function ManageCoachingUserView({
       existing.push({
         id: note.id,
         name: note.name,
+        createdAt: note.created_at,
         closedAt: note.closed_at || note.updated_at,
         audioUrl: note.final_audio_path ? note.audioUrl : null,
         audioChunks: (note.audioChunks || []).map((item) => ({
@@ -838,8 +857,20 @@ export function ManageCoachingUserView({
         })),
         totalDurationMs: note.total_duration_ms || 0,
         feedbackLoomUrl: note.coachingFeedbackLoomUrl || null,
+        feedbackNotes: note.coachingFeedbackNotes || null,
       })
       map.set(key, existing)
+    }
+
+    for (const [weekKey, notes] of map.entries()) {
+      const sorted = [...notes].sort(
+        (a, b) =>
+          a.name.localeCompare(b.name, 'es', {
+            numeric: true,
+            sensitivity: 'base',
+          }),
+      )
+      map.set(weekKey, sorted)
     }
 
     return map
@@ -866,8 +897,10 @@ export function ManageCoachingUserView({
       Array<{
         id: string
         name: string
+        createdAt: string
         closedAt: string
         feedbackLoomUrl: string | null
+        feedbackNotes?: string | null
       }>
     > = {}
 
@@ -875,8 +908,10 @@ export function ManageCoachingUserView({
       closedMasterNotesByWeek[weekKey] = notes.map((note) => ({
         id: note.id,
         name: note.name,
+        createdAt: note.createdAt,
         closedAt: note.closedAt,
         feedbackLoomUrl: note.feedbackLoomUrl,
+        feedbackNotes: note.feedbackNotes,
       }))
     }
 
@@ -1413,7 +1448,7 @@ export function ManageCoachingUserView({
                                     <Button
                                       type='button'
                                       variant='outline'
-                                      onClick={() => void handleSaveFeedbackLoom(note.id)}
+                                      onClick={() => void handleSaveFeedback(note.id, 'video')}
                                       disabled={savingFeedbackNoteId === note.id}
                                     >
                                       {savingFeedbackNoteId === note.id
@@ -1431,6 +1466,31 @@ export function ManageCoachingUserView({
                                       Abrir video actual
                                     </a>
                                   )}
+                                </div>
+
+                                <div className='space-y-1.5'>
+                                  <Label>Notas del coach</Label>
+                                  <Textarea
+                                    value={feedbackNotesDraftByNoteId[note.id] || ''}
+                                    onChange={(event) =>
+                                      setFeedbackNotesDraftByNoteId((prev) => ({
+                                        ...prev,
+                                        [note.id]: event.target.value,
+                                      }))
+                                    }
+                                    placeholder='Escribe observaciones mientras escuchas el audio...'
+                                    rows={4}
+                                  />
+                                  <Button
+                                    type='button'
+                                    variant='outline'
+                                    onClick={() => void handleSaveFeedback(note.id, 'notes')}
+                                    disabled={savingFeedbackNoteId === note.id}
+                                  >
+                                    {savingFeedbackNoteId === note.id
+                                      ? 'Guardando...'
+                                      : 'Guardar notas'}
+                                  </Button>
                                 </div>
                               </div>
                             ))}

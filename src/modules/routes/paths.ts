@@ -83,6 +83,10 @@ export function getManageCoachingUserRoute(userId: string, sessionId?: string): 
   return `${base}?${params.toString()}`
 }
 
+export function getManageCoacherSessionsRoute(coachUserId: string): string {
+  return `${DASHBOARD_ROUTES.manageCoaching}/coacher/${coachUserId}`
+}
+
 export function getIcaTestMonthRoute(monthCode: string, redo = false): string {
   const base = `${DASHBOARD_ROUTES.testsIca}/${monthCode}`
   return redo ? `${base}/redo` : base

@@ -237,10 +237,32 @@ export function MasterNoteActivatePhraseView({
     )
   }
 
+  const updateDraftFromChunks = (
+    durationMs: number,
+    mimeType: string,
+  ): void => {
+    const blob = new Blob(recordedChunksRef.current, { type: mimeType })
+    if (blob.size === 0) return
+
+    const draft: RecordingDraft = {
+      blob,
+      url: URL.createObjectURL(blob),
+      durationMs,
+      mimeType,
+      sizeBytes: blob.size,
+    }
+
+    setRecordingDraft((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url)
+      return draft
+    })
+  }
+
   const pauseRecording = (): void => {
     const recorder = mediaRecorderRef.current
     if (!recorder || recorder.state !== 'recording' || recordingPaused) return
     recorder.pause()
+    recorder.requestData()
     recordingPausedAtRef.current = Date.now()
     setRecordingPaused(true)
   }
@@ -434,6 +456,12 @@ export function MasterNoteActivatePhraseView({
 
       recorder.ondataavailable = (event: BlobEvent) => {
         if (event.data.size > 0) recordedChunksRef.current.push(event.data)
+
+        if (recorder.state === 'paused') {
+          const durationMs = getRecordingElapsedMs(Date.now())
+          const mimeType = recorder.mimeType || preferredMimeType
+          updateDraftFromChunks(durationMs, mimeType)
+        }
       }
 
       recorder.onstop = () => {
@@ -441,20 +469,7 @@ export function MasterNoteActivatePhraseView({
         const mimeType = recorder.mimeType || preferredMimeType
         if (startedAt) {
           const durationMs = getRecordingElapsedMs(Date.now())
-          const blob = new Blob(recordedChunksRef.current, { type: mimeType })
-          if (blob.size > 0) {
-            const url = URL.createObjectURL(blob)
-            setRecordingDraft((prev) => {
-              if (prev) URL.revokeObjectURL(prev.url)
-              return {
-                blob,
-                url,
-                durationMs,
-                mimeType,
-                sizeBytes: blob.size,
-              }
-            })
-          }
+          updateDraftFromChunks(durationMs, mimeType)
         }
 
         mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
@@ -677,34 +692,43 @@ export function MasterNoteActivatePhraseView({
                 </p>
               )}
 
-              {recordingDraft && (
+              {recordingDraft && (!recording || recordingPaused) && (
                 <div className='mt-3 rounded-lg border border-border/60 bg-background p-2'>
+                  {recording && recordingPaused && (
+                    <p className='mb-2 text-xs text-amber-400'>
+                      Este audio es un borrador de tu grabación actual y aún no
+                      está guardado. Tienes que detener grabación para luego
+                      guardarlo.
+                    </p>
+                  )}
                   <p className='mb-1 text-xs text-muted-foreground'>
                     Borrador: {formatDuration(recordingDraft.durationMs)} ·{' '}
                     {Math.round(recordingDraft.sizeBytes / 1024)} KB
                   </p>
                   <audio controls src={recordingDraft.url} className='w-full' />
-                  <div className='mt-2 flex gap-2'>
-                    <Button
-                      type='button'
-                      onClick={() => void handleSaveChunk()}
-                      size='sm'
-                      variant='outline'
-                      disabled={saving}
-                    >
-                      {saving ? 'Guardando...' : 'Guardar audio'}
-                    </Button>
-                    {!saving && (
+                  {!recording && (
+                    <div className='mt-2 flex gap-2'>
                       <Button
                         type='button'
-                        onClick={clearDraft}
+                        onClick={() => void handleSaveChunk()}
                         size='sm'
-                        variant='ghost'
+                        variant='outline'
+                        disabled={saving}
                       >
-                        Descartar
+                        {saving ? 'Guardando...' : 'Guardar audio'}
                       </Button>
-                    )}
-                  </div>
+                      {!saving && (
+                        <Button
+                          type='button'
+                          onClick={clearDraft}
+                          size='sm'
+                          variant='ghost'
+                        >
+                          Descartar
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
