@@ -10,6 +10,7 @@ type CoachingCenterPayload = {
   sessionId?: string
   masterNoteId?: string
   feedbackLoomUrl?: string | null
+  feedbackNotes?: string | null
   weekKey?: string
   closureReason?: string | null
   targetLang?: string
@@ -97,6 +98,7 @@ type CoachingClosedNoteItem = {
   createdAt: string
   closedAt: string
   feedbackLoomUrl: string | null
+  feedbackNotes: string | null
 }
 
 function safeString(value: unknown): string | null {
@@ -439,7 +441,7 @@ async function fetchClosedNotesByWeekForSession(
 
   const { data, error } = await adminClient
     .from('master_notes')
-    .select('id, name, state, created_at, closed_at, updated_at, coaching_feedback_loom_url')
+    .select('id, name, state, created_at, closed_at, updated_at, coaching_feedback_loom_url, coaching_feedback_notes')
     .eq('user_id', session.user_id)
     .eq('target_lang', session.target_lang)
     .eq('state', 'closed')
@@ -471,6 +473,7 @@ async function fetchClosedNotesByWeekForSession(
           : closedAt,
       closedAt,
       feedbackLoomUrl: normalizeUrl(safeString(row.coaching_feedback_loom_url)),
+      feedbackNotes: safeString(row.coaching_feedback_notes),
     })
     output[weekKey] = existing
   }
@@ -1579,7 +1582,10 @@ Deno.serve(async (req) => {
 
     const { error: updateError } = await admin.adminClient
       .from('master_notes')
-      .update({ coaching_feedback_loom_url: normalizeUrl(safeString(payload.feedbackLoomUrl)) })
+      .update({
+        coaching_feedback_loom_url: normalizeUrl(safeString(payload.feedbackLoomUrl)),
+        coaching_feedback_notes: safeString(payload.feedbackNotes),
+      })
       .eq('id', masterNoteId)
 
     if (updateError) {
@@ -1665,7 +1671,7 @@ Deno.serve(async (req) => {
         .eq('target_lang', targetLang),
       admin.adminClient
         .from('master_notes')
-        .select('id, name, state, total_duration_ms, created_at, updated_at, closed_at, final_audio_path, coaching_feedback_loom_url')
+        .select('id, name, state, total_duration_ms, created_at, updated_at, closed_at, final_audio_path, coaching_feedback_loom_url, coaching_feedback_notes')
         .eq('user_id', userId)
         .eq('target_lang', targetLang)
         .order('created_at', { ascending: false })
@@ -1708,6 +1714,9 @@ Deno.serve(async (req) => {
           ...note,
           coachingFeedbackLoomUrl: normalizeUrl(
             safeString((note as { coaching_feedback_loom_url?: unknown }).coaching_feedback_loom_url),
+          ),
+          coachingFeedbackNotes: safeString(
+            (note as { coaching_feedback_notes?: unknown }).coaching_feedback_notes,
           ),
         }
 

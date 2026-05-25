@@ -104,6 +104,7 @@ export type CoachingInsightNote = {
   updated_at: string
   closed_at: string | null
   coachingFeedbackLoomUrl: string | null
+  coachingFeedbackNotes: string | null
   final_audio_path: string | null
   audioUrl: string | null
   audioChunks: Array<{
@@ -367,6 +368,7 @@ export async function upsertMasterNoteFeedbackLoom(input: {
   sessionId: string
   masterNoteId: string
   feedbackLoomUrl: string | null
+  feedbackNotes?: string | null
 }): Promise<void> {
   await invokeCoachingFunction<{ ok?: boolean }>(
     'coaching-center',
@@ -375,6 +377,7 @@ export async function upsertMasterNoteFeedbackLoom(input: {
       sessionId: input.sessionId,
       masterNoteId: input.masterNoteId,
       feedbackLoomUrl: input.feedbackLoomUrl,
+      feedbackNotes: typeof input.feedbackNotes === 'string' ? input.feedbackNotes : null,
     },
     'No se pudo guardar el video de feedback de la nota maestra.',
   )
