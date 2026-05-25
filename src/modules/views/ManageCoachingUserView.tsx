@@ -809,6 +809,7 @@ export function ManageCoachingUserView({
       Array<{
         id: string
         name: string
+        createdAt: string
         closedAt: string
         audioUrl: string | null
         audioChunks: Array<{ audioUrl: string | null; durationMs: number }>
@@ -830,6 +831,7 @@ export function ManageCoachingUserView({
       existing.push({
         id: note.id,
         name: note.name,
+        createdAt: note.created_at,
         closedAt: note.closed_at || note.updated_at,
         audioUrl: note.final_audio_path ? note.audioUrl : null,
         audioChunks: (note.audioChunks || []).map((item) => ({
@@ -840,6 +842,17 @@ export function ManageCoachingUserView({
         feedbackLoomUrl: note.coachingFeedbackLoomUrl || null,
       })
       map.set(key, existing)
+    }
+
+    for (const [weekKey, notes] of map.entries()) {
+      const sorted = [...notes].sort(
+        (a, b) =>
+          a.name.localeCompare(b.name, 'es', {
+            numeric: true,
+            sensitivity: 'base',
+          }),
+      )
+      map.set(weekKey, sorted)
     }
 
     return map
@@ -866,6 +879,7 @@ export function ManageCoachingUserView({
       Array<{
         id: string
         name: string
+        createdAt: string
         closedAt: string
         feedbackLoomUrl: string | null
       }>
@@ -875,6 +889,7 @@ export function ManageCoachingUserView({
       closedMasterNotesByWeek[weekKey] = notes.map((note) => ({
         id: note.id,
         name: note.name,
+        createdAt: note.createdAt,
         closedAt: note.closedAt,
         feedbackLoomUrl: note.feedbackLoomUrl,
       }))

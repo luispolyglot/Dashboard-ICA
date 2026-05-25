@@ -94,6 +94,7 @@ type ExerciseObjective = {
 type CoachingClosedNoteItem = {
   id: string
   name: string
+  createdAt: string
   closedAt: string
   feedbackLoomUrl: string | null
 }
@@ -438,11 +439,11 @@ async function fetchClosedNotesByWeekForSession(
 
   const { data, error } = await adminClient
     .from('master_notes')
-    .select('id, name, state, closed_at, updated_at, coaching_feedback_loom_url')
+    .select('id, name, state, created_at, closed_at, updated_at, coaching_feedback_loom_url')
     .eq('user_id', session.user_id)
     .eq('target_lang', session.target_lang)
     .eq('state', 'closed')
-    .order('updated_at', { ascending: false })
+    .order('created_at', { ascending: true })
 
   if (error) return output
 
@@ -464,10 +465,20 @@ async function fetchClosedNotesByWeekForSession(
         typeof row.name === 'string' && row.name.trim().length > 0
           ? row.name
           : 'Nota Maestra: Sin titulo',
+      createdAt:
+        typeof row.created_at === 'string' && row.created_at.length > 0
+          ? row.created_at
+          : closedAt,
       closedAt,
       feedbackLoomUrl: normalizeUrl(safeString(row.coaching_feedback_loom_url)),
     })
     output[weekKey] = existing
+  }
+
+  for (const weekKey of Object.keys(output)) {
+    output[weekKey].sort((a, b) =>
+      a.name.localeCompare(b.name, 'es', { numeric: true, sensitivity: 'base' }),
+    )
   }
 
   return output

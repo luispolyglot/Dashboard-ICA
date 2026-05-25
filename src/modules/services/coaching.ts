@@ -44,6 +44,7 @@ export type CoachingMembership = {
     Array<{
       id: string
       name: string
+      createdAt: string
       closedAt: string
       feedbackLoomUrl: string | null
     }>

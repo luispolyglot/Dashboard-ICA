@@ -59,6 +59,7 @@ type ProgramPreviewMembership = {
     Array<{
       id: string
       name: string
+      createdAt?: string
       closedAt: string
       feedbackLoomUrl: string | null
     }>
@@ -364,8 +365,15 @@ export function CoachingProgramPreview({
           }
           const weekClasses = classSessionsByWeek.get(weekKey) || []
           const latestClass = weekClasses[0] || null
-          const closedNotes =
-            membership.closedMasterNotesByWeek?.[weekKey] || []
+          const closedNotes = [
+            ...(membership.closedMasterNotesByWeek?.[weekKey] || []),
+          ].sort(
+            (a, b) =>
+              a.name.localeCompare(b.name, 'es', {
+                numeric: true,
+                sensitivity: 'base',
+              }),
+          )
 
           const wordsTarget = toNumber(objectives.wordsTarget)
           const nmTarget = toNumber(objectives.nmTarget)
