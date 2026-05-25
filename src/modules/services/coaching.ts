@@ -140,6 +140,8 @@ export type CoachingUserMembership = {
   id: string
   userId: string
   userDisplayName: string
+  coachUserId: string | null
+  coachDisplayName: string | null
   createdAt: string
   targetLang: string
   nativeLang: string | null

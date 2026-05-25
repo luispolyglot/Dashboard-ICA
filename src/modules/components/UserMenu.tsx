@@ -114,7 +114,7 @@ export function UserMenu({
         >
           <DropdownMenuLabel className='space-y-1'>
             <div className='text-xs font-medium text-muted-foreground'>
-              Sesion
+              Sesión
             </div>
             <div className='truncate text-sm font-semibold'>
               {user?.email || 'Sin email'}
@@ -160,12 +160,12 @@ export function UserMenu({
 
           {includeMobileLeaderboard && mobileLeaderboard && (
             <>
-            <DropdownMenuItem
-              onSelect={() => setIsLeaderboardModalOpen(true)}
-            >
-              <TrophyIcon />
-              Leaderboard
-            </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => setIsLeaderboardModalOpen(true)}
+              >
+                <TrophyIcon />
+                Leaderboard
+              </DropdownMenuItem>
 
               <DropdownMenuSeparator />
             </>
@@ -190,13 +190,13 @@ export function UserMenu({
           open={isLeaderboardModalOpen}
           onOpenChange={setIsLeaderboardModalOpen}
         >
-            <DialogContent className='max-w-md'>
-              <DialogHeader>
-                <DialogTitle>Leaderboard</DialogTitle>
-                <DialogDescription>
-                  Racha ICA y promedio mensual.
-                </DialogDescription>
-              </DialogHeader>
+          <DialogContent className='max-w-md'>
+            <DialogHeader>
+              <DialogTitle>Leaderboard</DialogTitle>
+              <DialogDescription>
+                Racha ICA y promedio mensual.
+              </DialogDescription>
+            </DialogHeader>
 
             {mobileLeaderboard.loading && (
               <p className='text-sm text-muted-foreground'>Cargando...</p>

@@ -12,6 +12,7 @@ import {
   SquareIcon,
   Trash2Icon,
   DownloadIcon,
+  UserIcon,
   Volume2Icon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -50,8 +51,11 @@ import {
 import {
   deleteCoachingClassReportImage,
   deleteCoachingSession,
+  fetchCoachingAccess,
+  fetchCoachingAdmins,
   fetchCoachingUserInsights,
   fetchCoachingUserMemberships,
+  type CoachingAdminRow,
   type CoachingUserInsights,
   type CoachingUserMembership,
   uploadCoachingClassReportImage,
@@ -156,8 +160,10 @@ function normalizeClassSessions(value: unknown): ClassSessionItem[] {
         key,
         loomUrl: toString(row.loomUrl ?? row.loom_url) || null,
         report: toString(row.report) || null,
-        reportImagePath: toString(row.reportImagePath ?? row.report_image_path) || null,
-        reportImageUrl: toString(row.reportImageUrl ?? row.report_image_url) || null,
+        reportImagePath:
+          toString(row.reportImagePath ?? row.report_image_path) || null,
+        reportImageUrl:
+          toString(row.reportImageUrl ?? row.report_image_url) || null,
       }
     })
 }
@@ -165,7 +171,9 @@ function normalizeClassSessions(value: unknown): ClassSessionItem[] {
 function draftFromObjective(value?: Record<string, unknown>): ObjectiveDraft {
   const exerciseRaw = value?.exercise
   const exerciseUrl =
-    exerciseRaw && typeof exerciseRaw === 'object' && !Array.isArray(exerciseRaw)
+    exerciseRaw &&
+    typeof exerciseRaw === 'object' &&
+    !Array.isArray(exerciseRaw)
       ? toString((exerciseRaw as Record<string, unknown>).url)
       : toString(value?.reportExerciseUrl)
 
@@ -184,12 +192,19 @@ function draftFromObjective(value?: Record<string, unknown>): ObjectiveDraft {
   }
 }
 
-function weekFromDate(activatedAt: string | null, value: string | null): number | null {
+function weekFromDate(
+  activatedAt: string | null,
+  value: string | null,
+): number | null {
   if (!activatedAt || !value) return null
   const start = new Date(activatedAt)
   const current = new Date(value)
-  if (Number.isNaN(start.getTime()) || Number.isNaN(current.getTime())) return null
-  const week = Math.floor((current.getTime() - start.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1
+  if (Number.isNaN(start.getTime()) || Number.isNaN(current.getTime()))
+    return null
+  const week =
+    Math.floor(
+      (current.getTime() - start.getTime()) / (7 * 24 * 60 * 60 * 1000),
+    ) + 1
   if (!Number.isFinite(week) || week < 1 || week > 12) return null
   return week
 }
@@ -205,7 +220,9 @@ function SeekBack10Icon() {
   return (
     <div className='relative'>
       <RotateCcwIcon className='size-4' />
-      <span className='absolute -right-1 -bottom-1 text-[9px] font-bold'>10</span>
+      <span className='absolute -right-1 -bottom-1 text-[9px] font-bold'>
+        10
+      </span>
     </div>
   )
 }
@@ -214,7 +231,9 @@ function SeekForward10Icon() {
   return (
     <div className='relative'>
       <RotateCwIcon className='size-4' />
-      <span className='absolute -right-1 -bottom-1 text-[9px] font-bold'>10</span>
+      <span className='absolute -right-1 -bottom-1 text-[9px] font-bold'>
+        10
+      </span>
     </div>
   )
 }
@@ -259,7 +278,10 @@ function MasterNoteCoachAudioPlayer({
 
   const expectedTotalSec = useMemo(() => {
     if (totalDurationMs > 0) return totalDurationMs / 1000
-    return tracks.reduce((sum, track) => sum + Math.max(0, track.durationSec), 0)
+    return tracks.reduce(
+      (sum, track) => sum + Math.max(0, track.durationSec),
+      0,
+    )
   }, [totalDurationMs, tracks])
 
   useEffect(() => {
@@ -403,14 +425,33 @@ function MasterNoteCoachAudioPlayer({
             <Button type='button' size='sm' variant='outline' onClick={stop}>
               <SquareIcon className='mr-1 size-4' /> Detener
             </Button>
-            <Button type='button' size='sm' variant='outline' onClick={() => void togglePause()}>
-              {isPaused ? <PlayIcon className='mr-1 size-4' /> : <PauseIcon className='mr-1 size-4' />}
+            <Button
+              type='button'
+              size='sm'
+              variant='outline'
+              onClick={() => void togglePause()}
+            >
+              {isPaused ? (
+                <PlayIcon className='mr-1 size-4' />
+              ) : (
+                <PauseIcon className='mr-1 size-4' />
+              )}
               {isPaused ? 'Reanudar' : 'Pausar'}
             </Button>
-            <Button type='button' size='sm' variant='outline' onClick={() => seekBy(-10)}>
+            <Button
+              type='button'
+              size='sm'
+              variant='outline'
+              onClick={() => seekBy(-10)}
+            >
               <SeekBack10Icon />
             </Button>
-            <Button type='button' size='sm' variant='outline' onClick={() => seekBy(10)}>
+            <Button
+              type='button'
+              size='sm'
+              variant='outline'
+              onClick={() => seekBy(10)}
+            >
               <SeekForward10Icon />
             </Button>
           </>
@@ -437,17 +478,35 @@ export function ManageCoachingUserView({
   const [memberships, setMemberships] = useState<CoachingUserMembership[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState<string>('')
   const [insights, setInsights] = useState<CoachingUserInsights | null>(null)
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+  const [coacherAdmins, setCoacherAdmins] = useState<CoachingAdminRow[]>([])
+  const [savingCoacherUserId, setSavingCoacherUserId] = useState(false)
+  const [changeCoacherModalOpen, setChangeCoacherModalOpen] = useState(false)
+  const [nextCoacherUserId, setNextCoacherUserId] = useState('')
 
-  const [objectiveDrafts, setObjectiveDrafts] = useState<Record<string, ObjectiveDraft>>({})
+  const [objectiveDrafts, setObjectiveDrafts] = useState<
+    Record<string, ObjectiveDraft>
+  >({})
   const [classDrafts, setClassDrafts] = useState<Record<string, ClassDraft>>({})
-  const [savingObjectiveWeek, setSavingObjectiveWeek] = useState<string | null>(null)
+  const [savingObjectiveWeek, setSavingObjectiveWeek] = useState<string | null>(
+    null,
+  )
   const [savingClassWeek, setSavingClassWeek] = useState<string | null>(null)
-  const [classFeedbackByWeek, setClassFeedbackByWeek] = useState<Record<string, string>>({})
-  const [feedbackLoomDraftByNoteId, setFeedbackLoomDraftByNoteId] = useState<Record<string, string>>({})
-  const [feedbackNotesDraftByNoteId, setFeedbackNotesDraftByNoteId] = useState<Record<string, string>>({})
-  const [savingFeedbackNoteId, setSavingFeedbackNoteId] = useState<string | null>(null)
+  const [classFeedbackByWeek, setClassFeedbackByWeek] = useState<
+    Record<string, string>
+  >({})
+  const [feedbackLoomDraftByNoteId, setFeedbackLoomDraftByNoteId] = useState<
+    Record<string, string>
+  >({})
+  const [feedbackNotesDraftByNoteId, setFeedbackNotesDraftByNoteId] = useState<
+    Record<string, string>
+  >({})
+  const [savingFeedbackNoteId, setSavingFeedbackNoteId] = useState<
+    string | null
+  >(null)
   const [sessionActionModalOpen, setSessionActionModalOpen] = useState(false)
-  const [sessionActionType, setSessionActionType] = useState<SessionActionType | null>(null)
+  const [sessionActionType, setSessionActionType] =
+    useState<SessionActionType | null>(null)
   const [sessionActionReason, setSessionActionReason] = useState('')
   const [isApplyingSessionAction, setIsApplyingSessionAction] = useState(false)
   const [viewMode, setViewMode] = useState<CoachingViewMode>('coach')
@@ -512,11 +571,30 @@ export function ManageCoachingUserView({
     setLoading(true)
     setError(null)
     try {
-      const membershipRows = await fetchCoachingUserMemberships(userId)
+      const [access, membershipRows] = await Promise.all([
+        fetchCoachingAccess(),
+        fetchCoachingUserMemberships(userId),
+      ])
       setMemberships(membershipRows)
+      const superAdmin = Boolean(access?.isCoachingSuperAdmin)
+      setIsSuperAdmin(superAdmin)
+
+      if (superAdmin) {
+        const adminRows = await fetchCoachingAdmins()
+        setCoacherAdmins(
+          adminRows.filter(
+            (row) =>
+              row.isActive &&
+              (row.role === 'coach_admin' || row.role === 'super_admin'),
+          ),
+        )
+      } else {
+        setCoacherAdmins([])
+      }
 
       const sessionId =
-        initialSessionId && membershipRows.some((row) => row.id === initialSessionId)
+        initialSessionId &&
+        membershipRows.some((row) => row.id === initialSessionId)
           ? initialSessionId
           : membershipRows[0]?.id || ''
 
@@ -541,6 +619,45 @@ export function ManageCoachingUserView({
       )
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleOpenChangeCoacherModal = () => {
+    if (!selectedMembership || !isSuperAdmin) return
+    setNextCoacherUserId(selectedMembership.coachUserId || '')
+    setChangeCoacherModalOpen(true)
+  }
+
+  const handleChangeSessionCoacher = async () => {
+    if (!selectedMembership || !isSuperAdmin || !isDirtySelectCoacher) return
+
+    setSavingCoacherUserId(true)
+    setFeedback(null)
+    try {
+      await upsertCoachingUser({
+        sessionId: selectedMembership.id,
+        userId: selectedMembership.userId,
+        targetLang: selectedMembership.targetLang,
+        nativeLang: selectedMembership.nativeLang,
+        level: selectedMembership.level,
+        coachUserId: nextCoacherUserId,
+        feedbackNmUrl: selectedMembership.feedbackNmUrl,
+        feedbackNmNotes: selectedMembership.feedbackNmNotes,
+        notes: selectedMembership.notes,
+      })
+
+      setFeedback('Coacher de la sesión actualizado correctamente.')
+      setChangeCoacherModalOpen(false)
+      setNextCoacherUserId('')
+      await loadAll()
+    } catch (err) {
+      setFeedback(
+        err instanceof Error
+          ? err.message
+          : 'No se pudo actualizar el coacher de la sesión.',
+      )
+    } finally {
+      setSavingCoacherUserId(false)
     }
   }
 
@@ -603,14 +720,17 @@ export function ManageCoachingUserView({
       const nextWeekly = {
         ...existing,
         [weekKey]: {
-          wordsTarget: draft.wordsTarget.trim() ? Number(draft.wordsTarget) : null,
+          wordsTarget: draft.wordsTarget.trim()
+            ? Number(draft.wordsTarget)
+            : null,
           nmTarget: draft.nmTarget.trim() ? Number(draft.nmTarget) : null,
           icaStreakObjectivePct: draft.icaStreakObjectivePct.trim()
             ? Number(draft.icaStreakObjectivePct)
             : null,
-          flashcardsStreakObjectivePct: draft.flashcardsStreakObjectivePct.trim()
-            ? Number(draft.flashcardsStreakObjectivePct)
-            : null,
+          flashcardsStreakObjectivePct:
+            draft.flashcardsStreakObjectivePct.trim()
+              ? Number(draft.flashcardsStreakObjectivePct)
+              : null,
           reportExerciseUrl: nextExerciseUrl,
           exercise: nextExerciseUrl
             ? {
@@ -621,7 +741,8 @@ export function ManageCoachingUserView({
                     ? 'completed'
                     : 'pending',
                 completedAt:
-                  shouldResetExerciseState || previousExercise.status !== 'completed'
+                  shouldResetExerciseState ||
+                  previousExercise.status !== 'completed'
                     ? null
                     : toString(previousExercise.completedAt),
               }
@@ -638,7 +759,9 @@ export function ManageCoachingUserView({
         weeklyObjectives: nextWeekly,
       })
 
-      setInsights((prev) => (prev ? { ...prev, weeklyObjectives: nextWeekly } : prev))
+      setInsights((prev) =>
+        prev ? { ...prev, weeklyObjectives: nextWeekly } : prev,
+      )
       setFeedback(`Objetivos guardados para semana ${weekKey}.`)
     } catch (err) {
       setFeedback(
@@ -681,7 +804,8 @@ export function ManageCoachingUserView({
         nextImagePath = null
       }
 
-      const textChanged = nextLoomUrl !== previousLoomUrl || nextReport !== previousReport
+      const textChanged =
+        nextLoomUrl !== previousLoomUrl || nextReport !== previousReport
       const imageChanged =
         Boolean(draft.imageFile) ||
         (draft.removeImage && Boolean(existingImagePath))
@@ -718,7 +842,9 @@ export function ManageCoachingUserView({
           : null
 
       const otherWeeks = classSessions.filter((item) => item.key !== weekKey)
-      const nextSessions = nextWeekClass ? [nextWeekClass, ...otherWeeks] : otherWeeks
+      const nextSessions = nextWeekClass
+        ? [nextWeekClass, ...otherWeeks]
+        : otherWeeks
 
       await upsertCoachingUser({
         sessionId: selectedMembership.id,
@@ -779,7 +905,8 @@ export function ManageCoachingUserView({
       await upsertMasterNoteFeedbackLoom({
         sessionId: selectedMembership.id,
         masterNoteId,
-        feedbackLoomUrl: feedbackLoomDraftByNoteId[masterNoteId]?.trim() || null,
+        feedbackLoomUrl:
+          feedbackLoomDraftByNoteId[masterNoteId]?.trim() || null,
         feedbackNotes: feedbackNotesDraftByNoteId[masterNoteId]?.trim() || null,
       })
 
@@ -790,7 +917,7 @@ export function ManageCoachingUserView({
           masterNotes: prev.masterNotes.map((note) =>
             note.id !== masterNoteId
               ? note
-                : {
+              : {
                   ...note,
                   coachingFeedbackLoomUrl:
                     feedbackLoomDraftByNoteId[masterNoteId]?.trim() || null,
@@ -863,12 +990,11 @@ export function ManageCoachingUserView({
     }
 
     for (const [weekKey, notes] of map.entries()) {
-      const sorted = [...notes].sort(
-        (a, b) =>
-          a.name.localeCompare(b.name, 'es', {
-            numeric: true,
-            sensitivity: 'base',
-          }),
+      const sorted = [...notes].sort((a, b) =>
+        a.name.localeCompare(b.name, 'es', {
+          numeric: true,
+          sensitivity: 'base',
+        }),
       )
       map.set(weekKey, sorted)
     }
@@ -884,7 +1010,9 @@ export function ManageCoachingUserView({
       12,
       Math.max(
         1,
-        Math.floor((Date.now() - activated.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1,
+        Math.floor(
+          (Date.now() - activated.getTime()) / (7 * 24 * 60 * 60 * 1000),
+        ) + 1,
       ),
     )
   }, [selectedMembership?.activatedAt])
@@ -929,6 +1057,21 @@ export function ManageCoachingUserView({
     }
   }, [selectedMembership, insights, closedNotesByWeek])
 
+  const coacherSelectOptions = useMemo(
+    () =>
+      [...coacherAdmins].sort((a, b) =>
+        a.userDisplayName.localeCompare(b.userDisplayName, 'es', {
+          sensitivity: 'base',
+        }),
+      ),
+    [coacherAdmins],
+  )
+
+  const isDirtySelectCoacher = useMemo(() => {
+    if (!selectedMembership || !nextCoacherUserId) return false
+    return nextCoacherUserId !== (selectedMembership.coachUserId || '')
+  }, [nextCoacherUserId, selectedMembership])
+
   const handleOpenSessionAction = (type: SessionActionType) => {
     setSessionActionType(type)
     setSessionActionReason('')
@@ -943,17 +1086,17 @@ export function ManageCoachingUserView({
     try {
       if (sessionActionType === 'archive') {
         await deleteCoachingSession(selectedMembership.id)
-        setFeedback('Sesion archivada correctamente.')
+        setFeedback('Sesión archivada correctamente.')
       } else if (sessionActionType === 'hard-delete') {
         await hardDeleteCoachingSession(selectedMembership.id)
-        setFeedback('Sesion eliminada definitivamente.')
+        setFeedback('Sesión eliminada definitivamente.')
       } else {
         const result = await closeCoachingSession({
           sessionId: selectedMembership.id,
           closureReason: sessionActionReason.trim() || null,
         })
         setFeedback(
-          `Sesion cerrada correctamente (semanas completadas: ${result.completedWeeks ?? 'n/d'}).`,
+          `Sesión cerrada correctamente (semanas completadas: ${result.completedWeeks ?? 'n/d'}).`,
         )
       }
 
@@ -963,7 +1106,7 @@ export function ManageCoachingUserView({
       setFeedback(
         err instanceof Error
           ? err.message
-          : 'No se pudo aplicar la accion sobre la sesion.',
+          : 'No se pudo aplicar la accion sobre la sesión.',
       )
     } finally {
       setIsApplyingSessionAction(false)
@@ -984,25 +1127,31 @@ export function ManageCoachingUserView({
       </div>
 
       {(error || feedback) && (
-        <p className={`mb-4 text-sm ${error ? 'text-destructive' : 'text-muted-foreground'}`}>
+        <p
+          className={`mb-4 text-sm ${error ? 'text-destructive' : 'text-muted-foreground'}`}
+        >
           {error || feedback}
         </p>
       )}
 
       <Card className='mb-4'>
         <CardHeader>
-          <CardTitle>Sesion de coaching</CardTitle>
+          <CardTitle>Sesión de coaching</CardTitle>
         </CardHeader>
         <CardContent className='flex flex-wrap items-center gap-3'>
-          <Select value={selectedSessionId} onValueChange={setSelectedSessionId}>
+          <Select
+            value={selectedSessionId}
+            onValueChange={setSelectedSessionId}
+          >
             <SelectTrigger className='min-w-72'>
-              <SelectValue placeholder='Selecciona sesion coaching' />
+              <SelectValue placeholder='Selecciona sesión coaching' />
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
                 {memberships.map((membership) => (
                   <SelectItem key={membership.id} value={membership.id}>
-                    {membership.userDisplayName} · {membership.targetLang} ({membership.level}) · {membership.status}
+                    {membership.userDisplayName} · {membership.targetLang} (
+                    {membership.level}) · {membership.status}
                   </SelectItem>
                 ))}
               </SelectGroup>
@@ -1012,22 +1161,40 @@ export function ManageCoachingUserView({
           {selectedMembership && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button type='button' variant='outline' size='icon' aria-label='Acciones de sesion'>
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='icon'
+                  aria-label='Acciones de sesión'
+                >
                   <MoreHorizontalIcon className='h-4 w-4' />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align='end'>
                 {selectedMembership.status !== 'draft' && (
-                  <DropdownMenuItem onClick={() => handleOpenSessionAction('close')}>
+                  <DropdownMenuItem
+                    onClick={() => handleOpenSessionAction('close')}
+                  >
                     <CheckCheckIcon className='h-4 w-4' />
                     Cerrar coaching
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem onClick={() => handleOpenSessionAction('archive')}>
+                {isSuperAdmin && (
+                  <DropdownMenuItem onClick={handleOpenChangeCoacherModal}>
+                    <UserIcon className='h-4 w-4' />
+                    Cambiar coacher
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem
+                  onClick={() => handleOpenSessionAction('archive')}
+                >
                   <ArchiveIcon className='h-4 w-4' />
-                  Archivar sesion
+                  Archivar sesión
                 </DropdownMenuItem>
-                <DropdownMenuItem variant='destructive' onClick={() => handleOpenSessionAction('hard-delete')}>
+                <DropdownMenuItem
+                  variant='destructive'
+                  onClick={() => handleOpenSessionAction('hard-delete')}
+                >
                   <Trash2Icon className='h-4 w-4' />
                   Eliminar definitivo
                 </DropdownMenuItem>
@@ -1037,9 +1204,18 @@ export function ManageCoachingUserView({
 
           {selectedMembership && (
             <p className='text-sm text-muted-foreground'>
-              Idioma: <span className='font-medium text-foreground'>{selectedMembership.targetLang}</span> · Nivel:{' '}
-              <span className='font-medium text-foreground'>{selectedMembership.level}</span> · Estado:{' '}
-              <span className='font-medium text-foreground'>{selectedMembership.status}</span>
+              Idioma:{' '}
+              <span className='font-medium text-foreground'>
+                {selectedMembership.targetLang}
+              </span>{' '}
+              · Nivel:{' '}
+              <span className='font-medium text-foreground'>
+                {selectedMembership.level}
+              </span>{' '}
+              · Estado:{' '}
+              <span className='font-medium text-foreground'>
+                {selectedMembership.status}
+              </span>
             </p>
           )}
 
@@ -1069,448 +1245,510 @@ export function ManageCoachingUserView({
       {loading ? (
         <p className='text-sm text-muted-foreground'>Cargando detalle...</p>
       ) : !insights || !selectedMembership ? (
-        <p className='text-sm text-muted-foreground'>No hay datos disponibles para este usuario.</p>
+        <p className='text-sm text-muted-foreground'>
+          No hay datos disponibles para este usuario.
+        </p>
       ) : (
         <div className='grid gap-4'>
           {viewMode === 'user-preview' && previewMembership ? (
             <CoachingProgramPreview membership={previewMembership} />
           ) : (
             <>
-              <Accordion type='multiple' className='w-full rounded-md border px-4'>
-            {Array.from({ length: 12 }, (_, index) => {
-              const week = index + 1
-              const weekKey = weekKeyFromNumber(week)
-              const objectiveDraft = objectiveDrafts[weekKey] || draftFromObjective()
-              const weekClasses = classesByWeek.get(weekKey) || []
-              const weekClass = weekClasses[0] || null
-              const classDraft = classDrafts[weekKey] || {
-                loomUrl: weekClass?.loomUrl || '',
-                report: weekClass?.report || '',
-                imageFile: null,
-                removeImage: false,
-              }
-              const draftLoom = classDraft.loomUrl.trim()
-              const draftReport = classDraft.report.trim()
-              const previousLoom = (weekClass?.loomUrl || '').trim()
-              const previousReport = (weekClass?.report || '').trim()
-              const hasExistingImage = Boolean(weekClass?.reportImagePath || weekClass?.reportImageUrl)
-              const hasClassChanges =
-                draftLoom !== previousLoom ||
-                draftReport !== previousReport ||
-                Boolean(classDraft.imageFile) ||
-                (classDraft.removeImage && hasExistingImage)
-              const closedNotes = closedNotesByWeek.get(weekKey) || []
+              <Accordion
+                type='multiple'
+                className='w-full rounded-md border px-4'
+              >
+                {Array.from({ length: 12 }, (_, index) => {
+                  const week = index + 1
+                  const weekKey = weekKeyFromNumber(week)
+                  const objectiveDraft =
+                    objectiveDrafts[weekKey] || draftFromObjective()
+                  const weekClasses = classesByWeek.get(weekKey) || []
+                  const weekClass = weekClasses[0] || null
+                  const classDraft = classDrafts[weekKey] || {
+                    loomUrl: weekClass?.loomUrl || '',
+                    report: weekClass?.report || '',
+                    imageFile: null,
+                    removeImage: false,
+                  }
+                  const draftLoom = classDraft.loomUrl.trim()
+                  const draftReport = classDraft.report.trim()
+                  const previousLoom = (weekClass?.loomUrl || '').trim()
+                  const previousReport = (weekClass?.report || '').trim()
+                  const hasExistingImage = Boolean(
+                    weekClass?.reportImagePath || weekClass?.reportImageUrl,
+                  )
+                  const hasClassChanges =
+                    draftLoom !== previousLoom ||
+                    draftReport !== previousReport ||
+                    Boolean(classDraft.imageFile) ||
+                    (classDraft.removeImage && hasExistingImage)
+                  const closedNotes = closedNotesByWeek.get(weekKey) || []
 
-              return (
-                <AccordionItem key={weekKey} value={weekKey}>
-                  <AccordionTrigger>Semana {week}</AccordionTrigger>
-                  <AccordionContent className='space-y-4'>
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Clase de la semana</CardTitle>
-                      </CardHeader>
-                      <CardContent className='space-y-3'>
-                        {classFeedbackByWeek[weekKey] && (
-                          <p className='text-sm text-muted-foreground'>
-                            {classFeedbackByWeek[weekKey]}
-                          </p>
-                        )}
+                  return (
+                    <AccordionItem key={weekKey} value={weekKey}>
+                      <AccordionTrigger>Semana {week}</AccordionTrigger>
+                      <AccordionContent className='space-y-4'>
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Clase de la semana</CardTitle>
+                          </CardHeader>
+                          <CardContent className='space-y-3'>
+                            {classFeedbackByWeek[weekKey] && (
+                              <p className='text-sm text-muted-foreground'>
+                                {classFeedbackByWeek[weekKey]}
+                              </p>
+                            )}
 
-                        <div className='space-y-1.5'>
-                          <Label>Loom URL</Label>
-                          <Input
-                            value={classDraft.loomUrl}
-                            onChange={(event) =>
-                              setClassDrafts((prev) => ({
-                                ...prev,
-                                [weekKey]: {
-                                  ...(prev[weekKey] || {
-                                    loomUrl: '',
-                                    report: '',
-                                    imageFile: null,
-                                    removeImage: false,
-                                  }),
-                                  loomUrl: event.target.value,
-                                },
-                              }))
-                            }
-                            placeholder='Ej: https://www.loom.com/share/...'
-                          />
-                          {draftLoom && (
-                            <a
-                              href={draftLoom}
-                              target='_blank'
-                              rel='noreferrer'
-                              className='inline-flex text-sm text-blue-600 underline underline-offset-2'
-                            >
-                              Ver clase en Loom
-                            </a>
-                          )}
-                        </div>
-
-                        <div className='space-y-1.5'>
-                          <Label>Reporte clase (opcional)</Label>
-                          <Textarea
-                            value={classDraft.report}
-                            onChange={(event) =>
-                              setClassDrafts((prev) => ({
-                                ...prev,
-                                [weekKey]: {
-                                  ...(prev[weekKey] || {
-                                    loomUrl: '',
-                                    report: '',
-                                    imageFile: null,
-                                    removeImage: false,
-                                  }),
-                                  report: event.target.value,
-                                },
-                              }))
-                            }
-                            placeholder='Ej: Practico speaking y corrigio errores clave'
-                            rows={4}
-                          />
-                        </div>
-
-                        <div className='space-y-1.5'>
-                          <Label>Imagen de reporte</Label>
-                          <Input
-                            type='file'
-                            accept='image/*'
-                            onChange={(event) =>
-                              setClassDrafts((prev) => ({
-                                ...prev,
-                                [weekKey]: {
-                                  ...(prev[weekKey] || {
-                                    loomUrl: '',
-                                    report: '',
-                                    imageFile: null,
-                                    removeImage: false,
-                                  }),
-                                  imageFile: event.target.files?.[0] || null,
-                                  removeImage: false,
-                                },
-                              }))
-                            }
-                          />
-
-                          {classDraft.imageFile && (
-                            <div className='flex flex-wrap items-center gap-2 text-sm'>
-                              <p className='text-muted-foreground'>Nueva imagen: {classDraft.imageFile.name}</p>
-                              <Button
-                                type='button'
-                                variant='outline'
-                                size='sm'
-                                onClick={() =>
+                            <div className='space-y-1.5'>
+                              <Label>Loom URL</Label>
+                              <Input
+                                value={classDraft.loomUrl}
+                                onChange={(event) =>
                                   setClassDrafts((prev) => ({
                                     ...prev,
                                     [weekKey]: {
-                                      ...(prev[weekKey] || classDraft),
-                                      imageFile: null,
+                                      ...(prev[weekKey] || {
+                                        loomUrl: '',
+                                        report: '',
+                                        imageFile: null,
+                                        removeImage: false,
+                                      }),
+                                      loomUrl: event.target.value,
                                     },
                                   }))
                                 }
-                              >
-                                Quitar seleccion
-                              </Button>
-                            </div>
-                          )}
-
-                          {!classDraft.imageFile && hasExistingImage && !classDraft.removeImage && (
-                            <div className='flex flex-wrap items-center gap-2 text-sm'>
-                              {weekClass?.reportImageUrl && (
-                                <>
-                                  <a
-                                    href={weekClass.reportImageUrl}
-                                    target='_blank'
-                                    rel='noreferrer'
-                                    className='text-blue-600 underline underline-offset-2'
-                                  >
-                                    Ver imagen actual
-                                  </a>
-                                  <a
-                                    href={weekClass.reportImageUrl}
-                                    download
-                                    target='_blank'
-                                    rel='noreferrer'
-                                    className='inline-flex items-center gap-1 text-blue-600 underline underline-offset-2'
-                                  >
-                                    <DownloadIcon className='h-3.5 w-3.5' />
-                                    Descargar imagen
-                                  </a>
-                                </>
+                                placeholder='Ej: https://www.loom.com/share/...'
+                              />
+                              {draftLoom && (
+                                <a
+                                  href={draftLoom}
+                                  target='_blank'
+                                  rel='noreferrer'
+                                  className='inline-flex text-sm text-blue-600 underline underline-offset-2'
+                                >
+                                  Ver clase en Loom
+                                </a>
                               )}
-                              <Button
-                                type='button'
-                                variant='destructive'
-                                size='sm'
-                                onClick={() =>
+                            </div>
+
+                            <div className='space-y-1.5'>
+                              <Label>Reporte clase (opcional)</Label>
+                              <Textarea
+                                value={classDraft.report}
+                                onChange={(event) =>
                                   setClassDrafts((prev) => ({
                                     ...prev,
                                     [weekKey]: {
-                                      ...(prev[weekKey] || classDraft),
-                                      removeImage: true,
+                                      ...(prev[weekKey] || {
+                                        loomUrl: '',
+                                        report: '',
+                                        imageFile: null,
+                                        removeImage: false,
+                                      }),
+                                      report: event.target.value,
                                     },
                                   }))
                                 }
-                              >
-                                <Trash2Icon className='h-3.5 w-3.5' />
-                                Quitar imagen
-                              </Button>
+                                placeholder='Ej: Practico speaking y corrigio errores clave'
+                                rows={4}
+                              />
                             </div>
-                          )}
 
-                          {classDraft.removeImage && (
-                            <div className='flex flex-wrap items-center gap-2 text-sm'>
-                              <p className='text-muted-foreground'>La imagen actual se eliminara al guardar.</p>
-                              <Button
-                                type='button'
-                                variant='outline'
-                                size='sm'
-                                onClick={() =>
+                            <div className='space-y-1.5'>
+                              <Label>Imagen de reporte</Label>
+                              <Input
+                                type='file'
+                                accept='image/*'
+                                onChange={(event) =>
                                   setClassDrafts((prev) => ({
                                     ...prev,
                                     [weekKey]: {
-                                      ...(prev[weekKey] || classDraft),
+                                      ...(prev[weekKey] || {
+                                        loomUrl: '',
+                                        report: '',
+                                        imageFile: null,
+                                        removeImage: false,
+                                      }),
+                                      imageFile:
+                                        event.target.files?.[0] || null,
                                       removeImage: false,
                                     },
                                   }))
                                 }
-                              >
-                                Deshacer
-                              </Button>
-                            </div>
-                          )}
-                        </div>
+                              />
 
-                        <Button
-                          type='button'
-                          variant='outline'
-                          onClick={() => void handleSaveClass(weekKey)}
-                          disabled={savingClassWeek === weekKey || !hasClassChanges}
-                        >
-                          {savingClassWeek === weekKey
-                            ? 'Guardando...'
-                            : weekClass
-                              ? 'Actualizar clase'
-                              : 'Guardar clase'}
-                        </Button>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Objetivos semanales</CardTitle>
-                      </CardHeader>
-                      <CardContent className='grid gap-2 md:grid-cols-2'>
-                        <div className='space-y-1.5'>
-                          <Label>Objetivo palabras ICA</Label>
-                          <Input
-                            type='number'
-                            min={0}
-                            step={1}
-                            value={objectiveDraft.wordsTarget}
-                            onChange={(event) =>
-                              setObjectiveDrafts((prev) => ({
-                                ...prev,
-                                [weekKey]: {
-                                  ...prev[weekKey],
-                                  wordsTarget: event.target.value,
-                                },
-                              }))
-                            }
-                            placeholder='Ej: 40'
-                          />
-                        </div>
-                        <div className='space-y-1.5'>
-                          <Label>Objetivo notas maestras cerradas</Label>
-                          <Input
-                            type='number'
-                            min={0}
-                            step={1}
-                            value={objectiveDraft.nmTarget}
-                            onChange={(event) =>
-                              setObjectiveDrafts((prev) => ({
-                                ...prev,
-                                [weekKey]: { ...prev[weekKey], nmTarget: event.target.value },
-                              }))
-                            }
-                            placeholder='Ej: 2'
-                          />
-                        </div>
-                        <div className='space-y-1.5'>
-                          <Label>Objetivo % racha ICA</Label>
-                          <Input
-                            type='number'
-                            min={0}
-                            max={100}
-                            step={1}
-                            value={objectiveDraft.icaStreakObjectivePct}
-                            onChange={(event) =>
-                              setObjectiveDrafts((prev) => ({
-                                ...prev,
-                                [weekKey]: {
-                                  ...prev[weekKey],
-                                  icaStreakObjectivePct: event.target.value,
-                                },
-                              }))
-                            }
-                            placeholder='Ej: 70'
-                          />
-                        </div>
-                        <div className='space-y-1.5'>
-                          <Label>Objetivo % racha flashcards</Label>
-                          <Input
-                            type='number'
-                            min={0}
-                            max={100}
-                            step={1}
-                            value={objectiveDraft.flashcardsStreakObjectivePct}
-                            onChange={(event) =>
-                              setObjectiveDrafts((prev) => ({
-                                ...prev,
-                                [weekKey]: {
-                                  ...prev[weekKey],
-                                  flashcardsStreakObjectivePct: event.target.value,
-                                },
-                              }))
-                            }
-                            placeholder='Ej: 55'
-                          />
-                        </div>
-
-                        <div className='space-y-1.5 md:col-span-2'>
-                          <Label>Objetivo Ejercicio (link)</Label>
-                          <Input
-                            value={objectiveDraft.exerciseUrl}
-                            onChange={(event) =>
-                              setObjectiveDrafts((prev) => ({
-                                ...prev,
-                                [weekKey]: {
-                                  ...prev[weekKey],
-                                  exerciseUrl: event.target.value,
-                                },
-                              }))
-                            }
-                            placeholder='Ej: https://claude.ai/artifact/...'
-                          />
-                        </div>
-
-                        <div className='md:col-span-2'>
-                          <Button
-                            type='button'
-                            variant='outline'
-                            onClick={() => void handleSaveObjective(weekKey)}
-                            disabled={savingObjectiveWeek === weekKey}
-                          >
-                            {savingObjectiveWeek === weekKey ? 'Guardando...' : 'Guardar objetivos'}
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Notas maestras cerradas de esta semana</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        {closedNotes.length === 0 ? (
-                          <p className='text-sm text-muted-foreground'>
-                            No hay notas maestras cerradas en esta semana.
-                          </p>
-                        ) : (
-                          <div className='space-y-3 text-sm'>
-                            {closedNotes.map((note) => (
-                              <div key={note.id} className='space-y-2 rounded-md border p-3'>
-                                <p>
-                                  {note.name} · {formatDateTime(note.closedAt)}
-                                </p>
-
-                                <MasterNoteCoachAudioPlayer
-                                  noteId={note.id}
-                                  audioUrl={note.audioUrl}
-                                  audioChunks={note.audioChunks}
-                                  totalDurationMs={note.totalDurationMs}
-                                />
-
-                                <div className='space-y-1.5'>
-                                  <Label>Video feedback (Loom)</Label>
-                                  <div className='flex flex-wrap gap-2'>
-                                    <Input
-                                      value={feedbackLoomDraftByNoteId[note.id] || ''}
-                                      onChange={(event) =>
-                                        setFeedbackLoomDraftByNoteId((prev) => ({
-                                          ...prev,
-                                          [note.id]: event.target.value,
-                                        }))
-                                      }
-                                      placeholder='Ej: https://www.loom.com/share/...'
-                                    />
-                                    <Button
-                                      type='button'
-                                      variant='outline'
-                                      onClick={() => void handleSaveFeedback(note.id, 'video')}
-                                      disabled={savingFeedbackNoteId === note.id}
-                                    >
-                                      {savingFeedbackNoteId === note.id
-                                        ? 'Guardando...'
-                                        : 'Guardar video'}
-                                    </Button>
-                                  </div>
-                                  {note.feedbackLoomUrl && (
-                                    <a
-                                      href={note.feedbackLoomUrl}
-                                      target='_blank'
-                                      rel='noreferrer'
-                                      className='text-blue-600 underline underline-offset-2'
-                                    >
-                                      Abrir video actual
-                                    </a>
-                                  )}
-                                </div>
-
-                                <div className='space-y-1.5'>
-                                  <Label>Notas del coach</Label>
-                                  <Textarea
-                                    value={feedbackNotesDraftByNoteId[note.id] || ''}
-                                    onChange={(event) =>
-                                      setFeedbackNotesDraftByNoteId((prev) => ({
-                                        ...prev,
-                                        [note.id]: event.target.value,
-                                      }))
-                                    }
-                                    placeholder='Escribe observaciones mientras escuchas el audio...'
-                                    rows={4}
-                                  />
+                              {classDraft.imageFile && (
+                                <div className='flex flex-wrap items-center gap-2 text-sm'>
+                                  <p className='text-muted-foreground'>
+                                    Nueva imagen: {classDraft.imageFile.name}
+                                  </p>
                                   <Button
                                     type='button'
                                     variant='outline'
-                                    onClick={() => void handleSaveFeedback(note.id, 'notes')}
-                                    disabled={savingFeedbackNoteId === note.id}
+                                    size='sm'
+                                    onClick={() =>
+                                      setClassDrafts((prev) => ({
+                                        ...prev,
+                                        [weekKey]: {
+                                          ...(prev[weekKey] || classDraft),
+                                          imageFile: null,
+                                        },
+                                      }))
+                                    }
                                   >
-                                    {savingFeedbackNoteId === note.id
-                                      ? 'Guardando...'
-                                      : 'Guardar notas'}
+                                    Quitar seleccion
                                   </Button>
                                 </div>
+                              )}
+
+                              {!classDraft.imageFile &&
+                                hasExistingImage &&
+                                !classDraft.removeImage && (
+                                  <div className='flex flex-wrap items-center gap-2 text-sm'>
+                                    {weekClass?.reportImageUrl && (
+                                      <>
+                                        <a
+                                          href={weekClass.reportImageUrl}
+                                          target='_blank'
+                                          rel='noreferrer'
+                                          className='text-blue-600 underline underline-offset-2'
+                                        >
+                                          Ver imagen actual
+                                        </a>
+                                        <a
+                                          href={weekClass.reportImageUrl}
+                                          download
+                                          target='_blank'
+                                          rel='noreferrer'
+                                          className='inline-flex items-center gap-1 text-blue-600 underline underline-offset-2'
+                                        >
+                                          <DownloadIcon className='h-3.5 w-3.5' />
+                                          Descargar imagen
+                                        </a>
+                                      </>
+                                    )}
+                                    <Button
+                                      type='button'
+                                      variant='destructive'
+                                      size='sm'
+                                      onClick={() =>
+                                        setClassDrafts((prev) => ({
+                                          ...prev,
+                                          [weekKey]: {
+                                            ...(prev[weekKey] || classDraft),
+                                            removeImage: true,
+                                          },
+                                        }))
+                                      }
+                                    >
+                                      <Trash2Icon className='h-3.5 w-3.5' />
+                                      Quitar imagen
+                                    </Button>
+                                  </div>
+                                )}
+
+                              {classDraft.removeImage && (
+                                <div className='flex flex-wrap items-center gap-2 text-sm'>
+                                  <p className='text-muted-foreground'>
+                                    La imagen actual se eliminara al guardar.
+                                  </p>
+                                  <Button
+                                    type='button'
+                                    variant='outline'
+                                    size='sm'
+                                    onClick={() =>
+                                      setClassDrafts((prev) => ({
+                                        ...prev,
+                                        [weekKey]: {
+                                          ...(prev[weekKey] || classDraft),
+                                          removeImage: false,
+                                        },
+                                      }))
+                                    }
+                                  >
+                                    Deshacer
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+
+                            <Button
+                              type='button'
+                              variant='outline'
+                              onClick={() => void handleSaveClass(weekKey)}
+                              disabled={
+                                savingClassWeek === weekKey || !hasClassChanges
+                              }
+                            >
+                              {savingClassWeek === weekKey
+                                ? 'Guardando...'
+                                : weekClass
+                                  ? 'Actualizar clase'
+                                  : 'Guardar clase'}
+                            </Button>
+                          </CardContent>
+                        </Card>
+
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>Objetivos semanales</CardTitle>
+                          </CardHeader>
+                          <CardContent className='grid gap-2 md:grid-cols-2'>
+                            <div className='space-y-1.5'>
+                              <Label>Objetivo palabras ICA</Label>
+                              <Input
+                                type='number'
+                                min={0}
+                                step={1}
+                                value={objectiveDraft.wordsTarget}
+                                onChange={(event) =>
+                                  setObjectiveDrafts((prev) => ({
+                                    ...prev,
+                                    [weekKey]: {
+                                      ...prev[weekKey],
+                                      wordsTarget: event.target.value,
+                                    },
+                                  }))
+                                }
+                                placeholder='Ej: 40'
+                              />
+                            </div>
+                            <div className='space-y-1.5'>
+                              <Label>Objetivo notas maestras cerradas</Label>
+                              <Input
+                                type='number'
+                                min={0}
+                                step={1}
+                                value={objectiveDraft.nmTarget}
+                                onChange={(event) =>
+                                  setObjectiveDrafts((prev) => ({
+                                    ...prev,
+                                    [weekKey]: {
+                                      ...prev[weekKey],
+                                      nmTarget: event.target.value,
+                                    },
+                                  }))
+                                }
+                                placeholder='Ej: 2'
+                              />
+                            </div>
+                            <div className='space-y-1.5'>
+                              <Label>Objetivo % racha ICA</Label>
+                              <Input
+                                type='number'
+                                min={0}
+                                max={100}
+                                step={1}
+                                value={objectiveDraft.icaStreakObjectivePct}
+                                onChange={(event) =>
+                                  setObjectiveDrafts((prev) => ({
+                                    ...prev,
+                                    [weekKey]: {
+                                      ...prev[weekKey],
+                                      icaStreakObjectivePct: event.target.value,
+                                    },
+                                  }))
+                                }
+                                placeholder='Ej: 70'
+                              />
+                            </div>
+                            <div className='space-y-1.5'>
+                              <Label>Objetivo % racha flashcards</Label>
+                              <Input
+                                type='number'
+                                min={0}
+                                max={100}
+                                step={1}
+                                value={
+                                  objectiveDraft.flashcardsStreakObjectivePct
+                                }
+                                onChange={(event) =>
+                                  setObjectiveDrafts((prev) => ({
+                                    ...prev,
+                                    [weekKey]: {
+                                      ...prev[weekKey],
+                                      flashcardsStreakObjectivePct:
+                                        event.target.value,
+                                    },
+                                  }))
+                                }
+                                placeholder='Ej: 55'
+                              />
+                            </div>
+
+                            <div className='space-y-1.5 md:col-span-2'>
+                              <Label>Objetivo Ejercicio (link)</Label>
+                              <Input
+                                value={objectiveDraft.exerciseUrl}
+                                onChange={(event) =>
+                                  setObjectiveDrafts((prev) => ({
+                                    ...prev,
+                                    [weekKey]: {
+                                      ...prev[weekKey],
+                                      exerciseUrl: event.target.value,
+                                    },
+                                  }))
+                                }
+                                placeholder='Ej: https://claude.ai/artifact/...'
+                              />
+                            </div>
+
+                            <div className='md:col-span-2'>
+                              <Button
+                                type='button'
+                                variant='outline'
+                                onClick={() =>
+                                  void handleSaveObjective(weekKey)
+                                }
+                                disabled={savingObjectiveWeek === weekKey}
+                              >
+                                {savingObjectiveWeek === weekKey
+                                  ? 'Guardando...'
+                                  : 'Guardar objetivos'}
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>
+                              Notas maestras cerradas de esta semana
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            {closedNotes.length === 0 ? (
+                              <p className='text-sm text-muted-foreground'>
+                                No hay notas maestras cerradas en esta semana.
+                              </p>
+                            ) : (
+                              <div className='space-y-3 text-sm'>
+                                {closedNotes.map((note) => (
+                                  <div
+                                    key={note.id}
+                                    className='space-y-2 rounded-md border p-3'
+                                  >
+                                    <p>
+                                      {note.name} ·{' '}
+                                      {formatDateTime(note.closedAt)}
+                                    </p>
+
+                                    <MasterNoteCoachAudioPlayer
+                                      noteId={note.id}
+                                      audioUrl={note.audioUrl}
+                                      audioChunks={note.audioChunks}
+                                      totalDurationMs={note.totalDurationMs}
+                                    />
+
+                                    <div className='space-y-1.5'>
+                                      <Label>Video feedback (Loom)</Label>
+                                      <div className='flex flex-wrap gap-2'>
+                                        <Input
+                                          value={
+                                            feedbackLoomDraftByNoteId[
+                                              note.id
+                                            ] || ''
+                                          }
+                                          onChange={(event) =>
+                                            setFeedbackLoomDraftByNoteId(
+                                              (prev) => ({
+                                                ...prev,
+                                                [note.id]: event.target.value,
+                                              }),
+                                            )
+                                          }
+                                          placeholder='Ej: https://www.loom.com/share/...'
+                                        />
+                                        <Button
+                                          type='button'
+                                          variant='outline'
+                                          onClick={() =>
+                                            void handleSaveFeedback(
+                                              note.id,
+                                              'video',
+                                            )
+                                          }
+                                          disabled={
+                                            savingFeedbackNoteId === note.id
+                                          }
+                                        >
+                                          {savingFeedbackNoteId === note.id
+                                            ? 'Guardando...'
+                                            : 'Guardar video'}
+                                        </Button>
+                                      </div>
+                                      {note.feedbackLoomUrl && (
+                                        <a
+                                          href={note.feedbackLoomUrl}
+                                          target='_blank'
+                                          rel='noreferrer'
+                                          className='text-blue-600 underline underline-offset-2'
+                                        >
+                                          Abrir video actual
+                                        </a>
+                                      )}
+                                    </div>
+
+                                    <div className='space-y-1.5'>
+                                      <Label>Notas del coach</Label>
+                                      <Textarea
+                                        value={
+                                          feedbackNotesDraftByNoteId[note.id] ||
+                                          ''
+                                        }
+                                        onChange={(event) =>
+                                          setFeedbackNotesDraftByNoteId(
+                                            (prev) => ({
+                                              ...prev,
+                                              [note.id]: event.target.value,
+                                            }),
+                                          )
+                                        }
+                                        placeholder='Escribe observaciones mientras escuchas el audio...'
+                                        rows={4}
+                                      />
+                                      <Button
+                                        type='button'
+                                        variant='outline'
+                                        onClick={() =>
+                                          void handleSaveFeedback(
+                                            note.id,
+                                            'notes',
+                                          )
+                                        }
+                                        disabled={
+                                          savingFeedbackNoteId === note.id
+                                        }
+                                      >
+                                        {savingFeedbackNoteId === note.id
+                                          ? 'Guardando...'
+                                          : 'Guardar notas'}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </AccordionContent>
-                </AccordionItem>
-              )
-            })}
+                            )}
+                          </CardContent>
+                        </Card>
+                      </AccordionContent>
+                    </AccordionItem>
+                  )
+                })}
               </Accordion>
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Todas las palabras ICA ({insights.wordsCount})</CardTitle>
+                  <CardTitle>
+                    Todas las palabras ICA ({insights.wordsCount})
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {insights.words.length === 0 ? (
-                    <p className='text-sm text-muted-foreground'>Sin palabras ICA.</p>
+                    <p className='text-sm text-muted-foreground'>
+                      Sin palabras ICA.
+                    </p>
                   ) : (
                     <div className='max-h-72 space-y-1 overflow-y-auto rounded-md border p-2 text-sm'>
                       {insights.words.map((word) => (
@@ -1527,21 +1765,92 @@ export function ManageCoachingUserView({
         </div>
       )}
 
-      <Dialog open={sessionActionModalOpen} onOpenChange={setSessionActionModalOpen}>
+      <Dialog
+        open={changeCoacherModalOpen}
+        onOpenChange={(open) => {
+          if (savingCoacherUserId) return
+          setChangeCoacherModalOpen(open)
+          if (!open) setNextCoacherUserId('')
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cambiar coacher</DialogTitle>
+            <DialogDescription>
+              Selecciona el coacher que tendrá asignada esta sesión.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className='space-y-3'>
+            <p className='text-sm text-muted-foreground'>
+              Sesión:{' '}
+              <span className='font-medium text-foreground'>
+                {selectedMembership?.userDisplayName || '-'} ·{' '}
+                {selectedMembership?.targetLang || '-'}
+              </span>
+            </p>
+
+            <div className='space-y-1.5'>
+              <Label htmlFor='change-session-coacher'>Coacher</Label>
+              <select
+                id='change-session-coacher'
+                className='h-10 w-full rounded-md border bg-background px-3 text-sm'
+                value={nextCoacherUserId}
+                onChange={(event) => setNextCoacherUserId(event.target.value)}
+                disabled={savingCoacherUserId}
+              >
+                <option value=''>Selecciona coacher</option>
+                {coacherSelectOptions.map((row) => (
+                  <option key={row.userId} value={row.userId}>
+                    {row.userDisplayName}{' '}
+                    {row.role === 'super_admin' ? '(super_admin)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => {
+                setChangeCoacherModalOpen(false)
+                setNextCoacherUserId('')
+              }}
+              disabled={savingCoacherUserId}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type='button'
+              onClick={() => void handleChangeSessionCoacher()}
+              disabled={savingCoacherUserId || !isDirtySelectCoacher}
+            >
+              {savingCoacherUserId ? 'Cambiando...' : 'Confirmar cambio'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={sessionActionModalOpen}
+        onOpenChange={setSessionActionModalOpen}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
               {sessionActionType === 'archive'
-                ? 'Archivar sesion'
+                ? 'Archivar sesión'
                 : sessionActionType === 'hard-delete'
-                  ? 'Eliminar sesion definitivamente'
+                  ? 'Eliminar sesión definitivamente'
                   : 'Cerrar coaching'}
             </DialogTitle>
             <DialogDescription>
               {sessionActionType === 'archive'
-                ? 'La sesion pasara a estado cancelled y se conservaran sus datos.'
+                ? 'La sesión pasara a estado cancelled y se conservaran sus datos.'
                 : sessionActionType === 'hard-delete'
-                  ? 'Esta accion es irreversible y elimina toda la sesion.'
+                  ? 'Esta accion es irreversible y elimina toda la sesión.'
                   : `Se cerrara el coaching en la semana ${sessionCurrentWeek ?? 'n/d'} del programa.`}
             </DialogDescription>
           </DialogHeader>
@@ -1558,12 +1867,18 @@ export function ManageCoachingUserView({
           )}
 
           <DialogFooter>
-            <Button type='button' variant='outline' onClick={() => setSessionActionModalOpen(false)}>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setSessionActionModalOpen(false)}
+            >
               Cancelar
             </Button>
             <Button
               type='button'
-              variant={sessionActionType === 'hard-delete' ? 'destructive' : 'default'}
+              variant={
+                sessionActionType === 'hard-delete' ? 'destructive' : 'default'
+              }
               onClick={() => void handleConfirmSessionAction()}
               disabled={isApplyingSessionAction}
             >

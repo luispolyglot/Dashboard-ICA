@@ -63,9 +63,7 @@ export function ManageCoacherSessionsView({
           <h2 className='mb-1 font-serif text-3xl font-bold'>
             Sesiones del coacher
           </h2>
-          <p className='text-sm text-muted-foreground'>
-            {coachDisplayName}
-          </p>
+          <p className='text-sm text-muted-foreground'>{coachDisplayName}</p>
         </div>
 
         <div className='flex flex-wrap gap-2'>
@@ -88,7 +86,9 @@ export function ManageCoacherSessionsView({
         </CardHeader>
         <CardContent>
           {loading ? (
-            <p className='text-sm text-muted-foreground'>Cargando sesiones...</p>
+            <p className='text-sm text-muted-foreground'>
+              Cargando sesiones...
+            </p>
           ) : sessions.length === 0 ? (
             <p className='text-sm text-muted-foreground'>
               Este coacher no tiene sesiones asignadas.
@@ -108,7 +108,10 @@ export function ManageCoacherSessionsView({
                 </thead>
                 <tbody>
                   {sessions.map((row) => (
-                    <tr key={row.id} className='border-b align-middle last:border-b-0'>
+                    <tr
+                      key={row.id}
+                      className='border-b align-middle last:border-b-0'
+                    >
                       <td className='py-2'>{row.userDisplayName}</td>
                       <td className='py-2'>{row.targetLang}</td>
                       <td className='py-2'>{row.level}</td>
@@ -121,9 +124,11 @@ export function ManageCoacherSessionsView({
                           type='button'
                           variant='outline'
                           size='icon'
-                          aria-label='Ver sesion de usuario'
+                          aria-label='Ver sesión de usuario'
                           onClick={() =>
-                            navigate(getManageCoachingUserRoute(row.userId, row.id))
+                            navigate(
+                              getManageCoachingUserRoute(row.userId, row.id),
+                            )
                           }
                         >
                           <EyeIcon className='h-4 w-4' />

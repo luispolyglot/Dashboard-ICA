@@ -31,7 +31,9 @@ export function CoachingPersonalizedView({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [memberships, setMemberships] = useState<CoachingMembership[]>([])
-  const [completingExerciseWeek, setCompletingExerciseWeek] = useState<string | null>(null)
+  const [completingExerciseWeek, setCompletingExerciseWeek] = useState<
+    string | null
+  >(null)
 
   const loadData = async () => {
     setLoading(true)
@@ -148,7 +150,8 @@ export function CoachingPersonalizedView({
       ) : !selectedMembership ? (
         <Card>
           <CardContent className='py-6 text-sm text-muted-foreground'>
-            Todavia no tienes una sesion activa en coaching para tu idioma actual.
+            Todavía no tienes una sesión activa en coaching para tu idioma
+            actual.
           </CardContent>
         </Card>
       ) : (
