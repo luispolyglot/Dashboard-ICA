@@ -1788,7 +1788,7 @@ Deno.serve(async (req) => {
       .eq('id', userId)
       .maybeSingle<{ display_name: string | null; username: string | null }>()
 
-    const displayName =
+    const userDisplayName =
       (profileRow?.display_name || '').trim() ||
       (profileRow?.username || '').trim() ||
       'Usuario'
@@ -1808,6 +1808,32 @@ Deno.serve(async (req) => {
       canManageSession(admin, row.coach_user_id),
     )
 
+    const coachIds = Array.from(
+      new Set(
+        visibleRows
+          .map((row) => row.coach_user_id)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    )
+
+    const coachesById = new Map<string, string>()
+    if (coachIds.length > 0) {
+      const { data: coachProfiles } = await admin.adminClient
+        .from('profiles')
+        .select('id, display_name, username')
+        .in('id', coachIds)
+
+      for (const row of coachProfiles || []) {
+        const displayName =
+          typeof row.display_name === 'string' && row.display_name.trim().length > 0
+            ? row.display_name
+            : typeof row.username === 'string' && row.username.trim().length > 0
+              ? row.username
+              : 'Coach'
+        coachesById.set(String(row.id), displayName)
+      }
+    }
+
     const sessionIds = visibleRows.map((row) => row.id)
     const programData = await fetchProgramDataBySessionIds(
       admin.adminClient,
@@ -1821,7 +1847,9 @@ Deno.serve(async (req) => {
       visibleRows.map(async (row) => ({
         id: row.id,
         userId: row.user_id,
-        userDisplayName: displayName,
+        userDisplayName,
+        coachUserId: row.coach_user_id,
+        coachDisplayName: row.coach_user_id ? coachesById.get(row.coach_user_id) || 'Coach' : null,
         createdAt: row.created_at,
         targetLang: row.target_lang,
         nativeLang: row.native_lang,

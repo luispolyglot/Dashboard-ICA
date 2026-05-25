@@ -9,6 +9,7 @@ import {
   PlusIcon,
   RefreshCwIcon,
   Trash2Icon,
+  UserIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -39,7 +40,10 @@ import {
   upsertCoachingUser,
 } from '../services/coaching'
 import { LANGUAGES } from '../constants'
-import { getManageCoacherSessionsRoute, getManageCoachingUserRoute } from '../routes/paths'
+import {
+  getManageCoacherSessionsRoute,
+  getManageCoachingUserRoute,
+} from '../routes/paths'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -84,6 +88,11 @@ export function ManageCoachingView() {
     null,
   )
   const [closeReason, setCloseReason] = useState('')
+  const [changeCoacherModalOpen, setChangeCoacherModalOpen] = useState(false)
+  const [userToChangeCoacher, setUserToChangeCoacher] =
+    useState<CoachingManagedUser | null>(null)
+  const [nextCoacherUserId, setNextCoacherUserId] = useState('')
+  const [isChangingCoacher, setIsChangingCoacher] = useState(false)
 
   const [isCreateAdminModalOpen, setIsCreateAdminModalOpen] = useState(false)
   const [createAdminUserId, setCreateAdminUserId] = useState('')
@@ -218,7 +227,7 @@ export function ManageCoachingView() {
     }
 
     if (!createUserCoachUserId) {
-      setFeedback('Selecciona un coacher para asignar la sesion.')
+      setFeedback('Selecciona un coacher para asignar la sesión.')
       return
     }
 
@@ -267,13 +276,13 @@ export function ManageCoachingView() {
 
       setDeleteModalOpen(false)
       setUserToDelete(null)
-      setFeedback('Sesion de coaching archivada correctamente.')
+      setFeedback('Sesión de coaching archivada correctamente.')
       await loadData()
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
-          : 'No se pudo archivar la sesion de coaching.'
+          : 'No se pudo archivar la sesión de coaching.'
       setFeedback(message)
     } finally {
       setIsSavingUser(false)
@@ -289,13 +298,13 @@ export function ManageCoachingView() {
       await hardDeleteCoachingSession(userToHardDelete.id)
       setHardDeleteModalOpen(false)
       setUserToHardDelete(null)
-      setFeedback('Sesion eliminada definitivamente.')
+      setFeedback('Sesión eliminada definitivamente.')
       await loadData()
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
-          : 'No se pudo eliminar definitivamente la sesion.'
+          : 'No se pudo eliminar definitivamente la sesión.'
       setFeedback(message)
     } finally {
       setIsSavingUser(false)
@@ -321,7 +330,7 @@ export function ManageCoachingView() {
       await loadData()
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'No se pudo cerrar la sesion.'
+        err instanceof Error ? err.message : 'No se pudo cerrar la sesión.'
       setFeedback(message)
     } finally {
       setIsSavingUser(false)
@@ -338,6 +347,46 @@ export function ManageCoachingView() {
       const message =
         err instanceof Error ? err.message : 'No se pudo comenzar la sesión.'
       setFeedback(message)
+    }
+  }
+
+  const handleOpenChangeCoacherModal = (row: CoachingManagedUser) => {
+    setUserToChangeCoacher(row)
+    setNextCoacherUserId(row.coachUserId || '')
+    setChangeCoacherModalOpen(true)
+  }
+
+  const handleConfirmChangeCoacher = async () => {
+    if (!isSuperAdmin || !userToChangeCoacher || !isDirtySelectCoacher) return
+
+    setIsChangingCoacher(true)
+    setFeedback(null)
+    try {
+      await upsertCoachingUser({
+        sessionId: userToChangeCoacher.id,
+        userId: userToChangeCoacher.userId,
+        targetLang: userToChangeCoacher.targetLang,
+        nativeLang: userToChangeCoacher.nativeLang,
+        level: userToChangeCoacher.level,
+        coachUserId: nextCoacherUserId,
+        feedbackNmUrl: userToChangeCoacher.feedbackNmUrl,
+        feedbackNmNotes: userToChangeCoacher.feedbackNmNotes,
+        notes: userToChangeCoacher.notes,
+      })
+
+      setFeedback('Coacher de la sesión actualizado correctamente.')
+      setChangeCoacherModalOpen(false)
+      setUserToChangeCoacher(null)
+      setNextCoacherUserId('')
+      await loadData()
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'No se pudo cambiar el coacher de la sesión.'
+      setFeedback(message)
+    } finally {
+      setIsChangingCoacher(false)
     }
   }
 
@@ -367,9 +416,7 @@ export function ManageCoachingView() {
       await loadData()
     } catch (err) {
       const message =
-        err instanceof Error
-          ? err.message
-          : 'No se pudo guardar el coacher.'
+        err instanceof Error ? err.message : 'No se pudo guardar el coacher.'
       setFeedback(message)
     } finally {
       setIsSavingAdmin(false)
@@ -426,6 +473,11 @@ export function ManageCoachingView() {
       ),
     )
   }, [userToClose?.activatedAt])
+
+  const isDirtySelectCoacher = useMemo(() => {
+    if (!userToChangeCoacher || !nextCoacherUserId) return false
+    return nextCoacherUserId !== (userToChangeCoacher.coachUserId || '')
+  }, [nextCoacherUserId, userToChangeCoacher])
 
   return (
     <section className='mx-auto w-full max-w-7xl flex-1 overflow-y-auto px-5 py-8'>
@@ -549,7 +601,7 @@ export function ManageCoachingView() {
                     {isSuperAdmin && <th className='pb-2 font-medium'>ID</th>}
                     <th className='pb-2 font-medium'>Idioma</th>
                     <th className='pb-2 font-medium'>Nivel</th>
-                    <th className='pb-2 font-medium'>Coach</th>
+                    <th className='pb-2 font-medium'>Coacher</th>
                     <th className='pb-2 font-medium'>Estado</th>
                     <th className='pb-2 font-medium'>Comenzó</th>
                     <th className='pb-2 font-medium'>Activo</th>
@@ -611,7 +663,7 @@ export function ManageCoachingView() {
                                 type='button'
                                 variant='outline'
                                 size='icon'
-                                aria-label='Mas acciones de sesion'
+                                aria-label='Mas acciones de sesión'
                               >
                                 <MoreHorizontalIcon className='h-4 w-4' />
                               </Button>
@@ -635,6 +687,16 @@ export function ManageCoachingView() {
                                 >
                                   <CheckCheckIcon className='h-4 w-4' />
                                   Cerrar coaching
+                                </DropdownMenuItem>
+                              )}
+                              {isSuperAdmin && (
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleOpenChangeCoacherModal(row)
+                                  }
+                                >
+                                  <UserIcon className='h-4 w-4' />
+                                  Cambiar coacher
                                 </DropdownMenuItem>
                               )}
                               <DropdownMenuItem
@@ -709,7 +771,9 @@ export function ManageCoachingView() {
                             size='icon'
                             aria-label='Ver sesiones del coacher'
                             onClick={() =>
-                              navigate(getManageCoacherSessionsRoute(row.userId))
+                              navigate(
+                                getManageCoacherSessionsRoute(row.userId),
+                              )
                             }
                           >
                             <EyeIcon className='h-4 w-4' />
@@ -752,12 +816,15 @@ export function ManageCoachingView() {
                 id='coaching-coacher'
                 className='h-10 w-full rounded-md border bg-background px-3 text-sm'
                 value={createUserCoachUserId}
-                onChange={(event) => setCreateUserCoachUserId(event.target.value)}
+                onChange={(event) =>
+                  setCreateUserCoachUserId(event.target.value)
+                }
               >
                 <option value=''>Selecciona coacher</option>
                 {assignableCoachRows.map((row) => (
                   <option key={row.userId} value={row.userId}>
-                    {row.userDisplayName} {row.role === 'super_admin' ? '(super_admin)' : ''}
+                    {row.userDisplayName}{' '}
+                    {row.role === 'super_admin' ? '(super_admin)' : ''}
                   </option>
                 ))}
               </select>
@@ -821,7 +888,7 @@ export function ManageCoachingView() {
           <DialogHeader>
             <DialogTitle>Archivar sesión de coaching</DialogTitle>
             <DialogDescription>
-              Esta accion mueve la sesion a estado cancelled y conserva sus
+              Esta accion mueve la sesión a estado cancelled y conserva sus
               datos.
             </DialogDescription>
           </DialogHeader>
@@ -865,12 +932,12 @@ export function ManageCoachingView() {
             <DialogTitle>Eliminar sesión definitivamente</DialogTitle>
             <DialogDescription>
               Esta accion es irreversible. Se eliminaran datos y adjuntos de la
-              sesion.
+              sesión.
             </DialogDescription>
           </DialogHeader>
 
           <p className='text-sm text-muted-foreground'>
-            Sesion:{' '}
+            Sesión:{' '}
             <span className='font-medium text-foreground'>
               {userToHardDelete?.userDisplayName || '-'} ·{' '}
               {userToHardDelete?.targetLang || '-'}
@@ -906,8 +973,8 @@ export function ManageCoachingView() {
             <DialogTitle>Cerrar coaching</DialogTitle>
             <DialogDescription>
               {userToClose?.activatedAt
-                ? `Esta sesion va por la semana ${closePreviewWeek || 1}. ¿Deseas cerrarla ahora?`
-                : 'La sesion no tiene activacion registrada. Se cerrara igualmente.'}
+                ? `Esta sesión va por la semana ${closePreviewWeek || 1}. ¿Deseas cerrarla ahora?`
+                : 'La sesión no tiene activacion registrada. Se cerrara igualmente.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -938,6 +1005,78 @@ export function ManageCoachingView() {
               disabled={isSavingUser}
             >
               {isSavingUser ? 'Cerrando...' : 'Confirmar cierre'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={changeCoacherModalOpen}
+        onOpenChange={(open) => {
+          if (isChangingCoacher) return
+          setChangeCoacherModalOpen(open)
+          if (!open) {
+            setUserToChangeCoacher(null)
+            setNextCoacherUserId('')
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cambiar coacher</DialogTitle>
+            <DialogDescription>
+              Selecciona el coacher que tendra asignada esta sesión.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className='space-y-3'>
+            <p className='text-sm text-muted-foreground'>
+              Sesión:{' '}
+              <span className='font-medium text-foreground'>
+                {userToChangeCoacher?.userDisplayName || '-'} ·{' '}
+                {userToChangeCoacher?.targetLang || '-'}
+              </span>
+            </p>
+
+            <div className='space-y-1.5'>
+              <Label htmlFor='change-coacher-select'>Coacher</Label>
+              <select
+                id='change-coacher-select'
+                className='h-10 w-full rounded-md border bg-background px-3 text-sm'
+                value={nextCoacherUserId}
+                onChange={(event) => setNextCoacherUserId(event.target.value)}
+                disabled={isChangingCoacher}
+              >
+                <option value=''>Selecciona coacher</option>
+                {assignableCoachRows.map((row) => (
+                  <option key={row.userId} value={row.userId}>
+                    {row.userDisplayName}{' '}
+                    {row.role === 'super_admin' ? '(super_admin)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => {
+                setChangeCoacherModalOpen(false)
+                setUserToChangeCoacher(null)
+                setNextCoacherUserId('')
+              }}
+              disabled={isChangingCoacher}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type='button'
+              onClick={() => void handleConfirmChangeCoacher()}
+              disabled={isChangingCoacher || !isDirtySelectCoacher}
+            >
+              {isChangingCoacher ? 'Cambiando...' : 'Confirmar cambio'}
             </Button>
           </DialogFooter>
         </DialogContent>
