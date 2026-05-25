@@ -732,8 +732,18 @@ export function IcaTestMonthView({
           </CardHeader>
           <CardContent className='space-y-4'>
             <div className='rounded-lg border border-amber-300/70 bg-amber-50/60 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100'>
-              No podrás navegar fuera del test sin finalizarlo. Cada respuesta
-              se guarda en tiempo real en la base de datos.
+              <strong>⚠️ IMPORTANTE</strong>
+              <ul className='list-inside list-disc mt-2'>
+                <li>No podrás navegar fuera del test sin finalizarlo.</li>
+                <li>
+                  Cada respuesta se guarda en tiempo real en la base de datos.
+                </li>
+                <li>
+                  <strong>Posees 6 segundos</strong> para responder cada
+                  pregunta. Si el tiempo se agota, la pregunta contará como
+                  incorrecta y avanzarás a la siguiente.
+                </li>
+              </ul>
             </div>
             {saveError && (
               <p className='text-sm text-destructive'>{saveError}</p>
