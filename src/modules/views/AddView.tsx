@@ -483,15 +483,14 @@ export function AddView({
                 : 'Guardar palabra'}
           </Button>
 
-          {hasAllRecentCreatedToday && (
-            <Button
-              asChild
-              variant='outline'
-              className='mt-3 h-11 w-full text-base font-semibold lg:hidden'
-            >
-              <Link to='/activation-phrase'>🧩 Crear nueva frase</Link>
-            </Button>
-          )}
+          <Button
+            asChild
+            disabled={!hasAllRecentCreatedToday}
+            variant='outline'
+            className='mt-3 h-11 w-full text-base font-semibold lg:hidden'
+          >
+            <Link to='/activation-phrase'>🧩 Crear nueva frase</Link>
+          </Button>
 
           {showDuplicateWarning && (
             <p className='mt-2 text-xs text-red-600 dark:text-red-300'>
@@ -504,11 +503,14 @@ export function AddView({
 
         <div className='hidden w-1/4 lg:block pt-12'>
           {recentList}
-          {hasAllRecentCreatedToday && (
-            <Button asChild variant='outline' className='mt-3 w-full'>
-              <Link to='/activation-phrase'>🧩 Crear nueva frase</Link>
-            </Button>
-          )}
+          <Button
+            disabled={!hasAllRecentCreatedToday}
+            asChild
+            variant='outline'
+            className='mt-3 w-full'
+          >
+            <Link to='/activation-phrase'>🧩 Crear nueva frase</Link>
+          </Button>
         </div>
       </div>
     </section>
