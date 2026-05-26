@@ -59,6 +59,16 @@ function normalizeComparableText(value: string): string {
   return value.normalize('NFKC').trim().toLowerCase()
 }
 
+function isFromToday(timestamp: number): boolean {
+  const now = new Date()
+  const date = new Date(timestamp)
+  return (
+    now.getFullYear() === date.getFullYear() &&
+    now.getMonth() === date.getMonth() &&
+    now.getDate() === date.getDate()
+  )
+}
+
 export function AddView({
   cards,
   setCards,
@@ -87,6 +97,8 @@ export function AddView({
   const spellingRequestRef = useRef(0)
 
   const recent = cards.slice(-5).reverse()
+  const hasAllRecentCreatedToday =
+    recent.length === 5 && recent.every((card) => isFromToday(card.createdAt))
   const todayProgress = getTodayProgress(dailyProgress)
   const trimmedTarget = target.trim()
   const duplicateWord = cards.find(
@@ -471,6 +483,16 @@ export function AddView({
                 : 'Guardar palabra'}
           </Button>
 
+          {hasAllRecentCreatedToday && (
+            <Button
+              asChild
+              variant='outline'
+              className='mt-3 h-11 w-full text-base font-semibold lg:hidden'
+            >
+              <Link to='/activation-phrase'>🧩 Crear nueva frase</Link>
+            </Button>
+          )}
+
           {showDuplicateWarning && (
             <p className='mt-2 text-xs text-red-600 dark:text-red-300'>
               Esta palabra ya existe en tu baúl ICA.
@@ -480,7 +502,14 @@ export function AddView({
           {recentList && <div className='mt-8 lg:hidden'>{recentList}</div>}
         </div>
 
-        <div className='hidden w-1/4 lg:block pt-12'>{recentList}</div>
+        <div className='hidden w-1/4 lg:block pt-12'>
+          {recentList}
+          {hasAllRecentCreatedToday && (
+            <Button asChild variant='outline' className='mt-3 w-full'>
+              <Link to='/activation-phrase'>🧩 Crear nueva frase</Link>
+            </Button>
+          )}
+        </div>
       </div>
     </section>
   )
