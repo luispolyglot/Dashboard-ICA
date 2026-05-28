@@ -9,6 +9,7 @@ import { LangEditModal } from '../components/LangEditModal'
 import { MobileBottomNav } from '../components/MobileBottomNav'
 import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
+
 import { fetchCoachingPendingReviewSummary } from '../services/coaching'
 import { fetchTodayVoiceActivationCount } from '../services/phraseVoiceActivations'
 import { LanguageSetup } from '../views/LanguageSetup'
@@ -182,7 +183,8 @@ export function DashboardLayout() {
     const hasFiveWords = progress.wordsAdded >= CREATION_WORDS_GOAL
     const currentMilestones: DailyMilestones = {
       flash: progress.reviewCorrect >= GOAL,
-      ica: hasFiveWords && progress.phraseGenerated && voiceActivationsToday > 0,
+      ica:
+        hasFiveWords && progress.phraseGenerated && voiceActivationsToday > 0,
     }
 
     if (!milestonesReadyRef.current) {
