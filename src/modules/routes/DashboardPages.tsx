@@ -299,7 +299,7 @@ export function ProfilePage() {
 
 export function MyAnalyticsPage() {
   return (
-    <PageLayout>
+    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
       <MyAnalyticsView />
     </PageLayout>
   )
@@ -310,7 +310,7 @@ export function IcaTestsPage() {
   if (!config) return null
 
   return (
-    <PageLayout>
+    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
       <IcaTestsView
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
@@ -361,7 +361,7 @@ export function TrackersPage() {
   if (!config) return null
 
   return (
-    <PageLayout>
+    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
       <TrackersView targetLang={config.targetLang} nativeLang={config.nativeLang} />
     </PageLayout>
   )
@@ -396,7 +396,7 @@ export function TrackerDetailPage() {
 
 export function AnalyticsPage() {
   return (
-    <PageLayout>
+    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
       <AdminAnalyticsView />
     </PageLayout>
   )
@@ -404,7 +404,7 @@ export function AnalyticsPage() {
 
 export function ManageWhitelistPage() {
   return (
-    <PageLayout>
+    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
       <ManageWhitelistView />
     </PageLayout>
   )
@@ -412,7 +412,7 @@ export function ManageWhitelistPage() {
 
 export function HistoricLeaderboardPage() {
   return (
-    <PageLayout>
+    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
       <HistoricLeaderboardView />
     </PageLayout>
   )
@@ -422,7 +422,7 @@ export function CoachingPersonalizedPage() {
   const { config } = useDashboardContext()
 
   return (
-    <PageLayout>
+    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
       <CoachingPersonalizedView targetLang={config?.targetLang} />
     </PageLayout>
   )
@@ -430,7 +430,7 @@ export function CoachingPersonalizedPage() {
 
 export function ManageCoachingPage() {
   return (
-    <PageLayout>
+    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
       <ManageCoachingView />
     </PageLayout>
   )
