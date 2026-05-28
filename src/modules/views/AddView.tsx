@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   CREATION_WORDS_GOAL,
   IMPORTANCE_LEVELS,
@@ -66,6 +66,7 @@ export function AddView({
   dailyProgress,
   onWordAdded,
 }: AddViewProps) {
+  const navigate = useNavigate()
   const [target, setTarget] = useState('')
   const [native, setNative] = useState('')
   const [importance, setImportance] = useState<ImportanceKey | null>(null)
@@ -473,12 +474,13 @@ export function AddView({
           </Button>
 
           <Button
-            asChild
             disabled={!canCreatePhrase}
+            type='button'
+            onClick={() => navigate(DASHBOARD_ROUTES.activationPhrase)}
             variant='outline'
             className='mt-3 h-11 w-full text-base font-semibold lg:hidden'
           >
-            <Link to='/activation-phrase'>🧩 Crear nueva frase</Link>
+            🧩 Crear nueva frase
           </Button>
 
           {showDuplicateWarning && (
@@ -494,11 +496,12 @@ export function AddView({
           {recentList}
           <Button
             disabled={!canCreatePhrase}
-            asChild
+            type='button'
+            onClick={() => navigate(DASHBOARD_ROUTES.activationPhrase)}
             variant='outline'
             className='mt-3 w-full'
           >
-            <Link to='/activation-phrase'>🧩 Crear nueva frase</Link>
+            🧩 Crear nueva frase
           </Button>
         </div>
       </div>
