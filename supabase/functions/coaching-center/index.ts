@@ -4,6 +4,7 @@ import {
   ensureCoachingAdmin,
   parseCoachScopes,
 } from '../_shared/coaching-auth.ts'
+import { countPendingMasterNotesForSession } from './pending-review.ts'
 
 type CoachingCenterPayload = {
   action?: string
@@ -992,6 +993,7 @@ Deno.serve(async (req) => {
     )
 
     const sessionIds = visibleRows.map((row) => row.id)
+    const userIds = Array.from(new Set(visibleRows.map((row) => row.user_id)))
     const programData = await fetchProgramDataBySessionIds(
       admin.adminClient,
       sessionIds,
@@ -1000,9 +1002,53 @@ Deno.serve(async (req) => {
       return jsonResponse(500, { error: programData.error })
     }
 
+    const pendingReviewNotes: Array<{
+      userId: string
+      targetLang: string
+      closedAt: string | null
+      updatedAt: string | null
+      feedbackLoomUrl: string | null
+      feedbackNotes: string | null
+    }> = []
+    if (userIds.length > 0) {
+      const { data: notesData, error: notesError } = await admin.adminClient
+        .from('master_notes')
+        .select('user_id, target_lang, closed_at, updated_at, coaching_feedback_loom_url, coaching_feedback_notes')
+        .in('user_id', userIds)
+        .eq('state', 'closed')
+
+      if (notesError) {
+        return jsonResponse(500, { error: notesError.message })
+      }
+
+      for (const note of notesData || []) {
+        const userId = String(note.user_id)
+        const targetLang = String(note.target_lang || '').trim().toLowerCase()
+        if (!targetLang) continue
+
+        pendingReviewNotes.push({
+          userId,
+          targetLang,
+          closedAt: safeString((note as { closed_at?: unknown }).closed_at),
+          updatedAt: safeString((note as { updated_at?: unknown }).updated_at),
+          feedbackLoomUrl: safeString(note.coaching_feedback_loom_url),
+          feedbackNotes: safeString(note.coaching_feedback_notes),
+        })
+      }
+    }
+
     const rows = await Promise.all(
       visibleRows.map(async (row) => {
         const activeSettings = settingsByUserId.get(row.user_id)
+        const pendingReviewCount = countPendingMasterNotesForSession(
+          {
+            userId: row.user_id,
+            targetLang: row.target_lang,
+            activatedAt: row.activated_at,
+            durationWeeks: row.duration_weeks || 12,
+          },
+          pendingReviewNotes,
+        )
         return {
           id: row.id,
           userId: row.user_id,
@@ -1028,6 +1074,8 @@ Deno.serve(async (req) => {
           activeTargetLang: activeSettings?.target_lang || null,
           activeNativeLang: activeSettings?.native_lang || null,
           activeLevel: activeSettings?.cefr_level || null,
+          hasPendingMasterNotesReview: pendingReviewCount > 0,
+          pendingMasterNotesReviewCount: pendingReviewCount,
         }
       }),
     )

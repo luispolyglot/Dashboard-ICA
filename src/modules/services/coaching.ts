@@ -77,6 +77,8 @@ export type CoachingManagedUser = {
   activeTargetLang: string | null
   activeNativeLang: string | null
   activeLevel: string | null
+  hasPendingMasterNotesReview?: boolean
+  pendingMasterNotesReviewCount?: number
 }
 
 export type CoachingAvailableUser = {

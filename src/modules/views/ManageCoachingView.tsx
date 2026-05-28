@@ -50,6 +50,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { PendingReviewDot } from '../components/PendingReviewDot'
 
 function formatDateTime(value: string): string {
   const date = new Date(value)
@@ -610,117 +611,139 @@ export function ManageCoachingView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredUsers.map((row) => (
-                    <tr
-                      key={row.id}
-                      className='border-b align-middle last:border-b-0'
-                    >
-                      <td className='py-2'>
-                        <p className='font-medium'>{row.userDisplayName}</p>
-                      </td>
-                      {isSuperAdmin && (
+                  {filteredUsers.map((row) => {
+                    const pendingReviewCount =
+                      row.pendingMasterNotesReviewCount || 0
+                    const hasPendingReview =
+                      row.hasPendingMasterNotesReview || pendingReviewCount > 0
+                    const pendingReviewLabel =
+                      pendingReviewCount === 1
+                        ? '1 nota maestra pendiente de revision'
+                        : `${pendingReviewCount} notas maestras pendientes de revision`
+
+                    return (
+                      <tr
+                        key={row.id}
+                        className='border-b align-middle last:border-b-0'
+                      >
                         <td className='py-2'>
-                          <p className='text-xs text-muted-foreground'>
-                            {row.userId}
+                          <p className='inline-flex items-center gap-2 font-medium'>
+                            <span>{row.userDisplayName}</span>
+                            {hasPendingReview && (
+                              <PendingReviewDot
+                                useIconSpeaker
+                                title={pendingReviewLabel}
+                              />
+                            )}
                           </p>
                         </td>
-                      )}
-                      <td className='py-2'>
-                        <p>{row.targetLang}</p>
-                      </td>
-                      <td className='py-2'>{row.level}</td>
-                      <td className='py-2'>{row.coachDisplayName || '-'}</td>
-                      <td className='py-2'>
-                        {statusLabels[row.status] || row.status}
-                      </td>
-                      <td className='py-2 text-xs text-muted-foreground'>
-                        {row.activatedAt
-                          ? formatDateTime(row.activatedAt)
-                          : '-'}
-                      </td>
-                      <td className='py-2'>{row.isActive ? 'Sí' : 'No'}</td>
-                      <td className='py-2 text-xs text-muted-foreground'>
-                        {formatDateTime(row.updatedAt)}
-                      </td>
-                      <td className='py-2'>
-                        <div className='flex flex-wrap gap-2'>
-                          <Button
-                            type='button'
-                            variant='outline'
-                            size='icon'
-                            aria-label='Ver usuario coaching'
-                            onClick={() =>
-                              navigate(
-                                getManageCoachingUserRoute(row.userId, row.id),
-                              )
-                            }
-                          >
-                            <EyeIcon className='h-4 w-4' />
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                type='button'
-                                variant='outline'
-                                size='icon'
-                                aria-label='Mas acciones de sesión'
-                              >
-                                <MoreHorizontalIcon className='h-4 w-4' />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align='end'>
-                              {row.status === 'draft' && (
-                                <DropdownMenuItem
-                                  onClick={() => void handleStartSession(row)}
+                        {isSuperAdmin && (
+                          <td className='py-2'>
+                            <p className='text-xs text-muted-foreground'>
+                              {row.userId}
+                            </p>
+                          </td>
+                        )}
+                        <td className='py-2'>
+                          <p>{row.targetLang}</p>
+                        </td>
+                        <td className='py-2'>{row.level}</td>
+                        <td className='py-2'>{row.coachDisplayName || '-'}</td>
+                        <td className='py-2'>
+                          {statusLabels[row.status] || row.status}
+                        </td>
+                        <td className='py-2 text-xs text-muted-foreground'>
+                          {row.activatedAt
+                            ? formatDateTime(row.activatedAt)
+                            : '-'}
+                        </td>
+                        <td className='py-2'>{row.isActive ? 'Sí' : 'No'}</td>
+                        <td className='py-2 text-xs text-muted-foreground'>
+                          {formatDateTime(row.updatedAt)}
+                        </td>
+                        <td className='py-2'>
+                          <div className='flex flex-wrap gap-2'>
+                            <Button
+                              type='button'
+                              variant='outline'
+                              size='icon'
+                              aria-label='Ver usuario coaching'
+                              onClick={() =>
+                                navigate(
+                                  getManageCoachingUserRoute(
+                                    row.userId,
+                                    row.id,
+                                  ),
+                                )
+                              }
+                            >
+                              <EyeIcon className='h-4 w-4' />
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  type='button'
+                                  variant='outline'
+                                  size='icon'
+                                  aria-label='Mas acciones de sesión'
                                 >
-                                  <PlayIcon className='h-4 w-4' />
-                                  Comenzar
-                                </DropdownMenuItem>
-                              )}
-                              {row.status !== 'draft' && (
+                                  <MoreHorizontalIcon className='h-4 w-4' />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align='end'>
+                                {row.status === 'draft' && (
+                                  <DropdownMenuItem
+                                    onClick={() => void handleStartSession(row)}
+                                  >
+                                    <PlayIcon className='h-4 w-4' />
+                                    Comenzar
+                                  </DropdownMenuItem>
+                                )}
+                                {row.status !== 'draft' && (
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setUserToClose(row)
+                                      setCloseReason('')
+                                      setCloseModalOpen(true)
+                                    }}
+                                  >
+                                    <CheckCheckIcon className='h-4 w-4' />
+                                    Cerrar coaching
+                                  </DropdownMenuItem>
+                                )}
+                                {isSuperAdmin && (
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      handleOpenChangeCoacherModal(row)
+                                    }
+                                  >
+                                    <UserIcon className='h-4 w-4' />
+                                    Cambiar coacher
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem
+                                  onClick={() => handleAskDeleteUser(row)}
+                                >
+                                  <ArchiveIcon className='h-4 w-4' />
+                                  Archivar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  variant='destructive'
                                   onClick={() => {
-                                    setUserToClose(row)
-                                    setCloseReason('')
-                                    setCloseModalOpen(true)
+                                    setUserToHardDelete(row)
+                                    setHardDeleteModalOpen(true)
                                   }}
                                 >
-                                  <CheckCheckIcon className='h-4 w-4' />
-                                  Cerrar coaching
+                                  <Trash2Icon className='h-4 w-4' />
+                                  Eliminar definitivo
                                 </DropdownMenuItem>
-                              )}
-                              {isSuperAdmin && (
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    handleOpenChangeCoacherModal(row)
-                                  }
-                                >
-                                  <UserIcon className='h-4 w-4' />
-                                  Cambiar coacher
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuItem
-                                onClick={() => handleAskDeleteUser(row)}
-                              >
-                                <ArchiveIcon className='h-4 w-4' />
-                                Archivar
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                variant='destructive'
-                                onClick={() => {
-                                  setUserToHardDelete(row)
-                                  setHardDeleteModalOpen(true)
-                                }}
-                              >
-                                <Trash2Icon className='h-4 w-4' />
-                                Eliminar definitivo
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
