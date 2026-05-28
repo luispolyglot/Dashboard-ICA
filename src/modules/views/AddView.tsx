@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   CREATION_WORDS_GOAL,
   IMPORTANCE_LEVELS,
@@ -59,16 +59,6 @@ function normalizeComparableText(value: string): string {
   return value.normalize('NFKC').trim().toLowerCase()
 }
 
-function isFromToday(timestamp: number): boolean {
-  const now = new Date()
-  const date = new Date(timestamp)
-  return (
-    now.getFullYear() === date.getFullYear() &&
-    now.getMonth() === date.getMonth() &&
-    now.getDate() === date.getDate()
-  )
-}
-
 export function AddView({
   cards,
   setCards,
@@ -76,6 +66,7 @@ export function AddView({
   dailyProgress,
   onWordAdded,
 }: AddViewProps) {
+  const navigate = useNavigate()
   const [target, setTarget] = useState('')
   const [native, setNative] = useState('')
   const [importance, setImportance] = useState<ImportanceKey | null>(null)
@@ -97,9 +88,8 @@ export function AddView({
   const spellingRequestRef = useRef(0)
 
   const recent = cards.slice(-5).reverse()
-  const hasAllRecentCreatedToday =
-    recent.length === 5 && recent.every((card) => isFromToday(card.createdAt))
   const todayProgress = getTodayProgress(dailyProgress)
+  const canCreatePhrase = todayProgress.wordsAdded >= CREATION_WORDS_GOAL
   const trimmedTarget = target.trim()
   const duplicateWord = cards.find(
     (card) =>
@@ -484,12 +474,13 @@ export function AddView({
           </Button>
 
           <Button
-            asChild
-            disabled={!hasAllRecentCreatedToday}
+            disabled={!canCreatePhrase}
+            type='button'
+            onClick={() => navigate(DASHBOARD_ROUTES.activationPhrase)}
             variant='outline'
             className='mt-3 h-11 w-full text-base font-semibold lg:hidden'
           >
-            <Link to='/activation-phrase'>🧩 Crear nueva frase</Link>
+            🧩 Crear nueva frase
           </Button>
 
           {showDuplicateWarning && (
@@ -504,12 +495,13 @@ export function AddView({
         <div className='hidden w-1/4 lg:block pt-12'>
           {recentList}
           <Button
-            disabled={!hasAllRecentCreatedToday}
-            asChild
+            disabled={!canCreatePhrase}
+            type='button'
+            onClick={() => navigate(DASHBOARD_ROUTES.activationPhrase)}
             variant='outline'
             className='mt-3 w-full'
           >
-            <Link to='/activation-phrase'>🧩 Crear nueva frase</Link>
+            🧩 Crear nueva frase
           </Button>
         </div>
       </div>
