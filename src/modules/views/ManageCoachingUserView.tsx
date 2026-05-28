@@ -65,6 +65,7 @@ import {
   upsertCoachingUser,
 } from '../services/coaching'
 import { CoachingProgramPreview } from './CoachingProgramPreview'
+import { PendingReviewDot } from '../components/PendingReviewDot'
 
 type ManageCoachingUserViewProps = {
   userId: string
@@ -1284,10 +1285,23 @@ export function ManageCoachingUserView({
                     Boolean(classDraft.imageFile) ||
                     (classDraft.removeImage && hasExistingImage)
                   const closedNotes = closedNotesByWeek.get(weekKey) || []
+                  const hasPendingCoachReview = closedNotes.some(
+                    (note) => !note.feedbackLoomUrl && !note.feedbackNotes,
+                  )
 
                   return (
                     <AccordionItem key={weekKey} value={weekKey}>
-                      <AccordionTrigger>Semana {week}</AccordionTrigger>
+                      <AccordionTrigger>
+                        <span className='inline-flex items-center gap-2'>
+                          <span>Semana {week}</span>
+                          {hasPendingCoachReview && (
+                            <PendingReviewDot
+                              title='Tiene notas maestras cerradas pendientes de revision del coach.'
+                              useIconSpeaker
+                            />
+                          )}
+                        </span>
+                      </AccordionTrigger>
                       <AccordionContent className='space-y-4'>
                         <Card>
                           <CardHeader>
