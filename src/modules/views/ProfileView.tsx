@@ -21,6 +21,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PendingReviewDot } from '../components/PendingReviewDot'
 import {
   Dialog,
   DialogContent,
@@ -36,6 +37,7 @@ import { useIcaTestsOverview } from '../hooks/useIcaTestsOverview'
 import { fetchAdminRole } from '../services/adminAnalytics'
 import {
   fetchCoachingAccess,
+  fetchCoachingPendingReviewSummary,
   fetchMyCoachingDashboard,
 } from '../services/coaching'
 import { DASHBOARD_ROUTES } from '../routes/paths'
@@ -77,6 +79,8 @@ export function ProfileView({
   const [canSeeCoachingPersonalized, setCanSeeCoachingPersonalized] =
     useState(false)
   const [canManageCoaching, setCanManageCoaching] = useState(false)
+  const [pendingCoachingSessions, setPendingCoachingSessions] = useState(0)
+  const [pendingCoachingNotes, setPendingCoachingNotes] = useState(0)
   const [isEditingName, setIsEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
   const [nameError, setNameError] = useState<string | null>(null)
@@ -117,10 +121,16 @@ export function ProfileView({
     let isMounted = true
 
     const run = async () => {
-      const [role, coachingAccess, coachingMemberships] = await Promise.all([
+      const [role, coachingAccess, coachingMemberships, pendingSummary] =
+        await Promise.all([
         fetchAdminRole(),
         fetchCoachingAccess().catch(() => null),
         fetchMyCoachingDashboard(config?.targetLang).catch(() => []),
+        fetchCoachingPendingReviewSummary().catch(() => ({
+          hasPendingReviews: false,
+          pendingSessions: 0,
+          pendingNotes: 0,
+        })),
       ])
       if (!isMounted) return
 
@@ -131,6 +141,8 @@ export function ProfileView({
         Array.isArray(coachingMemberships) && coachingMemberships.length > 0,
       )
       setCanManageCoaching(Boolean(coachingAccess?.isCoachingAdmin))
+      setPendingCoachingSessions(pendingSummary.pendingSessions)
+      setPendingCoachingNotes(pendingSummary.pendingNotes)
     }
 
     void run()
@@ -504,6 +516,12 @@ export function ProfileView({
               <CardTitle className='flex items-center gap-2'>
                 <UsersIcon className='h-4 w-4' />
                 Administrar Coaching
+                {pendingCoachingSessions > 0 && (
+                  <PendingReviewDot
+                    title={`Tienes ${pendingCoachingNotes} notas pendientes de revision en ${pendingCoachingSessions} sesiones.`}
+                    useIconSpeaker
+                  />
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent className='space-y-3'>
@@ -511,6 +529,14 @@ export function ProfileView({
                 Gestiona usuarios por idioma/nivel, feedback y objetivos
                 personalizados.
               </p>
+              {pendingCoachingSessions > 0 && (
+                <p className='text-sm text-amber-600'>
+                  Pendientes: {pendingCoachingNotes} nota
+                  {pendingCoachingNotes === 1 ? '' : 's'} en{' '}
+                  {pendingCoachingSessions} sesion
+                  {pendingCoachingSessions === 1 ? '' : 'es'}.
+                </p>
+              )}
               <Button type='button' variant='outline' asChild>
                 <Link to={DASHBOARD_ROUTES.manageCoaching}>
                   Abrir panel de Coaching

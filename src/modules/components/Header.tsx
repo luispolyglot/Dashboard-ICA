@@ -5,6 +5,7 @@ import { LeaderboardMenu } from './LeaderboardMenu'
 import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import type { DailyProgressMap } from '../types'
+import { PendingReviewDot } from './PendingReviewDot'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -17,6 +18,7 @@ type HeaderProps = {
   dailyProgress: DailyProgressMap
   voiceActivationsToday: number
   shouldHighlightProfileButton: boolean
+  shouldHighlightCoachingProfileButton?: boolean
   boltButtonRef: (node: HTMLButtonElement | null) => void
 }
 
@@ -87,6 +89,7 @@ export function Header({
   dailyProgress,
   voiceActivationsToday,
   shouldHighlightProfileButton,
+  shouldHighlightCoachingProfileButton = false,
   boltButtonRef,
 }: HeaderProps) {
   const navigate = useNavigate()
@@ -104,8 +107,19 @@ export function Header({
   const { theme } = useTheme()
   const isOnProfileRoute = location.pathname === DASHBOARD_ROUTES.profile
   const isOnIcaTestsRoute = location.pathname.startsWith(DASHBOARD_ROUTES.testsIca)
+  const isOnManageCoachingRoute = location.pathname.startsWith(
+    DASHBOARD_ROUTES.manageCoaching,
+  )
+  const hasIcaProfileAlert = shouldHighlightProfileButton && !isOnIcaTestsRoute
+  const hasCoachingProfileAlert =
+    shouldHighlightCoachingProfileButton && !isOnManageCoachingRoute
   const shouldPulseProfileButton =
-    shouldHighlightProfileButton && !isOnProfileRoute && !isOnIcaTestsRoute
+    (hasIcaProfileAlert || hasCoachingProfileAlert) && !isOnProfileRoute
+  const profileAlertTitle = hasCoachingProfileAlert
+    ? hasIcaProfileAlert
+      ? 'Tienes novedades: test ICA y coaching pendiente de revision.'
+      : 'Tienes notas maestras pendientes de revision en coaching.'
+    : 'Tienes un test ICA disponible este mes.'
 
   return (
     <header className='bg-background'>
@@ -145,9 +159,11 @@ export function Header({
                   }
                 >
                   {shouldPulseProfileButton && (
-                    <span className='pointer-events-none absolute -right-0.5 -top-0.5 size-3'>
-                      <span className='absolute inset-0 rounded-full bg-amber-300/80 animate-pulse' />
-                      <span className='absolute inset-0 rounded-full bg-primary animate-ping' />
+                    <span className='pointer-events-none absolute -right-1 -top-1'>
+                      <PendingReviewDot
+                        title={profileAlertTitle}
+                        useIconSpeaker={hasCoachingProfileAlert}
+                      />
                     </span>
                   )}
                   <Link

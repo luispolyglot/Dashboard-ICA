@@ -9,6 +9,7 @@ import { LangEditModal } from '../components/LangEditModal'
 import { MobileBottomNav } from '../components/MobileBottomNav'
 import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
+import { fetchCoachingPendingReviewSummary } from '../services/coaching'
 import { fetchTodayVoiceActivationCount } from '../services/phraseVoiceActivations'
 import { LanguageSetup } from '../views/LanguageSetup'
 
@@ -94,11 +95,49 @@ export function DashboardLayout() {
   const [flightQueue, setFlightQueue] = useState(0)
   const [activeFlight, setActiveFlight] = useState(0)
   const [voiceActivationsToday, setVoiceActivationsToday] = useState(0)
+  const [hasPendingCoachingReview, setHasPendingCoachingReview] =
+    useState(false)
   const { canHighlightCurrentMonth } = useIcaTestsOverview({
     targetLang: config?.targetLang,
     nativeLang: config?.nativeLang,
     cards,
   })
+
+  useEffect(() => {
+    if (loading) return
+    let active = true
+
+    const refreshPendingCoachingReview = async (): Promise<void> => {
+      try {
+        const summary = await fetchCoachingPendingReviewSummary()
+        if (!active) return
+        setHasPendingCoachingReview(summary.hasPendingReviews)
+      } catch {
+        if (!active) return
+        setHasPendingCoachingReview(false)
+      }
+    }
+
+    void refreshPendingCoachingReview()
+
+    const onFocus = () => {
+      void refreshPendingCoachingReview()
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshPendingCoachingReview()
+      }
+    }
+
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      active = false
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [loading, location.pathname])
 
   useEffect(() => {
     if (loading) return
@@ -192,6 +231,7 @@ export function DashboardLayout() {
           dailyProgress={dailyProgress}
           voiceActivationsToday={voiceActivationsToday}
           shouldHighlightProfileButton={canHighlightCurrentMonth}
+          shouldHighlightCoachingProfileButton={hasPendingCoachingReview}
           boltButtonRef={(node) => {
             boltButtonRef.current = node
           }}
