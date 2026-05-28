@@ -81,6 +81,12 @@ export type CoachingManagedUser = {
   pendingMasterNotesReviewCount?: number
 }
 
+export type CoachingPendingReviewSummary = {
+  hasPendingReviews: boolean
+  pendingSessions: number
+  pendingNotes: number
+}
+
 export type CoachingAvailableUser = {
   userId: string
   userDisplayName: string
@@ -253,6 +259,34 @@ export async function fetchCoachingManagedUsers(): Promise<CoachingManagedUser[]
   )
 
   return Array.isArray(data.rows) ? data.rows : []
+}
+
+export async function fetchCoachingPendingReviewSummary(): Promise<CoachingPendingReviewSummary> {
+  const access = await fetchCoachingAccess()
+  if (!access?.isCoachingAdmin) {
+    return {
+      hasPendingReviews: false,
+      pendingSessions: 0,
+      pendingNotes: 0,
+    }
+  }
+
+  const rows = await fetchCoachingManagedUsers()
+  const pendingSessions = rows.filter((row) => {
+    const count = row.pendingMasterNotesReviewCount || 0
+    return row.hasPendingMasterNotesReview || count > 0
+  }).length
+
+  const pendingNotes = rows.reduce((total, row) => {
+    const count = row.pendingMasterNotesReviewCount || 0
+    return total + (count > 0 ? count : 0)
+  }, 0)
+
+  return {
+    hasPendingReviews: pendingSessions > 0,
+    pendingSessions,
+    pendingNotes,
+  }
 }
 
 export async function fetchAvailableUsersForCoaching(): Promise<CoachingAvailableUser[]> {
