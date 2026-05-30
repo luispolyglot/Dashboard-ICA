@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, RefObject } from 'react'
-import { Outlet, useLocation } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import { FullscreenLoading } from '@/components/ui/fullscreen-loading'
 import { Header } from '../components/Header'
 import { IcaTestsAvailableModal } from '../components/IcaTestsAvailableModal'
@@ -11,7 +12,14 @@ import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
 
 import { fetchCoachingPendingReviewSummary } from '../services/coaching'
+import { fetchCalendarIcademyEntries } from '../services/calendarIcademy'
+import {
+  fetchCalendarIcademyPreferences,
+  markCalendarIcademyNotificationShown,
+} from '../services/calendarIcademyPreferences'
+import { buildCalendarIcademyReminders } from '../services/calendarIcademyReminders'
 import { fetchTodayVoiceActivationCount } from '../services/phraseVoiceActivations'
+import { DASHBOARD_ROUTES } from '../routes/paths'
 import { LanguageSetup } from '../views/LanguageSetup'
 
 type DailyMilestones = {
@@ -79,6 +87,7 @@ function BoltFlightFx({ trigger, boltButtonRef, onDone }: BoltFlightFxProps) {
 
 export function DashboardLayout() {
   const location = useLocation()
+  const navigate = useNavigate()
   const {
     config,
     cards,
@@ -91,6 +100,7 @@ export function DashboardLayout() {
   } = useDashboardContext()
 
   const boltButtonRef = useRef<HTMLButtonElement | null>(null)
+  const hasCheckedCalendarNotificationsRef = useRef(false)
   const previousMilestonesRef = useRef<DailyMilestones | null>(null)
   const milestonesReadyRef = useRef(false)
   const [flightQueue, setFlightQueue] = useState(0)
@@ -207,6 +217,64 @@ export function DashboardLayout() {
 
     previousMilestonesRef.current = currentMilestones
   }, [dailyProgress, loading, voiceActivationsToday])
+
+  useEffect(() => {
+    if (loading || hasCheckedCalendarNotificationsRef.current) return
+
+    hasCheckedCalendarNotificationsRef.current = true
+    let active = true
+
+    const run = async () => {
+      try {
+        const [entries, preferences] = await Promise.all([
+          fetchCalendarIcademyEntries(),
+          fetchCalendarIcademyPreferences().catch(() => []),
+        ])
+
+        if (!active || preferences.length === 0) return
+
+        const reminders = buildCalendarIcademyReminders({
+          entries,
+          preferences,
+        }).slice(0, 2)
+
+        for (const reminder of reminders) {
+          const sessionKey = `calendar-icademy-reminder:${reminder.entry.id}`
+          const sessionFingerprint = `${reminder.entry.sessionDate}:${reminder.entry.sessionTime}`
+
+          if (window.localStorage.getItem(sessionKey) === sessionFingerprint) {
+            continue
+          }
+
+          const whenLabel =
+            reminder.minutesUntilStart <= 0
+              ? 'Comienza en breve'
+              : `Empieza en ${reminder.minutesUntilStart} min`
+
+          toast.info(`Clase ICADEMY: ${reminder.entry.className}`, {
+            description: `${whenLabel} · ${reminder.entry.sessionTime} · con ${reminder.entry.teacher}`,
+            action: {
+              label: 'Abrir',
+              onClick: () => navigate(DASHBOARD_ROUTES.calendarIcademy),
+            },
+            duration: 12000,
+          })
+
+          window.localStorage.setItem(sessionKey, sessionFingerprint)
+          void markCalendarIcademyNotificationShown({
+            classKey: reminder.entry.classKey,
+            sessionId: reminder.entry.id,
+          }).catch(() => {})
+        }
+      } catch {}
+    }
+
+    void run()
+
+    return () => {
+      active = false
+    }
+  }, [loading, navigate])
 
   useEffect(() => {
     if (activeFlight !== 0 || flightQueue <= 0) return

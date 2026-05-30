@@ -8,6 +8,8 @@ import { DashboardLayout } from './modules/layout/DashboardLayout'
 import {
   AnalyticsPage,
   ActivationPhrasePage,
+  CalendarIcademyManagePage,
+  CalendarIcademyPage,
   CoachingPersonalizedPage,
   FlashcardsPage,
   FlashcardsPlayPage,
@@ -98,6 +100,7 @@ export function App() {
             <Route path='streaks' element={<StreaksPage />} />
             <Route path='profile' element={<ProfilePage />} />
             <Route path='my-analytics' element={<MyAnalyticsPage />} />
+            <Route path='calendar-icademy' element={<CalendarIcademyPage />} />
             <Route path='tests-ica' element={<IcaTestsPage />} />
             <Route path='tests-ica/:monthCode' element={<IcaTestMonthPage />} />
             <Route
@@ -119,6 +122,10 @@ export function App() {
               <Route path='manage-coaching/coacher/:coachUserId' element={<ManageCoacherSessionsPage />} />
             </Route>
             <Route element={<SuperAdminRoute />}>
+              <Route
+                path='calendar-icademy/manage'
+                element={<CalendarIcademyManagePage />}
+              />
               <Route path='manage-whitelist' element={<ManageWhitelistPage />} />
               <Route path='historic-leaderboard' element={<HistoricLeaderboardPage />} />
             </Route>

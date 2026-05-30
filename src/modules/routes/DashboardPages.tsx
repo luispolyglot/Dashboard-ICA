@@ -7,6 +7,7 @@ import { PageLayout } from '../layout/PageLayout'
 import { AddView } from '../views/AddView'
 import { AdminAnalyticsView } from '../views/AdminAnalyticsView'
 import { CoachingPersonalizedView } from '../views/CoachingPersonalizedView'
+import { CalendarIcademyView } from '../views/CalendarIcademyView'
 import { FlashcardsModeView } from '../views/FlashcardsModeView'
 import { HistoricLeaderboardView } from '../views/HistoricLeaderboardView'
 import { LeaderboardView } from '../views/LeaderboardView'
@@ -14,6 +15,7 @@ import { HomeView } from '../views/HomeView'
 import { ManageCoachingView } from '../views/ManageCoachingView'
 import { ManageCoachingUserView } from '../views/ManageCoachingUserView'
 import { ManageCoacherSessionsView } from '../views/ManageCoacherSessionsView'
+import { ManageCalendarIcademyView } from '../views/ManageCalendarIcademyView'
 import { ManageWhitelistView } from '../views/ManageWhitelistView'
 import { ManageView } from '../views/ManageView'
 import { MasterNoteActivatePhraseView } from '../views/MasterNoteActivatePhraseView'
@@ -301,6 +303,22 @@ export function MyAnalyticsPage() {
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.profile}>
       <MyAnalyticsView />
+    </PageLayout>
+  )
+}
+
+export function CalendarIcademyPage() {
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+      <CalendarIcademyView />
+    </PageLayout>
+  )
+}
+
+export function CalendarIcademyManagePage() {
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+      <ManageCalendarIcademyView />
     </PageLayout>
   )
 }

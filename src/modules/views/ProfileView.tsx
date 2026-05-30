@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   BarChart3Icon,
+  CalendarDaysIcon,
   CheckIcon,
   ClipboardCheckIcon,
   GraduationCapIcon,
@@ -74,6 +75,7 @@ export function ProfileView({
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
   const [canSeeAdminAnalytics, setCanSeeAdminAnalytics] = useState(false)
   const [canManageWhitelist, setCanManageWhitelist] = useState(false)
+  const [canManageCalendarIcademy, setCanManageCalendarIcademy] = useState(false)
   const [canSeeHistoricLeaderboard, setCanSeeHistoricLeaderboard] =
     useState(false)
   const [canSeeCoachingPersonalized, setCanSeeCoachingPersonalized] =
@@ -136,6 +138,7 @@ export function ProfileView({
 
       setCanSeeAdminAnalytics(role === 'admin' || role === 'super_admin')
       setCanManageWhitelist(role === 'super_admin')
+      setCanManageCalendarIcademy(role === 'super_admin')
       setCanSeeHistoricLeaderboard(role === 'super_admin')
       setCanSeeCoachingPersonalized(
         Array.isArray(coachingMemberships) && coachingMemberships.length > 0,
@@ -418,6 +421,26 @@ export function ProfileView({
         <Card>
           <CardHeader>
             <CardTitle className='flex items-center gap-2'>
+              <CalendarDaysIcon className='h-4 w-4' />
+              Calendario ICADEMY
+            </CardTitle>
+          </CardHeader>
+          <CardContent className='space-y-3'>
+            <p className='text-sm text-muted-foreground'>
+              Consulta los horarios de clases por idioma y filtra las sesiones
+              que quieres seguir.
+            </p>
+            <Button type='button' variant='outline' asChild>
+              <Link to={DASHBOARD_ROUTES.calendarIcademy}>
+                Abrir calendario de clases
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className='flex items-center gap-2'>
               <BarChart3Icon className='h-4 w-4' />
               Mis estadísticas mensuales
             </CardTitle>
@@ -582,6 +605,28 @@ export function ProfileView({
               <Button type='button' variant='outline' asChild>
                 <Link to={DASHBOARD_ROUTES.manageWhitelist}>
                   Gestionar whitelist
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {canManageCalendarIcademy && (
+          <Card>
+            <CardHeader>
+              <CardTitle className='flex items-center gap-2'>
+                <CalendarDaysIcon className='h-4 w-4' />
+                Gestionar calendario ICADEMY
+              </CardTitle>
+            </CardHeader>
+            <CardContent className='space-y-3'>
+              <p className='text-sm text-muted-foreground'>
+                Administra las clases del calendario visible para todos los
+                alumnos.
+              </p>
+              <Button type='button' variant='outline' asChild>
+                <Link to={DASHBOARD_ROUTES.calendarIcademyManage}>
+                  Gestionar calendario
                 </Link>
               </Button>
             </CardContent>
