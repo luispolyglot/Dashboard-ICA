@@ -106,6 +106,13 @@ export function PhraseView({
   const allWords = cards.slice().reverse()
   const automaticPool = cards.slice(-8).reverse()
   const manualPool = cards.slice(-25).reverse()
+  const activationCountsByCardId = useMemo(() => {
+    const map: Record<string, number> = {}
+    cards.forEach((card) => {
+      map[card.id] = Number(card.activationCount || 0)
+    })
+    return map
+  }, [cards])
 
   useEffect(() => {
     const defaultIds = automaticPool.slice(0, wordCount).map((word) => word.id)
@@ -196,7 +203,8 @@ export function PhraseView({
   }, [cards, config.nativeLang, config.targetLang])
 
   const getUsageAuraClass = (lexicardId: string, active?: boolean): string => {
-    const usageCount = wordUsageCounts[lexicardId] || 0
+    const usageCount =
+      wordUsageCounts[lexicardId] ?? activationCountsByCardId[lexicardId] ?? 0
     if (usageCount >= 3) {
       return `!border-amber-400/90 ring-1 ring-amber-300/60 ${!active && 'bg-amber-500/12'} shadow-[0_0_30px_-8px_rgba(251,191,36,0.95)]`
     }
@@ -217,7 +225,8 @@ export function PhraseView({
       word.native.toLowerCase().includes(q)
     if (!matchesQuery) return false
     if (!manualOnlyNotActivated) return true
-    const activationCount = wordUsageCounts[word.id] || 0
+    const activationCount =
+      wordUsageCounts[word.id] ?? activationCountsByCardId[word.id] ?? 0
     return activationCount === 0
   })
 
@@ -333,7 +342,9 @@ export function PhraseView({
         setWordUsageCounts((prev) => {
           const next = { ...prev }
           selectedWords.forEach((word) => {
-            next[word.id] = (next[word.id] || 0) + 1
+            const baseCount =
+              next[word.id] ?? activationCountsByCardId[word.id] ?? 0
+            next[word.id] = baseCount + 1
           })
           return next
         })
