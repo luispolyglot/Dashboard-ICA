@@ -2,6 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { getCalendarIcademyCatalogEntry } from '../../constants/calendarIcademyCatalog'
 import { cn } from '@/lib/utils'
 import type { CalendarIcademyEntry } from '../../types'
@@ -13,8 +22,15 @@ type CalendarIcademyBoardProps = {
   loading: boolean
   error: string | null
   emptyMessage: string
+  allowMonthNavigation?: boolean
+  lockToCurrentMonth?: boolean
   topActions?: ReactNode
   onEntryClick?: (entry: CalendarIcademyEntry) => void
+}
+
+type CalendarCell = {
+  dateKey: string
+  inCurrentMonth: boolean
 }
 
 type ClassOption = {
@@ -103,7 +119,7 @@ function compareTime(a: string, b: string): number {
   return a.localeCompare(b)
 }
 
-function buildCalendarCells(monthKey: string): Array<string | null> {
+function buildCalendarCells(monthKey: string): CalendarCell[] {
   const date = new Date(`${monthKey}-01T00:00:00`)
   if (Number.isNaN(date.getTime())) return []
 
@@ -112,18 +128,30 @@ function buildCalendarCells(monthKey: string): Array<string | null> {
   const firstDay = new Date(year, month, 1)
   const startOffset = (firstDay.getDay() + 6) % 7
   const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const daysInPrevMonth = new Date(year, month, 0).getDate()
 
-  const cells: Array<string | null> = []
-  for (let i = 0; i < startOffset; i += 1) {
-    cells.push(null)
+  const cells: CalendarCell[] = []
+
+  for (let i = startOffset; i > 0; i -= 1) {
+    const day = daysInPrevMonth - i + 1
+    const prevMonthDate = new Date(year, month - 1, day)
+    const key = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    cells.push({ dateKey: key, inCurrentMonth: false })
   }
 
   for (let day = 1; day <= daysInMonth; day += 1) {
-    cells.push(`${monthKey}-${String(day).padStart(2, '0')}`)
+    cells.push({
+      dateKey: `${monthKey}-${String(day).padStart(2, '0')}`,
+      inCurrentMonth: true,
+    })
   }
 
+  let nextMonthDay = 1
   while (cells.length % 7 !== 0) {
-    cells.push(null)
+    const nextMonthDate = new Date(year, month + 1, nextMonthDay)
+    const key = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, '0')}-${String(nextMonthDay).padStart(2, '0')}`
+    cells.push({ dateKey: key, inCurrentMonth: false })
+    nextMonthDay += 1
   }
 
   return cells
@@ -136,6 +164,8 @@ export function CalendarIcademyBoard({
   loading,
   error,
   emptyMessage,
+  allowMonthNavigation = false,
+  lockToCurrentMonth = false,
   topActions,
   onEntryClick,
 }: CalendarIcademyBoardProps) {
@@ -178,13 +208,19 @@ export function CalendarIcademyBoard({
   }, [classOptions])
 
   useEffect(() => {
-    if (availableMonths.length === 0) {
-      setSelectedMonth('')
+    const now = new Date()
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
+    if (lockToCurrentMonth) {
+      setSelectedMonth(currentMonth)
       return
     }
 
-    const now = new Date()
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    if (availableMonths.length === 0) {
+      setSelectedMonth(currentMonth)
+      return
+    }
+
     const fallbackMonth =
       availableMonths.find((month) => month === currentMonth) ||
       availableMonths[availableMonths.length - 1]
@@ -193,7 +229,7 @@ export function CalendarIcademyBoard({
       if (prev && availableMonths.includes(prev)) return prev
       return fallbackMonth
     })
-  }, [availableMonths])
+  }, [availableMonths, lockToCurrentMonth])
 
   const entriesForMonth = useMemo(() => {
     if (!selectedMonth) return []
@@ -202,10 +238,25 @@ export function CalendarIcademyBoard({
     )
   }, [entries, selectedMonth])
 
+  const calendarCells = useMemo(() => {
+    if (!selectedMonth) return []
+    return buildCalendarCells(selectedMonth)
+  }, [selectedMonth])
+
+  const visibleDateKeys = useMemo(
+    () => new Set(calendarCells.map((cell) => cell.dateKey)),
+    [calendarCells],
+  )
+
+  const entriesForGrid = useMemo(
+    () => entries.filter((entry) => visibleDateKeys.has(entry.sessionDate)),
+    [entries, visibleDateKeys],
+  )
+
   const entriesByDate = useMemo(() => {
     const grouped = new Map<string, CalendarIcademyEntry[]>()
 
-    for (const entry of entriesForMonth) {
+    for (const entry of entriesForGrid) {
       const list = grouped.get(entry.sessionDate)
       if (list) {
         list.push(entry)
@@ -224,7 +275,7 @@ export function CalendarIcademyBoard({
     }
 
     return grouped
-  }, [entriesForMonth])
+  }, [entriesForGrid])
 
   const selectedSessions = useMemo(() => {
     if (selectedClassKeys.length === 0) return []
@@ -284,11 +335,6 @@ export function CalendarIcademyBoard({
     return Array.from(byLanguage.values()).sort((a, b) => a.localeCompare(b))
   }, [classOptions])
 
-  const calendarCells = useMemo(() => {
-    if (!selectedMonth) return []
-    return buildCalendarCells(selectedMonth)
-  }, [selectedMonth])
-
   const handleToggleClass = (classKey: string) => {
     setSelectedClassKeys((prev) => {
       if (prev.includes(classKey)) {
@@ -304,6 +350,8 @@ export function CalendarIcademyBoard({
   }
 
   const showAllClasses = selectedClassKeys.length === 0
+  const now = new Date()
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const currentMonthLabel = selectedMonth
     ? formatMonthName(selectedMonth)
     : formatMonthName(getMonthKey(new Date().toISOString().slice(0, 10)))
@@ -324,6 +372,23 @@ export function CalendarIcademyBoard({
         <CardHeader className='gap-4'>
           <div className='flex flex-wrap items-center justify-between gap-3'>
             <CardTitle>Calendario mensual - {currentMonthLabel}</CardTitle>
+            {allowMonthNavigation && availableMonths.length > 0 && (
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger>
+                  <SelectValue placeholder='Selecciona mes' />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>Meses con clases</SelectLabel>
+                    {availableMonths.map((month) => (
+                      <SelectItem key={month} value={month}>
+                        {formatMonthName(month)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div className='flex flex-col gap-2'>
@@ -419,25 +484,36 @@ export function CalendarIcademyBoard({
                 </div>
 
                 <div className='grid grid-cols-7'>
-                  {calendarCells.map((dateKey, index) => {
+                  {calendarCells.map((cell, index) => {
                     const isWeekend = index % 7 >= 5
-                    const dayEntries = dateKey
-                      ? entriesByDate.get(dateKey) || []
-                      : []
+                    const dayEntries = entriesByDate.get(cell.dateKey) || []
+                    const isOutOfMonth = !cell.inCurrentMonth
+                    const isToday = cell.dateKey === todayKey
 
                     return (
                       <div
-                        key={`${dateKey || 'empty'}-${index}`}
+                        key={`${cell.dateKey}-${index}`}
                         className={cn(
-                          'min-h-36 border-r border-b p-2 last:border-r-0',
+                          'relative min-h-36 border-r border-b p-2 last:border-r-0',
                           isWeekend && 'bg-muted/25',
+                          isOutOfMonth && 'bg-muted/40',
                         )}
                       >
-                        {dateKey ? (
-                          <>
-                            <p className='mb-2 text-sm font-semibold'>
-                              {Number(dateKey.slice(-2))}
-                            </p>
+                        {isToday && (
+                          <Badge className='absolute top-1 right-1 h-auto px-1.5 py-0 text-[10px]'>
+                            Hoy
+                          </Badge>
+                        )}
+
+                        <>
+                          <p
+                            className={cn(
+                              'mb-2 text-sm font-semibold',
+                              isOutOfMonth && 'text-muted-foreground/70',
+                            )}
+                          >
+                            {Number(cell.dateKey.slice(-2))}
+                          </p>
 
                             <div className='flex flex-col gap-1'>
                               {dayEntries.map((entry) => {
@@ -460,6 +536,7 @@ export function CalendarIcademyBoard({
                                       'rounded-sm border border-border border-l-2 px-1.5 py-0.5 text-left text-[11px] leading-tight',
                                       tone.rowClassName,
                                       isDimmed && 'opacity-25',
+                                      isOutOfMonth && 'opacity-45 saturate-50',
                                       onEntryClick &&
                                         'cursor-pointer transition-colors hover:bg-accent/40',
                                     )}
@@ -494,8 +571,7 @@ export function CalendarIcademyBoard({
                                 )
                               })}
                             </div>
-                          </>
-                        ) : null}
+                        </>
                       </div>
                     )
                   })}

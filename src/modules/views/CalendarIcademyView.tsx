@@ -280,6 +280,7 @@ export function CalendarIcademyView() {
         loading={loading}
         error={error}
         emptyMessage='Aun no hay clases cargadas para este calendario.'
+        lockToCurrentMonth
         topActions={
           <Button
             type='button'

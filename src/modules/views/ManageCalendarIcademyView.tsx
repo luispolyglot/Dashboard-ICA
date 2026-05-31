@@ -400,6 +400,7 @@ export function ManageCalendarIcademyView() {
         loading={loading}
         error={error}
         emptyMessage='Aun no hay clases cargadas. Crea la primera desde el boton "Agregar clase".'
+        allowMonthNavigation
         onEntryClick={openEditModal}
         topActions={
           <div className='flex flex-wrap gap-2'>
