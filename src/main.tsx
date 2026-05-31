@@ -4,9 +4,12 @@ import { BrowserRouter } from 'react-router-dom'
 import { App } from './App'
 import { AuthProvider } from './auth/AuthContext'
 import { Toaster } from './components/ui/sonner'
+import { registerPushServiceWorker } from './modules/services/pushNotifications'
 import { TooltipProvider } from './components/ui/tooltip'
 import { ThemeProvider } from './theme/ThemeContext'
 import './index.css'
+
+void registerPushServiceWorker()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

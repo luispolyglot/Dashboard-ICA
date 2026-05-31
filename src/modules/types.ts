@@ -200,6 +200,16 @@ export interface CalendarIcademyPreferenceInput {
   quietHoursEnd?: string | null
 }
 
+export interface PushSubscriptionDevice {
+  id: string
+  endpoint: string
+  isActive: boolean
+  userAgent: string | null
+  createdAt: string
+  updatedAt: string
+  lastSeenAt: string
+}
+
 export interface IcaTestQuestion {
   promptNative: string
   correctTarget: string

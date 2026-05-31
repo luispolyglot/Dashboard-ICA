@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BellIcon, CheckIcon } from 'lucide-react'
+import { BellIcon, CheckIcon, SmartphoneIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,10 +27,18 @@ import {
   fetchCalendarIcademyPreferences,
   upsertCalendarIcademyPreference,
 } from '../services/calendarIcademyPreferences'
+import {
+  disablePushOnCurrentDevice,
+  enablePushOnCurrentDevice,
+  getCurrentPushSubscriptionEndpoint,
+  getPushPermissionState,
+  listMyPushDevices,
+} from '../services/pushNotifications'
 import type {
   CalendarIcademyEntry,
   CalendarIcademyPreference,
   CalendarIcademyPreferenceInput,
+  PushSubscriptionDevice,
 } from '../types'
 
 const REMINDER_OPTIONS = [10, 15, 30, 60, 120]
@@ -51,6 +59,12 @@ export function CalendarIcademyView() {
   const [error, setError] = useState<string | null>(null)
   const [isPrefsModalOpen, setIsPrefsModalOpen] = useState(false)
   const [updatingClassKey, setUpdatingClassKey] = useState<string | null>(null)
+  const [pushDevices, setPushDevices] = useState<PushSubscriptionDevice[]>([])
+  const [currentPushEndpoint, setCurrentPushEndpoint] = useState<string | null>(null)
+  const [pushPermission, setPushPermission] = useState<
+    NotificationPermission | 'unsupported'
+  >('unsupported')
+  const [isUpdatingPushDevice, setIsUpdatingPushDevice] = useState(false)
 
   useEffect(() => {
     let mounted = true
@@ -87,6 +101,33 @@ export function CalendarIcademyView() {
     }
   }, [])
 
+  const refreshPushStatus = async () => {
+    const permission = getPushPermissionState()
+    setPushPermission(permission)
+
+    if (permission === 'unsupported') {
+      setPushDevices([])
+      setCurrentPushEndpoint(null)
+      return
+    }
+
+    try {
+      const [devices, endpoint] = await Promise.all([
+        listMyPushDevices().catch(() => []),
+        getCurrentPushSubscriptionEndpoint(),
+      ])
+      setPushDevices(devices)
+      setCurrentPushEndpoint(endpoint)
+    } catch {
+      setPushDevices([])
+      setCurrentPushEndpoint(null)
+    }
+  }
+
+  useEffect(() => {
+    void refreshPushStatus()
+  }, [])
+
   const classOptions = Array.from(
     entries
       .reduce((acc, entry) => {
@@ -114,6 +155,13 @@ export function CalendarIcademyView() {
     (item) => item.notificationsEnabled,
   ).length
   const hasReachedReminderLimit = activeReminderCount >= MAX_ACTIVE_REMINDERS
+  const activePushDevicesCount = pushDevices.filter((device) => device.isActive).length
+  const isCurrentDeviceActive = Boolean(
+    currentPushEndpoint &&
+      pushDevices.some(
+        (device) => device.endpoint === currentPushEndpoint && device.isActive,
+      ),
+  )
 
   const savePreference = async (input: CalendarIcademyPreferenceInput) => {
     setUpdatingClassKey(input.classKey)
@@ -194,6 +242,40 @@ export function CalendarIcademyView() {
     }
   }
 
+  const handleEnablePushOnDevice = async () => {
+    setIsUpdatingPushDevice(true)
+    try {
+      await enablePushOnCurrentDevice()
+      await refreshPushStatus()
+      toast.success('Notificaciones push activadas en este dispositivo.')
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'No se pudo activar push en este dispositivo.'
+      toast.error(message)
+    } finally {
+      setIsUpdatingPushDevice(false)
+    }
+  }
+
+  const handleDisablePushOnDevice = async () => {
+    setIsUpdatingPushDevice(true)
+    try {
+      await disablePushOnCurrentDevice()
+      await refreshPushStatus()
+      toast.success('Notificaciones push desactivadas en este dispositivo.')
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'No se pudo desactivar push en este dispositivo.'
+      toast.error(message)
+    } finally {
+      setIsUpdatingPushDevice(false)
+    }
+  }
+
   return (
     <>
       <CalendarIcademyBoard
@@ -223,6 +305,50 @@ export function CalendarIcademyView() {
               Configura que clases quieres seguir con notificaciones al entrar a la app.
             </DialogDescription>
           </DialogHeader>
+
+          <div className='rounded-lg border border-border bg-muted/30 px-3 py-2'>
+            <div className='mb-2 flex items-center justify-between gap-2'>
+              <p className='text-sm font-medium'>Notificaciones push en este dispositivo</p>
+              <p className='text-xs text-muted-foreground'>
+                Dispositivos activos: {activePushDevicesCount}
+              </p>
+            </div>
+
+            {pushPermission === 'unsupported' ? (
+              <p className='text-sm text-muted-foreground'>
+                Este navegador no soporta notificaciones push.
+              </p>
+            ) : (
+              <div className='flex flex-wrap items-center gap-2'>
+                <Button
+                  type='button'
+                  variant={isCurrentDeviceActive ? 'outline' : 'default'}
+                  onClick={() => void handleEnablePushOnDevice()}
+                  disabled={isUpdatingPushDevice}
+                >
+                  <SmartphoneIcon data-icon='inline-start' />
+                  {isCurrentDeviceActive ? 'Push activo' : 'Activar en este dispositivo'}
+                </Button>
+
+                {isCurrentDeviceActive && (
+                  <Button
+                    type='button'
+                    variant='outline'
+                    onClick={() => void handleDisablePushOnDevice()}
+                    disabled={isUpdatingPushDevice}
+                  >
+                    Desactivar en este dispositivo
+                  </Button>
+                )}
+
+                {pushPermission === 'denied' && (
+                  <p className='text-xs text-amber-600'>
+                    El navegador bloqueo permisos. Debes habilitarlos manualmente.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
 
           <div
             className={

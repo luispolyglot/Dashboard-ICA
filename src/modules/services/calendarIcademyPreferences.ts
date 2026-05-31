@@ -130,6 +130,11 @@ export async function upsertCalendarIcademyPreference(
     .single()
 
   if (error) {
+    if (typeof error.message === 'string' && error.message.includes('CALENDAR_REMINDERS_LIMIT_REACHED')) {
+      throw new CalendarIcademyPreferenceRequestError(
+        'Puedes tener maximo 2 recordatorios activos al mismo tiempo.',
+      )
+    }
     throw new CalendarIcademyPreferenceRequestError(
       'No se pudo guardar la preferencia del calendario.',
       getErrorStatus(error),
