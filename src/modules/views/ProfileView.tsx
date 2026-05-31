@@ -75,7 +75,8 @@ export function ProfileView({
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
   const [canSeeAdminAnalytics, setCanSeeAdminAnalytics] = useState(false)
   const [canManageWhitelist, setCanManageWhitelist] = useState(false)
-  const [canManageCalendarIcademy, setCanManageCalendarIcademy] = useState(false)
+  const [canManageCalendarIcademy, setCanManageCalendarIcademy] =
+    useState(false)
   const [canSeeHistoricLeaderboard, setCanSeeHistoricLeaderboard] =
     useState(false)
   const [canSeeCoachingPersonalized, setCanSeeCoachingPersonalized] =
@@ -125,15 +126,15 @@ export function ProfileView({
     const run = async () => {
       const [role, coachingAccess, coachingMemberships, pendingSummary] =
         await Promise.all([
-        fetchAdminRole(),
-        fetchCoachingAccess().catch(() => null),
-        fetchMyCoachingDashboard(config?.targetLang).catch(() => []),
-        fetchCoachingPendingReviewSummary().catch(() => ({
-          hasPendingReviews: false,
-          pendingSessions: 0,
-          pendingNotes: 0,
-        })),
-      ])
+          fetchAdminRole(),
+          fetchCoachingAccess().catch(() => null),
+          fetchMyCoachingDashboard(config?.targetLang).catch(() => []),
+          fetchCoachingPendingReviewSummary().catch(() => ({
+            hasPendingReviews: false,
+            pendingSessions: 0,
+            pendingNotes: 0,
+          })),
+        ])
       if (!isMounted) return
 
       setCanSeeAdminAnalytics(role === 'admin' || role === 'super_admin')
@@ -417,26 +418,28 @@ export function ProfileView({
             </Button>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className='flex items-center gap-2'>
-              <CalendarDaysIcon className='h-4 w-4' />
-              Calendario ICADEMY
-            </CardTitle>
-          </CardHeader>
-          <CardContent className='space-y-3'>
-            <p className='text-sm text-muted-foreground'>
-              Consulta los horarios de clases por idioma y filtra las sesiones
-              que quieres seguir.
-            </p>
-            <Button type='button' variant='outline' asChild>
-              <Link to={DASHBOARD_ROUTES.calendarIcademy}>
-                Abrir calendario de clases
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+        {/*Hide for pro*/}
+        {import.meta.env.DEV && (
+          <Card>
+            <CardHeader>
+              <CardTitle className='flex items-center gap-2'>
+                <CalendarDaysIcon className='h-4 w-4' />
+                Calendario ICADEMY
+              </CardTitle>
+            </CardHeader>
+            <CardContent className='space-y-3'>
+              <p className='text-sm text-muted-foreground'>
+                Consulta los horarios de clases por idioma y filtra las sesiones
+                que quieres seguir.
+              </p>
+              <Button type='button' variant='outline' asChild>
+                <Link to={DASHBOARD_ROUTES.calendarIcademy}>
+                  Abrir calendario de clases
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
