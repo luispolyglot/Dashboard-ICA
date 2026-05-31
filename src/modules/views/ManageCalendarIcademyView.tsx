@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarPlusIcon, RefreshCcwIcon, Trash2Icon } from 'lucide-react'
+import {
+  CalendarPlusIcon,
+  RefreshCcwIcon,
+  Trash2Icon,
+  UploadIcon,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -9,6 +14,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  CALENDAR_ICADEMY_CATALOG,
+  getCalendarIcademyCatalogEntry,
+} from '../constants/calendarIcademyCatalog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -28,12 +37,11 @@ import {
   fetchCalendarIcademyEntries,
   updateCalendarIcademyEntry,
 } from '../services/calendarIcademy'
+import { uploadCalendarIcademyBulkJson } from '../services/calendarIcademyBulk'
 import type { CalendarIcademyEntry, CalendarIcademyEntryInput } from '../types'
 
 type EntryFormState = {
   classKey: string
-  className: string
-  languageCode: string
   sessionDate: string
   sessionTime: string
   teacher: string
@@ -41,19 +49,20 @@ type EntryFormState = {
   note: string
 }
 
-const LANGUAGE_OPTIONS = [
-  { value: 'pl', label: 'Polaco (PL)' },
-  { value: 'fr', label: 'Frances (FR)' },
-  { value: 'en', label: 'Ingles (EN)' },
-  { value: 'it', label: 'Italiano (IT)' },
-  { value: 'de', label: 'Aleman (DE)' },
-]
+type BulkClassEntry = {
+  time?: string
+  teacher?: string
+  classId?: string
+  lang?: string
+  group?: string
+  note?: string
+}
+
+type BulkSchedule = Record<string, BulkClassEntry[]>
 
 function emptyForm(): EntryFormState {
   return {
     classKey: '',
-    className: '',
-    languageCode: 'en',
     sessionDate: '',
     sessionTime: '18:00',
     teacher: '',
@@ -65,8 +74,6 @@ function emptyForm(): EntryFormState {
 function toFormState(entry: CalendarIcademyEntry): EntryFormState {
   return {
     classKey: entry.classKey,
-    className: entry.className,
-    languageCode: entry.languageCode,
     sessionDate: entry.sessionDate,
     sessionTime: entry.sessionTime,
     teacher: entry.teacher,
@@ -76,15 +83,93 @@ function toFormState(entry: CalendarIcademyEntry): EntryFormState {
 }
 
 function toInputPayload(form: EntryFormState): CalendarIcademyEntryInput {
+  const catalogEntry = getCalendarIcademyCatalogEntry(form.classKey)
+
   return {
     classKey: form.classKey,
-    className: form.className,
-    languageCode: form.languageCode,
+    className: catalogEntry?.className || '',
+    languageCode: catalogEntry?.languageCode || '',
     sessionDate: form.sessionDate,
     sessionTime: form.sessionTime,
     teacher: form.teacher,
     groupName: form.groupName,
     note: form.note,
+  }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isValidDateKey(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const date = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(date.getTime())
+}
+
+function validateBulkSchedule(input: unknown): {
+  schedule: BulkSchedule
+  dates: number
+  totalEntries: number
+} {
+  if (!isObject(input)) {
+    throw new Error('El JSON debe ser un objeto con fechas como claves.')
+  }
+
+  const schedule = input as BulkSchedule
+  const dates = Object.keys(schedule)
+  if (dates.length === 0) {
+    throw new Error('No hay fechas en el JSON para cargar.')
+  }
+
+  let totalEntries = 0
+
+  for (const dateKey of dates) {
+    if (!isValidDateKey(dateKey)) {
+      throw new Error(`Fecha invalida: ${dateKey}. Usa formato YYYY-MM-DD.`)
+    }
+
+    const entries = schedule[dateKey]
+    if (!Array.isArray(entries)) {
+      throw new Error(`La fecha ${dateKey} debe contener un arreglo de clases.`)
+    }
+
+    totalEntries += entries.length
+
+    for (let index = 0; index < entries.length; index += 1) {
+      const item = entries[index]
+      if (!isObject(item)) {
+        throw new Error(
+          `Entrada invalida en ${dateKey}, posicion ${index + 1}.`,
+        )
+      }
+
+      const classId = String(item.classId || '').trim()
+      const teacher = String(item.teacher || '').trim()
+      const time = String(item.time || '').trim()
+
+      if (!classId) {
+        throw new Error(`Falta classId en ${dateKey}, posicion ${index + 1}.`)
+      }
+
+      if (!getCalendarIcademyCatalogEntry(classId)) {
+        throw new Error(`classId no pertenece al catalogo oficial: ${classId}.`)
+      }
+
+      if (!teacher) {
+        throw new Error(`Falta teacher en ${dateKey} para classId ${classId}.`)
+      }
+
+      if (!time) {
+        throw new Error(`Falta time en ${dateKey} para classId ${classId}.`)
+      }
+    }
+  }
+
+  return {
+    schedule,
+    dates: dates.length,
+    totalEntries,
   }
 }
 
@@ -97,8 +182,13 @@ export function ManageCalendarIcademyView() {
     null,
   )
   const [form, setForm] = useState<EntryFormState>(() => emptyForm())
+  const [modalError, setModalError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false)
+  const [bulkJsonInput, setBulkJsonInput] = useState('')
+  const [bulkModalError, setBulkModalError] = useState<string | null>(null)
+  const [isBulkSaving, setIsBulkSaving] = useState(false)
 
   const isEditing = Boolean(editingEntry)
 
@@ -124,39 +214,100 @@ export function ManageCalendarIcademyView() {
     void loadEntries()
   }, [])
 
-  const suggestedClassKeys = useMemo(() => {
-    const uniqueKeys = new Set(entries.map((entry) => entry.classKey))
-    return Array.from(uniqueKeys).sort((a, b) => a.localeCompare(b))
-  }, [entries])
+  const catalogOptions = useMemo(() => CALENDAR_ICADEMY_CATALOG, [])
 
   const openCreateModal = () => {
     setEditingEntry(null)
     setForm(emptyForm())
+    setModalError(null)
     setIsModalOpen(true)
+  }
+
+  const openBulkModal = () => {
+    setBulkModalError(null)
+    setIsBulkModalOpen(true)
   }
 
   const openEditModal = (entry: CalendarIcademyEntry) => {
     setEditingEntry(entry)
     setForm(toFormState(entry))
+    setModalError(null)
     setIsModalOpen(true)
   }
 
   const handleCloseModal = (nextOpen: boolean) => {
     if (isSaving || isDeleting) return
+    if (!nextOpen) {
+      setModalError(null)
+    }
     setIsModalOpen(nextOpen)
+  }
+
+  const handleCloseBulkModal = (nextOpen: boolean) => {
+    if (isBulkSaving) return
+    if (!nextOpen) {
+      setBulkModalError(null)
+    }
+    setIsBulkModalOpen(nextOpen)
   }
 
   const updateForm = <K extends keyof EntryFormState>(
     key: K,
     value: EntryFormState[K],
   ) => {
+    setModalError(null)
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
+  const canSubmitForm =
+    Boolean(form.classKey.trim()) &&
+    Boolean(getCalendarIcademyCatalogEntry(form.classKey)) &&
+    Boolean(form.sessionDate) &&
+    Boolean(form.sessionTime) &&
+    Boolean(form.teacher.trim())
+
+  const bulkValidation = useMemo(() => {
+    const trimmed = bulkJsonInput.trim()
+    if (!trimmed) {
+      return {
+        valid: false,
+        message: 'Pega un JSON para habilitar la carga.',
+        schedule: null as BulkSchedule | null,
+        dates: 0,
+        entries: 0,
+      }
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed)
+      const validated = validateBulkSchedule(parsed)
+      return {
+        valid: true,
+        message: null,
+        schedule: validated.schedule,
+        dates: validated.dates,
+        entries: validated.totalEntries,
+      }
+    } catch (error) {
+      return {
+        valid: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : 'El JSON no es valido para carga.',
+        schedule: null as BulkSchedule | null,
+        dates: 0,
+        entries: 0,
+      }
+    }
+  }, [bulkJsonInput])
+
   const validateForm = (): string | null => {
-    if (!form.classKey.trim()) return 'La clave interna de clase es obligatoria.'
-    if (!form.className.trim()) return 'El nombre de clase es obligatorio.'
-    if (!form.languageCode.trim()) return 'El idioma es obligatorio.'
+    if (!form.classKey.trim())
+      return 'Debes seleccionar una clase del catalogo.'
+    if (!getCalendarIcademyCatalogEntry(form.classKey)) {
+      return 'La clase seleccionada no pertenece al catalogo oficial.'
+    }
     if (!form.sessionDate) return 'La fecha de sesion es obligatoria.'
     if (!form.sessionTime) return 'La hora de sesion es obligatoria.'
     if (!form.teacher.trim()) return 'El docente es obligatorio.'
@@ -166,12 +317,12 @@ export function ManageCalendarIcademyView() {
   const handleSave = async () => {
     const validationError = validateForm()
     if (validationError) {
-      setError(validationError)
+      setModalError(validationError)
       return
     }
 
     setIsSaving(true)
-    setError(null)
+    setModalError(null)
 
     try {
       const payload = toInputPayload(form)
@@ -189,7 +340,7 @@ export function ManageCalendarIcademyView() {
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'No se pudo guardar la entrada.'
-      setError(message)
+      setModalError(message)
     } finally {
       setIsSaving(false)
     }
@@ -216,10 +367,34 @@ export function ManageCalendarIcademyView() {
     }
   }
 
+  const handleBulkSave = async () => {
+    if (!bulkValidation.valid || !bulkValidation.schedule) return
+
+    setIsBulkSaving(true)
+    setBulkModalError(null)
+
+    try {
+      await uploadCalendarIcademyBulkJson({
+        schedule: bulkValidation.schedule,
+      })
+      setIsBulkModalOpen(false)
+      setBulkJsonInput('')
+      await loadEntries()
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'No se pudo ejecutar la carga masiva.'
+      setBulkModalError(message)
+    } finally {
+      setIsBulkSaving(false)
+    }
+  }
+
   return (
     <>
       <CalendarIcademyBoard
-        title='Calendario ICADEMY - Gestion'
+        title='Calendario ICADEMY - Gestión'
         description='Panel de super admin para crear, editar y borrar clases del calendario.'
         entries={entries}
         loading={loading}
@@ -228,9 +403,17 @@ export function ManageCalendarIcademyView() {
         onEntryClick={openEditModal}
         topActions={
           <div className='flex flex-wrap gap-2'>
-            <Button type='button' variant='outline' onClick={() => void loadEntries()}>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => void loadEntries()}
+            >
               <RefreshCcwIcon data-icon='inline-start' />
               Recargar
+            </Button>
+            <Button type='button' variant='outline' onClick={openBulkModal}>
+              <UploadIcon data-icon='inline-start' />
+              Carga masiva JSON
             </Button>
             <Button type='button' onClick={openCreateModal}>
               <CalendarPlusIcon data-icon='inline-start' />
@@ -244,7 +427,9 @@ export function ManageCalendarIcademyView() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {isEditing ? 'Editar clase del calendario' : 'Agregar clase al calendario'}
+              {isEditing
+                ? 'Editar clase del calendario'
+                : 'Agregar clase al calendario'}
             </DialogTitle>
             <DialogDescription>
               {isEditing
@@ -255,46 +440,20 @@ export function ManageCalendarIcademyView() {
 
           <div className='grid gap-3'>
             <div className='grid gap-1.5'>
-              <Label htmlFor='calendar-icademy-class-key'>Clave interna</Label>
-              <Input
-                id='calendar-icademy-class-key'
-                value={form.classKey}
-                onChange={(event) => updateForm('classKey', event.target.value)}
-                placeholder='ej: en_basico'
-                list='calendar-icademy-class-key-suggestions'
-              />
-              <datalist id='calendar-icademy-class-key-suggestions'>
-                {suggestedClassKeys.map((classKey) => (
-                  <option key={classKey} value={classKey} />
-                ))}
-              </datalist>
-            </div>
-
-            <div className='grid gap-1.5'>
-              <Label htmlFor='calendar-icademy-class-name'>Nombre visible</Label>
-              <Input
-                id='calendar-icademy-class-name'
-                value={form.className}
-                onChange={(event) => updateForm('className', event.target.value)}
-                placeholder='ej: Ingles basico'
-              />
-            </div>
-
-            <div className='grid gap-1.5'>
-              <Label htmlFor='calendar-icademy-language'>Idioma</Label>
+              <Label htmlFor='calendar-icademy-class-selector'>Clase</Label>
               <Select
-                value={form.languageCode}
-                onValueChange={(value) => updateForm('languageCode', value)}
+                value={form.classKey}
+                onValueChange={(value) => updateForm('classKey', value)}
               >
-                <SelectTrigger id='calendar-icademy-language'>
-                  <SelectValue placeholder='Selecciona idioma' />
+                <SelectTrigger id='calendar-icademy-class-selector'>
+                  <SelectValue placeholder='Selecciona una clase' />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectLabel>Idiomas</SelectLabel>
-                    {LANGUAGE_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
+                    <SelectLabel>Catalogo oficial</SelectLabel>
+                    {catalogOptions.map((option) => (
+                      <SelectItem key={option.classKey} value={option.classKey}>
+                        {option.flag} {option.className}
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -309,7 +468,9 @@ export function ManageCalendarIcademyView() {
                   id='calendar-icademy-session-date'
                   type='date'
                   value={form.sessionDate}
-                  onChange={(event) => updateForm('sessionDate', event.target.value)}
+                  onChange={(event) =>
+                    updateForm('sessionDate', event.target.value)
+                  }
                 />
               </div>
 
@@ -319,7 +480,9 @@ export function ManageCalendarIcademyView() {
                   id='calendar-icademy-session-time'
                   type='time'
                   value={form.sessionTime}
-                  onChange={(event) => updateForm('sessionTime', event.target.value)}
+                  onChange={(event) =>
+                    updateForm('sessionTime', event.target.value)
+                  }
                 />
               </div>
             </div>
@@ -339,7 +502,9 @@ export function ManageCalendarIcademyView() {
               <Input
                 id='calendar-icademy-group'
                 value={form.groupName}
-                onChange={(event) => updateForm('groupName', event.target.value)}
+                onChange={(event) =>
+                  updateForm('groupName', event.target.value)
+                }
                 placeholder='ej: Grupo A'
               />
             </div>
@@ -354,6 +519,10 @@ export function ManageCalendarIcademyView() {
                 rows={3}
               />
             </div>
+
+            {modalError && (
+              <p className='text-sm text-destructive'>{modalError}</p>
+            )}
           </div>
 
           <DialogFooter className='flex items-center justify-between sm:justify-between'>
@@ -383,11 +552,79 @@ export function ManageCalendarIcademyView() {
               <Button
                 type='button'
                 onClick={() => void handleSave()}
-                disabled={isSaving || isDeleting}
+                disabled={isSaving || isDeleting || !canSubmitForm}
               >
-                {isSaving ? 'Guardando...' : isEditing ? 'Guardar cambios' : 'Crear clase'}
+                {isSaving
+                  ? 'Guardando...'
+                  : isEditing
+                    ? 'Guardar cambios'
+                    : 'Crear clase'}
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isBulkModalOpen} onOpenChange={handleCloseBulkModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Carga masiva JSON</DialogTitle>
+            <DialogDescription>
+              Pega el JSON con formato fecha {'->'} lista de clases. Se
+              reemplazaran todas las fechas incluidas.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className='grid gap-3'>
+            <div className='grid gap-1.5'>
+              <Label htmlFor='calendar-icademy-bulk-json'>JSON</Label>
+              <Textarea
+                id='calendar-icademy-bulk-json'
+                value={bulkJsonInput}
+                onChange={(event) => {
+                  setBulkModalError(null)
+                  setBulkJsonInput(event.target.value)
+                }}
+                placeholder='Pega aqui el JSON masivo'
+                rows={14}
+                className='overflow-y-auto max-h-56'
+              />
+            </div>
+
+            {!bulkValidation.valid && bulkJsonInput.trim().length > 0 && (
+              <p className='text-sm text-destructive'>
+                {bulkValidation.message}
+              </p>
+            )}
+
+            {bulkValidation.valid && (
+              <p className='text-sm text-muted-foreground'>
+                JSON valido. Fechas: {bulkValidation.dates} · Clases:{' '}
+                {bulkValidation.entries}
+              </p>
+            )}
+
+            {bulkModalError && (
+              <p className='text-sm text-destructive'>{bulkModalError}</p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setIsBulkModalOpen(false)}
+              disabled={isBulkSaving}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type='button'
+              onClick={() => void handleBulkSave()}
+              disabled={!bulkValidation.valid || isBulkSaving}
+            >
+              {isBulkSaving ? 'Cargando...' : 'Confirmar carga'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

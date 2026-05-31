@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { getCalendarIcademyCatalogEntry } from '../constants/calendarIcademyCatalog'
 import type {
   CalendarIcademyPreference,
   CalendarIcademyPreferenceInput,
@@ -80,15 +81,24 @@ function normalizePreferenceInput(
   userId: string,
   input: CalendarIcademyPreferenceInput,
 ) {
-  const allowedMinutes = [10, 15, 30, 60, 120]
+  const classKey = input.classKey.trim()
+  const catalogEntry = getCalendarIcademyCatalogEntry(classKey)
+  if (!catalogEntry) {
+    throw new CalendarIcademyPreferenceRequestError(
+      'La clase seleccionada no pertenece al catalogo oficial de ICADEMY.',
+      400,
+    )
+  }
+
+  const allowedMinutes = [10, 20, 30, 60, 120]
   const normalizedMinutes = allowedMinutes.includes(input.minutesBefore)
     ? input.minutesBefore
     : 30
 
   return {
     user_id: userId,
-    class_key: input.classKey.trim(),
-    language_code: input.languageCode.trim().toLowerCase(),
+    class_key: catalogEntry.classKey,
+    language_code: catalogEntry.languageCode,
     notifications_enabled: Boolean(input.notificationsEnabled),
     minutes_before: normalizedMinutes,
     quiet_hours_start: input.quietHoursStart || null,

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { getCalendarIcademyCatalogEntry } from '../../constants/calendarIcademyCatalog'
 import { cn } from '@/lib/utils'
 import type { CalendarIcademyEntry } from '../../types'
 
@@ -31,14 +32,6 @@ type LanguageTone = {
 
 const WEEKDAY_LABELS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
 const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab']
-
-const LANGUAGE_FLAGS: Record<string, string> = {
-  pl: '🇵🇱',
-  fr: '🇫🇷',
-  en: '🇬🇧',
-  it: '🇮🇹',
-  de: '🇩🇪',
-}
 
 const LANGUAGE_TONES: Record<string, LanguageTone> = {
   pl: {
@@ -153,10 +146,11 @@ export function CalendarIcademyBoard({
     const byClassKey = new Map<string, ClassOption>()
     for (const entry of entries) {
       if (!byClassKey.has(entry.classKey)) {
+        const catalogEntry = getCalendarIcademyCatalogEntry(entry.classKey)
         byClassKey.set(entry.classKey, {
           classKey: entry.classKey,
-          className: entry.className,
-          languageCode: entry.languageCode,
+          className: catalogEntry?.className || entry.className,
+          languageCode: catalogEntry?.languageCode || entry.languageCode,
         })
       }
     }
@@ -169,13 +163,17 @@ export function CalendarIcademyBoard({
   }, [entries])
 
   const availableMonths = useMemo(() => {
-    const unique = new Set(entries.map((entry) => getMonthKey(entry.sessionDate)))
+    const unique = new Set(
+      entries.map((entry) => getMonthKey(entry.sessionDate)),
+    )
     return Array.from(unique).sort((a, b) => a.localeCompare(b))
   }, [entries])
 
   useEffect(() => {
     setSelectedClassKeys((prev) =>
-      prev.filter((classKey) => classOptions.some((item) => item.classKey === classKey)),
+      prev.filter((classKey) =>
+        classOptions.some((item) => item.classKey === classKey),
+      ),
     )
   }, [classOptions])
 
@@ -199,7 +197,9 @@ export function CalendarIcademyBoard({
 
   const entriesForMonth = useMemo(() => {
     if (!selectedMonth) return []
-    return entries.filter((entry) => getMonthKey(entry.sessionDate) === selectedMonth)
+    return entries.filter(
+      (entry) => getMonthKey(entry.sessionDate) === selectedMonth,
+    )
   }, [entries, selectedMonth])
 
   const entriesByDate = useMemo(() => {
@@ -251,31 +251,37 @@ export function CalendarIcademyBoard({
         if (sessions.length === 0) return null
 
         const firstSession = sessions[0]
-        const weekdayLabel = formatSessionDayLabel(firstSession.sessionDate).split(' ')[0]
-        const teachers = Array.from(new Set(sessions.map((item) => item.teacher))).join(' / ')
-        const flag = LANGUAGE_FLAGS[firstSession.languageCode] || '🌐'
+        const catalogEntry = getCalendarIcademyCatalogEntry(classKey)
+        const weekdayLabel = formatSessionDayLabel(
+          firstSession.sessionDate,
+        ).split(' ')[0]
+        const teachers = Array.from(
+          new Set(sessions.map((item) => item.teacher)),
+        ).join(' / ')
+        const className = catalogEntry?.className || firstSession.className
+        const languageCode =
+          catalogEntry?.languageCode || firstSession.languageCode
+        const flag = catalogEntry?.flag || '🌐'
 
         return {
           classKey,
-          className: firstSession.className,
+          className,
           flag,
           label: `${weekdayLabel} ${formatSessionTimeLabel(firstSession.sessionTime)}`,
           teachers,
-          languageCode: firstSession.languageCode,
+          languageCode,
         }
       })
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
   }, [entriesForMonth, selectedClassKeys])
 
   const languageLegend = useMemo(() => {
-    const byLanguage = new Map<string, string>()
+    const byLanguage = new Set<string>()
     for (const item of classOptions) {
-      if (!byLanguage.has(item.languageCode)) {
-        byLanguage.set(item.languageCode, item.className)
-      }
+      byLanguage.add(item.languageCode)
     }
 
-    return Array.from(byLanguage.entries())
+    return Array.from(byLanguage.values()).sort((a, b) => a.localeCompare(b))
   }, [classOptions])
 
   const calendarCells = useMemo(() => {
@@ -342,7 +348,10 @@ export function CalendarIcademyBoard({
               {classOptions.map((option) => {
                 const tone = LANGUAGE_TONES[option.languageCode] || DEFAULT_TONE
                 const isSelected = selectedClassKeys.includes(option.classKey)
-                const flag = LANGUAGE_FLAGS[option.languageCode] || '🌐'
+                const catalogEntry = getCalendarIcademyCatalogEntry(
+                  option.classKey,
+                )
+                const flag = catalogEntry?.flag || '🌐'
 
                 return (
                   <button
@@ -367,14 +376,20 @@ export function CalendarIcademyBoard({
 
           {languageLegend.length > 0 && (
             <div className='flex flex-wrap gap-3'>
-              {languageLegend.map(([languageCode, referenceClass]) => {
+              {languageLegend.map((languageCode) => {
                 const tone = LANGUAGE_TONES[languageCode] || DEFAULT_TONE
                 return (
-                  <div key={languageCode} className='flex items-center gap-2 text-xs text-muted-foreground'>
-                    <span className={cn('size-2.5 rounded-full', tone.legendClassName)} />
+                  <div
+                    key={languageCode}
+                    className='flex items-center gap-2 text-xs text-muted-foreground'
+                  >
+                    <span
+                      className={cn(
+                        'size-2.5 rounded-full',
+                        tone.legendClassName,
+                      )}
+                    />
                     <span className='uppercase'>{languageCode}</span>
-                    <span>-</span>
-                    <span className='truncate'>{referenceClass}</span>
                   </div>
                 )
               })}
@@ -384,12 +399,14 @@ export function CalendarIcademyBoard({
 
         <CardContent>
           {loading ? (
-            <p className='text-sm text-muted-foreground'>Cargando calendario...</p>
+            <p className='text-sm text-muted-foreground'>
+              Cargando calendario...
+            </p>
           ) : entries.length === 0 ? (
             <p className='text-sm text-muted-foreground'>{emptyMessage}</p>
           ) : (
             <div className='overflow-x-auto'>
-              <div className='min-w-[900px] overflow-hidden rounded-lg border'>
+              <div className='min-w-225 overflow-hidden rounded-lg border'>
                 <div className='grid grid-cols-7 border-b bg-muted/40'>
                   {WEEKDAY_LABELS.map((label) => (
                     <div
@@ -404,7 +421,9 @@ export function CalendarIcademyBoard({
                 <div className='grid grid-cols-7'>
                   {calendarCells.map((dateKey, index) => {
                     const isWeekend = index % 7 >= 5
-                    const dayEntries = dateKey ? entriesByDate.get(dateKey) || [] : []
+                    const dayEntries = dateKey
+                      ? entriesByDate.get(dateKey) || []
+                      : []
 
                     return (
                       <div
@@ -420,10 +439,17 @@ export function CalendarIcademyBoard({
                               {Number(dateKey.slice(-2))}
                             </p>
 
-                             <div className='flex flex-col gap-1'>
+                            <div className='flex flex-col gap-1'>
                               {dayEntries.map((entry) => {
+                                const catalogEntry =
+                                  getCalendarIcademyCatalogEntry(entry.classKey)
+                                const className =
+                                  catalogEntry?.className || entry.className
+                                const languageCode =
+                                  catalogEntry?.languageCode ||
+                                  entry.languageCode
                                 const tone =
-                                  LANGUAGE_TONES[entry.languageCode] || DEFAULT_TONE
+                                  LANGUAGE_TONES[languageCode] || DEFAULT_TONE
                                 const isDimmed =
                                   selectedClassKeys.length > 0 &&
                                   !selectedClassKeys.includes(entry.classKey)
@@ -442,7 +468,9 @@ export function CalendarIcademyBoard({
                                       <span className='font-bold'>
                                         {entry.sessionTime.replace(':00', 'h')}
                                       </span>
-                                      <p className='truncate font-medium'>{entry.className}</p>
+                                      <p className='truncate font-medium'>
+                                        {className}
+                                      </p>
                                       <p className='truncate text-[10px] text-muted-foreground'>
                                         {entry.teacher}
                                       </p>
@@ -496,8 +524,14 @@ export function CalendarIcademyBoard({
           <CardContent>
             <div className='grid gap-2 md:grid-cols-2 xl:grid-cols-5'>
               {selectedSessions.map((entry) => {
-                const tone = LANGUAGE_TONES[entry.languageCode] || DEFAULT_TONE
-                const flag = LANGUAGE_FLAGS[entry.languageCode] || '🌐'
+                const catalogEntry = getCalendarIcademyCatalogEntry(
+                  entry.classKey,
+                )
+                const className = catalogEntry?.className || entry.className
+                const languageCode =
+                  catalogEntry?.languageCode || entry.languageCode
+                const flag = catalogEntry?.flag || '🌐'
+                const tone = LANGUAGE_TONES[languageCode] || DEFAULT_TONE
 
                 return (
                   <div
@@ -515,21 +549,16 @@ export function CalendarIcademyBoard({
                           tone.badgeClassName,
                         )}
                       >
-                        {flag} {entry.className}
+                        {flag} {className}
                       </Badge>
                     </div>
                     <p className='text-2xl font-bold leading-none'>
                       {formatSessionDayLabel(entry.sessionDate)}
                     </p>
                     <p className='mt-1 text-base text-muted-foreground'>
-                      {formatSessionTimeLabel(entry.sessionTime)} · con {entry.teacher}
+                      {formatSessionTimeLabel(entry.sessionTime)} · con{' '}
+                      {entry.teacher}
                     </p>
-                    {entry.groupName && (
-                      <p className='mt-1 text-xs text-muted-foreground'>Grupo: {entry.groupName}</p>
-                    )}
-                    {entry.note && (
-                      <p className='mt-1 text-xs text-muted-foreground'>{entry.note}</p>
-                    )}
                   </div>
                 )
               })}

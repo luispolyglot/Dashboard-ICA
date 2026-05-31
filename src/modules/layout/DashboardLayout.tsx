@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { FullscreenLoading } from '@/components/ui/fullscreen-loading'
 import { Header } from '../components/Header'
 import { IcaTestsAvailableModal } from '../components/IcaTestsAvailableModal'
+import { getCalendarIcademyCatalogEntry } from '../constants/calendarIcademyCatalog'
 import { useIcaTestsOverview } from '../hooks/useIcaTestsOverview'
 import { LangEditModal } from '../components/LangEditModal'
 import { MobileBottomNav } from '../components/MobileBottomNav'
@@ -250,8 +251,14 @@ export function DashboardLayout() {
             reminder.minutesUntilStart <= 0
               ? 'Comienza en breve'
               : `Empieza en ${reminder.minutesUntilStart} min`
+          const catalogEntry = getCalendarIcademyCatalogEntry(
+            reminder.entry.classKey,
+          )
+          const classLabel = catalogEntry
+            ? `${catalogEntry.flag} ${catalogEntry.className}`
+            : reminder.entry.className
 
-          toast.info(`Clase ICADEMY: ${reminder.entry.className}`, {
+          toast.info(`Clase ICADEMY: ${classLabel}`, {
             description: `${whenLabel} · ${reminder.entry.sessionTime} · con ${reminder.entry.teacher}`,
             action: {
               label: 'Abrir',

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { getCalendarIcademyCatalogEntry } from '../constants/calendarIcademyCatalog'
 import type {
   CalendarIcademyEntry,
   CalendarIcademyEntryInput,
@@ -63,10 +64,20 @@ function toCalendarIcademyEntry(row: CalendarIcademyRow): CalendarIcademyEntry {
 }
 
 function toCalendarIcademyPayload(input: CalendarIcademyEntryInput) {
+  const classKey = input.classKey.trim()
+  const catalogEntry = getCalendarIcademyCatalogEntry(classKey)
+
+  if (!catalogEntry) {
+    throw new CalendarIcademyRequestError(
+      'La clase seleccionada no pertenece al catalogo oficial de ICADEMY.',
+      400,
+    )
+  }
+
   return {
-    class_key: input.classKey.trim(),
-    class_name: input.className.trim(),
-    language_code: input.languageCode.trim().toLowerCase(),
+    class_key: catalogEntry.classKey,
+    class_name: catalogEntry.className,
+    language_code: catalogEntry.languageCode,
     session_date: input.sessionDate,
     session_time: normalizeTimeForDb(input.sessionTime),
     teacher: input.teacher.trim(),

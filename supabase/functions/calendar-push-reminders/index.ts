@@ -40,6 +40,20 @@ type ProfileTimezoneRow = {
   timezone: string | null
 }
 
+const CLASS_FLAGS: Record<string, string> = {
+  polaco: '🇵🇱',
+  fr_basico: '🇫🇷',
+  fr_conv: '🇫🇷',
+  en_basico: '🇬🇧',
+  en_intermedio: '🇬🇧',
+  en_avanzado: '🇬🇧',
+  it_basico: '🇮🇹',
+  it_intermedio: '🇮🇹',
+  it_avanzado: '🇮🇹',
+  de_basico: '🇩🇪',
+  de_conv: '🇩🇪',
+}
+
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -393,7 +407,7 @@ Deno.serve(async (req) => {
           : `Empieza en ${item.minutesUntilStart} min`
 
       const payload = {
-        title: `Clase ICADEMY: ${item.entry.class_name}`,
+        title: `Clase ICADEMY: ${(CLASS_FLAGS[item.entry.class_key] || '🌐')} ${item.entry.class_name}`,
         body: `${whenLabel} · ${formatHourLabel(item.entry.session_time)} · con ${item.entry.teacher}`,
         url: '/calendar-icademy',
         tag: `calendar-reminder-${item.entry.id}`,

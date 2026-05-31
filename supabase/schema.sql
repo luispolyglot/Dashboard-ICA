@@ -291,7 +291,7 @@ create table if not exists public.users_calendar_icademy (
   constraint users_calendar_icademy_language_code_not_empty
     check (length(trim(language_code)) > 0),
   constraint users_calendar_icademy_minutes_before_allowed
-    check (minutes_before in (10, 15, 30, 60, 120)),
+    check (minutes_before in (10, 20, 30, 60, 120)),
   constraint users_calendar_icademy_unique_class
     unique (user_id, class_key)
 );

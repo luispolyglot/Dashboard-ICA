@@ -23,7 +23,7 @@ supabase secrets set \
 
 ## Programacion (cron)
 
-Programa una invocacion cada 5 minutos (Dashboard > Edge Functions > Schedules) y envia:
+Programa una invocacion cada 10 minutos (Dashboard > Edge Functions > Schedules) y envia:
 
 - metodo: `POST`
 - URL: `https://<project-ref>.functions.supabase.co/calendar-push-reminders`

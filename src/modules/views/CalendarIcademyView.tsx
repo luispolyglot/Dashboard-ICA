@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { CalendarIcademyBoard } from '../components/calendar-icademy/CalendarIcademyBoard'
+import { getCalendarIcademyCatalogEntry } from '../constants/calendarIcademyCatalog'
 import { fetchCalendarIcademyEntries } from '../services/calendarIcademy'
 import {
   fetchCalendarIcademyPreferences,
@@ -41,16 +42,8 @@ import type {
   PushSubscriptionDevice,
 } from '../types'
 
-const REMINDER_OPTIONS = [10, 15, 30, 60, 120]
+const REMINDER_OPTIONS = [10, 20, 30, 60, 120]
 const MAX_ACTIVE_REMINDERS = 2
-
-const LANGUAGE_FLAGS: Record<string, string> = {
-  pl: '🇵🇱',
-  fr: '🇫🇷',
-  en: '🇬🇧',
-  it: '🇮🇹',
-  de: '🇩🇪',
-}
 
 export function CalendarIcademyView() {
   const [entries, setEntries] = useState<CalendarIcademyEntry[]>([])
@@ -132,14 +125,16 @@ export function CalendarIcademyView() {
     entries
       .reduce((acc, entry) => {
         if (!acc.has(entry.classKey)) {
+          const catalogEntry = getCalendarIcademyCatalogEntry(entry.classKey)
           acc.set(entry.classKey, {
             classKey: entry.classKey,
-            className: entry.className,
-            languageCode: entry.languageCode,
+            className: catalogEntry?.className || entry.className,
+            languageCode: catalogEntry?.languageCode || entry.languageCode,
+            flag: catalogEntry?.flag || '🌐',
           })
         }
         return acc
-      }, new Map<string, { classKey: string; className: string; languageCode: string }>())
+      }, new Map<string, { classKey: string; className: string; languageCode: string; flag: string }>())
       .values(),
   ).sort((a, b) => a.className.localeCompare(b.className))
 
@@ -376,7 +371,7 @@ export function CalendarIcademyView() {
               const minutesBefore = preference?.minutesBefore ?? 30
               const isUpdating = updatingClassKey === option.classKey
               const canEnable = enabled || !hasReachedReminderLimit
-              const flag = LANGUAGE_FLAGS[option.languageCode] || '🌐'
+              const flag = option.flag
 
               return (
                 <div key={option.classKey} className='rounded-lg border p-3'>
