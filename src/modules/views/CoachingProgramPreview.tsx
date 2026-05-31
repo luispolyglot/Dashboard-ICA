@@ -83,7 +83,9 @@ type ObjectiveStatusResult = {
 function toNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string') {
-    const parsed = Number(value)
+    const normalized = value.trim()
+    if (normalized.length === 0) return null
+    const parsed = Number(normalized)
     return Number.isFinite(parsed) ? parsed : null
   }
   return null
@@ -368,12 +370,11 @@ export function CoachingProgramPreview({
           const latestClass = weekClasses[0] || null
           const closedNotes = [
             ...(membership.closedMasterNotesByWeek?.[weekKey] || []),
-          ].sort(
-            (a, b) =>
-              a.name.localeCompare(b.name, 'es', {
-                numeric: true,
-                sensitivity: 'base',
-              }),
+          ].sort((a, b) =>
+            a.name.localeCompare(b.name, 'es', {
+              numeric: true,
+              sensitivity: 'base',
+            }),
           )
 
           const wordsTarget = toNumber(objectives.wordsTarget)
@@ -417,14 +418,25 @@ export function CoachingProgramPreview({
             allowExerciseCompletion &&
             membership.status === 'active' &&
             week === currentProgramWeek
-          const objectiveTotal = exercise.url ? 5 : 4
-          const objectiveDone = [
-            wordsStatus.done,
-            notesStatus.done,
-            icaStatus.done,
-            flashcardsStatus.done,
-            exercise.url ? exerciseDone : true,
-          ].filter(Boolean).length
+          const baseObjectiveStatuses = [
+            wordsStatus,
+            notesStatus,
+            icaStatus,
+            flashcardsStatus,
+          ]
+          const definedBaseObjectiveCount = baseObjectiveStatuses.filter(
+            (status) => status.fillPct !== null,
+          ).length
+          const completedBaseObjectiveCount = baseObjectiveStatuses.filter(
+            (status) => status.fillPct !== null && status.done,
+          ).length
+          const hasExerciseObjective = Boolean(exercise.url)
+          const objectiveTotal =
+            definedBaseObjectiveCount + (hasExerciseObjective ? 1 : 0)
+          const objectiveDone =
+            completedBaseObjectiveCount +
+            (hasExerciseObjective && exerciseDone ? 1 : 0)
+          const hasAnyObjective = objectiveTotal > 0
 
           return (
             <AccordionItem
@@ -439,170 +451,23 @@ export function CoachingProgramPreview({
                   </div>
                   <Badge
                     variant={
-                      objectiveDone === objectiveTotal ? 'default' : 'secondary'
+                      !hasAnyObjective
+                        ? 'outline'
+                        : objectiveDone === objectiveTotal
+                          ? 'default'
+                          : 'secondary'
                     }
                   >
-                    {objectiveDone}/{objectiveTotal} objetivos
+                    {hasAnyObjective
+                      ? `${objectiveDone}/${objectiveTotal} objetivos`
+                      : 'Sin objetivos'}
                   </Badge>
                 </div>
               </AccordionTrigger>
 
               <AccordionContent className='pb-4'>
-                <div className='grid gap-4 lg:grid-cols-[1.3fr_1fr]'>
-                  <div className='flex flex-col gap-4 mt-4'>
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className='flex items-center gap-2'>
-                          <PlayCircleIcon className='h-4 w-4 text-primary' />
-                          Mi clase
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className='space-y-3'>
-                        {!latestClass ? (
-                          <div className='rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground'>
-                            Aun no hay clase cargada para esta semana.
-                          </div>
-                        ) : (
-                          <>
-                            {getEmbeddableVideoUrl(latestClass.loomUrl) ? (
-                              <div className='overflow-hidden rounded-lg border'>
-                                <iframe
-                                  src={
-                                    getEmbeddableVideoUrl(
-                                      latestClass.loomUrl,
-                                    ) || ''
-                                  }
-                                  title={`Video semana ${week}`}
-                                  className='aspect-video w-full'
-                                  allow='autoplay; fullscreen; picture-in-picture'
-                                  allowFullScreen
-                                />
-                              </div>
-                            ) : latestClass.loomUrl ? (
-                              <a
-                                href={latestClass.loomUrl}
-                                target='_blank'
-                                rel='noreferrer'
-                                className='inline-flex w-fit items-center gap-2 text-sm text-primary underline underline-offset-2'
-                              >
-                                <PlayCircleIcon className='h-4 w-4' />
-                                Abrir clase en Loom
-                              </a>
-                            ) : null}
-
-                            {latestClass.report && (
-                              <p className='rounded-lg border bg-muted/30 p-3 text-sm'>
-                                {latestClass.report}
-                              </p>
-                            )}
-
-                            {latestClass.reportImageUrl && (
-                              <div className='space-y-2'>
-                                <button
-                                  type='button'
-                                  onClick={() =>
-                                    setImagePreviewUrl(
-                                      latestClass.reportImageUrl,
-                                    )
-                                  }
-                                  className='group relative block w-full cursor-zoom-in overflow-hidden rounded-lg border text-left'
-                                >
-                                  <img
-                                    src={latestClass.reportImageUrl}
-                                    alt='Imagen del reporte de clase'
-                                    className='max-h-56 w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]'
-                                  />
-                                  <div className='absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100'>
-                                    <SearchIcon className='h-5 w-5 text-white' />
-                                  </div>
-                                </button>
-                                <a
-                                  href={latestClass.reportImageUrl}
-                                  download
-                                  target='_blank'
-                                  rel='noreferrer'
-                                  className='inline-flex items-center gap-1 text-sm text-primary underline underline-offset-2'
-                                >
-                                  <DownloadIcon className='h-3.5 w-3.5' />
-                                  Descargar imagen del reporte
-                                </a>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className='flex items-center gap-2'>
-                          <RepeatIcon className='h-4 w-4 text-primary' />
-                          Revision notas maestras
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className='space-y-3'>
-                        {closedNotes.length === 0 ? (
-                          <div className='rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground'>
-                            Aun no hay notas maestras cerradas en esta semana.
-                          </div>
-                        ) : (
-                          closedNotes.map((note) => (
-                            <div
-                              key={note.id}
-                              className='rounded-lg border p-3'
-                            >
-                              <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
-                                <p className='font-medium text-foreground'>
-                                  {note.name}
-                                </p>
-                                <p className='inline-flex items-center gap-1 text-xs text-muted-foreground'>
-                                  <CalendarIcon className='h-3.5 w-3.5' />
-                                  {formatDateLabel(note.closedAt)}
-                                </p>
-                              </div>
-
-                              {getEmbeddableVideoUrl(note.feedbackLoomUrl) ? (
-                                <div className='overflow-hidden rounded-md border'>
-                                  <iframe
-                                    src={
-                                      getEmbeddableVideoUrl(
-                                        note.feedbackLoomUrl,
-                                      ) || ''
-                                    }
-                                    title={`Revision ${note.name}`}
-                                    className='aspect-video w-full'
-                                    allow='autoplay; fullscreen; picture-in-picture'
-                                    allowFullScreen
-                                  />
-                                </div>
-                              ) : (
-                                <p className='text-sm text-muted-foreground'>
-                                  Aun no hay video de revision para esta nota.
-                                </p>
-                              )}
-
-                              <div className='mt-3 border-t pt-3'>
-                                <p className='mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground'>
-                                  Notas del coach
-                                </p>
-                                {note.feedbackNotes ? (
-                                  <p className='whitespace-pre-wrap text-sm text-foreground'>
-                                    {note.feedbackNotes}
-                                  </p>
-                                ) : (
-                                  <p className='text-sm text-muted-foreground'>
-                                    Aun no hay notas del coach para esta nota.
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          ))
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  <Card className='h-fit lg:sticky lg:top-4'>
+                <div className='mt-4 flex flex-col gap-4'>
+                  <Card>
                     <CardHeader>
                       <CardTitle className='flex items-center gap-2'>
                         <GoalIcon className='h-4 w-4 text-primary' />
@@ -627,10 +492,17 @@ export function CoachingProgramPreview({
                       <div className='rounded-lg border bg-muted/30 p-3'>
                         <div className='mb-2 flex items-center justify-between gap-2'>
                           <p className='text-sm'>Objetivo ejercicio</p>
-                          <Badge variant={exerciseDone ? 'default' : 'outline'}>
+                          <Badge
+                            variant={exerciseDone ? 'default' : 'outline'}
+                            className={
+                              exerciseDone
+                                ? 'bg-primary text-primary-foreground'
+                                : undefined
+                            }
+                          >
                             {exercise.url
                               ? exerciseDone
-                                ? 'Completado'
+                                ? 'Cumplido'
                                 : 'Pendiente'
                               : 'No definido'}
                           </Badge>
@@ -677,11 +549,14 @@ export function CoachingProgramPreview({
                               </Button>
                             )}
 
-                            {allowExerciseCompletion && !canCompleteExerciseThisWeek && !exerciseDone && (
-                              <p className='text-xs text-muted-foreground'>
-                                Solo puedes marcar este ejercicio durante la semana {week}.
-                              </p>
-                            )}
+                            {allowExerciseCompletion &&
+                              !canCompleteExerciseThisWeek &&
+                              !exerciseDone && (
+                                <p className='text-xs text-muted-foreground'>
+                                  Solo puedes marcar este ejercicio durante la
+                                  semana {week}.
+                                </p>
+                              )}
                           </div>
                         ) : (
                           <p className='text-xs text-muted-foreground'>
@@ -690,6 +565,175 @@ export function CoachingProgramPreview({
                           </p>
                         )}
                       </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className='flex items-center gap-2'>
+                        <PlayCircleIcon className='h-4 w-4 text-primary' />
+                        Mi clase
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className='space-y-3'>
+                      {!latestClass ? (
+                        <div className='rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground'>
+                          Aun no hay clase cargada para esta semana.
+                        </div>
+                      ) : (
+                        <>
+                          <div className='grid gap-3 md:grid-cols-2'>
+                            <div className='space-y-2'>
+                              {getEmbeddableVideoUrl(latestClass.loomUrl) ? (
+                                <div className='overflow-hidden rounded-lg border'>
+                                  <iframe
+                                    src={
+                                      getEmbeddableVideoUrl(
+                                        latestClass.loomUrl,
+                                      ) || ''
+                                    }
+                                    title={`Video semana ${week}`}
+                                    className='aspect-video w-full'
+                                    allow='autoplay; fullscreen; picture-in-picture'
+                                    allowFullScreen
+                                  />
+                                </div>
+                              ) : latestClass.loomUrl ? (
+                                <a
+                                  href={latestClass.loomUrl}
+                                  target='_blank'
+                                  rel='noreferrer'
+                                  className='inline-flex w-fit items-center gap-2 text-sm text-primary underline underline-offset-2'
+                                >
+                                  <PlayCircleIcon className='h-4 w-4' />
+                                  Abrir clase en Loom
+                                </a>
+                              ) : (
+                                <p className='text-sm text-muted-foreground'>
+                                  Aun no hay video de clase para esta semana.
+                                </p>
+                              )}
+                            </div>
+
+                            <div className='space-y-2'>
+                              {latestClass.reportImageUrl ? (
+                                <>
+                                  <button
+                                    type='button'
+                                    onClick={() =>
+                                      setImagePreviewUrl(
+                                        latestClass.reportImageUrl,
+                                      )
+                                    }
+                                    className='group relative block w-full cursor-zoom-in overflow-hidden rounded-lg border text-left'
+                                  >
+                                    <img
+                                      src={latestClass.reportImageUrl}
+                                      alt='Imagen del reporte de clase'
+                                      className='max-h-56 w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]'
+                                    />
+                                    <div className='absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100'>
+                                      <SearchIcon className='h-5 w-5 text-white' />
+                                    </div>
+                                  </button>
+                                  <a
+                                    href={latestClass.reportImageUrl}
+                                    download
+                                    target='_blank'
+                                    rel='noreferrer'
+                                    className='inline-flex items-center gap-1 text-sm text-primary underline underline-offset-2'
+                                  >
+                                    <DownloadIcon className='h-3.5 w-3.5' />
+                                    Descargar imagen del reporte
+                                  </a>
+                                </>
+                              ) : (
+                                <p className='text-sm text-muted-foreground'>
+                                  Aun no hay imagen de reporte para esta semana.
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          {latestClass.report && (
+                            <div className='rounded-lg border bg-muted/30 p-3'>
+                              <p className='mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground'>
+                                Reporte
+                              </p>
+                              <p className='text-sm'>{latestClass.report}</p>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className='flex items-center gap-2'>
+                        <RepeatIcon className='h-4 w-4 text-primary' />
+                        Revision de notas maestras
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className='space-y-3'>
+                      {closedNotes.length === 0 ? (
+                        <div className='rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground'>
+                          Aun no hay notas maestras cerradas en esta semana.
+                        </div>
+                      ) : (
+                        closedNotes.map((note) => (
+                          <div key={note.id} className='rounded-lg border p-3'>
+                            <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
+                              <p className='font-medium text-foreground'>
+                                {note.name}
+                              </p>
+                              <p className='inline-flex items-center gap-1 text-xs text-muted-foreground'>
+                                <CalendarIcon className='h-3.5 w-3.5' />
+                                {formatDateLabel(note.closedAt)}
+                              </p>
+                            </div>
+
+                            <div className='grid gap-3 md:grid-cols-[1.25fr_1fr] md:items-start'>
+                              <div>
+                                {getEmbeddableVideoUrl(note.feedbackLoomUrl) ? (
+                                  <div className='overflow-hidden rounded-md border'>
+                                    <iframe
+                                      src={
+                                        getEmbeddableVideoUrl(
+                                          note.feedbackLoomUrl,
+                                        ) || ''
+                                      }
+                                      title={`Revision ${note.name}`}
+                                      className='aspect-video w-full'
+                                      allow='autoplay; fullscreen; picture-in-picture'
+                                      allowFullScreen
+                                    />
+                                  </div>
+                                ) : (
+                                  <p className='text-sm text-muted-foreground'>
+                                    Aun no hay video de revisión para esta nota.
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className='rounded-md border bg-muted/20 p-3'>
+                                <p className='mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground'>
+                                  Notas del coach
+                                </p>
+                                {note.feedbackNotes ? (
+                                  <p className='whitespace-pre-wrap text-sm text-foreground'>
+                                    {note.feedbackNotes}
+                                  </p>
+                                ) : (
+                                  <p className='text-sm text-muted-foreground'>
+                                    Aún no hay notas del coach para esta nota.
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </CardContent>
                   </Card>
                 </div>

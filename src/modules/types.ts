@@ -151,6 +151,65 @@ export interface ImprovementTrackerInput {
   improvisationPct: number
 }
 
+export interface CalendarIcademyEntry {
+  id: string
+  classKey: string
+  className: string
+  languageCode: string
+  sessionDate: string
+  sessionTime: string
+  teacher: string
+  groupName: string | null
+  note: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CalendarIcademyEntryInput {
+  classKey: string
+  className: string
+  languageCode: string
+  sessionDate: string
+  sessionTime: string
+  teacher: string
+  groupName?: string | null
+  note?: string | null
+}
+
+export interface CalendarIcademyPreference {
+  id: string
+  userId: string
+  classKey: string
+  languageCode: string
+  notificationsEnabled: boolean
+  minutesBefore: number
+  quietHoursStart: string | null
+  quietHoursEnd: string | null
+  lastNotifiedForSessionId: string | null
+  lastNotifiedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CalendarIcademyPreferenceInput {
+  classKey: string
+  languageCode: string
+  notificationsEnabled: boolean
+  minutesBefore: number
+  quietHoursStart?: string | null
+  quietHoursEnd?: string | null
+}
+
+export interface PushSubscriptionDevice {
+  id: string
+  endpoint: string
+  isActive: boolean
+  userAgent: string | null
+  createdAt: string
+  updatedAt: string
+  lastSeenAt: string
+}
+
 export interface IcaTestQuestion {
   promptNative: string
   correctTarget: string
