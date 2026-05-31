@@ -32,6 +32,10 @@ function toUtcMonthStart(date: Date): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-01`
 }
 
+function toLocalMonthStart(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`
+}
+
 function parseIsoDate(isoDate: string): Date {
   const [year, month, day] = isoDate.split('-').map(Number)
   return new Date(Date.UTC(year || 1970, (month || 1) - 1, day || 1))
@@ -47,9 +51,9 @@ function formatMonthLabel(isoMonthStart: string): string {
   return label.slice(0, 1).toUpperCase() + label.slice(1)
 }
 
-function buildMonthOptions(currentUtcMonthStart: string): MonthOption[] {
+function buildMonthOptions(currentMonthStart: string): MonthOption[] {
   const start = parseIsoDate(HISTORY_START_MONTH)
-  const end = parseIsoDate(currentUtcMonthStart)
+  const end = parseIsoDate(currentMonthStart)
   const options: MonthOption[] = []
 
   const cursor = new Date(end)
@@ -141,19 +145,19 @@ function formatCountdown(ms: number): string {
 
 export function LeaderboardView() {
   const { user } = useAuth()
-  const currentUtcMonthStart = useMemo(() => toUtcMonthStart(new Date()), [])
+  const currentMonthStart = useMemo(() => toLocalMonthStart(new Date()), [])
   const monthOptions = useMemo(
-    () => buildMonthOptions(currentUtcMonthStart),
-    [currentUtcMonthStart],
+    () => buildMonthOptions(currentMonthStart),
+    [currentMonthStart],
   )
 
-  const [selectedMonth, setSelectedMonth] = useState(currentUtcMonthStart)
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthStart)
   const [rows, setRows] = useState<LeaderboardEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [nowMs, setNowMs] = useState(() => Date.now())
 
-  const isCurrentMonth = selectedMonth === currentUtcMonthStart
+  const isCurrentMonth = selectedMonth === currentMonthStart
   const closeAt = useMemo(
     () => closeAtUtcForMonth(selectedMonth),
     [selectedMonth],
@@ -261,7 +265,9 @@ export function LeaderboardView() {
             <p className='text-sm text-destructive'>{error}</p>
           ) : rowsWithSharedRank.length === 0 ? (
             <p className='text-sm text-muted-foreground'>
-              Todavía no hay datos disponibles para este periodo.
+              {isCurrentMonth
+                ? 'Todavía no hay datos disponibles para este periodo.'
+                : `Se están calculando los resultados de ${formatMonthLabel(selectedMonth)}. En el transcurso del día estarán disponibles.`}
             </p>
           ) : (
             <div className='overflow-x-auto'>
