@@ -37,6 +37,11 @@ type PreferenceRow = {
   last_notified_for_session_id: string | null
 }
 
+type MutedSessionRow = {
+  user_id: string
+  calendar_entry_id: string
+}
+
 const CLASS_FLAGS: Record<string, string> = {
   polaco: '🇵🇱',
   fr_basico: '🇫🇷',
@@ -254,7 +259,7 @@ Deno.serve(async (req) => {
   const minDate = new Date(now.getTime() - 10 * 60 * 1000)
   const maxDate = new Date(now.getTime() + 120 * 60 * 1000)
 
-  const [subscriptionsResult, preferencesResult, entriesResult] = await Promise.all([
+  const [subscriptionsResult, preferencesResult, entriesResult, mutedSessionsResult] = await Promise.all([
     adminClient
       .from('user_push_subscriptions')
       .select('id, user_id, endpoint, p256dh, auth, is_active')
@@ -272,14 +277,23 @@ Deno.serve(async (req) => {
       .lte('session_date', toYmd(new Date(maxDate.getTime() + 24 * 60 * 60 * 1000)))
       .order('session_date', { ascending: true })
       .order('session_time', { ascending: true }),
+    adminClient
+      .from('users_calendar_icademy_session_blacklist')
+      .select('user_id, calendar_entry_id'),
   ])
 
-  if (subscriptionsResult.error || preferencesResult.error || entriesResult.error) {
+  if (
+    subscriptionsResult.error ||
+    preferencesResult.error ||
+    entriesResult.error ||
+    mutedSessionsResult.error
+  ) {
     return jsonResponse(500, {
       error:
         subscriptionsResult.error?.message ||
         preferencesResult.error?.message ||
         entriesResult.error?.message ||
+        mutedSessionsResult.error?.message ||
         'Failed to query reminder data',
     })
   }
@@ -287,6 +301,7 @@ Deno.serve(async (req) => {
   const subscriptions = (subscriptionsResult.data || []) as PushSubscriptionRow[]
   const preferences = (preferencesResult.data || []) as PreferenceRow[]
   const entries = (entriesResult.data || []) as CalendarEntryRow[]
+  const mutedSessions = (mutedSessionsResult.data || []) as MutedSessionRow[]
 
   if (subscriptions.length === 0 || preferences.length === 0 || entries.length === 0) {
     return jsonResponse(200, {
@@ -298,13 +313,11 @@ Deno.serve(async (req) => {
     })
   }
 
-  const preferencesByUserClass = new Map<string, PreferenceRow>()
-  for (const preference of preferences) {
-    preferencesByUserClass.set(
-      `${preference.user_id}:${preference.class_key}`,
-      preference,
-    )
-  }
+  const mutedSessionKeySet = new Set(
+    mutedSessions.map(
+      (item) => `${item.user_id}:${item.calendar_entry_id}`,
+    ),
+  )
 
   const entriesByClass = new Map<string, CalendarEntryRow[]>()
   for (const entry of entries) {
@@ -329,6 +342,10 @@ Deno.serve(async (req) => {
 
       const classEntries = entriesByClass.get(preference.class_key) || []
       for (const entry of classEntries) {
+        if (mutedSessionKeySet.has(`${subscription.user_id}:${entry.id}`)) {
+          continue
+        }
+
         if (preference.last_notified_for_session_id === entry.id) {
           continue
         }

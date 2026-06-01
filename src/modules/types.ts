@@ -200,6 +200,15 @@ export interface CalendarIcademyPreferenceInput {
   quietHoursEnd?: string | null
 }
 
+export interface CalendarIcademySessionBlacklistItem {
+  id: string
+  userId: string
+  calendarEntryId: string
+  classKey: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface PushSubscriptionDevice {
   id: string
   endpoint: string

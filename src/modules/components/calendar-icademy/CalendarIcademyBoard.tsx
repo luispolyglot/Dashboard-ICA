@@ -31,6 +31,7 @@ import {
   getCalendarIcademyTodayKey,
   parseCalendarIcademySessionDateTime,
 } from '../../utils/calendarIcademyTime'
+import { Volume1, VolumeOff } from 'lucide-react'
 
 type CalendarIcademyBoardProps = {
   title: string
@@ -44,6 +45,9 @@ type CalendarIcademyBoardProps = {
   topActions?: ReactNode
   onEntryClick?: (entry: CalendarIcademyEntry) => void
   onLocalTimePreferenceChange?: (enabled: boolean) => void
+  canMuteEntry?: (entry: CalendarIcademyEntry) => boolean
+  isEntryMuted?: (entry: CalendarIcademyEntry) => boolean
+  onToggleEntryMute?: (entry: CalendarIcademyEntry) => void
 }
 
 type CalendarCell = {
@@ -229,6 +233,9 @@ export function CalendarIcademyBoard({
   topActions,
   onEntryClick,
   onLocalTimePreferenceChange,
+  canMuteEntry,
+  isEntryMuted,
+  onToggleEntryMute,
 }: CalendarIcademyBoardProps) {
   const [selectedClassKeys, setSelectedClassKeys] = useState<string[]>(() => {
     if (typeof window === 'undefined') return []
@@ -849,6 +856,10 @@ export function CalendarIcademyBoard({
                         minutesUntilSession !== null &&
                         minutesUntilSession > 0 &&
                         minutesUntilSession <= 120
+                      const canMuteCurrentEntry = canMuteEntry
+                        ? canMuteEntry(entry)
+                        : false
+                      const isMuted = isEntryMuted ? isEntryMuted(entry) : false
 
                       return (
                         <div
@@ -856,6 +867,7 @@ export function CalendarIcademyBoard({
                           className={cn(
                             'rounded-lg border border-border border-l-4 bg-card p-3',
                             tone.rowClassName,
+                            isMuted && 'opacity-70',
                           )}
                         >
                           <div className='mb-1'>
@@ -884,12 +896,27 @@ export function CalendarIcademyBoard({
                               )}
                             </div>
                           </div>
-                          <p className='text-2xl font-bold leading-none'>
+                          <p className='text-xl font-bold leading-none'>
                             {getEntryDayLabel(entry)}
                           </p>
                           <p className='mt-1 text-base text-muted-foreground'>
                             {getEntryTimeLabel(entry)} · con {entry.teacher}
                           </p>
+                          {canMuteCurrentEntry && onToggleEntryMute && (
+                            <div className='mt-2'>
+                              <Button
+                                type='button'
+                                size='sm'
+                                variant={isMuted ? 'outline' : 'secondary'}
+                                onClick={() => onToggleEntryMute(entry)}
+                              >
+                                {isMuted ? <Volume1 /> : <VolumeOff />}
+                                {isMuted
+                                  ? 'Cancelar silencio'
+                                  : 'Silenciar sesion'}
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       )
                     })}

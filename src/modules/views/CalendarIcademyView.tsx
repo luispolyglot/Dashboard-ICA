@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
-import { BellIcon, CheckIcon, SmartphoneIcon } from 'lucide-react'
+import {
+  BellIcon,
+  CheckIcon,
+  SmartphoneIcon,
+  Volume1,
+  VolumeOff,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -30,6 +36,11 @@ import {
   upsertCalendarIcademyPreference,
 } from '../services/calendarIcademyPreferences'
 import {
+  fetchCalendarIcademySessionBlacklist,
+  silenceCalendarIcademySession,
+  unsilenceCalendarIcademySession,
+} from '../services/calendarIcademySessionBlacklist'
+import {
   disablePushOnCurrentDevice,
   enablePushOnCurrentDevice,
   getCurrentPushSubscriptionEndpoint,
@@ -45,6 +56,7 @@ import type {
   CalendarIcademyEntry,
   CalendarIcademyPreference,
   CalendarIcademyPreferenceInput,
+  CalendarIcademySessionBlacklistItem,
   PushSubscriptionDevice,
 } from '../types'
 
@@ -97,6 +109,10 @@ export function CalendarIcademyView() {
     NotificationPermission | 'unsupported'
   >('unsupported')
   const [isUpdatingPushDevice, setIsUpdatingPushDevice] = useState(false)
+  const [mutedSessions, setMutedSessions] = useState<
+    CalendarIcademySessionBlacklistItem[]
+  >([])
+  const [isUpdatingSessionMute, setIsUpdatingSessionMute] = useState(false)
   const localTimezone =
     typeof Intl !== 'undefined'
       ? Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -112,13 +128,16 @@ export function CalendarIcademyView() {
       setError(null)
 
       try {
-        const [calendarEntries, preferenceEntries] = await Promise.all([
-          fetchCalendarIcademyEntries(),
-          fetchCalendarIcademyPreferences().catch(() => []),
-        ])
+        const [calendarEntries, preferenceEntries, mutedSessionEntries] =
+          await Promise.all([
+            fetchCalendarIcademyEntries(),
+            fetchCalendarIcademyPreferences().catch(() => []),
+            fetchCalendarIcademySessionBlacklist().catch(() => []),
+          ])
         if (!mounted) return
         setEntries(calendarEntries)
         setPreferences(preferenceEntries)
+        setMutedSessions(mutedSessionEntries)
       } catch (err) {
         if (!mounted) return
         const message =
@@ -209,6 +228,23 @@ export function CalendarIcademyView() {
     ),
   )
   const todayKey = getCalendarIcademyTodayKey()
+  const mutedSessionIds = new Set(
+    mutedSessions.map((item) => item.calendarEntryId),
+  )
+  const selectedEntryPreference = selectedEntry
+    ? preferencesByClass.get(selectedEntry.classKey)
+    : null
+  const canManageSelectedEntryMute = Boolean(
+    selectedEntryPreference?.notificationsEnabled,
+  )
+  const isSelectedEntryMuted = selectedEntry
+    ? mutedSessionIds.has(selectedEntry.id)
+    : false
+
+  const canMuteEntry = (entry: CalendarIcademyEntry): boolean => {
+    const preference = preferencesByClass.get(entry.classKey)
+    return Boolean(preference?.notificationsEnabled)
+  }
 
   const getEntryDateTimeDescription = (entry: CalendarIcademyEntry): string => {
     const sessionDateTime = parseCalendarIcademySessionDateTime({
@@ -359,6 +395,52 @@ export function CalendarIcademyView() {
     }
   }
 
+  const handleToggleEntrySilence = async (entry: CalendarIcademyEntry) => {
+    if (!canMuteEntry(entry)) return
+
+    const entryMuted = mutedSessionIds.has(entry.id)
+
+    setIsUpdatingSessionMute(true)
+    try {
+      if (entryMuted) {
+        await unsilenceCalendarIcademySession(entry.id)
+        setMutedSessions((prev) =>
+          prev.filter((item) => item.calendarEntryId !== entry.id),
+        )
+        toast.success('Sesión reactivada para notificaciones.', {
+          description: `${entry.className} · ${entry.sessionTime}`,
+        })
+      } else {
+        const mutedItem = await silenceCalendarIcademySession({
+          calendarEntryId: entry.id,
+          classKey: entry.classKey,
+        })
+        setMutedSessions((prev) => {
+          const withoutCurrent = prev.filter(
+            (item) => item.calendarEntryId !== mutedItem.calendarEntryId,
+          )
+          return [mutedItem, ...withoutCurrent]
+        })
+        toast.success('Sesión silenciada.', {
+          description: 'No enviaremos recordatorio para esta clase puntual.',
+        })
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'No se pudo actualizar el silencio de la sesion.'
+      toast.error(message)
+    } finally {
+      setIsUpdatingSessionMute(false)
+    }
+  }
+
+  const handleToggleSessionSilence = async () => {
+    if (!selectedEntry || !canManageSelectedEntryMute) return
+    await handleToggleEntrySilence(selectedEntry)
+  }
+
   return (
     <>
       <CalendarIcademyBoard
@@ -371,6 +453,11 @@ export function CalendarIcademyView() {
         lockToCurrentMonth
         onEntryClick={(entry) => setSelectedEntry(entry)}
         onLocalTimePreferenceChange={setShowLocalTime}
+        canMuteEntry={canMuteEntry}
+        isEntryMuted={(entry) => mutedSessionIds.has(entry.id)}
+        onToggleEntryMute={(entry) => {
+          void handleToggleEntrySilence(entry)
+        }}
         topActions={
           <Button
             type='button'
@@ -412,6 +499,28 @@ export function CalendarIcademyView() {
                 <span className='font-medium'>Profesor:</span>{' '}
                 {selectedEntry.teacher}
               </p>
+
+              {canManageSelectedEntryMute ? (
+                <div className='pt-2'>
+                  <Button
+                    type='button'
+                    variant={isSelectedEntryMuted ? 'outline' : 'secondary'}
+                    size='sm'
+                    disabled={isUpdatingSessionMute}
+                    onClick={() => void handleToggleSessionSilence()}
+                  >
+                    {isSelectedEntryMuted ? <Volume1 /> : <VolumeOff />}
+                    {isSelectedEntryMuted
+                      ? 'Cancelar silencio de esta sesión'
+                      : 'Silenciar esta sesión'}
+                  </Button>
+                </div>
+              ) : (
+                <p className='pt-2 text-xs text-muted-foreground'>
+                  Para silenciar esta sesión, primero activa recordatorios para
+                  esta clase en "Preferencias de recordatorios".
+                </p>
+              )}
             </div>
           )}
         </DialogContent>

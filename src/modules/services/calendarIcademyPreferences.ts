@@ -69,7 +69,7 @@ async function getCurrentUserId(): Promise<string> {
 
   if (error || !user) {
     throw new CalendarIcademyPreferenceRequestError(
-      'Necesitas iniciar sesion para gestionar notificaciones.',
+      'Necesitas iniciar sesión para gestionar notificaciones.',
       401,
     )
   }

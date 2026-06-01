@@ -20,9 +20,11 @@ function parseSessionDateTime(entry: CalendarIcademyEntry): Date | null {
 export function buildCalendarIcademyReminders(params: {
   entries: CalendarIcademyEntry[]
   preferences: CalendarIcademyPreference[]
+  blacklistedSessionIds?: string[]
   now?: Date
 }): CalendarIcademyReminder[] {
   const now = params.now ?? new Date()
+  const blacklistedSessionIds = new Set(params.blacklistedSessionIds || [])
   const preferencesMap = new Map(
     params.preferences
       .filter((item) => item.notificationsEnabled)
@@ -32,6 +34,8 @@ export function buildCalendarIcademyReminders(params: {
   const reminders: CalendarIcademyReminder[] = []
 
   for (const entry of params.entries) {
+    if (blacklistedSessionIds.has(entry.id)) continue
+
     const preference = preferencesMap.get(entry.classKey)
     if (!preference) continue
 

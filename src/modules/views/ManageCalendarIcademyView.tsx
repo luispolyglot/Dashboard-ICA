@@ -308,8 +308,8 @@ export function ManageCalendarIcademyView() {
     if (!getCalendarIcademyCatalogEntry(form.classKey)) {
       return 'La clase seleccionada no pertenece al catalogo oficial.'
     }
-    if (!form.sessionDate) return 'La fecha de sesion es obligatoria.'
-    if (!form.sessionTime) return 'La hora de sesion es obligatoria.'
+    if (!form.sessionDate) return 'La fecha de sesión es obligatoria.'
+    if (!form.sessionTime) return 'La hora de sesión es obligatoria.'
     if (!form.teacher.trim()) return 'El docente es obligatorio.'
     return null
   }

@@ -299,6 +299,25 @@ create table if not exists public.users_calendar_icademy (
 create index if not exists users_calendar_icademy_user_enabled_idx
   on public.users_calendar_icademy (user_id, notifications_enabled, class_key);
 
+create table if not exists public.users_calendar_icademy_session_blacklist (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  calendar_entry_id uuid not null references public.calendar_icademy (id) on delete cascade,
+  class_key text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint users_calendar_icademy_session_blacklist_class_key_not_empty
+    check (length(trim(class_key)) > 0),
+  constraint users_calendar_icademy_session_blacklist_unique_session
+    unique (user_id, calendar_entry_id)
+);
+
+create index if not exists users_calendar_icademy_session_blacklist_user_idx
+  on public.users_calendar_icademy_session_blacklist (user_id, created_at desc);
+
+create index if not exists users_calendar_icademy_session_blacklist_entry_idx
+  on public.users_calendar_icademy_session_blacklist (calendar_entry_id);
+
 create table if not exists public.user_push_subscriptions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
@@ -458,6 +477,11 @@ create trigger users_calendar_icademy_set_updated_at
 before update on public.users_calendar_icademy
 for each row execute procedure public.set_updated_at();
 
+drop trigger if exists users_calendar_icademy_session_blacklist_set_updated_at on public.users_calendar_icademy_session_blacklist;
+create trigger users_calendar_icademy_session_blacklist_set_updated_at
+before update on public.users_calendar_icademy_session_blacklist
+for each row execute procedure public.set_updated_at();
+
 drop trigger if exists user_push_subscriptions_set_updated_at on public.user_push_subscriptions;
 create trigger user_push_subscriptions_set_updated_at
 before update on public.user_push_subscriptions
@@ -574,6 +598,7 @@ alter table public.auth_whitelist enable row level security;
 alter table public.admin_users enable row level security;
 alter table public.calendar_icademy enable row level security;
 alter table public.users_calendar_icademy enable row level security;
+alter table public.users_calendar_icademy_session_blacklist enable row level security;
 alter table public.user_push_subscriptions enable row level security;
 alter table public.calendar_push_delivery_log enable row level security;
 
@@ -720,6 +745,13 @@ using (
 drop policy if exists "users_calendar_icademy_all_own" on public.users_calendar_icademy;
 create policy "users_calendar_icademy_all_own"
 on public.users_calendar_icademy
+for all
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+drop policy if exists "users_calendar_icademy_session_blacklist_all_own" on public.users_calendar_icademy_session_blacklist;
+create policy "users_calendar_icademy_session_blacklist_all_own"
+on public.users_calendar_icademy_session_blacklist
 for all
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);

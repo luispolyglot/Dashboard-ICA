@@ -19,6 +19,7 @@ import {
   markCalendarIcademyNotificationShown,
 } from '../services/calendarIcademyPreferences'
 import { buildCalendarIcademyReminders } from '../services/calendarIcademyReminders'
+import { fetchCalendarIcademySessionBlacklist } from '../services/calendarIcademySessionBlacklist'
 import { fetchTodayVoiceActivationCount } from '../services/phraseVoiceActivations'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { LanguageSetup } from '../views/LanguageSetup'
@@ -227,16 +228,20 @@ export function DashboardLayout() {
 
     const run = async () => {
       try {
-        const [entries, preferences] = await Promise.all([
+        const [entries, preferences, blacklist] = await Promise.all([
           fetchCalendarIcademyEntries(),
           fetchCalendarIcademyPreferences().catch(() => []),
+          fetchCalendarIcademySessionBlacklist().catch(() => []),
         ])
 
         if (!active || preferences.length === 0) return
 
+        const mutedSessionIds = blacklist.map((item) => item.calendarEntryId)
+
         const reminders = buildCalendarIcademyReminders({
           entries,
           preferences,
+          blacklistedSessionIds: mutedSessionIds,
         }).slice(0, 2)
 
         for (const reminder of reminders) {
