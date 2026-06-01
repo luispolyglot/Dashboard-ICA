@@ -142,7 +142,7 @@ export async function upsertCalendarIcademyPreference(
   if (error) {
     if (typeof error.message === 'string' && error.message.includes('CALENDAR_REMINDERS_LIMIT_REACHED')) {
       throw new CalendarIcademyPreferenceRequestError(
-        'Puedes tener maximo 2 recordatorios activos al mismo tiempo.',
+        'Puedes tener maximo 2 recordatorios activos + Destripando Niveles opcional.',
       )
     }
     throw new CalendarIcademyPreferenceRequestError(

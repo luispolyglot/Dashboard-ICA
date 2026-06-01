@@ -2,6 +2,7 @@ import type {
   CalendarIcademyEntry,
   CalendarIcademyPreference,
 } from '../types'
+import { parseCalendarIcademySessionDateTime } from '../utils/calendarIcademyTime'
 
 export type CalendarIcademyReminder = {
   entry: CalendarIcademyEntry
@@ -10,9 +11,10 @@ export type CalendarIcademyReminder = {
 }
 
 function parseSessionDateTime(entry: CalendarIcademyEntry): Date | null {
-  const candidate = new Date(`${entry.sessionDate}T${entry.sessionTime}`)
-  if (Number.isNaN(candidate.getTime())) return null
-  return candidate
+  return parseCalendarIcademySessionDateTime({
+    sessionDate: entry.sessionDate,
+    sessionTime: entry.sessionTime,
+  })
 }
 
 export function buildCalendarIcademyReminders(params: {

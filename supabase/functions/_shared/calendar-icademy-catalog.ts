@@ -1,7 +1,13 @@
 export type CalendarIcademyCatalogItem = {
   classKey: string
   className: string
-  languageCode: 'pl' | 'fr' | 'en' | 'it' | 'de'
+  languageCode:
+    | 'pl'
+    | 'fr'
+    | 'en'
+    | 'it'
+    | 'de'
+    | 'destripando_niveles'
 }
 
 const CATALOG: CalendarIcademyCatalogItem[] = [
@@ -39,6 +45,11 @@ const CATALOG: CalendarIcademyCatalogItem[] = [
     classKey: 'de_conv',
     className: 'DE conversacional',
     languageCode: 'de',
+  },
+  {
+    classKey: 'destripando_niveles',
+    className: '🔪 Destripando Niveles',
+    languageCode: 'destripando_niveles',
   },
 ]
 

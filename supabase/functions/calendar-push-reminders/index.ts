@@ -7,6 +7,8 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
+const CALENDAR_CLASS_TIMEZONE = 'Europe/Madrid'
+
 type PushSubscriptionRow = {
   id: string
   user_id: string
@@ -35,11 +37,6 @@ type PreferenceRow = {
   last_notified_for_session_id: string | null
 }
 
-type ProfileTimezoneRow = {
-  id: string
-  timezone: string | null
-}
-
 const CLASS_FLAGS: Record<string, string> = {
   polaco: '🇵🇱',
   fr_basico: '🇫🇷',
@@ -52,6 +49,7 @@ const CLASS_FLAGS: Record<string, string> = {
   it_avanzado: '🇮🇹',
   de_basico: '🇩🇪',
   de_conv: '🇩🇪',
+  destripando_niveles: '🔪',
 }
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -160,19 +158,6 @@ function parseSessionDateTimeForTimezone(
   const result = new Date(utcTs)
   if (Number.isNaN(result.getTime())) return null
   return result
-}
-
-function normalizeTimezone(input: string | null | undefined): string {
-  const fallback = 'UTC'
-  if (!input) return fallback
-
-  try {
-    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: input })
-    formatter.format(new Date())
-    return input
-  } catch {
-    return fallback
-  }
 }
 
 function formatHourLabel(value: string): string {
@@ -313,17 +298,6 @@ Deno.serve(async (req) => {
     })
   }
 
-  const userIds = Array.from(new Set(preferences.map((item) => item.user_id)))
-  const { data: profileRows } = await adminClient
-    .from('profiles')
-    .select('id, timezone')
-    .in('id', userIds)
-
-  const timezoneByUser = new Map<string, string>()
-  for (const row of (profileRows || []) as ProfileTimezoneRow[]) {
-    timezoneByUser.set(row.id, normalizeTimezone(row.timezone))
-  }
-
   const preferencesByUserClass = new Map<string, PreferenceRow>()
   for (const preference of preferences) {
     preferencesByUserClass.set(
@@ -359,8 +333,10 @@ Deno.serve(async (req) => {
           continue
         }
 
-        const timezone = timezoneByUser.get(subscription.user_id) || 'UTC'
-        const sessionStart = parseSessionDateTimeForTimezone(entry, timezone)
+        const sessionStart = parseSessionDateTimeForTimezone(
+          entry,
+          CALENDAR_CLASS_TIMEZONE,
+        )
         if (!sessionStart) continue
 
         const minutesUntilStart = Math.round(
@@ -374,7 +350,7 @@ Deno.serve(async (req) => {
         if (
           isWithinQuietHours({
             date: now,
-            timezone,
+            timezone: CALENDAR_CLASS_TIMEZONE,
             quietStart: preference.quiet_hours_start,
             quietEnd: preference.quiet_hours_end,
           })
