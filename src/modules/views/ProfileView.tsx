@@ -399,26 +399,26 @@ export function ProfileView({
             </Button>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className='flex items-center gap-2'>
-              <BellIcon className='h-4 w-4' />
-              Notificaciones
-            </CardTitle>
-          </CardHeader>
-          <CardContent className='space-y-3'>
-            <p className='text-sm text-muted-foreground'>
-              Configura recordatorios de rachas y avisos de habito por push.
-            </p>
-            <Button type='button' variant='outline' asChild>
-              <Link to={DASHBOARD_ROUTES.manageNotifications}>
-                Gestionar notificaciones
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-
+        {import.meta.env.DEV && (
+          <Card>
+            <CardHeader>
+              <CardTitle className='flex items-center gap-2'>
+                <BellIcon className='h-4 w-4' />
+                Notificaciones
+              </CardTitle>
+            </CardHeader>
+            <CardContent className='space-y-3'>
+              <p className='text-sm text-muted-foreground'>
+                Configura recordatorios de rachas y avisos de habito por push.
+              </p>
+              <Button type='button' variant='outline' asChild>
+                <Link to={DASHBOARD_ROUTES.manageNotifications}>
+                  Gestionar notificaciones
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
         <Card>
           <CardHeader>
             <CardTitle className='flex items-center gap-2'>
@@ -438,25 +438,27 @@ export function ProfileView({
             </Button>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className='flex items-center gap-2'>
-              <CalendarDaysIcon className='h-4 w-4' />
-              Calendario ICADEMY
-            </CardTitle>
-          </CardHeader>
-          <CardContent className='space-y-3'>
-            <p className='text-sm text-muted-foreground'>
-              Consulta los horarios de clases por idioma y filtra las sesiones
-              que quieres seguir.
-            </p>
-            <Button type='button' variant='outline' asChild>
-              <Link to={DASHBOARD_ROUTES.calendarIcademy}>
-                Abrir calendario de clases
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+        {import.meta.env.DEV && (
+          <Card>
+            <CardHeader>
+              <CardTitle className='flex items-center gap-2'>
+                <CalendarDaysIcon className='h-4 w-4' />
+                Calendario ICADEMY
+              </CardTitle>
+            </CardHeader>
+            <CardContent className='space-y-3'>
+              <p className='text-sm text-muted-foreground'>
+                Consulta los horarios de clases por idioma y filtra las sesiones
+                que quieres seguir.
+              </p>
+              <Button type='button' variant='outline' asChild>
+                <Link to={DASHBOARD_ROUTES.calendarIcademy}>
+                  Abrir calendario de clases
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
         <Card>
           <CardHeader>
             <CardTitle className='flex items-center gap-2'>
