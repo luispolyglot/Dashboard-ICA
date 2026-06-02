@@ -7,6 +7,7 @@ import {
   VolumeOff,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useSearchParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -87,6 +88,7 @@ function formatTimeLabelByTimezone(date: Date, timeZone: string): string {
 }
 
 export function CalendarIcademyView() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [entries, setEntries] = useState<CalendarIcademyEntry[]>([])
   const [preferences, setPreferences] = useState<CalendarIcademyPreference[]>(
     [],
@@ -184,6 +186,16 @@ export function CalendarIcademyView() {
   useEffect(() => {
     void refreshPushStatus()
   }, [])
+
+  useEffect(() => {
+    const fromNotifications =
+      searchParams.get('navigatefrom') === 'notifications' ||
+      searchParams.get('navigateFrom') === 'notifications'
+
+    if (fromNotifications) {
+      setIsPrefsModalOpen(true)
+    }
+  }, [searchParams])
 
   const classOptions = Array.from(
     entries
@@ -441,6 +453,26 @@ export function CalendarIcademyView() {
     await handleToggleEntrySilence(selectedEntry)
   }
 
+  const handleOpenPrefsModal = () => {
+    setIsPrefsModalOpen(true)
+  }
+
+  const handlePrefsModalOpenChange = (nextOpen: boolean) => {
+    setIsPrefsModalOpen(nextOpen)
+    if (nextOpen) return
+
+    const fromNotifications =
+      searchParams.get('navigatefrom') === 'notifications' ||
+      searchParams.get('navigateFrom') === 'notifications'
+
+    if (!fromNotifications) return
+
+    const next = new URLSearchParams(searchParams)
+    next.delete('navigatefrom')
+    next.delete('navigateFrom')
+    setSearchParams(next, { replace: true })
+  }
+
   return (
     <>
       <CalendarIcademyBoard
@@ -462,7 +494,7 @@ export function CalendarIcademyView() {
           <Button
             type='button'
             variant='outline'
-            onClick={() => setIsPrefsModalOpen(true)}
+            onClick={handleOpenPrefsModal}
           >
             <BellIcon data-icon='inline-start' />
             Preferencias de recordatorios
@@ -526,7 +558,7 @@ export function CalendarIcademyView() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isPrefsModalOpen} onOpenChange={setIsPrefsModalOpen}>
+      <Dialog open={isPrefsModalOpen} onOpenChange={handlePrefsModalOpenChange}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Recordatorios de clases</DialogTitle>

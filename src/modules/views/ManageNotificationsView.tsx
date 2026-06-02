@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BellIcon, SmartphoneIcon } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -25,13 +26,17 @@ import {
   getPushPermissionState,
   listMyPushDevices,
 } from '../services/pushNotifications'
+import { DASHBOARD_ROUTES } from '../routes/paths'
 import type {
   PushReminderPreferences,
   PushReminderPreferencesInput,
   PushSubscriptionDevice,
 } from '../types'
 
-const REMINDER_HOUR_OPTIONS = Array.from({ length: 19 }, (_, index) => index + 5)
+const REMINDER_HOUR_OPTIONS = Array.from(
+  { length: 19 },
+  (_, index) => index + 5,
+)
 
 function getDefaultReminderPreferences(): PushReminderPreferences {
   return {
@@ -123,9 +128,9 @@ export function ManageNotificationsView() {
   ).length
   const isCurrentDeviceActive = Boolean(
     currentPushEndpoint &&
-      pushDevices.some(
-        (device) => device.endpoint === currentPushEndpoint && device.isActive,
-      ),
+    pushDevices.some(
+      (device) => device.endpoint === currentPushEndpoint && device.isActive,
+    ),
   )
 
   const saveReminderPreferences = async (
@@ -274,7 +279,8 @@ export function ManageNotificationsView() {
 
                 {pushPermission === 'denied' && (
                   <p className='text-xs text-amber-600'>
-                    El navegador bloqueo permisos. Debes habilitarlos manualmente.
+                    El navegador bloqueo permisos. Debes habilitarlos
+                    manualmente.
                   </p>
                 )}
               </div>
@@ -285,9 +291,31 @@ export function ManageNotificationsView() {
             <div className='rounded-lg border p-3'>
               <div className='flex flex-wrap items-center justify-between gap-3'>
                 <div className='space-y-1'>
-                  <p className='text-sm font-semibold'>Racha ICA no completada hoy</p>
+                  <p className='text-sm font-semibold'>
+                    Recordatorios de clases del calendario
+                  </p>
                   <p className='text-xs text-muted-foreground'>
-                    Te avisa si hoy aun no cerraste la racha de creacion ICA.
+                    Esta preferencia se configura en Calendario ICADEMY.
+                  </p>
+                </div>
+                <Button type='button' variant='outline' asChild>
+                  <Link
+                    to={`${DASHBOARD_ROUTES.calendarIcademy}?navigatefrom=notifications`}
+                  >
+                    Ir a Calendario ICADEMY
+                  </Link>
+                </Button>
+              </div>
+            </div>
+
+            <div className='rounded-lg border p-3'>
+              <div className='flex flex-wrap items-center justify-between gap-3'>
+                <div className='space-y-1'>
+                  <p className='text-sm font-semibold'>
+                    Racha ICA no completada hoy
+                  </p>
+                  <p className='text-xs text-muted-foreground'>
+                    Te avisa si hoy aún no cerraste la racha de creación ICA.
                   </p>
                 </div>
                 <div className='flex items-center gap-2'>
@@ -344,7 +372,7 @@ export function ManageNotificationsView() {
                     Racha Flashcards no completada hoy
                   </p>
                   <p className='text-xs text-muted-foreground'>
-                    Te avisa si hoy aun no cerraste la racha de flashcards.
+                    Te avisa si hoy aún no cerraste la racha de flashcards.
                   </p>
                 </div>
                 <div className='flex items-center gap-2'>
@@ -397,9 +425,12 @@ export function ManageNotificationsView() {
             <div className='rounded-lg border p-3'>
               <div className='flex flex-wrap items-center justify-between gap-3'>
                 <div className='space-y-1'>
-                  <p className='text-sm font-semibold'>Aviso de perdida de habito</p>
+                  <p className='text-sm font-semibold'>
+                    Aviso de pérdida de hábito
+                  </p>
                   <p className='text-xs text-muted-foreground'>
-                    Recibes avisos tras 36h, 72h y 7 dias sin actividad en la app.
+                    Recibes avisos tras 36h, 72h y 7 dias sin actividad en la
+                    app.
                   </p>
                 </div>
                 <div className='flex items-center gap-2'>
