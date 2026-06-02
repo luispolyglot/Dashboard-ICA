@@ -2,6 +2,7 @@ import type {
   CalendarIcademyEntry,
   CalendarIcademyPreference,
 } from '../types'
+import { parseCalendarIcademySessionDateTime } from '../utils/calendarIcademyTime'
 
 export type CalendarIcademyReminder = {
   entry: CalendarIcademyEntry
@@ -10,17 +11,20 @@ export type CalendarIcademyReminder = {
 }
 
 function parseSessionDateTime(entry: CalendarIcademyEntry): Date | null {
-  const candidate = new Date(`${entry.sessionDate}T${entry.sessionTime}`)
-  if (Number.isNaN(candidate.getTime())) return null
-  return candidate
+  return parseCalendarIcademySessionDateTime({
+    sessionDate: entry.sessionDate,
+    sessionTime: entry.sessionTime,
+  })
 }
 
 export function buildCalendarIcademyReminders(params: {
   entries: CalendarIcademyEntry[]
   preferences: CalendarIcademyPreference[]
+  blacklistedSessionIds?: string[]
   now?: Date
 }): CalendarIcademyReminder[] {
   const now = params.now ?? new Date()
+  const blacklistedSessionIds = new Set(params.blacklistedSessionIds || [])
   const preferencesMap = new Map(
     params.preferences
       .filter((item) => item.notificationsEnabled)
@@ -30,6 +34,8 @@ export function buildCalendarIcademyReminders(params: {
   const reminders: CalendarIcademyReminder[] = []
 
   for (const entry of params.entries) {
+    if (blacklistedSessionIds.has(entry.id)) continue
+
     const preference = preferencesMap.get(entry.classKey)
     if (!preference) continue
 

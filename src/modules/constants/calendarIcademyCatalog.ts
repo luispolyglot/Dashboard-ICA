@@ -1,7 +1,13 @@
 export type CalendarIcademyCatalogEntry = {
   classKey: string
   className: string
-  languageCode: 'pl' | 'fr' | 'en' | 'it' | 'de'
+  languageCode:
+    | 'pl'
+    | 'fr'
+    | 'en'
+    | 'it'
+    | 'de'
+    | 'destripando_niveles'
   flag: string
 }
 
@@ -46,6 +52,12 @@ const CATALOG: CalendarIcademyCatalogEntry[] = [
     className: 'DE conversacional',
     languageCode: 'de',
     flag: '🇩🇪',
+  },
+  {
+    classKey: 'destripando_niveles',
+    className: 'Destripando Niveles',
+    languageCode: 'destripando_niveles',
+    flag: '🔪',
   },
 ]
 

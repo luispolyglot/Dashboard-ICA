@@ -7,6 +7,8 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
+const CALENDAR_CLASS_TIMEZONE = 'Europe/Madrid'
+
 type PushSubscriptionRow = {
   id: string
   user_id: string
@@ -35,9 +37,9 @@ type PreferenceRow = {
   last_notified_for_session_id: string | null
 }
 
-type ProfileTimezoneRow = {
-  id: string
-  timezone: string | null
+type MutedSessionRow = {
+  user_id: string
+  calendar_entry_id: string
 }
 
 const CLASS_FLAGS: Record<string, string> = {
@@ -52,6 +54,7 @@ const CLASS_FLAGS: Record<string, string> = {
   it_avanzado: '🇮🇹',
   de_basico: '🇩🇪',
   de_conv: '🇩🇪',
+  destripando_niveles: '🔪',
 }
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -162,19 +165,6 @@ function parseSessionDateTimeForTimezone(
   return result
 }
 
-function normalizeTimezone(input: string | null | undefined): string {
-  const fallback = 'UTC'
-  if (!input) return fallback
-
-  try {
-    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: input })
-    formatter.format(new Date())
-    return input
-  } catch {
-    return fallback
-  }
-}
-
 function formatHourLabel(value: string): string {
   const hour = value.slice(0, 5)
   return hour.endsWith(':00') ? `${hour.slice(0, 2)}h` : hour.replace(':', 'h')
@@ -269,7 +259,7 @@ Deno.serve(async (req) => {
   const minDate = new Date(now.getTime() - 10 * 60 * 1000)
   const maxDate = new Date(now.getTime() + 120 * 60 * 1000)
 
-  const [subscriptionsResult, preferencesResult, entriesResult] = await Promise.all([
+  const [subscriptionsResult, preferencesResult, entriesResult, mutedSessionsResult] = await Promise.all([
     adminClient
       .from('user_push_subscriptions')
       .select('id, user_id, endpoint, p256dh, auth, is_active')
@@ -287,14 +277,23 @@ Deno.serve(async (req) => {
       .lte('session_date', toYmd(new Date(maxDate.getTime() + 24 * 60 * 60 * 1000)))
       .order('session_date', { ascending: true })
       .order('session_time', { ascending: true }),
+    adminClient
+      .from('users_calendar_icademy_session_blacklist')
+      .select('user_id, calendar_entry_id'),
   ])
 
-  if (subscriptionsResult.error || preferencesResult.error || entriesResult.error) {
+  if (
+    subscriptionsResult.error ||
+    preferencesResult.error ||
+    entriesResult.error ||
+    mutedSessionsResult.error
+  ) {
     return jsonResponse(500, {
       error:
         subscriptionsResult.error?.message ||
         preferencesResult.error?.message ||
         entriesResult.error?.message ||
+        mutedSessionsResult.error?.message ||
         'Failed to query reminder data',
     })
   }
@@ -302,6 +301,7 @@ Deno.serve(async (req) => {
   const subscriptions = (subscriptionsResult.data || []) as PushSubscriptionRow[]
   const preferences = (preferencesResult.data || []) as PreferenceRow[]
   const entries = (entriesResult.data || []) as CalendarEntryRow[]
+  const mutedSessions = (mutedSessionsResult.data || []) as MutedSessionRow[]
 
   if (subscriptions.length === 0 || preferences.length === 0 || entries.length === 0) {
     return jsonResponse(200, {
@@ -313,24 +313,11 @@ Deno.serve(async (req) => {
     })
   }
 
-  const userIds = Array.from(new Set(preferences.map((item) => item.user_id)))
-  const { data: profileRows } = await adminClient
-    .from('profiles')
-    .select('id, timezone')
-    .in('id', userIds)
-
-  const timezoneByUser = new Map<string, string>()
-  for (const row of (profileRows || []) as ProfileTimezoneRow[]) {
-    timezoneByUser.set(row.id, normalizeTimezone(row.timezone))
-  }
-
-  const preferencesByUserClass = new Map<string, PreferenceRow>()
-  for (const preference of preferences) {
-    preferencesByUserClass.set(
-      `${preference.user_id}:${preference.class_key}`,
-      preference,
-    )
-  }
+  const mutedSessionKeySet = new Set(
+    mutedSessions.map(
+      (item) => `${item.user_id}:${item.calendar_entry_id}`,
+    ),
+  )
 
   const entriesByClass = new Map<string, CalendarEntryRow[]>()
   for (const entry of entries) {
@@ -355,12 +342,18 @@ Deno.serve(async (req) => {
 
       const classEntries = entriesByClass.get(preference.class_key) || []
       for (const entry of classEntries) {
+        if (mutedSessionKeySet.has(`${subscription.user_id}:${entry.id}`)) {
+          continue
+        }
+
         if (preference.last_notified_for_session_id === entry.id) {
           continue
         }
 
-        const timezone = timezoneByUser.get(subscription.user_id) || 'UTC'
-        const sessionStart = parseSessionDateTimeForTimezone(entry, timezone)
+        const sessionStart = parseSessionDateTimeForTimezone(
+          entry,
+          CALENDAR_CLASS_TIMEZONE,
+        )
         if (!sessionStart) continue
 
         const minutesUntilStart = Math.round(
@@ -374,7 +367,7 @@ Deno.serve(async (req) => {
         if (
           isWithinQuietHours({
             date: now,
-            timezone,
+            timezone: CALENDAR_CLASS_TIMEZONE,
             quietStart: preference.quiet_hours_start,
             quietEnd: preference.quiet_hours_end,
           })

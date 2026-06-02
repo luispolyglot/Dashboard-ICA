@@ -16,6 +16,7 @@ import { ManageCoachingView } from '../views/ManageCoachingView'
 import { ManageCoachingUserView } from '../views/ManageCoachingUserView'
 import { ManageCoacherSessionsView } from '../views/ManageCoacherSessionsView'
 import { ManageCalendarIcademyView } from '../views/ManageCalendarIcademyView'
+import { ManageNotificationsView } from '../views/ManageNotificationsView'
 import { ManageWhitelistView } from '../views/ManageWhitelistView'
 import { ManageView } from '../views/ManageView'
 import { MasterNoteActivatePhraseView } from '../views/MasterNoteActivatePhraseView'
@@ -295,6 +296,14 @@ export function ProfilePage() {
         cards={cards}
         onEditLanguages={() => setShowLangModal(true)}
       />
+    </PageLayout>
+  )
+}
+
+export function ManageNotificationsPage() {
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+      <ManageNotificationsView />
     </PageLayout>
   )
 }

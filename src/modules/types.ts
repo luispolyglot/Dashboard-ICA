@@ -200,6 +200,15 @@ export interface CalendarIcademyPreferenceInput {
   quietHoursEnd?: string | null
 }
 
+export interface CalendarIcademySessionBlacklistItem {
+  id: string
+  userId: string
+  calendarEntryId: string
+  classKey: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface PushSubscriptionDevice {
   id: string
   endpoint: string
@@ -208,6 +217,26 @@ export interface PushSubscriptionDevice {
   createdAt: string
   updatedAt: string
   lastSeenAt: string
+}
+
+export interface PushReminderPreferences {
+  userId: string
+  icaStreakEnabled: boolean
+  icaStreakHour: number
+  flashcardsStreakEnabled: boolean
+  flashcardsStreakHour: number
+  habitLossEnabled: boolean
+  habitLossLastStage: number
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface PushReminderPreferencesInput {
+  icaStreakEnabled: boolean
+  icaStreakHour: number
+  flashcardsStreakEnabled: boolean
+  flashcardsStreakHour: number
+  habitLossEnabled: boolean
 }
 
 export interface IcaTestQuestion {
