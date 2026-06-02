@@ -219,6 +219,26 @@ export interface PushSubscriptionDevice {
   lastSeenAt: string
 }
 
+export interface PushReminderPreferences {
+  userId: string
+  icaStreakEnabled: boolean
+  icaStreakHour: number
+  flashcardsStreakEnabled: boolean
+  flashcardsStreakHour: number
+  habitLossEnabled: boolean
+  habitLossLastStage: number
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface PushReminderPreferencesInput {
+  icaStreakEnabled: boolean
+  icaStreakHour: number
+  flashcardsStreakEnabled: boolean
+  flashcardsStreakHour: number
+  habitLossEnabled: boolean
+}
+
 export interface IcaTestQuestion {
   promptNative: string
   correctTarget: string

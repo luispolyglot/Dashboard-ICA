@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   BarChart3Icon,
+  BellIcon,
   CalendarDaysIcon,
   CheckIcon,
   ClipboardCheckIcon,
@@ -395,6 +396,25 @@ export function ProfileView({
             >
               <MoonIcon />
               Oscuro
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className='flex items-center gap-2'>
+              <BellIcon className='h-4 w-4' />
+              Notificaciones
+            </CardTitle>
+          </CardHeader>
+          <CardContent className='space-y-3'>
+            <p className='text-sm text-muted-foreground'>
+              Configura recordatorios de rachas y avisos de habito por push.
+            </p>
+            <Button type='button' variant='outline' asChild>
+              <Link to={DASHBOARD_ROUTES.manageNotifications}>
+                Gestionar notificaciones
+              </Link>
             </Button>
           </CardContent>
         </Card>

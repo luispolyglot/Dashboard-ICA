@@ -23,6 +23,7 @@ import {
   ManageCoachingPage,
   ManageCoacherSessionsPage,
   ManageCoachingUserPage,
+  ManageNotificationsPage,
   MasterNoteActivatePhrasePage,
   MasterNoteDetailPage,
   MasterNotesPage,
@@ -99,6 +100,7 @@ export function App() {
             <Route path='leaderboard' element={<LeaderboardPage />} />
             <Route path='streaks' element={<StreaksPage />} />
             <Route path='profile' element={<ProfilePage />} />
+            <Route path='manage-notifications' element={<ManageNotificationsPage />} />
             <Route path='my-analytics' element={<MyAnalyticsPage />} />
             <Route path='calendar-icademy' element={<CalendarIcademyPage />} />
             <Route path='tests-ica' element={<IcaTestsPage />} />
