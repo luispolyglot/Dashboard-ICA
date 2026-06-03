@@ -106,6 +106,13 @@ const LANGUAGE_TONES: Record<string, LanguageTone> = {
     rowClassName: 'border-l-amber-500 bg-amber-500/10',
     legendClassName: 'bg-amber-500',
   },
+  destripando_niveles: {
+    badgeClassName: 'border-violet-300/70 bg-violet-500/10 text-violet-700',
+    activeFilterClassName:
+      'border-violet-400/80 bg-violet-500/15 text-violet-700',
+    rowClassName: 'border-l-violet-500 bg-violet-500/10',
+    legendClassName: 'bg-violet-500',
+  },
 }
 
 const DEFAULT_TONE: LanguageTone = {
@@ -604,6 +611,7 @@ export function CalendarIcademyBoard({
                   </DropdownMenuLabel>
                   <DropdownMenuCheckboxItem
                     checked={showAllClasses}
+                    onSelect={(event) => event.preventDefault()}
                     onCheckedChange={() => setSelectedClassKeys([])}
                   >
                     Todas las clases
@@ -629,6 +637,7 @@ export function CalendarIcademyBoard({
                         key={option.classKey}
                         checked={isSelected}
                         disabled={isDisabled}
+                        onSelect={(event) => event.preventDefault()}
                         onCheckedChange={() =>
                           handleToggleClass(option.classKey)
                         }
