@@ -347,7 +347,7 @@ Deno.serve(async (req) => {
               kind: 'habit_loss',
               stage: dueStage,
               payload: {
-                title: 'Recupera tu habito ICA',
+                title: 'Recupera tu hábito ICA',
                 body: HABIT_MESSAGES[dueStage],
                 url: '/streaks',
                 tag: `habit-loss-stage-${dueStage}`,
