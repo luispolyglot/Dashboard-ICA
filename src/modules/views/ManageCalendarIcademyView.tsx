@@ -60,6 +60,8 @@ type BulkClassEntry = {
 
 type BulkSchedule = Record<string, BulkClassEntry[]>
 
+const BULK_DESTRIPANDO_CLASS_KEY = 'destripando_niveles'
+
 function emptyForm(): EntryFormState {
   return {
     classKey: '',
@@ -156,7 +158,9 @@ function validateBulkSchedule(input: unknown): {
         throw new Error(`classId no pertenece al catalogo oficial: ${classId}.`)
       }
 
-      if (!teacher) {
+      const isDestripando = classId === BULK_DESTRIPANDO_CLASS_KEY
+
+      if (!teacher && !isDestripando) {
         throw new Error(`Falta teacher en ${dateKey} para classId ${classId}.`)
       }
 

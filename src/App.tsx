@@ -63,6 +63,7 @@ function RootRedirect() {
 function DashboardShell() {
   return (
     <DashboardProvider>
+      <ImportantInfoModal />
       <DashboardLayout />
     </DashboardProvider>
   )
@@ -72,7 +73,6 @@ export function App() {
   return (
     <>
       <AppVersionUpdateNotice />
-      <ImportantInfoModal />
       <Routes>
         <Route path='/reset-password' element={<ResetPasswordPage />} />
 

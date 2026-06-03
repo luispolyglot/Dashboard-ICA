@@ -8,10 +8,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-const DISMISS_STORAGE_KEY = 'important_info_master_notes_modal_dismissed_v2'
+const DISMISS_STORAGE_KEY =
+  'important_info_calendar_notifications_modal_dismissed_v1'
 const DISMISS_DELAY_SECONDS = 10
 
 type ConfirmAction = 'close_once' | 'dismiss_forever' | null
+type ModalStep = 'question' | 'video'
 
 function getInitialOpenState(): boolean {
   if (typeof window === 'undefined') return false
@@ -20,11 +22,12 @@ function getInitialOpenState(): boolean {
 
 export function ImportantInfoModal() {
   const [open, setOpen] = useState(getInitialOpenState)
+  const [step, setStep] = useState<ModalStep>('question')
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
   const [secondsLeft, setSecondsLeft] = useState(DISMISS_DELAY_SECONDS)
 
   useEffect(() => {
-    if (!open) return
+    if (!open || step !== 'video') return
 
     setSecondsLeft(DISMISS_DELAY_SECONDS)
     const intervalId = window.setInterval(() => {
@@ -40,7 +43,7 @@ export function ImportantInfoModal() {
     return () => {
       window.clearInterval(intervalId)
     }
-  }, [open])
+  }, [open, step])
 
   const handleEscapeAction = (): void => {
     setConfirmAction('close_once')
@@ -48,6 +51,7 @@ export function ImportantInfoModal() {
 
   const handleTemporaryClose = (): void => {
     setOpen(false)
+    setStep('question')
     setConfirmAction(null)
   }
 
@@ -64,11 +68,24 @@ export function ImportantInfoModal() {
     if (confirmAction === 'dismiss_forever') {
       window.localStorage.setItem(DISMISS_STORAGE_KEY, '1')
       setOpen(false)
+      setStep('question')
       setConfirmAction(null)
       return
     }
 
     handleTemporaryClose()
+  }
+
+  const handleNotInterested = (): void => {
+    window.localStorage.setItem(DISMISS_STORAGE_KEY, '1')
+    setOpen(false)
+    setStep('question')
+    setConfirmAction(null)
+  }
+
+  const handleInterested = (): void => {
+    setStep('video')
+    setConfirmAction(null)
   }
 
   if (!open) return null
@@ -87,24 +104,45 @@ export function ImportantInfoModal() {
         <div className='relative p-5 pb-4'>
           <DialogHeader>
             <DialogTitle>INFORMACION IMPORTANTE</DialogTitle>
-            <DialogDescription>
-              Activación ahora incluye la posibilidad de grabar frases dentro de
-              Notas Maestras.
-            </DialogDescription>
+            {step === 'question' ? (
+              <DialogDescription>
+                ¿Acudes a clases en ICADEMY, o te interesaría hacerlo?
+              </DialogDescription>
+            ) : (
+              <DialogDescription>
+                Mira este video para conocer el nuevo calendario y como
+                funcionan las notificaciones.
+              </DialogDescription>
+            )}
           </DialogHeader>
 
-          <div className='mt-4 overflow-hidden rounded-lg border border-border/70'>
-            <iframe
-              src='https://www.loom.com/embed/4d2ca7c959f44ea392ba944f53b8a442'
-              title='Informacion importante sobre Notas Maestras'
-              className='h-65 w-full sm:h-105'
-              allow='autoplay; fullscreen; picture-in-picture'
-              allowFullScreen
-            />
-          </div>
+          {step === 'video' && (
+            <div className='mt-4 overflow-hidden rounded-lg border border-border/70'>
+              <iframe
+                src='Link del video: https://www.loom.com/embed/af1fedb829c54d2a8e6b5a4b412b3e14'
+                title='Informacion importante sobre calendario y notificaciones'
+                className='h-65 w-full sm:h-105'
+                allow='autoplay; fullscreen; picture-in-picture'
+                allowFullScreen
+              />
+            </div>
+          )}
 
           <div className='mt-4'>
-            {!confirmAction ? (
+            {step === 'question' ? (
+              <div className='grid grid-cols-2 gap-2'>
+                <Button
+                  type='button'
+                  variant='outline'
+                  onClick={handleNotInterested}
+                >
+                  NO
+                </Button>
+                <Button type='button' onClick={handleInterested}>
+                  SI
+                </Button>
+              </div>
+            ) : !confirmAction ? (
               <Button
                 type='button'
                 onClick={handleAskDismissForever}
