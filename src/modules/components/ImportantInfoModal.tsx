@@ -89,14 +89,14 @@ export function ImportantInfoModal() {
           <DialogHeader>
             <DialogTitle>INFORMACION IMPORTANTE</DialogTitle>
             <DialogDescription>
-              Mira este video para conocer el nuevo calendario y como
-              funcionan las notificaciones.
+              Mira este video para conocer el nuevo calendario y como funcionan
+              las notificaciones.
             </DialogDescription>
           </DialogHeader>
 
           <div className='mt-4 overflow-hidden rounded-lg border border-border/70'>
             <iframe
-              src='Link del video: https://www.loom.com/embed/af1fedb829c54d2a8e6b5a4b412b3e14'
+              src='https://www.loom.com/embed/af1fedb829c54d2a8e6b5a4b412b3e14'
               title='Informacion importante sobre calendario y notificaciones'
               className='h-65 w-full sm:h-105'
               allow='autoplay; fullscreen; picture-in-picture'
