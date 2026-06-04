@@ -8,7 +8,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-const DISMISS_STORAGE_KEY = 'important_info_master_notes_modal_dismissed_v2'
+const DISMISS_STORAGE_KEY =
+  'important_info_calendar_notifications_modal_dismissed_v1'
 const DISMISS_DELAY_SECONDS = 10
 
 type ConfirmAction = 'close_once' | 'dismiss_forever' | null
@@ -88,15 +89,15 @@ export function ImportantInfoModal() {
           <DialogHeader>
             <DialogTitle>INFORMACION IMPORTANTE</DialogTitle>
             <DialogDescription>
-              Activación ahora incluye la posibilidad de grabar frases dentro de
-              Notas Maestras.
+              Mira este video para conocer el nuevo calendario y como funcionan
+              las notificaciones.
             </DialogDescription>
           </DialogHeader>
 
           <div className='mt-4 overflow-hidden rounded-lg border border-border/70'>
             <iframe
-              src='https://www.loom.com/embed/4d2ca7c959f44ea392ba944f53b8a442'
-              title='Informacion importante sobre Notas Maestras'
+              src='https://www.loom.com/embed/af1fedb829c54d2a8e6b5a4b412b3e14'
+              title='Informacion importante sobre calendario y notificaciones'
               className='h-65 w-full sm:h-105'
               allow='autoplay; fullscreen; picture-in-picture'
               allowFullScreen

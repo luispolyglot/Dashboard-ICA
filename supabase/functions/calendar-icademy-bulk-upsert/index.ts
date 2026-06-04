@@ -24,6 +24,9 @@ type CalendarInsertRow = {
   note: string | null
 }
 
+const BULK_DESTRIPANDO_CLASS_KEY = 'destripando_niveles'
+const BULK_DESTRIPANDO_DEFAULT_TEACHER = 'Luis'
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
@@ -131,7 +134,13 @@ function parseBulkSchedule(input: unknown): {
         )
       }
 
-      if (!teacher) {
+      const normalizedTeacher =
+        teacher ||
+        (catalogEntry.classKey === BULK_DESTRIPANDO_CLASS_KEY
+          ? BULK_DESTRIPANDO_DEFAULT_TEACHER
+          : '')
+
+      if (!normalizedTeacher) {
         throw new Error(`Falta teacher en ${dateKey} para classId ${classId}.`)
       }
 
@@ -148,7 +157,7 @@ function parseBulkSchedule(input: unknown): {
         language_code: catalogEntry.languageCode,
         session_date: dateKey,
         session_time: normalizedTime,
-        teacher,
+        teacher: normalizedTeacher,
         group_name: group || null,
         note: note || null,
       })
