@@ -190,40 +190,61 @@ export async function recordPhraseGeneratedEvent(
     })
   }
 
-  const { error: xpError } = await supabase.from('xp_events').insert({
-    user_id: userId,
-    source: 'phrase_generated',
-    points: PHRASE_POINTS,
-    metadata: {
-      day,
-      word_count: params.words.length,
-      activation_words_total: activationTotal,
-      phrase_source: params.source || 'generated',
-    },
-  })
-  if (xpError) throw xpError
+  let metric: DailyMetricRow | null = null
 
-  const metric = await bumpCreationDailyMetrics({
-    day,
-    wordsAdded: Math.max(0, Math.floor(params.wordsAdded || 0)),
-    wordsAddedDelta: 0,
-    phraseGenerated: true,
-    xpDelta: PHRASE_POINTS,
-  })
-
-  const { error: goalError } = await supabase.from('goal_completions').upsert(
-    {
+  try {
+    const { error: xpError } = await supabase.from('xp_events').insert({
       user_id: userId,
-      day,
-      goal_type: 'creation_goal',
-      completed: metric.creation_goal_completed,
-      progress_value: metric.words_added,
-      target_value: CREATION_WORDS_GOAL,
-    },
-    { onConflict: 'user_id,day,goal_type' },
-  )
-  if (goalError) throw goalError
+      source: 'phrase_generated',
+      points: PHRASE_POINTS,
+      metadata: {
+        day,
+        word_count: params.words.length,
+        activation_words_total: activationTotal,
+        phrase_source: params.source || 'generated',
+      },
+    })
+    if (xpError) throw xpError
+  } catch (error) {
+    console.error('Could not store phrase XP event', error)
+  }
 
-  await evaluateAndUnlockAchievements(userId)
+  try {
+    metric = await bumpCreationDailyMetrics({
+      day,
+      wordsAdded: Math.max(0, Math.floor(params.wordsAdded || 0)),
+      wordsAddedDelta: 0,
+      phraseGenerated: true,
+      xpDelta: PHRASE_POINTS,
+    })
+  } catch (error) {
+    console.error('Could not update daily creation metrics for phrase generation', error)
+  }
+
+  if (metric) {
+    try {
+      const { error: goalError } = await supabase.from('goal_completions').upsert(
+        {
+          user_id: userId,
+          day,
+          goal_type: 'creation_goal',
+          completed: metric.creation_goal_completed,
+          progress_value: metric.words_added,
+          target_value: CREATION_WORDS_GOAL,
+        },
+        { onConflict: 'user_id,day,goal_type' },
+      )
+      if (goalError) throw goalError
+    } catch (error) {
+      console.error('Could not sync creation goal completion after phrase generation', error)
+    }
+  }
+
+  try {
+    await evaluateAndUnlockAchievements(userId)
+  } catch (error) {
+    console.error('Could not evaluate achievements after phrase generation', error)
+  }
+
   return { activationWordsTotal: activationTotal, phraseGenerationId }
 }

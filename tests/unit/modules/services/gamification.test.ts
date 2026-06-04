@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { mockSupabase, evaluateAndUnlockAchievementsMock, registerWordActivationsMock } = vi.hoisted(() => ({
   mockSupabase: {
@@ -34,7 +34,13 @@ import {
 } from '@/modules/services/gamification'
 
 describe('gamification service', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   beforeEach(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
     mockSupabase.auth.getSession.mockReset()
     mockSupabase.from.mockReset()
     mockSupabase.rpc.mockReset()
@@ -138,5 +144,36 @@ describe('gamification service', () => {
       expect.objectContaining({ progress_value: 5, completed: true, goal_type: 'creation_goal' }),
       { onConflict: 'user_id,day,goal_type' },
     )
+  })
+
+  it('keeps phrase id available when gamification writes fail', async () => {
+    const phraseSingle = vi.fn().mockResolvedValue({ data: { id: 'phrase-2' }, error: null })
+    const phraseSelect = vi.fn().mockReturnValue({ single: phraseSingle })
+    const phraseInsert = vi.fn().mockReturnValue({ select: phraseSelect })
+    const xpInsert = vi.fn().mockResolvedValue({ error: { message: 'forbidden' } })
+
+    mockSupabase.from.mockImplementation((table: string) => {
+      if (table === 'phrase_generations') return { insert: phraseInsert }
+      if (table === 'xp_events') return { insert: xpInsert }
+      if (table === 'goal_completions') return { upsert: vi.fn() }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    registerWordActivationsMock.mockResolvedValue(3)
+    mockSupabase.rpc.mockRejectedValue(new Error('rpc failed'))
+
+    const result = await recordPhraseGeneratedEvent({
+      wordIds: ['card-1'],
+      words: ['hello'],
+      phrase: 'hello there',
+      translation: 'hola',
+      wordsAdded: 1,
+      targetLang: 'en',
+      nativeLang: 'es',
+      source: 'generated',
+    })
+
+    expect(result).toEqual({ activationWordsTotal: 3, phraseGenerationId: 'phrase-2' })
+    expect(evaluateAndUnlockAchievementsMock).toHaveBeenCalledWith('user-2')
   })
 })
