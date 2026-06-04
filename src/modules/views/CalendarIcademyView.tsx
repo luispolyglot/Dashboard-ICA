@@ -87,6 +87,20 @@ function formatTimeLabelByTimezone(date: Date, timeZone: string): string {
     : label.replace(':', 'h')
 }
 
+function getDateKeyByTimezone(date: Date, timeZone: string): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+  const parts = formatter.formatToParts(date)
+  const year = parts.find((part) => part.type === 'year')?.value || '0000'
+  const month = parts.find((part) => part.type === 'month')?.value || '01'
+  const day = parts.find((part) => part.type === 'day')?.value || '01'
+  return `${year}-${month}-${day}`
+}
+
 export function CalendarIcademyView() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [entries, setEntries] = useState<CalendarIcademyEntry[]>([])
@@ -121,6 +135,10 @@ export function CalendarIcademyView() {
       : undefined
   const canUseLocalTime =
     Boolean(localTimezone) && localTimezone !== CALENDAR_ICADEMY_TIMEZONE
+  const displayTimezone =
+    showLocalTime && canUseLocalTime && localTimezone
+      ? localTimezone
+      : CALENDAR_ICADEMY_TIMEZONE
 
   useEffect(() => {
     let mounted = true
@@ -243,11 +261,26 @@ export function CalendarIcademyView() {
   const mutedSessionIds = new Set(
     mutedSessions.map((item) => item.calendarEntryId),
   )
+  const isEntryInPastDay = (entry: CalendarIcademyEntry): boolean => {
+    const sessionDateTime = parseCalendarIcademySessionDateTime({
+      sessionDate: entry.sessionDate,
+      sessionTime: entry.sessionTime,
+    })
+    if (!sessionDateTime) return false
+
+    const entryDateKey = getDateKeyByTimezone(sessionDateTime, displayTimezone)
+    const todayDateKey = getDateKeyByTimezone(new Date(), displayTimezone)
+    return entryDateKey < todayDateKey
+  }
+
   const selectedEntryPreference = selectedEntry
     ? preferencesByClass.get(selectedEntry.classKey)
     : null
+  const isSelectedEntryPastDay = selectedEntry
+    ? isEntryInPastDay(selectedEntry)
+    : false
   const canManageSelectedEntryMute = Boolean(
-    selectedEntryPreference?.notificationsEnabled,
+    selectedEntryPreference?.notificationsEnabled && !isSelectedEntryPastDay,
   )
   const isSelectedEntryMuted = selectedEntry
     ? mutedSessionIds.has(selectedEntry.id)
@@ -255,7 +288,7 @@ export function CalendarIcademyView() {
 
   const canMuteEntry = (entry: CalendarIcademyEntry): boolean => {
     const preference = preferencesByClass.get(entry.classKey)
-    return Boolean(preference?.notificationsEnabled)
+    return Boolean(preference?.notificationsEnabled) && !isEntryInPastDay(entry)
   }
 
   const getEntryDateTimeDescription = (entry: CalendarIcademyEntry): string => {
@@ -549,8 +582,9 @@ export function CalendarIcademyView() {
                 </div>
               ) : (
                 <p className='pt-2 text-xs text-muted-foreground'>
-                  Para silenciar esta sesión, primero activa recordatorios para
-                  esta clase en "Preferencias de recordatorios".
+                  {isSelectedEntryPastDay
+                    ? 'No puedes silenciar sesiones de dias pasados.'
+                    : 'Para silenciar esta sesión, primero activa recordatorios para esta clase en "Preferencias de recordatorios".'}
                 </p>
               )}
             </div>

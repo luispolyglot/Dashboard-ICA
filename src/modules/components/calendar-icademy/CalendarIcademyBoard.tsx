@@ -749,6 +749,19 @@ export function CalendarIcademyBoard({
                                     getCalendarIcademyCatalogEntry(
                                       entry.classKey,
                                     )
+                                  const sessionDateTime =
+                                    parseCalendarIcademySessionDateTime({
+                                      sessionDate: entry.sessionDate,
+                                      sessionTime: entry.sessionTime,
+                                    })
+                                  const entryDateKeyForDisplay = sessionDateTime
+                                    ? getDateKeyInTimezone(
+                                        sessionDateTime,
+                                        effectiveTimezone,
+                                      )
+                                    : entry.sessionDate
+                                  const isPastEntry =
+                                    entryDateKeyForDisplay < todayKeyForDisplay
                                   const className =
                                     catalogEntry?.className || entry.className
                                   const languageCode =
@@ -767,9 +780,12 @@ export function CalendarIcademyBoard({
                                         'rounded-sm border border-border border-l-2 px-1.5 py-0.5 text-left text-[11px] leading-tight',
                                         tone.rowClassName,
                                         isDimmed && 'opacity-25',
+                                        isPastEntry &&
+                                          'opacity-60 saturate-75',
                                         isOutOfMonth &&
                                           'opacity-45 saturate-50',
                                         onEntryClick &&
+                                          !isPastEntry &&
                                           'cursor-pointer transition-colors hover:bg-accent/40',
                                       )}
                                     >
@@ -784,7 +800,7 @@ export function CalendarIcademyBoard({
                                     </div>
                                   )
 
-                                  if (!onEntryClick) {
+                                  if (!onEntryClick || isPastEntry) {
                                     return <div key={entry.id}>{content}</div>
                                   }
 
