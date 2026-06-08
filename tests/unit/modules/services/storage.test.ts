@@ -16,10 +16,26 @@ vi.mock('@/lib/supabase', () => ({
 import { loadData, saveData, updateWord } from '@/modules/services/storage'
 
 describe('storage service', () => {
+  const localStorageMock = {
+    getItem: vi.fn(),
+    setItem: vi.fn(),
+    clear: vi.fn(),
+    removeItem: vi.fn(),
+  }
+
   beforeEach(() => {
     mockSupabase.auth.getSession.mockReset()
     mockSupabase.from.mockReset()
-    localStorage.clear()
+    localStorageMock.getItem.mockReset()
+    localStorageMock.setItem.mockReset()
+    localStorageMock.clear.mockReset()
+    localStorageMock.removeItem.mockReset()
+
+    Object.defineProperty(window, 'localStorage', {
+      value: localStorageMock,
+      configurable: true,
+    })
+    window.localStorage.clear()
 
     mockSupabase.auth.getSession.mockResolvedValue({
       data: {
@@ -66,6 +82,7 @@ describe('storage service', () => {
         wordsAdded: 2,
         phraseGenerated: true,
         reviewCorrect: 3,
+        voiceActivationsCount: 0,
       },
     })
   })
@@ -73,7 +90,10 @@ describe('storage service', () => {
   it('persists dashboard review session in localStorage', async () => {
     await saveData('dashboard-ICA-review-session', 42)
 
-    expect(localStorage.getItem('dashboard-ICA-review-session')).toBe('42')
+    expect(window.localStorage.setItem).toHaveBeenCalledWith(
+      'dashboard-ICA-review-session',
+      '42',
+    )
     expect(mockSupabase.auth.getSession).not.toHaveBeenCalled()
   })
 

@@ -72,7 +72,7 @@ describe('useDashboardICA', () => {
     expect(saveDataMock).not.toHaveBeenCalledWith('dashboard-ICA-daily-progress', expect.anything())
   })
 
-  it('updates daily progress for word/phrase without persisting snapshot', async () => {
+  it('reads daily progress from source after word/phrase events', async () => {
     const { result } = renderHook(() => useDashboardICA())
 
     await waitFor(() => {
@@ -81,14 +81,14 @@ describe('useDashboardICA', () => {
 
     await act(async () => {
       const afterWord = await result.current.handleWordAdded()
-      expect(afterWord.wordsAdded).toBe(2)
+      expect(afterWord.wordsAdded).toBe(1)
       expect(afterWord.phraseGenerated).toBe(false)
     })
 
     await act(async () => {
       const afterPhrase = await result.current.handlePhraseGenerated()
-      expect(afterPhrase.wordsAdded).toBe(2)
-      expect(afterPhrase.phraseGenerated).toBe(true)
+      expect(afterPhrase.wordsAdded).toBe(1)
+      expect(afterPhrase.phraseGenerated).toBe(false)
     })
 
     expect(saveDataMock).not.toHaveBeenCalledWith('dashboard-ICA-daily-progress', expect.anything())
