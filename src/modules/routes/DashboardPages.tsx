@@ -221,7 +221,10 @@ export function PhraseHistoryPage() {
 
   return (
     <PageLayout>
-      <PhraseHistoryView targetLang={config.targetLang} />
+      <PhraseHistoryView
+        targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+      />
     </PageLayout>
   )
 }

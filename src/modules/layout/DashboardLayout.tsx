@@ -20,7 +20,6 @@ import {
 } from '../services/calendarIcademyPreferences'
 import { buildCalendarIcademyReminders } from '../services/calendarIcademyReminders'
 import { fetchCalendarIcademySessionBlacklist } from '../services/calendarIcademySessionBlacklist'
-import { fetchTodayVoiceActivationCount } from '../services/phraseVoiceActivations'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { LanguageSetup } from '../views/LanguageSetup'
 
@@ -107,7 +106,6 @@ export function DashboardLayout() {
   const milestonesReadyRef = useRef(false)
   const [flightQueue, setFlightQueue] = useState(0)
   const [activeFlight, setActiveFlight] = useState(0)
-  const [voiceActivationsToday, setVoiceActivationsToday] = useState(0)
   const [hasPendingCoachingReview, setHasPendingCoachingReview] =
     useState(false)
   const { canHighlightCurrentMonth } = useIcaTestsOverview({
@@ -154,49 +152,13 @@ export function DashboardLayout() {
 
   useEffect(() => {
     if (loading) return
-    let active = true
-
-    const refreshVoiceActivations = async (): Promise<void> => {
-      try {
-        const count = await fetchTodayVoiceActivationCount()
-        if (!active) return
-        setVoiceActivationsToday(count)
-      } catch {
-        if (!active) return
-        setVoiceActivationsToday(0)
-      }
-    }
-
-    void refreshVoiceActivations()
-
-    const onFocus = () => {
-      void refreshVoiceActivations()
-    }
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        void refreshVoiceActivations()
-      }
-    }
-
-    window.addEventListener('focus', onFocus)
-    document.addEventListener('visibilitychange', onVisibilityChange)
-
-    return () => {
-      active = false
-      window.removeEventListener('focus', onFocus)
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-    }
-  }, [dailyProgress, loading, location.pathname])
-
-  useEffect(() => {
-    if (loading) return
 
     const progress = getTodayProgress(dailyProgress)
     const hasFiveWords = progress.wordsAdded >= CREATION_WORDS_GOAL
     const currentMilestones: DailyMilestones = {
       flash: progress.reviewCorrect >= GOAL,
       ica:
-        hasFiveWords && progress.phraseGenerated && voiceActivationsToday > 0,
+        hasFiveWords && progress.phraseGenerated && progress.voiceActivationsCount > 0,
     }
 
     if (!milestonesReadyRef.current) {
@@ -218,7 +180,7 @@ export function DashboardLayout() {
     }
 
     previousMilestonesRef.current = currentMilestones
-  }, [dailyProgress, loading, voiceActivationsToday])
+  }, [dailyProgress, loading])
 
   useEffect(() => {
     if (loading || hasCheckedCalendarNotificationsRef.current) return
@@ -306,12 +268,14 @@ export function DashboardLayout() {
     )
   }
 
+  const todayProgress = getTodayProgress(dailyProgress)
+
   return (
     <div className='flex h-[calc(100dvh-0rem)] grow'>
       <div className='bg-background flex h-[calc(100dvh-0rem)] min-w-0 flex-1 flex-col'>
         <Header
           dailyProgress={dailyProgress}
-          voiceActivationsToday={voiceActivationsToday}
+          voiceActivationsToday={todayProgress.voiceActivationsCount}
           shouldHighlightProfileButton={canHighlightCurrentMonth}
           shouldHighlightCoachingProfileButton={hasPendingCoachingReview}
           boltButtonRef={(node) => {

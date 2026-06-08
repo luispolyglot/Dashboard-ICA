@@ -87,6 +87,7 @@ export interface MasterNote {
   name: string
   state: 'open' | 'closed'
   close_type: 'final' | 'temporal'
+  closed_level: string | null
   total_duration_ms: number
   final_audio_path: string | null
   target_lang: string | null
@@ -112,6 +113,7 @@ export interface DailyProgressEntry {
   wordsAdded: number
   phraseGenerated: boolean
   reviewCorrect: number
+  voiceActivationsCount: number
 }
 
 export type MetaTrackerStartLevel =

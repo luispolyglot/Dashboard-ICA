@@ -115,13 +115,19 @@ export function getTodayProgress(dailyProgress: DailyProgressMap): DailyProgress
   const tk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   const current = dailyProgress[tk]
   if (!current) {
-    return { wordsAdded: 0, phraseGenerated: false, reviewCorrect: 0 }
+    return {
+      wordsAdded: 0,
+      phraseGenerated: false,
+      reviewCorrect: 0,
+      voiceActivationsCount: 0,
+    }
   }
 
   return {
     wordsAdded: current.wordsAdded ?? 0,
     phraseGenerated: current.phraseGenerated ?? false,
     reviewCorrect: current.reviewCorrect ?? 0,
+    voiceActivationsCount: current.voiceActivationsCount ?? 0,
   }
 }
 

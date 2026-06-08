@@ -3,6 +3,10 @@ import {
   loadMetaTrackerProfile,
   saveMetaTrackerProfile,
 } from '../services/metaTracker'
+import {
+  ACTIVATION_METRICS_CHANGED_EVENT,
+  CREATION_METRICS_CHANGED_EVENT,
+} from '../services/creationMetricsSync'
 import { loadData, saveData } from '../services/storage'
 import { todayKey } from '../utils'
 import type {
@@ -31,6 +35,32 @@ export function useDashboardICA() {
   >({})
   const [metaTrackerLoading, setMetaTrackerLoading] = useState(false)
   const [metaTrackerSaving, setMetaTrackerSaving] = useState(false)
+
+  const refreshCreationProgressFromSource = useCallback(async (): Promise<void> => {
+    const [sourceDays, sourceDailyProgress] = await Promise.all([
+      loadData('dashboard-ICA-creation-days', [] as string[]),
+      loadData('dashboard-ICA-daily-progress', {} as DailyProgressMap),
+    ])
+
+    setCreationDays(sourceDays || [])
+    setDailyProgress(sourceDailyProgress || {})
+  }, [])
+
+  const refreshActivationProgressFromSource = useCallback(async (): Promise<void> => {
+    if (!config) return
+
+    const scopeKey = getMetaTrackerScopeKey(config)
+    const [scopedCards, profile] = await Promise.all([
+      loadData('dashboard-ICA-words', [] as Lexicard[]),
+      loadMetaTrackerProfile(config.targetLang, config.nativeLang),
+    ])
+
+    setCards(scopedCards || [])
+    setMetaTrackerByScope((prev) => ({
+      ...prev,
+      [scopeKey]: profile,
+    }))
+  }, [config])
 
   useEffect(() => {
     Promise.all([
@@ -139,32 +169,51 @@ export function useDashboardICA() {
   )
 
   const refreshCreationDaysFromSource = useCallback(async (): Promise<void> => {
-    const sourceDays = await loadData('dashboard-ICA-creation-days', [] as string[])
-    setCreationDays(sourceDays || [])
-  }, [])
+    await refreshCreationProgressFromSource()
+  }, [refreshCreationProgressFromSource])
+
+  useEffect(() => {
+    const syncFromTruthSource = () => {
+      void refreshCreationProgressFromSource()
+    }
+
+    window.addEventListener(CREATION_METRICS_CHANGED_EVENT, syncFromTruthSource)
+    return () => {
+      window.removeEventListener(CREATION_METRICS_CHANGED_EVENT, syncFromTruthSource)
+    }
+  }, [refreshCreationProgressFromSource])
+
+  useEffect(() => {
+    const syncActivationFromTruthSource = () => {
+      void refreshActivationProgressFromSource()
+    }
+
+    window.addEventListener(ACTIVATION_METRICS_CHANGED_EVENT, syncActivationFromTruthSource)
+    return () => {
+      window.removeEventListener(ACTIVATION_METRICS_CHANGED_EVENT, syncActivationFromTruthSource)
+    }
+  }, [refreshActivationProgressFromSource])
 
   const handleWordAdded = async () => {
+    await refreshCreationProgressFromSource()
     const tk = todayKey()
-    const updated = { ...dailyProgress }
-    if (!updated[tk]) {
-      updated[tk] = { wordsAdded: 0, phraseGenerated: false, reviewCorrect: 0 }
+    return (await loadData('dashboard-ICA-daily-progress', {} as DailyProgressMap))[tk] || {
+      wordsAdded: 0,
+      phraseGenerated: false,
+      reviewCorrect: 0,
+      voiceActivationsCount: 0,
     }
-    updated[tk] = { ...updated[tk], wordsAdded: updated[tk].wordsAdded + 1 }
-    setDailyProgress(updated)
-    await refreshCreationDaysFromSource()
-    return updated[tk]
   }
 
   const handlePhraseGenerated = async () => {
+    await refreshCreationProgressFromSource()
     const tk = todayKey()
-    const updated = { ...dailyProgress }
-    if (!updated[tk]) {
-      updated[tk] = { wordsAdded: 0, phraseGenerated: false, reviewCorrect: 0 }
+    return (await loadData('dashboard-ICA-daily-progress', {} as DailyProgressMap))[tk] || {
+      wordsAdded: 0,
+      phraseGenerated: false,
+      reviewCorrect: 0,
+      voiceActivationsCount: 0,
     }
-    updated[tk] = { ...updated[tk], phraseGenerated: true }
-    setDailyProgress(updated)
-    await refreshCreationDaysFromSource()
-    return updated[tk]
   }
 
   const handleSetup = async (nextConfig: AppConfig): Promise<void> => {
@@ -188,7 +237,12 @@ export function useDashboardICA() {
     const tk = todayKey()
     const updated = { ...dailyProgress }
     if (!updated[tk]) {
-      updated[tk] = { wordsAdded: 0, phraseGenerated: false, reviewCorrect: 0 }
+      updated[tk] = {
+        wordsAdded: 0,
+        phraseGenerated: false,
+        reviewCorrect: 0,
+        voiceActivationsCount: 0,
+      }
     }
 
     updated[tk] = {

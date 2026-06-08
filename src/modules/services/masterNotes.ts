@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { notifyCreationMetricsChanged } from './creationMetricsSync'
 import type { MasterNote, MasterNoteChunk } from '../types'
 
 const MASTER_NOTES_BUCKET = 'master-notes'
@@ -38,7 +39,7 @@ export async function fetchMasterNotes(
   let query = supabase
     .from('master_notes')
     .select(
-      'id, name, state, close_type, total_duration_ms, final_audio_path, target_lang, native_lang, created_at, updated_at, closed_at',
+      'id, name, state, close_type, closed_level, total_duration_ms, final_audio_path, target_lang, native_lang, created_at, updated_at, closed_at',
     )
     .order('created_at', { ascending: false })
 
@@ -87,7 +88,7 @@ export async function createMasterNote(
       native_lang: nativeLang,
     })
     .select(
-      'id, name, state, close_type, total_duration_ms, final_audio_path, target_lang, native_lang, created_at, updated_at, closed_at',
+      'id, name, state, close_type, closed_level, total_duration_ms, final_audio_path, target_lang, native_lang, created_at, updated_at, closed_at',
     )
     .single()
 
@@ -104,7 +105,7 @@ export async function fetchMasterNoteById(
   let query = supabase
     .from('master_notes')
     .select(
-      'id, name, state, close_type, total_duration_ms, final_audio_path, target_lang, native_lang, created_at, updated_at, closed_at',
+      'id, name, state, close_type, closed_level, total_duration_ms, final_audio_path, target_lang, native_lang, created_at, updated_at, closed_at',
     )
     .eq('id', noteId)
 
@@ -172,6 +173,8 @@ export async function deleteMasterNote(noteId: string): Promise<void> {
 
   const { error } = await supabase.from('master_notes').delete().eq('id', noteId)
   if (error) throw error
+
+  notifyCreationMetricsChanged()
 }
 
 export async function removeMasterNoteChunk(
@@ -229,6 +232,8 @@ export async function removeMasterNoteChunk(
     .eq('id', chunkRow.id)
 
   if (deleteChunkError) throw deleteChunkError
+
+  notifyCreationMetricsChanged()
 
   const { data: remainingRows, error: remainingError } = await supabase
     .from('master_note_chunks')
@@ -414,6 +419,8 @@ export async function addMasterNoteChunk({
     throw activationError
   }
 
+  notifyCreationMetricsChanged()
+
   const { data: sumRows, error: sumError } = await supabase
     .from('master_note_chunks')
     .select('duration_ms')
@@ -437,14 +444,28 @@ export async function addMasterNoteChunk({
   return data as MasterNoteChunk
 }
 
-export async function closeMasterNote(noteId: string): Promise<void> {
+type CloseMasterNoteResult = {
+  closedAt: string
+  closedLevel: string | null
+}
+
+export async function closeMasterNote(noteId: string): Promise<CloseMasterNoteResult> {
   if (!supabase) throw new Error('Falta configurar Supabase')
 
-  const { error } = await supabase.functions.invoke('master-note-close', {
+  const { data, error } = await supabase.functions.invoke('master-note-close', {
     body: { noteId },
   })
 
   if (error) throw error
+  const closedAt =
+    typeof data?.closedAt === 'string' && data.closedAt.length > 0
+      ? data.closedAt
+      : new Date().toISOString()
+  const closedLevel =
+    typeof data?.closedLevel === 'string' && data.closedLevel.length > 0
+      ? data.closedLevel
+      : null
+  return { closedAt, closedLevel }
 }
 
 export async function createSignedMasterNoteAudioUrl(

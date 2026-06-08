@@ -13,6 +13,7 @@ import {
   Trash2Icon,
   Volume2Icon,
 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -23,8 +24,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  getMetaTrackerLevelColor,
+  hexWithAlpha,
+} from '../components/MetaTracker/colors'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
+import { formatDate } from '../utils'
 import {
   createMasterNote,
   deleteMasterNote,
@@ -84,7 +90,10 @@ function SeekForward10Icon() {
   )
 }
 
-export function MasterNotesView({ targetLang, nativeLang }: MasterNotesViewProps) {
+export function MasterNotesView({
+  targetLang,
+  nativeLang,
+}: MasterNotesViewProps) {
   const navigate = useNavigate()
   const [items, setItems] = useState<MasterNote[]>([])
   const [loading, setLoading] = useState(true)
@@ -234,136 +243,170 @@ export function MasterNotesView({ targetLang, nativeLang }: MasterNotesViewProps
       <div className='space-y-3'>
         {[...closedItems, ...openItems].map((item) => {
           const isDownloadingThis = downloadingId === item.id
+          const levelColor = getMetaTrackerLevelColor(item.closed_level)
 
           return (
             <Card key={item.id} className='rounded-2xl'>
               <CardContent className='flex flex-wrap items-center justify-between gap-3'>
-              <div>
-                <p className='font-semibold'>
-                  {item.state === 'closed' ? `⭐ ${item.name}` : item.name}
-                </p>
-                <p className='text-xs text-muted-foreground'>
-                  {item.state === 'closed' ? 'Cerrada' : 'En progreso'} ·{' '}
-                  {formatDuration(item.total_duration_ms)}
-                </p>
-              </div>
+                <div>
+                  <div className='flex flex-wrap items-center gap-2'>
+                    <p className='font-semibold'>
+                      {item.state === 'closed' ? `⭐ ${item.name}` : item.name}
+                    </p>
+                    <Badge
+                      variant='outline'
+                      className={
+                        item.state === 'open'
+                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
+                          : 'border-amber-500/30 bg-amber-500/10 text-amber-700'
+                      }
+                    >
+                      {item.state === 'open' ? 'Abierta' : 'Cerrada'}
+                    </Badge>
+                    {item.closed_level && (
+                      <Badge
+                        variant='outline'
+                        className='font-semibold'
+                        style={{
+                          color: levelColor,
+                          borderColor: hexWithAlpha(levelColor, 0.45),
+                          backgroundColor: hexWithAlpha(levelColor, 0.14),
+                          boxShadow: `0 0 12px -7px ${hexWithAlpha(levelColor, 0.8)}`,
+                        }}
+                      >
+                        {item.closed_level}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className='mt-1 text-xs text-muted-foreground'>
+                    Duracion: {formatDuration(item.total_duration_ms)}
+                    {item.state === 'closed'
+                      ? ` · Cerrada el: ${formatDate(item.closed_at)}`
+                      : ''}
+                  </div>
+                </div>
 
-              <div className='flex gap-2'>
-                {playingNoteId !== item.id ? (
-                  <Button
-                    type='button'
-                    onClick={() => void handlePlay(item)}
-                    disabled={
-                      !canPlay(item, item.total_duration_ms > 0 ? 1 : 0) ||
-                      isDownloadingThis
-                    }
-                  >
-                    <Volume2Icon className='mr-1 size-4' />
-                    Escuchar
-                  </Button>
-                ) : (
-                  <>
-                    <Button type='button' onClick={() => void handlePlay(item)}>
-                      <SquareIcon className='mr-1 size-4' />
-                      Detener
-                    </Button>
+                <div className='flex gap-2'>
+                  {playingNoteId !== item.id ? (
                     <Button
                       type='button'
-                      size='icon'
-                      variant='outline'
-                      onClick={seekBack10}
+                      onClick={() => void handlePlay(item)}
+                      disabled={
+                        !canPlay(item, item.total_duration_ms > 0 ? 1 : 0) ||
+                        isDownloadingThis
+                      }
                     >
-                      <SeekBack10Icon />
+                      <Volume2Icon className='mr-1 size-4' />
+                      Escuchar
                     </Button>
-                    <Button
-                      type='button'
-                      size='icon'
-                      variant='outline'
-                      onClick={togglePause}
-                    >
-                      {isPaused ? (
-                        <PlayIcon className='size-4' />
-                      ) : (
-                        <PauseIcon className='size-4' />
-                      )}
-                    </Button>
-                    <Button
-                      type='button'
-                      size='icon'
-                      variant='outline'
-                      onClick={seekForward10}
-                    >
-                      <SeekForward10Icon />
-                    </Button>
-                    <span className='inline-flex min-w-18 items-center justify-end text-xs text-muted-foreground'>
-                      {formatSeconds(positionSec)} /{' '}
-                      {formatSeconds(durationSec)}
-                    </span>
-                  </>
-                )}
-
-                {playingNoteId !== item.id && (
-                  <>
-                    {isDownloadingThis ? (
+                  ) : (
+                    <>
                       <Button
+                        type='button'
+                        onClick={() => void handlePlay(item)}
+                      >
+                        <SquareIcon className='mr-1 size-4' />
+                        Detener
+                      </Button>
+                      <Button
+                        type='button'
                         size='icon'
                         variant='outline'
-                        aria-label='Ingresar a la nota maestra'
-                        disabled
+                        onClick={seekBack10}
                       >
-                        {item.state === 'closed' ? (
-                          <EyeIcon className='size-4' />
+                        <SeekBack10Icon />
+                      </Button>
+                      <Button
+                        type='button'
+                        size='icon'
+                        variant='outline'
+                        onClick={togglePause}
+                      >
+                        {isPaused ? (
+                          <PlayIcon className='size-4' />
                         ) : (
-                          <PencilIcon className='size-4' />
+                          <PauseIcon className='size-4' />
                         )}
                       </Button>
-                    ) : (
                       <Button
-                        asChild
+                        type='button'
                         size='icon'
                         variant='outline'
-                        aria-label='Ingresar a la nota maestra'
+                        onClick={seekForward10}
                       >
-                        <Link to={`${DASHBOARD_ROUTES.masterNotes}/note/${item.id}`}>
+                        <SeekForward10Icon />
+                      </Button>
+                      <span className='inline-flex min-w-18 items-center justify-end text-xs text-muted-foreground'>
+                        {formatSeconds(positionSec)} /{' '}
+                        {formatSeconds(durationSec)}
+                      </span>
+                    </>
+                  )}
+
+                  {playingNoteId !== item.id && (
+                    <>
+                      {isDownloadingThis ? (
+                        <Button
+                          size='icon'
+                          variant='outline'
+                          aria-label='Ingresar a la nota maestra'
+                          disabled
+                        >
                           {item.state === 'closed' ? (
                             <EyeIcon className='size-4' />
                           ) : (
                             <PencilIcon className='size-4' />
                           )}
-                        </Link>
-                      </Button>
-                    )}
+                        </Button>
+                      ) : (
+                        <Button
+                          asChild
+                          size='icon'
+                          variant='outline'
+                          aria-label='Ingresar a la nota maestra'
+                        >
+                          <Link
+                            to={`${DASHBOARD_ROUTES.masterNotes}/note/${item.id}`}
+                          >
+                            {item.state === 'closed' ? (
+                              <EyeIcon className='size-4' />
+                            ) : (
+                              <PencilIcon className='size-4' />
+                            )}
+                          </Link>
+                        </Button>
+                      )}
 
-                    {item.state === 'closed' && (
+                      {item.state === 'closed' && (
+                        <Button
+                          type='button'
+                          size='icon'
+                          variant='outline'
+                          aria-label='Descargar nota maestra'
+                          disabled={downloadingId === item.id}
+                          onClick={() => void handleDownload(item)}
+                        >
+                          {isDownloadingThis ? (
+                            <Loader2Icon className='size-4 animate-spin' />
+                          ) : (
+                            <DownloadIcon className='size-4' />
+                          )}
+                        </Button>
+                      )}
+
                       <Button
                         type='button'
                         size='icon'
-                        variant='outline'
-                        aria-label='Descargar nota maestra'
-                        disabled={downloadingId === item.id}
-                        onClick={() => void handleDownload(item)}
+                        variant='destructive'
+                        disabled={deletingId === item.id || isDownloadingThis}
+                        onClick={() => setConfirmDeleteId(item.id)}
+                        aria-label='Eliminar nota maestra'
                       >
-                        {isDownloadingThis ? (
-                          <Loader2Icon className='size-4 animate-spin' />
-                        ) : (
-                          <DownloadIcon className='size-4' />
-                        )}
+                        <Trash2Icon className='size-4' />
                       </Button>
-                    )}
-
-                    <Button
-                      type='button'
-                      size='icon'
-                      variant='destructive'
-                      disabled={deletingId === item.id || isDownloadingThis}
-                      onClick={() => setConfirmDeleteId(item.id)}
-                      aria-label='Eliminar nota maestra'
-                    >
-                      <Trash2Icon className='size-4' />
-                    </Button>
-                  </>
-                )}
-              </div>
+                    </>
+                  )}
+                </div>
               </CardContent>
             </Card>
           )

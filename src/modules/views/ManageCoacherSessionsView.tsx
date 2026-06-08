@@ -8,15 +8,10 @@ import {
   type CoachingManagedUser,
 } from '../services/coaching'
 import { getManageCoachingUserRoute } from '../routes/paths'
+import { formatDateTime } from '../utils'
 
 type ManageCoacherSessionsViewProps = {
   coachUserId: string
-}
-
-function formatDateTime(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'No disponible'
-  return date.toLocaleString()
 }
 
 export function ManageCoacherSessionsView({

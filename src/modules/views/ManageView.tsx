@@ -89,6 +89,9 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
   const [draftImportance, setDraftImportance] = useState<ImportanceKey>('vital')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [editError, setEditError] = useState<string | null>(null)
+  const [deleteErrorById, setDeleteErrorById] = useState<Record<string, string>>(
+    {},
+  )
   const [generatingExampleId, setGeneratingExampleId] = useState<string | null>(
     null,
   )
@@ -189,11 +192,36 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
   }
 
   const handleDelete = async (id: string): Promise<void> => {
-    const nextCards = cards.filter((c) => c.id !== id)
-    setCards(nextCards)
-    await deleteWordById(id)
-    setEditingId(null)
-    setConfirmDeleteId(null)
+    const usageCount =
+      wordUsageCounts[id] ??
+      cards.find((card) => card.id === id)?.activationCount ??
+      0
+    if (usageCount > 0) {
+      setDeleteErrorById((prev) => ({
+        ...prev,
+        [id]: 'No se puede eliminar: palabra protegida por activaciones.',
+      }))
+      setConfirmDeleteId(null)
+      return
+    }
+
+    try {
+      await deleteWordById(id)
+      setCards((prev) => prev.filter((c) => c.id !== id))
+      setDeleteErrorById((prev) => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
+      setEditingId(null)
+      setConfirmDeleteId(null)
+    } catch {
+      setDeleteErrorById((prev) => ({
+        ...prev,
+        [id]: 'No se pudo eliminar: palabra protegida por activaciones.',
+      }))
+      setConfirmDeleteId(null)
+    }
   }
 
   const openEditor = (card: Lexicard): void => {
@@ -205,6 +233,11 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
     setDraftImportance(card.importance)
     setConfirmDeleteId(null)
     setEditError(null)
+    setDeleteErrorById((prev) => {
+      const next = { ...prev }
+      delete next[card.id]
+      return next
+    })
   }
 
   const closeEditor = (): void => {
@@ -399,6 +432,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
           const isEditing = editingId === card.id
           const usageCount =
             wordUsageCounts[card.id] ?? card.activationCount ?? 0
+          const isDeletionProtected = usageCount > 0
           const usageLevel = usageCount >= 3 ? 2 : usageCount >= 1 ? 1 : 0
           const dateStr = card.createdAt
             ? new Date(card.createdAt).toLocaleDateString('es-ES', {
@@ -589,7 +623,22 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
                     </div>
 
                     <div className='flex flex-wrap items-center justify-between gap-2'>
-                      {confirmDeleteId === card.id ? (
+                      {isDeletionProtected ? (
+                        <div className='flex flex-wrap items-center gap-2'>
+                          <span className='text-sm text-amber-600'>
+                            Protegida: tiene activaciones asociadas.
+                          </span>
+                          <Button
+                            type='button'
+                            variant='destructive'
+                            size='sm'
+                            disabled
+                          >
+                            Eliminar bloqueado
+                            <Trash2Icon className='size-4 ml-1' />
+                          </Button>
+                        </div>
+                      ) : confirmDeleteId === card.id ? (
                         <>
                           <span className='text-sm text-red-400'>
                             ¿Eliminar esta palabra?
@@ -623,6 +672,12 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
                           Eliminar
                           <Trash2Icon className='size-4 ml-1' />
                         </Button>
+                      )}
+
+                      {deleteErrorById[card.id] && (
+                        <span className='text-xs text-red-500'>
+                          {deleteErrorById[card.id]}
+                        </span>
                       )}
 
                       <div className='ml-auto flex gap-2'>

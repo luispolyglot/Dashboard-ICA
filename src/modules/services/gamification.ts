@@ -1,7 +1,7 @@
-import { CREATION_WORDS_GOAL } from '../constants'
 import { supabase } from '../../lib/supabase'
 import { todayKey } from '../utils'
 import { evaluateAndUnlockAchievements } from './achievements'
+import { notifyCreationMetricsChanged } from './creationMetricsSync'
 import { registerWordActivations } from './metaTracker'
 
 const WORD_ADD_POINTS = 5
@@ -13,51 +13,12 @@ async function getCurrentUserId(): Promise<string | null> {
   return data.session?.user.id ?? null
 }
 
-type DailyMetricRow = {
-  words_added: number
-  creation_goal_completed: boolean
-  xp_earned: number
-}
-
-async function bumpCreationDailyMetrics(params: {
-  day: string
-  wordsAdded: number
-  wordsAddedDelta: number
-  phraseGenerated: boolean
-  xpDelta: number
-}): Promise<DailyMetricRow> {
-  if (!supabase) return { words_added: 0, creation_goal_completed: false, xp_earned: 0 }
-
-  const { data, error } = await supabase.rpc('bump_daily_creation_metrics', {
-    p_day: params.day,
-    p_words_added: params.wordsAdded,
-    p_words_added_delta: params.wordsAddedDelta,
-    p_phrase_generated: params.phraseGenerated,
-    p_xp_delta: params.xpDelta,
-  })
-
-  if (error) throw error
-
-  const row = Array.isArray(data) ? data[0] : data
-  return {
-    words_added: Number(row?.words_added ?? 0),
-    creation_goal_completed: Boolean(row?.creation_goal_completed ?? false),
-    xp_earned: Number(row?.xp_earned ?? 0),
-  }
-}
-
-type WordAddedEventParams = {
-  wordsAdded: number
-  phraseGenerated: boolean
-}
-
-export async function recordWordAddedEvent(params: WordAddedEventParams): Promise<void> {
+export async function recordWordAddedEvent(): Promise<void> {
   if (!supabase) return
   const userId = await getCurrentUserId()
   if (!userId) return
 
   const day = todayKey()
-  const nextWords = Math.max(0, Math.floor(params.wordsAdded || 0))
 
   const { error: xpError } = await supabase.from('xp_events').insert({
     user_id: userId,
@@ -67,28 +28,8 @@ export async function recordWordAddedEvent(params: WordAddedEventParams): Promis
   })
   if (xpError) throw xpError
 
-  const metric = await bumpCreationDailyMetrics({
-    day,
-    wordsAdded: nextWords,
-    wordsAddedDelta: 1,
-    phraseGenerated: params.phraseGenerated,
-    xpDelta: WORD_ADD_POINTS,
-  })
-
-  const { error: goalError } = await supabase.from('goal_completions').upsert(
-    {
-      user_id: userId,
-      day,
-      goal_type: 'creation_goal',
-      completed: metric.creation_goal_completed,
-      progress_value: metric.words_added,
-      target_value: CREATION_WORDS_GOAL,
-    },
-    { onConflict: 'user_id,day,goal_type' },
-  )
-  if (goalError) throw goalError
-
   await evaluateAndUnlockAchievements(userId)
+  notifyCreationMetricsChanged()
 }
 
 type PhraseEventParams = {
@@ -96,7 +37,6 @@ type PhraseEventParams = {
   words: string[]
   phrase: string
   translation: string
-  wordsAdded: number
   targetLang: string
   nativeLang: string
   source?: 'generated' | 'manual'
@@ -119,6 +59,10 @@ export async function recordPhraseGeneratedEvent(
   const phrasePayload = {
     user_id: userId,
     source_words: params.words,
+    source_words_v2: params.wordIds.map((lexicardId, index) => ({
+      lexicard_id: lexicardId,
+      word: params.words[index] || '',
+    })),
     generated_phrase: params.phrase,
     translation: params.translation,
     model:
@@ -164,6 +108,7 @@ export async function recordPhraseGeneratedEvent(
   if (phraseError) throw phraseError
 
   let activationTotal = await registerWordActivations(
+    phraseGenerationId || '',
     params.wordIds,
     params.targetLang,
     params.nativeLang,
@@ -172,6 +117,7 @@ export async function recordPhraseGeneratedEvent(
 
   if (activationTotal === null) {
     activationTotal = await registerWordActivations(
+      phraseGenerationId || '',
       params.wordIds,
       params.targetLang,
       params.nativeLang,
@@ -189,8 +135,6 @@ export async function recordPhraseGeneratedEvent(
       source: params.source || 'generated',
     })
   }
-
-  let metric: DailyMetricRow | null = null
 
   try {
     const { error: xpError } = await supabase.from('xp_events').insert({
@@ -210,41 +154,12 @@ export async function recordPhraseGeneratedEvent(
   }
 
   try {
-    metric = await bumpCreationDailyMetrics({
-      day,
-      wordsAdded: Math.max(0, Math.floor(params.wordsAdded || 0)),
-      wordsAddedDelta: 0,
-      phraseGenerated: true,
-      xpDelta: PHRASE_POINTS,
-    })
-  } catch (error) {
-    console.error('Could not update daily creation metrics for phrase generation', error)
-  }
-
-  if (metric) {
-    try {
-      const { error: goalError } = await supabase.from('goal_completions').upsert(
-        {
-          user_id: userId,
-          day,
-          goal_type: 'creation_goal',
-          completed: metric.creation_goal_completed,
-          progress_value: metric.words_added,
-          target_value: CREATION_WORDS_GOAL,
-        },
-        { onConflict: 'user_id,day,goal_type' },
-      )
-      if (goalError) throw goalError
-    } catch (error) {
-      console.error('Could not sync creation goal completion after phrase generation', error)
-    }
-  }
-
-  try {
     await evaluateAndUnlockAchievements(userId)
   } catch (error) {
     console.error('Could not evaluate achievements after phrase generation', error)
   }
+
+  notifyCreationMetricsChanged()
 
   return { activationWordsTotal: activationTotal, phraseGenerationId }
 }

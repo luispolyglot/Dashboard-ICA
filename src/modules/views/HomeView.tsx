@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { MetaTrackerSection } from '../components/MetaTracker/MetaTrackerSection'
 import { CREATION_WORDS_GOAL, getTodayProgress } from '../constants'
-import { fetchTodayVoiceActivationCount } from '../services/phraseVoiceActivations'
 import type { DailyProgressMap } from '../types'
 import type { AppConfig } from '../types'
 
@@ -32,7 +31,6 @@ function pluralize(value: number, singular: string, plural: string): string {
 
 export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   const navigate = useNavigate()
-  const [voiceActivationsToday, setVoiceActivationsToday] = useState(0)
   const todayProgress = getTodayProgress(dailyProgress)
   const cardBaseClass =
     'relative flex min-h-[220px] w-full flex-col border-none px-[26px] py-8 text-left font-sans transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] hover:-translate-y-[3px] bg-[linear-gradient(160deg,#ffffff,#eef3f9)] dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
@@ -47,24 +45,6 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   )
   const flashDone = todayProgress.reviewCorrect >= 10
   const phraseDone = todayProgress.phraseGenerated
-
-  useEffect(() => {
-    let active = true
-
-    fetchTodayVoiceActivationCount()
-      .then((count) => {
-        if (!active) return
-        setVoiceActivationsToday(count)
-      })
-      .catch(() => {
-        if (!active) return
-        setVoiceActivationsToday(0)
-      })
-
-    return () => {
-      active = false
-    }
-  }, [])
 
   const cards: HomeCard[] = useMemo(
     () => [
@@ -100,10 +80,10 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
         emoji: '🗣️',
         tone: '#3B82F6',
         statusLabel:
-          voiceActivationsToday > 0
-            ? `${pluralize(voiceActivationsToday, 'activación', 'activaciones')} hoy`
+          todayProgress.voiceActivationsCount > 0
+            ? `${pluralize(todayProgress.voiceActivationsCount, 'activación', 'activaciones')} hoy`
             : 'Activa cualquier frase creada',
-        statusDone: voiceActivationsToday > 0,
+        statusDone: todayProgress.voiceActivationsCount > 0,
         to: DASHBOARD_ROUTES.masterNotes,
         disabled: false,
       },
@@ -113,7 +93,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
       hasFiveWordsToday,
       hasFiveWordsTotal,
       phraseDone,
-      voiceActivationsToday,
+      todayProgress.voiceActivationsCount,
       wordsLeftToday,
     ],
   )

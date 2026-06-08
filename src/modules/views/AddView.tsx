@@ -26,6 +26,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type {
   AppConfig,
+  DailyProgressEntry,
   DailyProgressMap,
   ImportanceKey,
   Lexicard,
@@ -36,7 +37,7 @@ type AddViewProps = {
   setCards: Dispatch<SetStateAction<Lexicard[]>>
   config: AppConfig
   dailyProgress: DailyProgressMap
-  onWordAdded: () => Promise<{ wordsAdded: number; phraseGenerated: boolean }>
+  onWordAdded: () => Promise<DailyProgressEntry>
 }
 
 const IMPORTANCE_TONE: Record<ImportanceKey, string> = {
@@ -255,9 +256,9 @@ export function AddView({
     try {
       setCards((prev) => [...prev, newCard])
       await insertWord(newCard)
-      const progress = await onWordAdded()
+      await onWordAdded()
       try {
-        await recordWordAddedEvent(progress)
+        await recordWordAddedEvent()
       } catch (error) {
         console.error(error)
       }

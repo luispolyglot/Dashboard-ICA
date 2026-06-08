@@ -66,6 +66,7 @@ import {
 } from '../services/coaching'
 import { CoachingProgramPreview } from './CoachingProgramPreview'
 import { PendingReviewDot } from '../components/PendingReviewDot'
+import { formatDateTime } from '../utils'
 
 type ManageCoachingUserViewProps = {
   userId: string
@@ -98,12 +99,6 @@ type ClassDraft = {
 
 type SessionActionType = 'archive' | 'close' | 'hard-delete'
 type CoachingViewMode = 'coach' | 'user-preview'
-
-function formatDateTime(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'No disponible'
-  return date.toLocaleString()
-}
 
 function toString(value: unknown): string {
   if (typeof value === 'number' && Number.isFinite(value)) return String(value)

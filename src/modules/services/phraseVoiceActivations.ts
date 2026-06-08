@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase'
+import { notifyCreationMetricsChanged } from './creationMetricsSync'
 import type { PhraseVoiceActivationEntry } from '../types'
 
 const BUCKET = 'phrase-activations'
@@ -169,6 +170,8 @@ export async function uploadPhraseVoiceActivation({
     throw insertError || new Error('No se pudo registrar la activación de voz')
   }
 
+  notifyCreationMetricsChanged()
+
   return inserted as PhraseVoiceActivationEntry
 }
 
@@ -206,6 +209,8 @@ export async function deletePhraseVoiceActivation(
   if (deleteError) {
     throw deleteError
   }
+
+  notifyCreationMetricsChanged()
 }
 
 export function getPhraseActivationErrorMessage(error: unknown): string {

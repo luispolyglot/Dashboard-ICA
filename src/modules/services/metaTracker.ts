@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase'
+import { notifyActivationMetricsChanged } from './creationMetricsSync'
 import type { MetaTrackerProfile, MetaTrackerStartLevel } from '../types'
 
 type SaveMetaTrackerInput = {
@@ -20,10 +21,6 @@ function normalizeActivationToken(value: string): string {
     .replace(/^\d+[\).\-:]\s*/u, '')
     .replace(/^[•\-]\s*/u, '')
     .toLowerCase()
-}
-
-function normalizeLanguageToken(value: string | null | undefined): string {
-  return String(value || '').trim().toLowerCase()
 }
 
 function toProfile(row: {
@@ -157,6 +154,7 @@ export async function fetchWordActivationCounts(
 }
 
 export async function registerWordActivations(
+  phraseGenerationId: string,
   lexicardIds: string[],
   targetLang: string,
   nativeLang: string,
@@ -222,8 +220,13 @@ export async function registerWordActivations(
 
   if (activationIds.length === 0) return null
 
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(phraseGenerationId)) {
+    return null
+  }
+
   try {
-    const { data, error } = await supabase.rpc('register_lexicard_activations', {
+    const { data, error } = await supabase.rpc('register_phrase_lexicard_activations', {
+      p_phrase_generation_id: phraseGenerationId,
       p_lexicard_ids: activationIds,
       p_target_lang: targetLang,
       p_native_lang: nativeLang,
@@ -235,84 +238,11 @@ export async function registerWordActivations(
       ? Number(data[0]?.activation_words_total)
       : Number(data?.activation_words_total)
 
+    notifyActivationMetricsChanged()
+
     return Number.isFinite(total) ? total : null
   } catch (error) {
-    console.error('register_lexicard_activations RPC failed, using fallback', error)
-  }
-
-  try {
-    const countsById = new Map<string, number>()
-    for (const id of activationIds) {
-      countsById.set(id, (countsById.get(id) || 0) + 1)
-    }
-
-    const uniqueIds = Array.from(countsById.keys())
-    const { data: rows, error: rowsError } = await supabase
-      .from('lexicards')
-      .select('id, user_id, target_lang, native_lang, activation_count, first_activated_at')
-      .eq('user_id', userId)
-      .in('id', uniqueIds)
-
-    if (rowsError) throw rowsError
-
-    const validRows = (rows || []).filter(
-      (row) =>
-        normalizeLanguageToken(row.target_lang || targetLang) === normalizeLanguageToken(targetLang)
-        && normalizeLanguageToken(row.native_lang || nativeLang) === normalizeLanguageToken(nativeLang),
-    )
-
-    let newlyActivated = 0
-    for (const row of validRows) {
-      const delta = countsById.get(row.id) || 0
-      if (delta <= 0) continue
-      const wasInactive = Number(row.activation_count || 0) <= 0
-
-      const nextCount = Number(row.activation_count || 0) + delta
-      const nowIso = new Date().toISOString()
-      const { error: updateError } = await supabase
-        .from('lexicards')
-        .update({
-          activation_count: nextCount,
-          first_activated_at: row.first_activated_at || nowIso,
-          last_activated_at: nowIso,
-        })
-        .eq('id', row.id)
-        .eq('user_id', userId)
-
-      if (updateError) throw updateError
-      if (wasInactive) newlyActivated += 1
-    }
-
-    const { data: tracker, error: trackerError } = await supabase
-      .from('user_meta_tracker')
-      .select('activation_words_total')
-      .eq('user_id', userId)
-      .eq('target_lang', targetLang)
-      .eq('native_lang', nativeLang)
-      .maybeSingle()
-
-    if (trackerError) throw trackerError
-
-    const currentTotal = Number(tracker?.activation_words_total || 0)
-    const nextTotal = currentTotal + newlyActivated
-
-    const { error: upsertError } = await supabase
-      .from('user_meta_tracker')
-      .upsert(
-        {
-          user_id: userId,
-          target_lang: targetLang,
-          native_lang: nativeLang,
-          activation_words_total: nextTotal,
-        },
-        { onConflict: 'user_id,target_lang,native_lang' },
-      )
-
-    if (upsertError) throw upsertError
-
-    return nextTotal
-  } catch (fallbackError) {
-    console.error('registerWordActivations fallback failed', fallbackError)
+    console.error('register_phrase_lexicard_activations RPC failed', error)
     return null
   }
 }
