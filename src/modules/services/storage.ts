@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase'
+import { notifyCreationMetricsChanged } from './creationMetricsSync'
 import type { AppConfig, DailyProgressMap, Lexicard } from '../types'
 
 const MAX_SAFE_WORD_DELETES_PER_SAVE = 5
@@ -310,9 +311,11 @@ async function insertWordRecord(userId: string, card: Lexicard): Promise<void> {
   try {
     const { error } = await supabase.from('lexicards').insert(toLexicardRow(userId, card))
     if (error) throw error
+    notifyCreationMetricsChanged()
   } catch {
     const { error } = await supabase.from('lexicards').insert(toLegacyLexicardRow(userId, card))
     if (error) throw error
+    notifyCreationMetricsChanged()
   }
 }
 
@@ -371,6 +374,7 @@ async function deleteWordRecord(userId: string, id: string): Promise<void> {
     .eq('user_id', userId)
     .eq('id', id)
   if (error) throw error
+  notifyCreationMetricsChanged()
 }
 
 async function loadConfig(userId: string): Promise<AppConfig | null> {
@@ -452,7 +456,7 @@ async function loadDailyProgress(userId: string): Promise<DailyProgressMap> {
   if (!supabase) return {}
   const { data, error } = await supabase
     .from('daily_metrics')
-    .select('day, words_added, phrase_generated, correct_reviews')
+    .select('day, words_added, phrase_generated, correct_reviews, voice_activations_count')
     .eq('user_id', userId)
 
   if (error) throw error
@@ -463,6 +467,7 @@ async function loadDailyProgress(userId: string): Promise<DailyProgressMap> {
       wordsAdded: row.words_added,
       phraseGenerated: row.phrase_generated,
       reviewCorrect: row.correct_reviews ?? 0,
+      voiceActivationsCount: row.voice_activations_count ?? 0,
     }
   }
 

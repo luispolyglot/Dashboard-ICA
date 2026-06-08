@@ -17,6 +17,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -38,6 +39,10 @@ import {
   fetchMasterNoteChunks,
   removeMasterNoteChunk,
 } from '../services/masterNotes'
+import {
+  getMetaTrackerLevelColor,
+  hexWithAlpha,
+} from '../components/MetaTracker/colors'
 import { fetchPhraseVoiceActivations } from '../services/phraseVoiceActivations'
 import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
 import type {
@@ -45,6 +50,7 @@ import type {
   MasterNoteChunk,
   PhraseGenerationEntry,
 } from '../types'
+import { formatDate } from '../utils'
 
 type MasterNoteDetailViewProps = {
   noteId: string
@@ -239,14 +245,15 @@ export function MasterNoteDetailView({
     if (!note || !canClose || closing) return
     setClosing(true)
     try {
-      await closeMasterNote(note.id)
+      const closeResult = await closeMasterNote(note.id)
       setNote((prev) =>
         prev
           ? {
               ...prev,
               state: 'closed',
               close_type: 'temporal',
-              closed_at: new Date().toISOString(),
+              closed_at: closeResult.closedAt,
+              closed_level: closeResult.closedLevel,
             }
           : prev,
       )
@@ -335,14 +342,44 @@ export function MasterNoteDetailView({
     )
   }
 
+  const levelColor = getMetaTrackerLevelColor(note.closed_level)
+
   return (
     <section className='mx-auto w-full max-w-4xl flex-1 px-5 pt-8 pb-24 lg:pb-8'>
-      <h2 className='mb-1 font-serif text-2xl lg:text-3xl font-bold'>
-        {note.state === 'closed' ? `⭐ ${note.name}` : note.name}
-      </h2>
+      <div className='mb-1 flex flex-wrap items-center gap-2'>
+        <h2 className='font-serif text-2xl lg:text-3xl font-bold'>
+          {note.state === 'closed' ? `⭐ ${note.name}` : note.name}
+        </h2>
+        <Badge
+          variant='outline'
+          className={
+            note.state === 'open'
+              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
+              : 'border-amber-500/30 bg-amber-500/10 text-amber-700'
+          }
+        >
+          {note.state === 'open' ? 'Abierta' : 'Cerrada'}
+        </Badge>
+        {note.closed_level && (
+          <Badge
+            variant='outline'
+            className='font-semibold'
+            style={{
+              color: levelColor,
+              borderColor: hexWithAlpha(levelColor, 0.45),
+              backgroundColor: hexWithAlpha(levelColor, 0.14),
+              boxShadow: `0 0 12px -7px ${hexWithAlpha(levelColor, 0.8)}`,
+            }}
+          >
+            {note.closed_level}
+          </Badge>
+        )}
+      </div>
       <p className='mb-4 text-sm text-muted-foreground'>
-        Duración acumulada: {formatDuration(note.total_duration_ms)} · Estado:{' '}
-        {note.state === 'closed' ? 'cerrada' : 'abierta'}
+        Duracion: {formatDuration(note.total_duration_ms)}
+        {note.state === 'closed'
+          ? ` · Cerrada el: ${formatDate(note.closed_at)}`
+          : ''}
       </p>
       <div className='mb-4'>
         <div className='flex gap-2'>

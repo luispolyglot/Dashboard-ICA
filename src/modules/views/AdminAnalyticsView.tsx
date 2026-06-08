@@ -15,16 +15,11 @@ import {
   type AdminAnalyticsDailySignup,
   type AdminAnalyticsPayload,
 } from '../services/adminAnalytics'
+import { formatDateTime } from '../utils'
 
 function formatDayLabel(day: string): string {
   const date = new Date(`${day}T00:00:00`)
   return date.toLocaleDateString(undefined, { month: 'short', day: '2-digit' })
-}
-
-function formatDateTime(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'No disponible'
-  return date.toLocaleString()
 }
 
 export function AdminAnalyticsView() {

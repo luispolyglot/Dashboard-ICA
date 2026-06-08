@@ -23,6 +23,26 @@ export function todayKey() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+export function formatDateTime(
+  value: string | null | undefined,
+  fallback = 'No disponible',
+): string {
+  if (!value) return fallback
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return fallback
+  return date.toLocaleString()
+}
+
+export function formatDate(
+  value: string | null | undefined,
+  fallback = 'No disponible',
+): string {
+  if (!value) return fallback
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return fallback
+  return date.toLocaleDateString('es-ES')
+}
+
 function isCardFailed(card: Lexicard): boolean {
   return (card.streak || 0) === 0 && card.lastReviewed !== null
 }

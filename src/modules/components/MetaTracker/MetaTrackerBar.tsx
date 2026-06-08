@@ -4,23 +4,11 @@ import {
   getLevelThresholds,
   LEVEL_KEYS,
 } from './leveling'
+import { LEVEL_COLORS } from './colors'
 
 type MetaTrackerBarProps = {
   targetLang: string
   totalWords: number
-}
-
-const LEVEL_COLORS: Record<string, string> = {
-  'Pre-A1': '#64748b',
-  A1: '#3B82F6',
-  'A1+': '#3B82F6',
-  A2: '#22C55E',
-  'A2+': '#22C55E',
-  B1: '#EAB308',
-  'B1+': '#EAB308',
-  B2: '#F97316',
-  'B2+': '#F97316',
-  C1: '#A855F7',
 }
 
 const GRADIENT_STOPS: { pct: number; color: string }[] = [

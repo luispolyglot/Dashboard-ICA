@@ -1,4 +1,8 @@
 import { supabase } from '../../lib/supabase'
+import {
+  notifyActivationMetricsChanged,
+  notifyCreationMetricsChanged,
+} from './creationMetricsSync'
 import type { PhraseGenerationEntry } from '../types'
 
 const SCRIPT_BY_LANGUAGE: Record<string, RegExp> = {
@@ -71,6 +75,9 @@ export async function deletePhraseHistoryEntry(id: string): Promise<void> {
   if (error) {
     throw error
   }
+
+  notifyCreationMetricsChanged()
+  notifyActivationMetricsChanged()
 }
 
 export async function fetchPhraseHistoryEntry(

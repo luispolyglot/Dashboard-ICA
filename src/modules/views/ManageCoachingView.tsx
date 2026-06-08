@@ -51,12 +51,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { PendingReviewDot } from '../components/PendingReviewDot'
-
-function formatDateTime(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'No disponible'
-  return date.toLocaleString()
-}
+import { formatDateTime } from '../utils'
 
 export function ManageCoachingView() {
   const navigate = useNavigate()

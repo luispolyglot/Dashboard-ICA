@@ -1,11 +1,22 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { CopyIcon, MicIcon, Trash2Icon } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ActivatePhraseInMasterNoteModal } from '../components/ActivatePhraseInMasterNoteModal'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { RomanizationHint } from '../components/RomanizationHint'
 import { SpeakButton } from '../components/SpeakButton'
+import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchPhraseVoiceActivations } from '../services/phraseVoiceActivations'
 import {
   deletePhraseHistoryEntry,
@@ -19,6 +30,7 @@ import type {
 
 type PhraseHistoryViewProps = {
   targetLang: string
+  nativeLang: string
 }
 
 function escapeRegex(value: string): string {
@@ -46,7 +58,8 @@ function highlightMatch(text: string, query: string): ReactNode {
   )
 }
 
-export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
+export function PhraseHistoryView({ targetLang, nativeLang }: PhraseHistoryViewProps) {
+  const navigate = useNavigate()
   const [items, setItems] = useState<PhraseGenerationEntry[]>([])
   const [activationsByPhrase, setActivationsByPhrase] = useState<
     Record<string, PhraseVoiceActivationEntry[]>
@@ -55,9 +68,14 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [deleteCandidate, setDeleteCandidate] = useState<{
+    id: string
+    hasActivation: boolean
+  } | null>(null)
   const [copyingId, setCopyingId] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [activateModalOpen, setActivateModalOpen] = useState(false)
+  const [activatePhraseId, setActivatePhraseId] = useState<string | null>(null)
 
   useEffect(() => {
     const load = async (): Promise<void> => {
@@ -97,13 +115,23 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
         delete next[id]
         return next
       })
-      setConfirmDeleteId(null)
+      setDeleteCandidate(null)
     } catch (err) {
       console.error(err)
       setError('No se pudo eliminar la frase')
     } finally {
       setDeletingId(null)
     }
+  }
+
+  const handleAskDelete = (id: string): void => {
+    const hasActivation = (activationsByPhrase[id] || []).length > 0
+    setDeleteCandidate({ id, hasActivation })
+  }
+
+  const handleOpenActivateModal = (phraseId: string): void => {
+    setActivatePhraseId(phraseId)
+    setActivateModalOpen(true)
   }
 
   const visibleItems = items.filter((item) => {
@@ -243,75 +271,134 @@ export function PhraseHistoryView({ targetLang }: PhraseHistoryViewProps) {
                     ))}
                   </div>
 
-                  {confirmDeleteId === item.id ? (
-                    <div className='mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-red-500/20 pt-3'>
-                      <span className='text-sm text-red-400'>
-                        ¿Eliminar esta frase?
-                      </span>
-                      <div className='flex gap-2'>
-                        <Button
-                          type='button'
-                          onClick={() => void handleDelete(item.id)}
-                          disabled={deletingId === item.id}
-                          variant='destructive'
-                          size='sm'
-                        >
-                          {deletingId === item.id
-                            ? 'Eliminando...'
-                            : 'Sí, eliminar'}
-                        </Button>
-                        <Button
-                          type='button'
-                          onClick={() => setConfirmDeleteId(null)}
-                          disabled={deletingId === item.id}
-                          variant='outline'
-                          size='sm'
-                        >
-                          Cancelar
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className='mt-4 flex flex-wrap gap-2 border-t border-border pt-3'>
+                  <div className='mt-4 flex flex-wrap gap-2 border-t border-border pt-3'>
+                    <Button
+                      type='button'
+                      onClick={() =>
+                        void handleCopyPhrase(
+                          item.id,
+                          item.generated_phrase,
+                          item.translation,
+                        )
+                      }
+                      variant='outline'
+                      size='sm'
+                      disabled={
+                        !item.generated_phrase || copyingId === item.id
+                      }
+                    >
+                      <CopyIcon className='size-4' />
+                      {copyingId === item.id
+                        ? 'Copiando...'
+                        : copiedId === item.id
+                          ? 'Copiadas'
+                          : 'Copiar frases'}
+                    </Button>
+                    <Button
+                      type='button'
+                      onClick={() => handleAskDelete(item.id)}
+                      variant='destructive'
+                      size='sm'
+                    >
+                      Eliminar frase
+                      <Trash2Icon className='ml-1 size-4' />
+                    </Button>
+                    {activationCount === 0 && (
                       <Button
                         type='button'
-                        onClick={() =>
-                          void handleCopyPhrase(
-                            item.id,
-                            item.generated_phrase,
-                            item.translation,
-                          )
-                        }
+                        onClick={() => handleOpenActivateModal(item.id)}
                         variant='outline'
                         size='sm'
-                        disabled={
-                          !item.generated_phrase || copyingId === item.id
-                        }
+                        className='ml-auto'
                       >
-                        <CopyIcon className='size-4' />
-                        {copyingId === item.id
-                          ? 'Copiando...'
-                          : copiedId === item.id
-                            ? 'Copiadas'
-                            : 'Copiar frases'}
+                        🗣️ Activar frase
                       </Button>
-                      <Button
-                        type='button'
-                        onClick={() => setConfirmDeleteId(item.id)}
-                        variant='destructive'
-                        size='sm'
-                      >
-                        Eliminar frase
-                        <Trash2Icon className='ml-1 size-4' />
-                      </Button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             )
           })}
         </div>
       </div>
+
+      <Dialog
+        open={Boolean(deleteCandidate)}
+        onOpenChange={(open) => {
+          if (!open && !deletingId) setDeleteCandidate(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {deleteCandidate?.hasActivation
+                ? 'Frase activada en Nota Maestra'
+                : '¿Eliminar esta frase?'}
+            </DialogTitle>
+            <DialogDescription>
+              {deleteCandidate?.hasActivation
+                ? 'Esta frase ya fue activada. Para borrarla, primero debes eliminarla desde la propia Nota Maestra.'
+                : '¿Eliminar esta frase?'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            {deleteCandidate?.hasActivation ? (
+              <>
+                <Button
+                  type='button'
+                  variant='outline'
+                  onClick={() => setDeleteCandidate(null)}
+                >
+                  Cerrar
+                </Button>
+                <Button
+                  type='button'
+                  onClick={() => {
+                    setDeleteCandidate(null)
+                    navigate(DASHBOARD_ROUTES.masterNotes)
+                  }}
+                >
+                  Ir a Nota Maestra
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  type='button'
+                  variant='outline'
+                  disabled={Boolean(deletingId)}
+                  onClick={() => setDeleteCandidate(null)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type='button'
+                  variant='destructive'
+                  disabled={!deleteCandidate?.id || Boolean(deletingId)}
+                  onClick={() => {
+                    if (!deleteCandidate?.id) return
+                    void handleDelete(deleteCandidate.id)
+                  }}
+                >
+                  {deletingId ? 'Eliminando...' : 'Sí, eliminar'}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ActivatePhraseInMasterNoteModal
+        open={activateModalOpen}
+        phraseId={activatePhraseId}
+        targetLang={targetLang}
+        nativeLang={nativeLang}
+        onOpenChange={(open) => {
+          setActivateModalOpen(open)
+          if (!open) setActivatePhraseId(null)
+        }}
+      />
     </section>
   )
 }
