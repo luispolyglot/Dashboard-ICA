@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { CopyIcon, MicIcon, Trash2Icon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { ActivatePhraseInMasterNoteModal } from '../components/ActivatePhraseInMasterNoteModal'
+import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -24,6 +25,9 @@ import {
 } from '../services/phraseHistory'
 import { stopTTS } from '../services/tts'
 import type {
+  CEFRLevel,
+  DailyProgressEntry,
+  Lexicard,
   PhraseGenerationEntry,
   PhraseVoiceActivationEntry,
 } from '../types'
@@ -31,6 +35,10 @@ import type {
 type PhraseHistoryViewProps = {
   targetLang: string
   nativeLang: string
+  level: CEFRLevel
+  cards: Lexicard[]
+  setCards: Dispatch<SetStateAction<Lexicard[]>>
+  onWordAdded: () => Promise<DailyProgressEntry>
 }
 
 function escapeRegex(value: string): string {
@@ -58,7 +66,14 @@ function highlightMatch(text: string, query: string): ReactNode {
   )
 }
 
-export function PhraseHistoryView({ targetLang, nativeLang }: PhraseHistoryViewProps) {
+export function PhraseHistoryView({
+  targetLang,
+  nativeLang,
+  level,
+  cards,
+  setCards,
+  onWordAdded,
+}: PhraseHistoryViewProps) {
   const navigate = useNavigate()
   const [items, setItems] = useState<PhraseGenerationEntry[]>([])
   const [activationsByPhrase, setActivationsByPhrase] = useState<
@@ -76,6 +91,8 @@ export function PhraseHistoryView({ targetLang, nativeLang }: PhraseHistoryViewP
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [activateModalOpen, setActivateModalOpen] = useState(false)
   const [activatePhraseId, setActivatePhraseId] = useState<string | null>(null)
+  const [extractModalOpen, setExtractModalOpen] = useState(false)
+  const [extractPhraseId, setExtractPhraseId] = useState<string | null>(null)
 
   useEffect(() => {
     const load = async (): Promise<void> => {
@@ -133,6 +150,13 @@ export function PhraseHistoryView({ targetLang, nativeLang }: PhraseHistoryViewP
     setActivatePhraseId(phraseId)
     setActivateModalOpen(true)
   }
+
+  const handleOpenExtractModal = (phraseId: string): void => {
+    setExtractPhraseId(phraseId)
+    setExtractModalOpen(true)
+  }
+
+  const extractPhrase = items.find((item) => item.id === extractPhraseId) || null
 
   const visibleItems = items.filter((item) => {
     const q = query.trim().toLowerCase()
@@ -303,6 +327,14 @@ export function PhraseHistoryView({ targetLang, nativeLang }: PhraseHistoryViewP
                       Eliminar frase
                       <Trash2Icon className='ml-1 size-4' />
                     </Button>
+                    <Button
+                      type='button'
+                      onClick={() => handleOpenExtractModal(item.id)}
+                      variant='secondary'
+                      size='sm'
+                    >
+                      📦 Extraer nuevas palabras
+                    </Button>
                     {activationCount === 0 && (
                       <Button
                         type='button'
@@ -398,6 +430,23 @@ export function PhraseHistoryView({ targetLang, nativeLang }: PhraseHistoryViewP
           setActivateModalOpen(open)
           if (!open) setActivatePhraseId(null)
         }}
+      />
+
+      <ExtractWordsToVaultModal
+        open={extractModalOpen}
+        onOpenChange={(open) => {
+          setExtractModalOpen(open)
+          if (!open) setExtractPhraseId(null)
+        }}
+        text={extractPhrase?.generated_phrase || ''}
+        translation={extractPhrase?.translation || ''}
+        seedWords={extractPhrase?.source_words || []}
+        targetLang={targetLang}
+        nativeLang={nativeLang}
+        level={level}
+        cards={cards}
+        setCards={setCards}
+        onWordAdded={onWordAdded}
       />
     </section>
   )

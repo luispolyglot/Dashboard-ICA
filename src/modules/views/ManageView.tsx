@@ -22,7 +22,7 @@ import { RomanizationHint } from '../components/RomanizationHint'
 import { IMPORTANCE_LEVELS, getImportance } from '../constants'
 import { fetchWordExample } from '../services/anthropic'
 import { fetchWordActivationCounts } from '../services/metaTracker'
-import { deleteWordById, updateWord } from '../services/storage'
+import { deleteWordById, loadData, updateWord } from '../services/storage'
 import { speakNatural, stopTTS } from '../services/tts'
 import {
   copyWordsToClipboard,
@@ -105,6 +105,21 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
     Record<string, number>
   >({})
   const [playingWordId, setPlayingWordId] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+
+    void loadData('dashboard-ICA-words', [] as Lexicard[])
+      .then((nextCards) => {
+        if (!active) return
+        setCards(nextCards)
+      })
+      .catch(() => undefined)
+
+    return () => {
+      active = false
+    }
+  }, [setCards])
 
   useEffect(() => {
     let active = true
