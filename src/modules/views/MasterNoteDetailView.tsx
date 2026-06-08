@@ -20,15 +20,8 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { IcaDeletionWarningDialog } from '../components/IcaDeletionWarningDialog'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchPhraseHistory } from '../services/phraseHistory'
 import {
@@ -115,6 +108,8 @@ export function MasterNoteDetailView({
   const [downloading, setDownloading] = useState(false)
   const [removingChunkId, setRemovingChunkId] = useState<string | null>(null)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [chunkDeleteCandidate, setChunkDeleteCandidate] =
+    useState<MasterNoteChunk | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const {
@@ -297,13 +292,13 @@ export function MasterNoteDetailView({
   }
 
   const handleRemoveActivatedPhrase = async (
-    chunkId: string,
+    chunk: MasterNoteChunk,
   ): Promise<void> => {
     if (!note || note.state !== 'open' || removingChunkId) return
-    setRemovingChunkId(chunkId)
+    setRemovingChunkId(chunk.id)
     try {
-      const nextTotal = await removeMasterNoteChunk(note.id, chunkId)
-      const nextChunks = chunks.filter((chunk) => chunk.id !== chunkId)
+      const nextTotal = await removeMasterNoteChunk(note.id, chunk.id)
+      const nextChunks = chunks.filter((item) => item.id !== chunk.id)
       setChunks(nextChunks)
       setNote((prev) =>
         prev ? { ...prev, total_duration_ms: nextTotal } : prev,
@@ -321,6 +316,7 @@ export function MasterNoteDetailView({
       setError('No se pudo eliminar la frase activada de esta nota')
     } finally {
       setRemovingChunkId(null)
+      setChunkDeleteCandidate(null)
     }
   }
 
@@ -552,9 +548,7 @@ export function MasterNoteDetailView({
                                 className='h-6 w-6'
                                 aria-label='Eliminar frase activada de esta nota'
                                 disabled={Boolean(removingChunkId)}
-                                onClick={() =>
-                                  void handleRemoveActivatedPhrase(chunk.id)
-                                }
+                                onClick={() => setChunkDeleteCandidate(chunk)}
                               >
                                 <Trash2Icon className='size-3.5 text-destructive' />
                               </Button>
@@ -660,35 +654,34 @@ export function MasterNoteDetailView({
         </CardContent>
       </Card>
 
-      <Dialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Eliminar nota maestra</DialogTitle>
-            <DialogDescription>
-              Esta acción es irreversible. Se eliminarán la nota y sus audios
-              asociados.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              type='button'
-              variant='outline'
-              onClick={() => setConfirmDeleteOpen(false)}
-              disabled={deleting}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type='button'
-              variant='destructive'
-              onClick={() => void handleDeleteNote()}
-              disabled={deleting}
-            >
-              {deleting ? 'Eliminando...' : 'Sí, eliminar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <IcaDeletionWarningDialog
+        open={confirmDeleteOpen}
+        onOpenChange={setConfirmDeleteOpen}
+        onConfirm={() => void handleDeleteNote()}
+        loading={deleting}
+        title='Eliminar nota maestra'
+        resourceLabel='esta nota maestra y sus audios'
+        resourceDates={[
+          note.created_at,
+          note.closed_at,
+          ...chunks.map((chunk) => chunk.created_at),
+        ]}
+      />
+
+      <IcaDeletionWarningDialog
+        open={Boolean(chunkDeleteCandidate)}
+        onOpenChange={(open) => {
+          if (!open && !removingChunkId) setChunkDeleteCandidate(null)
+        }}
+        onConfirm={() => {
+          if (!chunkDeleteCandidate) return
+          void handleRemoveActivatedPhrase(chunkDeleteCandidate)
+        }}
+        loading={Boolean(removingChunkId)}
+        title='Eliminar audio activado'
+        resourceLabel='este audio activado'
+        resourceDates={[chunkDeleteCandidate?.created_at]}
+      />
     </section>
   )
 }

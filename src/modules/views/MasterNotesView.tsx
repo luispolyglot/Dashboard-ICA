@@ -16,14 +16,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { IcaDeletionWarningDialog } from '../components/IcaDeletionWarningDialog'
 import {
   getMetaTrackerLevelColor,
   hexWithAlpha,
@@ -101,7 +94,7 @@ export function MasterNotesView({
   const [creating, setCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [deleteCandidate, setDeleteCandidate] = useState<MasterNote | null>(null)
 
   const {
     error: playbackError,
@@ -171,7 +164,7 @@ export function MasterNotesView({
     try {
       await deleteMasterNote(noteId)
       setItems((prev) => prev.filter((item) => item.id !== noteId))
-      setConfirmDeleteId(null)
+      setDeleteCandidate(null)
     } catch (err) {
       console.error(err)
       setError('No se pudo eliminar la nota maestra')
@@ -399,7 +392,7 @@ export function MasterNotesView({
                         size='icon'
                         variant='destructive'
                         disabled={deletingId === item.id || isDownloadingThis}
-                        onClick={() => setConfirmDeleteId(item.id)}
+                        onClick={() => setDeleteCandidate(item)}
                         aria-label='Eliminar nota maestra'
                       >
                         <Trash2Icon className='size-4' />
@@ -419,41 +412,20 @@ export function MasterNotesView({
         )}
       </div>
 
-      <Dialog
-        open={Boolean(confirmDeleteId)}
+      <IcaDeletionWarningDialog
+        open={Boolean(deleteCandidate)}
         onOpenChange={(open) => {
-          if (!open) setConfirmDeleteId(null)
+          if (!open) setDeleteCandidate(null)
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Eliminar nota maestra</DialogTitle>
-            <DialogDescription>
-              Esta acción es irreversible. Se eliminarán la nota y sus audios.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              type='button'
-              variant='outline'
-              onClick={() => setConfirmDeleteId(null)}
-              disabled={Boolean(deletingId)}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type='button'
-              variant='destructive'
-              onClick={() =>
-                confirmDeleteId && void handleDelete(confirmDeleteId)
-              }
-              disabled={Boolean(deletingId)}
-            >
-              {deletingId ? 'Eliminando...' : 'Sí, eliminar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onConfirm={() => {
+          if (!deleteCandidate?.id) return
+          void handleDelete(deleteCandidate.id)
+        }}
+        loading={Boolean(deletingId)}
+        title='Eliminar nota maestra'
+        resourceLabel='esta nota maestra y sus audios'
+        resourceDates={[deleteCandidate?.created_at, deleteCandidate?.closed_at]}
+      />
     </section>
   )
 }

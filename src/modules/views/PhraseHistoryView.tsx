@@ -4,6 +4,7 @@ import { CopyIcon, MicIcon, Trash2Icon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { ActivatePhraseInMasterNoteModal } from '../components/ActivatePhraseInMasterNoteModal'
 import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
+import { IcaDeletionWarningDialog } from '../components/IcaDeletionWarningDialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -86,6 +87,7 @@ export function PhraseHistoryView({
   const [deleteCandidate, setDeleteCandidate] = useState<{
     id: string
     hasActivation: boolean
+    createdAt: string
   } | null>(null)
   const [copyingId, setCopyingId] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -142,8 +144,14 @@ export function PhraseHistoryView({
   }
 
   const handleAskDelete = (id: string): void => {
+    const phrase = items.find((item) => item.id === id)
+    if (!phrase) return
     const hasActivation = (activationsByPhrase[id] || []).length > 0
-    setDeleteCandidate({ id, hasActivation })
+    setDeleteCandidate({
+      id,
+      hasActivation,
+      createdAt: phrase.created_at,
+    })
   }
 
   const handleOpenActivateModal = (phraseId: string): void => {
@@ -355,7 +363,7 @@ export function PhraseHistoryView({
       </div>
 
       <Dialog
-        open={Boolean(deleteCandidate)}
+        open={Boolean(deleteCandidate?.hasActivation)}
         onOpenChange={(open) => {
           if (!open && !deletingId) setDeleteCandidate(null)
         }}
@@ -394,32 +402,25 @@ export function PhraseHistoryView({
                   Ir a Nota Maestra
                 </Button>
               </>
-            ) : (
-              <>
-                <Button
-                  type='button'
-                  variant='outline'
-                  disabled={Boolean(deletingId)}
-                  onClick={() => setDeleteCandidate(null)}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  type='button'
-                  variant='destructive'
-                  disabled={!deleteCandidate?.id || Boolean(deletingId)}
-                  onClick={() => {
-                    if (!deleteCandidate?.id) return
-                    void handleDelete(deleteCandidate.id)
-                  }}
-                >
-                  {deletingId ? 'Eliminando...' : 'Sí, eliminar'}
-                </Button>
-              </>
-            )}
+            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <IcaDeletionWarningDialog
+        open={Boolean(deleteCandidate && !deleteCandidate.hasActivation)}
+        onOpenChange={(open) => {
+          if (!open && !deletingId) setDeleteCandidate(null)
+        }}
+        onConfirm={() => {
+          if (!deleteCandidate?.id) return
+          void handleDelete(deleteCandidate.id)
+        }}
+        loading={Boolean(deletingId)}
+        title='Eliminar frase'
+        resourceLabel='esta frase'
+        resourceDates={[deleteCandidate?.createdAt]}
+      />
 
       <ActivatePhraseInMasterNoteModal
         open={activateModalOpen}
