@@ -241,6 +241,9 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
   }
 
   const openEditor = (card: Lexicard): void => {
+    const usageCount = wordUsageCounts[card.id] ?? card.activationCount ?? 0
+    if (usageCount > 0) return
+
     setEditingId(card.id)
     setDraftTarget(card.target)
     setDraftNative(card.native)
@@ -449,6 +452,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
           const usageCount =
             wordUsageCounts[card.id] ?? card.activationCount ?? 0
           const isDeletionProtected = usageCount > 0
+          const isEditionProtected = usageCount > 0
           const usageLevel = usageCount >= 3 ? 2 : usageCount >= 1 ? 1 : 0
           const dateStr = card.createdAt
             ? new Date(card.createdAt).toLocaleDateString('es-ES', {
@@ -544,8 +548,9 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
                         onClick={() => openEditor(card)}
                         variant='outline'
                         size='sm'
+                        disabled={isEditionProtected}
                       >
-                        Editar
+                        {isEditionProtected ? 'Editar bloqueado' : 'Editar'}
                       </Button>
                     </div>
                   )}

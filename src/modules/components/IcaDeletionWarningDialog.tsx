@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { MouseEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -110,6 +111,12 @@ export function IcaDeletionWarningDialog({
 
   const canConfirm = !loading && (!requiresCountdown || countdown === 0)
 
+  const handleCancel = (event: MouseEvent<HTMLButtonElement>): void => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!loading) onOpenChange(false)
+  }
+
   return (
     <Dialog
       open={open}
@@ -143,7 +150,7 @@ export function IcaDeletionWarningDialog({
           <Button
             type='button'
             variant='outline'
-            onClick={() => onOpenChange(false)}
+            onClick={handleCancel}
             disabled={loading}
           >
             Cancelar
