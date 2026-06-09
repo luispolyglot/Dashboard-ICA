@@ -449,23 +449,21 @@ export function ReviewView({
                         </Button>
                       </div>
                       {showExampleTranslation && (
-                        <>
-                          <SpeakButton
-                            text={currentCard.examplePhrase}
-                            langName={config.targetLang || 'Inglés'}
-                            color={importance.color}
-                          />
-                          <Button
-                            type='button'
-                            variant='secondary'
-                            size='sm'
-                            onClick={() => setExtractWordsModalOpen(true)}
-                            className='mt-2'
-                          >
-                            📦 Extraer nuevas palabras
-                          </Button>
-                        </>
+                        <Button
+                          type='button'
+                          variant='secondary'
+                          size='sm'
+                          onClick={() => setExtractWordsModalOpen(true)}
+                          className='mt-2'
+                        >
+                          📦 Extraer nuevas palabras
+                        </Button>
                       )}
+                      <SpeakButton
+                        text={currentCard.examplePhrase}
+                        langName={config.targetLang || 'Inglés'}
+                        color={importance.color}
+                      />
                     </div>
                   ) : (
                     <p className='text-xs text-muted-foreground'>
