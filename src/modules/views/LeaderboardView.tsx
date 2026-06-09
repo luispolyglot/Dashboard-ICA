@@ -11,12 +11,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/auth/AuthContext'
 import type { LeaderboardEntry } from '../types'
 import {
+  fetchTotalIcademers,
   fetchMonthlySnapshotLeaderboard,
   fetchMonthlyStreakLeaderboard,
 } from '../services/leaderboard'
 
 const HISTORY_START_MONTH = '2026-05-01'
-const VISIBLE_LIMIT = 30
+const VISIBLE_LIMIT = 33
 
 type MonthOption = {
   value: string
@@ -153,6 +154,7 @@ export function LeaderboardView() {
 
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStart)
   const [rows, setRows] = useState<LeaderboardEntry[]>([])
+  const [totalIcademers, setTotalIcademers] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -178,12 +180,16 @@ export function LeaderboardView() {
       setError(null)
 
       try {
-        const data = isCurrentMonth
-          ? await fetchMonthlyStreakLeaderboard(250)
-          : await fetchMonthlySnapshotLeaderboard(selectedMonth, VISIBLE_LIMIT)
+        const [data, total] = await Promise.all([
+          isCurrentMonth
+            ? fetchMonthlyStreakLeaderboard(250)
+            : fetchMonthlySnapshotLeaderboard(selectedMonth, VISIBLE_LIMIT),
+          fetchTotalIcademers(),
+        ])
 
         if (!active) return
         setRows(data)
+        setTotalIcademers(total)
       } catch {
         if (!active) return
         setError('No se pudo cargar el leaderboard.')
@@ -208,6 +214,15 @@ export function LeaderboardView() {
     () => buildVisibleRowsWithSharedRank(visibleRows),
     [visibleRows],
   )
+  const missingPlaceholderCount = Math.max(VISIBLE_LIMIT - rows.length, 0)
+  const placeholderRanks = useMemo(
+    () =>
+      Array.from(
+        { length: missingPlaceholderCount },
+        (_, index) => rows.length + index + 1,
+      ),
+    [missingPlaceholderCount, rows.length],
+  )
 
   return (
     <section className='mx-auto w-full max-w-5xl flex-1 overflow-y-auto px-5 py-8'>
@@ -221,10 +236,15 @@ export function LeaderboardView() {
       <Card className='mb-4'>
         <CardHeader className='gap-3'>
           <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
-            <CardTitle className='flex items-center gap-2 text-base'>
-              <TrophyIcon className='h-4 w-4' />
-              Clasificación mensual
-            </CardTitle>
+            <div>
+              <CardTitle className='flex items-center gap-2 text-base'>
+                <TrophyIcon className='h-4 w-4' />
+                Clasificación mensual
+              </CardTitle>
+              <p className='mt-1 text-sm text-muted-foreground'>
+                TOP {VISIBLE_LIMIT} de {totalIcademers ?? '...'} icademers
+              </p>
+            </div>
 
             <div className='w-full max-w-72'>
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
@@ -317,6 +337,38 @@ export function LeaderboardView() {
                       </td>
                     </tr>
                   ))}
+
+                  {placeholderRanks.map((rank, index) => (
+                    <tr
+                      key={`placeholder-rank-${rank}-${selectedMonth}`}
+                      className={`table w-full table-fixed border-b align-middle ${
+                        index === 0
+                          ? 'opacity-70'
+                          : index === 1
+                            ? 'opacity-50'
+                            : 'opacity-30'
+                      }`}
+                    >
+                      <td className='w-[15%] py-2'>#{rank}</td>
+                      <td className='w-auto py-2 pr-2 text-muted-foreground'>
+                        -
+                      </td>
+                      <td className='w-[18%] py-2 text-muted-foreground'>-</td>
+                      <td className='w-[18%] py-2 text-muted-foreground'>-</td>
+                      <td className='w-[18%] py-2 text-muted-foreground'>-</td>
+                    </tr>
+                  ))}
+
+                  {placeholderRanks.length > 0 && (
+                    <tr className='table w-full table-fixed align-middle opacity-40'>
+                      <td
+                        colSpan={5}
+                        className='py-2 text-center text-lg tracking-[0.6em] text-muted-foreground'
+                      >
+                        ...
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
