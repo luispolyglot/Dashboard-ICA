@@ -55,7 +55,10 @@ function mapWhitelistRow(row: WhitelistDbRow): WhitelistEntry {
   }
 }
 
-export async function fetchWhitelist(search = ''): Promise<WhitelistEntry[]> {
+export async function fetchWhitelist(
+  search = '',
+  source: string | null = null,
+): Promise<WhitelistEntry[]> {
   if (!supabase) {
     throw new WhitelistRequestError('Supabase no está configurado.')
   }
@@ -68,6 +71,10 @@ export async function fetchWhitelist(search = ''): Promise<WhitelistEntry[]> {
 
   if (normalizedSearch.length > 0) {
     query = query.ilike('email', `%${normalizedSearch}%`)
+  }
+
+  if (source) {
+    query = query.eq('source', source)
   }
 
   const { data, error } = await query
@@ -101,6 +108,7 @@ export async function updateWhitelistFlags(input: {
   email: string
   canRegister?: boolean
   canLogin?: boolean
+  source?: string
 }): Promise<void> {
   if (!supabase) {
     throw new WhitelistRequestError('Supabase no está configurado.')

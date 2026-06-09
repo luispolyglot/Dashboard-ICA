@@ -5,6 +5,7 @@ type UpdatePayload = {
   email?: string
   canRegister?: boolean
   canLogin?: boolean
+  source?: string
 }
 
 function normalizeEmail(value: string): string {
@@ -41,6 +42,9 @@ Deno.serve(async (req) => {
   }
   if (typeof payload.canLogin === 'boolean') {
     changes.can_login = payload.canLogin
+  }
+  if (typeof payload.source === 'string' && payload.source.trim().length > 0) {
+    changes.source = payload.source.trim()
   }
 
   if (Object.keys(changes).length === 0) {

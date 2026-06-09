@@ -19,6 +19,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   createWhitelistManualUser,
   fetchWhitelist,
   syncWhitelistCsv,
@@ -30,6 +37,7 @@ import { formatDateTime } from '../utils'
 export function ManageWhitelistView() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [sourceFilter, setSourceFilter] = useState<string>('all')
   const [loading, setLoading] = useState(true)
   const [rows, setRows] = useState<WhitelistEntry[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -54,7 +62,10 @@ export function ManageWhitelistView() {
     setError(null)
 
     try {
-      const data = await fetchWhitelist(debouncedSearch)
+      const data = await fetchWhitelist(
+        debouncedSearch,
+        sourceFilter === 'all' ? null : sourceFilter,
+      )
       setRows(data)
     } catch (err) {
       const message =
@@ -67,7 +78,7 @@ export function ManageWhitelistView() {
 
   useEffect(() => {
     void loadRows()
-  }, [debouncedSearch])
+  }, [debouncedSearch, sourceFilter])
 
   const sourceLabel = useMemo(() => {
     return (value: string) => {
@@ -76,6 +87,13 @@ export function ManageWhitelistView() {
       return value
     }
   }, [])
+
+  const sourceOptions = useMemo(() => {
+    const values = new Set(rows.map((row) => row.source))
+    values.add('manual')
+    values.add('csv_sync')
+    return Array.from(values)
+  }, [rows])
 
   const handleToggle = async (
     email: string,
@@ -99,6 +117,31 @@ export function ManageWhitelistView() {
           return {
             ...row,
             [key]: value,
+          }
+        }),
+      )
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'No se pudo actualizar la fila.'
+      setFeedback(message)
+    } finally {
+      setProcessingRow(null)
+    }
+  }
+
+  const handleSourceChange = async (email: string, source: string) => {
+    setProcessingRow(`${email}:source`)
+    setFeedback(null)
+
+    try {
+      await updateWhitelistFlags({ email, source })
+
+      setRows((prev) =>
+        prev.map((row) => {
+          if (row.email !== email) return row
+          return {
+            ...row,
+            source,
           }
         }),
       )
@@ -219,16 +262,37 @@ export function ManageWhitelistView() {
             </div>
           </div>
 
-          <div className='max-w-sm'>
-            <Label htmlFor='whitelist-email-search' className='mb-1.5 block'>
-              Buscar por email
-            </Label>
-            <Input
-              id='whitelist-email-search'
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder='usuario@email.com'
-            />
+          <div className='flex flex-col gap-3 md:flex-row md:items-end'>
+            <div className='w-full max-w-sm'>
+              <Label htmlFor='whitelist-email-search' className='mb-1.5 block'>
+                Buscar por email
+              </Label>
+              <Input
+                id='whitelist-email-search'
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder='usuario@email.com'
+              />
+            </div>
+
+            <div className='w-full max-w-[220px]'>
+              <Label htmlFor='whitelist-source-filter' className='mb-1.5 block'>
+                Filtrar por source
+              </Label>
+              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                <SelectTrigger id='whitelist-source-filter'>
+                  <SelectValue placeholder='Todos' />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='all'>Todos</SelectItem>
+                  {sourceOptions.map((source) => (
+                    <SelectItem key={source} value={source}>
+                      {sourceLabel(source)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {(feedback || error) && (
@@ -267,11 +331,37 @@ export function ManageWhitelistView() {
                       processingRow === `${row.email}:canRegister`
                     const canLoginLoading =
                       processingRow === `${row.email}:canLogin`
+                    const sourceLoading =
+                      processingRow === `${row.email}:source`
 
                     return (
-                      <tr key={row.email} className='table w-full table-fixed border-b align-middle last:border-b-0'>
-                        <td className='w-[34%] py-2 font-mono text-xs'>{row.email}</td>
-                        <td className='w-[14%] py-2'>{sourceLabel(row.source)}</td>
+                      <tr
+                        key={row.email}
+                        className='table w-full table-fixed border-b align-middle last:border-b-0'
+                      >
+                        <td className='w-[34%] py-2 font-mono text-xs'>
+                          {row.email}
+                        </td>
+                        <td className='w-[14%] py-2'>
+                          <Select
+                            value={row.source}
+                            onValueChange={(value) =>
+                              void handleSourceChange(row.email, value)
+                            }
+                            disabled={sourceLoading}
+                          >
+                            <SelectTrigger className='h-8 w-fit min-w-[120px]'>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {sourceOptions.map((source) => (
+                                <SelectItem key={source} value={source}>
+                                  {sourceLabel(source)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </td>
                         <td className='w-[16%] py-2'>
                           <label className='inline-flex items-center gap-2'>
                             <input
