@@ -31,7 +31,7 @@ export async function fetchMonthlyStreakLeaderboard(limit = 12): Promise<Leaderb
 
 export async function fetchMonthlySnapshotLeaderboard(
   periodStart: string,
-  limit = 30,
+  limit = 33,
 ): Promise<LeaderboardEntry[]> {
   if (!supabase) return []
 
@@ -45,4 +45,16 @@ export async function fetchMonthlySnapshotLeaderboard(
   }
 
   return (data || []) as LeaderboardEntry[]
+}
+
+export async function fetchTotalIcademers(): Promise<number> {
+  if (!supabase) return 0
+
+  const { data, error } = await supabase.rpc('get_total_icademers')
+
+  if (error) {
+    throw error
+  }
+
+  return Number(data || 0)
 }

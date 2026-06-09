@@ -18,11 +18,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import { IcaDeletionWarningDialog } from '../components/IcaDeletionWarningDialog'
 import { RomanizationHint } from '../components/RomanizationHint'
 import { IMPORTANCE_LEVELS, getImportance } from '../constants'
 import { fetchWordExample } from '../services/anthropic'
 import { fetchWordActivationCounts } from '../services/metaTracker'
-import { deleteWordById, updateWord } from '../services/storage'
+import { deleteWordById, loadData, updateWord } from '../services/storage'
 import { speakNatural, stopTTS } from '../services/tts'
 import {
   copyWordsToClipboard,
@@ -87,7 +88,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
   const [draftExamplePhrase, setDraftExamplePhrase] = useState('')
   const [draftExampleTranslation, setDraftExampleTranslation] = useState('')
   const [draftImportance, setDraftImportance] = useState<ImportanceKey>('vital')
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [deleteCandidate, setDeleteCandidate] = useState<Lexicard | null>(null)
   const [editError, setEditError] = useState<string | null>(null)
   const [deleteErrorById, setDeleteErrorById] = useState<Record<string, string>>(
     {},
@@ -105,6 +106,21 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
     Record<string, number>
   >({})
   const [playingWordId, setPlayingWordId] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+
+    void loadData('dashboard-ICA-words', [] as Lexicard[])
+      .then((nextCards) => {
+        if (!active) return
+        setCards(nextCards)
+      })
+      .catch(() => undefined)
+
+    return () => {
+      active = false
+    }
+  }, [setCards])
 
   useEffect(() => {
     let active = true
@@ -201,7 +217,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
         ...prev,
         [id]: 'No se puede eliminar: palabra protegida por activaciones.',
       }))
-      setConfirmDeleteId(null)
+      setDeleteCandidate(null)
       return
     }
 
@@ -214,24 +230,27 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
         return next
       })
       setEditingId(null)
-      setConfirmDeleteId(null)
+      setDeleteCandidate(null)
     } catch {
       setDeleteErrorById((prev) => ({
         ...prev,
         [id]: 'No se pudo eliminar: palabra protegida por activaciones.',
       }))
-      setConfirmDeleteId(null)
+      setDeleteCandidate(null)
     }
   }
 
   const openEditor = (card: Lexicard): void => {
+    const usageCount = wordUsageCounts[card.id] ?? card.activationCount ?? 0
+    if (usageCount > 0) return
+
     setEditingId(card.id)
     setDraftTarget(card.target)
     setDraftNative(card.native)
     setDraftExamplePhrase(card.examplePhrase || '')
     setDraftExampleTranslation(card.exampleTranslation || '')
     setDraftImportance(card.importance)
-    setConfirmDeleteId(null)
+    setDeleteCandidate(null)
     setEditError(null)
     setDeleteErrorById((prev) => {
       const next = { ...prev }
@@ -242,7 +261,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
 
   const closeEditor = (): void => {
     setEditingId(null)
-    setConfirmDeleteId(null)
+    setDeleteCandidate(null)
     setEditError(null)
   }
 
@@ -433,6 +452,7 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
           const usageCount =
             wordUsageCounts[card.id] ?? card.activationCount ?? 0
           const isDeletionProtected = usageCount > 0
+          const isEditionProtected = usageCount > 0
           const usageLevel = usageCount >= 3 ? 2 : usageCount >= 1 ? 1 : 0
           const dateStr = card.createdAt
             ? new Date(card.createdAt).toLocaleDateString('es-ES', {
@@ -528,8 +548,9 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
                         onClick={() => openEditor(card)}
                         variant='outline'
                         size='sm'
+                        disabled={isEditionProtected}
                       >
-                        Editar
+                        {isEditionProtected ? 'Editar bloqueado' : 'Editar'}
                       </Button>
                     </div>
                   )}
@@ -638,34 +659,10 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
                             <Trash2Icon className='size-4 ml-1' />
                           </Button>
                         </div>
-                      ) : confirmDeleteId === card.id ? (
-                        <>
-                          <span className='text-sm text-red-400'>
-                            ¿Eliminar esta palabra?
-                          </span>
-                          <div className='flex gap-2'>
-                            <Button
-                              type='button'
-                              onClick={() => handleDelete(card.id)}
-                              variant='destructive'
-                              size='sm'
-                            >
-                              Sí, eliminar
-                            </Button>
-                            <Button
-                              type='button'
-                              onClick={() => setConfirmDeleteId(null)}
-                              variant='outline'
-                              size='sm'
-                            >
-                              Cancelar
-                            </Button>
-                          </div>
-                        </>
                       ) : (
                         <Button
                           type='button'
-                          onClick={() => setConfirmDeleteId(card.id)}
+                          onClick={() => setDeleteCandidate(card)}
                           variant='destructive'
                           size='sm'
                         >
@@ -706,6 +703,20 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
           )
         })}
       </div>
+
+      <IcaDeletionWarningDialog
+        open={Boolean(deleteCandidate)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteCandidate(null)
+        }}
+        onConfirm={() => {
+          if (!deleteCandidate) return
+          void handleDelete(deleteCandidate.id)
+        }}
+        title='Eliminar palabra ICA'
+        resourceLabel='esta palabra ICA'
+        resourceDates={[deleteCandidate?.createdAt]}
+      />
     </section>
   )
 }

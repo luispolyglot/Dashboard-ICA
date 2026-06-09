@@ -131,6 +131,7 @@ export function FlashcardsPlayPage() {
     setCompletedDays,
     reviewSession,
     startReviewSession,
+    handleWordAdded,
     handleReviewAnswer,
   } = useDashboardContext()
   const { mode } = useParams<{ mode: string }>()
@@ -183,6 +184,7 @@ export function FlashcardsPlayPage() {
         setCompletedDays={setCompletedDays}
         reviewSession={reviewSession}
         startReviewSession={startReviewSession}
+        onWordAdded={handleWordAdded}
         onReviewAnswered={handleReviewAnswer}
         onChooseMode={() => navigate(DASHBOARD_ROUTES.flashcards)}
         onFinishPractice={() => navigate(DASHBOARD_ROUTES.home)}
@@ -194,7 +196,9 @@ export function FlashcardsPlayPage() {
 export function ActivationPhrasePage() {
   const {
     cards,
+    setCards,
     config,
+    handleWordAdded,
     handlePhraseGenerated,
     metaTrackerProfile,
     setMetaTrackerActivationWordsTotal,
@@ -205,7 +209,9 @@ export function ActivationPhrasePage() {
     <PageLayout>
       <PhraseView
         cards={cards}
+        setCards={setCards}
         config={config}
+        onWordAdded={handleWordAdded}
         onPhraseGenerated={handlePhraseGenerated}
         metaTrackerProfile={metaTrackerProfile}
         onActivationWordsTotalChange={setMetaTrackerActivationWordsTotal}
@@ -216,7 +222,7 @@ export function ActivationPhrasePage() {
 }
 
 export function PhraseHistoryPage() {
-  const { config } = useDashboardContext()
+  const { config, cards, setCards, handleWordAdded } = useDashboardContext()
   if (!config) return null
 
   return (
@@ -224,6 +230,10 @@ export function PhraseHistoryPage() {
       <PhraseHistoryView
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
+        level={config.level || 'A1'}
+        cards={cards}
+        setCards={setCards}
+        onWordAdded={handleWordAdded}
       />
     </PageLayout>
   )

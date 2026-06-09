@@ -1048,6 +1048,18 @@ $$;
 revoke all on function public.register_lexicard_activations(uuid[], text, text) from public;
 grant execute on function public.register_lexicard_activations(uuid[], text, text) to authenticated;
 
+create or replace function public.get_total_icademers()
+returns bigint
+language sql
+security definer
+set search_path = public
+as $$
+  select count(*)::bigint from public.profiles;
+$$;
+
+revoke all on function public.get_total_icademers() from public;
+grant execute on function public.get_total_icademers() to authenticated;
+
 create or replace function public.get_monthly_streak_leaderboard(limit_count integer default 20)
 returns table (
   rank bigint,
@@ -1165,7 +1177,7 @@ grant execute on function public.get_monthly_streak_leaderboard(integer) to auth
 
 create or replace function public.get_monthly_snapshot_leaderboard(
   p_period_start date,
-  limit_count integer default 30,
+  limit_count integer default 33,
   include_user_id uuid default auth.uid()
 )
 returns table (

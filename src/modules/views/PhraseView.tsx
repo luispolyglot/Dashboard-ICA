@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { ComponentType } from 'react'
+import type { ComponentType, Dispatch, SetStateAction } from 'react'
 import { CopyIcon } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ActivatePhraseInMasterNoteModal } from '../components/ActivatePhraseInMasterNoteModal'
+import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
 import {
   MetaTrackerLevelUpModal,
   type MetaTrackerLevelUpCelebration,
@@ -30,7 +31,9 @@ import type {
 
 type PhraseViewProps = {
   cards: Lexicard[]
+  setCards: Dispatch<SetStateAction<Lexicard[]>>
   config: AppConfig
+  onWordAdded: () => Promise<DailyProgressEntry>
   onPhraseGenerated: () => Promise<DailyProgressEntry>
   metaTrackerProfile: MetaTrackerProfile | null
   onActivationWordsTotalChange: (activationWordsTotal: number) => void
@@ -49,7 +52,9 @@ const MAX_EXTRA_GENERATIONS = 2
 
 export function PhraseView({
   cards,
+  setCards,
   config,
+  onWordAdded,
   onPhraseGenerated,
   metaTrackerProfile,
   onActivationWordsTotalChange,
@@ -75,6 +80,7 @@ export function PhraseView({
   const [resultCopied, setResultCopied] = useState(false)
   const [resultPhraseId, setResultPhraseId] = useState<string | null>(null)
   const [activateModalOpen, setActivateModalOpen] = useState(false)
+  const [extractWordsModalOpen, setExtractWordsModalOpen] = useState(false)
   const [extraGenerationsCount, setExtraGenerationsCount] = useState(0)
   const [levelUpCelebration, setLevelUpCelebration] =
     useState<MetaTrackerLevelUpCelebration | null>(null)
@@ -697,14 +703,24 @@ export function PhraseView({
 
           {resultPhraseId && (
             <div className='border-t border-border bg-muted/20 p-5'>
-              <Button
-                type='button'
-                onClick={openActivateModal}
-                variant='outline'
-                className='w-full'
-              >
-                🗣️ Activar frase
-              </Button>
+              <div className='flex flex-col gap-2'>
+                <Button
+                  type='button'
+                  onClick={() => setExtractWordsModalOpen(true)}
+                  variant='secondary'
+                  className='w-full'
+                >
+                  📦 Extraer nuevas palabras
+                </Button>
+                <Button
+                  type='button'
+                  onClick={openActivateModal}
+                  variant='outline'
+                  className='w-full'
+                >
+                  🗣️ Activar frase
+                </Button>
+              </div>
             </div>
           )}
         </article>
@@ -738,6 +754,20 @@ export function PhraseView({
         onOpenChange={(open) => {
           if (!open) setLevelUpCelebration(null)
         }}
+      />
+
+      <ExtractWordsToVaultModal
+        open={extractWordsModalOpen}
+        onOpenChange={setExtractWordsModalOpen}
+        text={result?.phrase || ''}
+        translation={result?.translation || ''}
+        seedWords={result?.words_used || []}
+        targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+        level={level}
+        cards={cards}
+        setCards={setCards}
+        onWordAdded={onWordAdded}
       />
     </section>
   )

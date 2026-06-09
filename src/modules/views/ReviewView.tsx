@@ -22,6 +22,7 @@ import { stopTTS } from '../services/tts'
 import { buildReviewRound, todayKey, updateCardAfterReview } from '../utils'
 import type { AppConfig, Lexicard, ReviewMode } from '../types'
 import { EyeIcon, EyeOffIcon } from 'lucide-react'
+import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
 
 type ReviewViewProps = {
   cards: Lexicard[]
@@ -35,6 +36,7 @@ type ReviewViewProps = {
   setCompletedDays: Dispatch<SetStateAction<string[]>>
   reviewSession: number
   startReviewSession: () => Promise<void>
+  onWordAdded: () => Promise<unknown>
   onReviewAnswered: (knew: boolean) => Promise<void>
   onChooseMode: () => void
   onFinishPractice: () => void
@@ -60,6 +62,7 @@ export function ReviewView({
   setCompletedDays,
   reviewSession,
   startReviewSession,
+  onWordAdded,
   onReviewAnswered,
   onChooseMode,
   onFinishPractice,
@@ -69,12 +72,15 @@ export function ReviewView({
   const [currentIndex, setCurrentIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [correct, setCorrect] = useState(0)
-  const [answerResults, setAnswerResults] = useState<Array<'correct' | 'wrong'>>([])
+  const [answerResults, setAnswerResults] = useState<
+    Array<'correct' | 'wrong'>
+  >([])
   const [busy, setBusy] = useState(false)
   const [finishing, setFinishing] = useState(false)
   const [completed, setCompleted] = useState(false)
   const [showExample, setShowExample] = useState(false)
   const [showExampleTranslation, setShowExampleTranslation] = useState(false)
+  const [extractWordsModalOpen, setExtractWordsModalOpen] = useState(false)
   const reviewPool = pendingOnly
     ? cards.filter((card) => (card.streak || 0) === 0)
     : cards
@@ -165,7 +171,8 @@ export function ReviewView({
   const handleAnswer = async (knew: boolean): Promise<void> => {
     if (busy || !currentCard) return
 
-    const sourceCard = cards.find((card) => card.id === currentCard.id) || currentCard
+    const sourceCard =
+      cards.find((card) => card.id === currentCard.id) || currentCard
 
     setBusy(true)
     stopTTS()
@@ -266,7 +273,8 @@ export function ReviewView({
         </div>
         {!canPlayAnotherRound && pendingOnly && (
           <p className='mt-4 rounded-lg border border-red-500/35 bg-red-500/8 px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-300'>
-            No quedan suficientes tarjetas no aprendidas o falladas para otra ronda ({replayEligibleCount}/{replayMinimumRequired}).
+            No quedan suficientes tarjetas no aprendidas o falladas para otra
+            ronda ({replayEligibleCount}/{replayMinimumRequired}).
           </p>
         )}
         <div className='mt-4 flex flex-wrap justify-center gap-2'>
@@ -440,6 +448,17 @@ export function ReviewView({
                           )}
                         </Button>
                       </div>
+                      {showExampleTranslation && (
+                        <Button
+                          type='button'
+                          variant='secondary'
+                          size='sm'
+                          onClick={() => setExtractWordsModalOpen(true)}
+                          className='mt-2'
+                        >
+                          📦 Extraer nuevas palabras
+                        </Button>
+                      )}
                       <SpeakButton
                         text={currentCard.examplePhrase}
                         langName={config.targetLang || 'Inglés'}
@@ -507,6 +526,21 @@ export function ReviewView({
           )}
         </div>
       </div>
+
+      <ExtractWordsToVaultModal
+        open={extractWordsModalOpen}
+        onOpenChange={setExtractWordsModalOpen}
+        text={currentCard.examplePhrase || currentCard.target}
+        translation={currentCard.exampleTranslation || currentCard.native}
+        seedWords={[currentCard.target]}
+        targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+        level={config.level || 'A1'}
+        cards={cards}
+        setCards={setCards}
+        onWordAdded={onWordAdded}
+        updateCardsLocally={false}
+      />
     </section>
   )
 }

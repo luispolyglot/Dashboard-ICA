@@ -6,7 +6,6 @@ const { mockSupabase, evaluateAndUnlockAchievementsMock, registerWordActivations
       getSession: vi.fn(),
     },
     from: vi.fn(),
-    rpc: vi.fn(),
   },
   evaluateAndUnlockAchievementsMock: vi.fn(),
   registerWordActivationsMock: vi.fn(),
@@ -43,7 +42,6 @@ describe('gamification service', () => {
 
     mockSupabase.auth.getSession.mockReset()
     mockSupabase.from.mockReset()
-    mockSupabase.rpc.mockReset()
     evaluateAndUnlockAchievementsMock.mockReset()
     registerWordActivationsMock.mockReset()
 
@@ -58,38 +56,22 @@ describe('gamification service', () => {
     })
   })
 
-  it('records word add using atomic creation RPC', async () => {
+  it('records word add XP event and achievements', async () => {
     const xpInsert = vi.fn().mockResolvedValue({ error: null })
-    const goalUpsert = vi.fn().mockResolvedValue({ error: null })
 
     mockSupabase.from.mockImplementation((table: string) => {
       if (table === 'xp_events') return { insert: xpInsert }
-      if (table === 'goal_completions') return { upsert: goalUpsert }
       throw new Error(`Unexpected table: ${table}`)
     })
 
-    mockSupabase.rpc.mockResolvedValue({
-      data: {
-        words_added: 7,
-        creation_goal_completed: true,
-        xp_earned: 100,
-      },
-      error: null,
-    })
+    await recordWordAddedEvent()
 
-    await recordWordAddedEvent({ wordsAdded: 7.9, phraseGenerated: true })
-
-    expect(mockSupabase.rpc).toHaveBeenCalledWith('bump_daily_creation_metrics', {
-      p_day: '2026-05-21',
-      p_words_added: 7,
-      p_words_added_delta: 1,
-      p_phrase_generated: true,
-      p_xp_delta: 5,
+    expect(xpInsert).toHaveBeenCalledWith({
+      user_id: 'user-2',
+      source: 'word_added',
+      points: 5,
+      metadata: { day: '2026-05-21' },
     })
-    expect(goalUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({ progress_value: 7, completed: true, goal_type: 'creation_goal' }),
-      { onConflict: 'user_id,day,goal_type' },
-    )
     expect(evaluateAndUnlockAchievementsMock).toHaveBeenCalledWith('user-2')
   })
 
@@ -98,12 +80,10 @@ describe('gamification service', () => {
     const phraseSelect = vi.fn().mockReturnValue({ single: phraseSingle })
     const phraseInsert = vi.fn().mockReturnValue({ select: phraseSelect })
     const xpInsert = vi.fn().mockResolvedValue({ error: null })
-    const goalUpsert = vi.fn().mockResolvedValue({ error: null })
 
     mockSupabase.from.mockImplementation((table: string) => {
       if (table === 'phrase_generations') return { insert: phraseInsert }
       if (table === 'xp_events') return { insert: xpInsert }
-      if (table === 'goal_completions') return { upsert: goalUpsert }
       throw new Error(`Unexpected table: ${table}`)
     })
 
@@ -111,21 +91,11 @@ describe('gamification service', () => {
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(8)
 
-    mockSupabase.rpc.mockResolvedValue({
-      data: {
-        words_added: 5,
-        creation_goal_completed: true,
-        xp_earned: 220,
-      },
-      error: null,
-    })
-
     const result = await recordPhraseGeneratedEvent({
       wordIds: ['card-1', 'card-2'],
       words: ['hello', 'world'],
       phrase: 'hello world',
       translation: 'hola mundo',
-      wordsAdded: 5,
       targetLang: 'en',
       nativeLang: 'es',
       source: 'generated',
@@ -133,17 +103,18 @@ describe('gamification service', () => {
 
     expect(registerWordActivationsMock).toHaveBeenCalledTimes(2)
     expect(result).toEqual({ activationWordsTotal: 8, phraseGenerationId: 'phrase-1' })
-    expect(mockSupabase.rpc).toHaveBeenCalledWith('bump_daily_creation_metrics', {
-      p_day: '2026-05-21',
-      p_words_added: 5,
-      p_words_added_delta: 0,
-      p_phrase_generated: true,
-      p_xp_delta: 20,
+    expect(xpInsert).toHaveBeenCalledWith({
+      user_id: 'user-2',
+      source: 'phrase_generated',
+      points: 20,
+      metadata: {
+        day: '2026-05-21',
+        word_count: 2,
+        activation_words_total: 8,
+        phrase_source: 'generated',
+      },
     })
-    expect(goalUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({ progress_value: 5, completed: true, goal_type: 'creation_goal' }),
-      { onConflict: 'user_id,day,goal_type' },
-    )
+    expect(evaluateAndUnlockAchievementsMock).toHaveBeenCalledWith('user-2')
   })
 
   it('keeps phrase id available when gamification writes fail', async () => {
@@ -160,14 +131,12 @@ describe('gamification service', () => {
     })
 
     registerWordActivationsMock.mockResolvedValue(3)
-    mockSupabase.rpc.mockRejectedValue(new Error('rpc failed'))
 
     const result = await recordPhraseGeneratedEvent({
       wordIds: ['card-1'],
       words: ['hello'],
       phrase: 'hello there',
       translation: 'hola',
-      wordsAdded: 1,
       targetLang: 'en',
       nativeLang: 'es',
       source: 'generated',
