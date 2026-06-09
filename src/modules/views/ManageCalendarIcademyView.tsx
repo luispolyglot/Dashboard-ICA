@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   CalendarPlusIcon,
+  CopyIcon,
   RefreshCcwIcon,
   Trash2Icon,
   UploadIcon,
   UsersIcon,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -210,6 +212,7 @@ export function ManageCalendarIcademyView() {
   const [bulkJsonInput, setBulkJsonInput] = useState('')
   const [bulkModalError, setBulkModalError] = useState<string | null>(null)
   const [isBulkSaving, setIsBulkSaving] = useState(false)
+  const [isCopyingPrompt, setIsCopyingPrompt] = useState(false)
 
   const isEditing = Boolean(editingEntry)
 
@@ -326,6 +329,81 @@ export function ManageCalendarIcademyView() {
       }
     }
   }, [bulkJsonInput])
+
+  const bulkPrompt = useMemo(() => {
+    const teacherRows = [...teachers].sort((a, b) =>
+      a.displayName.localeCompare(b.displayName),
+    )
+    const teacherLines =
+      teacherRows.length === 0
+        ? '- (Sin profesores cargados todavia. Cargalos antes de pedir el JSON.)'
+        : teacherRows
+            .map(
+              (teacher) =>
+                `- ${teacher.displayName}${teacher.username ? ` (@${teacher.username})` : ''} -> ${teacher.userId}`,
+            )
+            .join('\n')
+
+    const classLines = catalogOptions
+      .map(
+        (item) =>
+          `- ${item.classKey} | ${item.className} | lang=${item.languageCode}`,
+      )
+      .join('\n')
+
+    return `Necesito que me des como salida, solamente un JSON valido con este formato exacto:\n\n` +
+      `type Lang = 'pl' | 'fr' | 'en' | 'it' | 'de' | 'destripando_niveles';\n\n` +
+      `type ClassEntry = {\n` +
+      `  time: string;        // e.g. \"18h\", \"20h\"\n` +
+      `  name?: string;       // opcional, nombre amigable de la clase\n` +
+      `  teacher_id: string;  // UUID del profesor (obligatorio)\n` +
+      `  classId: string;     // identificador unico de clase (obligatorio)\n` +
+      `  lang?: Lang;         // opcional (si viene, debe coincidir con classId)\n` +
+      `  group?: string;      // opcional\n` +
+      `  note?: string;       // opcional\n` +
+      `};\n\n` +
+      `type ClassSchedule = Record<string, ClassEntry[]>;\n` +
+      `// clave: fecha en formato \"YYYY-MM-DD\"\n` +
+      `// valor: lista de clases ese dia\n\n` +
+      `Reglas obligatorias:\n` +
+      `1) Devuelve SOLO el JSON (sin markdown, sin explicaciones).\n` +
+      `2) Usa SIEMPRE teacher_id (no uses teacher ni teacherId).\n` +
+      `3) No inventes teacher_id: usa solo IDs de la lista de profesores habilitados.\n` +
+      `4) Usa solo classId del catalogo oficial.\n` +
+      `5) Cada fecha debe ser YYYY-MM-DD y su valor un array.\n\n` +
+      `Profesores habilitados (nombre -> teacher_id):\n${teacherLines}\n\n` +
+      `Catalogo oficial de clases (classId | className | lang):\n${classLines}\n\n` +
+      `Ejemplo de salida esperada:\n` +
+      `{\n` +
+      `  \"2026-06-01\": [\n` +
+      `    {\"time\": \"18h\", \"name\": \"FR basico\", \"teacher_id\": \"UUID_PROFE_FR\", \"classId\": \"fr_basico\", \"lang\": \"fr\"},\n` +
+      `    {\"time\": \"20h\", \"name\": \"EN basico\", \"teacher_id\": \"UUID_PROFE_EN\", \"classId\": \"en_basico\", \"lang\": \"en\"}\n` +
+      `  ],\n` +
+      `  \"2026-06-02\": [\n` +
+      `    {\"time\": \"18h\", \"name\": \"IT basico\", \"teacher_id\": \"UUID_PROFE_IT\", \"classId\": \"it_basico\", \"lang\": \"it\", \"group\": \"Grupo A\"}\n` +
+      `  ]\n` +
+      `}`
+  }, [catalogOptions, teachers])
+
+  const handleCopyBulkPrompt = async () => {
+    if (isCopyingPrompt) return
+
+    setIsCopyingPrompt(true)
+    try {
+      if (!navigator?.clipboard?.writeText) {
+        throw new Error('Este navegador no soporta copiado automatico.')
+      }
+      await navigator.clipboard.writeText(bulkPrompt)
+      toast.success('Prompt copiada al portapapeles.')
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'No se pudo copiar la prompt.'
+      setBulkModalError(message)
+      toast.error(message)
+    } finally {
+      setIsCopyingPrompt(false)
+    }
+  }
 
   const validateForm = (): string | null => {
     if (!form.classKey.trim())
@@ -628,6 +706,18 @@ export function ManageCalendarIcademyView() {
           </DialogHeader>
 
           <div className='grid gap-3'>
+            <div className='flex justify-start'>
+              <Button
+                type='button'
+                variant='outline'
+                onClick={() => void handleCopyBulkPrompt()}
+                disabled={isCopyingPrompt}
+              >
+                <CopyIcon data-icon='inline-start' />
+                {isCopyingPrompt ? 'COPIANDO...' : 'COPIAR PROMPT'}
+              </Button>
+            </div>
+
             <div className='grid gap-1.5'>
               <Label htmlFor='calendar-icademy-bulk-json'>JSON</Label>
               <Textarea
