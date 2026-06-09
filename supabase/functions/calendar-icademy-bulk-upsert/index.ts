@@ -4,7 +4,8 @@ import { getCalendarIcademyCatalogByClassKey } from '../_shared/calendar-icademy
 
 type BulkClassEntry = {
   time?: string
-  teacher?: string
+  teacher_id?: string
+  teacherId?: string
   classId?: string
   lang?: string
   group?: string
@@ -19,13 +20,13 @@ type CalendarInsertRow = {
   language_code: string
   session_date: string
   session_time: string
-  teacher: string
+  teacher_id: string
   group_name: string | null
   note: string | null
 }
 
-const BULK_DESTRIPANDO_CLASS_KEY = 'destripando_niveles'
-const BULK_DESTRIPANDO_DEFAULT_TEACHER = 'Luis'
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -79,6 +80,7 @@ function normalizeTime(raw: string): string | null {
 function parseBulkSchedule(input: unknown): {
   rows: CalendarInsertRow[]
   dates: string[]
+  teacherIds: string[]
   totalInputEntries: number
 } {
   if (!isObject(input)) {
@@ -88,6 +90,7 @@ function parseBulkSchedule(input: unknown): {
   const schedule = input as BulkSchedule
   const rows: CalendarInsertRow[] = []
   const dates = Object.keys(schedule)
+  const teacherIds = new Set<string>()
   let totalInputEntries = 0
 
   if (dates.length === 0) {
@@ -114,7 +117,7 @@ function parseBulkSchedule(input: unknown): {
 
       const classId = String(item.classId || '').trim()
       const time = String(item.time || '').trim()
-      const teacher = String(item.teacher || '').trim()
+      const teacherId = String(item.teacher_id || item.teacherId || '').trim()
       const lang = String(item.lang || '').trim().toLowerCase()
       const group = typeof item.group === 'string' ? item.group.trim() : ''
       const note = typeof item.note === 'string' ? item.note.trim() : ''
@@ -134,15 +137,19 @@ function parseBulkSchedule(input: unknown): {
         )
       }
 
-      const normalizedTeacher =
-        teacher ||
-        (catalogEntry.classKey === BULK_DESTRIPANDO_CLASS_KEY
-          ? BULK_DESTRIPANDO_DEFAULT_TEACHER
-          : '')
-
-      if (!normalizedTeacher) {
-        throw new Error(`Falta teacher en ${dateKey} para classId ${classId}.`)
+      if (!teacherId) {
+        throw new Error(
+          `Falta teacher_id en ${dateKey} para classId ${classId}.`,
+        )
       }
+
+      if (!UUID_REGEX.test(teacherId)) {
+        throw new Error(
+          `teacher_id invalido en ${dateKey} para classId ${classId}.`,
+        )
+      }
+
+      teacherIds.add(teacherId)
 
       const normalizedTime = normalizeTime(time)
       if (!normalizedTime) {
@@ -157,7 +164,7 @@ function parseBulkSchedule(input: unknown): {
         language_code: catalogEntry.languageCode,
         session_date: dateKey,
         session_time: normalizedTime,
-        teacher: normalizedTeacher,
+        teacher_id: teacherId,
         group_name: group || null,
         note: note || null,
       })
@@ -167,6 +174,7 @@ function parseBulkSchedule(input: unknown): {
   return {
     rows,
     dates,
+    teacherIds: Array.from(teacherIds),
     totalInputEntries,
   }
 }
@@ -198,6 +206,7 @@ Deno.serve(async (req) => {
   let parsed: {
     rows: CalendarInsertRow[]
     dates: string[]
+    teacherIds: string[]
     totalInputEntries: number
   }
 
@@ -209,6 +218,33 @@ Deno.serve(async (req) => {
   }
 
   const uniqueDates = Array.from(new Set(parsed.dates))
+  const uniqueTeacherIds = Array.from(new Set(parsed.teacherIds))
+
+  if (uniqueTeacherIds.length > 0) {
+    const { data: teacherRows, error: teacherError } = await auth.adminClient
+      .from('icademy_teachers')
+      .select('user_id')
+      .in('user_id', uniqueTeacherIds)
+
+    if (teacherError) {
+      return jsonResponse(500, {
+        error: `No se pudo validar teacher_id: ${teacherError.message}`,
+      })
+    }
+
+    const existingTeacherIds = new Set(
+      (teacherRows || []).map((row) => String(row.user_id)),
+    )
+    const missingTeacherIds = uniqueTeacherIds.filter(
+      (teacherId) => !existingTeacherIds.has(teacherId),
+    )
+
+    if (missingTeacherIds.length > 0) {
+      return jsonResponse(400, {
+        error: `teacher_id no existe en icademy_teachers: ${missingTeacherIds.join(', ')}`,
+      })
+    }
+  }
 
   const { error: deleteError } = await auth.adminClient
     .from('calendar_icademy')

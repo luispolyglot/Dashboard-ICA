@@ -16,6 +16,7 @@ import { ManageCoachingView } from '../views/ManageCoachingView'
 import { ManageCoachingUserView } from '../views/ManageCoachingUserView'
 import { ManageCoacherSessionsView } from '../views/ManageCoacherSessionsView'
 import { ManageCalendarIcademyView } from '../views/ManageCalendarIcademyView'
+import { ManageIcademyTeachersView } from '../views/ManageIcademyTeachersView'
 import { ManageNotificationsView } from '../views/ManageNotificationsView'
 import { ManageWhitelistView } from '../views/ManageWhitelistView'
 import { ManageView } from '../views/ManageView'
@@ -341,6 +342,14 @@ export function CalendarIcademyManagePage() {
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.profile}>
       <ManageCalendarIcademyView />
+    </PageLayout>
+  )
+}
+
+export function CalendarIcademyTeachersPage() {
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+      <ManageIcademyTeachersView />
     </PageLayout>
   )
 }

@@ -12,9 +12,18 @@ type CalendarIcademyRow = {
   language_code: string
   session_date: string
   session_time: string
+  teacher_id: string | null
   teacher: string
   group_name: string | null
   note: string | null
+  teacher_ref?:
+    | {
+        display_name: string | null
+      }
+    | Array<{
+        display_name: string | null
+      }>
+    | null
   created_at: string
   updated_at: string
 }
@@ -48,6 +57,11 @@ function normalizeTimeForUi(value: string): string {
 }
 
 function toCalendarIcademyEntry(row: CalendarIcademyRow): CalendarIcademyEntry {
+  const teacherRelation = Array.isArray(row.teacher_ref)
+    ? row.teacher_ref[0]
+    : row.teacher_ref
+  const teacherName = teacherRelation?.display_name?.trim() || row.teacher
+
   return {
     id: row.id,
     classKey: row.class_key,
@@ -55,7 +69,8 @@ function toCalendarIcademyEntry(row: CalendarIcademyRow): CalendarIcademyEntry {
     languageCode: row.language_code,
     sessionDate: row.session_date,
     sessionTime: normalizeTimeForUi(row.session_time),
-    teacher: row.teacher,
+    teacherId: row.teacher_id,
+    teacher: teacherName,
     groupName: row.group_name,
     note: row.note,
     createdAt: row.created_at,
@@ -65,11 +80,19 @@ function toCalendarIcademyEntry(row: CalendarIcademyRow): CalendarIcademyEntry {
 
 function toCalendarIcademyPayload(input: CalendarIcademyEntryInput) {
   const classKey = input.classKey.trim()
+  const teacherId = input.teacherId.trim()
   const catalogEntry = getCalendarIcademyCatalogEntry(classKey)
 
   if (!catalogEntry) {
     throw new CalendarIcademyRequestError(
       'La clase seleccionada no pertenece al catalogo oficial de ICADEMY.',
+      400,
+    )
+  }
+
+  if (!teacherId) {
+    throw new CalendarIcademyRequestError(
+      'Debes seleccionar un profesor valido.',
       400,
     )
   }
@@ -80,14 +103,14 @@ function toCalendarIcademyPayload(input: CalendarIcademyEntryInput) {
     language_code: catalogEntry.languageCode,
     session_date: input.sessionDate,
     session_time: normalizeTimeForDb(input.sessionTime),
-    teacher: input.teacher.trim(),
+    teacher_id: teacherId,
     group_name: input.groupName?.trim() || null,
     note: input.note?.trim() || null,
   }
 }
 
 const CALENDAR_SELECT_FIELDS =
-  'id, class_key, class_name, language_code, session_date, session_time, teacher, group_name, note, created_at, updated_at'
+  'id, class_key, class_name, language_code, session_date, session_time, teacher_id, teacher, group_name, note, created_at, updated_at, teacher_ref:icademy_teachers!calendar_icademy_teacher_id_fkey(display_name)'
 
 export async function fetchCalendarIcademyEntries(): Promise<CalendarIcademyEntry[]> {
   if (!supabase) {

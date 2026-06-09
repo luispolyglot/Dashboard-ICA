@@ -24,6 +24,7 @@ type CalendarEntryRow = {
   class_name: string
   session_date: string
   session_time: string
+  teacher_id: string | null
   teacher: string
 }
 
@@ -40,6 +41,15 @@ type PreferenceRow = {
 type MutedSessionRow = {
   user_id: string
   calendar_entry_id: string
+}
+
+type TeacherPreferenceRow = {
+  user_id: string
+  notifications_enabled: boolean
+  minutes_before: number
+  quiet_hours_start: string | null
+  quiet_hours_end: string | null
+  last_notified_for_session_id: string | null
 }
 
 const CLASS_FLAGS: Record<string, string> = {
@@ -259,7 +269,13 @@ Deno.serve(async (req) => {
   const minDate = new Date(now.getTime() - 10 * 60 * 1000)
   const maxDate = new Date(now.getTime() + 120 * 60 * 1000)
 
-  const [subscriptionsResult, preferencesResult, entriesResult, mutedSessionsResult] = await Promise.all([
+  const [
+    subscriptionsResult,
+    preferencesResult,
+    teacherPreferencesResult,
+    entriesResult,
+    mutedSessionsResult,
+  ] = await Promise.all([
     adminClient
       .from('user_push_subscriptions')
       .select('id, user_id, endpoint, p256dh, auth, is_active')
@@ -271,8 +287,14 @@ Deno.serve(async (req) => {
       )
       .eq('notifications_enabled', true),
     adminClient
+      .from('users_calendar_icademy_teacher_notifications')
+      .select(
+        'user_id, minutes_before, notifications_enabled, quiet_hours_start, quiet_hours_end, last_notified_for_session_id',
+      )
+      .eq('notifications_enabled', true),
+    adminClient
       .from('calendar_icademy')
-      .select('id, class_key, class_name, session_date, session_time, teacher')
+      .select('id, class_key, class_name, session_date, session_time, teacher_id, teacher')
       .gte('session_date', toYmd(new Date(minDate.getTime() - 24 * 60 * 60 * 1000)))
       .lte('session_date', toYmd(new Date(maxDate.getTime() + 24 * 60 * 60 * 1000)))
       .order('session_date', { ascending: true })
@@ -285,6 +307,7 @@ Deno.serve(async (req) => {
   if (
     subscriptionsResult.error ||
     preferencesResult.error ||
+    teacherPreferencesResult.error ||
     entriesResult.error ||
     mutedSessionsResult.error
   ) {
@@ -292,6 +315,7 @@ Deno.serve(async (req) => {
       error:
         subscriptionsResult.error?.message ||
         preferencesResult.error?.message ||
+        teacherPreferencesResult.error?.message ||
         entriesResult.error?.message ||
         mutedSessionsResult.error?.message ||
         'Failed to query reminder data',
@@ -300,10 +324,15 @@ Deno.serve(async (req) => {
 
   const subscriptions = (subscriptionsResult.data || []) as PushSubscriptionRow[]
   const preferences = (preferencesResult.data || []) as PreferenceRow[]
+  const teacherPreferences =
+    (teacherPreferencesResult.data || []) as TeacherPreferenceRow[]
   const entries = (entriesResult.data || []) as CalendarEntryRow[]
   const mutedSessions = (mutedSessionsResult.data || []) as MutedSessionRow[]
 
-  if (subscriptions.length === 0 || preferences.length === 0 || entries.length === 0) {
+  const hasCalendarPreferenceData =
+    preferences.length > 0 || teacherPreferences.length > 0
+
+  if (subscriptions.length === 0 || !hasCalendarPreferenceData || entries.length === 0) {
     return jsonResponse(200, {
       ok: true,
       sent: 0,
@@ -331,11 +360,13 @@ Deno.serve(async (req) => {
   let failed = 0
 
   for (const subscription of subscriptions) {
-    const dueForSubscription: Array<{
+    const dueMap = new Map<string, {
       entry: CalendarEntryRow
-      preference: PreferenceRow
+      source: 'class' | 'teacher'
+      classPreference?: PreferenceRow
+      teacherPreference?: TeacherPreferenceRow
       minutesUntilStart: number
-    }> = []
+    }>()
 
     for (const preference of preferences) {
       if (preference.user_id !== subscription.user_id) continue
@@ -375,9 +406,81 @@ Deno.serve(async (req) => {
           continue
         }
 
-        dueForSubscription.push({ entry, preference, minutesUntilStart })
+        const existing = dueMap.get(entry.id)
+        if (!existing || minutesUntilStart < existing.minutesUntilStart) {
+          dueMap.set(entry.id, {
+            entry,
+            source: 'class',
+            classPreference: preference,
+            minutesUntilStart,
+          })
+        }
       }
     }
+
+    for (const preference of teacherPreferences) {
+      if (preference.user_id !== subscription.user_id) continue
+
+      for (const entry of entries) {
+        if (!entry.teacher_id || entry.teacher_id !== subscription.user_id) continue
+
+        if (preference.last_notified_for_session_id === entry.id) {
+          continue
+        }
+
+        const sessionStart = parseSessionDateTimeForTimezone(
+          entry,
+          CALENDAR_CLASS_TIMEZONE,
+        )
+        if (!sessionStart) continue
+
+        const minutesUntilStart = Math.round(
+          (sessionStart.getTime() - now.getTime()) / 60000,
+        )
+
+        if (minutesUntilStart > preference.minutes_before || minutesUntilStart < -10) {
+          continue
+        }
+
+        if (
+          isWithinQuietHours({
+            date: now,
+            timezone: CALENDAR_CLASS_TIMEZONE,
+            quietStart: preference.quiet_hours_start,
+            quietEnd: preference.quiet_hours_end,
+          })
+        ) {
+          continue
+        }
+
+        const existing = dueMap.get(entry.id)
+        if (!existing) {
+          dueMap.set(entry.id, {
+            entry,
+            source: 'teacher',
+            teacherPreference: preference,
+            minutesUntilStart,
+          })
+          continue
+        }
+
+        const shouldReplaceExisting =
+          existing.source === 'class' ||
+          (existing.source === 'teacher' &&
+            minutesUntilStart < existing.minutesUntilStart)
+
+        if (shouldReplaceExisting) {
+          dueMap.set(entry.id, {
+            entry,
+            source: 'teacher',
+            teacherPreference: preference,
+            minutesUntilStart,
+          })
+        }
+      }
+    }
+
+    const dueForSubscription = Array.from(dueMap.values())
 
     dueForSubscription.sort((a, b) => a.minutesUntilStart - b.minutesUntilStart)
 
@@ -400,8 +503,14 @@ Deno.serve(async (req) => {
           : `Empieza en ${item.minutesUntilStart} min`
 
       const payload = {
-        title: `Clase ICADEMY: ${(CLASS_FLAGS[item.entry.class_key] || '🌐')} ${item.entry.class_name}`,
-        body: `${whenLabel} · ${formatHourLabel(item.entry.session_time)} · con ${item.entry.teacher}`,
+        title:
+          item.source === 'teacher'
+            ? `Tu clase ICADEMY: ${(CLASS_FLAGS[item.entry.class_key] || '🌐')} ${item.entry.class_name}`
+            : `Clase ICADEMY: ${(CLASS_FLAGS[item.entry.class_key] || '🌐')} ${item.entry.class_name}`,
+        body:
+          item.source === 'teacher'
+            ? `${whenLabel} · ${formatHourLabel(item.entry.session_time)} · Preparala con tiempo`
+            : `${whenLabel} · ${formatHourLabel(item.entry.session_time)} · con ${item.entry.teacher}`,
         url: '/calendar-icademy',
         tag: `calendar-reminder-${item.entry.id}`,
       }
@@ -428,14 +537,24 @@ Deno.serve(async (req) => {
           status: 'sent',
         })
 
-        await adminClient
-          .from('users_calendar_icademy')
-          .update({
-            last_notified_for_session_id: item.entry.id,
-            last_notified_at: now.toISOString(),
-          })
-          .eq('user_id', subscription.user_id)
-          .eq('class_key', item.entry.class_key)
+        if (item.source === 'class') {
+          await adminClient
+            .from('users_calendar_icademy')
+            .update({
+              last_notified_for_session_id: item.entry.id,
+              last_notified_at: now.toISOString(),
+            })
+            .eq('user_id', subscription.user_id)
+            .eq('class_key', item.entry.class_key)
+        } else {
+          await adminClient
+            .from('users_calendar_icademy_teacher_notifications')
+            .update({
+              last_notified_for_session_id: item.entry.id,
+              last_notified_at: now.toISOString(),
+            })
+            .eq('user_id', subscription.user_id)
+        }
       } catch (err) {
         failed += 1
         const message = err instanceof Error ? err.message : 'PUSH_SEND_FAILED'

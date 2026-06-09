@@ -160,6 +160,7 @@ export interface CalendarIcademyEntry {
   languageCode: string
   sessionDate: string
   sessionTime: string
+  teacherId: string | null
   teacher: string
   groupName: string | null
   note: string | null
@@ -173,9 +174,25 @@ export interface CalendarIcademyEntryInput {
   languageCode: string
   sessionDate: string
   sessionTime: string
-  teacher: string
+  teacherId: string
   groupName?: string | null
   note?: string | null
+}
+
+export interface IcademyTeacher {
+  userId: string
+  displayName: string
+  username: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface IcademyTeacherAssignableUser {
+  userId: string
+  displayName: string
+  username: string | null
+  createdAt: string
+  isTeacher: boolean
 }
 
 export interface CalendarIcademyPreference {
@@ -209,6 +226,25 @@ export interface CalendarIcademySessionBlacklistItem {
   classKey: string
   createdAt: string
   updatedAt: string
+}
+
+export interface CalendarIcademyTeacherNotificationPreference {
+  userId: string
+  notificationsEnabled: boolean
+  minutesBefore: number
+  quietHoursStart: string | null
+  quietHoursEnd: string | null
+  lastNotifiedForSessionId: string | null
+  lastNotifiedAt: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface CalendarIcademyTeacherNotificationPreferenceInput {
+  notificationsEnabled: boolean
+  minutesBefore: number
+  quietHoursStart?: string | null
+  quietHoursEnd?: string | null
 }
 
 export interface PushSubscriptionDevice {

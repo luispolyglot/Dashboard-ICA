@@ -4,7 +4,9 @@ import {
   RefreshCcwIcon,
   Trash2Icon,
   UploadIcon,
+  UsersIcon,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -37,21 +39,28 @@ import {
   fetchCalendarIcademyEntries,
   updateCalendarIcademyEntry,
 } from '../services/calendarIcademy'
+import { fetchIcademyTeachers } from '../services/icademyTeachers'
+import { DASHBOARD_ROUTES } from '../routes/paths'
 import { uploadCalendarIcademyBulkJson } from '../services/calendarIcademyBulk'
-import type { CalendarIcademyEntry, CalendarIcademyEntryInput } from '../types'
+import type {
+  CalendarIcademyEntry,
+  CalendarIcademyEntryInput,
+  IcademyTeacher,
+} from '../types'
 
 type EntryFormState = {
   classKey: string
   sessionDate: string
   sessionTime: string
-  teacher: string
+  teacherId: string
   groupName: string
   note: string
 }
 
 type BulkClassEntry = {
   time?: string
-  teacher?: string
+  teacher_id?: string
+  teacherId?: string
   classId?: string
   lang?: string
   group?: string
@@ -60,14 +69,15 @@ type BulkClassEntry = {
 
 type BulkSchedule = Record<string, BulkClassEntry[]>
 
-const BULK_DESTRIPANDO_CLASS_KEY = 'destripando_niveles'
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function emptyForm(): EntryFormState {
   return {
     classKey: '',
     sessionDate: '',
     sessionTime: '18:00',
-    teacher: '',
+    teacherId: '',
     groupName: '',
     note: '',
   }
@@ -78,7 +88,7 @@ function toFormState(entry: CalendarIcademyEntry): EntryFormState {
     classKey: entry.classKey,
     sessionDate: entry.sessionDate,
     sessionTime: entry.sessionTime,
-    teacher: entry.teacher,
+    teacherId: entry.teacherId || '',
     groupName: entry.groupName || '',
     note: entry.note || '',
   }
@@ -93,7 +103,7 @@ function toInputPayload(form: EntryFormState): CalendarIcademyEntryInput {
     languageCode: catalogEntry?.languageCode || '',
     sessionDate: form.sessionDate,
     sessionTime: form.sessionTime,
-    teacher: form.teacher,
+    teacherId: form.teacherId,
     groupName: form.groupName,
     note: form.note,
   }
@@ -147,7 +157,7 @@ function validateBulkSchedule(input: unknown): {
       }
 
       const classId = String(item.classId || '').trim()
-      const teacher = String(item.teacher || '').trim()
+      const teacherId = String(item.teacher_id || item.teacherId || '').trim()
       const time = String(item.time || '').trim()
 
       if (!classId) {
@@ -158,10 +168,16 @@ function validateBulkSchedule(input: unknown): {
         throw new Error(`classId no pertenece al catalogo oficial: ${classId}.`)
       }
 
-      const isDestripando = classId === BULK_DESTRIPANDO_CLASS_KEY
+      if (!teacherId) {
+        throw new Error(
+          `Falta teacher_id en ${dateKey} para classId ${classId}.`,
+        )
+      }
 
-      if (!teacher && !isDestripando) {
-        throw new Error(`Falta teacher en ${dateKey} para classId ${classId}.`)
+      if (!UUID_REGEX.test(teacherId)) {
+        throw new Error(
+          `teacher_id invalido en ${dateKey} para classId ${classId}.`,
+        )
       }
 
       if (!time) {
@@ -179,6 +195,7 @@ function validateBulkSchedule(input: unknown): {
 
 export function ManageCalendarIcademyView() {
   const [entries, setEntries] = useState<CalendarIcademyEntry[]>([])
+  const [teachers, setTeachers] = useState<IcademyTeacher[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -201,8 +218,12 @@ export function ManageCalendarIcademyView() {
     setError(null)
 
     try {
-      const data = await fetchCalendarIcademyEntries()
-      setEntries(data)
+      const [entryRows, teacherRows] = await Promise.all([
+        fetchCalendarIcademyEntries(),
+        fetchIcademyTeachers(),
+      ])
+      setEntries(entryRows)
+      setTeachers(teacherRows)
     } catch (err) {
       const message =
         err instanceof Error
@@ -268,7 +289,7 @@ export function ManageCalendarIcademyView() {
     Boolean(getCalendarIcademyCatalogEntry(form.classKey)) &&
     Boolean(form.sessionDate) &&
     Boolean(form.sessionTime) &&
-    Boolean(form.teacher.trim())
+    Boolean(form.teacherId.trim())
 
   const bulkValidation = useMemo(() => {
     const trimmed = bulkJsonInput.trim()
@@ -314,7 +335,7 @@ export function ManageCalendarIcademyView() {
     }
     if (!form.sessionDate) return 'La fecha de sesión es obligatoria.'
     if (!form.sessionTime) return 'La hora de sesión es obligatoria.'
-    if (!form.teacher.trim()) return 'El docente es obligatorio.'
+    if (!form.teacherId.trim()) return 'Debes seleccionar un profesor.'
     return null
   }
 
@@ -420,6 +441,12 @@ export function ManageCalendarIcademyView() {
               <UploadIcon data-icon='inline-start' />
               Carga masiva JSON
             </Button>
+            <Button type='button' variant='outline' asChild>
+              <Link to={DASHBOARD_ROUTES.calendarIcademyTeachers}>
+                <UsersIcon data-icon='inline-start' />
+                Profesores
+              </Link>
+            </Button>
             <Button type='button' onClick={openCreateModal}>
               <CalendarPlusIcon data-icon='inline-start' />
               Agregar clase
@@ -493,13 +520,32 @@ export function ManageCalendarIcademyView() {
             </div>
 
             <div className='grid gap-1.5'>
-              <Label htmlFor='calendar-icademy-teacher'>Docente</Label>
-              <Input
-                id='calendar-icademy-teacher'
-                value={form.teacher}
-                onChange={(event) => updateForm('teacher', event.target.value)}
-                placeholder='ej: Joel'
-              />
+              <Label htmlFor='calendar-icademy-teacher-id'>Profesor</Label>
+              <Select
+                value={form.teacherId}
+                onValueChange={(value) => updateForm('teacherId', value)}
+              >
+                <SelectTrigger id='calendar-icademy-teacher-id'>
+                  <SelectValue placeholder='Selecciona un profesor' />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>Profesores habilitados</SelectLabel>
+                    {teachers.map((teacher) => (
+                      <SelectItem key={teacher.userId} value={teacher.userId}>
+                        {teacher.displayName}
+                        {teacher.username ? ` (@${teacher.username})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              {teachers.length === 0 && (
+                <p className='text-xs text-muted-foreground'>
+                  Aun no hay profesores cargados. Primero crea uno en la vista
+                  "Profesores".
+                </p>
+              )}
             </div>
 
             <div className='grid gap-1.5'>
@@ -576,7 +622,8 @@ export function ManageCalendarIcademyView() {
             <DialogTitle>Carga masiva JSON</DialogTitle>
             <DialogDescription>
               Pega el JSON con formato fecha {'->'} lista de clases. Se
-              reemplazaran todas las fechas incluidas.
+              reemplazaran todas las fechas incluidas. Cada clase ahora debe
+              incluir `teacher_id`.
             </DialogDescription>
           </DialogHeader>
 

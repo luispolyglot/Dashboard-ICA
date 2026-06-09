@@ -638,14 +638,21 @@ export function ProfileView({
             </CardHeader>
             <CardContent className='space-y-3'>
               <p className='text-sm text-muted-foreground'>
-                Administra las clases del calendario visible para todos los
-                alumnos.
+                Administra las clases y los profesores del calendario visible
+                para todos los alumnos.
               </p>
-              <Button type='button' variant='outline' asChild>
-                <Link to={DASHBOARD_ROUTES.calendarIcademyManage}>
-                  Gestionar calendario
-                </Link>
-              </Button>
+              <div className='flex flex-wrap gap-2'>
+                <Button type='button' variant='outline' asChild>
+                  <Link to={DASHBOARD_ROUTES.calendarIcademyManage}>
+                    Gestionar calendario
+                  </Link>
+                </Button>
+                <Button type='button' variant='outline' asChild>
+                  <Link to={DASHBOARD_ROUTES.calendarIcademyTeachers}>
+                    Gestionar profesores
+                  </Link>
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}

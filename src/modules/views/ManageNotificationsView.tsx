@@ -20,6 +20,10 @@ import {
   upsertPushReminderPreferences,
 } from '../services/pushReminderPreferences'
 import {
+  fetchMyCalendarIcademyTeacherNotificationPreference,
+  upsertMyCalendarIcademyTeacherNotificationPreference,
+} from '../services/calendarIcademyTeacherNotifications'
+import {
   disablePushOnCurrentDevice,
   enablePushOnCurrentDevice,
   getCurrentPushSubscriptionEndpoint,
@@ -28,11 +32,14 @@ import {
 } from '../services/pushNotifications'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import type {
+  CalendarIcademyTeacherNotificationPreference,
+  CalendarIcademyTeacherNotificationPreferenceInput,
   PushReminderPreferences,
   PushReminderPreferencesInput,
   PushSubscriptionDevice,
 } from '../types'
 
+const CALENDAR_REMINDER_OPTIONS = [10, 20, 30, 60, 120]
 const REMINDER_HOUR_OPTIONS = Array.from(
   { length: 19 },
   (_, index) => index + 5,
@@ -70,6 +77,12 @@ export function ManageNotificationsView() {
     NotificationPermission | 'unsupported'
   >('unsupported')
   const [isUpdatingPushDevice, setIsUpdatingPushDevice] = useState(false)
+  const [teacherReminderPrefs, setTeacherReminderPrefs] =
+    useState<CalendarIcademyTeacherNotificationPreference | null>(null)
+  const [isLoadingTeacherReminderPrefs, setIsLoadingTeacherReminderPrefs] =
+    useState(true)
+  const [isSavingTeacherReminderPrefs, setIsSavingTeacherReminderPrefs] =
+    useState(false)
 
   useEffect(() => {
     let active = true
@@ -86,6 +99,31 @@ export function ManageNotificationsView() {
       } finally {
         if (!active) return
         setIsLoadingReminderPrefs(false)
+      }
+    }
+
+    void run()
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    const run = async () => {
+      setIsLoadingTeacherReminderPrefs(true)
+      try {
+        const prefs = await fetchMyCalendarIcademyTeacherNotificationPreference()
+        if (!active) return
+        setTeacherReminderPrefs(prefs)
+      } catch {
+        if (!active) return
+        setTeacherReminderPrefs(null)
+      } finally {
+        if (!active) return
+        setIsLoadingTeacherReminderPrefs(false)
       }
     }
 
@@ -183,6 +221,49 @@ export function ManageNotificationsView() {
         err instanceof Error
           ? err.message
           : 'No se pudieron actualizar las notificaciones.'
+      toast.error(message)
+    }
+  }
+
+  const saveTeacherReminderPreferences = async (
+    next: CalendarIcademyTeacherNotificationPreferenceInput,
+  ): Promise<void> => {
+    setIsSavingTeacherReminderPrefs(true)
+    try {
+      const saved =
+        await upsertMyCalendarIcademyTeacherNotificationPreference(next)
+      setTeacherReminderPrefs(saved)
+    } finally {
+      setIsSavingTeacherReminderPrefs(false)
+    }
+  }
+
+  const handleUpdateTeacherReminderPreferences = async (
+    nextPartial: Partial<CalendarIcademyTeacherNotificationPreferenceInput>,
+  ): Promise<void> => {
+    if (!teacherReminderPrefs) return
+
+    const next: CalendarIcademyTeacherNotificationPreferenceInput = {
+      notificationsEnabled:
+        nextPartial.notificationsEnabled ?? teacherReminderPrefs.notificationsEnabled,
+      minutesBefore:
+        nextPartial.minutesBefore ?? teacherReminderPrefs.minutesBefore,
+      quietHoursStart:
+        nextPartial.quietHoursStart ?? teacherReminderPrefs.quietHoursStart,
+      quietHoursEnd: nextPartial.quietHoursEnd ?? teacherReminderPrefs.quietHoursEnd,
+    }
+
+    try {
+      if (next.notificationsEnabled) {
+        await ensurePushOnCurrentDevice()
+      }
+      await saveTeacherReminderPreferences(next)
+      toast.success('Preferencias de profesor actualizadas.')
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'No se pudieron actualizar las notificaciones de profesor.'
       toast.error(message)
     }
   }
@@ -307,6 +388,64 @@ export function ManageNotificationsView() {
                 </Button>
               </div>
             </div>
+
+            {!isLoadingTeacherReminderPrefs && teacherReminderPrefs && (
+              <div className='rounded-lg border p-3'>
+                <div className='flex flex-wrap items-center justify-between gap-3'>
+                  <div className='space-y-1'>
+                    <p className='text-sm font-semibold'>
+                      Recordatorios como profesor ICADEMY
+                    </p>
+                    <p className='text-xs text-muted-foreground'>
+                      Te avisa antes de tus clases asignadas como profesor.
+                    </p>
+                  </div>
+                  <div className='flex items-center gap-2'>
+                    <Label htmlFor='manage-teacher-reminder-switch'>Avisar</Label>
+                    <Switch
+                      id='manage-teacher-reminder-switch'
+                      checked={teacherReminderPrefs.notificationsEnabled}
+                      disabled={isSavingTeacherReminderPrefs}
+                      onCheckedChange={(checked) =>
+                        void handleUpdateTeacherReminderPreferences({
+                          notificationsEnabled: checked,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className='mt-3 flex items-center gap-2'>
+                  <Label htmlFor='manage-teacher-reminder-minutes'>Anticipacion</Label>
+                  <Select
+                    value={String(teacherReminderPrefs.minutesBefore)}
+                    onValueChange={(value) =>
+                      void handleUpdateTeacherReminderPreferences({
+                        minutesBefore: Number(value),
+                      })
+                    }
+                    disabled={
+                      isSavingTeacherReminderPrefs ||
+                      !teacherReminderPrefs.notificationsEnabled
+                    }
+                  >
+                    <SelectTrigger id='manage-teacher-reminder-minutes'>
+                      <SelectValue placeholder='Selecciona minutos' />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectLabel>Minutos antes</SelectLabel>
+                        {CALENDAR_REMINDER_OPTIONS.map((minutes) => (
+                          <SelectItem key={minutes} value={String(minutes)}>
+                            {minutes} min antes
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
 
             <div className='rounded-lg border p-3'>
               <div className='flex flex-wrap items-center justify-between gap-3'>

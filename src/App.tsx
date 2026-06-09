@@ -10,6 +10,7 @@ import {
   ActivationPhrasePage,
   CalendarIcademyManagePage,
   CalendarIcademyPage,
+  CalendarIcademyTeachersPage,
   CoachingPersonalizedPage,
   FlashcardsPage,
   FlashcardsPlayPage,
@@ -127,6 +128,10 @@ export function App() {
               <Route
                 path='calendar-icademy/manage'
                 element={<CalendarIcademyManagePage />}
+              />
+              <Route
+                path='calendar-icademy/teachers'
+                element={<CalendarIcademyTeachersPage />}
               />
               <Route path='manage-whitelist' element={<ManageWhitelistPage />} />
               <Route path='historic-leaderboard' element={<HistoricLeaderboardPage />} />
