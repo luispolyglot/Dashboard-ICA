@@ -72,7 +72,9 @@ export function ReviewView({
   const [currentIndex, setCurrentIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [correct, setCorrect] = useState(0)
-  const [answerResults, setAnswerResults] = useState<Array<'correct' | 'wrong'>>([])
+  const [answerResults, setAnswerResults] = useState<
+    Array<'correct' | 'wrong'>
+  >([])
   const [busy, setBusy] = useState(false)
   const [finishing, setFinishing] = useState(false)
   const [completed, setCompleted] = useState(false)
@@ -169,7 +171,8 @@ export function ReviewView({
   const handleAnswer = async (knew: boolean): Promise<void> => {
     if (busy || !currentCard) return
 
-    const sourceCard = cards.find((card) => card.id === currentCard.id) || currentCard
+    const sourceCard =
+      cards.find((card) => card.id === currentCard.id) || currentCard
 
     setBusy(true)
     stopTTS()
@@ -270,7 +273,8 @@ export function ReviewView({
         </div>
         {!canPlayAnotherRound && pendingOnly && (
           <p className='mt-4 rounded-lg border border-red-500/35 bg-red-500/8 px-3 py-2 text-xs font-semibold text-red-600 dark:text-red-300'>
-            No quedan suficientes tarjetas no aprendidas o falladas para otra ronda ({replayEligibleCount}/{replayMinimumRequired}).
+            No quedan suficientes tarjetas no aprendidas o falladas para otra
+            ronda ({replayEligibleCount}/{replayMinimumRequired}).
           </p>
         )}
         <div className='mt-4 flex flex-wrap justify-center gap-2'>
