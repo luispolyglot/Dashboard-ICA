@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   CalendarPlusIcon,
+  CopyIcon,
   RefreshCcwIcon,
   Trash2Icon,
   UploadIcon,
+  UsersIcon,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -37,21 +41,28 @@ import {
   fetchCalendarIcademyEntries,
   updateCalendarIcademyEntry,
 } from '../services/calendarIcademy'
+import { fetchIcademyTeachers } from '../services/icademyTeachers'
+import { DASHBOARD_ROUTES } from '../routes/paths'
 import { uploadCalendarIcademyBulkJson } from '../services/calendarIcademyBulk'
-import type { CalendarIcademyEntry, CalendarIcademyEntryInput } from '../types'
+import type {
+  CalendarIcademyEntry,
+  CalendarIcademyEntryInput,
+  IcademyTeacher,
+} from '../types'
 
 type EntryFormState = {
   classKey: string
   sessionDate: string
   sessionTime: string
-  teacher: string
+  teacherId: string
   groupName: string
   note: string
 }
 
 type BulkClassEntry = {
   time?: string
-  teacher?: string
+  teacher_id?: string
+  teacherId?: string
   classId?: string
   lang?: string
   group?: string
@@ -60,14 +71,15 @@ type BulkClassEntry = {
 
 type BulkSchedule = Record<string, BulkClassEntry[]>
 
-const BULK_DESTRIPANDO_CLASS_KEY = 'destripando_niveles'
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 function emptyForm(): EntryFormState {
   return {
     classKey: '',
     sessionDate: '',
     sessionTime: '18:00',
-    teacher: '',
+    teacherId: '',
     groupName: '',
     note: '',
   }
@@ -78,7 +90,7 @@ function toFormState(entry: CalendarIcademyEntry): EntryFormState {
     classKey: entry.classKey,
     sessionDate: entry.sessionDate,
     sessionTime: entry.sessionTime,
-    teacher: entry.teacher,
+    teacherId: entry.teacherId || '',
     groupName: entry.groupName || '',
     note: entry.note || '',
   }
@@ -93,7 +105,7 @@ function toInputPayload(form: EntryFormState): CalendarIcademyEntryInput {
     languageCode: catalogEntry?.languageCode || '',
     sessionDate: form.sessionDate,
     sessionTime: form.sessionTime,
-    teacher: form.teacher,
+    teacherId: form.teacherId,
     groupName: form.groupName,
     note: form.note,
   }
@@ -147,7 +159,7 @@ function validateBulkSchedule(input: unknown): {
       }
 
       const classId = String(item.classId || '').trim()
-      const teacher = String(item.teacher || '').trim()
+      const teacherId = String(item.teacher_id || item.teacherId || '').trim()
       const time = String(item.time || '').trim()
 
       if (!classId) {
@@ -158,10 +170,16 @@ function validateBulkSchedule(input: unknown): {
         throw new Error(`classId no pertenece al catalogo oficial: ${classId}.`)
       }
 
-      const isDestripando = classId === BULK_DESTRIPANDO_CLASS_KEY
+      if (!teacherId) {
+        throw new Error(
+          `Falta teacher_id en ${dateKey} para classId ${classId}.`,
+        )
+      }
 
-      if (!teacher && !isDestripando) {
-        throw new Error(`Falta teacher en ${dateKey} para classId ${classId}.`)
+      if (!UUID_REGEX.test(teacherId)) {
+        throw new Error(
+          `teacher_id invalido en ${dateKey} para classId ${classId}.`,
+        )
       }
 
       if (!time) {
@@ -179,6 +197,7 @@ function validateBulkSchedule(input: unknown): {
 
 export function ManageCalendarIcademyView() {
   const [entries, setEntries] = useState<CalendarIcademyEntry[]>([])
+  const [teachers, setTeachers] = useState<IcademyTeacher[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -193,6 +212,7 @@ export function ManageCalendarIcademyView() {
   const [bulkJsonInput, setBulkJsonInput] = useState('')
   const [bulkModalError, setBulkModalError] = useState<string | null>(null)
   const [isBulkSaving, setIsBulkSaving] = useState(false)
+  const [isCopyingPrompt, setIsCopyingPrompt] = useState(false)
 
   const isEditing = Boolean(editingEntry)
 
@@ -201,8 +221,12 @@ export function ManageCalendarIcademyView() {
     setError(null)
 
     try {
-      const data = await fetchCalendarIcademyEntries()
-      setEntries(data)
+      const [entryRows, teacherRows] = await Promise.all([
+        fetchCalendarIcademyEntries(),
+        fetchIcademyTeachers(),
+      ])
+      setEntries(entryRows)
+      setTeachers(teacherRows)
     } catch (err) {
       const message =
         err instanceof Error
@@ -268,7 +292,7 @@ export function ManageCalendarIcademyView() {
     Boolean(getCalendarIcademyCatalogEntry(form.classKey)) &&
     Boolean(form.sessionDate) &&
     Boolean(form.sessionTime) &&
-    Boolean(form.teacher.trim())
+    Boolean(form.teacherId.trim())
 
   const bulkValidation = useMemo(() => {
     const trimmed = bulkJsonInput.trim()
@@ -306,6 +330,81 @@ export function ManageCalendarIcademyView() {
     }
   }, [bulkJsonInput])
 
+  const bulkPrompt = useMemo(() => {
+    const teacherRows = [...teachers].sort((a, b) =>
+      a.displayName.localeCompare(b.displayName),
+    )
+    const teacherLines =
+      teacherRows.length === 0
+        ? '- (Sin profesores cargados todavia. Cargalos antes de pedir el JSON.)'
+        : teacherRows
+            .map(
+              (teacher) =>
+                `- ${teacher.displayName}${teacher.username ? ` (@${teacher.username})` : ''} -> ${teacher.userId}`,
+            )
+            .join('\n')
+
+    const classLines = catalogOptions
+      .map(
+        (item) =>
+          `- ${item.classKey} | ${item.className} | lang=${item.languageCode}`,
+      )
+      .join('\n')
+
+    return `Necesito que me des como salida, solamente un JSON valido con este formato exacto:\n\n` +
+      `type Lang = 'pl' | 'fr' | 'en' | 'it' | 'de' | 'destripando_niveles';\n\n` +
+      `type ClassEntry = {\n` +
+      `  time: string;        // e.g. \"18h\", \"20h\"\n` +
+      `  name?: string;       // opcional, nombre amigable de la clase\n` +
+      `  teacher_id: string;  // UUID del profesor (obligatorio)\n` +
+      `  classId: string;     // identificador unico de clase (obligatorio)\n` +
+      `  lang?: Lang;         // opcional (si viene, debe coincidir con classId)\n` +
+      `  group?: string;      // opcional\n` +
+      `  note?: string;       // opcional\n` +
+      `};\n\n` +
+      `type ClassSchedule = Record<string, ClassEntry[]>;\n` +
+      `// clave: fecha en formato \"YYYY-MM-DD\"\n` +
+      `// valor: lista de clases ese dia\n\n` +
+      `Reglas obligatorias:\n` +
+      `1) Devuelve SOLO el JSON (sin markdown, sin explicaciones).\n` +
+      `2) Usa SIEMPRE teacher_id (no uses teacher ni teacherId).\n` +
+      `3) No inventes teacher_id: usa solo IDs de la lista de profesores habilitados.\n` +
+      `4) Usa solo classId del catalogo oficial.\n` +
+      `5) Cada fecha debe ser YYYY-MM-DD y su valor un array.\n\n` +
+      `Profesores habilitados (nombre -> teacher_id):\n${teacherLines}\n\n` +
+      `Catalogo oficial de clases (classId | className | lang):\n${classLines}\n\n` +
+      `Ejemplo de salida esperada:\n` +
+      `{\n` +
+      `  \"2026-06-01\": [\n` +
+      `    {\"time\": \"18h\", \"name\": \"FR basico\", \"teacher_id\": \"UUID_PROFE_FR\", \"classId\": \"fr_basico\", \"lang\": \"fr\"},\n` +
+      `    {\"time\": \"20h\", \"name\": \"EN basico\", \"teacher_id\": \"UUID_PROFE_EN\", \"classId\": \"en_basico\", \"lang\": \"en\"}\n` +
+      `  ],\n` +
+      `  \"2026-06-02\": [\n` +
+      `    {\"time\": \"18h\", \"name\": \"IT basico\", \"teacher_id\": \"UUID_PROFE_IT\", \"classId\": \"it_basico\", \"lang\": \"it\", \"group\": \"Grupo A\"}\n` +
+      `  ]\n` +
+      `}`
+  }, [catalogOptions, teachers])
+
+  const handleCopyBulkPrompt = async () => {
+    if (isCopyingPrompt) return
+
+    setIsCopyingPrompt(true)
+    try {
+      if (!navigator?.clipboard?.writeText) {
+        throw new Error('Este navegador no soporta copiado automatico.')
+      }
+      await navigator.clipboard.writeText(bulkPrompt)
+      toast.success('Prompt copiada al portapapeles.')
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'No se pudo copiar la prompt.'
+      setBulkModalError(message)
+      toast.error(message)
+    } finally {
+      setIsCopyingPrompt(false)
+    }
+  }
+
   const validateForm = (): string | null => {
     if (!form.classKey.trim())
       return 'Debes seleccionar una clase del catalogo.'
@@ -314,7 +413,7 @@ export function ManageCalendarIcademyView() {
     }
     if (!form.sessionDate) return 'La fecha de sesión es obligatoria.'
     if (!form.sessionTime) return 'La hora de sesión es obligatoria.'
-    if (!form.teacher.trim()) return 'El docente es obligatorio.'
+    if (!form.teacherId.trim()) return 'Debes seleccionar un profesor.'
     return null
   }
 
@@ -420,6 +519,12 @@ export function ManageCalendarIcademyView() {
               <UploadIcon data-icon='inline-start' />
               Carga masiva JSON
             </Button>
+            <Button type='button' variant='outline' asChild>
+              <Link to={DASHBOARD_ROUTES.calendarIcademyTeachers}>
+                <UsersIcon data-icon='inline-start' />
+                Profesores
+              </Link>
+            </Button>
             <Button type='button' onClick={openCreateModal}>
               <CalendarPlusIcon data-icon='inline-start' />
               Agregar clase
@@ -493,13 +598,32 @@ export function ManageCalendarIcademyView() {
             </div>
 
             <div className='grid gap-1.5'>
-              <Label htmlFor='calendar-icademy-teacher'>Docente</Label>
-              <Input
-                id='calendar-icademy-teacher'
-                value={form.teacher}
-                onChange={(event) => updateForm('teacher', event.target.value)}
-                placeholder='ej: Joel'
-              />
+              <Label htmlFor='calendar-icademy-teacher-id'>Profesor</Label>
+              <Select
+                value={form.teacherId}
+                onValueChange={(value) => updateForm('teacherId', value)}
+              >
+                <SelectTrigger id='calendar-icademy-teacher-id'>
+                  <SelectValue placeholder='Selecciona un profesor' />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>Profesores habilitados</SelectLabel>
+                    {teachers.map((teacher) => (
+                      <SelectItem key={teacher.userId} value={teacher.userId}>
+                        {teacher.displayName}
+                        {teacher.username ? ` (@${teacher.username})` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              {teachers.length === 0 && (
+                <p className='text-xs text-muted-foreground'>
+                  Aun no hay profesores cargados. Primero crea uno en la vista
+                  "Profesores".
+                </p>
+              )}
             </div>
 
             <div className='grid gap-1.5'>
@@ -576,11 +700,24 @@ export function ManageCalendarIcademyView() {
             <DialogTitle>Carga masiva JSON</DialogTitle>
             <DialogDescription>
               Pega el JSON con formato fecha {'->'} lista de clases. Se
-              reemplazaran todas las fechas incluidas.
+              reemplazaran todas las fechas incluidas. Cada clase ahora debe
+              incluir `teacher_id`.
             </DialogDescription>
           </DialogHeader>
 
           <div className='grid gap-3'>
+            <div className='flex justify-start'>
+              <Button
+                type='button'
+                variant='outline'
+                onClick={() => void handleCopyBulkPrompt()}
+                disabled={isCopyingPrompt}
+              >
+                <CopyIcon data-icon='inline-start' />
+                {isCopyingPrompt ? 'COPIANDO...' : 'COPIAR PROMPT'}
+              </Button>
+            </div>
+
             <div className='grid gap-1.5'>
               <Label htmlFor='calendar-icademy-bulk-json'>JSON</Label>
               <Textarea
