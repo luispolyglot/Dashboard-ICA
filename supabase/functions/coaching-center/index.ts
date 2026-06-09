@@ -5,6 +5,14 @@ import {
   parseCoachScopes,
 } from '../_shared/coaching-auth.ts'
 import { countPendingMasterNotesForSession } from './pending-review.ts'
+import { canManageSession } from './access-control.ts'
+import {
+  buildWeekActivationState,
+  buildWeekWindows,
+  evaluateWeekActivationRequest,
+  type CoachingSessionWeekActivationRow,
+  type WeekWindow,
+} from './week-activation.ts'
 
 type CoachingCenterPayload = {
   action?: string
@@ -152,23 +160,6 @@ function normalizeUrl(value: string | null): string | null {
   return withProtocol
 }
 
-function getWeekFromActivatedAt(
-  activatedAt: string | null,
-  referenceAt: string | null,
-  durationWeeks = 12,
-): number | null {
-  if (!activatedAt || !referenceAt) return null
-  const activated = toUtcDate(activatedAt)
-  const reference = toUtcDate(referenceAt)
-  if (!activated || !reference) return null
-
-  const week =
-    Math.floor((reference.getTime() - activated.getTime()) / (7 * 24 * 60 * 60 * 1000)) +
-    1
-  if (!Number.isFinite(week) || week < 1 || week > durationWeeks) return null
-  return week
-}
-
 function buildWeekKeyFromIso(value: string | null): string | null {
   if (!value) return null
   const date = new Date(value)
@@ -302,14 +293,6 @@ function weekKeyFromNumber(value: number): string {
   return `W${String(week).padStart(2, '0')}`
 }
 
-function canManageSession(
-  admin: { adminRole: 'coach_admin' | 'super_admin'; userId: string },
-  coachUserId: string | null,
-): boolean {
-  if (admin.adminRole === 'super_admin') return true
-  return Boolean(coachUserId) && coachUserId === admin.userId
-}
-
 function toUtcDate(value: string): Date | null {
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime()) ? null : parsed
@@ -317,44 +300,37 @@ function toUtcDate(value: string): Date | null {
 
 function computeWeekProgress(
   input: {
-    activatedAt: string | null
-    durationWeeks: number
+    weekWindows: WeekWindow[]
     wordCreatedAt: string[]
     closedNoteAt: string[]
     creationCompletedDays: string[]
     reviewCompletedDays: string[]
   },
 ): Record<string, WeekProgressItem> {
-  const activated = input.activatedAt ? toUtcDate(input.activatedAt) : null
-  if (!activated) return {}
-
-  const duration = Math.min(12, Math.max(1, input.durationWeeks || 12))
   const output: Record<string, WeekProgressItem> = {}
+  if (input.weekWindows.length === 0) return output
 
   const wordDates = input.wordCreatedAt.map((value) => toUtcDate(value)).filter((value): value is Date => Boolean(value))
   const noteDates = input.closedNoteAt.map((value) => toUtcDate(value)).filter((value): value is Date => Boolean(value))
 
-  for (let week = 1; week <= duration; week += 1) {
-    const start = new Date(activated.getTime() + (week - 1) * 7 * 24 * 60 * 60 * 1000)
-    const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
-
+  for (const window of input.weekWindows) {
     const wordsCreated = wordDates.filter(
-      (date) => date.getTime() >= start.getTime() && date.getTime() < end.getTime(),
+      (date) => date.getTime() >= window.start.getTime() && date.getTime() < window.end.getTime(),
     ).length
 
     const closedMasterNotes = noteDates.filter(
-      (date) => date.getTime() >= start.getTime() && date.getTime() < end.getTime(),
+      (date) => date.getTime() >= window.start.getTime() && date.getTime() < window.end.getTime(),
     ).length
 
     const daySet = Array.from({ length: 7 }, (_, idx) => {
-      const date = new Date(start.getTime() + idx * 24 * 60 * 60 * 1000)
+      const date = new Date(window.start.getTime() + idx * 24 * 60 * 60 * 1000)
       return date.toISOString().slice(0, 10)
     })
 
     const icaHits = daySet.filter((day) => input.creationCompletedDays.includes(day)).length
     const flashcardsHits = daySet.filter((day) => input.reviewCompletedDays.includes(day)).length
 
-    output[weekKeyFromNumber(week)] = {
+    output[window.weekKey] = {
       wordsCreated,
       closedMasterNotes,
       icaStreakPct: Math.round((icaHits / 7) * 100),
@@ -367,19 +343,16 @@ function computeWeekProgress(
 
 async function fetchWeekProgressForSession(
   adminClient: any,
-  session: { user_id: string; target_lang: string; activated_at: string | null; duration_weeks: number },
+  session: { user_id: string; target_lang: string },
+  activations: CoachingSessionWeekActivationRow[],
 ): Promise<Record<string, WeekProgressItem>> {
-  if (!session.activated_at) return {}
+  const weekWindows = buildWeekWindows(activations)
+  if (weekWindows.length === 0) return {}
 
-  const activated = toUtcDate(session.activated_at)
-  if (!activated) return {}
-
-  const end = new Date(
-    activated.getTime() + (Math.min(12, Math.max(1, session.duration_weeks || 12)) * 7 * 24 * 60 * 60 * 1000),
-  )
-
-  const startIso = activated.toISOString()
-  const endIso = end.toISOString()
+  const firstWindow = weekWindows[0]
+  const lastWindow = weekWindows[weekWindows.length - 1]
+  const startIso = firstWindow.start.toISOString()
+  const endIso = lastWindow.end.toISOString()
   const startDay = startIso.slice(0, 10)
   const endDay = endIso.slice(0, 10)
 
@@ -410,8 +383,7 @@ async function fetchWeekProgressForSession(
   }
 
   return computeWeekProgress({
-    activatedAt: session.activated_at,
-    durationWeeks: session.duration_weeks,
+    weekWindows,
     wordCreatedAt: (wordsResult.data || []).map((row: { created_at: string }) => row.created_at),
     closedNoteAt: (notesResult.data || []).map((row: { closed_at: string | null; updated_at: string }) => row.closed_at || row.updated_at),
     creationCompletedDays: (dailyResult.data || [])
@@ -428,17 +400,12 @@ async function fetchClosedNotesByWeekForSession(
   session: {
     user_id: string
     target_lang: string
-    activated_at: string | null
-    duration_weeks: number
   },
+  activations: CoachingSessionWeekActivationRow[],
 ): Promise<Record<string, CoachingClosedNoteItem[]>> {
   const output: Record<string, CoachingClosedNoteItem[]> = {}
-  if (!session.activated_at) return output
-
-  const activated = toUtcDate(session.activated_at)
-  if (!activated) return output
-
-  const duration = Math.min(12, Math.max(1, session.duration_weeks || 12))
+  const weekWindows = buildWeekWindows(activations)
+  if (weekWindows.length === 0) return output
 
   const { data, error } = await adminClient
     .from('master_notes')
@@ -458,9 +425,18 @@ async function fetchClosedNotesByWeekForSession(
           ? row.updated_at
           : null
 
-    const week = getWeekFromActivatedAt(session.activated_at, closedAt, duration)
-    if (!week || !closedAt) continue
-    const weekKey = weekKeyFromNumber(week)
+    const closedDate = closedAt ? toUtcDate(closedAt) : null
+    if (!closedDate || !closedAt) continue
+
+    const matchingWeek =
+      weekWindows.find(
+        (window) =>
+          closedDate.getTime() >= window.start.getTime() &&
+          closedDate.getTime() < window.end.getTime(),
+      ) || null
+    if (!matchingWeek) continue
+
+    const weekKey = matchingWeek.weekKey
     const existing = output[weekKey] || []
     existing.push({
       id: String(row.id),
@@ -720,6 +696,47 @@ async function fetchProgramDataBySessionIds(
   return { weeklyObjectivesBySession, classSessionsBySession, error: null }
 }
 
+async function fetchWeekActivationsBySessionIds(
+  adminClient: any,
+  sessionIds: string[],
+): Promise<{
+  activationsBySession: Map<string, CoachingSessionWeekActivationRow[]>
+  error: string | null
+}> {
+  const activationsBySession = new Map<string, CoachingSessionWeekActivationRow[]>()
+
+  if (sessionIds.length === 0) {
+    return { activationsBySession, error: null }
+  }
+
+  const { data, error } = await adminClient
+    .from('coaching_session_week_activations')
+    .select('session_id, week_number, activated_at, ended_at')
+    .in('session_id', sessionIds)
+    .order('week_number', { ascending: true })
+
+  if (error) {
+    return {
+      activationsBySession,
+      error: error.message,
+    }
+  }
+
+  for (const row of (data || []) as CoachingSessionWeekActivationRow[]) {
+    const existing = activationsBySession.get(row.session_id) || []
+    existing.push(row)
+    activationsBySession.set(row.session_id, existing)
+  }
+
+  for (const sessionId of sessionIds) {
+    if (!activationsBySession.has(sessionId)) {
+      activationsBySession.set(sessionId, [])
+    }
+  }
+
+  return { activationsBySession, error: null }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
@@ -799,12 +816,31 @@ Deno.serve(async (req) => {
       return jsonResponse(500, { error: programData.error })
     }
 
+    const activationsData = await fetchWeekActivationsBySessionIds(
+      auth.adminClient,
+      sessionIds,
+    )
+    if (activationsData.error) {
+      return jsonResponse(500, { error: activationsData.error })
+    }
+
     const memberships = await Promise.all(
       rows.map(async (row) => {
-        const weekProgress = await fetchWeekProgressForSession(auth.adminClient, row)
+        const weeklyObjectives = programData.weeklyObjectivesBySession.get(row.id) || {}
+        const sessionActivations = activationsData.activationsBySession.get(row.id) || []
+        const weekActivation = buildWeekActivationState(
+          sessionActivations,
+          weeklyObjectives,
+        )
+        const weekProgress = await fetchWeekProgressForSession(
+          auth.adminClient,
+          row,
+          sessionActivations,
+        )
         const closedMasterNotesByWeek = await fetchClosedNotesByWeekForSession(
           auth.adminClient,
           row,
+          sessionActivations,
         )
         return {
           id: row.id,
@@ -821,11 +857,12 @@ Deno.serve(async (req) => {
           ),
           feedbackNmUrl: row.feedback_nm_url,
           feedbackNmNotes: row.feedback_nm_notes,
-          weeklyObjectives: programData.weeklyObjectivesBySession.get(row.id) || {},
+          weeklyObjectives,
           notes: row.notes,
           status: row.status,
           activatedAt: row.activated_at,
           durationWeeks: row.duration_weeks,
+          weekActivation,
           weekProgress,
           closedMasterNotesByWeek,
           updatedAt: row.updated_at,
@@ -847,15 +884,13 @@ Deno.serve(async (req) => {
 
     const { data: sessionRow, error: sessionError } = await auth.adminClient
       .from('coaching_sessions')
-      .select('id, user_id, activated_at, duration_weeks')
+      .select('id, user_id')
       .eq('id', sessionId)
       .eq('user_id', auth.userId)
       .eq('status', 'active')
       .maybeSingle<{
         id: string
         user_id: string
-        activated_at: string | null
-        duration_weeks: number
       }>()
 
     if (sessionError) {
@@ -865,18 +900,22 @@ Deno.serve(async (req) => {
       return jsonResponse(403, { error: 'Forbidden' })
     }
 
-    const durationWeeks = Math.min(12, Math.max(1, sessionRow.duration_weeks || 12))
-    const currentProgramWeek = getWeekFromActivatedAt(
-      sessionRow.activated_at,
-      new Date().toISOString(),
-      durationWeeks,
-    )
+    const { data: activationRows, error: activationError } = await auth.adminClient
+      .from('coaching_session_week_activations')
+      .select('session_id, week_number, activated_at, ended_at')
+      .eq('session_id', sessionId)
+      .order('week_number', { ascending: true })
 
-    if (!currentProgramWeek) {
-      return jsonResponse(400, { error: 'Exercise completion is only allowed during its assigned week' })
+    if (activationError) {
+      return jsonResponse(500, { error: activationError.message })
     }
 
-    if (weekNumber !== currentProgramWeek) {
+    const weekActivation = buildWeekActivationState(
+      (activationRows || []) as CoachingSessionWeekActivationRow[],
+      {},
+    )
+
+    if (!weekActivation.currentActiveWeek || weekNumber !== weekActivation.currentActiveWeek) {
       return jsonResponse(400, { error: 'Exercise completion is only allowed during its assigned week' })
     }
 
@@ -1002,6 +1041,14 @@ Deno.serve(async (req) => {
       return jsonResponse(500, { error: programData.error })
     }
 
+    const activationsData = await fetchWeekActivationsBySessionIds(
+      admin.adminClient,
+      sessionIds,
+    )
+    if (activationsData.error) {
+      return jsonResponse(500, { error: activationsData.error })
+    }
+
     const pendingReviewNotes: Array<{
       userId: string
       targetLang: string
@@ -1039,6 +1086,16 @@ Deno.serve(async (req) => {
 
     const rows = await Promise.all(
       visibleRows.map(async (row) => {
+        const weeklyObjectives = programData.weeklyObjectivesBySession.get(row.id) || {}
+        const sessionActivations = activationsData.activationsBySession.get(row.id) || []
+        const weekActivation = buildWeekActivationState(
+          sessionActivations,
+          weeklyObjectives,
+        )
+        const activatedWeekWindows = buildWeekWindows(sessionActivations).map((window) => ({
+          startAt: window.start.toISOString(),
+          endAt: window.end.toISOString(),
+        }))
         const activeSettings = settingsByUserId.get(row.user_id)
         const pendingReviewCount = countPendingMasterNotesForSession(
           {
@@ -1046,6 +1103,7 @@ Deno.serve(async (req) => {
             targetLang: row.target_lang,
             activatedAt: row.activated_at,
             durationWeeks: row.duration_weeks || 12,
+            activatedWeekWindows,
           },
           pendingReviewNotes,
         )
@@ -1064,12 +1122,13 @@ Deno.serve(async (req) => {
           ),
           feedbackNmUrl: row.feedback_nm_url,
           feedbackNmNotes: row.feedback_nm_notes,
-          weeklyObjectives: programData.weeklyObjectivesBySession.get(row.id) || {},
+          weeklyObjectives,
           notes: row.notes,
           isActive: row.is_active,
           status: row.status,
           activatedAt: row.activated_at,
           durationWeeks: row.duration_weeks,
+          weekActivation,
           updatedAt: row.updated_at,
           activeTargetLang: activeSettings?.target_lang || null,
           activeNativeLang: activeSettings?.native_lang || null,
@@ -1391,6 +1450,111 @@ Deno.serve(async (req) => {
     return jsonResponse(200, { ok: true })
   }
 
+  if (action === 'activate-week') {
+    const sessionId = safeString(payload.sessionId)
+    const weekKey = normalizeProgramWeekKey(safeString(payload.weekKey))
+    if (!sessionId || !weekKey) {
+      return jsonResponse(400, { error: 'sessionId and weekKey are required' })
+    }
+
+    const weekNumber = weekNumberFromKey(weekKey)
+
+    const { data: sessionRow, error: sessionError } = await admin.adminClient
+      .from('coaching_sessions')
+      .select('id, status, coach_user_id')
+      .eq('id', sessionId)
+      .maybeSingle<{ id: string; status: string; coach_user_id: string | null }>()
+
+    if (sessionError) {
+      return jsonResponse(500, { error: sessionError.message })
+    }
+    if (!sessionRow) {
+      return jsonResponse(404, { error: 'Coaching session not found' })
+    }
+    if (!canManageSession(admin, sessionRow.coach_user_id)) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    if (sessionRow.status !== 'active') {
+      return jsonResponse(400, { error: 'Session is not active' })
+    }
+
+    const programData = await fetchProgramDataBySessionIds(admin.adminClient, [sessionId])
+    if (programData.error) {
+      return jsonResponse(500, { error: programData.error })
+    }
+    const weeklyObjectives = programData.weeklyObjectivesBySession.get(sessionId) || {}
+
+    const { data: currentActivations, error: currentActivationsError } = await admin.adminClient
+      .from('coaching_session_week_activations')
+      .select('session_id, week_number, activated_at, ended_at')
+      .eq('session_id', sessionId)
+      .order('week_number', { ascending: true })
+
+    if (currentActivationsError) {
+      return jsonResponse(500, { error: currentActivationsError.message })
+    }
+
+    const existingRows = (currentActivations || []) as CoachingSessionWeekActivationRow[]
+    const activationDecision = evaluateWeekActivationRequest({
+      weekNumber,
+      activations: existingRows,
+      weeklyObjectives,
+    })
+
+    if (!activationDecision.ok && activationDecision.reason === 'missing_objectives') {
+      return jsonResponse(400, {
+        error: 'Weekly objectives are required before activation',
+      })
+    }
+
+    if (
+      !activationDecision.ok &&
+      activationDecision.reason === 'previous_week_not_finished'
+    ) {
+      return jsonResponse(400, { error: 'Previous week is not finished' })
+    }
+
+    if (!activationDecision.ok && activationDecision.reason === 'week_out_of_range') {
+      return jsonResponse(400, { error: 'Invalid week number' })
+    }
+
+    if (activationDecision.ok) {
+      const { error: insertError } = await admin.adminClient
+        .from('coaching_session_week_activations')
+        .insert({
+          session_id: sessionId,
+          week_number: weekNumber,
+          activated_at: new Date().toISOString(),
+          activated_by: admin.userId,
+        })
+
+      if (insertError) {
+        return jsonResponse(500, { error: insertError.message })
+      }
+    }
+
+    const { data: latestRows, error: latestError } = await admin.adminClient
+      .from('coaching_session_week_activations')
+      .select('session_id, week_number, activated_at, ended_at')
+      .eq('session_id', sessionId)
+      .order('week_number', { ascending: true })
+
+    if (latestError) {
+      return jsonResponse(500, { error: latestError.message })
+    }
+
+    const latestActivations = (latestRows || []) as CoachingSessionWeekActivationRow[]
+    const state = buildWeekActivationState(latestActivations, weeklyObjectives)
+    const activatedRow = latestActivations.find((row) => row.week_number === weekNumber)
+
+    return jsonResponse(200, {
+      ok: true,
+      activatedWeek: weekKeyFromNumber(weekNumber),
+      activatedAt: activatedRow?.activated_at || new Date().toISOString(),
+      weekActivation: state,
+    })
+  }
+
   if (action === 'archive-session' || action === 'delete-session') {
     const sessionId = safeString(payload.sessionId)
     if (!sessionId) {
@@ -1515,16 +1679,19 @@ Deno.serve(async (req) => {
     }
 
     const nowIso = new Date().toISOString()
-    const activated = row.activated_at ? toUtcDate(row.activated_at) : null
-    const completedWeeks = activated
-      ? Math.min(
-          12,
-          Math.max(
-            0,
-            Math.floor((Date.now() - activated.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1,
-          ),
-        )
-      : 0
+
+    const { data: activationRows, error: activationError } = await admin.adminClient
+      .from('coaching_session_week_activations')
+      .select('session_id, week_number, activated_at, ended_at')
+      .eq('session_id', sessionId)
+
+    if (activationError) {
+      return jsonResponse(500, { error: activationError.message })
+    }
+
+    const completedWeeks = buildWeekWindows(
+      (activationRows || []) as CoachingSessionWeekActivationRow[],
+    ).filter((window) => window.isFinished).length
 
     const [objectiveCount, classCount] = await Promise.all([
       admin.adminClient
@@ -1690,12 +1857,25 @@ Deno.serve(async (req) => {
       return jsonResponse(500, { error: programData.error })
     }
 
+    const activationsData = await fetchWeekActivationsBySessionIds(
+      admin.adminClient,
+      [coachingRow.id],
+    )
+    if (activationsData.error) {
+      return jsonResponse(500, { error: activationsData.error })
+    }
+
+    const sessionActivations = activationsData.activationsBySession.get(coachingRow.id) || []
+    const weeklyObjectives = programData.weeklyObjectivesBySession.get(coachingRow.id) || {}
+    const weekActivation = buildWeekActivationState(
+      sessionActivations,
+      weeklyObjectives,
+    )
+
     const weekProgress = await fetchWeekProgressForSession(admin.adminClient, {
       user_id: userId,
       target_lang: String(coachingRow.target_lang),
-      activated_at: (coachingRow as { activated_at?: string | null }).activated_at || null,
-      duration_weeks: (coachingRow as { duration_weeks?: number }).duration_weeks || 12,
-    })
+    }, sessionActivations)
 
     const targetLang = requestedTargetLang || String(coachingRow.target_lang)
 
@@ -1819,7 +1999,8 @@ Deno.serve(async (req) => {
       masterNotesCount: notesCountResult.count || 0,
       masterNotes: notesWithAudio,
       sessionId: coachingRow.id,
-      weeklyObjectives: programData.weeklyObjectivesBySession.get(coachingRow.id) || {},
+      weeklyObjectives,
+      weekActivation,
       weekProgress,
     })
   }
@@ -1891,8 +2072,20 @@ Deno.serve(async (req) => {
       return jsonResponse(500, { error: programData.error })
     }
 
+    const activationsData = await fetchWeekActivationsBySessionIds(
+      admin.adminClient,
+      sessionIds,
+    )
+    if (activationsData.error) {
+      return jsonResponse(500, { error: activationsData.error })
+    }
+
     const rows = await Promise.all(
       visibleRows.map(async (row) => ({
+        weekActivation: buildWeekActivationState(
+          activationsData.activationsBySession.get(row.id) || [],
+          programData.weeklyObjectivesBySession.get(row.id) || {},
+        ),
         id: row.id,
         userId: row.user_id,
         userDisplayName,

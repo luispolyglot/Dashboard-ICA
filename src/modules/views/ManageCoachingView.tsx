@@ -599,6 +599,7 @@ export function ManageCoachingView() {
                     <th className='pb-2 font-medium'>Nivel</th>
                     <th className='pb-2 font-medium'>Coacher</th>
                     <th className='pb-2 font-medium'>Estado</th>
+                    <th className='pb-2 font-medium'>Semanas</th>
                     <th className='pb-2 font-medium'>Comenzó</th>
                     <th className='pb-2 font-medium'>Activo</th>
                     <th className='pb-2 font-medium'>Actualizado</th>
@@ -613,8 +614,8 @@ export function ManageCoachingView() {
                       row.hasPendingMasterNotesReview || pendingReviewCount > 0
                     const pendingReviewLabel =
                       pendingReviewCount === 1
-                        ? '1 nota maestra pendiente de revision'
-                        : `${pendingReviewCount} notas maestras pendientes de revision`
+                        ? '1 nota maestra pendiente de revisión'
+                        : `${pendingReviewCount} notas maestras pendientes de revisión`
 
                     return (
                       <tr
@@ -646,6 +647,11 @@ export function ManageCoachingView() {
                         <td className='py-2'>{row.coachDisplayName || '-'}</td>
                         <td className='py-2'>
                           {statusLabels[row.status] || row.status}
+                        </td>
+                        <td className='py-2 text-xs text-muted-foreground'>
+                          {row.weekActivation?.lastActivatedWeek
+                            ? `Semana ${row.weekActivation.lastActivatedWeek}`
+                            : '-'}
                         </td>
                         <td className='py-2 text-xs text-muted-foreground'>
                           {row.activatedAt
@@ -680,7 +686,7 @@ export function ManageCoachingView() {
                                   type='button'
                                   variant='outline'
                                   size='icon'
-                                  aria-label='Mas acciones de sesión'
+                                  aria-label='Más acciones de sesión'
                                 >
                                   <MoreHorizontalIcon className='h-4 w-4' />
                                 </Button>
@@ -906,7 +912,7 @@ export function ManageCoachingView() {
           <DialogHeader>
             <DialogTitle>Archivar sesión de coaching</DialogTitle>
             <DialogDescription>
-              Esta accion mueve la sesión a estado cancelled y conserva sus
+              Esta acción mueve la sesión a estado cancelled y conserva sus
               datos.
             </DialogDescription>
           </DialogHeader>
@@ -949,7 +955,7 @@ export function ManageCoachingView() {
           <DialogHeader>
             <DialogTitle>Eliminar sesión definitivamente</DialogTitle>
             <DialogDescription>
-              Esta accion es irreversible. Se eliminaran datos y adjuntos de la
+              Esta acción es irreversible. Se eliminarán datos y adjuntos de la
               sesión.
             </DialogDescription>
           </DialogHeader>
@@ -992,7 +998,7 @@ export function ManageCoachingView() {
             <DialogDescription>
               {userToClose?.activatedAt
                 ? `Esta sesión va por la semana ${closePreviewWeek || 1}. ¿Deseas cerrarla ahora?`
-                : 'La sesión no tiene activacion registrada. Se cerrara igualmente.'}
+                : 'La sesión no tiene activación registrada. Se cerrará igualmente.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -1001,7 +1007,7 @@ export function ManageCoachingView() {
             <Input
               value={closeReason}
               onChange={(event) => setCloseReason(event.target.value)}
-              placeholder='Ej: usuario completo objetivos principales'
+              placeholder='Ej: usuario completó objetivos principales'
             />
           </div>
 

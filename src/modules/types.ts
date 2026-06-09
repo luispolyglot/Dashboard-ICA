@@ -277,6 +277,17 @@ export interface PushReminderPreferencesInput {
   habitLossEnabled: boolean
 }
 
+export interface CoachingNotificationPreference {
+  userId: string
+  masterNoteClosedEnabled: boolean
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface CoachingNotificationPreferenceInput {
+  masterNoteClosedEnabled: boolean
+}
+
 export interface IcaTestQuestion {
   promptNative: string
   correctTarget: string

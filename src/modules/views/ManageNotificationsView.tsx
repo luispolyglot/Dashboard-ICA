@@ -30,10 +30,17 @@ import {
   getPushPermissionState,
   listMyPushDevices,
 } from '../services/pushNotifications'
+import {
+  fetchMyCoachingNotificationPreference,
+  upsertMyCoachingNotificationPreference,
+} from '../services/coachingNotificationPreferences'
+import { fetchCoachingAccess } from '../services/coaching'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import type {
   CalendarIcademyTeacherNotificationPreference,
   CalendarIcademyTeacherNotificationPreferenceInput,
+  CoachingNotificationPreference,
+  CoachingNotificationPreferenceInput,
   PushReminderPreferences,
   PushReminderPreferencesInput,
   PushSubscriptionDevice,
@@ -83,6 +90,13 @@ export function ManageNotificationsView() {
     useState(true)
   const [isSavingTeacherReminderPrefs, setIsSavingTeacherReminderPrefs] =
     useState(false)
+  const [isCoachingAdmin, setIsCoachingAdmin] = useState(false)
+  const [coachingNotificationPrefs, setCoachingNotificationPrefs] =
+    useState<CoachingNotificationPreference | null>(null)
+  const [isLoadingCoachingNotificationPrefs, setIsLoadingCoachingNotificationPrefs] =
+    useState(true)
+  const [isSavingCoachingNotificationPrefs, setIsSavingCoachingNotificationPrefs] =
+    useState(false)
 
   useEffect(() => {
     let active = true
@@ -99,6 +113,42 @@ export function ManageNotificationsView() {
       } finally {
         if (!active) return
         setIsLoadingReminderPrefs(false)
+      }
+    }
+
+    void run()
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    const run = async () => {
+      setIsLoadingCoachingNotificationPrefs(true)
+      try {
+        const access = await fetchCoachingAccess()
+        if (!active) return
+
+        const isAdmin = Boolean(access?.isCoachingAdmin)
+        setIsCoachingAdmin(isAdmin)
+
+        if (!isAdmin) {
+          setCoachingNotificationPrefs(null)
+          return
+        }
+
+        const prefs = await fetchMyCoachingNotificationPreference()
+        if (!active) return
+        setCoachingNotificationPrefs(prefs)
+      } catch {
+        if (!active) return
+        setCoachingNotificationPrefs(null)
+      } finally {
+        if (!active) return
+        setIsLoadingCoachingNotificationPrefs(false)
       }
     }
 
@@ -268,6 +318,44 @@ export function ManageNotificationsView() {
     }
   }
 
+  const saveCoachingNotificationPreferences = async (
+    next: CoachingNotificationPreferenceInput,
+  ): Promise<void> => {
+    setIsSavingCoachingNotificationPrefs(true)
+    try {
+      const saved = await upsertMyCoachingNotificationPreference(next)
+      setCoachingNotificationPrefs(saved)
+    } finally {
+      setIsSavingCoachingNotificationPrefs(false)
+    }
+  }
+
+  const handleUpdateCoachingNotificationPreferences = async (
+    nextPartial: Partial<CoachingNotificationPreferenceInput>,
+  ): Promise<void> => {
+    if (!coachingNotificationPrefs) return
+
+    const next: CoachingNotificationPreferenceInput = {
+      masterNoteClosedEnabled:
+        nextPartial.masterNoteClosedEnabled ??
+        coachingNotificationPrefs.masterNoteClosedEnabled,
+    }
+
+    try {
+      if (next.masterNoteClosedEnabled) {
+        await ensurePushOnCurrentDevice()
+      }
+      await saveCoachingNotificationPreferences(next)
+      toast.success('Preferencias de coaching actualizadas.')
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'No se pudieron actualizar las notificaciones de coaching.'
+      toast.error(message)
+    }
+  }
+
   const handleEnablePushOnDevice = async (): Promise<void> => {
     if (isUpdatingPushDevice) return
     setIsUpdatingPushDevice(true)
@@ -308,7 +396,7 @@ export function ManageNotificationsView() {
     <section className='mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-5 py-8'>
       <h2 className='mb-1 font-serif text-3xl font-bold'>🔔 Notificaciones</h2>
       <p className='mb-6 text-sm text-muted-foreground'>
-        Configura recordatorios push de rachas y avisos de habito.
+        Configura recordatorios push de rachas y avisos de hábito.
       </p>
 
       <Card>
@@ -360,7 +448,7 @@ export function ManageNotificationsView() {
 
                 {pushPermission === 'denied' && (
                   <p className='text-xs text-amber-600'>
-                    El navegador bloqueo permisos. Debes habilitarlos
+                    El navegador bloqueó permisos. Debes habilitarlos
                     manualmente.
                   </p>
                 )}
@@ -416,7 +504,7 @@ export function ManageNotificationsView() {
                 </div>
 
                 <div className='mt-3 flex items-center gap-2'>
-                  <Label htmlFor='manage-teacher-reminder-minutes'>Anticipacion</Label>
+                  <Label htmlFor='manage-teacher-reminder-minutes'>Anticipación</Label>
                   <Select
                     value={String(teacherReminderPrefs.minutesBefore)}
                     onValueChange={(value) =>
@@ -446,6 +534,39 @@ export function ManageNotificationsView() {
                 </div>
               </div>
             )}
+
+            {!isLoadingCoachingNotificationPrefs &&
+              isCoachingAdmin &&
+              coachingNotificationPrefs && (
+                <div className='rounded-lg border p-3'>
+                  <div className='flex flex-wrap items-center justify-between gap-3'>
+                    <div className='space-y-1'>
+                      <p className='text-sm font-semibold'>
+                        Coaching: cierre de nota maestra
+                      </p>
+                      <p className='text-xs text-muted-foreground'>
+                        Te avisa cuando un alumno cierra una nota maestra dentro
+                        de una semana de coaching activada.
+                      </p>
+                    </div>
+                    <div className='flex items-center gap-2'>
+                      <Label htmlFor='manage-coaching-note-close-switch'>
+                        Avisar
+                      </Label>
+                      <Switch
+                        id='manage-coaching-note-close-switch'
+                        checked={coachingNotificationPrefs.masterNoteClosedEnabled}
+                        disabled={isSavingCoachingNotificationPrefs}
+                        onCheckedChange={(checked) =>
+                          void handleUpdateCoachingNotificationPreferences({
+                            masterNoteClosedEnabled: checked,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
             <div className='rounded-lg border p-3'>
               <div className='flex flex-wrap items-center justify-between gap-3'>

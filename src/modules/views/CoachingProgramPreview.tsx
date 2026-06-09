@@ -43,6 +43,16 @@ type ProgramPreviewMembership = {
   status: 'draft' | 'active' | 'completed' | 'cancelled'
   activatedAt: string | null
   durationWeeks: number
+  weekActivation?: {
+    lastActivatedWeek: number
+    activatedWeeks: string[]
+    currentActiveWeek: number | null
+    nextWeekEligible: number | null
+    nextWeekBlockedReason:
+      | 'missing_objectives'
+      | 'previous_week_not_finished'
+      | null
+  }
   classSessions: unknown[]
   weeklyObjectives: Record<string, unknown>
   weekProgress?: Record<
@@ -119,6 +129,14 @@ function normalizeProgramWeekKey(value: string | null): string | null {
   return null
 }
 
+function weekNumberFromKey(value: string): number {
+  const normalized = normalizeProgramWeekKey(value)
+  if (!normalized) return 1
+  const parsed = Number(normalized.slice(1))
+  if (!Number.isFinite(parsed)) return 1
+  return Math.min(12, Math.max(1, parsed))
+}
+
 function normalizeWeeklyObjectiveMap(
   value: unknown,
 ): Record<string, Record<string, unknown>> {
@@ -155,18 +173,6 @@ function getEmbeddableVideoUrl(value: string | null): string | null {
     return value.replace('/share/', '/embed/').replace('/shared/', '/embed/')
   }
   return null
-}
-
-function getCurrentProgramWeek(
-  activatedAt: string | null,
-  durationWeeks = 12,
-): number {
-  if (!activatedAt) return 1
-  const start = new Date(activatedAt)
-  if (Number.isNaN(start.getTime())) return 1
-  const week =
-    Math.floor((Date.now() - start.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1
-  return Math.min(durationWeeks, Math.max(1, week))
 }
 
 function objectiveStatus(
@@ -283,13 +289,15 @@ export function CoachingProgramPreview({
   )
 
   const durationWeeks = membership.durationWeeks || 12
-  const currentProgramWeek = useMemo(
-    () => getCurrentProgramWeek(membership.activatedAt, durationWeeks),
-    [membership.activatedAt, durationWeeks],
+  const activatedWeekKeys = useMemo(
+    () =>
+      (membership.weekActivation?.activatedWeeks || [])
+        .map((value) => normalizeProgramWeekKey(value))
+        .filter((value): value is string => Boolean(value)),
+    [membership.weekActivation?.activatedWeeks],
   )
-
-  const unlockedWeeks =
-    membership.status === 'active' ? currentProgramWeek : durationWeeks
+  const currentProgramWeek = membership.weekActivation?.currentActiveWeek || null
+  const unlockedWeeks = activatedWeekKeys.length
   const unlockedProgressPct = Math.round((unlockedWeeks / durationWeeks) * 100)
 
   return (
@@ -334,7 +342,7 @@ export function CoachingProgramPreview({
               Semana actual
             </p>
             <p className='mb-2 text-2xl font-semibold text-foreground'>
-              {currentProgramWeek}
+              {currentProgramWeek || '-'}
               <span className='ml-1 text-sm font-normal text-muted-foreground'>
                 / {durationWeeks}
               </span>
@@ -346,7 +354,9 @@ export function CoachingProgramPreview({
               />
             </div>
             <p className='mt-2 text-xs text-muted-foreground'>
-              {unlockedProgressPct}% del programa habilitado
+              {unlockedWeeks > 0
+                ? `${unlockedProgressPct}% del programa habilitado`
+                : 'Esperando activación del coach'}
             </p>
           </div>
         </CardContent>
@@ -356,9 +366,8 @@ export function CoachingProgramPreview({
         type='multiple'
         className='w-full rounded-xl border bg-card/70'
       >
-        {Array.from({ length: unlockedWeeks }, (_, index) => {
-          const week = index + 1
-          const weekKey = `W${String(week).padStart(2, '0')}`
+        {activatedWeekKeys.map((weekKey) => {
+          const week = weekNumberFromKey(weekKey)
           const objectives = objectivesByWeek[weekKey] || {}
           const progress = membership.weekProgress?.[weekKey] || {
             wordsCreated: 0,
@@ -437,17 +446,23 @@ export function CoachingProgramPreview({
             completedBaseObjectiveCount +
             (hasExerciseObjective && exerciseDone ? 1 : 0)
           const hasAnyObjective = objectiveTotal > 0
+          const isCurrentWeek = currentProgramWeek === week
+          const isPastWeek = currentProgramWeek
+            ? week < currentProgramWeek
+            : membership.status !== 'active'
 
           return (
             <AccordionItem
               value={weekKey}
               key={weekKey}
-              className='border-b px-2 last:border-b-0 sm:px-4'
+              className={`border-b px-2 last:border-b-0 sm:px-4 ${isPastWeek ? 'bg-muted/35' : ''}`}
             >
               <AccordionTrigger className='py-4 hover:no-underline'>
                 <div className='flex flex-1 flex-wrap items-center justify-between gap-2 pr-3 text-left'>
                   <div className='flex items-center gap-2'>
                     <Badge variant='outline'>Semana {week}</Badge>
+                    {isCurrentWeek && <Badge variant='default'>Activa</Badge>}
+                    {isPastWeek && <Badge variant='secondary'>Finalizada</Badge>}
                   </div>
                   <Badge
                     variant={
@@ -560,7 +575,7 @@ export function CoachingProgramPreview({
                           </div>
                         ) : (
                           <p className='text-xs text-muted-foreground'>
-                            Tu coach aun no definio un ejercicio para esta
+                            Tu coach aún no definió un ejercicio para esta
                             semana.
                           </p>
                         )}
@@ -578,7 +593,7 @@ export function CoachingProgramPreview({
                     <CardContent className='space-y-3'>
                       {!latestClass ? (
                         <div className='rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground'>
-                          Aun no hay clase cargada para esta semana.
+                          Aún no hay clase cargada para esta semana.
                         </div>
                       ) : (
                         <>
@@ -610,7 +625,7 @@ export function CoachingProgramPreview({
                                 </a>
                               ) : (
                                 <p className='text-sm text-muted-foreground'>
-                                  Aun no hay video de clase para esta semana.
+                                  Aún no hay video de clase para esta semana.
                                 </p>
                               )}
                             </div>
@@ -649,7 +664,7 @@ export function CoachingProgramPreview({
                                 </>
                               ) : (
                                 <p className='text-sm text-muted-foreground'>
-                                  Aun no hay imagen de reporte para esta semana.
+                                  Aún no hay imagen de reporte para esta semana.
                                 </p>
                               )}
                             </div>
@@ -678,7 +693,7 @@ export function CoachingProgramPreview({
                     <CardContent className='space-y-3'>
                       {closedNotes.length === 0 ? (
                         <div className='rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground'>
-                          Aun no hay notas maestras cerradas en esta semana.
+                          Aún no hay notas maestras cerradas en esta semana.
                         </div>
                       ) : (
                         closedNotes.map((note) => (
@@ -711,7 +726,7 @@ export function CoachingProgramPreview({
                                   </div>
                                 ) : (
                                   <p className='text-sm text-muted-foreground'>
-                                    Aun no hay video de revisión para esta nota.
+                                    Aún no hay video de revisión para esta nota.
                                   </p>
                                 )}
                               </div>
