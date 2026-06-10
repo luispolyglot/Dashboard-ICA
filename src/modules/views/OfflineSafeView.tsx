@@ -63,13 +63,17 @@ function resolveSpeechLangName(note: OfflineClosedMasterNote): string {
 
   const normalized = candidate.toLowerCase()
   const entries = Object.entries(LANG_CODES)
-  const exactCodeMatch = entries.find(([, code]) => code.toLowerCase() === normalized)
+  const exactCodeMatch = entries.find(
+    ([, code]) => code.toLowerCase() === normalized,
+  )
   if (exactCodeMatch) {
     return exactCodeMatch[0]
   }
 
   const languagePrefix = normalized.split('-')[0]
-  const prefixMatch = entries.find(([, code]) => code.toLowerCase().startsWith(`${languagePrefix}-`))
+  const prefixMatch = entries.find(([, code]) =>
+    code.toLowerCase().startsWith(`${languagePrefix}-`),
+  )
   if (prefixMatch) {
     return prefixMatch[0]
   }
@@ -157,7 +161,9 @@ export function OfflineSafeView() {
 
   const shouldAutoReturn = useMemo(() => {
     if (typeof window === 'undefined') return false
-    return Boolean(window.sessionStorage.getItem(OFFLINE_SAFE_LAST_PATH_STORAGE_KEY))
+    return Boolean(
+      window.sessionStorage.getItem(OFFLINE_SAFE_LAST_PATH_STORAGE_KEY),
+    )
   }, [])
 
   useEffect(() => {
@@ -181,11 +187,14 @@ export function OfflineSafeView() {
   }
 
   const languageGroups = useMemo(() => {
-    const groupsMap = new Map<string, {
-      key: string
-      label: string
-      notes: OfflineClosedMasterNote[]
-    }>()
+    const groupsMap = new Map<
+      string,
+      {
+        key: string
+        label: string
+        notes: OfflineClosedMasterNote[]
+      }
+    >()
 
     for (const note of notes) {
       const target = (note.targetLang || '').trim() || 'Sin idioma objetivo'
@@ -214,7 +223,9 @@ export function OfflineSafeView() {
       return
     }
 
-    const hasSelected = languageGroups.some((group) => group.key === selectedGroupKey)
+    const hasSelected = languageGroups.some(
+      (group) => group.key === selectedGroupKey,
+    )
     if (hasSelected) return
     setSelectedGroupKey(languageGroups[0]?.key || '')
   }, [languageGroups, selectedGroupKey])
@@ -224,7 +235,9 @@ export function OfflineSafeView() {
       return notes
     }
 
-    const selected = languageGroups.find((group) => group.key === selectedGroupKey)
+    const selected = languageGroups.find(
+      (group) => group.key === selectedGroupKey,
+    )
     return selected?.notes || []
   }, [languageGroups, notes, selectedGroupKey])
 
@@ -464,12 +477,12 @@ export function OfflineSafeView() {
             {loopingClosed ? (
               <>
                 <SquareIcon className='mr-1 size-4' />
-                Detener bucle sin conexión
+                Detener bucle
               </>
             ) : (
               <>
                 <RepeatIcon className='mr-1 size-4' />
-                Reproducir cerradas en bucle
+                Reproducir bucle
               </>
             )}
           </Button>
