@@ -40,6 +40,7 @@ import type { MasterNote } from '../types'
 type MasterNotesViewProps = {
   targetLang: string
   nativeLang: string
+  todayVoiceActivationsCount: number
 }
 
 function formatDuration(durationMs: number): string {
@@ -97,6 +98,7 @@ function SeekForward10Icon() {
 export function MasterNotesView({
   targetLang,
   nativeLang,
+  todayVoiceActivationsCount,
 }: MasterNotesViewProps) {
   const navigate = useNavigate()
   const [items, setItems] = useState<MasterNote[]>([])
@@ -613,7 +615,9 @@ export function MasterNotesView({
         loading={Boolean(deletingId)}
         title='Eliminar nota maestra'
         resourceLabel='esta nota maestra y sus audios'
+        resource='audio'
         resourceDates={[deleteCandidate?.created_at, deleteCandidate?.closed_at]}
+        todayTotalCount={todayVoiceActivationsCount}
       />
     </section>
   )
