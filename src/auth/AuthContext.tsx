@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { PropsWithChildren } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { hasSupabaseConfig, supabase } from '../lib/supabase'
+import { getSessionWithTimeout } from '../lib/supabaseAuthSafe'
 import { checkLoginEmail, normalizeEmail } from './whitelist'
 
 type AuthContextValue = {
@@ -26,6 +27,17 @@ function detectUserTimezone(): string {
   return timezone && timezone.trim().length > 0 ? timezone : 'UTC'
 }
 
+async function checkLoginEmailWithTimeout(email: string, timeoutMs = 2500) {
+  return await Promise.race([
+    checkLoginEmail(email),
+    new Promise<{ allowed: true }>((resolve) => {
+      globalThis.setTimeout(() => {
+        resolve({ allowed: true })
+      }, timeoutMs)
+    }),
+  ])
+}
+
 export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
@@ -35,9 +47,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   const enforceWhitelistAccess = useCallback(async (activeSession: Session | null) => {
     if (!supabase || !activeSession?.user?.email) return true
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return true
 
     try {
-      const whitelist = await checkLoginEmail(activeSession.user.email)
+      const whitelist = await checkLoginEmailWithTimeout(activeSession.user.email)
       if (whitelist.allowed) return true
 
       isSigningOutForWhitelistRef.current = true
@@ -66,17 +79,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setIsPasswordRecovery(true)
     }
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      const isAllowed = await enforceWhitelistAccess(data.session)
+    void (async () => {
+      const initialSession = await getSessionWithTimeout()
+      const isAllowed = await enforceWhitelistAccess(initialSession)
       if (isAllowed) {
-        setSession(data.session)
-        setUser(data.session?.user ?? null)
+        setSession(initialSession)
+        setUser(initialSession?.user ?? null)
       } else {
         setSession(null)
         setUser(null)
       }
       setLoading(false)
-    })
+    })()
 
     const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (event === 'PASSWORD_RECOVERY') {

@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase'
+import { getSessionWithTimeout } from '../../lib/supabaseAuthSafe'
 import { notifyCreationMetricsChanged } from './creationMetricsSync'
 import type { AppConfig, DailyProgressMap, Lexicard } from '../types'
 
@@ -28,9 +29,8 @@ function assertSupportedKey(key: string): asserts key is DashboardStorageKey {
 }
 
 async function getCurrentUserId(): Promise<string | null> {
-  if (!supabase) return null
-  const { data } = await supabase.auth.getSession()
-  return data.session?.user.id ?? null
+  const session = await getSessionWithTimeout()
+  return session?.user?.id ?? null
 }
 
 function loadLocalNumber(key: string, fallback: number): number {

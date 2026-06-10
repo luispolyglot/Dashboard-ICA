@@ -17,6 +17,17 @@ import type {
   MetaTrackerStartLevel,
 } from '../types'
 
+const LOAD_DATA_TIMEOUT_MS = 3500
+
+async function loadDataWithTimeout<T>(key: string, fallback: T): Promise<T> {
+  return await Promise.race([
+    loadData(key, fallback),
+    new Promise<T>((resolve) => {
+      globalThis.setTimeout(() => resolve(fallback), LOAD_DATA_TIMEOUT_MS)
+    }),
+  ])
+}
+
 function getMetaTrackerScopeKey(config: AppConfig): string {
   return `${config.nativeLang}::${config.targetLang}`
 }
@@ -64,12 +75,12 @@ export function useDashboardICA() {
 
   useEffect(() => {
     Promise.all([
-      loadData('dashboard-ICA-words', [] as Lexicard[]),
-      loadData('dashboard-ICA-config', null as AppConfig | null),
-      loadData('dashboard-ICA-completed', [] as string[]),
-      loadData('dashboard-ICA-creation-days', [] as string[]),
-      loadData('dashboard-ICA-daily-progress', {} as DailyProgressMap),
-      loadData('dashboard-ICA-review-session', 0 as number),
+      loadDataWithTimeout('dashboard-ICA-words', [] as Lexicard[]),
+      loadDataWithTimeout('dashboard-ICA-config', null as AppConfig | null),
+      loadDataWithTimeout('dashboard-ICA-completed', [] as string[]),
+      loadDataWithTimeout('dashboard-ICA-creation-days', [] as string[]),
+      loadDataWithTimeout('dashboard-ICA-daily-progress', {} as DailyProgressMap),
+      loadDataWithTimeout('dashboard-ICA-review-session', 0 as number),
     ]).then(([
       loadedCards,
       loadedConfig,
@@ -84,6 +95,14 @@ export function useDashboardICA() {
       setCreationDays(loadedCreationDays || [])
       setDailyProgress(loadedDailyProgress || {})
       setReviewSession(typeof loadedReviewSession === 'number' ? loadedReviewSession : 0)
+      setLoading(false)
+    }).catch(() => {
+      setCards([])
+      setConfig(null)
+      setCompletedDays([])
+      setCreationDays([])
+      setDailyProgress({})
+      setReviewSession(0)
       setLoading(false)
     })
 

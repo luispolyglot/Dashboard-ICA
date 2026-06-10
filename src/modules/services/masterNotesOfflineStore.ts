@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { getSessionWithTimeout } from '@/lib/supabaseAuthSafe'
 import type { MasterNote } from '../types'
 
 const DB_NAME = 'dashboard-ica-offline'
@@ -50,8 +51,8 @@ function getAudioRecordId(userId: string, noteId: string): string {
 
 async function getCurrentUserId(): Promise<string | null> {
   if (!supabase) return null
-  const { data } = await supabase.auth.getSession()
-  return data.session?.user?.id || null
+  const session = await getSessionWithTimeout()
+  return session?.user?.id || null
 }
 
 async function openOfflineDb(): Promise<IDBDatabase | null> {

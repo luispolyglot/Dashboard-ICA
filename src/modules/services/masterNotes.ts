@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { getSessionWithTimeout } from '@/lib/supabaseAuthSafe'
 import { notifyCreationMetricsChanged } from './creationMetricsSync'
 import { syncClosedMasterNotesOfflineSnapshot } from './masterNotesOfflineStore'
 import type { MasterNote, MasterNoteChunk } from '../types'
@@ -27,8 +28,8 @@ function getFileExtension(mimeType: string): string {
 
 async function getCurrentUserId(): Promise<string | null> {
   if (!supabase) return null
-  const { data } = await supabase.auth.getSession()
-  return data.session?.user?.id || null
+  const session = await getSessionWithTimeout()
+  return session?.user?.id || null
 }
 
 export async function fetchMasterNotes(
