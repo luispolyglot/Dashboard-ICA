@@ -17,6 +17,7 @@ import {
 } from '../services/leaderboard'
 
 const HISTORY_START_MONTH = '2026-05-01'
+const FOCUS_TOP_LIMIT = 30
 const VISIBLE_LIMIT = 33
 
 type MonthOption = {
@@ -144,6 +145,13 @@ function formatCountdown(ms: number): string {
   return `${minutes}m`
 }
 
+function trailingRankOpacityClass(position: number): string {
+  if (position === FOCUS_TOP_LIMIT + 1) return 'opacity-70'
+  if (position === FOCUS_TOP_LIMIT + 2) return 'opacity-50'
+  if (position === FOCUS_TOP_LIMIT + 3) return 'opacity-30'
+  return ''
+}
+
 export function LeaderboardView() {
   const { user } = useAuth()
   const currentMonthStart = useMemo(() => toLocalMonthStart(new Date()), [])
@@ -214,14 +222,25 @@ export function LeaderboardView() {
     () => buildVisibleRowsWithSharedRank(visibleRows),
     [visibleRows],
   )
-  const missingPlaceholderCount = Math.max(VISIBLE_LIMIT - rows.length, 0)
+  const topWindowRows = useMemo(
+    () => rowsWithSharedRank.slice(0, VISIBLE_LIMIT),
+    [rowsWithSharedRank],
+  )
+  const extraRows = useMemo(
+    () => rowsWithSharedRank.slice(VISIBLE_LIMIT),
+    [rowsWithSharedRank],
+  )
+  const missingPlaceholderCount = Math.max(
+    VISIBLE_LIMIT - topWindowRows.length,
+    0,
+  )
   const placeholderRanks = useMemo(
     () =>
       Array.from(
         { length: missingPlaceholderCount },
-        (_, index) => rows.length + index + 1,
+        (_, index) => topWindowRows.length + index + 1,
       ),
-    [missingPlaceholderCount, rows.length],
+    [missingPlaceholderCount, topWindowRows.length],
   )
 
   return (
@@ -236,17 +255,19 @@ export function LeaderboardView() {
       <Card className='mb-4'>
         <CardHeader className='gap-3'>
           <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
-            <div>
-              <CardTitle className='flex items-center gap-2 text-base'>
-                <TrophyIcon className='h-4 w-4' />
-                Clasificación mensual
-              </CardTitle>
-              <p className='mt-1 text-sm text-muted-foreground'>
-                TOP {VISIBLE_LIMIT} de {totalIcademers ?? '...'} icademers
-              </p>
-            </div>
+            <CardTitle className='flex items-center gap-2 text-base'>
+              <div className='flex flex-row flex-wrap gap-2 items-center'>
+                <p className='flex gap-1 items-center'>
+                  <TrophyIcon className='h-4 w-4' />
+                  Clasificación mensual
+                </p>
+                <p className='text-sm'>
+                  TOP {FOCUS_TOP_LIMIT} de {totalIcademers ?? '...'} icademers
+                </p>
+              </div>
+            </CardTitle>
 
-            <div className='w-full max-w-72'>
+            <div className='w-full max-w-72 space-y-2'>
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
                 <SelectTrigger>
                   <SelectValue placeholder='Selecciona mes' />
@@ -259,20 +280,20 @@ export function LeaderboardView() {
                   ))}
                 </SelectContent>
               </Select>
+
+              <p className='flex items-center gap-2 text-xs text-muted-foreground'>
+                <CalendarClockIcon className='h-4 w-4' />
+                {isCurrentMonth && !leaderboardClosed
+                  ? `Cierra en ${formatCountdown(remainingMs)} (UTC-12).`
+                  : 'Este leaderboard ya cerró.'}
+              </p>
             </div>
           </div>
 
-          <p className='flex items-center gap-2 text-sm text-muted-foreground'>
-            <InfoIcon className='h-4 w-4' />
+          <p className='text-sm text-muted-foreground'>
+            <InfoIcon className='size-4 mr-2 inline-flex' />
             El porcentaje mensual es un promedio de las rachas ICA y flashcards,
             hasta el día 28 inclusive.
-          </p>
-
-          <p className='flex items-center gap-2 text-sm text-muted-foreground'>
-            <CalendarClockIcon className='h-4 w-4' />
-            {isCurrentMonth && !leaderboardClosed
-              ? `Cierra en ${formatCountdown(remainingMs)} (UTC-12).`
-              : 'Este leaderboard ya cerró.'}
           </p>
         </CardHeader>
 
@@ -302,10 +323,10 @@ export function LeaderboardView() {
                   </tr>
                 </thead>
                 <tbody className='block lg:max-h-[50dvh] lg:overflow-y-auto'>
-                  {rowsWithSharedRank.map(({ row, rankLabel }) => (
+                  {topWindowRows.map(({ row, rankLabel }, index) => (
                     <tr
                       key={`${row.user_id}-${row.rank}-${selectedMonth}`}
-                      className={`table w-full table-fixed border-b align-middle last:border-b-0 ${
+                      className={`table w-full table-fixed border-b align-middle ${trailingRankOpacityClass(index + 1)} ${
                         row.user_id === user?.id ? 'bg-emerald-500/10' : ''
                       }`}
                     >
@@ -338,16 +359,10 @@ export function LeaderboardView() {
                     </tr>
                   ))}
 
-                  {placeholderRanks.map((rank, index) => (
+                  {placeholderRanks.map((rank) => (
                     <tr
                       key={`placeholder-rank-${rank}-${selectedMonth}`}
-                      className={`table w-full table-fixed border-b align-middle ${
-                        index === 0
-                          ? 'opacity-70'
-                          : index === 1
-                            ? 'opacity-50'
-                            : 'opacity-30'
-                      }`}
+                      className={`table w-full table-fixed border-b align-middle ${trailingRankOpacityClass(rank)}`}
                     >
                       <td className='w-[15%] py-2'>#{rank}</td>
                       <td className='w-auto py-2 pr-2 text-muted-foreground'>
@@ -359,16 +374,50 @@ export function LeaderboardView() {
                     </tr>
                   ))}
 
-                  {placeholderRanks.length > 0 && (
-                    <tr className='table w-full table-fixed align-middle opacity-40'>
+                  <tr className='table w-full table-fixed align-middle opacity-40'>
+                    <td
+                      colSpan={5}
+                      className='py-2 text-center text-lg tracking-[0.6em] text-muted-foreground'
+                    >
+                      ...
+                    </td>
+                  </tr>
+
+                  {extraRows.map(({ row, rankLabel }) => (
+                    <tr
+                      key={`${row.user_id}-${row.rank}-${selectedMonth}-extra`}
+                      className={`table w-full table-fixed border-b align-middle last:border-b-0 ${
+                        row.user_id === user?.id ? 'bg-emerald-500/10' : ''
+                      }`}
+                    >
+                      <td className='w-[15%] py-2'>{rankLabel}</td>
+                      <td className='w-auto py-2 flex flex-row gap-3 items-center pr-2'>
+                        <p className='truncate font-medium'>
+                          {row.display_name || row.username || 'Usuario'}
+                        </p>
+                        {row.user_id === user?.id && (
+                          <p className='text-xs text-emerald-600 dark:text-emerald-400'>
+                            (Tú)
+                          </p>
+                        )}
+                      </td>
                       <td
-                        colSpan={5}
-                        className='py-2 text-center text-lg tracking-[0.6em] text-muted-foreground'
+                        className={`w-[18%] py-2 ${row.ica_streak_days && row.ica_streak_days > 0 ? '' : 'grayscale'}`}
                       >
-                        ...
+                        {row.ica_streak_days && row.ica_streak_days > 0
+                          ? `🔥 ${row.ica_streak_days}`
+                          : '🔥 0'}
+                      </td>
+                      <td className='w-[18%] py-2 font-medium'>
+                        {Math.round(row.avg_percent || 0)}%
+                      </td>
+                      <td className='w-[18%] py-2 font-medium'>
+                        {row.avg_percent
+                          ? (Math.round(row.avg_percent) * 0.1).toFixed(1)
+                          : '0'}
                       </td>
                     </tr>
-                  )}
+                  ))}
                 </tbody>
               </table>
             </div>
