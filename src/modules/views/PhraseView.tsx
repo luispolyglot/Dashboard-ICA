@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ComponentType, Dispatch, SetStateAction } from 'react'
 import { CopyIcon } from 'lucide-react'
+import { toast } from 'sonner'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -245,6 +246,36 @@ export function PhraseView({
     ) {
       return
     }
+
+    const hasLanguageMismatch = selectedWords.some((word) => {
+      const mismatchedTarget =
+        typeof word.targetLang === 'string' &&
+        word.targetLang.trim() !== '' &&
+        word.targetLang !== config.targetLang
+      const mismatchedNative =
+        typeof word.nativeLang === 'string' &&
+        word.nativeLang.trim() !== '' &&
+        word.nativeLang !== config.nativeLang
+
+      return mismatchedTarget || mismatchedNative
+    })
+
+    if (hasLanguageMismatch) {
+      toast.error('Detectamos palabras de otro idioma. Recarga e intenta de nuevo.')
+      console.error('Blocked phrase generation due to language mismatch in selected words', {
+        targetLang: config.targetLang,
+        nativeLang: config.nativeLang,
+        selectedWords: selectedWords.map((word) => ({
+          id: word.id,
+          target: word.target,
+          native: word.native,
+          targetLang: word.targetLang,
+          nativeLang: word.nativeLang,
+        })),
+      })
+      return
+    }
+
     if (selectedWords.length < minWordsRequired) return
 
     setLoading(true)

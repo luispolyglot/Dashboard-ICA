@@ -152,6 +152,41 @@ async function loadWords(userId: string): Promise<Lexicard[]> {
       targetLang: activeTarget,
     }))
   } catch {
+    const legacySelectionWithLang = [
+      'id',
+      'target',
+      'native',
+      'importance',
+      'interval',
+      'ease_factor',
+      'streak',
+      'last_reviewed_at',
+      'created_at',
+      'target_lang',
+      'native_lang',
+    ].join(', ')
+
+    let legacyScopedQuery = supabase
+      .from('lexicards')
+      .select(legacySelectionWithLang)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true })
+
+    if (activeNative && activeTarget) {
+      legacyScopedQuery = legacyScopedQuery
+        .eq('native_lang', activeNative)
+        .eq('target_lang', activeTarget)
+    }
+
+    const legacyScoped = await legacyScopedQuery
+    if (!legacyScoped.error) {
+      return mapRows((legacyScoped.data || []) as unknown as Array<Record<string, unknown>>)
+    }
+
+    if (activeNative && activeTarget) {
+      return []
+    }
+
     const { data, error } = await supabase
       .from('lexicards')
       .select('id, target, native, importance, interval, ease_factor, streak, last_reviewed_at, created_at')
