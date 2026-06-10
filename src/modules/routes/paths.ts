@@ -36,7 +36,7 @@ export const DASHBOARD_ROUTES = {
 export const DASHBOARD_LABELS: Record<string, string> = {
   '/': 'Inicio',
   '/new-ica-words': 'Añadir palabras ICA',
-  '/my-ica-words': 'Historial de palabras ICA',
+  '/my-ica-words': 'Mi baúl ICA',
   '/flashcards': 'Flashcards',
   '/flashcards/play': 'Práctica Flashcards',
   '/activation-phrase': 'Creación de frases ICA',
