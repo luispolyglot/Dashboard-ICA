@@ -26,7 +26,10 @@ import { DASHBOARD_ROUTES } from '../routes/paths'
 import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
 import { speakNatural, stopTTS } from '../services/tts'
 import { formatDate } from '../utils'
-import { getMasterNotesLoopAnnouncement, type LoopAnnouncementType } from './masterNotesLoopAnnouncements'
+import {
+  getMasterNotesLoopAnnouncement,
+  type LoopAnnouncementType,
+} from './masterNotesLoopAnnouncements'
 import {
   createMasterNote,
   deleteMasterNote,
@@ -111,7 +114,9 @@ export function MasterNotesView({
   const [loopingClosed, setLoopingClosed] = useState(false)
   const [loopIds, setLoopIds] = useState<string[]>([])
   const [loopIndex, setLoopIndex] = useState(0)
-  const [deleteCandidate, setDeleteCandidate] = useState<MasterNote | null>(null)
+  const [deleteCandidate, setDeleteCandidate] = useState<MasterNote | null>(
+    null,
+  )
   const previousPlayingNoteIdRef = useRef<string | null>(null)
   const loopTokenRef = useRef(0)
 
@@ -166,7 +171,9 @@ export function MasterNotesView({
   }, [items])
 
   const playableClosedItems = useMemo(() => {
-    return closedItems.filter((item) => canPlay(item, item.total_duration_ms > 0 ? 1 : 0))
+    return closedItems.filter((item) =>
+      canPlay(item, item.total_duration_ms > 0 ? 1 : 0),
+    )
   }, [canPlay, closedItems])
 
   const disableLoopPlayback = (stopCurrent = false): void => {
@@ -246,14 +253,28 @@ export function MasterNotesView({
   useEffect(() => {
     const prevPlayingNoteId = previousPlayingNoteIdRef.current
 
-    if (loopingClosed && !loopPreparing && prevPlayingNoteId && !playingNoteId && loopIds.length > 0) {
+    if (
+      loopingClosed &&
+      !loopPreparing &&
+      prevPlayingNoteId &&
+      !playingNoteId &&
+      loopIds.length > 0
+    ) {
       const token = loopTokenRef.current
       const nextIndex = (loopIndex + 1) % loopIds.length
       void playLoopNoteAt(nextIndex, loopIds, token, 'next', 1000)
     }
 
     previousPlayingNoteIdRef.current = playingNoteId
-  }, [loopIds, loopIndex, loopPreparing, loopingClosed, play, playingNoteId, itemsById])
+  }, [
+    loopIds,
+    loopIndex,
+    loopPreparing,
+    loopingClosed,
+    play,
+    playingNoteId,
+    itemsById,
+  ])
   const handleCreate = async (): Promise<void> => {
     if (creating) return
     setCreating(true)
@@ -369,13 +390,6 @@ export function MasterNotesView({
         Crea notas maestras en {targetLang} y cierra cada una al completar entre
         3:00 y 3:30.
       </p>
-
-      <p className='mb-4 text-xs text-muted-foreground'>
-        💡 Tip: cada vez que escuchas una nota maestra cerrada, preparamos su audio en este
-        dispositivo para que su reproducción sea más rápida y también funcione mejor sin
-        conexión.
-      </p>
-
       <Card className='mb-4 rounded-2xl'>
         <CardContent>
           <p className='mb-2 text-xs font-semibold tracking-wide text-muted-foreground'>
@@ -388,13 +402,18 @@ export function MasterNotesView({
           >
             {creating ? 'Creando...' : 'Crear nota maestra'}
           </Button>
-
-          {closedItems.length > 0 && (
+        </CardContent>
+      </Card>
+      {closedItems.length > 0 && (
+        <Card className='mb-4 rounded-2xl'>
+          <CardContent>
+            <p className='mb-2 text-xs font-semibold tracking-wide text-muted-foreground'>
+              Reproducir todas las notas maestras cerradas en bucle
+            </p>
             <Button
               type='button'
               variant={loopingClosed ? 'secondary' : 'outline'}
               onClick={() => void handleClosedLoopToggle()}
-              className='ml-2'
             >
               {loopPreparing ? (
                 <>
@@ -409,14 +428,18 @@ export function MasterNotesView({
               ) : (
                 <>
                   <RepeatIcon className='mr-1 size-4' />
-                  Reproducir cerradas en bucle
+                  Reproducir bucle
                 </>
               )}
             </Button>
-          )}
-        </CardContent>
-      </Card>
-
+            <p className='mt-4 text-xs text-muted-foreground'>
+              💡 Tip: cada vez que escuchas una nota maestra cerrada, preparamos
+              su audio en este dispositivo para que su reproducción sea más
+              rápida y también funcione mejor sin conexión.
+            </p>
+          </CardContent>
+        </Card>
+      )}
       {loading && (
         <p className='text-sm text-muted-foreground'>Cargando notas...</p>
       )}
@@ -462,13 +485,13 @@ export function MasterNotesView({
                       </Badge>
                     )}
                   </div>
-                   <div className='mt-1 text-xs text-muted-foreground'>
-                     Duración: {formatDuration(item.total_duration_ms)}
-                     {item.state === 'closed'
-                        ? ` · Cerrada el: ${formatDate(item.closed_at)}`
-                        : ''}
-                    </div>
+                  <div className='mt-1 text-xs text-muted-foreground'>
+                    Duración: {formatDuration(item.total_duration_ms)}
+                    {item.state === 'closed'
+                      ? ` · Cerrada el: ${formatDate(item.closed_at)}`
+                      : ''}
                   </div>
+                </div>
 
                 <div className='flex gap-2'>
                   {playingNoteId !== item.id ? (
@@ -616,7 +639,10 @@ export function MasterNotesView({
         title='Eliminar nota maestra'
         resourceLabel='esta nota maestra y sus audios'
         resource='audio'
-        resourceDates={[deleteCandidate?.created_at, deleteCandidate?.closed_at]}
+        resourceDates={[
+          deleteCandidate?.created_at,
+          deleteCandidate?.closed_at,
+        ]}
         todayTotalCount={todayVoiceActivationsCount}
       />
     </section>
