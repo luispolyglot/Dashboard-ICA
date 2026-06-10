@@ -93,7 +93,6 @@ export function App() {
             <Route path='flashcards/play/:mode' element={<FlashcardsPlayPage />} />
             <Route path='activation-phrase' element={<ActivationPhrasePage />} />
             <Route path='phrase-history' element={<PhraseHistoryPage />} />
-            <Route path='offline-safe' element={<OfflineSafePage />} />
             <Route path='master-notes' element={<MasterNotesPage />} />
             <Route path='master-notes/note/:noteId' element={<MasterNoteDetailPage />} />
             <Route
@@ -139,6 +138,7 @@ export function App() {
               <Route path='historic-leaderboard' element={<HistoricLeaderboardPage />} />
             </Route>
           </Route>
+          <Route path='offline-safe' element={<OfflineSafePage />} />
         </Route>
         <Route path='*' element={<RootRedirect />} />
       </Routes>

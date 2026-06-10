@@ -13,6 +13,13 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { LANG_CODES } from '../constants'
 import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
 import {
@@ -81,6 +88,7 @@ export function OfflineSafeView() {
   const [loopingClosed, setLoopingClosed] = useState(false)
   const [loopIds, setLoopIds] = useState<string[]>([])
   const [loopIndex, setLoopIndex] = useState(0)
+  const [selectedGroupKey, setSelectedGroupKey] = useState<string>('')
   const previousPlayingNoteIdRef = useRef<string | null>(null)
   const loopTokenRef = useRef(0)
 
@@ -147,6 +155,24 @@ export function OfflineSafeView() {
     return getCurrentPath()
   }, [])
 
+  const shouldAutoReturn = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    return Boolean(window.sessionStorage.getItem(OFFLINE_SAFE_LAST_PATH_STORAGE_KEY))
+  }, [])
+
+  useEffect(() => {
+    if (!isOnline || !shouldAutoReturn) return
+
+    const timeoutId = window.setTimeout(() => {
+      window.sessionStorage.removeItem(OFFLINE_SAFE_LAST_PATH_STORAGE_KEY)
+      navigate(returnPath, { replace: true })
+    }, 700)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [isOnline, navigate, returnPath, shouldAutoReturn])
+
   const handleRetry = () => {
     if (typeof window !== 'undefined') {
       window.sessionStorage.removeItem(OFFLINE_SAFE_LAST_PATH_STORAGE_KEY)
@@ -154,13 +180,62 @@ export function OfflineSafeView() {
     navigate(returnPath, { replace: true })
   }
 
-  const notesById = useMemo(() => {
-    return new Map(notes.map((note) => [note.noteId, note]))
+  const languageGroups = useMemo(() => {
+    const groupsMap = new Map<string, {
+      key: string
+      label: string
+      notes: OfflineClosedMasterNote[]
+    }>()
+
+    for (const note of notes) {
+      const target = (note.targetLang || '').trim() || 'Sin idioma objetivo'
+      const native = (note.nativeLang || '').trim() || 'Sin idioma nativo'
+      const key = `${target}::${native}`
+      const label = `${target} -> ${native}`
+
+      const current = groupsMap.get(key)
+      if (current) {
+        current.notes.push(note)
+      } else {
+        groupsMap.set(key, {
+          key,
+          label,
+          notes: [note],
+        })
+      }
+    }
+
+    return Array.from(groupsMap.values())
   }, [notes])
 
-  const playableOfflineNotes = useMemo(() => {
-    return notes.filter((note) => note.audioAvailable)
-  }, [notes])
+  useEffect(() => {
+    if (languageGroups.length === 0) {
+      setSelectedGroupKey('')
+      return
+    }
+
+    const hasSelected = languageGroups.some((group) => group.key === selectedGroupKey)
+    if (hasSelected) return
+    setSelectedGroupKey(languageGroups[0]?.key || '')
+  }, [languageGroups, selectedGroupKey])
+
+  const visibleNotes = useMemo(() => {
+    if (languageGroups.length <= 1) {
+      return notes
+    }
+
+    const selected = languageGroups.find((group) => group.key === selectedGroupKey)
+    return selected?.notes || []
+  }, [languageGroups, notes, selectedGroupKey])
+
+  const notesById = useMemo(() => {
+    return new Map(visibleNotes.map((note) => [note.noteId, note]))
+  }, [visibleNotes])
+
+  const playableOfflineNotes = useMemo(
+    () => visibleNotes.filter((note) => note.audioAvailable),
+    [visibleNotes],
+  )
 
   const toMasterNote = (note: OfflineClosedMasterNote): MasterNote => {
     return {
@@ -252,6 +327,11 @@ export function OfflineSafeView() {
 
     previousPlayingNoteIdRef.current = playingNoteId
   }, [loopIds, loopIndex, loopingClosed, notesById, play, playingNoteId])
+
+  useEffect(() => {
+    if (!loopingClosed) return
+    disableLoopPlayback(true)
+  }, [selectedGroupKey])
 
   const handlePlay = async (note: OfflineClosedMasterNote): Promise<void> => {
     if (!note.audioAvailable) return
@@ -350,6 +430,27 @@ export function OfflineSafeView() {
           Notas maestras cerradas en caché local
         </p>
 
+        {languageGroups.length > 1 && (
+          <div className='flex items-center gap-2'>
+            <p className='text-xs text-muted-foreground'>Idioma:</p>
+            <Select
+              value={selectedGroupKey}
+              onValueChange={setSelectedGroupKey}
+            >
+              <SelectTrigger size='sm' className='min-w-56'>
+                <SelectValue placeholder='Selecciona idioma' />
+              </SelectTrigger>
+              <SelectContent>
+                {languageGroups.map((group) => (
+                  <SelectItem key={group.key} value={group.key}>
+                    {group.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         {playableOfflineNotes.length > 0 && (
           <Button
             type='button'
@@ -384,7 +485,7 @@ export function OfflineSafeView() {
           <p className='text-sm text-red-400'>{notesError}</p>
         )}
 
-        {!loadingNotes && !notesError && notes.length === 0 && (
+        {!loadingNotes && !notesError && visibleNotes.length === 0 && (
           <p className='text-sm text-muted-foreground'>
             Aún no hay notas cerradas guardadas en este dispositivo.
           </p>
@@ -392,7 +493,7 @@ export function OfflineSafeView() {
 
         {!loadingNotes &&
           !notesError &&
-          notes.map((note) => (
+          visibleNotes.map((note) => (
             <Card key={note.noteId} className='rounded-2xl'>
               <CardContent className='flex flex-wrap items-center justify-between gap-3'>
                 <div>
