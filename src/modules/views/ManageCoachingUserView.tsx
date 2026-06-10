@@ -65,6 +65,7 @@ import {
   upsertMasterNoteFeedbackLoom,
   upsertCoachingUser,
   activateCoachingWeek,
+  closeCoachingWeek,
 } from '../services/coaching'
 import { CoachingProgramPreview } from './CoachingProgramPreview'
 import { PendingReviewDot } from '../components/PendingReviewDot'
@@ -518,6 +519,8 @@ export function ManageCoachingUserView({
   const [activatingWeekKey, setActivatingWeekKey] = useState<string | null>(
     null,
   )
+  const [closeWeekModalOpen, setCloseWeekModalOpen] = useState(false)
+  const [isClosingWeek, setIsClosingWeek] = useState(false)
 
   const selectedMembership = useMemo(
     () => memberships.find((row) => row.id === selectedSessionId) || null,
@@ -771,6 +774,7 @@ export function ManageCoachingUserView({
         prev ? { ...prev, weeklyObjectives: nextWeekly } : prev,
       )
       setFeedback(`Objetivos guardados para semana ${weekKey}.`)
+      await loadAll()
     } catch (err) {
       setFeedback(
         err instanceof Error
@@ -923,6 +927,27 @@ export function ManageCoachingUserView({
     }
   }
 
+  const handleCloseCurrentWeek = async () => {
+    if (!selectedMembership || !activeWeekNumber) return
+
+    setIsClosingWeek(true)
+    setFeedback(null)
+    try {
+      await closeCoachingWeek({ sessionId: selectedMembership.id })
+      setFeedback(`Semana ${activeWeekNumber} cerrada manualmente.`)
+      setCloseWeekModalOpen(false)
+      await loadAll()
+    } catch (err) {
+      setFeedback(
+        err instanceof Error
+          ? err.message
+          : 'No se pudo cerrar la semana actual.',
+      )
+    } finally {
+      setIsClosingWeek(false)
+    }
+  }
+
   const handleSaveFeedback = async (
     masterNoteId: string,
     kind: 'video' | 'notes',
@@ -991,7 +1016,58 @@ export function ManageCoachingUserView({
         feedbackNotes: string | null
       }>
     >()
-    if (!insights || !selectedMembership?.activatedAt) return map
+
+    if (!insights) return map
+
+    const notesById = new Map(
+      insights.masterNotes
+        .filter((note) => note.state === 'closed')
+        .map((note) => [note.id, note]),
+    )
+
+    const groupedByBackend = insights.closedMasterNotesByWeek || null
+    if (groupedByBackend && Object.keys(groupedByBackend).length > 0) {
+      for (const [weekKeyRaw, notes] of Object.entries(groupedByBackend)) {
+        const weekKey = normalizeProgramWeekKey(weekKeyRaw)
+        if (!weekKey) continue
+        const existing = map.get(weekKey) || []
+        for (const note of notes) {
+          const source = notesById.get(note.id)
+          if (!source) continue
+          existing.push({
+            id: source.id,
+            name: source.name,
+            createdAt: source.created_at,
+            closedAt: source.closed_at || source.updated_at,
+            audioUrl: source.final_audio_path ? source.audioUrl : null,
+            audioChunks: (source.audioChunks || []).map((item) => ({
+              audioUrl: item.audioUrl || null,
+              durationMs: item.duration_ms || 0,
+            })),
+            totalDurationMs: source.total_duration_ms || 0,
+            feedbackLoomUrl: source.coachingFeedbackLoomUrl || null,
+            feedbackNotes: source.coachingFeedbackNotes || null,
+          })
+        }
+        map.set(weekKey, existing)
+      }
+    }
+
+    if (map.size > 0) {
+      for (const [weekKey, notes] of map.entries()) {
+        const sorted = [...notes].sort((a, b) =>
+          a.name.localeCompare(b.name, 'es', {
+            numeric: true,
+            sensitivity: 'base',
+          }),
+        )
+        map.set(weekKey, sorted)
+      }
+
+      return map
+    }
+
+    if (!selectedMembership?.activatedAt) return map
 
     for (const note of insights.masterNotes) {
       if (note.state !== 'closed') continue
@@ -1030,7 +1106,11 @@ export function ManageCoachingUserView({
     }
 
     return map
-  }, [insights, selectedMembership?.activatedAt])
+  }, [
+    insights,
+    selectedMembership?.activatedAt,
+    insights?.closedMasterNotesByWeek,
+  ])
 
   const sessionCurrentWeek = useMemo(() => {
     if (selectedMembership?.weekActivation?.lastActivatedWeek) {
@@ -1064,6 +1144,8 @@ export function ManageCoachingUserView({
     : null
   const nextWeekBlockedReason =
     selectedMembership?.weekActivation?.nextWeekBlockedReason || null
+  const activeWeekNumber =
+    selectedMembership?.weekActivation?.currentActiveWeek || null
 
   const previewMembership = useMemo(() => {
     if (!selectedMembership || !insights) return null
@@ -1338,6 +1420,22 @@ export function ManageCoachingUserView({
                           ? `Esperando fin de Semana ${selectedMembership.weekActivation.lastActivatedWeek}`
                           : 'Sin semanas pendientes'}
                   </Button>
+                  <Button
+                    type='button'
+                    variant='destructive'
+                    onClick={() => setCloseWeekModalOpen(true)}
+                    disabled={
+                      !activeWeekNumber ||
+                      selectedMembership.status !== 'active' ||
+                      isClosingWeek
+                    }
+                  >
+                    {isClosingWeek
+                      ? 'Cerrando...'
+                      : activeWeekNumber
+                        ? `Cerrar Semana ${activeWeekNumber}`
+                        : 'Sin semana activa'}
+                  </Button>
                   {nextWeekBlockedReason === 'missing_objectives' && (
                     <p className='text-sm text-muted-foreground'>
                       Debes guardar objetivos para la siguiente semana antes de
@@ -1349,7 +1447,7 @@ export function ManageCoachingUserView({
 
               <Accordion
                 type='multiple'
-                className='w-full rounded-md border px-4'
+                className='w-full rounded-xl border bg-card/70'
               >
                 {Array.from({ length: 12 }, (_, index) => {
                   const week = index + 1
@@ -1389,14 +1487,19 @@ export function ManageCoachingUserView({
                       ? 'Terminada'
                       : 'No activada'
                   const isPastWeek = isWeekActivated && !isCurrentWeek
+                  const accordionBgClass = isPastWeek
+                    ? 'bg-muted'
+                    : isCurrentWeek
+                      ? 'bg-primary/10'
+                      : ''
 
                   return (
                     <AccordionItem
                       key={weekKey}
                       value={weekKey}
-                      className={isPastWeek ? 'bg-muted/40' : undefined}
+                      className={`border-b px-2 last:border-b-0 sm:px-4 ${accordionBgClass}`}
                     >
-                      <AccordionTrigger>
+                      <AccordionTrigger className='py-4 hover:no-underline'>
                         <span className='inline-flex items-center gap-2'>
                           <span>Semana {week}</span>
                           <Badge
@@ -1419,7 +1522,8 @@ export function ManageCoachingUserView({
                           )}
                         </span>
                       </AccordionTrigger>
-                      <AccordionContent className='space-y-4'>
+                      <AccordionContent className='pb-4'>
+                        <div className='mt-4 flex flex-col gap-4'>
                         <Card>
                           <CardHeader>
                             <CardTitle>Clase de la semana</CardTitle>
@@ -1863,6 +1967,7 @@ export function ManageCoachingUserView({
                             )}
                           </CardContent>
                         </Card>
+                        </div>
                       </AccordionContent>
                     </AccordionItem>
                   )
@@ -1895,6 +2000,38 @@ export function ManageCoachingUserView({
           )}
         </div>
       )}
+
+      <Dialog open={closeWeekModalOpen} onOpenChange={setCloseWeekModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cerrar semana actual</DialogTitle>
+            <DialogDescription>
+              {activeWeekNumber
+                ? `Se cerrará manualmente la Semana ${activeWeekNumber}. Luego podrás activar la siguiente semana si cumple condiciones.`
+                : 'No hay una semana activa para cerrar.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setCloseWeekModalOpen(false)}
+              disabled={isClosingWeek}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type='button'
+              variant='destructive'
+              onClick={() => void handleCloseCurrentWeek()}
+              disabled={!activeWeekNumber || isClosingWeek}
+            >
+              {isClosingWeek ? 'Cerrando...' : 'Confirmar cierre manual'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={changeCoacherModalOpen}

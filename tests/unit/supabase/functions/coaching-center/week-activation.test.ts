@@ -78,4 +78,24 @@ describe('week activation helpers', () => {
     expect(state.nextWeekEligible).toBeNull()
     expect(state.nextWeekBlockedReason).toBe('missing_objectives')
   })
+
+  it('unlocks next week when current week is manually closed', () => {
+    const state = buildWeekActivationState(
+      [
+        activation({
+          week_number: 1,
+          activated_at: '2026-01-01T00:00:00.000Z',
+          ended_at: '2026-01-01T12:00:00.000Z',
+        }),
+      ],
+      {
+        W02: { wordsTarget: 30 },
+      },
+      Date.parse('2026-01-01T12:00:01.000Z'),
+    )
+
+    expect(state.currentActiveWeek).toBeNull()
+    expect(state.nextWeekEligible).toBe(2)
+    expect(state.nextWeekBlockedReason).toBeNull()
+  })
 })

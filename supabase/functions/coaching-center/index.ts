@@ -1555,6 +1555,87 @@ Deno.serve(async (req) => {
     })
   }
 
+  if (action === 'close-week') {
+    const sessionId = safeString(payload.sessionId)
+    if (!sessionId) {
+      return jsonResponse(400, { error: 'sessionId is required' })
+    }
+
+    const { data: sessionRow, error: sessionError } = await admin.adminClient
+      .from('coaching_sessions')
+      .select('id, status, coach_user_id')
+      .eq('id', sessionId)
+      .maybeSingle<{ id: string; status: string; coach_user_id: string | null }>()
+
+    if (sessionError) {
+      return jsonResponse(500, { error: sessionError.message })
+    }
+    if (!sessionRow) {
+      return jsonResponse(404, { error: 'Coaching session not found' })
+    }
+    if (!canManageSession(admin, sessionRow.coach_user_id)) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    if (sessionRow.status !== 'active') {
+      return jsonResponse(400, { error: 'Session is not active' })
+    }
+
+    const { data: activationRows, error: activationError } = await admin.adminClient
+      .from('coaching_session_week_activations')
+      .select('session_id, week_number, activated_at, ended_at')
+      .eq('session_id', sessionId)
+      .order('week_number', { ascending: true })
+
+    if (activationError) {
+      return jsonResponse(500, { error: activationError.message })
+    }
+
+    const windows = buildWeekWindows(
+      (activationRows || []) as CoachingSessionWeekActivationRow[],
+    )
+    const activeWindow = [...windows].reverse().find((window) => !window.isFinished) || null
+    if (!activeWindow) {
+      return jsonResponse(400, { error: 'No active week to close' })
+    }
+
+    const nowIso = new Date().toISOString()
+    const { error: closeWeekError } = await admin.adminClient
+      .from('coaching_session_week_activations')
+      .update({ ended_at: nowIso })
+      .eq('session_id', sessionId)
+      .eq('week_number', activeWindow.weekNumber)
+
+    if (closeWeekError) {
+      return jsonResponse(500, { error: closeWeekError.message })
+    }
+
+    const { data: latestRows, error: latestError } = await admin.adminClient
+      .from('coaching_session_week_activations')
+      .select('session_id, week_number, activated_at, ended_at')
+      .eq('session_id', sessionId)
+      .order('week_number', { ascending: true })
+
+    if (latestError) {
+      return jsonResponse(500, { error: latestError.message })
+    }
+
+    const programData = await fetchProgramDataBySessionIds(admin.adminClient, [sessionId])
+    if (programData.error) {
+      return jsonResponse(500, { error: programData.error })
+    }
+    const weeklyObjectives = programData.weeklyObjectivesBySession.get(sessionId) || {}
+
+    return jsonResponse(200, {
+      ok: true,
+      closedWeek: activeWindow.weekKey,
+      closedAt: nowIso,
+      weekActivation: buildWeekActivationState(
+        (latestRows || []) as CoachingSessionWeekActivationRow[],
+        weeklyObjectives,
+      ),
+    })
+  }
+
   if (action === 'archive-session' || action === 'delete-session') {
     const sessionId = safeString(payload.sessionId)
     if (!sessionId) {
@@ -1876,6 +1957,14 @@ Deno.serve(async (req) => {
       user_id: userId,
       target_lang: String(coachingRow.target_lang),
     }, sessionActivations)
+    const closedMasterNotesByWeek = await fetchClosedNotesByWeekForSession(
+      admin.adminClient,
+      {
+        user_id: userId,
+        target_lang: String(coachingRow.target_lang),
+      },
+      sessionActivations,
+    )
 
     const targetLang = requestedTargetLang || String(coachingRow.target_lang)
 
@@ -2000,6 +2089,7 @@ Deno.serve(async (req) => {
       masterNotes: notesWithAudio,
       sessionId: coachingRow.id,
       weeklyObjectives,
+      closedMasterNotesByWeek,
       weekActivation,
       weekProgress,
     })

@@ -450,12 +450,17 @@ export function CoachingProgramPreview({
           const isPastWeek = currentProgramWeek
             ? week < currentProgramWeek
             : membership.status !== 'active'
+          const accordionBgClass = isPastWeek
+            ? 'bg-muted'
+            : isCurrentWeek
+              ? 'bg-primary/10'
+              : ''
 
           return (
             <AccordionItem
               value={weekKey}
               key={weekKey}
-              className={`border-b px-2 last:border-b-0 sm:px-4 ${isPastWeek ? 'bg-muted/35' : ''}`}
+              className={`border-b px-2 last:border-b-0 sm:px-4 ${accordionBgClass}`}
             >
               <AccordionTrigger className='py-4 hover:no-underline'>
                 <div className='flex flex-1 flex-wrap items-center justify-between gap-2 pr-3 text-left'>

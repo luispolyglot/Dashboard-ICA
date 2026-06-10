@@ -146,6 +146,17 @@ export type CoachingUserInsights = {
   masterNotesCount: number
   masterNotes: CoachingInsightNote[]
   weeklyObjectives: Record<string, unknown>
+  closedMasterNotesByWeek?: Record<
+    string,
+    Array<{
+      id: string
+      name: string
+      createdAt: string
+      closedAt: string
+      feedbackLoomUrl: string | null
+      feedbackNotes: string | null
+    }>
+  >
   weekActivation?: WeekActivationState
   weekProgress?: Record<
     string,
@@ -381,6 +392,24 @@ export async function activateCoachingWeek(input: {
       weekKey: input.weekKey,
     },
     'No se pudo activar la semana.',
+  )
+
+  return data.weekActivation || null
+}
+
+export async function closeCoachingWeek(input: {
+  sessionId: string
+}): Promise<WeekActivationState | null> {
+  const data = await invokeCoachingFunction<{
+    ok?: boolean
+    weekActivation?: WeekActivationState
+  }>(
+    'coaching-center',
+    {
+      action: 'close-week',
+      sessionId: input.sessionId,
+    },
+    'No se pudo cerrar la semana actual.',
   )
 
   return data.weekActivation || null
