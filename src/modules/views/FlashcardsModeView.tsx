@@ -52,7 +52,7 @@ export function FlashcardsModeView({
   }
 
   return (
-    <section className='flex flex-1 justify-center items-center p-4 lg:pb-24'>
+    <section className='flex flex-1 justify-center items-center p-4'>
       <div className='w-full max-w-5xl space-y-6'>
         <div className='flex flex-col lg:flex-row justify-between'>
           <div className='flex flex-col gap-2'>
