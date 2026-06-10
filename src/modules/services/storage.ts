@@ -4,6 +4,7 @@ import { notifyCreationMetricsChanged } from './creationMetricsSync'
 import type { AppConfig, DailyProgressMap, Lexicard } from '../types'
 
 const MAX_SAFE_WORD_DELETES_PER_SAVE = 5
+const CONFIG_SNAPSHOT_STORAGE_KEY = 'dashboard-ICA-config-snapshot'
 
 type DashboardStorageKey =
   | 'dashboard-ICA-words'
@@ -47,6 +48,24 @@ function loadLocalNumber(key: string, fallback: number): number {
 function saveLocalNumber(key: string, value: number): void {
   try {
     window.localStorage.setItem(key, String(value))
+  } catch {
+    // noop
+  }
+}
+
+function loadLocalJson<T>(key: string): T | null {
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
+    return JSON.parse(raw) as T
+  } catch {
+    return null
+  }
+}
+
+function saveLocalJson<T>(key: string, value: T): void {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
   } catch {
     // noop
   }
@@ -522,15 +541,35 @@ export async function loadData<T>(key: string, fallback: T): Promise<T> {
       return loadLocalNumber(key, Number(fallback) || 0) as T
     }
 
+    const localConfigSnapshot =
+      key === 'dashboard-ICA-config'
+        ? loadLocalJson<AppConfig>(CONFIG_SNAPSHOT_STORAGE_KEY)
+        : null
+
     const userId = await getCurrentUserId()
-    if (!userId) return fallback
+    if (!userId) {
+      if (key === 'dashboard-ICA-config' && localConfigSnapshot) {
+        return localConfigSnapshot as T
+      }
+      return fallback
+    }
 
     if (key === 'dashboard-ICA-words') {
       return (await loadWords(userId)) as T
     }
 
     if (key === 'dashboard-ICA-config') {
-      return ((await loadConfig(userId)) ?? fallback) as T
+      const remoteConfig = await loadConfig(userId)
+      if (remoteConfig) {
+        saveLocalJson(CONFIG_SNAPSHOT_STORAGE_KEY, remoteConfig)
+        return remoteConfig as T
+      }
+
+      if (localConfigSnapshot) {
+        return localConfigSnapshot as T
+      }
+
+      return fallback
     }
 
     if (key === 'dashboard-ICA-daily-progress') {
@@ -551,6 +590,10 @@ export async function loadData<T>(key: string, fallback: T): Promise<T> {
 export async function saveData<T>(key: string, value: T): Promise<void> {
   try {
     assertSupportedKey(key)
+
+    if (key === 'dashboard-ICA-config') {
+      saveLocalJson(CONFIG_SNAPSHOT_STORAGE_KEY, value as AppConfig)
+    }
 
     if (key === 'dashboard-ICA-review-session') {
       saveLocalNumber(key, Number(value) || 0)
