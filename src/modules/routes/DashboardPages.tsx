@@ -25,6 +25,7 @@ import { MasterNoteDetailView } from '../views/MasterNoteDetailView'
 import { MasterNotesView } from '../views/MasterNotesView'
 import { MyAnalyticsView } from '../views/MyAnalyticsView'
 import { NewTrackerView } from '../views/NewTrackerView'
+import { OfflineSafeView } from '../views/OfflineSafeView'
 import { ProfileView } from '../views/ProfileView'
 import { PhraseHistoryView } from '../views/PhraseHistoryView'
 import { PhraseView } from '../views/PhraseView'
@@ -250,6 +251,14 @@ export function MasterNotesPage() {
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
       />
+    </PageLayout>
+  )
+}
+
+export function OfflineSafePage() {
+  return (
+    <PageLayout withBackButton={false}>
+      <OfflineSafeView />
     </PageLayout>
   )
 }

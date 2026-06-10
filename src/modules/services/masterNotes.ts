@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { notifyCreationMetricsChanged } from './creationMetricsSync'
+import { syncClosedMasterNotesOfflineSnapshot } from './masterNotesOfflineStore'
 import type { MasterNote, MasterNoteChunk } from '../types'
 
 const MASTER_NOTES_BUCKET = 'master-notes'
@@ -53,7 +54,10 @@ export async function fetchMasterNotes(
   const { data, error } = await query
 
   if (error) throw error
-  return (data || []) as MasterNote[]
+
+  const rows = (data || []) as MasterNote[]
+  void syncClosedMasterNotesOfflineSnapshot(rows, targetLang, nativeLang).catch(() => {})
+  return rows
 }
 
 export async function createMasterNote(
@@ -561,10 +565,15 @@ function encodeWav(buffers: AudioBuffer[]): Blob {
   return new Blob([buffer], { type: 'audio/wav' })
 }
 
-export async function downloadMasterNoteAudio(note: MasterNote): Promise<void> {
-  if (!supabase) throw new Error('Falta configurar Supabase')
+export type MasterNoteAudioPayload = {
+  blob: Blob
+  extension: string
+}
 
-  const baseName = sanitizeFileName(note.name || 'nota-maestra') || 'nota-maestra'
+export async function fetchMasterNoteAudioPayload(
+  note: MasterNote,
+): Promise<MasterNoteAudioPayload> {
+  if (!supabase) throw new Error('Falta configurar Supabase')
 
   if (note.close_type === 'final' && note.final_audio_path) {
     const { data: finalBlob, error } = await supabase.storage
@@ -576,8 +585,10 @@ export async function downloadMasterNoteAudio(note: MasterNote): Promise<void> {
     }
 
     const ext = note.final_audio_path.split('.').pop() || 'webm'
-    triggerDownload(finalBlob, `${baseName}.${ext}`)
-    return
+    return {
+      blob: finalBlob,
+      extension: ext,
+    }
   }
 
   const chunks = await fetchMasterNoteChunks(note.id)
@@ -595,8 +606,10 @@ export async function downloadMasterNoteAudio(note: MasterNote): Promise<void> {
     }
 
     const ext = chunks[0].storage_path.split('.').pop() || 'webm'
-    triggerDownload(singleBlob, `${baseName}.${ext}`)
-    return
+    return {
+      blob: singleBlob,
+      extension: ext,
+    }
   }
 
   const audioContext = new AudioContext()
@@ -617,9 +630,18 @@ export async function downloadMasterNoteAudio(note: MasterNote): Promise<void> {
       audioBuffers.push(decoded)
     }
 
-    const wavBlob = encodeWav(audioBuffers)
-    triggerDownload(wavBlob, `${baseName}.wav`)
+    return {
+      blob: encodeWav(audioBuffers),
+      extension: 'wav',
+    }
   } finally {
     await audioContext.close().catch(() => null)
   }
+}
+
+export async function downloadMasterNoteAudio(note: MasterNote): Promise<void> {
+  const baseName = sanitizeFileName(note.name || 'nota-maestra') || 'nota-maestra'
+
+  const payload = await fetchMasterNoteAudioPayload(note)
+  triggerDownload(payload.blob, `${baseName}.${payload.extension}`)
 }

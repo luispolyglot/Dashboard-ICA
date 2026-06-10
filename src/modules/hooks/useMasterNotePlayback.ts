@@ -4,6 +4,10 @@ import {
   createSignedMasterNoteAudioUrl,
   fetchMasterNoteChunks,
 } from '../services/masterNotes'
+import {
+  getOfflineClosedMasterNoteAudio,
+  upsertOfflineClosedMasterNoteAudio,
+} from '../services/masterNotesOfflineStore'
 
 type PlaybackTrack = {
   url: string
@@ -16,6 +20,14 @@ type UnifiedChunkCacheEntry = {
   noteUpdatedAt: string
   totalDurationMs: number
   chunkCount: number
+}
+
+type OfflineTrackCacheEntry = {
+  url: string
+  durationSec: number
+  noteUpdatedAt: string
+  totalDurationMs: number
+  closeType: 'final' | 'temporal'
 }
 
 function writeAscii(view: DataView, offset: number, value: string): void {
@@ -138,12 +150,20 @@ export function useMasterNotePlayback() {
   const tokenRef = useRef(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const unifiedChunkCacheRef = useRef<Map<string, UnifiedChunkCacheEntry>>(new Map())
+  const offlineTrackCacheRef = useRef<Map<string, OfflineTrackCacheEntry>>(new Map())
 
   const clearUnifiedChunkCache = (): void => {
     for (const cachedTrack of unifiedChunkCacheRef.current.values()) {
       URL.revokeObjectURL(cachedTrack.url)
     }
     unifiedChunkCacheRef.current.clear()
+  }
+
+  const clearOfflineTrackCache = (): void => {
+    for (const cachedTrack of offlineTrackCacheRef.current.values()) {
+      URL.revokeObjectURL(cachedTrack.url)
+    }
+    offlineTrackCacheRef.current.clear()
   }
 
   const stop = (): void => {
@@ -191,8 +211,50 @@ export function useMasterNotePlayback() {
     return () => {
       stop()
       clearUnifiedChunkCache()
+      clearOfflineTrackCache()
     }
   }, [])
+
+  const getOfflineClosedTrack = async (note: MasterNote): Promise<PlaybackTrack | null> => {
+    if (note.state !== 'closed') return null
+
+    const cachedTrack = offlineTrackCacheRef.current.get(note.id)
+    const canUseCache =
+      cachedTrack
+      && cachedTrack.noteUpdatedAt === note.updated_at
+      && cachedTrack.totalDurationMs === note.total_duration_ms
+      && cachedTrack.closeType === note.close_type
+
+    if (canUseCache) {
+      return {
+        url: cachedTrack.url,
+        durationSec: cachedTrack.durationSec,
+      }
+    }
+
+    const blob = await getOfflineClosedMasterNoteAudio(note)
+    if (!blob) return null
+
+    const blobUrl = URL.createObjectURL(blob)
+    const nextDurationSec = Math.max(1, note.total_duration_ms / 1000)
+
+    if (cachedTrack) {
+      URL.revokeObjectURL(cachedTrack.url)
+    }
+
+    offlineTrackCacheRef.current.set(note.id, {
+      url: blobUrl,
+      durationSec: nextDurationSec,
+      noteUpdatedAt: note.updated_at,
+      totalDurationMs: note.total_duration_ms,
+      closeType: note.close_type,
+    })
+
+    return {
+      url: blobUrl,
+      durationSec: nextDurationSec,
+    }
+  }
 
   const getCurrentDuration = (): number => {
     const audioDuration = audioRef.current?.duration
@@ -342,6 +404,10 @@ export function useMasterNotePlayback() {
       chunkCount: chunks.length,
     })
 
+    if (note.state === 'closed') {
+      void upsertOfflineClosedMasterNoteAudio(note, mergedBlob).catch(() => {})
+    }
+
     return {
       url: mergedUrl,
       durationSec: nextDurationSec,
@@ -380,14 +446,31 @@ export function useMasterNotePlayback() {
     let track: PlaybackTrack | null = null
 
     try {
-      if (note.close_type === 'final' && note.final_audio_path) {
-        const signedUrl = await createSignedMasterNoteAudioUrl(note.final_audio_path)
-        track = {
-          url: signedUrl,
-          durationSec: Math.max(1, note.total_duration_ms / 1000),
+      track = await getOfflineClosedTrack(note)
+
+      if (!track) {
+        if (note.close_type === 'final' && note.final_audio_path) {
+          const signedUrl = await createSignedMasterNoteAudioUrl(note.final_audio_path)
+          track = {
+            url: signedUrl,
+            durationSec: Math.max(1, note.total_duration_ms / 1000),
+          }
+
+          if (note.state === 'closed') {
+            void (async () => {
+              try {
+                const response = await fetch(signedUrl)
+                if (!response.ok) return
+                const blob = await response.blob()
+                await upsertOfflineClosedMasterNoteAudio(note, blob)
+              } catch {
+                // noop
+              }
+            })()
+          }
+        } else {
+          track = await getUnifiedChunkTrack(note, preloadedChunkCount)
         }
-      } else {
-        track = await getUnifiedChunkTrack(note, preloadedChunkCount)
       }
     } catch {
       if (token !== tokenRef.current) return

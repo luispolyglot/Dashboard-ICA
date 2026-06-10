@@ -31,6 +31,7 @@ import {
   MyAnalyticsPage,
   MyIcaWordsPage,
   NewTrackerPage,
+  OfflineSafePage,
   NewIcaWordsPage,
   PhraseHistoryPage,
   ProfilePage,
@@ -92,6 +93,7 @@ export function App() {
             <Route path='flashcards/play/:mode' element={<FlashcardsPlayPage />} />
             <Route path='activation-phrase' element={<ActivationPhrasePage />} />
             <Route path='phrase-history' element={<PhraseHistoryPage />} />
+            <Route path='offline-safe' element={<OfflineSafePage />} />
             <Route path='master-notes' element={<MasterNotesPage />} />
             <Route path='master-notes/note/:noteId' element={<MasterNoteDetailPage />} />
             <Route

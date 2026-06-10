@@ -4,10 +4,17 @@ import type { MasterNote } from '@/modules/types'
 
 const createSignedMasterNoteAudioUrlMock = vi.fn()
 const fetchMasterNoteChunksMock = vi.fn()
+const getOfflineClosedMasterNoteAudioMock = vi.fn()
+const upsertOfflineClosedMasterNoteAudioMock = vi.fn()
 
 vi.mock('@/modules/services/masterNotes', () => ({
   createSignedMasterNoteAudioUrl: (...args: unknown[]) => createSignedMasterNoteAudioUrlMock(...args),
   fetchMasterNoteChunks: (...args: unknown[]) => fetchMasterNoteChunksMock(...args),
+}))
+
+vi.mock('@/modules/services/masterNotesOfflineStore', () => ({
+  getOfflineClosedMasterNoteAudio: (...args: unknown[]) => getOfflineClosedMasterNoteAudioMock(...args),
+  upsertOfflineClosedMasterNoteAudio: (...args: unknown[]) => upsertOfflineClosedMasterNoteAudioMock(...args),
 }))
 
 import { useMasterNotePlayback } from '@/modules/hooks/useMasterNotePlayback'
@@ -80,6 +87,8 @@ describe('useMasterNotePlayback', () => {
   beforeEach(() => {
     createSignedMasterNoteAudioUrlMock.mockReset()
     fetchMasterNoteChunksMock.mockReset()
+    getOfflineClosedMasterNoteAudioMock.mockReset()
+    upsertOfflineClosedMasterNoteAudioMock.mockReset()
     mockAudioInstances.length = 0
 
     let objectUrlCount = 0
@@ -95,6 +104,8 @@ describe('useMasterNotePlayback', () => {
     }) as typeof fetch
 
     createSignedMasterNoteAudioUrlMock.mockImplementation(async (path: string) => `https://audio/${path}`)
+    getOfflineClosedMasterNoteAudioMock.mockResolvedValue(null)
+    upsertOfflineClosedMasterNoteAudioMock.mockResolvedValue(undefined)
     fetchMasterNoteChunksMock.mockResolvedValue([
       {
         id: 'chunk-1',
@@ -178,6 +189,54 @@ describe('useMasterNotePlayback', () => {
 
     expect(result.current.error).toBe('No hay audios para reproducir en esta nota maestra')
     expect(mockAudioInstances).toHaveLength(0)
+  })
+
+  it('uses offline cached blob first for closed notes', async () => {
+    getOfflineClosedMasterNoteAudioMock.mockResolvedValueOnce(
+      new Blob(['offline-track'], { type: 'audio/wav' }),
+    )
+
+    const { result } = renderHook(() => useMasterNotePlayback())
+
+    await act(async () => {
+      await result.current.play(baseNote)
+    })
+
+    expect(getOfflineClosedMasterNoteAudioMock).toHaveBeenCalledWith(baseNote)
+    expect(createSignedMasterNoteAudioUrlMock).not.toHaveBeenCalled()
+    expect(fetchMasterNoteChunksMock).not.toHaveBeenCalled()
+    expect(globalThis.fetch).not.toHaveBeenCalled()
+    expect(mockAudioInstances).toHaveLength(1)
+    expect(mockAudioInstances[0]?.src).toBe('blob:merged-1')
+  })
+
+  it('persists final closed note audio after online playback', async () => {
+    const finalNote: MasterNote = {
+      ...baseNote,
+      id: 'note-final',
+      close_type: 'final',
+      final_audio_path: 'final/note-final.mp3',
+    }
+
+    globalThis.fetch = vi.fn(async () => {
+      const blob = new Blob(['final-audio'], { type: 'audio/mpeg' })
+      return new Response(blob, { status: 200 })
+    }) as typeof fetch
+
+    const { result } = renderHook(() => useMasterNotePlayback())
+
+    await act(async () => {
+      await result.current.play(finalNote)
+    })
+
+    await waitFor(() => {
+      expect(upsertOfflineClosedMasterNoteAudioMock).toHaveBeenCalledTimes(1)
+    })
+
+    expect(createSignedMasterNoteAudioUrlMock).toHaveBeenCalledWith('final/note-final.mp3')
+    expect(upsertOfflineClosedMasterNoteAudioMock.mock.calls[0]?.[0]).toEqual(finalNote)
+    const persistedBlob = upsertOfflineClosedMasterNoteAudioMock.mock.calls[0]?.[1]
+    expect(persistedBlob).toBeInstanceOf(Blob)
   })
 
   it('revokes merged object URL cache on unmount', async () => {
