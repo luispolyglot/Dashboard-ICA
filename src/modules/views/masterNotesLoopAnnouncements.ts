@@ -4,7 +4,8 @@ export function getMasterNotesLoopAnnouncement(
   noteName: string,
   type: LoopAnnouncementType,
 ): string {
-  const safeName = noteName.trim().length > 0 ? noteName.trim() : 'nota maestra'
+  const normalizedName = noteName.replaceAll(':', ' ').replace(/\s+/g, ' ').trim()
+  const safeName = normalizedName.length > 0 ? normalizedName : 'nota maestra'
   if (type === 'first') {
     return `Empezamos con ${safeName}`
   }

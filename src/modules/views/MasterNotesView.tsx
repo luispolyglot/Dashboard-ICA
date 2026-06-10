@@ -247,6 +247,10 @@ export function MasterNotesView({
     await waitMs(1000)
     if (token !== loopTokenRef.current) return
 
+    stopTTS()
+    await waitMs(120)
+    if (token !== loopTokenRef.current) return
+
     await play(note)
   }
 

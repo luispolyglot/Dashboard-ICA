@@ -4,12 +4,12 @@ import { getMasterNotesLoopAnnouncement } from '@/modules/views/masterNotesLoopA
 describe('masterNotesLoopAnnouncements', () => {
   it('builds first announcement with note name', () => {
     const text = getMasterNotesLoopAnnouncement('Nota Maestra: 7', 'first')
-    expect(text).toBe('Empezamos con Nota Maestra: 7')
+    expect(text).toBe('Empezamos con Nota Maestra 7')
   })
 
   it('builds next announcement with note name', () => {
     const text = getMasterNotesLoopAnnouncement('Nota Maestra: 12', 'next')
-    expect(text).toBe('Siguiente Nota Maestra: 12')
+    expect(text).toBe('Siguiente Nota Maestra 12')
   })
 
   it('uses safe fallback when note name is empty', () => {
