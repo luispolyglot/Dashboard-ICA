@@ -7,6 +7,7 @@ import {
   renameMasterNotePlaylist,
   replaceMasterNotePlaylistItems,
 } from '../services/masterNotePlaylists'
+import { buildPlaylistItemsByPlaylistId } from '../services/masterNotePlaylistItems'
 
 type UseMasterNotePlaylistsParams = {
   targetLang?: string
@@ -23,31 +24,12 @@ export function useMasterNotePlaylists({
   const [error, setError] = useState<string | null>(null)
 
   const itemsByPlaylistId = useMemo(() => {
-    const map = new Map<string, MasterNotePlaylistItem[]>()
-
-    for (const item of items) {
-      const list = map.get(item.playlist_id) || []
-      list.push(item)
-      map.set(item.playlist_id, list)
-    }
-
-    for (const [playlistId, list] of map.entries()) {
-      list.sort((a, b) => {
-        if (a.sort_order === b.sort_order) {
-          const aTime = new Date(a.created_at || 0).getTime()
-          const bTime = new Date(b.created_at || 0).getTime()
-          if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0
-          if (Number.isNaN(aTime)) return 1
-          if (Number.isNaN(bTime)) return -1
-          return aTime - bTime
-        }
-        return a.sort_order - b.sort_order
-      })
-
-      map.set(playlistId, list)
-    }
-
-    return map
+    return buildPlaylistItemsByPlaylistId({
+      items,
+      getPlaylistId: (item) => item.playlist_id,
+      getSortOrder: (item) => item.sort_order,
+      getCreatedAt: (item) => item.created_at,
+    })
   }, [items])
 
   const refresh = useCallback(async () => {
