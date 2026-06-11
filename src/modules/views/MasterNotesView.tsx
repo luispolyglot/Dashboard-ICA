@@ -118,6 +118,7 @@ export function MasterNotesView({
   const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null)
   const [deletingPlaylistId, setDeletingPlaylistId] = useState<string | null>(null)
   const [activePlayerPlaylistId, setActivePlayerPlaylistId] = useState<string | null>(null)
+  const [playlistRepeatEnabled, setPlaylistRepeatEnabled] = useState(true)
   const [loopIds, setLoopIds] = useState<string[]>([])
   const [loopIndex, setLoopIndex] = useState(0)
   const [deleteCandidate, setDeleteCandidate] = useState<MasterNote | null>(
@@ -289,6 +290,12 @@ export function MasterNotesView({
       !playingNoteId &&
       loopIds.length > 0
     ) {
+      if (!playlistRepeatEnabled && loopIndex === loopIds.length - 1) {
+        setLoopIndex(0)
+        previousPlayingNoteIdRef.current = playingNoteId
+        return
+      }
+
       const token = loopTokenRef.current
       const nextIndex = (loopIndex + 1) % loopIds.length
       void playLoopNoteAt(nextIndex, loopIds, token, 900)
@@ -299,6 +306,7 @@ export function MasterNotesView({
     loopIds,
     loopIndex,
     loopingClosed,
+    playlistRepeatEnabled,
     play,
     playingNoteId,
     itemsById,
@@ -845,10 +853,12 @@ export function MasterNotesView({
         durationSec={durationSec}
         currentIndex={loopIndex}
         totalCount={loopIds.length}
-        paused={isPaused}
+        paused={isPaused || !playingNoteId}
+        repeatEnabled={playlistRepeatEnabled}
         onTogglePause={() => {
           void handleTogglePlaylistPause()
         }}
+        onToggleRepeat={() => setPlaylistRepeatEnabled((prev) => !prev)}
         onSeekBack10={seekBack10}
         onSeekForward10={seekForward10}
         onPrevious={() => {

@@ -1,6 +1,7 @@
 import {
   PauseIcon,
   PlayIcon,
+  RepeatIcon,
   RotateCcwIcon,
   RotateCwIcon,
   SkipBackIcon,
@@ -18,7 +19,9 @@ type MasterNotePlaylistPlayerDockProps = {
   currentIndex: number
   totalCount: number
   paused: boolean
+  repeatEnabled: boolean
   onTogglePause: () => void
+  onToggleRepeat: () => void
   onSeekBack10: () => void
   onSeekForward10: () => void
   onPrevious: () => void
@@ -42,7 +45,9 @@ export function MasterNotePlaylistPlayerDock({
   currentIndex,
   totalCount,
   paused,
+  repeatEnabled,
   onTogglePause,
+  onToggleRepeat,
   onSeekBack10,
   onSeekForward10,
   onPrevious,
@@ -92,6 +97,21 @@ export function MasterNotePlaylistPlayerDock({
       </div>
 
       <div className='mx-auto mt-3 flex w-full max-w-5xl items-center justify-center gap-6'>
+        <Button
+          type='button'
+          size='icon'
+          variant={repeatEnabled ? 'secondary' : 'ghost'}
+          className={
+            repeatEnabled
+              ? 'text-white'
+              : 'text-white hover:bg-white/10 hover:text-white'
+          }
+          onClick={onToggleRepeat}
+          aria-label={repeatEnabled ? 'Desactivar bucle' : 'Activar bucle'}
+        >
+          <RepeatIcon className='size-4' />
+        </Button>
+
         <Button
           type='button'
           size='icon'
