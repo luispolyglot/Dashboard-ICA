@@ -53,6 +53,19 @@ function waitMs(ms: number): Promise<void> {
   })
 }
 
+function isIOSLikeDevice(): boolean {
+  if (typeof navigator === 'undefined') return false
+
+  const userAgent = navigator.userAgent || ''
+  const platform = navigator.platform || ''
+  const maxTouchPoints = navigator.maxTouchPoints || 0
+
+  const isiPhoneOrIPad = /iPad|iPhone|iPod/.test(userAgent)
+  const isIPadOSDesktopUA = platform === 'MacIntel' && maxTouchPoints > 1
+
+  return isiPhoneOrIPad || isIPadOSDesktopUA
+}
+
 function resolveSpeechLangName(note: OfflineClosedMasterNote): string {
   const candidate = (note.nativeLang || note.targetLang || '').trim()
   if (!candidate) return 'Español'
@@ -315,11 +328,19 @@ export function OfflineSafeView() {
     if (!note || !note.audioAvailable) return
 
     setLoopIndex(safeIndex)
-    await announceLoopNote(note, token, announcementType)
-    if (token !== loopTokenRef.current) return
+    const shouldSkipAnnouncementForIos =
+      announcementType === 'next' && isIOSLikeDevice()
 
-    await waitMs(1000)
-    if (token !== loopTokenRef.current) return
+    if (shouldSkipAnnouncementForIos) {
+      await waitMs(450)
+      if (token !== loopTokenRef.current) return
+    } else {
+      await announceLoopNote(note, token, announcementType)
+      if (token !== loopTokenRef.current) return
+
+      await waitMs(1000)
+      if (token !== loopTokenRef.current) return
+    }
 
     stopTTS()
     await waitMs(120)
