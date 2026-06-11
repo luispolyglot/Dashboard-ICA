@@ -48,12 +48,13 @@ export function useMasterNotePlaylists({
   }, [nativeLang, targetLang])
 
   const createPlaylist = useCallback(async (name: string) => {
-    await createMasterNotePlaylist({
+    const created = await createMasterNotePlaylist({
       name,
       targetLang: targetLang || null,
       nativeLang: nativeLang || null,
     })
     await refresh()
+    return created
   }, [nativeLang, refresh, targetLang])
 
   const renamePlaylist = useCallback(async (playlistId: string, nextName: string) => {

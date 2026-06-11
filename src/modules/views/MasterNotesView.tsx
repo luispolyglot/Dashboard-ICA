@@ -1,43 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  CopyIcon,
   DownloadIcon,
   EyeIcon,
   Loader2Icon,
   PauseIcon,
   PencilIcon,
   PlayIcon,
-  RepeatIcon,
   RotateCcwIcon,
   RotateCwIcon,
   SquareIcon,
   Trash2Icon,
   Volume2Icon,
-  PlusIcon,
-  XIcon,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion'
 import { IcaDeletionWarningDialog } from '../components/IcaDeletionWarningDialog'
+import {
+  MasterNotePlaylistEditorDialog,
+  type PlaylistEditorNoteOption,
+} from '../components/MasterNotePlaylistEditorDialog'
+import { MasterNotePlaylistPlayerDock } from '../components/MasterNotePlaylistPlayerDock'
 import {
   getMetaTrackerLevelColor,
   hexWithAlpha,
@@ -50,10 +35,8 @@ import {
   createMasterNote,
   deleteMasterNote,
   downloadMasterNoteAudio,
-  fetchMasterNoteAudioPayload,
   fetchMasterNotes,
 } from '../services/masterNotes'
-import { upsertOfflineClosedMasterNoteAudio } from '../services/masterNotesOfflineStore'
 import { useMasterNotePlaylists } from '../hooks/useMasterNotePlaylists'
 import type { MasterNote } from '../types'
 
@@ -127,22 +110,16 @@ export function MasterNotesView({
   const [creating, setCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
-  const [loopPreparing, setLoopPreparing] = useState(false)
   const [loopingClosed, setLoopingClosed] = useState(false)
   const [activeTab, setActiveTab] = useState<'notes' | 'playlists'>('notes')
-  const [loopDraftIds, setLoopDraftIds] = useState<string[]>([])
-  const [preparedLoopIds, setPreparedLoopIds] = useState<string[]>([])
-  const [newPlaylistName, setNewPlaylistName] = useState('')
-  const [playlistSubmitting, setPlaylistSubmitting] = useState(false)
+  const [playlistDialogOpen, setPlaylistDialogOpen] = useState(false)
+  const [playlistDialogMode, setPlaylistDialogMode] = useState<'create' | 'edit'>('create')
+  const [playlistDialogSubmitting, setPlaylistDialogSubmitting] = useState(false)
+  const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null)
   const [deletingPlaylistId, setDeletingPlaylistId] = useState<string | null>(null)
-  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string>('')
-  const [playlistDraftNoteIds, setPlaylistDraftNoteIds] = useState<string[]>([])
-  const [addingPlaylistNoteId, setAddingPlaylistNoteId] = useState<string>('')
-  const [savingPlaylistItems, setSavingPlaylistItems] = useState(false)
+  const [activePlayerPlaylistId, setActivePlayerPlaylistId] = useState<string | null>(null)
   const [loopIds, setLoopIds] = useState<string[]>([])
   const [loopIndex, setLoopIndex] = useState(0)
-  const [showLoopDebug, setShowLoopDebug] = useState(false)
-  const [loopDebugLogs, setLoopDebugLogs] = useState<string[]>([])
   const [deleteCandidate, setDeleteCandidate] = useState<MasterNote | null>(
     null,
   )
@@ -157,14 +134,13 @@ export function MasterNotesView({
     play,
     playTransitionCue,
     stop,
+    resume,
     togglePause,
     seekBack10,
     seekForward10,
     isPaused,
     positionSec,
     durationSec,
-    debugEvents: playbackDebugEvents,
-    clearDebugEvents,
   } = useMasterNotePlayback()
 
   const {
@@ -174,21 +150,11 @@ export function MasterNotesView({
     error: playlistsError,
     refresh: refreshPlaylists,
     createPlaylist,
+    renamePlaylist,
     deletePlaylist,
     replacePlaylistItems,
     clearError: clearPlaylistsError,
   } = useMasterNotePlaylists({ targetLang, nativeLang })
-
-  const appendLoopDebug = (message: string, error?: unknown): void => {
-    const timestamp = new Date().toISOString()
-    const details = error
-      ? error instanceof Error
-        ? ` | ${error.name}: ${error.message}`
-        : ` | ${String(error)}`
-      : ''
-
-    setLoopDebugLogs((prev) => [...prev, `${timestamp} | ${message}${details}`].slice(-120))
-  }
 
   useEffect(() => {
     fetchMasterNotes(targetLang, nativeLang)
@@ -207,18 +173,6 @@ export function MasterNotesView({
   useEffect(() => {
     void refreshPlaylists()
   }, [refreshPlaylists])
-
-  useEffect(() => {
-    if (playlists.length === 0) {
-      setSelectedPlaylistId('')
-      setPlaylistDraftNoteIds([])
-      return
-    }
-
-    const exists = playlists.some((playlist) => playlist.id === selectedPlaylistId)
-    if (exists) return
-    setSelectedPlaylistId(playlists[0]?.id || '')
-  }, [playlists, selectedPlaylistId])
 
   const openItems = useMemo(
     () =>
@@ -242,96 +196,48 @@ export function MasterNotesView({
     [closedItems],
   )
 
-  const selectedPlaylist = useMemo(
-    () => playlists.find((playlist) => playlist.id === selectedPlaylistId) || null,
-    [playlists, selectedPlaylistId],
-  )
+  const closedNoteOptions = useMemo<PlaylistEditorNoteOption[]>(() => {
+    return closedItems.map((note) => ({
+      id: note.id,
+      name: note.name,
+    }))
+  }, [closedItems])
 
-  const selectedPlaylistItems = useMemo(
-    () => (selectedPlaylist ? itemsByPlaylistId.get(selectedPlaylist.id) || [] : []),
-    [itemsByPlaylistId, selectedPlaylist],
-  )
+  const editingPlaylist = useMemo(() => {
+    if (!editingPlaylistId) return null
+    return playlists.find((playlist) => playlist.id === editingPlaylistId) || null
+  }, [editingPlaylistId, playlists])
 
-  const availableClosedNotesForPlaylist = useMemo(() => {
-    const selectedSet = new Set(playlistDraftNoteIds)
-    return closedItems.filter((note) => !selectedSet.has(note.id))
-  }, [closedItems, playlistDraftNoteIds])
+  const editingPlaylistNoteIds = useMemo(() => {
+    if (!editingPlaylist) return []
+    return (itemsByPlaylistId.get(editingPlaylist.id) || [])
+      .map((item) => item.master_note_id)
+      .filter((id) => closedNotesById.has(id))
+  }, [closedNotesById, editingPlaylist, itemsByPlaylistId])
 
-  useEffect(() => {
-    if (!selectedPlaylist) {
-      setPlaylistDraftNoteIds([])
-      return
-    }
-
-    setPlaylistDraftNoteIds(
-      selectedPlaylistItems
-        .map((item) => item.master_note_id)
-        .filter((noteId) => closedNotesById.has(noteId)),
-    )
-  }, [closedNotesById, selectedPlaylist, selectedPlaylistItems])
-
-  useEffect(() => {
-    if (availableClosedNotesForPlaylist.length === 0) {
-      setAddingPlaylistNoteId('')
-      return
-    }
-
-    const exists = availableClosedNotesForPlaylist.some(
-      (note) => note.id === addingPlaylistNoteId,
-    )
-    if (exists) return
-    setAddingPlaylistNoteId(availableClosedNotesForPlaylist[0]?.id || '')
-  }, [addingPlaylistNoteId, availableClosedNotesForPlaylist])
+  const activePlayerPlaylist = useMemo(() => {
+    if (!activePlayerPlaylistId) return null
+    return playlists.find((playlist) => playlist.id === activePlayerPlaylistId) || null
+  }, [activePlayerPlaylistId, playlists])
 
   const itemsById = useMemo(() => {
     return new Map(items.map((item) => [item.id, item]))
   }, [items])
 
-  const playableClosedItems = useMemo(() => {
-    return closedItems.filter((item) =>
-      canPlay(item, item.total_duration_ms > 0 ? 1 : 0),
-    )
-  }, [canPlay, closedItems])
-
-  const selectedPlayableClosedItems = useMemo(() => {
-    if (loopDraftIds.length === 0) return []
-    const selectedSet = new Set(loopDraftIds)
-    return playableClosedItems.filter((item) => selectedSet.has(item.id))
-  }, [loopDraftIds, playableClosedItems])
-
-  useEffect(() => {
-    const closedIdSet = new Set(closedItems.map((item) => item.id))
-    setLoopDraftIds((prev) => prev.filter((id) => closedIdSet.has(id)))
-    setPreparedLoopIds((prev) => prev.filter((id) => closedIdSet.has(id)))
-  }, [closedItems])
+  const activeLoopNote = useMemo(() => {
+    const noteId = loopIds[loopIndex]
+    if (!noteId) return null
+    return itemsById.get(noteId) || null
+  }, [itemsById, loopIds, loopIndex])
 
   const disableLoopPlayback = (stopCurrent = false): void => {
-    appendLoopDebug('Se desactivó el modo bucle')
     loopTokenRef.current += 1
     setLoopingClosed(false)
-    setLoopPreparing(false)
     setLoopIds([])
     setLoopIndex(0)
+    setActivePlayerPlaylistId(null)
     if (stopCurrent) {
       stop()
-    }
-  }
-
-  const warmClosedAudioForOffline = async (
-    notes: MasterNote[],
-    token: number,
-  ): Promise<void> => {
-    for (const note of notes) {
-      if (token !== loopTokenRef.current) return
-
-      try {
-        appendLoopDebug(`Precache audio: ${note.name}`)
-        const payload = await fetchMasterNoteAudioPayload(note)
-        if (token !== loopTokenRef.current) return
-        await upsertOfflineClosedMasterNoteAudio(note, payload.blob)
-      } catch (err) {
-        appendLoopDebug(`Falló precache: ${note.name}`, err)
-      }
     }
   }
 
@@ -356,43 +262,17 @@ export function MasterNotesView({
 
     setLoopIndex(safeIndex)
 
-    appendLoopDebug(`Cue transición: ${note.name}`)
-    const cuePlayed = await playTransitionCue(dingdongCue)
+    await playTransitionCue(dingdongCue)
     if (token !== loopTokenRef.current) return
-    if (!cuePlayed) {
-      appendLoopDebug(`Cue omitido o falló: ${note.name}`)
-    }
 
-    appendLoopDebug(`Play bucle: ${note.name}`)
     await play(note)
   }
-
-  useEffect(() => {
-    if (!showLoopDebug) return
-
-    const onWindowError = (event: ErrorEvent) => {
-      appendLoopDebug(`window.error: ${event.message}`)
-    }
-
-    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
-      appendLoopDebug('window.unhandledrejection', event.reason)
-    }
-
-    window.addEventListener('error', onWindowError)
-    window.addEventListener('unhandledrejection', onUnhandledRejection)
-
-    return () => {
-      window.removeEventListener('error', onWindowError)
-      window.removeEventListener('unhandledrejection', onUnhandledRejection)
-    }
-  }, [showLoopDebug])
 
   useEffect(() => {
     const prevPlayingNoteId = previousPlayingNoteIdRef.current
 
     if (
       loopingClosed &&
-      !loopPreparing &&
       prevPlayingNoteId &&
       !playingNoteId &&
       loopIds.length > 0
@@ -406,7 +286,6 @@ export function MasterNotesView({
   }, [
     loopIds,
     loopIndex,
-    loopPreparing,
     loopingClosed,
     play,
     playingNoteId,
@@ -458,11 +337,9 @@ export function MasterNotesView({
     }
 
     try {
-      appendLoopDebug(`Play manual: ${note.name}`)
       await play(note)
       setError(null)
     } catch (err) {
-      appendLoopDebug(`Error play manual: ${note.name}`, err)
       console.error(err)
       setError('No se pudo reproducir la nota maestra')
     }
@@ -482,127 +359,114 @@ export function MasterNotesView({
     }
   }
 
-  const handleClosedLoopToggle = async (): Promise<void> => {
-    if (loopingClosed) {
-      disableLoopPlayback(true)
-      return
-    }
+  const getPlayablePlaylistNoteIds = (playlistId: string): string[] => {
+    return (itemsByPlaylistId.get(playlistId) || [])
+      .map((item) => item.master_note_id)
+      .filter((noteId) => {
+        const note = closedNotesById.get(noteId)
+        if (!note) return false
+        return canPlay(note, note.total_duration_ms > 0 ? 1 : 0)
+      })
+  }
 
-    if (preparedLoopIds.length === 0) {
-      setError('Primero prepara una sesión de reproducción en bucle')
+  const handlePlayPlaylist = async (playlistId: string): Promise<void> => {
+    const playlist = playlists.find((row) => row.id === playlistId)
+    if (!playlist) return
+
+    const ids = getPlayablePlaylistNoteIds(playlistId)
+    if (ids.length === 0) {
+      setError('Esta lista no tiene notas cerradas reproducibles')
       return
     }
 
     const token = loopTokenRef.current + 1
     loopTokenRef.current = token
-    appendLoopDebug('Iniciando reproducción de sesión preparada')
 
-    const ids = [...preparedLoopIds]
     setLoopingClosed(true)
     setLoopIds(ids)
     setLoopIndex(0)
+    setActivePlayerPlaylistId(playlistId)
 
-    try {
-      await playLoopNoteAt(0, ids, token)
-      if (token === loopTokenRef.current) {
-        appendLoopDebug('Bucle iniciado correctamente')
-        setError(null)
-      }
-    } catch (err) {
-      appendLoopDebug('Error iniciando bucle', err)
-      console.error(err)
-      if (token === loopTokenRef.current) {
-        setError('No se pudo iniciar la reproducción en bucle')
-        disableLoopPlayback(true)
-      }
-    }
+    await playLoopNoteAt(0, ids, token)
+    setError(null)
   }
 
-  const handlePrepareLoopSession = async (): Promise<void> => {
-    if (loopPreparing) return
-    if (loopingClosed) {
-      disableLoopPlayback(true)
-    }
+  const handleNextLoopTrack = async (): Promise<void> => {
+    if (!loopingClosed || loopIds.length === 0) return
+    const token = loopTokenRef.current
+    const nextIndex = (loopIndex + 1) % loopIds.length
+    await playLoopNoteAt(nextIndex, loopIds, token)
+  }
 
-    if (selectedPlayableClosedItems.length === 0) {
-      setError('Selecciona al menos una nota maestra cerrada para preparar la sesión')
+  const handlePrevLoopTrack = async (): Promise<void> => {
+    if (!loopingClosed || loopIds.length === 0) return
+    const token = loopTokenRef.current
+    const prevIndex = (loopIndex - 1 + loopIds.length) % loopIds.length
+    await playLoopNoteAt(prevIndex, loopIds, token)
+  }
+
+  const handleTogglePlaylistPause = async (): Promise<void> => {
+    if (!loopingClosed || loopIds.length === 0) return
+
+    if (playingNoteId) {
+      togglePause()
       return
     }
 
-    const token = loopTokenRef.current + 1
-    loopTokenRef.current = token
-
-    setShowLoopDebug(true)
-    setLoopDebugLogs([])
-    clearDebugEvents()
-    appendLoopDebug('Iniciando preparación de sesión de bucle')
-    setLoopPreparing(true)
-    setPreparedLoopIds([])
-
-    try {
-      await warmClosedAudioForOffline(selectedPlayableClosedItems, token)
-      if (token !== loopTokenRef.current) return
-
-      const sessionIds = selectedPlayableClosedItems.map((note) => note.id)
-      setPreparedLoopIds(sessionIds)
-      setError(null)
-      appendLoopDebug(`Sesión preparada con ${sessionIds.length} notas`)
-    } catch (err) {
-      appendLoopDebug('Error preparando sesión', err)
-      setError('No se pudo preparar la sesión de reproducción en bucle')
-    } finally {
-      if (token === loopTokenRef.current) {
-        setLoopPreparing(false)
-      }
+    if (isPaused) {
+      await resume()
+      return
     }
+
+    const token = loopTokenRef.current
+    await playLoopNoteAt(loopIndex, loopIds, token)
   }
 
-  const handleToggleDraftNote = (noteId: string): void => {
-    setLoopDraftIds((prev) => {
-      if (prev.includes(noteId)) {
-        return prev.filter((id) => id !== noteId)
-      }
-      return [...prev, noteId]
-    })
-
-    if (preparedLoopIds.length > 0) {
-      setPreparedLoopIds([])
-      appendLoopDebug('Se invalidó la sesión preparada por cambio de selección')
-    }
+  const handleCreatePlaylistClick = (): void => {
+    setPlaylistDialogMode('create')
+    setEditingPlaylistId(null)
+    setPlaylistDialogOpen(true)
   }
 
-  const handleCopyLoopDebug = async (): Promise<void> => {
-    const lines = [...loopDebugLogs, ...playbackDebugEvents]
-    if (lines.length === 0) return
-
-    try {
-      await navigator.clipboard.writeText(lines.join('\n'))
-      appendLoopDebug('Se copiaron logs al portapapeles')
-    } catch (err) {
-      appendLoopDebug('No se pudieron copiar logs', err)
-    }
+  const handleEditPlaylistClick = (playlistId: string): void => {
+    setPlaylistDialogMode('edit')
+    setEditingPlaylistId(playlistId)
+    setPlaylistDialogOpen(true)
   }
 
-  const handleCreatePlaylist = async (): Promise<void> => {
-    if (playlistSubmitting) return
+  const handlePlaylistDialogSubmit = async (payload: {
+    name: string
+    noteIds: string[]
+  }): Promise<void> => {
+    if (playlistDialogSubmitting) return
 
-    const normalizedName = newPlaylistName.trim()
+    const normalizedName = payload.name.trim()
     if (!normalizedName) {
       setError('Escribe un nombre para la lista de reproducción')
       return
     }
 
-    setPlaylistSubmitting(true)
+    setPlaylistDialogSubmitting(true)
     try {
-      await createPlaylist(normalizedName)
-      setNewPlaylistName('')
+      if (playlistDialogMode === 'create') {
+        const created = await createPlaylist(normalizedName)
+        await replacePlaylistItems(created.id, payload.noteIds)
+      } else if (editingPlaylist) {
+        if (editingPlaylist.name.trim() !== normalizedName) {
+          await renamePlaylist(editingPlaylist.id, normalizedName)
+        }
+        await replacePlaylistItems(editingPlaylist.id, payload.noteIds)
+      }
+
       clearPlaylistsError()
       setError(null)
+      setPlaylistDialogOpen(false)
+      setEditingPlaylistId(null)
     } catch (err) {
       console.error(err)
-      setError('No se pudo crear la lista de reproducción')
+      setError('No se pudieron guardar los cambios de la lista')
     } finally {
-      setPlaylistSubmitting(false)
+      setPlaylistDialogSubmitting(false)
     }
   }
 
@@ -621,53 +485,8 @@ export function MasterNotesView({
     }
   }
 
-  const handleAddNoteToPlaylistDraft = (): void => {
-    if (!addingPlaylistNoteId) return
-
-    setPlaylistDraftNoteIds((prev) => {
-      if (prev.includes(addingPlaylistNoteId)) return prev
-      return [...prev, addingPlaylistNoteId]
-    })
-    setAddingPlaylistNoteId('')
-  }
-
-  const handleRemoveNoteFromPlaylistDraft = (noteId: string): void => {
-    setPlaylistDraftNoteIds((prev) => prev.filter((id) => id !== noteId))
-  }
-
-  const handleMovePlaylistDraftNote = (noteId: string, direction: 'up' | 'down'): void => {
-    setPlaylistDraftNoteIds((prev) => {
-      const index = prev.indexOf(noteId)
-      if (index < 0) return prev
-
-      const targetIndex = direction === 'up' ? index - 1 : index + 1
-      if (targetIndex < 0 || targetIndex >= prev.length) return prev
-
-      const next = [...prev]
-      const [item] = next.splice(index, 1)
-      next.splice(targetIndex, 0, item)
-      return next
-    })
-  }
-
-  const handleSavePlaylistItems = async (): Promise<void> => {
-    if (!selectedPlaylist) {
-      setError('Selecciona una lista de reproducción')
-      return
-    }
-
-    if (savingPlaylistItems) return
-
-    setSavingPlaylistItems(true)
-    try {
-      await replacePlaylistItems(selectedPlaylist.id, playlistDraftNoteIds)
-      setError(null)
-    } catch (err) {
-      console.error(err)
-      setError('No se pudo guardar el orden de la lista')
-    } finally {
-      setSavingPlaylistItems(false)
-    }
+  const handleClosePlaylistPlayer = (): void => {
+    disableLoopPlayback(true)
   }
 
   return (
@@ -895,56 +714,23 @@ export function MasterNotesView({
 
         <TabsContent value='playlists' className='space-y-4'>
           <Card className='rounded-2xl'>
-            <CardContent className='space-y-3'>
-              <p className='text-xs font-semibold tracking-wide text-muted-foreground'>
-                Crear lista de reproducción
-              </p>
-              <div className='flex flex-wrap gap-2'>
-                <Input
-                  value={newPlaylistName}
-                  onChange={(event) => setNewPlaylistName(event.target.value)}
-                  placeholder='Ej: Cerradas de esta semana'
-                  className='min-w-72 flex-1'
-                />
-                <Button
-                  type='button'
-                  onClick={() => void handleCreatePlaylist()}
-                  disabled={playlistSubmitting}
-                >
-                  {playlistSubmitting ? 'Creando...' : 'Crear lista'}
-                </Button>
+            <CardContent className='flex flex-wrap items-center justify-between gap-3'>
+              <div>
+                <p className='text-xs font-semibold tracking-wide text-muted-foreground'>
+                  Mis listas de reproducción
+                </p>
+                <p className='text-sm text-muted-foreground'>
+                  Crea, edita y reproduce tus listas de notas cerradas.
+                </p>
               </div>
+              <Button type='button' onClick={handleCreatePlaylistClick}>
+                Crear lista de reproducción
+              </Button>
             </CardContent>
           </Card>
 
           <Card className='rounded-2xl'>
             <CardContent>
-              <div className='mb-3 flex flex-wrap items-center justify-between gap-3'>
-                <p className='text-xs font-semibold tracking-wide text-muted-foreground'>
-                  Mis listas de reproducción
-                </p>
-
-                {playlists.length > 0 && (
-                  <div className='min-w-72'>
-                    <Select
-                      value={selectedPlaylistId}
-                      onValueChange={setSelectedPlaylistId}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder='Selecciona una lista' />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {playlists.map((playlist) => (
-                          <SelectItem key={playlist.id} value={playlist.id}>
-                            {playlist.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
-
               {playlistsLoading && (
                 <p className='text-sm text-muted-foreground'>Cargando listas...</p>
               )}
@@ -958,6 +744,7 @@ export function MasterNotesView({
               <div className='space-y-2'>
                 {playlists.map((playlist) => {
                   const totalItems = itemsByPlaylistId.get(playlist.id)?.length || 0
+                  const isThisPlaying = activePlayerPlaylistId === playlist.id && loopingClosed
 
                   return (
                     <div
@@ -971,240 +758,89 @@ export function MasterNotesView({
                         </p>
                       </div>
 
-                      <Button
-                        type='button'
-                        variant='destructive'
-                        size='sm'
-                        disabled={deletingPlaylistId === playlist.id}
-                        onClick={() => void handleDeletePlaylist(playlist.id)}
-                      >
-                        {deletingPlaylistId === playlist.id ? 'Eliminando...' : 'Eliminar'}
-                      </Button>
+                      <div className='flex items-center gap-2'>
+                        <Button
+                          type='button'
+                          size='sm'
+                          variant={isThisPlaying ? 'secondary' : 'default'}
+                          onClick={() => {
+                            if (isThisPlaying) {
+                              handleClosePlaylistPlayer()
+                              return
+                            }
+                            void handlePlayPlaylist(playlist.id)
+                          }}
+                        >
+                          <PlayIcon className='mr-1 size-4' />
+                          {isThisPlaying ? 'Detener' : 'Play'}
+                        </Button>
+
+                        <Button
+                          type='button'
+                          size='icon'
+                          variant='outline'
+                          onClick={() => handleEditPlaylistClick(playlist.id)}
+                          aria-label='Editar lista'
+                        >
+                          <PencilIcon className='size-4' />
+                        </Button>
+
+                        <Button
+                          type='button'
+                          size='icon'
+                          variant='destructive'
+                          disabled={deletingPlaylistId === playlist.id}
+                          onClick={() => void handleDeletePlaylist(playlist.id)}
+                          aria-label='Eliminar lista'
+                        >
+                          <Trash2Icon className='size-4' />
+                        </Button>
+                      </div>
                     </div>
                   )
                 })}
               </div>
             </CardContent>
           </Card>
-
-          {selectedPlaylist && (
-            <Card className='rounded-2xl'>
-              <CardContent className='space-y-4'>
-                <div className='flex flex-wrap items-center justify-between gap-2'>
-                  <div>
-                    <p className='text-xs font-semibold tracking-wide text-muted-foreground'>
-                      Editar lista seleccionada
-                    </p>
-                    <p className='text-sm font-semibold'>{selectedPlaylist.name}</p>
-                  </div>
-                  <Button
-                    type='button'
-                    onClick={() => void handleSavePlaylistItems()}
-                    disabled={savingPlaylistItems}
-                  >
-                    {savingPlaylistItems ? 'Guardando...' : 'Guardar lista'}
-                  </Button>
-                </div>
-
-                <div className='flex flex-wrap gap-2'>
-                  <div className='min-w-72 flex-1'>
-                    <Select
-                      value={addingPlaylistNoteId}
-                      onValueChange={setAddingPlaylistNoteId}
-                      disabled={availableClosedNotesForPlaylist.length === 0}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder='Selecciona una nota cerrada' />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableClosedNotesForPlaylist.map((note) => (
-                          <SelectItem key={note.id} value={note.id}>
-                            {note.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button
-                    type='button'
-                    variant='outline'
-                    onClick={handleAddNoteToPlaylistDraft}
-                    disabled={availableClosedNotesForPlaylist.length === 0 || !addingPlaylistNoteId}
-                  >
-                    <PlusIcon className='mr-1 size-4' />
-                    Agregar nota
-                  </Button>
-                </div>
-
-                <div className='space-y-2'>
-                  {playlistDraftNoteIds.length === 0 ? (
-                    <p className='text-sm text-muted-foreground'>
-                      Esta lista está vacía. Agrega notas cerradas para reproducirlas.
-                    </p>
-                  ) : (
-                    playlistDraftNoteIds.map((noteId, index) => {
-                      const note = closedNotesById.get(noteId)
-                      if (!note) return null
-
-                      return (
-                        <div
-                          key={noteId}
-                          className='flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3'
-                        >
-                          <div>
-                            <p className='font-semibold'>{note.name}</p>
-                            <p className='text-xs text-muted-foreground'>
-                              Posición {index + 1}
-                            </p>
-                          </div>
-
-                          <div className='flex items-center gap-2'>
-                            <Button
-                              type='button'
-                              size='icon'
-                              variant='outline'
-                              aria-label='Mover arriba'
-                              onClick={() =>
-                                handleMovePlaylistDraftNote(noteId, 'up')
-                              }
-                              disabled={index === 0}
-                            >
-                              <ArrowUpIcon className='size-4' />
-                            </Button>
-                            <Button
-                              type='button'
-                              size='icon'
-                              variant='outline'
-                              aria-label='Mover abajo'
-                              onClick={() =>
-                                handleMovePlaylistDraftNote(noteId, 'down')
-                              }
-                              disabled={index === playlistDraftNoteIds.length - 1}
-                            >
-                              <ArrowDownIcon className='size-4' />
-                            </Button>
-                            <Button
-                              type='button'
-                              size='icon'
-                              variant='destructive'
-                              aria-label='Quitar nota'
-                              onClick={() => handleRemoveNoteFromPlaylistDraft(noteId)}
-                            >
-                              <XIcon className='size-4' />
-                            </Button>
-                          </div>
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {closedItems.length > 0 && (
-            <Card className='rounded-2xl'>
-              <CardContent>
-                <Accordion type='single' collapsible defaultValue='prepare-loop'>
-                  <AccordionItem value='prepare-loop' className='border-none'>
-                    <AccordionTrigger className='py-0 hover:no-underline'>
-                      <span className='text-xs font-semibold tracking-wide text-muted-foreground'>
-                        Preparar sesión de reproducción en bucle
-                      </span>
-                    </AccordionTrigger>
-                    <AccordionContent className='pt-2'>
-                      <div className='space-y-2'>
-                        {closedItems.map((note) => (
-                          <label
-                            key={note.id}
-                            className='flex items-center gap-2 text-sm'
-                          >
-                            <input
-                              type='checkbox'
-                              checked={loopDraftIds.includes(note.id)}
-                              onChange={() => handleToggleDraftNote(note.id)}
-                              className='size-4 rounded border-input accent-foreground'
-                            />
-                            <span>{note.name}</span>
-                          </label>
-                        ))}
-                      </div>
-
-                      <div className='mt-3 flex flex-wrap gap-2'>
-                        <Button
-                          type='button'
-                          variant='outline'
-                          onClick={() => void handlePrepareLoopSession()}
-                          disabled={loopPreparing || selectedPlayableClosedItems.length === 0}
-                        >
-                          {loopPreparing ? (
-                            <>
-                              <Loader2Icon className='mr-1 size-4 animate-spin' />
-                              Preparando sesión...
-                            </>
-                          ) : (
-                            'Preparar sesión'
-                          )}
-                        </Button>
-
-                        {preparedLoopIds.length > 0 && (
-                          <Button
-                            type='button'
-                            variant={loopingClosed ? 'secondary' : 'default'}
-                            onClick={() => void handleClosedLoopToggle()}
-                          >
-                            {loopingClosed ? (
-                              <>
-                                <SquareIcon className='mr-1 size-4' />
-                                Detener bucle
-                              </>
-                            ) : (
-                              <>
-                                <RepeatIcon className='mr-1 size-4' />
-                                Reproducir en bucle
-                              </>
-                            )}
-                          </Button>
-                        )}
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                </Accordion>
-              </CardContent>
-            </Card>
-          )}
-
-          {showLoopDebug && (
-            <Card className='rounded-2xl border-dashed'>
-              <CardContent>
-                <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
-                  <p className='text-xs font-semibold tracking-wide text-muted-foreground'>
-                    Logs de depuración de bucle (provisorio)
-                  </p>
-                  <Button
-                    type='button'
-                    size='sm'
-                    variant='outline'
-                    onClick={() => void handleCopyLoopDebug()}
-                  >
-                    <CopyIcon className='mr-1 size-4' />
-                    Copiar errores
-                  </Button>
-                </div>
-                <div className='max-h-56 overflow-auto rounded-md bg-muted p-2 text-[11px] text-muted-foreground'>
-                  {[...loopDebugLogs, ...playbackDebugEvents].length === 0 ? (
-                    <p>Sin eventos todavía.</p>
-                  ) : (
-                    <pre className='whitespace-pre-wrap'>
-                      {[...loopDebugLogs, ...playbackDebugEvents].join('\n')}
-                    </pre>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </TabsContent>
       </Tabs>
+
+      <MasterNotePlaylistEditorDialog
+        open={playlistDialogOpen}
+        mode={playlistDialogMode}
+        initialName={editingPlaylist?.name || ''}
+        initialNoteIds={editingPlaylistNoteIds}
+        closedNotes={closedNoteOptions}
+        submitting={playlistDialogSubmitting}
+        onOpenChange={(open) => {
+          setPlaylistDialogOpen(open)
+          if (!open) {
+            setEditingPlaylistId(null)
+          }
+        }}
+        onSubmit={handlePlaylistDialogSubmit}
+      />
+
+      <MasterNotePlaylistPlayerDock
+        open={Boolean(activePlayerPlaylist && loopIds.length > 0)}
+        playlistName={activePlayerPlaylist?.name || 'Lista de reproducción'}
+        noteName={activeLoopNote?.name || 'Sin nota en reproducción'}
+        progressSec={positionSec}
+        durationSec={durationSec}
+        currentIndex={loopIndex}
+        totalCount={loopIds.length}
+        paused={isPaused}
+        onTogglePause={() => {
+          void handleTogglePlaylistPause()
+        }}
+        onPrevious={() => {
+          void handlePrevLoopTrack()
+        }}
+        onNext={() => {
+          void handleNextLoopTrack()
+        }}
+        onClose={handleClosePlaylistPlayer}
+      />
 
       <IcaDeletionWarningDialog
         open={Boolean(deleteCandidate)}
