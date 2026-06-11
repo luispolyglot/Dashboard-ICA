@@ -60,10 +60,16 @@ export function OfflineSafeView() {
   const [notes, setNotes] = useState<OfflineClosedMasterNote[]>([])
   const [notesError, setNotesError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'notes' | 'playlists'>('notes')
-  const [activePlayerPlaylistId, setActivePlayerPlaylistId] = useState<string | null>(null)
+  const [activePlayerPlaylistId, setActivePlayerPlaylistId] = useState<
+    string | null
+  >(null)
   const [playlistDialogOpen, setPlaylistDialogOpen] = useState(false)
-  const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null)
-  const [playlistDraftById, setPlaylistDraftById] = useState<Record<string, string[]>>({})
+  const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(
+    null,
+  )
+  const [playlistDraftById, setPlaylistDraftById] = useState<
+    Record<string, string[]>
+  >({})
   const [selectedGroupKey, setSelectedGroupKey] = useState<string>('')
 
   const {
@@ -245,7 +251,9 @@ export function OfflineSafeView() {
 
   const editingPlaylist = useMemo(() => {
     if (!editingPlaylistId) return null
-    return playlists.find((playlist) => playlist.id === editingPlaylistId) || null
+    return (
+      playlists.find((playlist) => playlist.id === editingPlaylistId) || null
+    )
   }, [editingPlaylistId, playlists])
 
   const editingPlaylistNoteIds = useMemo(() => {
@@ -265,14 +273,20 @@ export function OfflineSafeView() {
 
   const activePlayerPlaylist = useMemo(() => {
     if (!activePlayerPlaylistId) return null
-    return playlists.find((playlist) => playlist.id === activePlayerPlaylistId) || null
+    return (
+      playlists.find((playlist) => playlist.id === activePlayerPlaylistId) ||
+      null
+    )
   }, [activePlayerPlaylistId, playlists])
 
-  const playNoteById = useCallback(async (noteId: string): Promise<void> => {
-    const note = notesById.get(noteId)
-    if (!note || !note.audioAvailable) return
-    await play(toMasterNote(note))
-  }, [notesById, play])
+  const playNoteById = useCallback(
+    async (noteId: string): Promise<void> => {
+      const note = notesById.get(noteId)
+      if (!note || !note.audioAvailable) return
+      await play(toMasterNote(note))
+    },
+    [notesById, play],
+  )
 
   const playCue = useCallback(async (): Promise<unknown> => {
     return await playTransitionCue(dingdongCue)
@@ -371,11 +385,13 @@ export function OfflineSafeView() {
   }
 
   const handlePlayPlaylist = async (playlistId: string): Promise<void> => {
-    const ids = (playlistDraftById[playlistId] || (itemsByPlaylistId.get(playlistId) || []).map((item) => item.masterNoteId))
-      .filter((noteId) => {
-        const note = notesById.get(noteId)
-        return Boolean(note?.audioAvailable)
-      })
+    const ids = (
+      playlistDraftById[playlistId] ||
+      (itemsByPlaylistId.get(playlistId) || []).map((item) => item.masterNoteId)
+    ).filter((noteId) => {
+      const note = notesById.get(noteId)
+      return Boolean(note?.audioAvailable)
+    })
 
     if (ids.length === 0) return
 
@@ -481,11 +497,15 @@ export function OfflineSafeView() {
 
         <Tabs
           value={activeTab}
-          onValueChange={(value) => setActiveTab(value as 'notes' | 'playlists')}
+          onValueChange={(value) =>
+            setActiveTab(value as 'notes' | 'playlists')
+          }
         >
           <TabsList>
             <TabsTrigger value='notes'>Mis Notas Maestras</TabsTrigger>
-            <TabsTrigger value='playlists'>Mis Listas de Reproducción</TabsTrigger>
+            <TabsTrigger value='playlists'>
+              Mis Listas de Reproducción
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value='notes' className='space-y-3'>
@@ -517,7 +537,7 @@ export function OfflineSafeView() {
             {playableOfflineNotes.length > 0 && (
               <Button
                 type='button'
-                variant={loopingClosed ? 'secondary' : 'outline'}
+                variant={loopingClosed ? 'outline' : 'default'}
                 onClick={() => void handleClosedLoopToggle()}
               >
                 {loopingClosed ? (
@@ -528,7 +548,7 @@ export function OfflineSafeView() {
                 ) : (
                   <>
                     <RepeatIcon className='mr-1 size-4' />
-                    Reproducir bucle
+                    Reproducir todo en bucle
                   </>
                 )}
               </Button>
@@ -659,7 +679,9 @@ export function OfflineSafeView() {
             </p>
 
             {playlistsLoading && (
-              <p className='text-sm text-muted-foreground'>Cargando listas offline...</p>
+              <p className='text-sm text-muted-foreground'>
+                Cargando listas offline...
+              </p>
             )}
 
             {!playlistsLoading && playlists.length === 0 && (
@@ -672,14 +694,16 @@ export function OfflineSafeView() {
               <Card className='rounded-2xl'>
                 <CardContent className='space-y-2'>
                   {playlists.map((playlist) => {
-                    const storedIds = (itemsByPlaylistId.get(playlist.id) || [])
-                      .map((item) => item.masterNoteId)
+                    const storedIds = (
+                      itemsByPlaylistId.get(playlist.id) || []
+                    ).map((item) => item.masterNoteId)
                     const ids = playlistDraftById[playlist.id] || storedIds
                     const playableCount = ids.filter((noteId) => {
                       const note = notesById.get(noteId)
                       return Boolean(note?.audioAvailable)
                     }).length
-                    const isThisPlaying = activePlayerPlaylistId === playlist.id && loopingClosed
+                    const isThisPlaying =
+                      activePlayerPlaylistId === playlist.id && loopingClosed
 
                     return (
                       <div
@@ -772,6 +796,7 @@ export function OfflineSafeView() {
             void playNext()
           }}
           onClose={() => disableLoopPlayback(true)}
+          extraClassname='bottom-0! z-50!'
         />
       </div>
     </section>

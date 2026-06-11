@@ -28,6 +28,7 @@ type MasterNotePlaylistPlayerDockProps = {
   onPrevious: () => void
   onNext: () => void
   onClose: () => void
+  extraClassname?: string
 }
 
 function formatSeconds(seconds: number): string {
@@ -54,6 +55,7 @@ export function MasterNotePlaylistPlayerDock({
   onPrevious,
   onNext,
   onClose,
+  extraClassname = '',
 }: MasterNotePlaylistPlayerDockProps) {
   if (!open) return null
 
@@ -64,7 +66,9 @@ export function MasterNotePlaylistPlayerDock({
   )
 
   return (
-    <div className='fixed inset-x-0 bottom-20 lg:bottom-0 z-40 lg:z-50 border-t border-white/20 bg-[radial-gradient(circle_at_20%_0%,_#334155_0%,_#111827_55%,_#020617_100%)] px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 text-white shadow-[0_-10px_40px_rgba(2,6,23,0.6)]'>
+    <div
+      className={`fixed inset-x-0 bottom-20 lg:bottom-0 z-40 lg:z-50 border-t border-white/20 bg-[radial-gradient(circle_at_20%_0%,_#334155_0%,_#111827_55%,_#020617_100%)] px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 text-white shadow-[0_-10px_40px_rgba(2,6,23,0.6)] ${extraClassname}`}
+    >
       <div className='mx-auto flex w-full max-w-5xl items-start justify-between gap-3'>
         <div className='min-w-0 flex-1'>
           <p className='truncate text-sm font-semibold'>{noteName}</p>

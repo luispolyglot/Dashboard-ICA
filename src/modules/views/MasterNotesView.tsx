@@ -108,11 +108,20 @@ export function MasterNotesView({
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'notes' | 'playlists'>('notes')
   const [playlistDialogOpen, setPlaylistDialogOpen] = useState(false)
-  const [playlistDialogMode, setPlaylistDialogMode] = useState<'create' | 'edit'>('create')
-  const [playlistDialogSubmitting, setPlaylistDialogSubmitting] = useState(false)
-  const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null)
-  const [deletingPlaylistId, setDeletingPlaylistId] = useState<string | null>(null)
-  const [activePlayerPlaylistId, setActivePlayerPlaylistId] = useState<string | null>(null)
+  const [playlistDialogMode, setPlaylistDialogMode] = useState<
+    'create' | 'edit'
+  >('create')
+  const [playlistDialogSubmitting, setPlaylistDialogSubmitting] =
+    useState(false)
+  const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(
+    null,
+  )
+  const [deletingPlaylistId, setDeletingPlaylistId] = useState<string | null>(
+    null,
+  )
+  const [activePlayerPlaylistId, setActivePlayerPlaylistId] = useState<
+    string | null
+  >(null)
   const [deleteCandidate, setDeleteCandidate] = useState<MasterNote | null>(
     null,
   )
@@ -196,7 +205,9 @@ export function MasterNotesView({
 
   const editingPlaylist = useMemo(() => {
     if (!editingPlaylistId) return null
-    return playlists.find((playlist) => playlist.id === editingPlaylistId) || null
+    return (
+      playlists.find((playlist) => playlist.id === editingPlaylistId) || null
+    )
   }, [editingPlaylistId, playlists])
 
   const editingPlaylistNoteIds = useMemo(() => {
@@ -208,18 +219,24 @@ export function MasterNotesView({
 
   const activePlayerPlaylist = useMemo(() => {
     if (!activePlayerPlaylistId) return null
-    return playlists.find((playlist) => playlist.id === activePlayerPlaylistId) || null
+    return (
+      playlists.find((playlist) => playlist.id === activePlayerPlaylistId) ||
+      null
+    )
   }, [activePlayerPlaylistId, playlists])
 
   const itemsById = useMemo(() => {
     return new Map(items.map((item) => [item.id, item]))
   }, [items])
 
-  const playNoteById = useCallback(async (noteId: string): Promise<void> => {
-    const note = itemsById.get(noteId)
-    if (!note) return
-    await play(note)
-  }, [itemsById, play])
+  const playNoteById = useCallback(
+    async (noteId: string): Promise<void> => {
+      const note = itemsById.get(noteId)
+      if (!note) return
+      await play(note)
+    },
+    [itemsById, play],
+  )
 
   const playCue = useCallback(async (): Promise<unknown> => {
     return await playTransitionCue(dingdongCue)
@@ -483,7 +500,9 @@ export function MasterNotesView({
       >
         <TabsList>
           <TabsTrigger value='notes'>Mis Notas Maestras</TabsTrigger>
-          <TabsTrigger value='playlists'>Mis Listas de Reproducción</TabsTrigger>
+          <TabsTrigger value='playlists'>
+            Mis Listas de Reproducción
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value='notes' className='space-y-4'>
@@ -509,14 +528,16 @@ export function MasterNotesView({
           {!loading && (
             <Button
               type='button'
-              variant={loopingClosed && !activePlayerPlaylistId ? 'secondary' : 'outline'}
+              variant={
+                loopingClosed && !activePlayerPlaylistId ? 'outline' : 'default'
+              }
               onClick={() => void handlePlayAllClosedLoop()}
               disabled={playableClosedNoteIds.length === 0}
             >
               {loopingClosed && !activePlayerPlaylistId ? (
                 <>
                   <SquareIcon className='mr-1 size-4' />
-                  Detener reproducción en bucle
+                  Detener bucle
                 </>
               ) : (
                 <>
@@ -538,7 +559,9 @@ export function MasterNotesView({
                     <div>
                       <div className='flex flex-wrap items-center gap-2'>
                         <p className='font-semibold'>
-                          {item.state === 'closed' ? `⭐ ${item.name}` : item.name}
+                          {item.state === 'closed'
+                            ? `⭐ ${item.name}`
+                            : item.name}
                         </p>
                         <Badge
                           variant='outline'
@@ -579,8 +602,10 @@ export function MasterNotesView({
                           type='button'
                           onClick={() => void handlePlay(item)}
                           disabled={
-                            !canPlay(item, item.total_duration_ms > 0 ? 1 : 0) ||
-                            isDownloadingThis
+                            !canPlay(
+                              item,
+                              item.total_duration_ms > 0 ? 1 : 0,
+                            ) || isDownloadingThis
                           }
                         >
                           <Volume2Icon className='mr-1 size-4' />
@@ -624,7 +649,8 @@ export function MasterNotesView({
                             <SeekForward10Icon />
                           </Button>
                           <span className='inline-flex min-w-18 items-center justify-end text-xs text-muted-foreground'>
-                            {formatSeconds(positionSec)} / {formatSeconds(durationSec)}
+                            {formatSeconds(positionSec)} /{' '}
+                            {formatSeconds(durationSec)}
                           </span>
                         </>
                       )}
@@ -684,7 +710,9 @@ export function MasterNotesView({
                             type='button'
                             size='icon'
                             variant='destructive'
-                            disabled={deletingId === item.id || isDownloadingThis}
+                            disabled={
+                              deletingId === item.id || isDownloadingThis
+                            }
                             onClick={() => setDeleteCandidate(item)}
                             aria-label='Eliminar nota maestra'
                           >
@@ -726,7 +754,9 @@ export function MasterNotesView({
           <Card className='rounded-2xl'>
             <CardContent>
               {playlistsLoading && (
-                <p className='text-sm text-muted-foreground'>Cargando listas...</p>
+                <p className='text-sm text-muted-foreground'>
+                  Cargando listas...
+                </p>
               )}
 
               {!playlistsLoading && playlists.length === 0 && (
@@ -737,8 +767,10 @@ export function MasterNotesView({
 
               <div className='space-y-2'>
                 {playlists.map((playlist) => {
-                  const totalItems = itemsByPlaylistId.get(playlist.id)?.length || 0
-                  const isThisPlaying = activePlayerPlaylistId === playlist.id && loopingClosed
+                  const totalItems =
+                    itemsByPlaylistId.get(playlist.id)?.length || 0
+                  const isThisPlaying =
+                    activePlayerPlaylistId === playlist.id && loopingClosed
 
                   return (
                     <div
