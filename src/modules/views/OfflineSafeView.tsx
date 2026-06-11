@@ -326,16 +326,16 @@ export function OfflineSafeView() {
 
   useEffect(() => {
     if (!loopingClosed) return
-    if (activeTab !== 'notes') return
+    if (activePlayerPlaylistId) return
     disableLoopPlayback(true)
-  }, [activeTab, selectedGroupKey])
+  }, [activePlayerPlaylistId, selectedGroupKey])
 
   useEffect(() => {
     if (!loopingClosed) return
-    if (activeTab !== 'playlists') return
     if (!activePlayerPlaylistId) return
+    if (activeTab === 'playlists') return
     disableLoopPlayback(true)
-  }, [activePlayerPlaylistId, activeTab])
+  }, [activePlayerPlaylistId, activeTab, loopingClosed])
 
   const handlePlay = async (note: OfflineClosedMasterNote): Promise<void> => {
     if (!note.audioAvailable) return
