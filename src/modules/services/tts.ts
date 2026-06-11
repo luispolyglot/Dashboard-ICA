@@ -66,8 +66,26 @@ function speakFallback(text: string, langCode: string, onEnd?: () => void, rate 
   u.pitch = 1
   const voice = getBestVoice(langCode, { preferLocalService: isIOS })
   if (voice) u.voice = voice
-  u.onend = onEnd ? () => onEnd() : null
-  u.onerror = onEnd ? () => onEnd() : null
+
+  let settled = false
+  const finish = () => {
+    if (settled) return
+    settled = true
+    if (onEnd) onEnd()
+  }
+
+  const maxWaitMs = Math.max(1200, Math.min(6000, text.length * 90))
+  const timeoutId = window.setTimeout(finish, maxWaitMs)
+
+  u.onend = () => {
+    window.clearTimeout(timeoutId)
+    finish()
+  }
+  u.onerror = () => {
+    window.clearTimeout(timeoutId)
+    finish()
+  }
+
   window.speechSynthesis.speak(u)
 }
 
