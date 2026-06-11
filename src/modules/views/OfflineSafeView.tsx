@@ -22,8 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import startCue from '@/audio/start.mp3'
-import stepCue from '@/audio/step.mp3'
+import { LOOP_START_CUE_URL, LOOP_STEP_CUE_URL } from '../audio/loopCues'
 import {
   MasterNotePlaylistEditorDialog,
   type PlaylistEditorNoteOption,
@@ -290,7 +289,7 @@ export function OfflineSafeView() {
   )
 
   const playCue = useCallback(async (kind: 'start' | 'step'): Promise<unknown> => {
-    const cue = kind === 'start' ? startCue : stepCue
+    const cue = kind === 'start' ? LOOP_START_CUE_URL : LOOP_STEP_CUE_URL
     return await playTransitionCue(cue)
   }, [playTransitionCue])
 
