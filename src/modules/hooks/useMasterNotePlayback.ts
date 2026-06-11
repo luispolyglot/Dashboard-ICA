@@ -189,12 +189,21 @@ export function useMasterNotePlayback() {
     setDebugEvents((prev) => [...prev, `${timestamp} | ${message}${details}`].slice(-80))
   }
 
+  const getOrCreateAudioElement = (): HTMLAudioElement => {
+    if (audioRef.current) {
+      return audioRef.current
+    }
+
+    const created = new Audio()
+    audioRef.current = created
+    return created
+  }
+
   const stop = (): void => {
     tokenRef.current += 1
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current.currentTime = 0
-      audioRef.current = null
     }
     setPlayingNoteId(null)
     setIsPaused(false)
@@ -234,6 +243,17 @@ export function useMasterNotePlayback() {
   useEffect(() => {
     return () => {
       stop()
+
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current.onended = null
+        audioRef.current.onerror = null
+        audioRef.current.ontimeupdate = null
+        audioRef.current.onloadedmetadata = null
+        audioRef.current.src = ''
+        audioRef.current = null
+      }
+
       clearUnifiedChunkCache()
       clearOfflineTrackCache()
     }
@@ -302,13 +322,14 @@ export function useMasterNotePlayback() {
   ): Promise<void> => {
     if (token !== tokenRef.current) return
 
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.currentTime = 0
-    }
-
-    const audio = new Audio(track.url)
-    audioRef.current = audio
+    const audio = getOrCreateAudioElement()
+    audio.pause()
+    audio.currentTime = 0
+    audio.onended = null
+    audio.onerror = null
+    audio.ontimeupdate = null
+    audio.onloadedmetadata = null
+    audio.src = track.url
 
     const onEnded = () => {
       if (token !== tokenRef.current) return

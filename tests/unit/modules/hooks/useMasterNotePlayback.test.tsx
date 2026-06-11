@@ -60,7 +60,7 @@ class MockAudio {
     this.paused = true
   })
 
-  constructor(src: string) {
+  constructor(src = '') {
     this.src = src
     mockAudioInstances.push(this)
   }
@@ -174,8 +174,8 @@ describe('useMasterNotePlayback', () => {
     expect(createSignedMasterNoteAudioUrlMock).toHaveBeenCalledTimes(2)
     expect(globalThis.fetch).toHaveBeenCalledTimes(2)
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
-    expect(mockAudioInstances).toHaveLength(2)
-    expect(mockAudioInstances[1]?.src).toBe('blob:merged-1')
+    expect(mockAudioInstances).toHaveLength(1)
+    expect(mockAudioInstances[0]?.src).toBe('blob:merged-1')
   })
 
   it('returns empty-audio error when temporal note has no chunks', async () => {
