@@ -18,6 +18,12 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
 import { IcaDeletionWarningDialog } from '../components/IcaDeletionWarningDialog'
 import {
   getMetaTrackerLevelColor,
@@ -113,6 +119,8 @@ export function MasterNotesView({
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [loopPreparing, setLoopPreparing] = useState(false)
   const [loopingClosed, setLoopingClosed] = useState(false)
+  const [loopDraftIds, setLoopDraftIds] = useState<string[]>([])
+  const [preparedLoopIds, setPreparedLoopIds] = useState<string[]>([])
   const [loopIds, setLoopIds] = useState<string[]>([])
   const [loopIndex, setLoopIndex] = useState(0)
   const [showLoopDebug, setShowLoopDebug] = useState(false)
@@ -191,6 +199,18 @@ export function MasterNotesView({
       canPlay(item, item.total_duration_ms > 0 ? 1 : 0),
     )
   }, [canPlay, closedItems])
+
+  const selectedPlayableClosedItems = useMemo(() => {
+    if (loopDraftIds.length === 0) return []
+    const selectedSet = new Set(loopDraftIds)
+    return playableClosedItems.filter((item) => selectedSet.has(item.id))
+  }, [loopDraftIds, playableClosedItems])
+
+  useEffect(() => {
+    const closedIdSet = new Set(closedItems.map((item) => item.id))
+    setLoopDraftIds((prev) => prev.filter((id) => closedIdSet.has(id)))
+    setPreparedLoopIds((prev) => prev.filter((id) => closedIdSet.has(id)))
+  }, [closedItems])
 
   const disableLoopPlayback = (stopCurrent = false): void => {
     appendLoopDebug('Se desactivó el modo bucle')
@@ -390,34 +410,26 @@ export function MasterNotesView({
   }
 
   const handleClosedLoopToggle = async (): Promise<void> => {
-    if (loopingClosed || loopPreparing) {
+    if (loopingClosed) {
       disableLoopPlayback(true)
       return
     }
 
-    if (playableClosedItems.length === 0) {
-      setError('No hay notas maestras cerradas listas para reproducir en bucle')
+    if (preparedLoopIds.length === 0) {
+      setError('Primero prepara una sesión de reproducción en bucle')
       return
     }
 
     const token = loopTokenRef.current + 1
     loopTokenRef.current = token
-    setShowLoopDebug(true)
-    setLoopDebugLogs([])
-    clearDebugEvents()
-    appendLoopDebug('Iniciando bucle cerrado')
+    appendLoopDebug('Iniciando reproducción de sesión preparada')
 
-    const ids = playableClosedItems.map((note) => note.id)
+    const ids = [...preparedLoopIds]
     setLoopingClosed(true)
-    setLoopPreparing(true)
     setLoopIds(ids)
     setLoopIndex(0)
 
     try {
-      await warmClosedAudioForOffline(playableClosedItems, token)
-      if (token !== loopTokenRef.current) return
-
-      setLoopPreparing(false)
       await playLoopNoteAt(0, ids, token, 'first')
       if (token === loopTokenRef.current) {
         appendLoopDebug('Bucle iniciado correctamente')
@@ -430,6 +442,59 @@ export function MasterNotesView({
         setError('No se pudo iniciar la reproducción en bucle')
         disableLoopPlayback(true)
       }
+    }
+  }
+
+  const handlePrepareLoopSession = async (): Promise<void> => {
+    if (loopPreparing) return
+    if (loopingClosed) {
+      disableLoopPlayback(true)
+    }
+
+    if (selectedPlayableClosedItems.length === 0) {
+      setError('Selecciona al menos una nota maestra cerrada para preparar la sesión')
+      return
+    }
+
+    const token = loopTokenRef.current + 1
+    loopTokenRef.current = token
+
+    setShowLoopDebug(true)
+    setLoopDebugLogs([])
+    clearDebugEvents()
+    appendLoopDebug('Iniciando preparación de sesión de bucle')
+    setLoopPreparing(true)
+    setPreparedLoopIds([])
+
+    try {
+      await warmClosedAudioForOffline(selectedPlayableClosedItems, token)
+      if (token !== loopTokenRef.current) return
+
+      const sessionIds = selectedPlayableClosedItems.map((note) => note.id)
+      setPreparedLoopIds(sessionIds)
+      setError(null)
+      appendLoopDebug(`Sesión preparada con ${sessionIds.length} notas`)
+    } catch (err) {
+      appendLoopDebug('Error preparando sesión', err)
+      setError('No se pudo preparar la sesión de reproducción en bucle')
+    } finally {
+      if (token === loopTokenRef.current) {
+        setLoopPreparing(false)
+      }
+    }
+  }
+
+  const handleToggleDraftNote = (noteId: string): void => {
+    setLoopDraftIds((prev) => {
+      if (prev.includes(noteId)) {
+        return prev.filter((id) => id !== noteId)
+      }
+      return [...prev, noteId]
+    })
+
+    if (preparedLoopIds.length > 0) {
+      setPreparedLoopIds([])
+      appendLoopDebug('Se invalidó la sesión preparada por cambio de selección')
     }
   }
 
@@ -471,36 +536,71 @@ export function MasterNotesView({
       {closedItems.length > 0 && (
         <Card className='mb-4 rounded-2xl'>
           <CardContent>
-            <p className='mb-2 text-xs font-semibold tracking-wide text-muted-foreground'>
-              Reproducir todas las notas maestras cerradas en bucle
-            </p>
-            <Button
-              type='button'
-              variant={loopingClosed ? 'secondary' : 'outline'}
-              onClick={() => void handleClosedLoopToggle()}
-            >
-              {loopPreparing ? (
-                <>
-                  <Loader2Icon className='mr-1 size-4 animate-spin' />
-                  Preparando bucle...
-                </>
-              ) : loopingClosed ? (
-                <>
-                  <SquareIcon className='mr-1 size-4' />
-                  Detener bucle
-                </>
-              ) : (
-                <>
-                  <RepeatIcon className='mr-1 size-4' />
-                  Reproducir bucle
-                </>
-              )}
-            </Button>
-            <p className='mt-4 text-xs text-muted-foreground'>
-              💡 Tip: cada vez que escuchas una nota maestra cerrada, preparamos
-              su audio en este dispositivo para que su reproducción sea más
-              rápida y también funcione mejor sin conexión.
-            </p>
+            <Accordion type='single' collapsible defaultValue='prepare-loop'>
+              <AccordionItem value='prepare-loop' className='border-none'>
+                <AccordionTrigger className='py-0 hover:no-underline'>
+                  <span className='text-xs font-semibold tracking-wide text-muted-foreground'>
+                    Preparar sesión de reproducción en bucle
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className='pt-2'>
+                  <div className='space-y-2'>
+                    {closedItems.map((note) => (
+                      <label
+                        key={note.id}
+                        className='flex items-center gap-2 text-sm'
+                      >
+                        <input
+                          type='checkbox'
+                          checked={loopDraftIds.includes(note.id)}
+                          onChange={() => handleToggleDraftNote(note.id)}
+                          className='size-4 rounded border-input accent-foreground'
+                        />
+                        <span>{note.name}</span>
+                      </label>
+                    ))}
+                  </div>
+
+                  <div className='mt-3 flex flex-wrap gap-2'>
+                    <Button
+                      type='button'
+                      variant='outline'
+                      onClick={() => void handlePrepareLoopSession()}
+                      disabled={loopPreparing || selectedPlayableClosedItems.length === 0}
+                    >
+                      {loopPreparing ? (
+                        <>
+                          <Loader2Icon className='mr-1 size-4 animate-spin' />
+                          Preparando sesión...
+                        </>
+                      ) : (
+                        'Preparar sesión'
+                      )}
+                    </Button>
+
+                    {preparedLoopIds.length > 0 && (
+                      <Button
+                        type='button'
+                        variant={loopingClosed ? 'secondary' : 'default'}
+                        onClick={() => void handleClosedLoopToggle()}
+                      >
+                        {loopingClosed ? (
+                          <>
+                            <SquareIcon className='mr-1 size-4' />
+                            Detener bucle
+                          </>
+                        ) : (
+                          <>
+                            <RepeatIcon className='mr-1 size-4' />
+                            Reproducir en bucle
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </CardContent>
         </Card>
       )}
