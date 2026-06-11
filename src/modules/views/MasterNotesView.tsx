@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   DownloadIcon,
@@ -30,6 +30,7 @@ import {
 } from '../components/MetaTracker/colors'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
+import { useLoopedMasterNotePlayback } from '../hooks/useLoopedMasterNotePlayback'
 import dingdongCue from '@/audio/dingdong.mp3'
 import { formatDate } from '../utils'
 import {
@@ -71,12 +72,6 @@ function compareByCreatedAtAsc(a: MasterNote, b: MasterNote): number {
   return aTime - bTime
 }
 
-function waitMs(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms)
-  })
-}
-
 function SeekBack10Icon() {
   return (
     <div className='relative'>
@@ -111,7 +106,6 @@ export function MasterNotesView({
   const [creating, setCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
-  const [loopingClosed, setLoopingClosed] = useState(false)
   const [activeTab, setActiveTab] = useState<'notes' | 'playlists'>('notes')
   const [playlistDialogOpen, setPlaylistDialogOpen] = useState(false)
   const [playlistDialogMode, setPlaylistDialogMode] = useState<'create' | 'edit'>('create')
@@ -119,15 +113,9 @@ export function MasterNotesView({
   const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null)
   const [deletingPlaylistId, setDeletingPlaylistId] = useState<string | null>(null)
   const [activePlayerPlaylistId, setActivePlayerPlaylistId] = useState<string | null>(null)
-  const [playlistRepeatEnabled, setPlaylistRepeatEnabled] = useState(true)
-  const [loopIds, setLoopIds] = useState<string[]>([])
-  const [loopIndex, setLoopIndex] = useState(0)
   const [deleteCandidate, setDeleteCandidate] = useState<MasterNote | null>(
     null,
   )
-  const previousPlayingNoteIdRef = useRef<string | null>(null)
-  const loopTokenRef = useRef(0)
-  const suppressAutoAdvanceRef = useRef(false)
 
   const {
     error: playbackError,
@@ -227,11 +215,39 @@ export function MasterNotesView({
     return new Map(items.map((item) => [item.id, item]))
   }, [items])
 
+  const playNoteById = useCallback(async (noteId: string): Promise<void> => {
+    const note = itemsById.get(noteId)
+    if (!note) return
+    await play(note)
+  }, [itemsById, play])
+
+  const playCue = useCallback(async (): Promise<unknown> => {
+    return await playTransitionCue(dingdongCue)
+  }, [playTransitionCue])
+
+  const {
+    looping: loopingClosed,
+    loopIds: activeLoopIds,
+    loopIndex,
+    repeatEnabled: playlistRepeatEnabled,
+    setRepeatEnabled: setPlaylistRepeatEnabled,
+    startLoop,
+    stopLoop,
+    playNext,
+    playPrevious,
+    replayCurrent,
+  } = useLoopedMasterNotePlayback({
+    playingNoteId,
+    playNoteById,
+    playTransitionCue: playCue,
+    stopPlayback: stop,
+  })
+
   const activeLoopNote = useMemo(() => {
-    const noteId = loopIds[loopIndex]
+    const noteId = activeLoopIds[loopIndex]
     if (!noteId) return null
     return itemsById.get(noteId) || null
-  }, [itemsById, loopIds, loopIndex])
+  }, [activeLoopIds, itemsById, loopIndex])
 
   const playableClosedNoteIds = useMemo(() => {
     return closedItems
@@ -240,84 +256,9 @@ export function MasterNotesView({
   }, [canPlay, closedItems])
 
   const disableLoopPlayback = (stopCurrent = false): void => {
-    loopTokenRef.current += 1
-    setLoopingClosed(false)
-    setLoopIds([])
-    setLoopIndex(0)
+    stopLoop(stopCurrent)
     setActivePlayerPlaylistId(null)
-    if (stopCurrent) {
-      stop()
-    }
   }
-
-  const playLoopNoteAt = async (
-    index: number,
-    ids: string[],
-    token: number,
-    delayBeforeCueMs = 0,
-  ): Promise<void> => {
-    if (ids.length === 0) return
-    if (token !== loopTokenRef.current) return
-
-    suppressAutoAdvanceRef.current = true
-
-    try {
-      if (delayBeforeCueMs > 0) {
-        await waitMs(delayBeforeCueMs)
-        if (token !== loopTokenRef.current) return
-      }
-
-      const safeIndex = ((index % ids.length) + ids.length) % ids.length
-      const noteId = ids[safeIndex]
-      const note = itemsById.get(noteId)
-      if (!note) return
-
-      setLoopIndex(safeIndex)
-
-      await playTransitionCue(dingdongCue)
-      if (token !== loopTokenRef.current) return
-
-      await play(note)
-    } finally {
-      suppressAutoAdvanceRef.current = false
-    }
-  }
-
-  useEffect(() => {
-    const prevPlayingNoteId = previousPlayingNoteIdRef.current
-
-    if (suppressAutoAdvanceRef.current) {
-      previousPlayingNoteIdRef.current = playingNoteId
-      return
-    }
-
-    if (
-      loopingClosed &&
-      prevPlayingNoteId &&
-      !playingNoteId &&
-      loopIds.length > 0
-    ) {
-      if (!playlistRepeatEnabled && loopIndex === loopIds.length - 1) {
-        setLoopIndex(0)
-        previousPlayingNoteIdRef.current = playingNoteId
-        return
-      }
-
-      const token = loopTokenRef.current
-      const nextIndex = (loopIndex + 1) % loopIds.length
-      void playLoopNoteAt(nextIndex, loopIds, token, 900)
-    }
-
-    previousPlayingNoteIdRef.current = playingNoteId
-  }, [
-    loopIds,
-    loopIndex,
-    loopingClosed,
-    playlistRepeatEnabled,
-    play,
-    playingNoteId,
-    itemsById,
-  ])
   const handleCreate = async (): Promise<void> => {
     if (creating) return
     setCreating(true)
@@ -408,15 +349,9 @@ export function MasterNotesView({
       return
     }
 
-    const token = loopTokenRef.current + 1
-    loopTokenRef.current = token
-
-    setLoopingClosed(true)
-    setLoopIds(ids)
-    setLoopIndex(0)
+    const started = await startLoop(ids)
+    if (!started) return
     setActivePlayerPlaylistId(null)
-
-    await playLoopNoteAt(0, ids, token)
     setError(null)
   }
 
@@ -430,34 +365,22 @@ export function MasterNotesView({
       return
     }
 
-    const token = loopTokenRef.current + 1
-    loopTokenRef.current = token
-
-    setLoopingClosed(true)
-    setLoopIds(ids)
-    setLoopIndex(0)
+    const started = await startLoop(ids)
+    if (!started) return
     setActivePlayerPlaylistId(playlistId)
-
-    await playLoopNoteAt(0, ids, token)
     setError(null)
   }
 
   const handleNextLoopTrack = async (): Promise<void> => {
-    if (!loopingClosed || loopIds.length === 0) return
-    const token = loopTokenRef.current
-    const nextIndex = (loopIndex + 1) % loopIds.length
-    await playLoopNoteAt(nextIndex, loopIds, token)
+    await playNext()
   }
 
   const handlePrevLoopTrack = async (): Promise<void> => {
-    if (!loopingClosed || loopIds.length === 0) return
-    const token = loopTokenRef.current
-    const prevIndex = (loopIndex - 1 + loopIds.length) % loopIds.length
-    await playLoopNoteAt(prevIndex, loopIds, token)
+    await playPrevious()
   }
 
   const handleTogglePlaylistPause = async (): Promise<void> => {
-    if (!loopingClosed || loopIds.length === 0) return
+    if (!loopingClosed || activeLoopIds.length === 0) return
 
     if (playingNoteId) {
       togglePause()
@@ -469,8 +392,7 @@ export function MasterNotesView({
       return
     }
 
-    const token = loopTokenRef.current
-    await playLoopNoteAt(loopIndex, loopIds, token)
+    await replayCurrent()
   }
 
   const handleCreatePlaylistClick = (): void => {
@@ -898,13 +820,13 @@ export function MasterNotesView({
       />
 
       <MasterNotePlaylistPlayerDock
-        open={Boolean(activePlayerPlaylist && loopIds.length > 0)}
+        open={Boolean(activePlayerPlaylist && activeLoopIds.length > 0)}
         playlistName={activePlayerPlaylist?.name || 'Lista de reproducción'}
         noteName={activeLoopNote?.name || 'Sin nota en reproducción'}
         progressSec={positionSec}
         durationSec={durationSec}
         currentIndex={loopIndex}
-        totalCount={loopIds.length}
+        totalCount={activeLoopIds.length}
         paused={isPaused || !playingNoteId}
         repeatEnabled={playlistRepeatEnabled}
         onTogglePause={() => {
