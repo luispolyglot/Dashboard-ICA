@@ -7,11 +7,12 @@ import type {
 } from '../types'
 
 const DB_NAME = 'dashboard-ica-offline'
-const DB_VERSION = 3
+const DB_VERSION = 4
 const CLOSED_NOTES_STORE = 'master-notes-closed'
 const CLOSED_NOTES_AUDIO_STORE = 'master-notes-closed-audio'
 const PLAYLISTS_STORE = 'master-note-playlists'
 const PLAYLIST_ITEMS_STORE = 'master-note-playlist-items'
+const AUX_AUDIO_STORE = 'master-note-aux-audio'
 
 type OfflineClosedMasterNoteAudioRecord = {
   id: string
@@ -22,6 +23,13 @@ type OfflineClosedMasterNoteAudioRecord = {
   mimeType: string
   blob: Blob
   sizeBytes: number
+  cachedAt: string
+}
+
+type OfflineAuxAudioRecord = {
+  id: string
+  mimeType: string
+  blob: Blob
   cachedAt: string
 }
 
@@ -132,6 +140,12 @@ async function openOfflineDb(): Promise<IDBDatabase | null> {
         })
         playlistItemsStore.createIndex('by_user', 'userId', { unique: false })
         playlistItemsStore.createIndex('by_user_playlist', ['userId', 'playlistId'], { unique: false })
+      }
+
+      if (!db.objectStoreNames.contains(AUX_AUDIO_STORE)) {
+        db.createObjectStore(AUX_AUDIO_STORE, {
+          keyPath: 'id',
+        })
       }
     }
 
@@ -493,6 +507,54 @@ export async function listOfflineMasterNotePlaylistItems(
 
     await transactionDone(tx)
     return filtered
+  } finally {
+    db.close()
+  }
+}
+
+export async function getOfflineAuxAudioBlob(auxId: string): Promise<Blob | null> {
+  const normalizedId = auxId.trim()
+  if (!normalizedId) return null
+
+  const db = await openOfflineDb()
+  if (!db) return null
+
+  try {
+    const tx = db.transaction(AUX_AUDIO_STORE, 'readonly')
+    const store = tx.objectStore(AUX_AUDIO_STORE)
+    const row = await requestToPromise(
+      store.get(normalizedId),
+    ) as OfflineAuxAudioRecord | undefined
+    await transactionDone(tx)
+    return row?.blob || null
+  } finally {
+    db.close()
+  }
+}
+
+export async function upsertOfflineAuxAudioBlob(
+  auxId: string,
+  blob: Blob,
+): Promise<void> {
+  const normalizedId = auxId.trim()
+  if (!normalizedId) return
+
+  const db = await openOfflineDb()
+  if (!db) return
+
+  try {
+    const tx = db.transaction(AUX_AUDIO_STORE, 'readwrite')
+    const store = tx.objectStore(AUX_AUDIO_STORE)
+
+    const row: OfflineAuxAudioRecord = {
+      id: normalizedId,
+      mimeType: blob.type || 'audio/mpeg',
+      blob,
+      cachedAt: getCurrentIsoNow(),
+    }
+
+    store.put(row)
+    await transactionDone(tx)
   } finally {
     db.close()
   }

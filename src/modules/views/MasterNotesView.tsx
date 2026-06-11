@@ -31,7 +31,10 @@ import {
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
 import { useLoopedMasterNotePlayback } from '../hooks/useLoopedMasterNotePlayback'
-import { LOOP_START_CUE_URL, LOOP_STEP_CUE_URL } from '../audio/loopCues'
+import {
+  getLoopCuePlaybackSource,
+  warmLoopCueOfflineCache,
+} from '../audio/loopCueCache'
 import { formatDate } from '../utils'
 import {
   createMasterNote,
@@ -174,6 +177,10 @@ export function MasterNotesView({
     void refreshPlaylists()
   }, [refreshPlaylists])
 
+  useEffect(() => {
+    void warmLoopCueOfflineCache()
+  }, [])
+
   const openItems = useMemo(
     () =>
       items
@@ -239,8 +246,8 @@ export function MasterNotesView({
   )
 
   const playCue = useCallback(async (kind: 'start' | 'step'): Promise<unknown> => {
-    const cue = kind === 'start' ? LOOP_START_CUE_URL : LOOP_STEP_CUE_URL
-    return await playTransitionCue(cue)
+    const source = await getLoopCuePlaybackSource(kind)
+    return await playTransitionCue(source)
   }, [playTransitionCue])
 
   const {

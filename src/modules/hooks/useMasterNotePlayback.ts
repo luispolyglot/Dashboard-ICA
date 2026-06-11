@@ -391,10 +391,15 @@ export function useMasterNotePlayback() {
     }
   }
 
-  const playTransitionCue = async (cueUrl: string): Promise<boolean> => {
+  const playTransitionCue = async (cueSource: string | Blob): Promise<boolean> => {
     stop()
     setError(null)
     const token = tokenRef.current
+
+    const cueUrl = typeof cueSource === 'string'
+      ? cueSource
+      : URL.createObjectURL(cueSource)
+    const shouldRevokeCueUrl = typeof cueSource !== 'string'
 
     const audio = getOrCreateAudioElement()
     audio.pause()
@@ -420,6 +425,9 @@ export function useMasterNotePlayback() {
         audio.onerror = null
         audio.ontimeupdate = null
         audio.onloadedmetadata = null
+        if (shouldRevokeCueUrl) {
+          URL.revokeObjectURL(cueUrl)
+        }
         resolve(value)
       }
 

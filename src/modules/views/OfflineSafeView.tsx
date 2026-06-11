@@ -22,12 +22,15 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { LOOP_START_CUE_URL, LOOP_STEP_CUE_URL } from '../audio/loopCues'
 import {
   MasterNotePlaylistEditorDialog,
   type PlaylistEditorNoteOption,
 } from '../components/MasterNotePlaylistEditorDialog'
 import { MasterNotePlaylistPlayerDock } from '../components/MasterNotePlaylistPlayerDock'
+import {
+  getLoopCuePlaybackSource,
+  warmLoopCueOfflineCache,
+} from '../audio/loopCueCache'
 import { useOfflineMasterNotePlaylists } from '../hooks/useOfflineMasterNotePlaylists'
 import { useLoopedMasterNotePlayback } from '../hooks/useLoopedMasterNotePlayback'
 import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
@@ -124,6 +127,10 @@ export function OfflineSafeView() {
   useEffect(() => {
     void refreshPlaylists()
   }, [refreshPlaylists])
+
+  useEffect(() => {
+    void warmLoopCueOfflineCache()
+  }, [])
 
   useEffect(() => {
     const onOnline = () => setIsOnline(true)
@@ -289,8 +296,8 @@ export function OfflineSafeView() {
   )
 
   const playCue = useCallback(async (kind: 'start' | 'step'): Promise<unknown> => {
-    const cue = kind === 'start' ? LOOP_START_CUE_URL : LOOP_STEP_CUE_URL
-    return await playTransitionCue(cue)
+    const source = await getLoopCuePlaybackSource(kind)
+    return await playTransitionCue(source)
   }, [playTransitionCue])
 
   const {
