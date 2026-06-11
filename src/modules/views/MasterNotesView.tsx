@@ -44,12 +44,8 @@ import {
 } from '../components/MetaTracker/colors'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
-import { speakLocal, stopTTS } from '../services/tts'
+import dingdongCue from '@/audio/dingdong.mp3'
 import { formatDate } from '../utils'
-import {
-  getMasterNotesLoopAnnouncement,
-  type LoopAnnouncementType,
-} from './masterNotesLoopAnnouncements'
 import {
   createMasterNote,
   deleteMasterNote,
@@ -95,19 +91,6 @@ function waitMs(ms: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms)
   })
-}
-
-function isIOSLikeDevice(): boolean {
-  if (typeof navigator === 'undefined') return false
-
-  const userAgent = navigator.userAgent || ''
-  const platform = navigator.platform || ''
-  const maxTouchPoints = navigator.maxTouchPoints || 0
-
-  const isiPhoneOrIPad = /iPad|iPhone|iPod/.test(userAgent)
-  const isIPadOSDesktopUA = platform === 'MacIntel' && maxTouchPoints > 1
-
-  return isiPhoneOrIPad || isIPadOSDesktopUA
 }
 
 function SeekBack10Icon() {
@@ -172,6 +155,7 @@ export function MasterNotesView({
     playingNoteId,
     canPlay,
     play,
+    playTransitionCue,
     stop,
     togglePause,
     seekBack10,
@@ -328,7 +312,6 @@ export function MasterNotesView({
     setLoopPreparing(false)
     setLoopIds([])
     setLoopIndex(0)
-    stopTTS()
     if (stopCurrent) {
       stop()
     }
@@ -352,33 +335,17 @@ export function MasterNotesView({
     }
   }
 
-  const announceLoopNote = async (
-    text: string,
-    token: number,
-    announcementType: LoopAnnouncementType,
-  ): Promise<void> => {
-    if (token !== loopTokenRef.current) return
-
-    const spokenText = getMasterNotesLoopAnnouncement(text, announcementType)
-
-    await new Promise<void>((resolve) => {
-      const done = () => resolve()
-      speakLocal(spokenText, nativeLang || targetLang, done, 1)
-    })
-  }
-
   const playLoopNoteAt = async (
     index: number,
     ids: string[],
     token: number,
-    announcementType: 'first' | 'next',
-    delayBeforeSpeakMs = 0,
+    delayBeforeCueMs = 0,
   ): Promise<void> => {
     if (ids.length === 0) return
     if (token !== loopTokenRef.current) return
 
-    if (delayBeforeSpeakMs > 0) {
-      await waitMs(delayBeforeSpeakMs)
+    if (delayBeforeCueMs > 0) {
+      await waitMs(delayBeforeCueMs)
       if (token !== loopTokenRef.current) return
     }
 
@@ -388,25 +355,13 @@ export function MasterNotesView({
     if (!note) return
 
     setLoopIndex(safeIndex)
-    const shouldSkipAnnouncementForIos =
-      announcementType === 'next' && isIOSLikeDevice()
 
-    if (shouldSkipAnnouncementForIos) {
-      appendLoopDebug(`Anuncio omitido en iOS: ${note.name}`)
-      await waitMs(450)
-      if (token !== loopTokenRef.current) return
-    } else {
-      appendLoopDebug(`Anuncio: ${note.name}`)
-      await announceLoopNote(note.name || 'nota maestra', token, announcementType)
-      if (token !== loopTokenRef.current) return
-
-      await waitMs(1000)
-      if (token !== loopTokenRef.current) return
-    }
-
-    stopTTS()
-    await waitMs(120)
+    appendLoopDebug(`Cue transición: ${note.name}`)
+    const cuePlayed = await playTransitionCue(dingdongCue)
     if (token !== loopTokenRef.current) return
+    if (!cuePlayed) {
+      appendLoopDebug(`Cue omitido o falló: ${note.name}`)
+    }
 
     appendLoopDebug(`Play bucle: ${note.name}`)
     await play(note)
@@ -444,7 +399,7 @@ export function MasterNotesView({
     ) {
       const token = loopTokenRef.current
       const nextIndex = (loopIndex + 1) % loopIds.length
-      void playLoopNoteAt(nextIndex, loopIds, token, 'next', 1000)
+      void playLoopNoteAt(nextIndex, loopIds, token, 900)
     }
 
     previousPlayingNoteIdRef.current = playingNoteId
@@ -548,7 +503,7 @@ export function MasterNotesView({
     setLoopIndex(0)
 
     try {
-      await playLoopNoteAt(0, ids, token, 'first')
+      await playLoopNoteAt(0, ids, token)
       if (token === loopTokenRef.current) {
         appendLoopDebug('Bucle iniciado correctamente')
         setError(null)

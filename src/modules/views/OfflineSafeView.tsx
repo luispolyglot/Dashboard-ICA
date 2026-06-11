@@ -25,20 +25,15 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { LANG_CODES } from '../constants'
+import dingdongCue from '@/audio/dingdong.mp3'
 import { useOfflineMasterNotePlaylists } from '../hooks/useOfflineMasterNotePlaylists'
 import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
-import {
-  getMasterNotesLoopAnnouncement,
-  type LoopAnnouncementType,
-} from './masterNotesLoopAnnouncements'
 import { OFFLINE_SAFE_LAST_PATH_STORAGE_KEY } from '../offline/events'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import {
   listOfflineClosedMasterNotes,
   type OfflineClosedMasterNote,
 } from '../services/masterNotesOfflineStore'
-import { speakLocal, stopTTS } from '../services/tts'
 import type { MasterNote } from '../types'
 import { formatDate } from '../utils'
 
@@ -57,47 +52,6 @@ function waitMs(ms: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms)
   })
-}
-
-function isIOSLikeDevice(): boolean {
-  if (typeof navigator === 'undefined') return false
-
-  const userAgent = navigator.userAgent || ''
-  const platform = navigator.platform || ''
-  const maxTouchPoints = navigator.maxTouchPoints || 0
-
-  const isiPhoneOrIPad = /iPad|iPhone|iPod/.test(userAgent)
-  const isIPadOSDesktopUA = platform === 'MacIntel' && maxTouchPoints > 1
-
-  return isiPhoneOrIPad || isIPadOSDesktopUA
-}
-
-function resolveSpeechLangName(note: OfflineClosedMasterNote): string {
-  const candidate = (note.nativeLang || note.targetLang || '').trim()
-  if (!candidate) return 'Español'
-
-  if (LANG_CODES[candidate]) {
-    return candidate
-  }
-
-  const normalized = candidate.toLowerCase()
-  const entries = Object.entries(LANG_CODES)
-  const exactCodeMatch = entries.find(
-    ([, code]) => code.toLowerCase() === normalized,
-  )
-  if (exactCodeMatch) {
-    return exactCodeMatch[0]
-  }
-
-  const languagePrefix = normalized.split('-')[0]
-  const prefixMatch = entries.find(([, code]) =>
-    code.toLowerCase().startsWith(`${languagePrefix}-`),
-  )
-  if (prefixMatch) {
-    return prefixMatch[0]
-  }
-
-  return 'Español'
 }
 
 export function OfflineSafeView() {
@@ -131,6 +85,7 @@ export function OfflineSafeView() {
     error: playbackError,
     playingNoteId,
     play,
+    playTransitionCue,
     stop,
     togglePause,
     seekBack10,
@@ -373,41 +328,22 @@ export function OfflineSafeView() {
     setLoopingClosed(false)
     setLoopIds([])
     setLoopIndex(0)
-    stopTTS()
     if (stopCurrent) {
       stop()
     }
-  }
-
-  const announceLoopNote = async (
-    note: OfflineClosedMasterNote,
-    token: number,
-    announcementType: LoopAnnouncementType,
-  ): Promise<void> => {
-    if (token !== loopTokenRef.current) return
-
-    const spokenText = getMasterNotesLoopAnnouncement(
-      note.name || 'nota maestra',
-      announcementType,
-    )
-    const langName = resolveSpeechLangName(note)
-    await new Promise<void>((resolve) => {
-      speakLocal(spokenText, langName, () => resolve(), 1)
-    })
   }
 
   const playLoopNoteAt = async (
     index: number,
     ids: string[],
     token: number,
-    announcementType: LoopAnnouncementType,
-    delayBeforeSpeakMs = 0,
+    delayBeforeCueMs = 0,
   ): Promise<void> => {
     if (ids.length === 0) return
     if (token !== loopTokenRef.current) return
 
-    if (delayBeforeSpeakMs > 0) {
-      await waitMs(delayBeforeSpeakMs)
+    if (delayBeforeCueMs > 0) {
+      await waitMs(delayBeforeCueMs)
       if (token !== loopTokenRef.current) return
     }
 
@@ -416,22 +352,8 @@ export function OfflineSafeView() {
     if (!note || !note.audioAvailable) return
 
     setLoopIndex(safeIndex)
-    const shouldSkipAnnouncementForIos =
-      announcementType === 'next' && isIOSLikeDevice()
 
-    if (shouldSkipAnnouncementForIos) {
-      await waitMs(450)
-      if (token !== loopTokenRef.current) return
-    } else {
-      await announceLoopNote(note, token, announcementType)
-      if (token !== loopTokenRef.current) return
-
-      await waitMs(1000)
-      if (token !== loopTokenRef.current) return
-    }
-
-    stopTTS()
-    await waitMs(120)
+    await playTransitionCue(dingdongCue)
     if (token !== loopTokenRef.current) return
 
     await play(toMasterNote(note))
@@ -448,7 +370,7 @@ export function OfflineSafeView() {
     ) {
       const nextIndex = (loopIndex + 1) % loopIds.length
       const token = loopTokenRef.current
-      void playLoopNoteAt(nextIndex, loopIds, token, 'next', 1000)
+      void playLoopNoteAt(nextIndex, loopIds, token, 900)
     }
 
     previousPlayingNoteIdRef.current = playingNoteId
@@ -513,7 +435,7 @@ export function OfflineSafeView() {
     setLoopingClosed(true)
     setLoopIds(ids)
     setLoopIndex(0)
-    await playLoopNoteAt(0, ids, token, 'first')
+    await playLoopNoteAt(0, ids, token)
   }
 
   const handleAddPlaylistDraftNote = (): void => {

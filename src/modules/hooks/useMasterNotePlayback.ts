@@ -391,6 +391,85 @@ export function useMasterNotePlayback() {
     }
   }
 
+  const playTransitionCue = async (cueUrl: string): Promise<boolean> => {
+    stop()
+    setError(null)
+    const token = tokenRef.current
+
+    const audio = getOrCreateAudioElement()
+    audio.pause()
+    audio.currentTime = 0
+    audio.onended = null
+    audio.onerror = null
+    audio.ontimeupdate = null
+    audio.onloadedmetadata = null
+    audio.src = cueUrl
+
+    setPlayingNoteId(null)
+    setIsPaused(false)
+    setPositionSec(0)
+    setDurationSec(0)
+
+    return await new Promise<boolean>((resolve) => {
+      let settled = false
+
+      const settle = (value: boolean): void => {
+        if (settled) return
+        settled = true
+        audio.onended = null
+        audio.onerror = null
+        audio.ontimeupdate = null
+        audio.onloadedmetadata = null
+        resolve(value)
+      }
+
+      audio.onloadedmetadata = () => {
+        if (token !== tokenRef.current) {
+          settle(false)
+          return
+        }
+        updateTimeline()
+      }
+
+      audio.onended = () => {
+        if (token !== tokenRef.current) {
+          settle(false)
+          return
+        }
+        setPositionSec(getCurrentDuration())
+        settle(true)
+      }
+
+      audio.onerror = () => {
+        if (token !== tokenRef.current) {
+          settle(false)
+          return
+        }
+
+        const mediaErrorCode = audio.error?.code
+        pushDebugEvent(
+          `Cue de transición lanzó error${mediaErrorCode ? ` (code ${mediaErrorCode})` : ''}`,
+        )
+        settle(false)
+      }
+
+      void audio.play().then(() => {
+        if (token !== tokenRef.current) {
+          settle(false)
+          return
+        }
+        setIsPaused(false)
+      }).catch((err) => {
+        if (token !== tokenRef.current) {
+          settle(false)
+          return
+        }
+        pushDebugEvent('audio.play() del cue fue rechazado', err)
+        settle(false)
+      })
+    })
+  }
+
   const getUnifiedChunkTrack = async (
     note: MasterNote,
     preloadedChunkCount: number,
@@ -549,6 +628,7 @@ export function useMasterNotePlayback() {
     playingNoteId,
     canPlay,
     play,
+    playTransitionCue,
     stop,
     pause,
     resume,
