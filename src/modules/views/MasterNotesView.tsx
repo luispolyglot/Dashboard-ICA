@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
+  ArrowDownIcon,
+  ArrowUpIcon,
   CopyIcon,
   DownloadIcon,
   EyeIcon,
@@ -14,12 +16,21 @@ import {
   SquareIcon,
   Trash2Icon,
   Volume2Icon,
+  PlusIcon,
+  XIcon,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Accordion,
   AccordionContent,
@@ -141,6 +152,10 @@ export function MasterNotesView({
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [playlistSubmitting, setPlaylistSubmitting] = useState(false)
   const [deletingPlaylistId, setDeletingPlaylistId] = useState<string | null>(null)
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string>('')
+  const [playlistDraftNoteIds, setPlaylistDraftNoteIds] = useState<string[]>([])
+  const [addingPlaylistNoteId, setAddingPlaylistNoteId] = useState<string>('')
+  const [savingPlaylistItems, setSavingPlaylistItems] = useState(false)
   const [loopIds, setLoopIds] = useState<string[]>([])
   const [loopIndex, setLoopIndex] = useState(0)
   const [showLoopDebug, setShowLoopDebug] = useState(false)
@@ -176,6 +191,7 @@ export function MasterNotesView({
     refresh: refreshPlaylists,
     createPlaylist,
     deletePlaylist,
+    replacePlaylistItems,
     clearError: clearPlaylistsError,
   } = useMasterNotePlaylists({ targetLang, nativeLang })
 
@@ -208,6 +224,18 @@ export function MasterNotesView({
     void refreshPlaylists()
   }, [refreshPlaylists])
 
+  useEffect(() => {
+    if (playlists.length === 0) {
+      setSelectedPlaylistId('')
+      setPlaylistDraftNoteIds([])
+      return
+    }
+
+    const exists = playlists.some((playlist) => playlist.id === selectedPlaylistId)
+    if (exists) return
+    setSelectedPlaylistId(playlists[0]?.id || '')
+  }, [playlists, selectedPlaylistId])
+
   const openItems = useMemo(
     () =>
       items
@@ -224,6 +252,52 @@ export function MasterNotesView({
         .sort(compareByCreatedAtAsc),
     [items],
   )
+
+  const closedNotesById = useMemo(
+    () => new Map(closedItems.map((note) => [note.id, note])),
+    [closedItems],
+  )
+
+  const selectedPlaylist = useMemo(
+    () => playlists.find((playlist) => playlist.id === selectedPlaylistId) || null,
+    [playlists, selectedPlaylistId],
+  )
+
+  const selectedPlaylistItems = useMemo(
+    () => (selectedPlaylist ? itemsByPlaylistId.get(selectedPlaylist.id) || [] : []),
+    [itemsByPlaylistId, selectedPlaylist],
+  )
+
+  const availableClosedNotesForPlaylist = useMemo(() => {
+    const selectedSet = new Set(playlistDraftNoteIds)
+    return closedItems.filter((note) => !selectedSet.has(note.id))
+  }, [closedItems, playlistDraftNoteIds])
+
+  useEffect(() => {
+    if (!selectedPlaylist) {
+      setPlaylistDraftNoteIds([])
+      return
+    }
+
+    setPlaylistDraftNoteIds(
+      selectedPlaylistItems
+        .map((item) => item.master_note_id)
+        .filter((noteId) => closedNotesById.has(noteId)),
+    )
+  }, [closedNotesById, selectedPlaylist, selectedPlaylistItems])
+
+  useEffect(() => {
+    if (availableClosedNotesForPlaylist.length === 0) {
+      setAddingPlaylistNoteId('')
+      return
+    }
+
+    const exists = availableClosedNotesForPlaylist.some(
+      (note) => note.id === addingPlaylistNoteId,
+    )
+    if (exists) return
+    setAddingPlaylistNoteId(availableClosedNotesForPlaylist[0]?.id || '')
+  }, [addingPlaylistNoteId, availableClosedNotesForPlaylist])
 
   const itemsById = useMemo(() => {
     return new Map(items.map((item) => [item.id, item]))
@@ -592,6 +666,55 @@ export function MasterNotesView({
     }
   }
 
+  const handleAddNoteToPlaylistDraft = (): void => {
+    if (!addingPlaylistNoteId) return
+
+    setPlaylistDraftNoteIds((prev) => {
+      if (prev.includes(addingPlaylistNoteId)) return prev
+      return [...prev, addingPlaylistNoteId]
+    })
+    setAddingPlaylistNoteId('')
+  }
+
+  const handleRemoveNoteFromPlaylistDraft = (noteId: string): void => {
+    setPlaylistDraftNoteIds((prev) => prev.filter((id) => id !== noteId))
+  }
+
+  const handleMovePlaylistDraftNote = (noteId: string, direction: 'up' | 'down'): void => {
+    setPlaylistDraftNoteIds((prev) => {
+      const index = prev.indexOf(noteId)
+      if (index < 0) return prev
+
+      const targetIndex = direction === 'up' ? index - 1 : index + 1
+      if (targetIndex < 0 || targetIndex >= prev.length) return prev
+
+      const next = [...prev]
+      const [item] = next.splice(index, 1)
+      next.splice(targetIndex, 0, item)
+      return next
+    })
+  }
+
+  const handleSavePlaylistItems = async (): Promise<void> => {
+    if (!selectedPlaylist) {
+      setError('Selecciona una lista de reproducción')
+      return
+    }
+
+    if (savingPlaylistItems) return
+
+    setSavingPlaylistItems(true)
+    try {
+      await replacePlaylistItems(selectedPlaylist.id, playlistDraftNoteIds)
+      setError(null)
+    } catch (err) {
+      console.error(err)
+      setError('No se pudo guardar el orden de la lista')
+    } finally {
+      setSavingPlaylistItems(false)
+    }
+  }
+
   return (
     <section className='mx-auto w-full max-w-4xl flex-1 px-5 pt-8 pb-24 lg:pb-8'>
       <h2 className='mb-1 font-serif text-2xl lg:text-3xl font-bold'>
@@ -841,9 +964,31 @@ export function MasterNotesView({
 
           <Card className='rounded-2xl'>
             <CardContent>
-              <p className='mb-2 text-xs font-semibold tracking-wide text-muted-foreground'>
-                Mis listas de reproducción
-              </p>
+              <div className='mb-3 flex flex-wrap items-center justify-between gap-3'>
+                <p className='text-xs font-semibold tracking-wide text-muted-foreground'>
+                  Mis listas de reproducción
+                </p>
+
+                {playlists.length > 0 && (
+                  <div className='min-w-72'>
+                    <Select
+                      value={selectedPlaylistId}
+                      onValueChange={setSelectedPlaylistId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder='Selecciona una lista' />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {playlists.map((playlist) => (
+                          <SelectItem key={playlist.id} value={playlist.id}>
+                            {playlist.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
 
               {playlistsLoading && (
                 <p className='text-sm text-muted-foreground'>Cargando listas...</p>
@@ -886,6 +1031,121 @@ export function MasterNotesView({
               </div>
             </CardContent>
           </Card>
+
+          {selectedPlaylist && (
+            <Card className='rounded-2xl'>
+              <CardContent className='space-y-4'>
+                <div className='flex flex-wrap items-center justify-between gap-2'>
+                  <div>
+                    <p className='text-xs font-semibold tracking-wide text-muted-foreground'>
+                      Editar lista seleccionada
+                    </p>
+                    <p className='text-sm font-semibold'>{selectedPlaylist.name}</p>
+                  </div>
+                  <Button
+                    type='button'
+                    onClick={() => void handleSavePlaylistItems()}
+                    disabled={savingPlaylistItems}
+                  >
+                    {savingPlaylistItems ? 'Guardando...' : 'Guardar lista'}
+                  </Button>
+                </div>
+
+                <div className='flex flex-wrap gap-2'>
+                  <div className='min-w-72 flex-1'>
+                    <Select
+                      value={addingPlaylistNoteId}
+                      onValueChange={setAddingPlaylistNoteId}
+                      disabled={availableClosedNotesForPlaylist.length === 0}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder='Selecciona una nota cerrada' />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableClosedNotesForPlaylist.map((note) => (
+                          <SelectItem key={note.id} value={note.id}>
+                            {note.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    type='button'
+                    variant='outline'
+                    onClick={handleAddNoteToPlaylistDraft}
+                    disabled={availableClosedNotesForPlaylist.length === 0 || !addingPlaylistNoteId}
+                  >
+                    <PlusIcon className='mr-1 size-4' />
+                    Agregar nota
+                  </Button>
+                </div>
+
+                <div className='space-y-2'>
+                  {playlistDraftNoteIds.length === 0 ? (
+                    <p className='text-sm text-muted-foreground'>
+                      Esta lista está vacía. Agrega notas cerradas para reproducirlas.
+                    </p>
+                  ) : (
+                    playlistDraftNoteIds.map((noteId, index) => {
+                      const note = closedNotesById.get(noteId)
+                      if (!note) return null
+
+                      return (
+                        <div
+                          key={noteId}
+                          className='flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3'
+                        >
+                          <div>
+                            <p className='font-semibold'>{note.name}</p>
+                            <p className='text-xs text-muted-foreground'>
+                              Posición {index + 1}
+                            </p>
+                          </div>
+
+                          <div className='flex items-center gap-2'>
+                            <Button
+                              type='button'
+                              size='icon'
+                              variant='outline'
+                              aria-label='Mover arriba'
+                              onClick={() =>
+                                handleMovePlaylistDraftNote(noteId, 'up')
+                              }
+                              disabled={index === 0}
+                            >
+                              <ArrowUpIcon className='size-4' />
+                            </Button>
+                            <Button
+                              type='button'
+                              size='icon'
+                              variant='outline'
+                              aria-label='Mover abajo'
+                              onClick={() =>
+                                handleMovePlaylistDraftNote(noteId, 'down')
+                              }
+                              disabled={index === playlistDraftNoteIds.length - 1}
+                            >
+                              <ArrowDownIcon className='size-4' />
+                            </Button>
+                            <Button
+                              type='button'
+                              size='icon'
+                              variant='destructive'
+                              aria-label='Quitar nota'
+                              onClick={() => handleRemoveNoteFromPlaylistDraft(noteId)}
+                            >
+                              <XIcon className='size-4' />
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {closedItems.length > 0 && (
             <Card className='rounded-2xl'>
