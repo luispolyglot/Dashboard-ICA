@@ -30,6 +30,22 @@ type OfflineTrackCacheEntry = {
   closeType: 'final' | 'temporal'
 }
 
+function stringifyUnknownError(error: unknown): string {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`
+  }
+
+  if (typeof error === 'string') {
+    return error
+  }
+
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return String(error)
+  }
+}
+
 function writeAscii(view: DataView, offset: number, value: string): void {
   for (let i = 0; i < value.length; i += 1) {
     view.setUint8(offset + i, value.charCodeAt(i))
@@ -146,6 +162,7 @@ export function useMasterNotePlayback() {
   const [error, setError] = useState<string | null>(null)
   const [positionSec, setPositionSec] = useState(0)
   const [durationSec, setDurationSec] = useState(0)
+  const [debugEvents, setDebugEvents] = useState<string[]>([])
 
   const tokenRef = useRef(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -164,6 +181,12 @@ export function useMasterNotePlayback() {
       URL.revokeObjectURL(cachedTrack.url)
     }
     offlineTrackCacheRef.current.clear()
+  }
+
+  const pushDebugEvent = (message: string, error?: unknown): void => {
+    const timestamp = new Date().toISOString()
+    const details = error ? ` | ${stringifyUnknownError(error)}` : ''
+    setDebugEvents((prev) => [...prev, `${timestamp} | ${message}${details}`].slice(-80))
   }
 
   const stop = (): void => {
@@ -194,7 +217,8 @@ export function useMasterNotePlayback() {
     try {
       await audioRef.current.play()
       setIsPaused(false)
-    } catch {
+    } catch (err) {
+      pushDebugEvent('No se pudo reanudar audio', err)
       setError('No se pudo reanudar la reproducción')
     }
   }
@@ -295,6 +319,10 @@ export function useMasterNotePlayback() {
 
     const onError = () => {
       if (token !== tokenRef.current) return
+      const mediaErrorCode = audio.error?.code
+      pushDebugEvent(
+        `HTMLAudioElement lanzó error durante reproducción${mediaErrorCode ? ` (code ${mediaErrorCode})` : ''}`,
+      )
       setError('No se pudo reproducir la nota maestra')
       setPlayingNoteId(null)
       setIsPaused(false)
@@ -333,8 +361,9 @@ export function useMasterNotePlayback() {
     try {
       await audio.play()
       setIsPaused(false)
-    } catch {
+    } catch (err) {
       if (token !== tokenRef.current) return
+      pushDebugEvent('audio.play() rechazado', err)
       setError('No se pudo reproducir la nota maestra')
       setPlayingNoteId(null)
       setIsPaused(false)
@@ -472,13 +501,15 @@ export function useMasterNotePlayback() {
           track = await getUnifiedChunkTrack(note, preloadedChunkCount)
         }
       }
-    } catch {
+    } catch (err) {
       if (token !== tokenRef.current) return
+      pushDebugEvent('Fallo al resolver pista de reproducción', err)
       setError('No se pudo reproducir la nota maestra')
       return
     }
 
     if (!track) {
+      pushDebugEvent('No se encontró track reproducible para la nota')
       setError('No hay audios para reproducir en esta nota maestra')
       return
     }
@@ -506,5 +537,7 @@ export function useMasterNotePlayback() {
     isPaused,
     positionSec,
     durationSec,
+    debugEvents,
+    clearDebugEvents: () => setDebugEvents([]),
   }
 }

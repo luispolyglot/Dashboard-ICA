@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
+  CopyIcon,
   DownloadIcon,
   EyeIcon,
   Loader2Icon,
@@ -114,6 +115,8 @@ export function MasterNotesView({
   const [loopingClosed, setLoopingClosed] = useState(false)
   const [loopIds, setLoopIds] = useState<string[]>([])
   const [loopIndex, setLoopIndex] = useState(0)
+  const [showLoopDebug, setShowLoopDebug] = useState(false)
+  const [loopDebugLogs, setLoopDebugLogs] = useState<string[]>([])
   const [deleteCandidate, setDeleteCandidate] = useState<MasterNote | null>(
     null,
   )
@@ -133,7 +136,20 @@ export function MasterNotesView({
     isPaused,
     positionSec,
     durationSec,
+    debugEvents: playbackDebugEvents,
+    clearDebugEvents,
   } = useMasterNotePlayback()
+
+  const appendLoopDebug = (message: string, error?: unknown): void => {
+    const timestamp = new Date().toISOString()
+    const details = error
+      ? error instanceof Error
+        ? ` | ${error.name}: ${error.message}`
+        : ` | ${String(error)}`
+      : ''
+
+    setLoopDebugLogs((prev) => [...prev, `${timestamp} | ${message}${details}`].slice(-120))
+  }
 
   useEffect(() => {
     fetchMasterNotes(targetLang, nativeLang)
@@ -177,6 +193,7 @@ export function MasterNotesView({
   }, [canPlay, closedItems])
 
   const disableLoopPlayback = (stopCurrent = false): void => {
+    appendLoopDebug('Se desactivó el modo bucle')
     loopTokenRef.current += 1
     setLoopingClosed(false)
     setLoopPreparing(false)
@@ -196,11 +213,12 @@ export function MasterNotesView({
       if (token !== loopTokenRef.current) return
 
       try {
+        appendLoopDebug(`Precache audio: ${note.name}`)
         const payload = await fetchMasterNoteAudioPayload(note)
         if (token !== loopTokenRef.current) return
         await upsertOfflineClosedMasterNoteAudio(note, payload.blob)
-      } catch {
-        // noop: seguimos con el siguiente audio
+      } catch (err) {
+        appendLoopDebug(`Falló precache: ${note.name}`, err)
       }
     }
   }
@@ -241,6 +259,7 @@ export function MasterNotesView({
     if (!note) return
 
     setLoopIndex(safeIndex)
+    appendLoopDebug(`Anuncio: ${note.name}`)
     await announceLoopNote(note.name || 'nota maestra', token, announcementType)
     if (token !== loopTokenRef.current) return
 
@@ -251,8 +270,29 @@ export function MasterNotesView({
     await waitMs(120)
     if (token !== loopTokenRef.current) return
 
+    appendLoopDebug(`Play bucle: ${note.name}`)
     await play(note)
   }
+
+  useEffect(() => {
+    if (!showLoopDebug) return
+
+    const onWindowError = (event: ErrorEvent) => {
+      appendLoopDebug(`window.error: ${event.message}`)
+    }
+
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      appendLoopDebug('window.unhandledrejection', event.reason)
+    }
+
+    window.addEventListener('error', onWindowError)
+    window.addEventListener('unhandledrejection', onUnhandledRejection)
+
+    return () => {
+      window.removeEventListener('error', onWindowError)
+      window.removeEventListener('unhandledrejection', onUnhandledRejection)
+    }
+  }, [showLoopDebug])
 
   useEffect(() => {
     const prevPlayingNoteId = previousPlayingNoteIdRef.current
@@ -325,9 +365,11 @@ export function MasterNotesView({
     }
 
     try {
+      appendLoopDebug(`Play manual: ${note.name}`)
       await play(note)
       setError(null)
     } catch (err) {
+      appendLoopDebug(`Error play manual: ${note.name}`, err)
       console.error(err)
       setError('No se pudo reproducir la nota maestra')
     }
@@ -360,6 +402,10 @@ export function MasterNotesView({
 
     const token = loopTokenRef.current + 1
     loopTokenRef.current = token
+    setShowLoopDebug(true)
+    setLoopDebugLogs([])
+    clearDebugEvents()
+    appendLoopDebug('Iniciando bucle cerrado')
 
     const ids = playableClosedItems.map((note) => note.id)
     setLoopingClosed(true)
@@ -374,14 +420,28 @@ export function MasterNotesView({
       setLoopPreparing(false)
       await playLoopNoteAt(0, ids, token, 'first')
       if (token === loopTokenRef.current) {
+        appendLoopDebug('Bucle iniciado correctamente')
         setError(null)
       }
     } catch (err) {
+      appendLoopDebug('Error iniciando bucle', err)
       console.error(err)
       if (token === loopTokenRef.current) {
         setError('No se pudo iniciar la reproducción en bucle')
         disableLoopPlayback(true)
       }
+    }
+  }
+
+  const handleCopyLoopDebug = async (): Promise<void> => {
+    const lines = [...loopDebugLogs, ...playbackDebugEvents]
+    if (lines.length === 0) return
+
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'))
+      appendLoopDebug('Se copiaron logs al portapapeles')
+    } catch (err) {
+      appendLoopDebug('No se pudieron copiar logs', err)
     }
   }
 
@@ -449,6 +509,36 @@ export function MasterNotesView({
       )}
       {(error || playbackError) && (
         <p className='mb-3 text-sm text-red-400'>{error || playbackError}</p>
+      )}
+
+      {showLoopDebug && (
+        <Card className='mb-4 rounded-2xl border-dashed'>
+          <CardContent>
+            <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
+              <p className='text-xs font-semibold tracking-wide text-muted-foreground'>
+                Logs de depuración de bucle (provisorio)
+              </p>
+              <Button
+                type='button'
+                size='sm'
+                variant='outline'
+                onClick={() => void handleCopyLoopDebug()}
+              >
+                <CopyIcon className='mr-1 size-4' />
+                Copiar errores
+              </Button>
+            </div>
+            <div className='max-h-56 overflow-auto rounded-md bg-muted p-2 text-[11px] text-muted-foreground'>
+              {[...loopDebugLogs, ...playbackDebugEvents].length === 0 ? (
+                <p>Sin eventos todavía.</p>
+              ) : (
+                <pre className='whitespace-pre-wrap'>
+                  {[...loopDebugLogs, ...playbackDebugEvents].join('\n')}
+                </pre>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <div className='space-y-3'>
