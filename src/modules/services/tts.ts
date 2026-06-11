@@ -121,3 +121,14 @@ export function speakNatural(
   }
   audio.play().catch(fallback)
 }
+
+export function speakLocal(
+  text: string,
+  langName: string,
+  onEnd?: () => void,
+  rate = 1,
+): void {
+  stopTTS()
+  const code = LANG_CODES[langName] || 'en-US'
+  speakFallback(text, code, onEnd, rate)
+}

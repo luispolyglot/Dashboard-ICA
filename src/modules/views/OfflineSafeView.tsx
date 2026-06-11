@@ -32,7 +32,7 @@ import {
   listOfflineClosedMasterNotes,
   type OfflineClosedMasterNote,
 } from '../services/masterNotesOfflineStore'
-import { speakNatural, stopTTS } from '../services/tts'
+import { speakLocal, stopTTS } from '../services/tts'
 import type { MasterNote } from '../types'
 import { formatDate } from '../utils'
 
@@ -291,7 +291,7 @@ export function OfflineSafeView() {
     )
     const langName = resolveSpeechLangName(note)
     await new Promise<void>((resolve) => {
-      speakNatural(spokenText, langName, () => resolve(), 1)
+      speakLocal(spokenText, langName, () => resolve(), 1)
     })
   }
 

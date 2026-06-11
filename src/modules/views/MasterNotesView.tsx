@@ -24,7 +24,7 @@ import {
 } from '../components/MetaTracker/colors'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
-import { speakNatural, stopTTS } from '../services/tts'
+import { speakLocal, stopTTS } from '../services/tts'
 import { formatDate } from '../utils'
 import {
   getMasterNotesLoopAnnouncement,
@@ -216,7 +216,7 @@ export function MasterNotesView({
 
     await new Promise<void>((resolve) => {
       const done = () => resolve()
-      speakNatural(spokenText, nativeLang || targetLang, done, 1)
+      speakLocal(spokenText, nativeLang || targetLang, done, 1)
     })
   }
 
