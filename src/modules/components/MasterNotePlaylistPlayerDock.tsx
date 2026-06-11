@@ -1,6 +1,7 @@
 import {
   PauseIcon,
   PlayIcon,
+  RepeatOffIcon,
   RepeatIcon,
   RotateCcwIcon,
   RotateCwIcon,
@@ -63,7 +64,7 @@ export function MasterNotePlaylistPlayerDock({
   )
 
   return (
-    <div className='fixed inset-x-0 bottom-0 z-50 border-t border-white/20 bg-[radial-gradient(circle_at_20%_0%,_#334155_0%,_#111827_55%,_#020617_100%)] px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 text-white shadow-[0_-10px_40px_rgba(2,6,23,0.6)]'>
+    <div className='fixed inset-x-0 bottom-20 lg:bottom-0 z-40 lg:z-50 border-t border-white/20 bg-[radial-gradient(circle_at_20%_0%,_#334155_0%,_#111827_55%,_#020617_100%)] px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 text-white shadow-[0_-10px_40px_rgba(2,6,23,0.6)]'>
       <div className='mx-auto flex w-full max-w-5xl items-start justify-between gap-3'>
         <div className='min-w-0 flex-1'>
           <p className='truncate text-sm font-semibold'>{noteName}</p>
@@ -71,16 +72,36 @@ export function MasterNotePlaylistPlayerDock({
             {playlistName} · {currentIndex + 1}/{totalCount}
           </p>
         </div>
-        <Button
-          type='button'
-          size='icon'
-          variant='ghost'
-          className='text-white hover:bg-white/10 hover:text-white'
-          onClick={onClose}
-          aria-label='Cerrar reproductor'
-        >
-          <XIcon className='size-5' />
-        </Button>
+        <div className='flex flex-row gap-2'>
+          <Button
+            type='button'
+            size='icon'
+            variant={repeatEnabled ? 'secondary' : 'ghost'}
+            className={
+              repeatEnabled
+                ? 'text-white'
+                : 'text-white hover:bg-white/10 hover:text-white'
+            }
+            onClick={onToggleRepeat}
+            aria-label={repeatEnabled ? 'Desactivar bucle' : 'Activar bucle'}
+          >
+            {repeatEnabled ? (
+              <RepeatIcon className='size-4' />
+            ) : (
+              <RepeatOffIcon className='size-4' />
+            )}
+          </Button>
+          <Button
+            type='button'
+            size='icon'
+            variant='ghost'
+            className='text-white hover:bg-white/10 hover:text-white'
+            onClick={onClose}
+            aria-label='Cerrar reproductor'
+          >
+            <XIcon className='size-5' />
+          </Button>
+        </div>
       </div>
 
       <div className='mx-auto mt-3 w-full max-w-5xl'>
@@ -96,34 +117,7 @@ export function MasterNotePlaylistPlayerDock({
         </div>
       </div>
 
-      <div className='mx-auto mt-3 flex w-full max-w-5xl items-center justify-center gap-6'>
-        <Button
-          type='button'
-          size='icon'
-          variant={repeatEnabled ? 'secondary' : 'ghost'}
-          className={
-            repeatEnabled
-              ? 'text-white'
-              : 'text-white hover:bg-white/10 hover:text-white'
-          }
-          onClick={onToggleRepeat}
-          aria-label={repeatEnabled ? 'Desactivar bucle' : 'Activar bucle'}
-        >
-          <RepeatIcon className='size-4' />
-        </Button>
-
-        <Button
-          type='button'
-          size='icon'
-          variant='ghost'
-          className='relative text-white hover:bg-white/10 hover:text-white'
-          onClick={onSeekBack10}
-          aria-label='Retroceder 10 segundos'
-        >
-          <RotateCcwIcon className='size-4' />
-          <span className='absolute -right-1 -bottom-1 text-[9px] font-bold'>10</span>
-        </Button>
-
+      <div className='mx-auto mt-3 flex w-full max-w-5xl items-center justify-center gap-4 lg:gap-6'>
         <Button
           type='button'
           size='icon-lg'
@@ -134,7 +128,19 @@ export function MasterNotePlaylistPlayerDock({
         >
           <SkipBackIcon className='size-6' />
         </Button>
-
+        <Button
+          type='button'
+          size='icon'
+          variant='ghost'
+          className='relative text-white hover:bg-white/10 hover:text-white'
+          onClick={onSeekBack10}
+          aria-label='Retroceder 10 segundos'
+        >
+          <RotateCcwIcon className='size-4' />
+          <span className='absolute -right-1 -bottom-1 text-[9px] font-bold'>
+            10
+          </span>
+        </Button>
         <Button
           type='button'
           size='icon-lg'
@@ -142,7 +148,11 @@ export function MasterNotePlaylistPlayerDock({
           onClick={onTogglePause}
           aria-label={paused ? 'Reanudar' : 'Pausar'}
         >
-          {paused ? <PlayIcon className='size-8' /> : <PauseIcon className='size-8' />}
+          {paused ? (
+            <PlayIcon className='size-8' />
+          ) : (
+            <PauseIcon className='size-8' />
+          )}
         </Button>
 
         <Button
@@ -154,7 +164,9 @@ export function MasterNotePlaylistPlayerDock({
           aria-label='Adelantar 10 segundos'
         >
           <RotateCwIcon className='size-4' />
-          <span className='absolute -right-1 -bottom-1 text-[9px] font-bold'>10</span>
+          <span className='absolute -right-1 -bottom-1 text-[9px] font-bold'>
+            10
+          </span>
         </Button>
 
         <Button
