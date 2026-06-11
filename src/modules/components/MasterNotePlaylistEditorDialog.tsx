@@ -110,6 +110,8 @@ export function MasterNotePlaylistEditorDialog({
     })
   }
 
+  const canSubmit = name.trim().length > 0 && draftNoteIds.length > 0
+
   return (
     <Dialog open={open} onOpenChange={(value) => !submitting && onOpenChange(value)}>
       <DialogContent className='max-w-2xl'>
@@ -227,7 +229,11 @@ export function MasterNotePlaylistEditorDialog({
           >
             Cancelar
           </Button>
-          <Button type='button' onClick={() => void handleSubmit()} disabled={submitting}>
+          <Button
+            type='button'
+            onClick={() => void handleSubmit()}
+            disabled={submitting || !canSubmit}
+          >
             {submitting
               ? 'Guardando...'
               : mode === 'create'

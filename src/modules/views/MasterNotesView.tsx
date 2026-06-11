@@ -125,6 +125,7 @@ export function MasterNotesView({
   )
   const previousPlayingNoteIdRef = useRef<string | null>(null)
   const loopTokenRef = useRef(0)
+  const suppressAutoAdvanceRef = useRef(false)
 
   const {
     error: playbackError,
@@ -250,26 +251,37 @@ export function MasterNotesView({
     if (ids.length === 0) return
     if (token !== loopTokenRef.current) return
 
-    if (delayBeforeCueMs > 0) {
-      await waitMs(delayBeforeCueMs)
+    suppressAutoAdvanceRef.current = true
+
+    try {
+      if (delayBeforeCueMs > 0) {
+        await waitMs(delayBeforeCueMs)
+        if (token !== loopTokenRef.current) return
+      }
+
+      const safeIndex = ((index % ids.length) + ids.length) % ids.length
+      const noteId = ids[safeIndex]
+      const note = itemsById.get(noteId)
+      if (!note) return
+
+      setLoopIndex(safeIndex)
+
+      await playTransitionCue(dingdongCue)
       if (token !== loopTokenRef.current) return
+
+      await play(note)
+    } finally {
+      suppressAutoAdvanceRef.current = false
     }
-
-    const safeIndex = ((index % ids.length) + ids.length) % ids.length
-    const noteId = ids[safeIndex]
-    const note = itemsById.get(noteId)
-    if (!note) return
-
-    setLoopIndex(safeIndex)
-
-    await playTransitionCue(dingdongCue)
-    if (token !== loopTokenRef.current) return
-
-    await play(note)
   }
 
   useEffect(() => {
     const prevPlayingNoteId = previousPlayingNoteIdRef.current
+
+    if (suppressAutoAdvanceRef.current) {
+      previousPlayingNoteIdRef.current = playingNoteId
+      return
+    }
 
     if (
       loopingClosed &&
@@ -771,8 +783,12 @@ export function MasterNotesView({
                             void handlePlayPlaylist(playlist.id)
                           }}
                         >
-                          <PlayIcon className='mr-1 size-4' />
-                          {isThisPlaying ? 'Detener' : 'Play'}
+                          {isThisPlaying ? (
+                            <SquareIcon className='mr-1 size-4' />
+                          ) : (
+                            <Volume2Icon className='mr-1 size-4' />
+                          )}
+                          {isThisPlaying ? 'Detener' : 'Escuchar'}
                         </Button>
 
                         <Button
@@ -833,6 +849,8 @@ export function MasterNotesView({
         onTogglePause={() => {
           void handleTogglePlaylistPause()
         }}
+        onSeekBack10={seekBack10}
+        onSeekForward10={seekForward10}
         onPrevious={() => {
           void handlePrevLoopTrack()
         }}

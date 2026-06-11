@@ -1,4 +1,12 @@
-import { PauseIcon, PlayIcon, SkipBackIcon, SkipForwardIcon, XIcon } from 'lucide-react'
+import {
+  PauseIcon,
+  PlayIcon,
+  RotateCcwIcon,
+  RotateCwIcon,
+  SkipBackIcon,
+  SkipForwardIcon,
+  XIcon,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 type MasterNotePlaylistPlayerDockProps = {
@@ -11,6 +19,8 @@ type MasterNotePlaylistPlayerDockProps = {
   totalCount: number
   paused: boolean
   onTogglePause: () => void
+  onSeekBack10: () => void
+  onSeekForward10: () => void
   onPrevious: () => void
   onNext: () => void
   onClose: () => void
@@ -33,6 +43,8 @@ export function MasterNotePlaylistPlayerDock({
   totalCount,
   paused,
   onTogglePause,
+  onSeekBack10,
+  onSeekForward10,
   onPrevious,
   onNext,
   onClose,
@@ -82,6 +94,18 @@ export function MasterNotePlaylistPlayerDock({
       <div className='mx-auto mt-3 flex w-full max-w-5xl items-center justify-center gap-6'>
         <Button
           type='button'
+          size='icon'
+          variant='ghost'
+          className='relative text-white hover:bg-white/10 hover:text-white'
+          onClick={onSeekBack10}
+          aria-label='Retroceder 10 segundos'
+        >
+          <RotateCcwIcon className='size-4' />
+          <span className='absolute -right-1 -bottom-1 text-[9px] font-bold'>10</span>
+        </Button>
+
+        <Button
+          type='button'
           size='icon-lg'
           variant='ghost'
           className='text-white hover:bg-white/10 hover:text-white'
@@ -99,6 +123,18 @@ export function MasterNotePlaylistPlayerDock({
           aria-label={paused ? 'Reanudar' : 'Pausar'}
         >
           {paused ? <PlayIcon className='size-8' /> : <PauseIcon className='size-8' />}
+        </Button>
+
+        <Button
+          type='button'
+          size='icon'
+          variant='ghost'
+          className='relative text-white hover:bg-white/10 hover:text-white'
+          onClick={onSeekForward10}
+          aria-label='Adelantar 10 segundos'
+        >
+          <RotateCwIcon className='size-4' />
+          <span className='absolute -right-1 -bottom-1 text-[9px] font-bold'>10</span>
         </Button>
 
         <Button
