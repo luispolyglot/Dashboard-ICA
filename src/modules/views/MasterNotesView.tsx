@@ -31,7 +31,8 @@ import {
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
 import { useLoopedMasterNotePlayback } from '../hooks/useLoopedMasterNotePlayback'
-import dingdongCue from '@/audio/dingdong.mp3'
+import startCue from '@/audio/start.mp3'
+import stepCue from '@/audio/step.mp3'
 import { formatDate } from '../utils'
 import {
   createMasterNote,
@@ -238,8 +239,9 @@ export function MasterNotesView({
     [itemsById, play],
   )
 
-  const playCue = useCallback(async (): Promise<unknown> => {
-    return await playTransitionCue(dingdongCue)
+  const playCue = useCallback(async (kind: 'start' | 'step'): Promise<unknown> => {
+    const cue = kind === 'start' ? startCue : stepCue
+    return await playTransitionCue(cue)
   }, [playTransitionCue])
 
   const {

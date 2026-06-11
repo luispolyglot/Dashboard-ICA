@@ -24,6 +24,7 @@ describe('useLoopedMasterNotePlayback', () => {
     expect(result.current.looping).toBe(true)
     expect(result.current.loopIndex).toBe(0)
     expect(playTransitionCue).toHaveBeenCalledTimes(1)
+    expect(playTransitionCue).toHaveBeenCalledWith('start')
     expect(playNoteById).toHaveBeenCalledWith('note-a')
   })
 
@@ -56,6 +57,7 @@ describe('useLoopedMasterNotePlayback', () => {
 
     expect(result.current.loopIndex).toBe(1)
     expect(playTransitionCue).toHaveBeenCalledTimes(2)
+    expect(playTransitionCue.mock.calls[1]?.[0]).toBe('step')
   })
 
   it('stops auto-advance at end when repeat is off', async () => {
@@ -98,5 +100,7 @@ describe('useLoopedMasterNotePlayback', () => {
 
     expect(playNoteById).toHaveBeenCalledTimes(2)
     expect(playTransitionCue).toHaveBeenCalledTimes(2)
+    expect(playTransitionCue.mock.calls[0]?.[0]).toBe('start')
+    expect(playTransitionCue.mock.calls[1]?.[0]).toBe('step')
   })
 })

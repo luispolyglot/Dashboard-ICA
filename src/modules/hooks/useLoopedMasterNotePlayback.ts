@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 type UseLoopedMasterNotePlaybackParams = {
   playingNoteId: string | null
   playNoteById: (noteId: string) => Promise<void>
-  playTransitionCue: () => Promise<unknown>
+  playTransitionCue: (kind: 'start' | 'step') => Promise<unknown>
   stopPlayback: () => void
   autoAdvanceDelayMs?: number
 }
@@ -38,6 +38,7 @@ export function useLoopedMasterNotePlayback({
     index: number,
     ids: string[],
     token: number,
+    cueKind: 'start' | 'step' = 'step',
     delayBeforeCueMs = 0,
   ): Promise<void> => {
     if (ids.length === 0) return
@@ -59,7 +60,7 @@ export function useLoopedMasterNotePlayback({
 
       setLoopIndex(safeIndex)
 
-      await playTransitionCue()
+      await playTransitionCue(cueKind)
       if (token !== tokenRef.current) return
 
       await playNoteById(noteId)
@@ -78,7 +79,7 @@ export function useLoopedMasterNotePlayback({
     setLoopIds(ids)
     setLoopIndex(0)
 
-    await playLoopNoteAt(0, ids, token)
+    await playLoopNoteAt(0, ids, token, 'start')
     return true
   }, [playLoopNoteAt])
 
@@ -86,20 +87,20 @@ export function useLoopedMasterNotePlayback({
     if (!looping || loopIds.length === 0) return
     const token = tokenRef.current
     const nextIndex = (loopIndex + 1) % loopIds.length
-    await playLoopNoteAt(nextIndex, loopIds, token)
+    await playLoopNoteAt(nextIndex, loopIds, token, 'step')
   }, [loopIds, loopIndex, looping, playLoopNoteAt])
 
   const playPrevious = useCallback(async (): Promise<void> => {
     if (!looping || loopIds.length === 0) return
     const token = tokenRef.current
     const prevIndex = (loopIndex - 1 + loopIds.length) % loopIds.length
-    await playLoopNoteAt(prevIndex, loopIds, token)
+    await playLoopNoteAt(prevIndex, loopIds, token, 'step')
   }, [loopIds, loopIndex, looping, playLoopNoteAt])
 
   const replayCurrent = useCallback(async (): Promise<void> => {
     if (!looping || loopIds.length === 0) return
     const token = tokenRef.current
-    await playLoopNoteAt(loopIndex, loopIds, token)
+    await playLoopNoteAt(loopIndex, loopIds, token, 'step')
   }, [loopIds, loopIndex, looping, playLoopNoteAt])
 
   useEffect(() => {
@@ -124,7 +125,7 @@ export function useLoopedMasterNotePlayback({
 
       const token = tokenRef.current
       const nextIndex = (loopIndex + 1) % loopIds.length
-      void playLoopNoteAt(nextIndex, loopIds, token, autoAdvanceDelayMs)
+      void playLoopNoteAt(nextIndex, loopIds, token, 'step', autoAdvanceDelayMs)
     }
 
     previousPlayingNoteIdRef.current = playingNoteId
