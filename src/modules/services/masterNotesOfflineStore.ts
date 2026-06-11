@@ -125,6 +125,19 @@ function mapClosedNoteToOfflineRecord(note: MasterNote, userId: string): Offline
   }
 }
 
+function compareByCreatedAtAsc(
+  a: Pick<OfflineClosedMasterNote, 'createdAt'>,
+  b: Pick<OfflineClosedMasterNote, 'createdAt'>,
+): number {
+  const aTime = new Date(a.createdAt || 0).getTime()
+  const bTime = new Date(b.createdAt || 0).getTime()
+
+  if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0
+  if (Number.isNaN(aTime)) return 1
+  if (Number.isNaN(bTime)) return -1
+  return aTime - bTime
+}
+
 export async function syncClosedMasterNotesOfflineSnapshot(
   allFetchedNotes: MasterNote[],
   targetLang?: string,
@@ -204,14 +217,7 @@ export async function listOfflineClosedMasterNotes(): Promise<OfflineClosedMaste
           audioAvailable,
         }
       })
-      .sort((a, b) => {
-        const aTime = new Date(a.closedAt || a.createdAt || 0).getTime()
-        const bTime = new Date(b.closedAt || b.createdAt || 0).getTime()
-        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0
-        if (Number.isNaN(aTime)) return 1
-        if (Number.isNaN(bTime)) return -1
-        return bTime - aTime
-      })
+      .sort(compareByCreatedAtAsc)
 
     await transactionDone(tx)
     return rows
