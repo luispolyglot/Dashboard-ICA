@@ -1,11 +1,17 @@
 import { supabase } from '@/lib/supabase'
 import { getSessionWithTimeout } from '@/lib/supabaseAuthSafe'
-import type { MasterNote } from '../types'
+import type {
+  MasterNote,
+  MasterNotePlaylist,
+  MasterNotePlaylistItem,
+} from '../types'
 
 const DB_NAME = 'dashboard-ica-offline'
-const DB_VERSION = 2
+const DB_VERSION = 3
 const CLOSED_NOTES_STORE = 'master-notes-closed'
 const CLOSED_NOTES_AUDIO_STORE = 'master-notes-closed-audio'
+const PLAYLISTS_STORE = 'master-note-playlists'
+const PLAYLIST_ITEMS_STORE = 'master-note-playlist-items'
 
 type OfflineClosedMasterNoteAudioRecord = {
   id: string
@@ -37,6 +43,27 @@ export type OfflineClosedMasterNote = {
   audioAvailable?: boolean
 }
 
+export type OfflineMasterNotePlaylist = {
+  id: string
+  userId: string
+  name: string
+  targetLang: string | null
+  nativeLang: string | null
+  createdAt: string
+  updatedAt: string
+  cachedAt: string
+}
+
+export type OfflineMasterNotePlaylistItem = {
+  id: string
+  playlistId: string
+  userId: string
+  masterNoteId: string
+  sortOrder: number
+  createdAt: string
+  cachedAt: string
+}
+
 function isBrowserIndexedDbAvailable(): boolean {
   return typeof window !== 'undefined' && typeof window.indexedDB !== 'undefined'
 }
@@ -47,6 +74,10 @@ function getCurrentIsoNow(): string {
 
 function getAudioRecordId(userId: string, noteId: string): string {
   return `${userId}:${noteId}`
+}
+
+function getPlaylistItemRecordId(userId: string, playlistItemId: string): string {
+  return `${userId}:${playlistItemId}`
 }
 
 async function getCurrentUserId(): Promise<string | null> {
@@ -83,6 +114,24 @@ async function openOfflineDb(): Promise<IDBDatabase | null> {
         })
         audioStore.createIndex('by_user', 'userId', { unique: false })
         audioStore.createIndex('by_user_note', ['userId', 'noteId'], { unique: true })
+      }
+
+      if (!db.objectStoreNames.contains(PLAYLISTS_STORE)) {
+        const playlistsStore = db.createObjectStore(PLAYLISTS_STORE, {
+          keyPath: 'id',
+        })
+        playlistsStore.createIndex('by_user', 'userId', { unique: false })
+        playlistsStore.createIndex('by_user_target_native', ['userId', 'targetLang', 'nativeLang'], {
+          unique: false,
+        })
+      }
+
+      if (!db.objectStoreNames.contains(PLAYLIST_ITEMS_STORE)) {
+        const playlistItemsStore = db.createObjectStore(PLAYLIST_ITEMS_STORE, {
+          keyPath: 'id',
+        })
+        playlistItemsStore.createIndex('by_user', 'userId', { unique: false })
+        playlistItemsStore.createIndex('by_user_playlist', ['userId', 'playlistId'], { unique: false })
       }
     }
 
@@ -286,6 +335,164 @@ export async function upsertOfflineClosedMasterNoteAudio(
 
     store.put(record)
     await transactionDone(tx)
+  } finally {
+    db.close()
+  }
+}
+
+function mapPlaylistToOfflineRecord(
+  playlist: MasterNotePlaylist,
+  userId: string,
+): OfflineMasterNotePlaylist {
+  return {
+    id: playlist.id,
+    userId,
+    name: playlist.name,
+    targetLang: playlist.target_lang,
+    nativeLang: playlist.native_lang,
+    createdAt: playlist.created_at,
+    updatedAt: playlist.updated_at,
+    cachedAt: getCurrentIsoNow(),
+  }
+}
+
+function mapPlaylistItemToOfflineRecord(
+  item: MasterNotePlaylistItem,
+  userId: string,
+): OfflineMasterNotePlaylistItem {
+  return {
+    id: getPlaylistItemRecordId(userId, item.id),
+    userId,
+    playlistId: item.playlist_id,
+    masterNoteId: item.master_note_id,
+    sortOrder: item.sort_order,
+    createdAt: item.created_at,
+    cachedAt: getCurrentIsoNow(),
+  }
+}
+
+export async function syncMasterNotePlaylistsOfflineSnapshot(
+  playlists: MasterNotePlaylist[],
+  items: MasterNotePlaylistItem[],
+  targetLang?: string,
+  nativeLang?: string,
+): Promise<void> {
+  const userId = await getCurrentUserId()
+  if (!userId) return
+
+  const db = await openOfflineDb()
+  if (!db) return
+
+  try {
+    const playlistIds = new Set(playlists.map((playlist) => playlist.id))
+
+    const tx = db.transaction([PLAYLISTS_STORE, PLAYLIST_ITEMS_STORE], 'readwrite')
+    const playlistsStore = tx.objectStore(PLAYLISTS_STORE)
+    const itemsStore = tx.objectStore(PLAYLIST_ITEMS_STORE)
+
+    const existingPlaylists = await requestToPromise(playlistsStore.getAll()) as OfflineMasterNotePlaylist[]
+    const existingItems = await requestToPromise(itemsStore.getAll()) as OfflineMasterNotePlaylistItem[]
+
+    for (const row of existingPlaylists) {
+      if (row.userId !== userId) continue
+
+      const matchesTarget = targetLang ? row.targetLang === targetLang : true
+      const matchesNative = nativeLang ? row.nativeLang === nativeLang : true
+      if (!matchesTarget || !matchesNative) continue
+
+      if (!playlistIds.has(row.id)) {
+        playlistsStore.delete(row.id)
+      }
+    }
+
+    for (const item of existingItems) {
+      if (item.userId !== userId) continue
+      if (!playlistIds.has(item.playlistId)) {
+        itemsStore.delete(item.id)
+      }
+    }
+
+    for (const playlist of playlists) {
+      playlistsStore.put(mapPlaylistToOfflineRecord(playlist, userId))
+    }
+
+    for (const item of items) {
+      if (!playlistIds.has(item.playlist_id)) continue
+      itemsStore.put(mapPlaylistItemToOfflineRecord(item, userId))
+    }
+
+    await transactionDone(tx)
+  } finally {
+    db.close()
+  }
+}
+
+export async function listOfflineMasterNotePlaylists(
+  targetLang?: string,
+  nativeLang?: string,
+): Promise<OfflineMasterNotePlaylist[]> {
+  const userId = await getCurrentUserId()
+  if (!userId) return []
+
+  const db = await openOfflineDb()
+  if (!db) return []
+
+  try {
+    const tx = db.transaction(PLAYLISTS_STORE, 'readonly')
+    const store = tx.objectStore(PLAYLISTS_STORE)
+    const rows = await requestToPromise(store.getAll()) as OfflineMasterNotePlaylist[]
+
+    const filtered = rows
+      .filter((row) => row.userId === userId)
+      .filter((row) => (targetLang ? row.targetLang === targetLang : true))
+      .filter((row) => (nativeLang ? row.nativeLang === nativeLang : true))
+      .sort((a, b) => {
+        const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime()
+        const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime()
+        if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0
+        if (Number.isNaN(aTime)) return 1
+        if (Number.isNaN(bTime)) return -1
+        return bTime - aTime
+      })
+
+    await transactionDone(tx)
+    return filtered
+  } finally {
+    db.close()
+  }
+}
+
+export async function listOfflineMasterNotePlaylistItems(
+  playlistId?: string,
+): Promise<OfflineMasterNotePlaylistItem[]> {
+  const userId = await getCurrentUserId()
+  if (!userId) return []
+
+  const db = await openOfflineDb()
+  if (!db) return []
+
+  try {
+    const tx = db.transaction(PLAYLIST_ITEMS_STORE, 'readonly')
+    const store = tx.objectStore(PLAYLIST_ITEMS_STORE)
+    const rows = await requestToPromise(store.getAll()) as OfflineMasterNotePlaylistItem[]
+
+    const filtered = rows
+      .filter((row) => row.userId === userId)
+      .filter((row) => (playlistId ? row.playlistId === playlistId : true))
+      .sort((a, b) => {
+        if (a.sortOrder === b.sortOrder) {
+          const aTime = new Date(a.createdAt || 0).getTime()
+          const bTime = new Date(b.createdAt || 0).getTime()
+          if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0
+          if (Number.isNaN(aTime)) return 1
+          if (Number.isNaN(bTime)) return -1
+          return aTime - bTime
+        }
+        return a.sortOrder - b.sortOrder
+      })
+
+    await transactionDone(tx)
+    return filtered
   } finally {
     db.close()
   }
