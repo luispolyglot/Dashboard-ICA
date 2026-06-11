@@ -7,6 +7,7 @@ import {
   PauseIcon,
   PencilIcon,
   PlayIcon,
+  RepeatIcon,
   RotateCcwIcon,
   RotateCwIcon,
   SquareIcon,
@@ -232,6 +233,12 @@ export function MasterNotesView({
     return itemsById.get(noteId) || null
   }, [itemsById, loopIds, loopIndex])
 
+  const playableClosedNoteIds = useMemo(() => {
+    return closedItems
+      .filter((note) => canPlay(note, note.total_duration_ms > 0 ? 1 : 0))
+      .map((note) => note.id)
+  }, [canPlay, closedItems])
+
   const disableLoopPlayback = (stopCurrent = false): void => {
     loopTokenRef.current += 1
     setLoopingClosed(false)
@@ -387,6 +394,30 @@ export function MasterNotesView({
         if (!note) return false
         return canPlay(note, note.total_duration_ms > 0 ? 1 : 0)
       })
+  }
+
+  const handlePlayAllClosedLoop = async (): Promise<void> => {
+    if (loopingClosed && !activePlayerPlaylistId) {
+      disableLoopPlayback(true)
+      return
+    }
+
+    const ids = playableClosedNoteIds
+    if (ids.length === 0) {
+      setError('No hay notas maestras cerradas reproducibles para el bucle')
+      return
+    }
+
+    const token = loopTokenRef.current + 1
+    loopTokenRef.current = token
+
+    setLoopingClosed(true)
+    setLoopIds(ids)
+    setLoopIndex(0)
+    setActivePlayerPlaylistId(null)
+
+    await playLoopNoteAt(0, ids, token)
+    setError(null)
   }
 
   const handlePlayPlaylist = async (playlistId: string): Promise<void> => {
@@ -551,6 +582,27 @@ export function MasterNotesView({
 
           {loading && (
             <p className='text-sm text-muted-foreground'>Cargando notas...</p>
+          )}
+
+          {!loading && (
+            <Button
+              type='button'
+              variant={loopingClosed && !activePlayerPlaylistId ? 'secondary' : 'outline'}
+              onClick={() => void handlePlayAllClosedLoop()}
+              disabled={playableClosedNoteIds.length === 0}
+            >
+              {loopingClosed && !activePlayerPlaylistId ? (
+                <>
+                  <SquareIcon className='mr-1 size-4' />
+                  Detener reproducción en bucle
+                </>
+              ) : (
+                <>
+                  <RepeatIcon className='mr-1 size-4' />
+                  Reproducir todo en bucle
+                </>
+              )}
+            </Button>
           )}
 
           <div className='space-y-3'>

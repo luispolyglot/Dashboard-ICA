@@ -10,13 +10,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 
 export type PlaylistEditorNoteOption = {
   id: string
@@ -46,7 +39,6 @@ export function MasterNotePlaylistEditorDialog({
 }: MasterNotePlaylistEditorDialogProps) {
   const [name, setName] = useState(initialName)
   const [draftNoteIds, setDraftNoteIds] = useState<string[]>(initialNoteIds)
-  const [nextNoteId, setNextNoteId] = useState('')
 
   const notesById = useMemo(
     () => new Map(closedNotes.map((note) => [note.id, note])),
@@ -64,23 +56,10 @@ export function MasterNotePlaylistEditorDialog({
     setDraftNoteIds(initialNoteIds.filter((id) => notesById.has(id)))
   }, [initialName, initialNoteIds, notesById, open])
 
-  useEffect(() => {
-    if (!open) return
-    if (availableNotes.length === 0) {
-      setNextNoteId('')
-      return
-    }
-
-    const exists = availableNotes.some((note) => note.id === nextNoteId)
-    if (exists) return
-    setNextNoteId(availableNotes[0]?.id || '')
-  }, [availableNotes, nextNoteId, open])
-
-  const handleAddNote = (): void => {
-    if (!nextNoteId) return
+  const handleAddNote = (noteId: string): void => {
     setDraftNoteIds((prev) => {
-      if (prev.includes(nextNoteId)) return prev
-      return [...prev, nextNoteId]
+      if (prev.includes(noteId)) return prev
+      return [...prev, noteId]
     })
   }
 
@@ -128,95 +107,100 @@ export function MasterNotePlaylistEditorDialog({
           <Input
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder='Ej: Cerradas de esta semana'
+            placeholder='Ingresar nombre de la lista'
           />
 
-          <div className='flex flex-wrap gap-2'>
-            <div className='min-w-72 flex-1'>
-              <Select
-                value={nextNoteId}
-                onValueChange={setNextNoteId}
-                disabled={availableNotes.length === 0}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder='Selecciona una nota cerrada' />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableNotes.map((note) => (
-                    <SelectItem key={note.id} value={note.id}>
-                      {note.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className='space-y-2'>
+            <p className='text-xs font-semibold tracking-wide text-muted-foreground'>
+              Notas disponibles
+            </p>
+            <div className='max-h-52 space-y-2 overflow-auto rounded-lg border p-2'>
+              {availableNotes.length === 0 ? (
+                <p className='text-sm text-muted-foreground'>
+                  Ya agregaste todas las notas cerradas disponibles.
+                </p>
+              ) : (
+                availableNotes.map((note) => (
+                  <div
+                    key={note.id}
+                    className='flex items-center justify-between gap-2 rounded-lg border p-2'
+                  >
+                    <p className='text-sm font-medium'>{note.name}</p>
+                    <Button
+                      type='button'
+                      size='icon'
+                      variant='outline'
+                      onClick={() => handleAddNote(note.id)}
+                      aria-label='Agregar nota a la lista'
+                    >
+                      <PlusIcon className='size-4' />
+                    </Button>
+                  </div>
+                ))
+              )}
             </div>
-
-            <Button
-              type='button'
-              variant='outline'
-              onClick={handleAddNote}
-              disabled={!nextNoteId || availableNotes.length === 0}
-            >
-              <PlusIcon className='mr-1 size-4' />
-              Agregar
-            </Button>
           </div>
 
-          <div className='max-h-72 space-y-2 overflow-auto rounded-lg border p-2'>
-            {draftNoteIds.length === 0 ? (
-              <p className='text-sm text-muted-foreground'>
-                Esta lista está vacía. Agrega notas cerradas.
-              </p>
-            ) : (
-              draftNoteIds.map((noteId, index) => {
-                const note = notesById.get(noteId)
-                if (!note) return null
+          <div className='space-y-2'>
+            <p className='text-xs font-semibold tracking-wide text-muted-foreground'>
+              Notas en la lista
+            </p>
+            <div className='max-h-72 space-y-2 overflow-auto rounded-lg border p-2'>
+              {draftNoteIds.length === 0 ? (
+                <p className='text-sm text-muted-foreground'>
+                  Esta lista está vacía. Agrega notas cerradas.
+                </p>
+              ) : (
+                draftNoteIds.map((noteId, index) => {
+                  const note = notesById.get(noteId)
+                  if (!note) return null
 
-                return (
-                  <div
-                    key={noteId}
-                    className='flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3'
-                  >
-                    <div>
-                      <p className='font-semibold'>{note.name}</p>
-                      <p className='text-xs text-muted-foreground'>Posición {index + 1}</p>
-                    </div>
+                  return (
+                    <div
+                      key={noteId}
+                      className='flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3'
+                    >
+                      <div>
+                        <p className='font-semibold'>{note.name}</p>
+                        <p className='text-xs text-muted-foreground'>Posición {index + 1}</p>
+                      </div>
 
-                    <div className='flex items-center gap-2'>
-                      <Button
-                        type='button'
-                        size='icon'
-                        variant='outline'
-                        onClick={() => handleMoveNote(noteId, 'up')}
-                        disabled={index === 0}
-                        aria-label='Mover arriba'
-                      >
-                        <ArrowUpIcon className='size-4' />
-                      </Button>
-                      <Button
-                        type='button'
-                        size='icon'
-                        variant='outline'
-                        onClick={() => handleMoveNote(noteId, 'down')}
-                        disabled={index === draftNoteIds.length - 1}
-                        aria-label='Mover abajo'
-                      >
-                        <ArrowDownIcon className='size-4' />
-                      </Button>
-                      <Button
-                        type='button'
-                        size='icon'
-                        variant='destructive'
-                        onClick={() => handleRemoveNote(noteId)}
-                        aria-label='Quitar nota'
-                      >
-                        <XIcon className='size-4' />
-                      </Button>
+                      <div className='flex items-center gap-2'>
+                        <Button
+                          type='button'
+                          size='icon'
+                          variant='outline'
+                          onClick={() => handleMoveNote(noteId, 'up')}
+                          disabled={index === 0}
+                          aria-label='Mover arriba'
+                        >
+                          <ArrowUpIcon className='size-4' />
+                        </Button>
+                        <Button
+                          type='button'
+                          size='icon'
+                          variant='outline'
+                          onClick={() => handleMoveNote(noteId, 'down')}
+                          disabled={index === draftNoteIds.length - 1}
+                          aria-label='Mover abajo'
+                        >
+                          <ArrowDownIcon className='size-4' />
+                        </Button>
+                        <Button
+                          type='button'
+                          size='icon'
+                          variant='destructive'
+                          onClick={() => handleRemoveNote(noteId)}
+                          aria-label='Quitar nota'
+                        >
+                          <XIcon className='size-4' />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                )
-              })
-            )}
+                  )
+                })
+              )}
+            </div>
           </div>
         </div>
 
