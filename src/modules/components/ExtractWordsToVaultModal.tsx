@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { CheckIcon } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -198,7 +199,9 @@ export function ExtractWordsToVaultModal({
     if (!trimmedTarget || !trimmedNative) return
 
     if (isAlreadyInVault(trimmedTarget)) {
-      setSaveError('Esta palabra ya existe en tu baúl ICA.')
+      const message = 'Esta palabra ya existe en tu baúl ICA.'
+      setSaveError(message)
+      toast.error(message)
       return
     }
 
@@ -250,6 +253,7 @@ export function ExtractWordsToVaultModal({
       if (onWordAdded) {
         await onWordAdded()
       }
+      toast.success('Palabra agregada correctamente al baúl ICA.')
       setSaved(true)
       window.setTimeout(() => {
         onOpenChange(false)
@@ -258,7 +262,9 @@ export function ExtractWordsToVaultModal({
       if (updateCardsLocally) {
         setCards((prev) => prev.filter((card) => card.id !== newCard.id))
       }
-      setSaveError('No se pudo guardar la palabra en tu baúl ICA.')
+      const message = 'No se pudo guardar la palabra en tu baúl ICA.'
+      setSaveError(message)
+      toast.error(message)
     } finally {
       setSaving(false)
     }
