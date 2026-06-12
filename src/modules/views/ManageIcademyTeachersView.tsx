@@ -30,6 +30,8 @@ export function ManageIcademyTeachersView() {
   const [selectedUserId, setSelectedUserId] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null)
+  const [teacherPendingDelete, setTeacherPendingDelete] =
+    useState<IcademyTeacher | null>(null)
 
   const loadData = async () => {
     setLoading(true)
@@ -118,6 +120,12 @@ export function ManageIcademyTeachersView() {
     }
   }
 
+  const handleConfirmDelete = async () => {
+    if (!teacherPendingDelete) return
+    await handleDelete(teacherPendingDelete.userId)
+    setTeacherPendingDelete(null)
+  }
+
   return (
     <section className='mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-5 py-8'>
       <div className='mb-6'>
@@ -200,7 +208,7 @@ export function ManageIcademyTeachersView() {
                           type='button'
                           variant='outline'
                           size='sm'
-                          onClick={() => void handleDelete(teacher.userId)}
+                          onClick={() => setTeacherPendingDelete(teacher)}
                           disabled={deletingUserId === teacher.userId}
                         >
                           <Trash2Icon className='h-4 w-4' />
@@ -255,6 +263,48 @@ export function ManageIcademyTeachersView() {
               disabled={isCreating || !selectedUser}
             >
               {isCreating ? 'Creando...' : 'Crear profesor'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(teacherPendingDelete)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setTeacherPendingDelete(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Eliminar profesor</DialogTitle>
+            <DialogDescription>
+              {teacherPendingDelete
+                ? `Vas a eliminar a ${teacherPendingDelete.displayName} de la tabla de profesores.`
+                : 'Confirma la eliminacion del profesor.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <p className='text-sm text-muted-foreground'>
+            Esta accion no elimina al usuario de la app, solo quita su rol de
+            profesor.
+          </p>
+
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setTeacherPendingDelete(null)}
+              disabled={Boolean(deletingUserId)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type='button'
+              variant='destructive'
+              onClick={() => void handleConfirmDelete()}
+              disabled={Boolean(deletingUserId)}
+            >
+              {deletingUserId ? 'Eliminando...' : 'Confirmar eliminacion'}
             </Button>
           </DialogFooter>
         </DialogContent>

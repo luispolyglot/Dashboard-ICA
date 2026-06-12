@@ -33,6 +33,12 @@ function getErrorStatus(error: unknown): number | null {
   return null
 }
 
+function getErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null
+  const value = error as { code?: unknown }
+  return typeof value.code === 'string' ? value.code : null
+}
+
 function buildDisplayName(input: {
   displayName: string | null
   username: string | null
@@ -173,6 +179,13 @@ export async function deleteIcademyTeacher(userId: string): Promise<void> {
 
   if (error) {
     const status = getErrorStatus(error)
+    const code = getErrorCode(error)
+    if (code === '23503') {
+      throw new IcademyTeacherRequestError(
+        'No puedes eliminar este profesor porque tiene clases asignadas en el calendario. Reasigna o elimina esas clases primero.',
+        409,
+      )
+    }
     if (status === 403) {
       throw new IcademyTeacherRequestError(
         'No tienes permisos para eliminar profesores.',

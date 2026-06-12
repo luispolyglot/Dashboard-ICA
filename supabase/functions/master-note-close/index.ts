@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import webpush from 'npm:web-push@3.6.7'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -140,6 +141,51 @@ function jsonResponse(status: number, body: unknown): Response {
   })
 }
 
+type CoachingSessionRow = {
+  id: string
+  coach_user_id: string | null
+}
+
+type WeekActivationRow = {
+  week_number: number
+  activated_at: string
+  ended_at: string | null
+}
+
+type PushSubscriptionRow = {
+  id: string
+  endpoint: string
+  p256dh: string
+  auth: string
+  is_active: boolean
+}
+
+function toDate(value: string | null): Date | null {
+  if (!value) return null
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function getWeekFromActivations(
+  closedAt: string,
+  activations: WeekActivationRow[],
+): number | null {
+  const closedDate = toDate(closedAt)
+  if (!closedDate) return null
+
+  for (const row of activations) {
+    const start = toDate(row.activated_at)
+    if (!start) continue
+    const explicitEnd = row.ended_at ? toDate(row.ended_at) : null
+    const end = explicitEnd || new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
+    if (closedDate.getTime() >= start.getTime() && closedDate.getTime() < end.getTime()) {
+      return Math.min(12, Math.max(1, row.week_number))
+    }
+  }
+
+  return null
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
@@ -256,10 +302,206 @@ Deno.serve(async (req) => {
     return jsonResponse(500, { error: closeError.message })
   }
 
+  let coachingNotificationStatus: 'sent' | 'failed' | 'skipped' = 'skipped'
+  let coachingNotificationReason: string | null = null
+
+  try {
+    const { data: sessionRow, error: sessionError } = await adminClient
+      .from('coaching_sessions')
+      .select('id, coach_user_id')
+      .eq('user_id', user.id)
+      .eq('target_lang', targetLang)
+      .eq('is_active', true)
+      .eq('status', 'active')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle<CoachingSessionRow>()
+
+    if (sessionError) throw new Error(sessionError.message)
+    if (!sessionRow?.coach_user_id) {
+      coachingNotificationReason = 'session_or_coach_missing'
+    } else {
+      const { data: existingNotification } = await adminClient
+        .from('coaching_note_close_notifications')
+        .select('id')
+        .eq('note_id', noteId)
+        .eq('coach_user_id', sessionRow.coach_user_id)
+        .maybeSingle<{ id: number }>()
+
+      if (existingNotification?.id) {
+        coachingNotificationReason = 'already_notified'
+      } else {
+        const { data: activations, error: activationsError } = await adminClient
+          .from('coaching_session_week_activations')
+          .select('week_number, activated_at, ended_at')
+          .eq('session_id', sessionRow.id)
+          .order('week_number', { ascending: true })
+
+        if (activationsError) throw new Error(activationsError.message)
+
+        const weekNumber = getWeekFromActivations(
+          closedAt,
+          (activations || []) as WeekActivationRow[],
+        )
+
+        if (!weekNumber) {
+          coachingNotificationReason = 'outside_activated_week'
+          await adminClient.from('coaching_note_close_notifications').insert({
+            note_id: noteId,
+            session_id: sessionRow.id,
+            coach_user_id: sessionRow.coach_user_id,
+            status: 'skipped',
+            week_number: null,
+            error_message: coachingNotificationReason,
+            notified_at: null,
+          })
+        } else {
+          const { data: preference } = await adminClient
+            .from('user_coaching_notification_preferences')
+            .select('master_note_closed_enabled')
+            .eq('user_id', sessionRow.coach_user_id)
+            .maybeSingle<{ master_note_closed_enabled: boolean }>()
+
+          if (preference && !preference.master_note_closed_enabled) {
+            coachingNotificationReason = 'coach_notifications_disabled'
+            await adminClient.from('coaching_note_close_notifications').insert({
+              note_id: noteId,
+              session_id: sessionRow.id,
+              coach_user_id: sessionRow.coach_user_id,
+              status: 'skipped',
+              week_number: weekNumber,
+              error_message: coachingNotificationReason,
+              notified_at: null,
+            })
+          } else {
+            const vapidPublicKey = Deno.env.get('VAPID_PUBLIC_KEY')
+            const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY')
+            const vapidSubject = Deno.env.get('VAPID_SUBJECT')
+
+            if (!vapidPublicKey || !vapidPrivateKey || !vapidSubject) {
+              coachingNotificationReason = 'vapid_not_configured'
+              await adminClient.from('coaching_note_close_notifications').insert({
+                note_id: noteId,
+                session_id: sessionRow.id,
+                coach_user_id: sessionRow.coach_user_id,
+                status: 'failed',
+                week_number: weekNumber,
+                error_message: coachingNotificationReason,
+                notified_at: null,
+              })
+              coachingNotificationStatus = 'failed'
+            } else {
+              webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
+
+              const { data: coachProfile } = await adminClient
+                .from('profiles')
+                .select('display_name, username')
+                .eq('id', user.id)
+                .maybeSingle<{ display_name: string | null; username: string | null }>()
+
+              const userLabel =
+                coachProfile?.display_name?.trim() ||
+                coachProfile?.username?.trim() ||
+                'Tu alumno'
+
+              const { data: subscriptions, error: subscriptionsError } = await adminClient
+                .from('user_push_subscriptions')
+                .select('id, endpoint, p256dh, auth, is_active')
+                .eq('user_id', sessionRow.coach_user_id)
+                .eq('is_active', true)
+
+              if (subscriptionsError) throw new Error(subscriptionsError.message)
+
+              const activeSubscriptions = (subscriptions || []) as PushSubscriptionRow[]
+              if (activeSubscriptions.length === 0) {
+                coachingNotificationReason = 'coach_without_active_push_subscriptions'
+                await adminClient.from('coaching_note_close_notifications').insert({
+                  note_id: noteId,
+                  session_id: sessionRow.id,
+                  coach_user_id: sessionRow.coach_user_id,
+                  status: 'skipped',
+                  week_number: weekNumber,
+                  error_message: coachingNotificationReason,
+                  notified_at: null,
+                })
+              } else {
+                const payload = JSON.stringify({
+                  title: 'Coaching ICA',
+                  body: `${userLabel} cerró una nota maestra en Semana ${weekNumber}.`,
+                  data: {
+                    type: 'coaching-master-note-closed',
+                    noteId,
+                    sessionId: sessionRow.id,
+                    userId: user.id,
+                    weekNumber,
+                  },
+                })
+
+                let sentCount = 0
+                let failedCount = 0
+
+                for (const subscription of activeSubscriptions) {
+                  try {
+                    await webpush.sendNotification(
+                      {
+                        endpoint: subscription.endpoint,
+                        keys: {
+                          p256dh: subscription.p256dh,
+                          auth: subscription.auth,
+                        },
+                      },
+                      payload,
+                    )
+                    sentCount += 1
+                  } catch {
+                    failedCount += 1
+                    await adminClient
+                      .from('user_push_subscriptions')
+                      .update({ is_active: false, last_seen_at: new Date().toISOString() })
+                      .eq('id', subscription.id)
+                  }
+                }
+
+                coachingNotificationStatus = sentCount > 0 ? 'sent' : 'failed'
+                coachingNotificationReason =
+                  sentCount > 0
+                    ? failedCount > 0
+                      ? `partial_delivery:${sentCount}/${activeSubscriptions.length}`
+                      : null
+                    : 'all_push_deliveries_failed'
+
+                await adminClient.from('coaching_note_close_notifications').insert({
+                  note_id: noteId,
+                  session_id: sessionRow.id,
+                  coach_user_id: sessionRow.coach_user_id,
+                  status: coachingNotificationStatus,
+                  week_number: weekNumber,
+                  error_message: coachingNotificationReason,
+                  notified_at:
+                    coachingNotificationStatus === 'sent'
+                      ? new Date().toISOString()
+                      : null,
+                })
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (notificationError) {
+    coachingNotificationStatus = 'failed'
+    coachingNotificationReason =
+      notificationError instanceof Error
+        ? notificationError.message
+        : 'unknown_notification_error'
+  }
+
   return jsonResponse(200, {
     ok: true,
     closeType: 'temporal',
     closedAt,
     closedLevel,
+    coachingNotificationStatus,
+    coachingNotificationReason,
   })
 })

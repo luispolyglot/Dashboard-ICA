@@ -31,6 +31,7 @@ import {
   MyAnalyticsPage,
   MyIcaWordsPage,
   NewTrackerPage,
+  OfflineSafePage,
   NewIcaWordsPage,
   PhraseHistoryPage,
   ProfilePage,
@@ -137,6 +138,7 @@ export function App() {
               <Route path='historic-leaderboard' element={<HistoricLeaderboardPage />} />
             </Route>
           </Route>
+          <Route path='offline-safe' element={<OfflineSafePage />} />
         </Route>
         <Route path='*' element={<RootRedirect />} />
       </Routes>

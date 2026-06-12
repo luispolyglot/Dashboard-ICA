@@ -344,7 +344,7 @@ export function ReviewView({
   const playStyleLabel = isGoalStyle ? 'Modo objetivo' : 'Modo clásico'
 
   return (
-    <section className='flex flex-1 flex-col items-center justify-center p-4 lg:pb-24'>
+    <section className='flex flex-1 flex-col items-center justify-center p-4 pb-24 lg:pb-4'>
       <div className='mb-3 flex w-full max-w-105 flex-wrap items-center justify-between gap-2'>
         <div className='inline-flex items-center rounded-md bg-muted px-2 py-1 text-[11px] font-semibold text-muted-foreground'>
           {playStyleLabel}: {activeMode.emoji} {activeMode.title}

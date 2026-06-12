@@ -277,9 +277,7 @@ export function AddView({
     recent.length > 0 ? (
       <div className='flex flex-col gap-2'>
         <Button asChild variant='outline' size='sm' className='hidden lg:flex'>
-          <Link to={DASHBOARD_ROUTES.myIcaWords}>
-            Historial de palabras ICA
-          </Link>
+          <Link to={DASHBOARD_ROUTES.myIcaWords}>📦 Mi baúl ICA</Link>
         </Button>
         <h3 className='mt-2 text-[11px] uppercase tracking-wider text-muted-foreground'>
           Últimas añadidas
@@ -333,9 +331,7 @@ export function AddView({
               )}
             </Badge>
             <Button asChild variant='outline' size='sm' className='lg:hidden'>
-              <Link to={DASHBOARD_ROUTES.myIcaWords}>
-                Historial de palabras ICA
-              </Link>
+              <Link to={DASHBOARD_ROUTES.myIcaWords}>📦 Mi baúl ICA</Link>
             </Button>
           </div>
 

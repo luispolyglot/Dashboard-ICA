@@ -4,6 +4,10 @@ import {
   createSignedMasterNoteAudioUrl,
   fetchMasterNoteChunks,
 } from '../services/masterNotes'
+import {
+  getOfflineClosedMasterNoteAudio,
+  upsertOfflineClosedMasterNoteAudio,
+} from '../services/masterNotesOfflineStore'
 
 type PlaybackTrack = {
   url: string
@@ -16,6 +20,30 @@ type UnifiedChunkCacheEntry = {
   noteUpdatedAt: string
   totalDurationMs: number
   chunkCount: number
+}
+
+type OfflineTrackCacheEntry = {
+  url: string
+  durationSec: number
+  noteUpdatedAt: string
+  totalDurationMs: number
+  closeType: 'final' | 'temporal'
+}
+
+function stringifyUnknownError(error: unknown): string {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`
+  }
+
+  if (typeof error === 'string') {
+    return error
+  }
+
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return String(error)
+  }
 }
 
 function writeAscii(view: DataView, offset: number, value: string): void {
@@ -134,10 +162,12 @@ export function useMasterNotePlayback() {
   const [error, setError] = useState<string | null>(null)
   const [positionSec, setPositionSec] = useState(0)
   const [durationSec, setDurationSec] = useState(0)
+  const [debugEvents, setDebugEvents] = useState<string[]>([])
 
   const tokenRef = useRef(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const unifiedChunkCacheRef = useRef<Map<string, UnifiedChunkCacheEntry>>(new Map())
+  const offlineTrackCacheRef = useRef<Map<string, OfflineTrackCacheEntry>>(new Map())
 
   const clearUnifiedChunkCache = (): void => {
     for (const cachedTrack of unifiedChunkCacheRef.current.values()) {
@@ -146,12 +176,34 @@ export function useMasterNotePlayback() {
     unifiedChunkCacheRef.current.clear()
   }
 
+  const clearOfflineTrackCache = (): void => {
+    for (const cachedTrack of offlineTrackCacheRef.current.values()) {
+      URL.revokeObjectURL(cachedTrack.url)
+    }
+    offlineTrackCacheRef.current.clear()
+  }
+
+  const pushDebugEvent = (message: string, error?: unknown): void => {
+    const timestamp = new Date().toISOString()
+    const details = error ? ` | ${stringifyUnknownError(error)}` : ''
+    setDebugEvents((prev) => [...prev, `${timestamp} | ${message}${details}`].slice(-80))
+  }
+
+  const getOrCreateAudioElement = (): HTMLAudioElement => {
+    if (audioRef.current) {
+      return audioRef.current
+    }
+
+    const created = new Audio()
+    audioRef.current = created
+    return created
+  }
+
   const stop = (): void => {
     tokenRef.current += 1
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current.currentTime = 0
-      audioRef.current = null
     }
     setPlayingNoteId(null)
     setIsPaused(false)
@@ -174,7 +226,8 @@ export function useMasterNotePlayback() {
     try {
       await audioRef.current.play()
       setIsPaused(false)
-    } catch {
+    } catch (err) {
+      pushDebugEvent('No se pudo reanudar audio', err)
       setError('No se pudo reanudar la reproducción')
     }
   }
@@ -190,9 +243,62 @@ export function useMasterNotePlayback() {
   useEffect(() => {
     return () => {
       stop()
+
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current.onended = null
+        audioRef.current.onerror = null
+        audioRef.current.ontimeupdate = null
+        audioRef.current.onloadedmetadata = null
+        audioRef.current.src = ''
+        audioRef.current = null
+      }
+
       clearUnifiedChunkCache()
+      clearOfflineTrackCache()
     }
   }, [])
+
+  const getOfflineClosedTrack = async (note: MasterNote): Promise<PlaybackTrack | null> => {
+    if (note.state !== 'closed') return null
+
+    const cachedTrack = offlineTrackCacheRef.current.get(note.id)
+    const canUseCache =
+      cachedTrack
+      && cachedTrack.noteUpdatedAt === note.updated_at
+      && cachedTrack.totalDurationMs === note.total_duration_ms
+      && cachedTrack.closeType === note.close_type
+
+    if (canUseCache) {
+      return {
+        url: cachedTrack.url,
+        durationSec: cachedTrack.durationSec,
+      }
+    }
+
+    const blob = await getOfflineClosedMasterNoteAudio(note)
+    if (!blob) return null
+
+    const blobUrl = URL.createObjectURL(blob)
+    const nextDurationSec = Math.max(1, note.total_duration_ms / 1000)
+
+    if (cachedTrack) {
+      URL.revokeObjectURL(cachedTrack.url)
+    }
+
+    offlineTrackCacheRef.current.set(note.id, {
+      url: blobUrl,
+      durationSec: nextDurationSec,
+      noteUpdatedAt: note.updated_at,
+      totalDurationMs: note.total_duration_ms,
+      closeType: note.close_type,
+    })
+
+    return {
+      url: blobUrl,
+      durationSec: nextDurationSec,
+    }
+  }
 
   const getCurrentDuration = (): number => {
     const audioDuration = audioRef.current?.duration
@@ -216,13 +322,14 @@ export function useMasterNotePlayback() {
   ): Promise<void> => {
     if (token !== tokenRef.current) return
 
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.currentTime = 0
-    }
-
-    const audio = new Audio(track.url)
-    audioRef.current = audio
+    const audio = getOrCreateAudioElement()
+    audio.pause()
+    audio.currentTime = 0
+    audio.onended = null
+    audio.onerror = null
+    audio.ontimeupdate = null
+    audio.onloadedmetadata = null
+    audio.src = track.url
 
     const onEnded = () => {
       if (token !== tokenRef.current) return
@@ -233,6 +340,10 @@ export function useMasterNotePlayback() {
 
     const onError = () => {
       if (token !== tokenRef.current) return
+      const mediaErrorCode = audio.error?.code
+      pushDebugEvent(
+        `HTMLAudioElement lanzó error durante reproducción${mediaErrorCode ? ` (code ${mediaErrorCode})` : ''}`,
+      )
       setError('No se pudo reproducir la nota maestra')
       setPlayingNoteId(null)
       setIsPaused(false)
@@ -271,12 +382,100 @@ export function useMasterNotePlayback() {
     try {
       await audio.play()
       setIsPaused(false)
-    } catch {
+    } catch (err) {
       if (token !== tokenRef.current) return
+      pushDebugEvent('audio.play() rechazado', err)
       setError('No se pudo reproducir la nota maestra')
       setPlayingNoteId(null)
       setIsPaused(false)
     }
+  }
+
+  const playTransitionCue = async (cueSource: string | Blob): Promise<boolean> => {
+    stop()
+    setError(null)
+    const token = tokenRef.current
+
+    const cueUrl = typeof cueSource === 'string'
+      ? cueSource
+      : URL.createObjectURL(cueSource)
+    const shouldRevokeCueUrl = typeof cueSource !== 'string'
+
+    const audio = getOrCreateAudioElement()
+    audio.pause()
+    audio.currentTime = 0
+    audio.onended = null
+    audio.onerror = null
+    audio.ontimeupdate = null
+    audio.onloadedmetadata = null
+    audio.src = cueUrl
+
+    setPlayingNoteId(null)
+    setIsPaused(false)
+    setPositionSec(0)
+    setDurationSec(0)
+
+    return await new Promise<boolean>((resolve) => {
+      let settled = false
+
+      const settle = (value: boolean): void => {
+        if (settled) return
+        settled = true
+        audio.onended = null
+        audio.onerror = null
+        audio.ontimeupdate = null
+        audio.onloadedmetadata = null
+        if (shouldRevokeCueUrl) {
+          URL.revokeObjectURL(cueUrl)
+        }
+        resolve(value)
+      }
+
+      audio.onloadedmetadata = () => {
+        if (token !== tokenRef.current) {
+          settle(false)
+          return
+        }
+        updateTimeline()
+      }
+
+      audio.onended = () => {
+        if (token !== tokenRef.current) {
+          settle(false)
+          return
+        }
+        setPositionSec(getCurrentDuration())
+        settle(true)
+      }
+
+      audio.onerror = () => {
+        if (token !== tokenRef.current) {
+          settle(false)
+          return
+        }
+
+        const mediaErrorCode = audio.error?.code
+        pushDebugEvent(
+          `Cue de transición lanzó error${mediaErrorCode ? ` (code ${mediaErrorCode})` : ''}`,
+        )
+        settle(false)
+      }
+
+      void audio.play().then(() => {
+        if (token !== tokenRef.current) {
+          settle(false)
+          return
+        }
+        setIsPaused(false)
+      }).catch((err) => {
+        if (token !== tokenRef.current) {
+          settle(false)
+          return
+        }
+        pushDebugEvent('audio.play() del cue fue rechazado', err)
+        settle(false)
+      })
+    })
   }
 
   const getUnifiedChunkTrack = async (
@@ -342,6 +541,10 @@ export function useMasterNotePlayback() {
       chunkCount: chunks.length,
     })
 
+    if (note.state === 'closed') {
+      void upsertOfflineClosedMasterNoteAudio(note, mergedBlob).catch(() => {})
+    }
+
     return {
       url: mergedUrl,
       durationSec: nextDurationSec,
@@ -380,22 +583,41 @@ export function useMasterNotePlayback() {
     let track: PlaybackTrack | null = null
 
     try {
-      if (note.close_type === 'final' && note.final_audio_path) {
-        const signedUrl = await createSignedMasterNoteAudioUrl(note.final_audio_path)
-        track = {
-          url: signedUrl,
-          durationSec: Math.max(1, note.total_duration_ms / 1000),
+      track = await getOfflineClosedTrack(note)
+
+      if (!track) {
+        if (note.close_type === 'final' && note.final_audio_path) {
+          const signedUrl = await createSignedMasterNoteAudioUrl(note.final_audio_path)
+          track = {
+            url: signedUrl,
+            durationSec: Math.max(1, note.total_duration_ms / 1000),
+          }
+
+          if (note.state === 'closed') {
+            void (async () => {
+              try {
+                const response = await fetch(signedUrl)
+                if (!response.ok) return
+                const blob = await response.blob()
+                await upsertOfflineClosedMasterNoteAudio(note, blob)
+              } catch {
+                // noop
+              }
+            })()
+          }
+        } else {
+          track = await getUnifiedChunkTrack(note, preloadedChunkCount)
         }
-      } else {
-        track = await getUnifiedChunkTrack(note, preloadedChunkCount)
       }
-    } catch {
+    } catch (err) {
       if (token !== tokenRef.current) return
+      pushDebugEvent('Fallo al resolver pista de reproducción', err)
       setError('No se pudo reproducir la nota maestra')
       return
     }
 
     if (!track) {
+      pushDebugEvent('No se encontró track reproducible para la nota')
       setError('No hay audios para reproducir en esta nota maestra')
       return
     }
@@ -414,6 +636,7 @@ export function useMasterNotePlayback() {
     playingNoteId,
     canPlay,
     play,
+    playTransitionCue,
     stop,
     pause,
     resume,
@@ -423,5 +646,7 @@ export function useMasterNotePlayback() {
     isPaused,
     positionSec,
     durationSec,
+    debugEvents,
+    clearDebugEvents: () => setDebugEvents([]),
   }
 }

@@ -20,8 +20,35 @@ type IcaDeletionWarningDialogProps = {
   loading?: boolean
   title: string
   resourceLabel: string
+  resource?: 'word' | 'phrase' | 'audio'
   resourceDates: Array<string | number | Date | null | undefined>
+  todayTotalCount?: number
+  todayDeletionCount?: number
   confirmLabel?: string
+}
+
+type DeletionResourceConfig = {
+  singularLabel: string
+  pluralLabel: string
+  minForTodayStreak: number
+}
+
+const RESOURCE_CONFIG: Record<'word' | 'phrase' | 'audio', DeletionResourceConfig> = {
+  word: {
+    singularLabel: 'palabra ICA',
+    pluralLabel: 'palabras ICA',
+    minForTodayStreak: 5,
+  },
+  phrase: {
+    singularLabel: 'frase',
+    pluralLabel: 'frases',
+    minForTodayStreak: 1,
+  },
+  audio: {
+    singularLabel: 'audio',
+    pluralLabel: 'audios',
+    minForTodayStreak: 1,
+  },
 }
 
 function toIcaDayKey(value: string | number | Date | null | undefined): string | null {
@@ -73,7 +100,10 @@ export function IcaDeletionWarningDialog({
   loading = false,
   title,
   resourceLabel,
+  resource = 'word',
   resourceDates,
+  todayTotalCount,
+  todayDeletionCount,
   confirmLabel = 'Sí, eliminar',
 }: IcaDeletionWarningDialogProps) {
   const [countdown, setCountdown] = useState(3)
@@ -90,6 +120,64 @@ export function IcaDeletionWarningDialog({
       touchesToday: uniqueDays.includes(todayKey),
     }
   }, [resourceDates])
+
+  const todayDeletes = useMemo(() => {
+    if (typeof todayDeletionCount === 'number' && Number.isFinite(todayDeletionCount)) {
+      return Math.max(0, Math.floor(todayDeletionCount))
+    }
+
+    const timezone = getIcaStreakTimezone()
+    const todayKey = getTodayKeyForTimezone(timezone)
+    return resourceDates.reduce<number>((acc, value) => {
+      return toIcaDayKey(value) === todayKey ? acc + 1 : acc
+    }, 0)
+  }, [resourceDates, todayDeletionCount])
+
+  const resourceConfig = RESOURCE_CONFIG[resource]
+
+  const todayWarning = useMemo(() => {
+    if (!touchesToday) {
+      return {
+        shouldWarn: false,
+        message: null as string | null,
+      }
+    }
+
+    if (typeof todayTotalCount !== 'number' || !Number.isFinite(todayTotalCount)) {
+      return {
+        shouldWarn: true,
+        message:
+          'Este recurso corresponde a hoy. Si lo eliminas, hoy podría marcarse como racha ICA no hecha. Esta acción es irreversible.',
+      }
+    }
+
+    const safeTodayCount = Math.max(0, Math.floor(todayTotalCount))
+    const remainingToday = safeTodayCount - todayDeletes
+    const min = resourceConfig.minForTodayStreak
+    const breaksTodayStreak = remainingToday < min
+
+    if (!breaksTodayStreak) {
+      return {
+        shouldWarn: false,
+        message: null as string | null,
+      }
+    }
+
+    const labelForMin = min === 1 ? resourceConfig.singularLabel : resourceConfig.pluralLabel
+    const labelForRemaining = remainingToday === 1 ? resourceConfig.singularLabel : resourceConfig.pluralLabel
+
+    return {
+      shouldWarn: true,
+      message:
+        `Hoy quedarías con ${Math.max(0, remainingToday)} ${labelForRemaining}. ` +
+        `Perderás la racha ICA de hoy porque el mínimo es ${min} ${labelForMin}. ` +
+        'Esta acción es irreversible.',
+    }
+  }, [resourceConfig, todayDeletes, todayTotalCount, touchesToday])
+
+  const hasTodayCount =
+    typeof todayTotalCount === 'number' && Number.isFinite(todayTotalCount)
+  const showsSafeTodayInfo = touchesToday && hasTodayCount && !todayWarning.shouldWarn
 
   const requiresCountdown = historicalDays.length > 0
 
@@ -133,15 +221,22 @@ export function IcaDeletionWarningDialog({
               anteriores ({historicalDays.join(', ')}) y perderás la/s racha/s ICA
               de esos días.
             </DialogDescription>
-          ) : (
+          ) : todayWarning.shouldWarn ? (
             <DialogDescription className='text-amber-700 dark:text-amber-300'>
-              Este recurso corresponde a hoy. Si lo eliminas, hoy se marcará como
-              racha ICA no hecha. Esta acción es irreversible.
+              {todayWarning.message}
             </DialogDescription>
-          )}
-          {!requiresCountdown && !touchesToday && (
+          ) : showsSafeTodayInfo ? (
+            <DialogDescription>
+              Esta acción es irreversible y no debería afectar tu racha ICA de hoy.
+            </DialogDescription>
+          ) : (
             <DialogDescription>
               Esta acción es irreversible y puede afectar tu progreso ICA.
+            </DialogDescription>
+          )}
+          {requiresCountdown && todayWarning.shouldWarn && (
+            <DialogDescription className='text-amber-700 dark:text-amber-300'>
+              {todayWarning.message}
             </DialogDescription>
           )}
         </DialogHeader>

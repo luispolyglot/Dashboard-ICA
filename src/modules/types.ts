@@ -109,6 +109,23 @@ export interface MasterNoteChunk {
   created_at: string
 }
 
+export interface MasterNotePlaylist {
+  id: string
+  name: string
+  target_lang: string | null
+  native_lang: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface MasterNotePlaylistItem {
+  id: string
+  playlist_id: string
+  master_note_id: string
+  sort_order: number
+  created_at: string
+}
+
 export interface DailyProgressEntry {
   wordsAdded: number
   phraseGenerated: boolean
@@ -275,6 +292,17 @@ export interface PushReminderPreferencesInput {
   flashcardsStreakEnabled: boolean
   flashcardsStreakHour: number
   habitLossEnabled: boolean
+}
+
+export interface CoachingNotificationPreference {
+  userId: string
+  masterNoteClosedEnabled: boolean
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface CoachingNotificationPreferenceInput {
+  masterNoteClosedEnabled: boolean
 }
 
 export interface IcaTestQuestion {

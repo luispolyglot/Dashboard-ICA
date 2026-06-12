@@ -38,6 +38,7 @@ type ManageViewProps = {
   cards: Lexicard[]
   setCards: Dispatch<SetStateAction<Lexicard[]>>
   config: AppConfig
+  todayWordsAdded: number
 }
 
 const TONE_CLASS: Record<ImportanceKey, string> = {
@@ -77,7 +78,12 @@ function highlightMatch(text: string, query: string): ReactNode {
   )
 }
 
-export function ManageView({ cards, setCards, config }: ManageViewProps) {
+export function ManageView({
+  cards,
+  setCards,
+  config,
+  todayWordsAdded,
+}: ManageViewProps) {
   const { user } = useAuth()
   const { isLg } = useBreakpoints()
   const [filter, setFilter] = useState<ImportanceKey | 'all'>('all')
@@ -715,7 +721,9 @@ export function ManageView({ cards, setCards, config }: ManageViewProps) {
         }}
         title='Eliminar palabra ICA'
         resourceLabel='esta palabra ICA'
+        resource='word'
         resourceDates={[deleteCandidate?.createdAt]}
+        todayTotalCount={todayWordsAdded}
       />
     </section>
   )

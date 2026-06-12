@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { PropsWithChildren } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { hasSupabaseConfig, supabase } from '../lib/supabase'
+import { getSessionWithTimeout } from '../lib/supabaseAuthSafe'
 import { checkLoginEmail, normalizeEmail } from './whitelist'
 
 type AuthContextValue = {
@@ -26,11 +27,46 @@ function detectUserTimezone(): string {
   return timezone && timezone.trim().length > 0 ? timezone : 'UTC'
 }
 
+async function checkLoginEmailWithTimeout(email: string, timeoutMs = 2500) {
+  return await Promise.race([
+    checkLoginEmail(email),
+    new Promise<{ allowed: true }>((resolve) => {
+      globalThis.setTimeout(() => {
+        resolve({ allowed: true })
+      }, timeoutMs)
+    }),
+  ])
+}
+
 export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false)
+  const isSigningOutForWhitelistRef = useRef(false)
+
+  const enforceWhitelistAccess = useCallback(async (activeSession: Session | null) => {
+    if (!supabase || !activeSession?.user?.email) return true
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return true
+
+    try {
+      const whitelist = await checkLoginEmailWithTimeout(activeSession.user.email)
+      if (whitelist.allowed) return true
+
+      isSigningOutForWhitelistRef.current = true
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        console.warn('No se pudo cerrar sesion para usuario fuera de whitelist', error)
+        setSession(null)
+        setUser(null)
+      }
+      setIsPasswordRecovery(false)
+      return false
+    } catch (error) {
+      console.warn('No se pudo validar whitelist activa', error)
+      return true
+    }
+  }, [])
 
   useEffect(() => {
     if (!supabase) {
@@ -43,11 +79,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setIsPasswordRecovery(true)
     }
 
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session)
-      setUser(data.session?.user ?? null)
+    void (async () => {
+      const initialSession = await getSessionWithTimeout()
+      const isAllowed = await enforceWhitelistAccess(initialSession)
+      if (isAllowed) {
+        setSession(initialSession)
+        setUser(initialSession?.user ?? null)
+      } else {
+        setSession(null)
+        setUser(null)
+      }
       setLoading(false)
-    })
+    })()
 
     const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (event === 'PASSWORD_RECOVERY') {
@@ -55,14 +98,41 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
       if (event === 'SIGNED_OUT') {
         setIsPasswordRecovery(false)
+        isSigningOutForWhitelistRef.current = false
       }
       setSession(nextSession)
       setUser(nextSession?.user ?? null)
       setLoading(false)
+
+      if (
+        nextSession &&
+        !isSigningOutForWhitelistRef.current &&
+        (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED')
+      ) {
+        void enforceWhitelistAccess(nextSession)
+      }
     })
 
     return () => data.subscription.unsubscribe()
-  }, [])
+  }, [enforceWhitelistAccess])
+
+  useEffect(() => {
+    if (!session) return
+
+    const validateAccess = () => {
+      if (isSigningOutForWhitelistRef.current) return
+      void enforceWhitelistAccess(session)
+    }
+
+    validateAccess()
+    const intervalId = window.setInterval(validateAccess, 60_000)
+    window.addEventListener('focus', validateAccess)
+
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', validateAccess)
+    }
+  }, [session, enforceWhitelistAccess])
 
   useEffect(() => {
     if (!supabase || !user?.id) return

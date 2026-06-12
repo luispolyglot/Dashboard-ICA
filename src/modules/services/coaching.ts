@@ -30,6 +30,7 @@ export type CoachingMembership = {
   status: 'draft' | 'active' | 'completed' | 'cancelled'
   activatedAt: string | null
   durationWeeks: number
+  weekActivation?: WeekActivationState
   weekProgress?: Record<
     string,
     {
@@ -53,6 +54,17 @@ export type CoachingMembership = {
   updatedAt: string
 }
 
+export type WeekActivationState = {
+  lastActivatedWeek: number
+  activatedWeeks: string[]
+  currentActiveWeek: number | null
+  nextWeekEligible: number | null
+  nextWeekBlockedReason:
+    | 'missing_objectives'
+    | 'previous_week_not_finished'
+    | null
+}
+
 const COACHING_CLASS_REPORTS_BUCKET = 'coaching-class-reports'
 
 export type CoachingManagedUser = {
@@ -73,6 +85,7 @@ export type CoachingManagedUser = {
   status: 'draft' | 'active' | 'completed' | 'cancelled'
   activatedAt: string | null
   durationWeeks: number
+  weekActivation?: WeekActivationState
   updatedAt: string
   activeTargetLang: string | null
   activeNativeLang: string | null
@@ -133,6 +146,18 @@ export type CoachingUserInsights = {
   masterNotesCount: number
   masterNotes: CoachingInsightNote[]
   weeklyObjectives: Record<string, unknown>
+  closedMasterNotesByWeek?: Record<
+    string,
+    Array<{
+      id: string
+      name: string
+      createdAt: string
+      closedAt: string
+      feedbackLoomUrl: string | null
+      feedbackNotes: string | null
+    }>
+  >
+  weekActivation?: WeekActivationState
   weekProgress?: Record<
     string,
     {
@@ -163,6 +188,7 @@ export type CoachingUserMembership = {
   status: 'draft' | 'active' | 'completed' | 'cancelled'
   activatedAt: string | null
   durationWeeks: number
+  weekActivation?: WeekActivationState
   updatedAt: string
 }
 
@@ -349,6 +375,44 @@ export async function activateCoachingSession(sessionId: string): Promise<void> 
     },
     'No se pudo comenzar la sesión de coaching.',
   )
+}
+
+export async function activateCoachingWeek(input: {
+  sessionId: string
+  weekKey: string
+}): Promise<WeekActivationState | null> {
+  const data = await invokeCoachingFunction<{
+    ok?: boolean
+    weekActivation?: WeekActivationState
+  }>(
+    'coaching-center',
+    {
+      action: 'activate-week',
+      sessionId: input.sessionId,
+      weekKey: input.weekKey,
+    },
+    'No se pudo activar la semana.',
+  )
+
+  return data.weekActivation || null
+}
+
+export async function closeCoachingWeek(input: {
+  sessionId: string
+}): Promise<WeekActivationState | null> {
+  const data = await invokeCoachingFunction<{
+    ok?: boolean
+    weekActivation?: WeekActivationState
+  }>(
+    'coaching-center',
+    {
+      action: 'close-week',
+      sessionId: input.sessionId,
+    },
+    'No se pudo cerrar la semana actual.',
+  )
+
+  return data.weekActivation || null
 }
 
 export async function deleteCoachingSession(sessionId: string): Promise<void> {

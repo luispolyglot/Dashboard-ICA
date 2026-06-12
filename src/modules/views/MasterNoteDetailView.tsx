@@ -48,6 +48,7 @@ import { formatDate } from '../utils'
 type MasterNoteDetailViewProps = {
   noteId: string
   targetLang: string
+  todayVoiceActivationsCount: number
 }
 
 const MIN_DURATION_MS = 3 * 60 * 1000
@@ -92,6 +93,7 @@ function SeekForward10Icon() {
 export function MasterNoteDetailView({
   noteId,
   targetLang,
+  todayVoiceActivationsCount,
 }: MasterNoteDetailViewProps) {
   const navigate = useNavigate()
   const [note, setNote] = useState<MasterNote | null>(null)
@@ -661,11 +663,13 @@ export function MasterNoteDetailView({
         loading={deleting}
         title='Eliminar nota maestra'
         resourceLabel='esta nota maestra y sus audios'
+        resource='audio'
         resourceDates={[
           note.created_at,
           note.closed_at,
           ...chunks.map((chunk) => chunk.created_at),
         ]}
+        todayTotalCount={todayVoiceActivationsCount}
       />
 
       <IcaDeletionWarningDialog
@@ -680,7 +684,9 @@ export function MasterNoteDetailView({
         loading={Boolean(removingChunkId)}
         title='Eliminar audio activado'
         resourceLabel='este audio activado'
+        resource='audio'
         resourceDates={[chunkDeleteCandidate?.created_at]}
+        todayTotalCount={todayVoiceActivationsCount}
       />
     </section>
   )

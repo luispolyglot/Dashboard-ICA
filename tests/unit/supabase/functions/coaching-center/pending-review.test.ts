@@ -125,4 +125,41 @@ describe('countPendingMasterNotesForSession', () => {
 
     expect(count).toBe(0)
   })
+
+  it('uses activated week windows when provided', () => {
+    const count = countPendingMasterNotesForSession(
+      {
+        userId: 'user-1',
+        targetLang: 'English',
+        activatedAt: '2026-01-01T00:00:00.000Z',
+        durationWeeks: 12,
+        activatedWeekWindows: [
+          {
+            startAt: '2026-01-01T00:00:00.000Z',
+            endAt: '2026-01-08T00:00:00.000Z',
+          },
+        ],
+      },
+      [
+        {
+          userId: 'user-1',
+          targetLang: 'english',
+          closedAt: '2026-01-03T00:00:00.000Z',
+          updatedAt: null,
+          feedbackLoomUrl: null,
+          feedbackNotes: null,
+        },
+        {
+          userId: 'user-1',
+          targetLang: 'english',
+          closedAt: '2026-01-10T00:00:00.000Z',
+          updatedAt: null,
+          feedbackLoomUrl: null,
+          feedbackNotes: null,
+        },
+      ],
+    )
+
+    expect(count).toBe(1)
+  })
 })

@@ -25,6 +25,7 @@ import { MasterNoteDetailView } from '../views/MasterNoteDetailView'
 import { MasterNotesView } from '../views/MasterNotesView'
 import { MyAnalyticsView } from '../views/MyAnalyticsView'
 import { NewTrackerView } from '../views/NewTrackerView'
+import { OfflineSafeView } from '../views/OfflineSafeView'
 import { ProfileView } from '../views/ProfileView'
 import { PhraseHistoryView } from '../views/PhraseHistoryView'
 import { PhraseView } from '../views/PhraseView'
@@ -78,12 +79,18 @@ export function NewIcaWordsPage() {
 }
 
 export function MyIcaWordsPage() {
-  const { cards, setCards, config } = useDashboardContext()
+  const { cards, setCards, config, dailyProgress } = useDashboardContext()
   if (!config) return null
+  const todayProgress = getTodayProgress(dailyProgress)
 
   return (
     <PageLayout>
-      <ManageView cards={cards} setCards={setCards} config={config} />
+      <ManageView
+        cards={cards}
+        setCards={setCards}
+        config={config}
+        todayWordsAdded={todayProgress.wordsAdded}
+      />
     </PageLayout>
   )
 }
@@ -241,27 +248,42 @@ export function PhraseHistoryPage() {
 }
 
 export function MasterNotesPage() {
-  const { config } = useDashboardContext()
+  const { config, dailyProgress } = useDashboardContext()
   if (!config) return null
+  const todayProgress = getTodayProgress(dailyProgress)
 
   return (
     <PageLayout>
       <MasterNotesView
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
+        todayVoiceActivationsCount={todayProgress.voiceActivationsCount}
       />
     </PageLayout>
   )
 }
 
+export function OfflineSafePage() {
+  return (
+    <PageLayout withBackButton={false}>
+      <OfflineSafeView />
+    </PageLayout>
+  )
+}
+
 export function MasterNoteDetailPage() {
-  const { config } = useDashboardContext()
+  const { config, dailyProgress } = useDashboardContext()
   const { noteId } = useParams<{ noteId: string }>()
   if (!config || !noteId) return null
+  const todayProgress = getTodayProgress(dailyProgress)
 
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.masterNotes}>
-      <MasterNoteDetailView noteId={noteId} targetLang={config.targetLang} />
+      <MasterNoteDetailView
+        noteId={noteId}
+        targetLang={config.targetLang}
+        todayVoiceActivationsCount={todayProgress.voiceActivationsCount}
+      />
     </PageLayout>
   )
 }

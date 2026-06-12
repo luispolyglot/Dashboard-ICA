@@ -21,6 +21,10 @@ import {
 import { buildCalendarIcademyReminders } from '../services/calendarIcademyReminders'
 import { fetchCalendarIcademySessionBlacklist } from '../services/calendarIcademySessionBlacklist'
 import { DASHBOARD_ROUTES } from '../routes/paths'
+import {
+  OFFLINE_SAFE_LAST_PATH_STORAGE_KEY,
+  OFFLINE_SAFE_ROUTE_TRIGGER_EVENT,
+} from '../offline/events'
 import { LanguageSetup } from '../views/LanguageSetup'
 
 type DailyMilestones = {
@@ -113,6 +117,38 @@ export function DashboardLayout() {
     nativeLang: config?.nativeLang,
     cards,
   })
+
+  useEffect(() => {
+    const navigateToOfflineSafe = () => {
+      if (location.pathname === DASHBOARD_ROUTES.offlineSafe) return
+
+      const currentPath = `${location.pathname}${location.search}${location.hash}`
+      window.sessionStorage.setItem(OFFLINE_SAFE_LAST_PATH_STORAGE_KEY, currentPath)
+      navigate(DASHBOARD_ROUTES.offlineSafe, {
+        replace: true,
+      })
+    }
+
+    const onNetworkUnreachable = () => {
+      navigateToOfflineSafe()
+    }
+
+    const onOffline = () => {
+      navigateToOfflineSafe()
+    }
+
+    window.addEventListener(OFFLINE_SAFE_ROUTE_TRIGGER_EVENT, onNetworkUnreachable)
+    window.addEventListener('offline', onOffline)
+
+    if (!navigator.onLine) {
+      navigateToOfflineSafe()
+    }
+
+    return () => {
+      window.removeEventListener(OFFLINE_SAFE_ROUTE_TRIGGER_EVENT, onNetworkUnreachable)
+      window.removeEventListener('offline', onOffline)
+    }
+  }, [location.hash, location.pathname, location.search, navigate])
 
   useEffect(() => {
     if (loading) return

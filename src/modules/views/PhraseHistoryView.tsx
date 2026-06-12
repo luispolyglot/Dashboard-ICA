@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { CopyIcon, MicIcon, Trash2Icon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -67,6 +67,12 @@ function highlightMatch(text: string, query: string): ReactNode {
   )
 }
 
+function toDayKey(value: string): string | null {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 export function PhraseHistoryView({
   targetLang,
   nativeLang,
@@ -95,6 +101,15 @@ export function PhraseHistoryView({
   const [activatePhraseId, setActivatePhraseId] = useState<string | null>(null)
   const [extractModalOpen, setExtractModalOpen] = useState(false)
   const [extractPhraseId, setExtractPhraseId] = useState<string | null>(null)
+  const todayKey = useMemo(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  }, [])
+  const todayPhraseCount = useMemo(() => {
+    return items.reduce((acc, item) => {
+      return toDayKey(item.created_at) === todayKey ? acc + 1 : acc
+    }, 0)
+  }, [items, todayKey])
 
   useEffect(() => {
     const load = async (): Promise<void> => {
@@ -419,7 +434,9 @@ export function PhraseHistoryView({
         loading={Boolean(deletingId)}
         title='Eliminar frase'
         resourceLabel='esta frase'
+        resource='phrase'
         resourceDates={[deleteCandidate?.createdAt]}
+        todayTotalCount={todayPhraseCount}
       />
 
       <ActivatePhraseInMasterNoteModal

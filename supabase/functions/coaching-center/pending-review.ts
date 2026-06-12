@@ -3,6 +3,7 @@ export type PendingReviewSession = {
   targetLang: string
   activatedAt: string | null
   durationWeeks: number
+  activatedWeekWindows?: Array<{ startAt: string; endAt: string }>
 }
 
 export type PendingReviewNote = {
@@ -34,13 +35,23 @@ export function countPendingMasterNotesForSession(
   session: PendingReviewSession,
   notes: PendingReviewNote[],
 ): number {
-  const activatedAt = toDate(session.activatedAt)
-  if (!activatedAt) return 0
+  const windows = (session.activatedWeekWindows || [])
+    .map((item) => ({
+      startAt: toDate(item.startAt),
+      endAt: toDate(item.endAt),
+    }))
+    .filter(
+      (item): item is { startAt: Date; endAt: Date } =>
+        Boolean(item.startAt) && Boolean(item.endAt),
+    )
 
+  const activatedAt = toDate(session.activatedAt)
   const durationWeeks = Math.min(12, Math.max(1, session.durationWeeks || 12))
-  const periodEnd = new Date(
-    activatedAt.getTime() + durationWeeks * 7 * 24 * 60 * 60 * 1000,
-  )
+  const fallbackPeriodEnd = activatedAt
+    ? new Date(activatedAt.getTime() + durationWeeks * 7 * 24 * 60 * 60 * 1000)
+    : null
+
+  if (windows.length === 0 && (!activatedAt || !fallbackPeriodEnd)) return 0
   const targetLang = normalizeLang(session.targetLang)
 
   return notes.filter((note) => {
@@ -55,9 +66,19 @@ export function countPendingMasterNotesForSession(
     const referenceAt = toDate(note.closedAt || note.updatedAt)
     if (!referenceAt) return false
 
+    if (windows.length > 0) {
+      return windows.some(
+        (window) =>
+          referenceAt.getTime() >= window.startAt.getTime() &&
+          referenceAt.getTime() < window.endAt.getTime(),
+      )
+    }
+
     return (
+      Boolean(activatedAt) &&
+      Boolean(fallbackPeriodEnd) &&
       referenceAt.getTime() >= activatedAt.getTime() &&
-      referenceAt.getTime() < periodEnd.getTime()
+      referenceAt.getTime() < fallbackPeriodEnd.getTime()
     )
   }).length
 }

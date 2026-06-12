@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
+import { CheckIcon } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -131,6 +133,47 @@ export function ExtractWordsToVaultModal({
     setSaving(false)
   }, [open])
 
+  useEffect(() => {
+    if (!open) return
+
+    if (!selectedWord || previewAlreadyExists) {
+      setLoadingTranslation(false)
+      setTranslationError(null)
+      return
+    }
+
+    translationRequestRef.current += 1
+    const requestId = translationRequestRef.current
+    const timer = window.setTimeout(() => {
+      setLoadingTranslation(true)
+      setTranslationError(null)
+
+      void fetchTranslation(selectedWord, targetLang, nativeLang)
+        .then((result) => {
+          if (requestId !== translationRequestRef.current) return
+
+          if (!result) {
+            setTranslationError('No se pudo traducir automáticamente.')
+            return
+          }
+
+          setNativeMeaning(result)
+        })
+        .catch(() => {
+          if (requestId !== translationRequestRef.current) return
+          setTranslationError('No se pudo traducir automáticamente.')
+        })
+        .finally(() => {
+          if (requestId !== translationRequestRef.current) return
+          setLoadingTranslation(false)
+        })
+    }, 1500)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [nativeLang, open, previewAlreadyExists, selectedWord, targetLang])
+
   const canSave =
     Boolean(selectedWord) &&
     Boolean(nativeMeaning.trim()) &&
@@ -138,44 +181,14 @@ export function ExtractWordsToVaultModal({
     !saving &&
     !previewAlreadyExists
 
-  const handleAddToken = (value: string): void => {
+  const handleToggleToken = (value: string): void => {
     setSelectedTokens((prev) => {
-      if (prev.includes(value)) return prev
+      if (prev.includes(value)) {
+        return prev.filter((token) => token !== value)
+      }
       return [...prev, value]
     })
     setSaveError(null)
-  }
-
-  const handleRemoveToken = (value: string): void => {
-    setSelectedTokens((prev) => prev.filter((token) => token !== value))
-    setSaveError(null)
-  }
-
-  const handleTranslate = async (): Promise<void> => {
-    if (!selectedWord || loadingTranslation) return
-
-    translationRequestRef.current += 1
-    const requestId = translationRequestRef.current
-    setLoadingTranslation(true)
-    setTranslationError(null)
-
-    try {
-      const result = await fetchTranslation(selectedWord, targetLang, nativeLang)
-      if (requestId !== translationRequestRef.current) return
-
-      if (!result) {
-        setTranslationError('No se pudo traducir automáticamente.')
-        return
-      }
-
-      setNativeMeaning(result)
-    } catch {
-      if (requestId !== translationRequestRef.current) return
-      setTranslationError('No se pudo traducir automáticamente.')
-    } finally {
-      if (requestId !== translationRequestRef.current) return
-      setLoadingTranslation(false)
-    }
   }
 
   const handleSave = async (): Promise<void> => {
@@ -186,7 +199,9 @@ export function ExtractWordsToVaultModal({
     if (!trimmedTarget || !trimmedNative) return
 
     if (isAlreadyInVault(trimmedTarget)) {
-      setSaveError('Esta palabra ya existe en tu baúl ICA.')
+      const message = 'Esta palabra ya existe en tu baúl ICA.'
+      setSaveError(message)
+      toast.error(message)
       return
     }
 
@@ -238,6 +253,7 @@ export function ExtractWordsToVaultModal({
       if (onWordAdded) {
         await onWordAdded()
       }
+      toast.success('Palabra agregada correctamente al baúl ICA.')
       setSaved(true)
       window.setTimeout(() => {
         onOpenChange(false)
@@ -246,7 +262,9 @@ export function ExtractWordsToVaultModal({
       if (updateCardsLocally) {
         setCards((prev) => prev.filter((card) => card.id !== newCard.id))
       }
-      setSaveError('No se pudo guardar la palabra en tu baúl ICA.')
+      const message = 'No se pudo guardar la palabra en tu baúl ICA.'
+      setSaveError(message)
+      toast.error(message)
     } finally {
       setSaving(false)
     }
@@ -299,20 +317,12 @@ export function ExtractWordsToVaultModal({
                       type='button'
                       variant={alreadyAdded ? 'default' : 'outline'}
                       size='sm'
-                      onClick={() => handleAddToken(candidate.value)}
-                      disabled={alreadyAdded}
+                      onClick={() => handleToggleToken(candidate.value)}
                       className='gap-1.5'
                     >
                       <span>{candidate.value}</span>
-                      {candidate.alreadyExists && (
-                        <span className='rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground'>
-                          en baúl
-                        </span>
-                      )}
                       {alreadyAdded && (
-                        <span className='rounded bg-background/70 px-1.5 py-0.5 text-[10px]'>
-                          añadida
-                        </span>
+                        <CheckIcon className='size-3' />
                       )}
                     </Button>
                   )
@@ -339,27 +349,6 @@ export function ExtractWordsToVaultModal({
               </Button>
             </div>
 
-            {selectedTokens.length > 0 && (
-              <div className='mt-2'>
-                <Label className='text-xs uppercase tracking-wider text-muted-foreground'>
-                  Selección actual
-                </Label>
-                <div className='mt-1 flex flex-wrap gap-1.5'>
-                  {selectedTokens.map((token) => (
-                    <Button
-                      key={token}
-                      type='button'
-                      size='xs'
-                      variant='secondary'
-                      onClick={() => handleRemoveToken(token)}
-                    >
-                      {token} ×
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
-
             <div className='mt-2'>
               <Label className='text-xs uppercase tracking-wider text-muted-foreground'>
                 Preview nueva palabra/frase
@@ -369,7 +358,7 @@ export function ExtractWordsToVaultModal({
               </p>
             </div>
 
-            {previewAlreadyExists && (
+            {previewAlreadyExists && !saving && !saved && (
               <p className='mt-2 text-xs text-amber-600 dark:text-amber-300'>
                 Esta palabra/frase ya existe en tu Baúl ICA. Si quieres usarla,
                 combínala en una frase diferente.
@@ -391,16 +380,6 @@ export function ExtractWordsToVaultModal({
               }
               disabled={!selectedWord || saving}
             />
-            <Button
-              type='button'
-              variant='outline'
-              size='sm'
-              className='mt-2'
-              onClick={() => void handleTranslate()}
-              disabled={!selectedWord || saving || loadingTranslation}
-            >
-              {loadingTranslation ? 'Traduciendo...' : 'Traducir'}
-            </Button>
             {loadingTranslation && (
               <p className='mt-1 text-xs text-muted-foreground'>
                 Traduciendo selección...
