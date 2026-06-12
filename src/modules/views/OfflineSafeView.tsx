@@ -295,10 +295,13 @@ export function OfflineSafeView() {
     [notesById, play],
   )
 
-  const playCue = useCallback(async (kind: 'start' | 'step'): Promise<unknown> => {
-    const source = await getLoopCuePlaybackSource(kind)
-    return await playTransitionCue(source)
-  }, [playTransitionCue])
+  const playCue = useCallback(
+    async (kind: 'start' | 'step'): Promise<unknown> => {
+      const source = await getLoopCuePlaybackSource(kind)
+      return await playTransitionCue(source)
+    },
+    [playTransitionCue],
+  )
 
   const {
     looping: loopingClosed,
@@ -588,7 +591,6 @@ export function OfflineSafeView() {
                         >
                           Cerrada
                         </Badge>
-                        <Badge variant='outline'>Caché local</Badge>
                         <Badge
                           variant='outline'
                           className={
@@ -607,7 +609,6 @@ export function OfflineSafeView() {
                         {note.closedAt
                           ? ` · Cerrada el: ${formatDate(note.closedAt)}`
                           : ''}
-                        {` · Sync local: ${formatDate(note.cachedAt)}`}
                       </div>
                     </div>
 
