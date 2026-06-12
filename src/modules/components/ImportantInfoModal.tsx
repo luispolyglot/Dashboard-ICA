@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -8,13 +9,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import importantInfoNmImage from '@/images/important-info-nm.png'
+import { DASHBOARD_ROUTES } from '../routes/paths'
 
 type ImportantInfoMode = 'video' | 'image'
 
 const IMPORTANT_INFO_MODE: ImportantInfoMode = 'image'
 const IMPORTANT_INFO_VERSION = 'nm_image_v1'
-const DISMISS_STORAGE_KEY =
-  `important_info_calendar_notifications_modal_dismissed_${IMPORTANT_INFO_VERSION}`
+const DISMISS_STORAGE_KEY = `important_info_calendar_notifications_modal_dismissed_${IMPORTANT_INFO_VERSION}`
 const VIDEO_DISMISS_DELAY_SECONDS = 10
 const IMAGE_DISMISS_DELAY_SECONDS = 5
 const DISMISS_DELAY_SECONDS =
@@ -33,11 +34,14 @@ function getInitialOpenState(): boolean {
 }
 
 export function ImportantInfoModal() {
+  const navigate = useNavigate()
   const [open, setOpen] = useState(getInitialOpenState)
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
   const [secondsLeft, setSecondsLeft] = useState(DISMISS_DELAY_SECONDS)
+  const isImageMode = IMPORTANT_INFO_MODE === 'image'
 
   useEffect(() => {
+    if (isImageMode) return
     if (!open) return
 
     setSecondsLeft(DISMISS_DELAY_SECONDS)
@@ -54,9 +58,13 @@ export function ImportantInfoModal() {
     return () => {
       window.clearInterval(intervalId)
     }
-  }, [open])
+  }, [isImageMode, open])
 
   const handleEscapeAction = (): void => {
+    if (isImageMode) {
+      handleTemporaryClose()
+      return
+    }
     setConfirmAction('close_once')
   }
 
@@ -83,6 +91,12 @@ export function ImportantInfoModal() {
     }
 
     handleTemporaryClose()
+  }
+
+  const handleGoToActivation = (): void => {
+    window.localStorage.setItem(DISMISS_STORAGE_KEY, '1')
+    setOpen(false)
+    navigate(DASHBOARD_ROUTES.masterNotes)
   }
 
   if (!open) return null
@@ -127,7 +141,15 @@ export function ImportantInfoModal() {
           </div>
 
           <div className='mt-4'>
-            {!confirmAction ? (
+            {isImageMode ? (
+              <Button
+                type='button'
+                onClick={handleGoToActivation}
+                className='w-full'
+              >
+                Ir a Activación
+              </Button>
+            ) : !confirmAction ? (
               <Button
                 type='button'
                 onClick={handleAskDismissForever}
