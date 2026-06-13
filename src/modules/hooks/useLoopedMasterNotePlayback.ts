@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 type UseLoopedMasterNotePlaybackParams = {
   playingNoteId: string | null
   playNoteById: (noteId: string) => Promise<void>
-  playTransitionCue: (kind: 'start' | 'step') => Promise<unknown>
+  playTransitionCue: (kind: 'start' | 'step' | 'finish') => Promise<unknown>
   stopPlayback: () => void
   autoAdvanceDelayMs?: number
 }
@@ -118,6 +118,7 @@ export function useLoopedMasterNotePlayback({
       && loopIds.length > 0
     ) {
       if (!repeatEnabled && loopIndex === loopIds.length - 1) {
+        void playTransitionCue('finish')
         setLoopIndex(0)
         previousPlayingNoteIdRef.current = playingNoteId
         return
@@ -135,6 +136,7 @@ export function useLoopedMasterNotePlayback({
     loopIndex,
     looping,
     playLoopNoteAt,
+    playTransitionCue,
     playingNoteId,
     repeatEnabled,
   ])

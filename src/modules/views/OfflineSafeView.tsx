@@ -5,7 +5,6 @@ import {
   PauseIcon,
   PencilIcon,
   PlayIcon,
-  RepeatIcon,
   RotateCcwIcon,
   RotateCwIcon,
   SquareIcon,
@@ -296,7 +295,7 @@ export function OfflineSafeView() {
   )
 
   const playCue = useCallback(
-    async (kind: 'start' | 'step'): Promise<unknown> => {
+    async (kind: 'start' | 'step' | 'finish'): Promise<unknown> => {
       const source = await getLoopCuePlaybackSource(kind)
       return await playTransitionCue(source)
     },
@@ -392,6 +391,7 @@ export function OfflineSafeView() {
     }
 
     const ids = playableOfflineNotes.map((note) => note.noteId)
+    setPlaylistRepeatEnabled(false)
     await startLoop(ids)
   }
 
@@ -406,6 +406,7 @@ export function OfflineSafeView() {
 
     if (ids.length === 0) return
 
+    setPlaylistRepeatEnabled(true)
     const started = await startLoop(ids)
     if (!started) return
     setActivePlayerPlaylistId(playlistId)
@@ -548,18 +549,18 @@ export function OfflineSafeView() {
             {playableOfflineNotes.length > 0 && (
               <Button
                 type='button'
-                variant={loopingClosed ? 'outline' : 'default'}
+                variant={loopingClosed && !activePlayerPlaylistId ? 'outline' : 'default'}
                 onClick={() => void handleClosedLoopToggle()}
               >
-                {loopingClosed ? (
+                {loopingClosed && !activePlayerPlaylistId ? (
                   <>
                     <SquareIcon className='mr-1 size-4' />
-                    Detener bucle
+                    Detener reproducción total
                   </>
                 ) : (
                   <>
-                    <RepeatIcon className='mr-1 size-4' />
-                    Reproducir todo en bucle
+                    <PlayIcon className='mr-1 size-4' />
+                    Reproducir todas una vez
                   </>
                 )}
               </Button>

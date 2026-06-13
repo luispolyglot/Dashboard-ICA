@@ -7,7 +7,6 @@ import {
   PauseIcon,
   PencilIcon,
   PlayIcon,
-  RepeatIcon,
   RotateCcwIcon,
   RotateCwIcon,
   SquareIcon,
@@ -245,7 +244,7 @@ export function MasterNotesView({
     [itemsById, play],
   )
 
-  const playCue = useCallback(async (kind: 'start' | 'step'): Promise<unknown> => {
+  const playCue = useCallback(async (kind: 'start' | 'step' | 'finish'): Promise<unknown> => {
     const source = await getLoopCuePlaybackSource(kind)
     return await playTransitionCue(source)
   }, [playTransitionCue])
@@ -374,6 +373,7 @@ export function MasterNotesView({
       return
     }
 
+    setPlaylistRepeatEnabled(false)
     const started = await startLoop(ids)
     if (!started) return
     setActivePlayerPlaylistId(null)
@@ -390,6 +390,7 @@ export function MasterNotesView({
       return
     }
 
+    setPlaylistRepeatEnabled(true)
     const started = await startLoop(ids)
     if (!started) return
     setActivePlayerPlaylistId(playlistId)
@@ -545,12 +546,12 @@ export function MasterNotesView({
               {loopingClosed && !activePlayerPlaylistId ? (
                 <>
                   <SquareIcon className='mr-1 size-4' />
-                  Detener bucle
+                  Detener reproducción total
                 </>
               ) : (
                 <>
-                  <RepeatIcon className='mr-1 size-4' />
-                  Reproducir todo en bucle
+                  <PlayIcon className='mr-1 size-4' />
+                  Reproducir todas una vez
                 </>
               )}
             </Button>
