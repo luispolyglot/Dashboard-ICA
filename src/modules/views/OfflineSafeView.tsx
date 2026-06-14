@@ -88,6 +88,7 @@ export function OfflineSafeView() {
     play,
     playTransitionCue,
     stop,
+    pause,
     resume,
     togglePause,
     seekBack10,
@@ -294,6 +295,17 @@ export function OfflineSafeView() {
     [notesById, play],
   )
 
+  const resolveNowPlayingMetadata = useCallback((noteId: string) => {
+    const note = notesById.get(noteId)
+    if (!note) return null
+
+    return {
+      title: note.name,
+      artist: 'Nota maestra',
+      album: 'ICADEMY Offline',
+    }
+  }, [notesById])
+
   const playCue = useCallback(
     async (kind: 'start' | 'step' | 'finish'): Promise<unknown> => {
       const source = await getLoopCuePlaybackSource(kind)
@@ -315,8 +327,12 @@ export function OfflineSafeView() {
     replayCurrent,
   } = useLoopedMasterNotePlayback({
     playingNoteId,
+    isPaused,
     playNoteById,
     playTransitionCue: playCue,
+    pausePlayback: pause,
+    resumePlayback: resume,
+    resolveNowPlayingMetadata,
     stopPlayback: stop,
   })
 
