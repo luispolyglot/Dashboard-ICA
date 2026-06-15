@@ -5,6 +5,7 @@ import type { AppConfig, DailyProgressMap, Lexicard } from '../types'
 
 const MAX_SAFE_WORD_DELETES_PER_SAVE = 5
 const CONFIG_SNAPSHOT_STORAGE_KEY = 'dashboard-ICA-config-snapshot'
+const REMOTE_CONFIG_TIMEOUT_MS = 2500
 
 type DashboardStorageKey =
   | 'dashboard-ICA-words'
@@ -449,6 +450,17 @@ async function loadConfig(userId: string): Promise<AppConfig | null> {
   }
 }
 
+async function loadConfigWithTimeout(userId: string): Promise<AppConfig | null> {
+  return await Promise.race([
+    loadConfig(userId),
+    new Promise<AppConfig | null>((resolve) => {
+      globalThis.setTimeout(() => {
+        resolve(null)
+      }, REMOTE_CONFIG_TIMEOUT_MS)
+    }),
+  ])
+}
+
 async function saveConfig(userId: string, config: AppConfig): Promise<void> {
   if (!supabase) return
   const { error } = await supabase.from('user_settings').upsert({
@@ -534,17 +546,17 @@ async function saveDailyProgress(userId: string, progress: DailyProgressMap): Pr
 }
 
 export async function loadData<T>(key: string, fallback: T): Promise<T> {
+  const localConfigSnapshot =
+    key === 'dashboard-ICA-config'
+      ? loadLocalJson<AppConfig>(CONFIG_SNAPSHOT_STORAGE_KEY)
+      : null
+
   try {
     assertSupportedKey(key)
 
     if (key === 'dashboard-ICA-review-session') {
       return loadLocalNumber(key, Number(fallback) || 0) as T
     }
-
-    const localConfigSnapshot =
-      key === 'dashboard-ICA-config'
-        ? loadLocalJson<AppConfig>(CONFIG_SNAPSHOT_STORAGE_KEY)
-        : null
 
     const userId = await getCurrentUserId()
     if (!userId) {
@@ -559,7 +571,7 @@ export async function loadData<T>(key: string, fallback: T): Promise<T> {
     }
 
     if (key === 'dashboard-ICA-config') {
-      const remoteConfig = await loadConfig(userId)
+      const remoteConfig = await loadConfigWithTimeout(userId)
       if (remoteConfig) {
         saveLocalJson(CONFIG_SNAPSHOT_STORAGE_KEY, remoteConfig)
         return remoteConfig as T
@@ -583,6 +595,9 @@ export async function loadData<T>(key: string, fallback: T): Promise<T> {
 
     return fallback
   } catch {
+    if (key === 'dashboard-ICA-config' && localConfigSnapshot) {
+      return localConfigSnapshot as T
+    }
     return fallback
   }
 }

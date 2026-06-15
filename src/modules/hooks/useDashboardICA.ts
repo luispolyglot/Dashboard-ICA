@@ -76,7 +76,7 @@ export function useDashboardICA() {
   useEffect(() => {
     Promise.all([
       loadDataWithTimeout('dashboard-ICA-words', [] as Lexicard[]),
-      loadDataWithTimeout('dashboard-ICA-config', null as AppConfig | null),
+      loadData('dashboard-ICA-config', null as AppConfig | null),
       loadDataWithTimeout('dashboard-ICA-completed', [] as string[]),
       loadDataWithTimeout('dashboard-ICA-creation-days', [] as string[]),
       loadDataWithTimeout('dashboard-ICA-daily-progress', {} as DailyProgressMap),
@@ -111,6 +111,45 @@ export function useDashboardICA() {
       window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices()
     }
   }, [])
+
+  useEffect(() => {
+    if (loading || config) return
+
+    let active = true
+
+    const tryHydrateConfig = async (): Promise<void> => {
+      const loadedConfig = await loadData('dashboard-ICA-config', null as AppConfig | null)
+      if (!active || !loadedConfig) return
+      setConfig(loadedConfig)
+    }
+
+    void tryHydrateConfig()
+
+    const onFocus = () => {
+      void tryHydrateConfig()
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void tryHydrateConfig()
+      }
+    }
+
+    const onOnline = () => {
+      void tryHydrateConfig()
+    }
+
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('online', onOnline)
+
+    return () => {
+      active = false
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('online', onOnline)
+    }
+  }, [config, loading])
 
   useEffect(() => {
     if (!config) {
