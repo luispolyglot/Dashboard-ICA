@@ -1,10 +1,11 @@
 import { LOOP_START_CUE_URL, LOOP_STEP_CUE_URL } from './loopCues'
+import { LOOP_FINISH_CUE_URL } from './loopCues'
 import {
   getOfflineAuxAudioBlob,
   upsertOfflineAuxAudioBlob,
 } from '../services/masterNotesOfflineStore'
 
-type LoopCueKind = 'start' | 'step'
+type LoopCueKind = 'start' | 'step' | 'finish'
 
 const LOOP_CUE_CONFIG: Record<LoopCueKind, { id: string; url: string }> = {
   start: {
@@ -14,6 +15,10 @@ const LOOP_CUE_CONFIG: Record<LoopCueKind, { id: string; url: string }> = {
   step: {
     id: 'loop-cue-step',
     url: LOOP_STEP_CUE_URL,
+  },
+  finish: {
+    id: 'loop-cue-finish',
+    url: LOOP_FINISH_CUE_URL,
   },
 }
 

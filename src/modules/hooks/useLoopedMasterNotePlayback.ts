@@ -2,16 +2,39 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 type UseLoopedMasterNotePlaybackParams = {
   playingNoteId: string | null
+  isPaused?: boolean
   playNoteById: (noteId: string) => Promise<void>
-  playTransitionCue: (kind: 'start' | 'step') => Promise<unknown>
+  playTransitionCue: (kind: 'start' | 'step' | 'finish') => Promise<unknown>
+  pausePlayback?: () => void
+  resumePlayback?: () => Promise<void>
+  resolveNowPlayingMetadata?: (noteId: string) => {
+    title: string
+    artist?: string
+    album?: string
+  } | null
   stopPlayback: () => void
   autoAdvanceDelayMs?: number
 }
 
+function isLikelyIOS(): boolean {
+  if (typeof navigator === 'undefined') return false
+
+  const userAgent = navigator.userAgent || ''
+  const platform = navigator.platform || ''
+  const maxTouchPoints = navigator.maxTouchPoints || 0
+
+  return /iPad|iPhone|iPod/.test(userAgent)
+    || (platform === 'MacIntel' && maxTouchPoints > 1)
+}
+
 export function useLoopedMasterNotePlayback({
   playingNoteId,
+  isPaused = false,
   playNoteById,
   playTransitionCue,
+  pausePlayback,
+  resumePlayback,
+  resolveNowPlayingMetadata,
   stopPlayback,
   autoAdvanceDelayMs = 900,
 }: UseLoopedMasterNotePlaybackParams) {
@@ -23,6 +46,7 @@ export function useLoopedMasterNotePlayback({
   const tokenRef = useRef(0)
   const previousPlayingNoteIdRef = useRef<string | null>(null)
   const suppressAutoAdvanceRef = useRef(false)
+  const isIOSRef = useRef(isLikelyIOS())
 
   const stopLoop = useCallback((stopCurrent = false): void => {
     tokenRef.current += 1
@@ -118,6 +142,7 @@ export function useLoopedMasterNotePlayback({
       && loopIds.length > 0
     ) {
       if (!repeatEnabled && loopIndex === loopIds.length - 1) {
+        void playTransitionCue('finish')
         setLoopIndex(0)
         previousPlayingNoteIdRef.current = playingNoteId
         return
@@ -125,7 +150,12 @@ export function useLoopedMasterNotePlayback({
 
       const token = tokenRef.current
       const nextIndex = (loopIndex + 1) % loopIds.length
-      void playLoopNoteAt(nextIndex, loopIds, token, 'step', autoAdvanceDelayMs)
+      const shouldUseImmediateAutoAdvance =
+        isIOSRef.current
+        && typeof document !== 'undefined'
+        && document.hidden
+      const delayBeforeCueMs = shouldUseImmediateAutoAdvance ? 0 : autoAdvanceDelayMs
+      void playLoopNoteAt(nextIndex, loopIds, token, 'step', delayBeforeCueMs)
     }
 
     previousPlayingNoteIdRef.current = playingNoteId
@@ -135,8 +165,66 @@ export function useLoopedMasterNotePlayback({
     loopIndex,
     looping,
     playLoopNoteAt,
+    playTransitionCue,
     playingNoteId,
     repeatEnabled,
+  ])
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return
+
+    const mediaSession = navigator.mediaSession
+    const effectiveNoteId = playingNoteId || (looping ? loopIds[loopIndex] || null : null)
+    const playbackState: MediaSessionPlaybackState = effectiveNoteId
+      ? (isPaused ? 'paused' : 'playing')
+      : 'none'
+
+    if (effectiveNoteId) {
+      const metadata = resolveNowPlayingMetadata?.(effectiveNoteId)
+      if (metadata) {
+        mediaSession.metadata = new MediaMetadata({
+          title: metadata.title,
+          artist: metadata.artist,
+          album: metadata.album,
+        })
+      }
+    }
+    mediaSession.playbackState = playbackState
+
+    mediaSession.setActionHandler('play', () => {
+      if (!resumePlayback) return
+      void resumePlayback()
+    })
+
+    mediaSession.setActionHandler('pause', () => {
+      pausePlayback?.()
+    })
+
+    mediaSession.setActionHandler('nexttrack', () => {
+      void playNext()
+    })
+
+    mediaSession.setActionHandler('previoustrack', () => {
+      void playPrevious()
+    })
+
+    return () => {
+      mediaSession.setActionHandler('play', null)
+      mediaSession.setActionHandler('pause', null)
+      mediaSession.setActionHandler('nexttrack', null)
+      mediaSession.setActionHandler('previoustrack', null)
+    }
+  }, [
+    isPaused,
+    pausePlayback,
+    playNext,
+    playPrevious,
+    loopIds,
+    loopIndex,
+    looping,
+    playingNoteId,
+    resolveNowPlayingMetadata,
+    resumePlayback,
   ])
 
   return {

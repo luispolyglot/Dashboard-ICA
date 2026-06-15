@@ -99,8 +99,9 @@ describe('useLoopedMasterNotePlayback', () => {
     })
 
     expect(playNoteById).toHaveBeenCalledTimes(2)
-    expect(playTransitionCue).toHaveBeenCalledTimes(2)
+    expect(playTransitionCue).toHaveBeenCalledTimes(3)
     expect(playTransitionCue.mock.calls[0]?.[0]).toBe('start')
     expect(playTransitionCue.mock.calls[1]?.[0]).toBe('step')
+    expect(playTransitionCue.mock.calls[2]?.[0]).toBe('finish')
   })
 })
