@@ -130,4 +130,30 @@ describe('storage service', () => {
     expect(patch.last_activated_at).toBeUndefined()
     expect(typeof patch.last_reviewed_at).toBe('string')
   })
+
+  it('returns config snapshot when remote config load fails', async () => {
+    const configSnapshot = { nativeLang: 'es', targetLang: 'en', level: 'A2' }
+    localStorageMock.getItem.mockImplementation((key: string) => {
+      if (key === 'dashboard-ICA-config-snapshot') {
+        return JSON.stringify(configSnapshot)
+      }
+      return null
+    })
+
+    const maybeSingle = vi.fn().mockResolvedValue({
+      data: null,
+      error: new Error('network down'),
+    })
+    const eq = vi.fn().mockReturnValue({ maybeSingle })
+    const select = vi.fn().mockReturnValue({ eq })
+
+    mockSupabase.from.mockImplementation((table: string) => {
+      if (table === 'user_settings') return { select }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    const loaded = await loadData('dashboard-ICA-config', null)
+
+    expect(loaded).toEqual(configSnapshot)
+  })
 })

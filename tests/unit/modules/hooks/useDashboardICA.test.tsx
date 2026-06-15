@@ -108,4 +108,40 @@ describe('useDashboardICA', () => {
 
     expect(saveDataMock).toHaveBeenCalledWith('dashboard-ICA-review-session', 4)
   })
+
+  it('rehydrates config after focus when bootstrap returned null', async () => {
+    const loadedConfig = { nativeLang: 'es', targetLang: 'en', level: 'A2' }
+    let allowConfigHydration = false
+
+    loadDataMock.mockImplementation(async (key: string, fallback: unknown) => {
+      if (key === 'dashboard-ICA-words') return []
+      if (key === 'dashboard-ICA-config') {
+        return allowConfigHydration ? loadedConfig : null
+      }
+      if (key === 'dashboard-ICA-completed') return []
+      if (key === 'dashboard-ICA-creation-days') return []
+      if (key === 'dashboard-ICA-daily-progress') return {}
+      if (key === 'dashboard-ICA-review-session') return 0
+      return fallback
+    })
+
+    const { result } = renderHook(() => useDashboardICA())
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
+    })
+
+    await waitFor(() => {
+      expect(result.current.config).toBeNull()
+    })
+
+    await act(async () => {
+      allowConfigHydration = true
+      window.dispatchEvent(new Event('focus'))
+    })
+
+    await waitFor(() => {
+      expect(result.current.config).toEqual(loadedConfig)
+    })
+  })
 })
