@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArchiveIcon,
+  ArrowRightIcon,
   ArrowLeftIcon,
   CheckCheckIcon,
   MoreHorizontalIcon,
@@ -213,6 +214,23 @@ function weekFromDate(
     ) + 1
   if (!Number.isFinite(week) || week < 1 || week > 12) return null
   return week
+}
+
+function formatShortDate(value: string): string {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return 'Fecha no disponible'
+  return parsed.toLocaleDateString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+}
+
+function estimateWeekClosureDate(activatedAt: string): string | null {
+  const parsed = new Date(activatedAt)
+  if (Number.isNaN(parsed.getTime())) return null
+  const estimated = new Date(parsed.getTime() + 7 * 24 * 60 * 60 * 1000)
+  return estimated.toISOString()
 }
 
 function formatSeconds(seconds: number): string {
@@ -1138,7 +1156,24 @@ export function ManageCoachingUserView({
     return new Set(keys.map((key) => normalizeProgramWeekKey(key)))
   }, [selectedMembership?.weekActivation?.activatedWeeks])
 
-  const nextWeekEligible = selectedMembership?.weekActivation?.nextWeekEligible || null
+  const weekTimelineByKey = useMemo(() => {
+    const map = new Map<
+      string,
+      { activatedAt: string; endedAt: string | null }
+    >()
+    for (const item of selectedMembership?.weekTimeline || []) {
+      const key = normalizeProgramWeekKey(item.weekKey)
+      if (!key) continue
+      map.set(key, {
+        activatedAt: item.activatedAt,
+        endedAt: item.endedAt || null,
+      })
+    }
+    return map
+  }, [selectedMembership?.weekTimeline])
+
+  const nextWeekEligible =
+    selectedMembership?.weekActivation?.nextWeekEligible || null
   const nextWeekEligibleKey = nextWeekEligible
     ? weekKeyFromNumber(nextWeekEligible)
     : null
@@ -1181,6 +1216,7 @@ export function ManageCoachingUserView({
       activatedAt: selectedMembership.activatedAt,
       durationWeeks: selectedMembership.durationWeeks,
       weekActivation: selectedMembership.weekActivation,
+      weekTimeline: selectedMembership.weekTimeline,
       classSessions: selectedMembership.classSessions,
       weeklyObjectives: insights.weeklyObjectives,
       weekProgress: insights.weekProgress,
@@ -1415,8 +1451,8 @@ export function ManageCoachingUserView({
                       : nextWeekEligibleKey
                         ? `Activar Semana ${weekNumberFromKey(nextWeekEligibleKey)}`
                         : nextWeekBlockedReason ===
-                            'previous_week_not_finished' &&
-                          selectedMembership.weekActivation?.lastActivatedWeek
+                              'previous_week_not_finished' &&
+                            selectedMembership.weekActivation?.lastActivatedWeek
                           ? `Esperando fin de Semana ${selectedMembership.weekActivation.lastActivatedWeek}`
                           : 'Sin semanas pendientes'}
                   </Button>
@@ -1480,7 +1516,8 @@ export function ManageCoachingUserView({
                   )
                   const isWeekActivated = activatedWeekSet.has(weekKey)
                   const isCurrentWeek =
-                    selectedMembership.weekActivation?.currentActiveWeek === week
+                    selectedMembership.weekActivation?.currentActiveWeek ===
+                    week
                   const weekStatus = isCurrentWeek
                     ? 'Activa'
                     : isWeekActivated
@@ -1492,12 +1529,23 @@ export function ManageCoachingUserView({
                     : isCurrentWeek
                       ? 'bg-primary/10'
                       : ''
+                  const weekTimeline = weekTimelineByKey.get(weekKey) || null
+                  const weekActivatedAt = weekTimeline?.activatedAt || null
+                  const weekClosedAt = weekTimeline?.endedAt || null
+                  const estimatedWeekCloseAt =
+                    weekActivatedAt && !weekClosedAt
+                      ? estimateWeekClosureDate(weekActivatedAt)
+                      : null
+                  const closingDate = weekClosedAt || estimatedWeekCloseAt
+                  const shouldUseApproximateClose = Boolean(
+                    isCurrentWeek && !weekClosedAt && closingDate,
+                  )
 
                   return (
                     <AccordionItem
                       key={weekKey}
                       value={weekKey}
-                      className={`border-b px-2 last:border-b-0 sm:px-4 ${accordionBgClass}`}
+                      className={`border-b first:rounded-t-xl last:rounded-b-xl px-2 last:border-b-0 sm:px-4 ${accordionBgClass}`}
                     >
                       <AccordionTrigger className='py-4 hover:no-underline'>
                         <span className='inline-flex items-center gap-2'>
@@ -1514,6 +1562,19 @@ export function ManageCoachingUserView({
                           >
                             {weekStatus}
                           </Badge>
+                          {weekActivatedAt && closingDate && (
+                            <Badge
+                              variant='outline'
+                              className='gap-1 text-[10px]'
+                            >
+                              <span>{formatShortDate(weekActivatedAt)}</span>
+                              <ArrowRightIcon className='h-3 w-3' />
+                              <span>
+                                {shouldUseApproximateClose ? '≈ ' : ''}
+                                {formatShortDate(closingDate)}
+                              </span>
+                            </Badge>
+                          )}
                           {hasPendingCoachReview && (
                             <PendingReviewDot
                               title='Tiene notas maestras cerradas pendientes de revisión del coach.'
@@ -1524,376 +1585,427 @@ export function ManageCoachingUserView({
                       </AccordionTrigger>
                       <AccordionContent className='pb-4'>
                         <div className='mt-4 flex flex-col gap-4'>
-                        <Card>
-                          <CardHeader>
-                            <CardTitle>Clase de la semana</CardTitle>
-                          </CardHeader>
-                          <CardContent className='space-y-3'>
-                            {classFeedbackByWeek[weekKey] && (
-                              <p className='text-sm text-muted-foreground'>
-                                {classFeedbackByWeek[weekKey]}
-                              </p>
-                            )}
-
-                            <div className='space-y-1.5'>
-                              <Label>Loom URL</Label>
-                              <Input
-                                value={classDraft.loomUrl}
-                                onChange={(event) =>
-                                  setClassDrafts((prev) => ({
-                                    ...prev,
-                                    [weekKey]: {
-                                      ...(prev[weekKey] || {
-                                        loomUrl: '',
-                                        report: '',
-                                        imageFile: null,
-                                        removeImage: false,
-                                      }),
-                                      loomUrl: event.target.value,
-                                    },
-                                  }))
-                                }
-                                placeholder='Ej: https://www.loom.com/share/...'
-                              />
-                              {draftLoom && (
-                                <a
-                                  href={draftLoom}
-                                  target='_blank'
-                                  rel='noreferrer'
-                                  className='inline-flex text-sm text-blue-600 underline underline-offset-2'
-                                >
-                                  Ver clase en Loom
-                                </a>
+                          <Card>
+                            <CardHeader>
+                              <CardTitle>Clase de la semana</CardTitle>
+                            </CardHeader>
+                            <CardContent className='space-y-3'>
+                              {classFeedbackByWeek[weekKey] && (
+                                <p className='text-sm text-muted-foreground'>
+                                  {classFeedbackByWeek[weekKey]}
+                                </p>
                               )}
-                            </div>
 
-                            <div className='space-y-1.5'>
-                              <Label>Reporte clase (opcional)</Label>
-                              <Textarea
-                                value={classDraft.report}
-                                onChange={(event) =>
-                                  setClassDrafts((prev) => ({
-                                    ...prev,
-                                    [weekKey]: {
-                                      ...(prev[weekKey] || {
-                                        loomUrl: '',
-                                        report: '',
-                                        imageFile: null,
-                                        removeImage: false,
-                                      }),
-                                      report: event.target.value,
-                                    },
-                                  }))
-                                }
-                                placeholder='Ej: Practico speaking y corrigio errores clave'
-                                rows={4}
-                              />
-                            </div>
-
-                            <div className='space-y-1.5'>
-                              <Label>Imagen de reporte</Label>
-                              <Input
-                                type='file'
-                                accept='image/*'
-                                onChange={(event) =>
-                                  setClassDrafts((prev) => ({
-                                    ...prev,
-                                    [weekKey]: {
-                                      ...(prev[weekKey] || {
-                                        loomUrl: '',
-                                        report: '',
-                                        imageFile: null,
-                                        removeImage: false,
-                                      }),
-                                      imageFile:
-                                        event.target.files?.[0] || null,
-                                      removeImage: false,
-                                    },
-                                  }))
-                                }
-                              />
-
-                              {classDraft.imageFile && (
-                                <div className='flex flex-wrap items-center gap-2 text-sm'>
-                                  <p className='text-muted-foreground'>
-                                    Nueva imagen: {classDraft.imageFile.name}
-                                  </p>
-                                  <Button
-                                    type='button'
-                                    variant='outline'
-                                    size='sm'
-                                    onClick={() =>
-                                      setClassDrafts((prev) => ({
-                                        ...prev,
-                                        [weekKey]: {
-                                          ...(prev[weekKey] || classDraft),
+                              <div className='space-y-1.5'>
+                                <Label>Loom URL</Label>
+                                <Input
+                                  value={classDraft.loomUrl}
+                                  onChange={(event) =>
+                                    setClassDrafts((prev) => ({
+                                      ...prev,
+                                      [weekKey]: {
+                                        ...(prev[weekKey] || {
+                                          loomUrl: '',
+                                          report: '',
                                           imageFile: null,
-                                        },
-                                      }))
-                                    }
+                                          removeImage: false,
+                                        }),
+                                        loomUrl: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder='Ej: https://www.loom.com/share/...'
+                                />
+                                {draftLoom && (
+                                  <a
+                                    href={draftLoom}
+                                    target='_blank'
+                                    rel='noreferrer'
+                                    className='inline-flex text-sm text-blue-600 underline underline-offset-2'
                                   >
-                                    Quitar seleccion
-                                  </Button>
-                                </div>
-                              )}
+                                    Ver clase en Loom
+                                  </a>
+                                )}
+                              </div>
 
-                              {!classDraft.imageFile &&
-                                hasExistingImage &&
-                                !classDraft.removeImage && (
+                              <div className='space-y-1.5'>
+                                <Label>Reporte clase (opcional)</Label>
+                                <Textarea
+                                  value={classDraft.report}
+                                  onChange={(event) =>
+                                    setClassDrafts((prev) => ({
+                                      ...prev,
+                                      [weekKey]: {
+                                        ...(prev[weekKey] || {
+                                          loomUrl: '',
+                                          report: '',
+                                          imageFile: null,
+                                          removeImage: false,
+                                        }),
+                                        report: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder='Ej: Practico speaking y corrigio errores clave'
+                                  rows={4}
+                                />
+                              </div>
+
+                              <div className='space-y-1.5'>
+                                <Label>Imagen de reporte</Label>
+                                <Input
+                                  type='file'
+                                  accept='image/*'
+                                  onChange={(event) =>
+                                    setClassDrafts((prev) => ({
+                                      ...prev,
+                                      [weekKey]: {
+                                        ...(prev[weekKey] || {
+                                          loomUrl: '',
+                                          report: '',
+                                          imageFile: null,
+                                          removeImage: false,
+                                        }),
+                                        imageFile:
+                                          event.target.files?.[0] || null,
+                                        removeImage: false,
+                                      },
+                                    }))
+                                  }
+                                />
+
+                                {classDraft.imageFile && (
                                   <div className='flex flex-wrap items-center gap-2 text-sm'>
-                                    {weekClass?.reportImageUrl && (
-                                      <>
-                                        <a
-                                          href={weekClass.reportImageUrl}
-                                          target='_blank'
-                                          rel='noreferrer'
-                                          className='text-blue-600 underline underline-offset-2'
-                                        >
-                                          Ver imagen actual
-                                        </a>
-                                        <a
-                                          href={weekClass.reportImageUrl}
-                                          download
-                                          target='_blank'
-                                          rel='noreferrer'
-                                          className='inline-flex items-center gap-1 text-blue-600 underline underline-offset-2'
-                                        >
-                                          <DownloadIcon className='h-3.5 w-3.5' />
-                                          Descargar imagen
-                                        </a>
-                                      </>
-                                    )}
+                                    <p className='text-muted-foreground'>
+                                      Nueva imagen: {classDraft.imageFile.name}
+                                    </p>
                                     <Button
                                       type='button'
-                                      variant='destructive'
+                                      variant='outline'
                                       size='sm'
                                       onClick={() =>
                                         setClassDrafts((prev) => ({
                                           ...prev,
                                           [weekKey]: {
                                             ...(prev[weekKey] || classDraft),
-                                            removeImage: true,
+                                            imageFile: null,
                                           },
                                         }))
                                       }
                                     >
-                                      <Trash2Icon className='h-3.5 w-3.5' />
-                                      Quitar imagen
+                                      Quitar seleccion
                                     </Button>
                                   </div>
                                 )}
 
-                              {classDraft.removeImage && (
-                                <div className='flex flex-wrap items-center gap-2 text-sm'>
-                                  <p className='text-muted-foreground'>
-                                    La imagen actual se eliminara al guardar.
-                                  </p>
-                                  <Button
-                                    type='button'
-                                    variant='outline'
-                                    size='sm'
-                                    onClick={() =>
-                                      setClassDrafts((prev) => ({
-                                        ...prev,
-                                        [weekKey]: {
-                                          ...(prev[weekKey] || classDraft),
-                                          removeImage: false,
-                                        },
-                                      }))
-                                    }
-                                  >
-                                    Deshacer
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
+                                {!classDraft.imageFile &&
+                                  hasExistingImage &&
+                                  !classDraft.removeImage && (
+                                    <div className='flex flex-wrap items-center gap-2 text-sm'>
+                                      {weekClass?.reportImageUrl && (
+                                        <>
+                                          <a
+                                            href={weekClass.reportImageUrl}
+                                            target='_blank'
+                                            rel='noreferrer'
+                                            className='text-blue-600 underline underline-offset-2'
+                                          >
+                                            Ver imagen actual
+                                          </a>
+                                          <a
+                                            href={weekClass.reportImageUrl}
+                                            download
+                                            target='_blank'
+                                            rel='noreferrer'
+                                            className='inline-flex items-center gap-1 text-blue-600 underline underline-offset-2'
+                                          >
+                                            <DownloadIcon className='h-3.5 w-3.5' />
+                                            Descargar imagen
+                                          </a>
+                                        </>
+                                      )}
+                                      <Button
+                                        type='button'
+                                        variant='destructive'
+                                        size='sm'
+                                        onClick={() =>
+                                          setClassDrafts((prev) => ({
+                                            ...prev,
+                                            [weekKey]: {
+                                              ...(prev[weekKey] || classDraft),
+                                              removeImage: true,
+                                            },
+                                          }))
+                                        }
+                                      >
+                                        <Trash2Icon className='h-3.5 w-3.5' />
+                                        Quitar imagen
+                                      </Button>
+                                    </div>
+                                  )}
 
-                            <Button
-                              type='button'
-                              variant='outline'
-                              onClick={() => void handleSaveClass(weekKey)}
-                              disabled={
-                                savingClassWeek === weekKey || !hasClassChanges
-                              }
-                            >
-                              {savingClassWeek === weekKey
-                                ? 'Guardando...'
-                                : weekClass
-                                  ? 'Actualizar clase'
-                                  : 'Guardar clase'}
-                            </Button>
-                          </CardContent>
-                        </Card>
+                                {classDraft.removeImage && (
+                                  <div className='flex flex-wrap items-center gap-2 text-sm'>
+                                    <p className='text-muted-foreground'>
+                                      La imagen actual se eliminara al guardar.
+                                    </p>
+                                    <Button
+                                      type='button'
+                                      variant='outline'
+                                      size='sm'
+                                      onClick={() =>
+                                        setClassDrafts((prev) => ({
+                                          ...prev,
+                                          [weekKey]: {
+                                            ...(prev[weekKey] || classDraft),
+                                            removeImage: false,
+                                          },
+                                        }))
+                                      }
+                                    >
+                                      Deshacer
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
 
-                        <Card>
-                          <CardHeader>
-                            <CardTitle>Objetivos semanales</CardTitle>
-                          </CardHeader>
-                          <CardContent className='grid gap-2 md:grid-cols-2'>
-                            <div className='space-y-1.5'>
-                              <Label>Objetivo palabras ICA</Label>
-                              <Input
-                                type='number'
-                                min={0}
-                                step={1}
-                                value={objectiveDraft.wordsTarget}
-                                onChange={(event) =>
-                                  setObjectiveDrafts((prev) => ({
-                                    ...prev,
-                                    [weekKey]: {
-                                      ...prev[weekKey],
-                                      wordsTarget: event.target.value,
-                                    },
-                                  }))
-                                }
-                                placeholder='Ej: 40'
-                              />
-                            </div>
-                            <div className='space-y-1.5'>
-                              <Label>Objetivo notas maestras cerradas</Label>
-                              <Input
-                                type='number'
-                                min={0}
-                                step={1}
-                                value={objectiveDraft.nmTarget}
-                                onChange={(event) =>
-                                  setObjectiveDrafts((prev) => ({
-                                    ...prev,
-                                    [weekKey]: {
-                                      ...prev[weekKey],
-                                      nmTarget: event.target.value,
-                                    },
-                                  }))
-                                }
-                                placeholder='Ej: 2'
-                              />
-                            </div>
-                            <div className='space-y-1.5'>
-                              <Label>Objetivo % racha ICA</Label>
-                              <Input
-                                type='number'
-                                min={0}
-                                max={100}
-                                step={1}
-                                value={objectiveDraft.icaStreakObjectivePct}
-                                onChange={(event) =>
-                                  setObjectiveDrafts((prev) => ({
-                                    ...prev,
-                                    [weekKey]: {
-                                      ...prev[weekKey],
-                                      icaStreakObjectivePct: event.target.value,
-                                    },
-                                  }))
-                                }
-                                placeholder='Ej: 70'
-                              />
-                            </div>
-                            <div className='space-y-1.5'>
-                              <Label>Objetivo % racha flashcards</Label>
-                              <Input
-                                type='number'
-                                min={0}
-                                max={100}
-                                step={1}
-                                value={
-                                  objectiveDraft.flashcardsStreakObjectivePct
-                                }
-                                onChange={(event) =>
-                                  setObjectiveDrafts((prev) => ({
-                                    ...prev,
-                                    [weekKey]: {
-                                      ...prev[weekKey],
-                                      flashcardsStreakObjectivePct:
-                                        event.target.value,
-                                    },
-                                  }))
-                                }
-                                placeholder='Ej: 55'
-                              />
-                            </div>
-
-                            <div className='space-y-1.5 md:col-span-2'>
-                              <Label>Objetivo Ejercicio (link)</Label>
-                              <Input
-                                value={objectiveDraft.exerciseUrl}
-                                onChange={(event) =>
-                                  setObjectiveDrafts((prev) => ({
-                                    ...prev,
-                                    [weekKey]: {
-                                      ...prev[weekKey],
-                                      exerciseUrl: event.target.value,
-                                    },
-                                  }))
-                                }
-                                placeholder='Ej: https://claude.ai/artifact/...'
-                              />
-                            </div>
-
-                            <div className='md:col-span-2'>
                               <Button
                                 type='button'
                                 variant='outline'
-                                onClick={() =>
-                                  void handleSaveObjective(weekKey)
+                                onClick={() => void handleSaveClass(weekKey)}
+                                disabled={
+                                  savingClassWeek === weekKey ||
+                                  !hasClassChanges
                                 }
-                                disabled={savingObjectiveWeek === weekKey}
                               >
-                                {savingObjectiveWeek === weekKey
+                                {savingClassWeek === weekKey
                                   ? 'Guardando...'
-                                  : 'Guardar objetivos'}
+                                  : weekClass
+                                    ? 'Actualizar clase'
+                                    : 'Guardar clase'}
                               </Button>
-                            </div>
-                          </CardContent>
-                        </Card>
+                            </CardContent>
+                          </Card>
 
-                        <Card>
-                          <CardHeader>
-                            <CardTitle>
-                              Notas maestras cerradas de esta semana
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            {closedNotes.length === 0 ? (
-                              <p className='text-sm text-muted-foreground'>
-                                No hay notas maestras cerradas en esta semana.
-                              </p>
-                            ) : (
-                              <div className='space-y-3 text-sm'>
-                                {closedNotes.map((note) => (
-                                  <div
-                                    key={note.id}
-                                    className='space-y-2 rounded-md border p-3'
-                                  >
-                                    <p>
-                                      {note.name} ·{' '}
-                                      {formatDateTime(note.closedAt)}
-                                    </p>
+                          <Card>
+                            <CardHeader>
+                              <CardTitle>Objetivos semanales</CardTitle>
+                            </CardHeader>
+                            <CardContent className='grid gap-2 md:grid-cols-2'>
+                              <div className='space-y-1.5'>
+                                <Label>Objetivo palabras ICA</Label>
+                                <Input
+                                  type='number'
+                                  min={0}
+                                  step={1}
+                                  value={objectiveDraft.wordsTarget}
+                                  onChange={(event) =>
+                                    setObjectiveDrafts((prev) => ({
+                                      ...prev,
+                                      [weekKey]: {
+                                        ...prev[weekKey],
+                                        wordsTarget: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder='Ej: 40'
+                                />
+                              </div>
+                              <div className='space-y-1.5'>
+                                <Label>Objetivo notas maestras cerradas</Label>
+                                <Input
+                                  type='number'
+                                  min={0}
+                                  step={1}
+                                  value={objectiveDraft.nmTarget}
+                                  onChange={(event) =>
+                                    setObjectiveDrafts((prev) => ({
+                                      ...prev,
+                                      [weekKey]: {
+                                        ...prev[weekKey],
+                                        nmTarget: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder='Ej: 2'
+                                />
+                              </div>
+                              <div className='space-y-1.5'>
+                                <Label>Objetivo % racha ICA</Label>
+                                <Input
+                                  type='number'
+                                  min={0}
+                                  max={100}
+                                  step={1}
+                                  value={objectiveDraft.icaStreakObjectivePct}
+                                  onChange={(event) =>
+                                    setObjectiveDrafts((prev) => ({
+                                      ...prev,
+                                      [weekKey]: {
+                                        ...prev[weekKey],
+                                        icaStreakObjectivePct:
+                                          event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder='Ej: 70'
+                                />
+                              </div>
+                              <div className='space-y-1.5'>
+                                <Label>Objetivo % racha flashcards</Label>
+                                <Input
+                                  type='number'
+                                  min={0}
+                                  max={100}
+                                  step={1}
+                                  value={
+                                    objectiveDraft.flashcardsStreakObjectivePct
+                                  }
+                                  onChange={(event) =>
+                                    setObjectiveDrafts((prev) => ({
+                                      ...prev,
+                                      [weekKey]: {
+                                        ...prev[weekKey],
+                                        flashcardsStreakObjectivePct:
+                                          event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder='Ej: 55'
+                                />
+                              </div>
 
-                                    <MasterNoteCoachAudioPlayer
-                                      noteId={note.id}
-                                      audioUrl={note.audioUrl}
-                                      audioChunks={note.audioChunks}
-                                      totalDurationMs={note.totalDurationMs}
-                                    />
+                              <div className='space-y-1.5 md:col-span-2'>
+                                <Label>Objetivo Ejercicio (link)</Label>
+                                <Input
+                                  value={objectiveDraft.exerciseUrl}
+                                  onChange={(event) =>
+                                    setObjectiveDrafts((prev) => ({
+                                      ...prev,
+                                      [weekKey]: {
+                                        ...prev[weekKey],
+                                        exerciseUrl: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder='Ej: https://claude.ai/artifact/...'
+                                />
+                              </div>
 
-                                    <div className='space-y-1.5'>
-                                      <Label>Video feedback (Loom)</Label>
-                                      <div className='flex flex-wrap gap-2'>
-                                        <Input
+                              <div className='md:col-span-2'>
+                                <Button
+                                  type='button'
+                                  variant='outline'
+                                  onClick={() =>
+                                    void handleSaveObjective(weekKey)
+                                  }
+                                  disabled={savingObjectiveWeek === weekKey}
+                                >
+                                  {savingObjectiveWeek === weekKey
+                                    ? 'Guardando...'
+                                    : 'Guardar objetivos'}
+                                </Button>
+                              </div>
+                            </CardContent>
+                          </Card>
+
+                          <Card>
+                            <CardHeader>
+                              <CardTitle>
+                                Notas maestras cerradas de esta semana
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              {closedNotes.length === 0 ? (
+                                <p className='text-sm text-muted-foreground'>
+                                  No hay notas maestras cerradas en esta semana.
+                                </p>
+                              ) : (
+                                <div className='space-y-3 text-sm'>
+                                  {closedNotes.map((note) => (
+                                    <div
+                                      key={note.id}
+                                      className='space-y-2 rounded-md border p-3'
+                                    >
+                                      <p>
+                                        {note.name} ·{' '}
+                                        {formatDateTime(note.closedAt)}
+                                      </p>
+
+                                      <MasterNoteCoachAudioPlayer
+                                        noteId={note.id}
+                                        audioUrl={note.audioUrl}
+                                        audioChunks={note.audioChunks}
+                                        totalDurationMs={note.totalDurationMs}
+                                      />
+
+                                      <div className='space-y-1.5'>
+                                        <Label>Video feedback (Loom)</Label>
+                                        <div className='flex flex-wrap gap-2'>
+                                          <Input
+                                            value={
+                                              feedbackLoomDraftByNoteId[
+                                                note.id
+                                              ] || ''
+                                            }
+                                            onChange={(event) =>
+                                              setFeedbackLoomDraftByNoteId(
+                                                (prev) => ({
+                                                  ...prev,
+                                                  [note.id]: event.target.value,
+                                                }),
+                                              )
+                                            }
+                                            placeholder='Ej: https://www.loom.com/share/...'
+                                          />
+                                          <Button
+                                            type='button'
+                                            variant='outline'
+                                            onClick={() =>
+                                              void handleSaveFeedback(
+                                                note.id,
+                                                'video',
+                                              )
+                                            }
+                                            disabled={
+                                              savingFeedbackNoteId === note.id
+                                            }
+                                          >
+                                            {savingFeedbackNoteId === note.id
+                                              ? 'Guardando...'
+                                              : 'Guardar video'}
+                                          </Button>
+                                        </div>
+                                        {note.feedbackLoomUrl && (
+                                          <a
+                                            href={note.feedbackLoomUrl}
+                                            target='_blank'
+                                            rel='noreferrer'
+                                            className='text-blue-600 underline underline-offset-2'
+                                          >
+                                            Abrir video actual
+                                          </a>
+                                        )}
+                                      </div>
+
+                                      <div className='space-y-1.5'>
+                                        <Label>Notas del coach</Label>
+                                        <Textarea
                                           value={
-                                            feedbackLoomDraftByNoteId[
+                                            feedbackNotesDraftByNoteId[
                                               note.id
                                             ] || ''
                                           }
                                           onChange={(event) =>
-                                            setFeedbackLoomDraftByNoteId(
+                                            setFeedbackNotesDraftByNoteId(
                                               (prev) => ({
                                                 ...prev,
                                                 [note.id]: event.target.value,
                                               }),
                                             )
                                           }
-                                          placeholder='Ej: https://www.loom.com/share/...'
+                                          placeholder='Escribe observaciones mientras escuchas el audio...'
+                                          rows={4}
                                         />
                                         <Button
                                           type='button'
@@ -1901,7 +2013,7 @@ export function ManageCoachingUserView({
                                           onClick={() =>
                                             void handleSaveFeedback(
                                               note.id,
-                                              'video',
+                                              'notes',
                                             )
                                           }
                                           disabled={
@@ -1910,63 +2022,15 @@ export function ManageCoachingUserView({
                                         >
                                           {savingFeedbackNoteId === note.id
                                             ? 'Guardando...'
-                                            : 'Guardar video'}
+                                            : 'Guardar notas'}
                                         </Button>
                                       </div>
-                                      {note.feedbackLoomUrl && (
-                                        <a
-                                          href={note.feedbackLoomUrl}
-                                          target='_blank'
-                                          rel='noreferrer'
-                                          className='text-blue-600 underline underline-offset-2'
-                                        >
-                                          Abrir video actual
-                                        </a>
-                                      )}
                                     </div>
-
-                                    <div className='space-y-1.5'>
-                                      <Label>Notas del coach</Label>
-                                      <Textarea
-                                        value={
-                                          feedbackNotesDraftByNoteId[note.id] ||
-                                          ''
-                                        }
-                                        onChange={(event) =>
-                                          setFeedbackNotesDraftByNoteId(
-                                            (prev) => ({
-                                              ...prev,
-                                              [note.id]: event.target.value,
-                                            }),
-                                          )
-                                        }
-                                        placeholder='Escribe observaciones mientras escuchas el audio...'
-                                        rows={4}
-                                      />
-                                      <Button
-                                        type='button'
-                                        variant='outline'
-                                        onClick={() =>
-                                          void handleSaveFeedback(
-                                            note.id,
-                                            'notes',
-                                          )
-                                        }
-                                        disabled={
-                                          savingFeedbackNoteId === note.id
-                                        }
-                                      >
-                                        {savingFeedbackNoteId === note.id
-                                          ? 'Guardando...'
-                                          : 'Guardar notas'}
-                                      </Button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </CardContent>
-                        </Card>
+                                  ))}
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
                         </div>
                       </AccordionContent>
                     </AccordionItem>

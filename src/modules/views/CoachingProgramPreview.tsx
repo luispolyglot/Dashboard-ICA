@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import {
+  ArrowRightIcon,
   BookOpenIcon,
   CalendarIcon,
   CheckSquareIcon,
@@ -53,6 +54,12 @@ type ProgramPreviewMembership = {
       | 'previous_week_not_finished'
       | null
   }
+  weekTimeline?: Array<{
+    weekNumber: number
+    weekKey: string
+    activatedAt: string
+    endedAt: string | null
+  }>
   classSessions: unknown[]
   weeklyObjectives: Record<string, unknown>
   weekProgress?: Record<
@@ -217,6 +224,23 @@ function formatDateLabel(value: string): string {
   })
 }
 
+function formatTimelineDateLabel(value: string): string {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return 'Fecha no disponible'
+  return parsed.toLocaleDateString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+}
+
+function estimateWeekClosureDate(activatedAt: string): string | null {
+  const parsed = new Date(activatedAt)
+  if (Number.isNaN(parsed.getTime())) return null
+  const estimated = new Date(parsed.getTime() + 7 * 24 * 60 * 60 * 1000)
+  return estimated.toISOString()
+}
+
 function statusLabel(status: ProgramPreviewMembership['status']): string {
   if (status === 'active') return 'Activo'
   if (status === 'completed') return 'Completado'
@@ -296,9 +320,25 @@ export function CoachingProgramPreview({
         .filter((value): value is string => Boolean(value)),
     [membership.weekActivation?.activatedWeeks],
   )
-  const currentProgramWeek = membership.weekActivation?.currentActiveWeek || null
+  const currentProgramWeek =
+    membership.weekActivation?.currentActiveWeek || null
   const unlockedWeeks = activatedWeekKeys.length
   const unlockedProgressPct = Math.round((unlockedWeeks / durationWeeks) * 100)
+  const weekTimelineByKey = useMemo(() => {
+    const map = new Map<
+      string,
+      { activatedAt: string; endedAt: string | null }
+    >()
+    for (const item of membership.weekTimeline || []) {
+      const normalizedKey = normalizeProgramWeekKey(item.weekKey)
+      if (!normalizedKey) continue
+      map.set(normalizedKey, {
+        activatedAt: item.activatedAt,
+        endedAt: item.endedAt || null,
+      })
+    }
+    return map
+  }, [membership.weekTimeline])
 
   return (
     <div className='grid gap-4'>
@@ -446,28 +486,50 @@ export function CoachingProgramPreview({
             completedBaseObjectiveCount +
             (hasExerciseObjective && exerciseDone ? 1 : 0)
           const hasAnyObjective = objectiveTotal > 0
+          const isWeekActivated = activatedWeekKeys.includes(weekKey)
           const isCurrentWeek = currentProgramWeek === week
-          const isPastWeek = currentProgramWeek
-            ? week < currentProgramWeek
-            : membership.status !== 'active'
+          const isPastWeek = isWeekActivated && !isCurrentWeek
           const accordionBgClass = isPastWeek
             ? 'bg-muted'
             : isCurrentWeek
               ? 'bg-primary/10'
               : ''
+          const weekTimeline = weekTimelineByKey.get(weekKey) || null
+          const weekActivatedAt = weekTimeline?.activatedAt || null
+          const weekClosedAt = weekTimeline?.endedAt || null
+          const estimatedWeekCloseAt =
+            weekActivatedAt && !weekClosedAt
+              ? estimateWeekClosureDate(weekActivatedAt)
+              : null
+          const closingDate = weekClosedAt || estimatedWeekCloseAt
+          const shouldUseApproximateClose = Boolean(
+            isCurrentWeek && !weekClosedAt && closingDate,
+          )
 
           return (
             <AccordionItem
               value={weekKey}
               key={weekKey}
-              className={`border-b px-2 last:border-b-0 sm:px-4 ${accordionBgClass}`}
+              className={`border-b px-2 first:rounded-t-xl last:rounded-b-xl last:border-b-0 sm:px-4 ${accordionBgClass}`}
             >
               <AccordionTrigger className='py-4 hover:no-underline'>
                 <div className='flex flex-1 flex-wrap items-center justify-between gap-2 pr-3 text-left'>
                   <div className='flex items-center gap-2'>
-                    <Badge variant='outline'>Semana {week}</Badge>
+                    <span>Semana {week}</span>
                     {isCurrentWeek && <Badge variant='default'>Activa</Badge>}
-                    {isPastWeek && <Badge variant='secondary'>Finalizada</Badge>}
+                    {isPastWeek && (
+                      <Badge variant='secondary'>Finalizada</Badge>
+                    )}
+                    {weekActivatedAt && closingDate && (
+                      <Badge variant='outline' className='gap-1'>
+                        <span>{formatTimelineDateLabel(weekActivatedAt)}</span>
+                        <ArrowRightIcon className='h-3 w-3' />
+                        <span>
+                          {shouldUseApproximateClose ? '≈ ' : ''}
+                          {formatTimelineDateLabel(closingDate)}
+                        </span>
+                      </Badge>
+                    )}
                   </div>
                   <Badge
                     variant={

@@ -8,6 +8,7 @@ import { countPendingMasterNotesForSession } from './pending-review.ts'
 import { canManageSession } from './access-control.ts'
 import {
   buildWeekActivationState,
+  buildWeekTimeline,
   buildWeekWindows,
   evaluateWeekActivationRequest,
   type CoachingSessionWeekActivationRow,
@@ -832,6 +833,7 @@ Deno.serve(async (req) => {
           sessionActivations,
           weeklyObjectives,
         )
+        const weekTimeline = buildWeekTimeline(sessionActivations)
         const weekProgress = await fetchWeekProgressForSession(
           auth.adminClient,
           row,
@@ -863,6 +865,7 @@ Deno.serve(async (req) => {
           activatedAt: row.activated_at,
           durationWeeks: row.duration_weeks,
           weekActivation,
+          weekTimeline,
           weekProgress,
           closedMasterNotesByWeek,
           updatedAt: row.updated_at,
@@ -1092,6 +1095,7 @@ Deno.serve(async (req) => {
           sessionActivations,
           weeklyObjectives,
         )
+        const weekTimeline = buildWeekTimeline(sessionActivations)
         const activatedWeekWindows = buildWeekWindows(sessionActivations).map((window) => ({
           startAt: window.start.toISOString(),
           endAt: window.end.toISOString(),
@@ -1129,6 +1133,7 @@ Deno.serve(async (req) => {
           activatedAt: row.activated_at,
           durationWeeks: row.duration_weeks,
           weekActivation,
+          weekTimeline,
           updatedAt: row.updated_at,
           activeTargetLang: activeSettings?.target_lang || null,
           activeNativeLang: activeSettings?.native_lang || null,
@@ -1952,6 +1957,7 @@ Deno.serve(async (req) => {
       sessionActivations,
       weeklyObjectives,
     )
+    const weekTimeline = buildWeekTimeline(sessionActivations)
 
     const weekProgress = await fetchWeekProgressForSession(admin.adminClient, {
       user_id: userId,
@@ -2091,6 +2097,7 @@ Deno.serve(async (req) => {
       weeklyObjectives,
       closedMasterNotesByWeek,
       weekActivation,
+      weekTimeline,
       weekProgress,
     })
   }
@@ -2172,6 +2179,9 @@ Deno.serve(async (req) => {
 
     const rows = await Promise.all(
       visibleRows.map(async (row) => ({
+        weekTimeline: buildWeekTimeline(
+          activationsData.activationsBySession.get(row.id) || [],
+        ),
         weekActivation: buildWeekActivationState(
           activationsData.activationsBySession.get(row.id) || [],
           programData.weeklyObjectivesBySession.get(row.id) || {},

@@ -21,6 +21,13 @@ export type WeekActivationState = {
   nextWeekBlockedReason: 'missing_objectives' | 'previous_week_not_finished' | null
 }
 
+export type WeekTimelineItem = {
+  weekNumber: number
+  weekKey: string
+  activatedAt: string
+  endedAt: string | null
+}
+
 export type WeekActivationDecision = {
   ok: boolean
   reason:
@@ -115,6 +122,26 @@ export function buildWeekWindows(
   }
 
   return windows.sort((a, b) => a.weekNumber - b.weekNumber)
+}
+
+export function buildWeekTimeline(
+  activations: CoachingSessionWeekActivationRow[],
+): WeekTimelineItem[] {
+  const timeline: WeekTimelineItem[] = []
+
+  for (const activation of activations) {
+    const start = toDate(activation.activated_at)
+    if (!start) continue
+    const weekNumber = Math.min(12, Math.max(1, activation.week_number || 1))
+    timeline.push({
+      weekNumber,
+      weekKey: weekKeyFromNumber(weekNumber),
+      activatedAt: activation.activated_at,
+      endedAt: activation.ended_at || null,
+    })
+  }
+
+  return timeline.sort((a, b) => a.weekNumber - b.weekNumber)
 }
 
 export function buildWeekActivationState(
