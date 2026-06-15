@@ -91,6 +91,7 @@ export function ManageNotificationsView() {
   const [isSavingTeacherReminderPrefs, setIsSavingTeacherReminderPrefs] =
     useState(false)
   const [isCoachingAdmin, setIsCoachingAdmin] = useState(false)
+  const [isCoachingUser, setIsCoachingUser] = useState(false)
   const [coachingNotificationPrefs, setCoachingNotificationPrefs] =
     useState<CoachingNotificationPreference | null>(null)
   const [isLoadingCoachingNotificationPrefs, setIsLoadingCoachingNotificationPrefs] =
@@ -133,9 +134,11 @@ export function ManageNotificationsView() {
         if (!active) return
 
         const isAdmin = Boolean(access?.isCoachingAdmin)
+        const isUser = Boolean(access?.isCoachingUser)
         setIsCoachingAdmin(isAdmin)
+        setIsCoachingUser(isUser)
 
-        if (!isAdmin) {
+        if (!isAdmin && !isUser) {
           setCoachingNotificationPrefs(null)
           return
         }
@@ -339,10 +342,13 @@ export function ManageNotificationsView() {
       masterNoteClosedEnabled:
         nextPartial.masterNoteClosedEnabled ??
         coachingNotificationPrefs.masterNoteClosedEnabled,
+      activeSessionEnabled:
+        nextPartial.activeSessionEnabled ??
+        coachingNotificationPrefs.activeSessionEnabled,
     }
 
     try {
-      if (next.masterNoteClosedEnabled) {
+      if (next.masterNoteClosedEnabled || next.activeSessionEnabled) {
         await ensurePushOnCurrentDevice()
       }
       await saveCoachingNotificationPreferences(next)
@@ -536,36 +542,71 @@ export function ManageNotificationsView() {
             )}
 
             {!isLoadingCoachingNotificationPrefs &&
-              isCoachingAdmin &&
+              (isCoachingAdmin || isCoachingUser) &&
               coachingNotificationPrefs && (
-                <div className='rounded-lg border p-3'>
-                  <div className='flex flex-wrap items-center justify-between gap-3'>
-                    <div className='space-y-1'>
-                      <p className='text-sm font-semibold'>
-                        Coaching: cierre de nota maestra
-                      </p>
-                      <p className='text-xs text-muted-foreground'>
-                        Te avisa cuando un alumno cierra una nota maestra dentro
-                        de una semana de coaching activada.
-                      </p>
+                <>
+                  {isCoachingUser && (
+                    <div className='rounded-lg border p-3'>
+                      <div className='flex flex-wrap items-center justify-between gap-3'>
+                        <div className='space-y-1'>
+                          <p className='text-sm font-semibold'>
+                            Coaching: sesión activa
+                          </p>
+                          <p className='text-xs text-muted-foreground'>
+                            Te avisa cuando tu coach activa semana o deja
+                            feedback en tu nota maestra.
+                          </p>
+                        </div>
+                        <div className='flex items-center gap-2'>
+                          <Label htmlFor='manage-coaching-active-session-switch'>
+                            Avisar
+                          </Label>
+                          <Switch
+                            id='manage-coaching-active-session-switch'
+                            checked={coachingNotificationPrefs.activeSessionEnabled}
+                            disabled={isSavingCoachingNotificationPrefs}
+                            onCheckedChange={(checked) =>
+                              void handleUpdateCoachingNotificationPreferences({
+                                activeSessionEnabled: checked,
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div className='flex items-center gap-2'>
-                      <Label htmlFor='manage-coaching-note-close-switch'>
-                        Avisar
-                      </Label>
-                      <Switch
-                        id='manage-coaching-note-close-switch'
-                        checked={coachingNotificationPrefs.masterNoteClosedEnabled}
-                        disabled={isSavingCoachingNotificationPrefs}
-                        onCheckedChange={(checked) =>
-                          void handleUpdateCoachingNotificationPreferences({
-                            masterNoteClosedEnabled: checked,
-                          })
-                        }
-                      />
+                  )}
+
+                  {isCoachingAdmin && (
+                    <div className='rounded-lg border p-3'>
+                      <div className='flex flex-wrap items-center justify-between gap-3'>
+                        <div className='space-y-1'>
+                          <p className='text-sm font-semibold'>
+                            Coaching: cierre de nota maestra
+                          </p>
+                          <p className='text-xs text-muted-foreground'>
+                            Te avisa cuando un alumno cierra una nota maestra
+                            dentro de una semana de coaching activada.
+                          </p>
+                        </div>
+                        <div className='flex items-center gap-2'>
+                          <Label htmlFor='manage-coaching-note-close-switch'>
+                            Avisar
+                          </Label>
+                          <Switch
+                            id='manage-coaching-note-close-switch'
+                            checked={coachingNotificationPrefs.masterNoteClosedEnabled}
+                            disabled={isSavingCoachingNotificationPrefs}
+                            onCheckedChange={(checked) =>
+                              void handleUpdateCoachingNotificationPreferences({
+                                masterNoteClosedEnabled: checked,
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  )}
+                </>
               )}
 
             <div className='rounded-lg border p-3'>

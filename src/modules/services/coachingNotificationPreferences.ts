@@ -7,12 +7,13 @@ import type {
 type CoachingNotificationPreferenceRow = {
   user_id: string
   master_note_closed_enabled: boolean
+  active_session_enabled: boolean
   created_at: string
   updated_at: string
 }
 
 const SELECT_FIELDS =
-  'user_id, master_note_closed_enabled, created_at, updated_at'
+  'user_id, master_note_closed_enabled, active_session_enabled, created_at, updated_at'
 
 export class CoachingNotificationPreferencesRequestError extends Error {
   status: number | null
@@ -59,6 +60,7 @@ function mapRow(
   return {
     userId: row.user_id,
     masterNoteClosedEnabled: Boolean(row.master_note_closed_enabled),
+    activeSessionEnabled: Boolean(row.active_session_enabled),
     createdAt: row.created_at || null,
     updatedAt: row.updated_at || null,
   }
@@ -68,6 +70,7 @@ function getDefaultPreference(userId: string): CoachingNotificationPreference {
   return {
     userId,
     masterNoteClosedEnabled: true,
+    activeSessionEnabled: true,
     createdAt: null,
     updatedAt: null,
   }
@@ -105,6 +108,7 @@ export async function upsertMyCoachingNotificationPreference(
       {
         user_id: userId,
         master_note_closed_enabled: Boolean(input.masterNoteClosedEnabled),
+        active_session_enabled: Boolean(input.activeSessionEnabled),
       },
       { onConflict: 'user_id' },
     )
