@@ -31,6 +31,7 @@ export type CoachingMembership = {
   activatedAt: string | null
   durationWeeks: number
   weekActivation?: WeekActivationState
+  weekTimeline?: WeekTimelineItem[]
   weekProgress?: Record<
     string,
     {
@@ -65,6 +66,13 @@ export type WeekActivationState = {
     | null
 }
 
+export type WeekTimelineItem = {
+  weekNumber: number
+  weekKey: string
+  activatedAt: string
+  endedAt: string | null
+}
+
 const COACHING_CLASS_REPORTS_BUCKET = 'coaching-class-reports'
 
 export type CoachingManagedUser = {
@@ -86,6 +94,7 @@ export type CoachingManagedUser = {
   activatedAt: string | null
   durationWeeks: number
   weekActivation?: WeekActivationState
+  weekTimeline?: WeekTimelineItem[]
   updatedAt: string
   activeTargetLang: string | null
   activeNativeLang: string | null
@@ -158,6 +167,7 @@ export type CoachingUserInsights = {
     }>
   >
   weekActivation?: WeekActivationState
+  weekTimeline?: WeekTimelineItem[]
   weekProgress?: Record<
     string,
     {
@@ -189,6 +199,7 @@ export type CoachingUserMembership = {
   activatedAt: string | null
   durationWeeks: number
   weekActivation?: WeekActivationState
+  weekTimeline?: WeekTimelineItem[]
   updatedAt: string
 }
 

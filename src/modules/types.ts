@@ -297,12 +297,14 @@ export interface PushReminderPreferencesInput {
 export interface CoachingNotificationPreference {
   userId: string
   masterNoteClosedEnabled: boolean
+  activeSessionEnabled: boolean
   createdAt: string | null
   updatedAt: string | null
 }
 
 export interface CoachingNotificationPreferenceInput {
   masterNoteClosedEnabled: boolean
+  activeSessionEnabled: boolean
 }
 
 export interface IcaTestQuestion {

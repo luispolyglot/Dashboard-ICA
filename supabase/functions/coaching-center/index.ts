@@ -1,4 +1,5 @@
 import { CORS_HEADERS, jsonResponse } from '../_shared/http.ts'
+import webpush from 'npm:web-push@3.6.7'
 import {
   ensureAuthenticated,
   ensureCoachingAdmin,
@@ -8,6 +9,7 @@ import { countPendingMasterNotesForSession } from './pending-review.ts'
 import { canManageSession } from './access-control.ts'
 import {
   buildWeekActivationState,
+  buildWeekTimeline,
   buildWeekWindows,
   evaluateWeekActivationRequest,
   type CoachingSessionWeekActivationRow,
@@ -108,6 +110,14 @@ type CoachingClosedNoteItem = {
   closedAt: string
   feedbackLoomUrl: string | null
   feedbackNotes: string | null
+}
+
+type PushSubscriptionRow = {
+  id: string
+  endpoint: string
+  p256dh: string
+  auth: string
+  is_active: boolean
 }
 
 function safeString(value: unknown): string | null {
@@ -737,6 +747,81 @@ async function fetchWeekActivationsBySessionIds(
   return { activationsBySession, error: null }
 }
 
+async function sendCoachingActiveSessionNotification(input: {
+  adminClient: any
+  recipientUserId: string
+  title: string
+  body: string
+  url: string
+  tag: string
+  data?: Record<string, unknown>
+}): Promise<void> {
+  const { data: preference } = await input.adminClient
+    .from('user_coaching_notification_preferences')
+    .select('active_session_enabled')
+    .eq('user_id', input.recipientUserId)
+    .maybeSingle<{ active_session_enabled: boolean }>()
+
+  if (preference && !preference.active_session_enabled) {
+    return
+  }
+
+  const vapidPublicKey = Deno.env.get('VAPID_PUBLIC_KEY')
+  const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY')
+  const vapidSubject = Deno.env.get('VAPID_SUBJECT')
+  if (!vapidPublicKey || !vapidPrivateKey || !vapidSubject) {
+    return
+  }
+
+  webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
+
+  const { data: subscriptions, error: subscriptionsError } = await input.adminClient
+    .from('user_push_subscriptions')
+    .select('id, endpoint, p256dh, auth, is_active')
+    .eq('user_id', input.recipientUserId)
+    .eq('is_active', true)
+
+  if (subscriptionsError) {
+    return
+  }
+
+  const activeSubscriptions = (subscriptions || []) as PushSubscriptionRow[]
+  if (activeSubscriptions.length === 0) {
+    return
+  }
+
+  const payload = JSON.stringify({
+    title: input.title,
+    body: input.body,
+    url: input.url,
+    tag: input.tag,
+    data: {
+      ...(input.data || {}),
+      url: input.url,
+    },
+  })
+
+  for (const subscription of activeSubscriptions) {
+    try {
+      await webpush.sendNotification(
+        {
+          endpoint: subscription.endpoint,
+          keys: {
+            p256dh: subscription.p256dh,
+            auth: subscription.auth,
+          },
+        },
+        payload,
+      )
+    } catch {
+      await input.adminClient
+        .from('user_push_subscriptions')
+        .update({ is_active: false, last_seen_at: new Date().toISOString() })
+        .eq('id', subscription.id)
+    }
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
@@ -832,6 +917,7 @@ Deno.serve(async (req) => {
           sessionActivations,
           weeklyObjectives,
         )
+        const weekTimeline = buildWeekTimeline(sessionActivations)
         const weekProgress = await fetchWeekProgressForSession(
           auth.adminClient,
           row,
@@ -863,6 +949,7 @@ Deno.serve(async (req) => {
           activatedAt: row.activated_at,
           durationWeeks: row.duration_weeks,
           weekActivation,
+          weekTimeline,
           weekProgress,
           closedMasterNotesByWeek,
           updatedAt: row.updated_at,
@@ -1092,6 +1179,7 @@ Deno.serve(async (req) => {
           sessionActivations,
           weeklyObjectives,
         )
+        const weekTimeline = buildWeekTimeline(sessionActivations)
         const activatedWeekWindows = buildWeekWindows(sessionActivations).map((window) => ({
           startAt: window.start.toISOString(),
           endAt: window.end.toISOString(),
@@ -1129,6 +1217,7 @@ Deno.serve(async (req) => {
           activatedAt: row.activated_at,
           durationWeeks: row.duration_weeks,
           weekActivation,
+          weekTimeline,
           updatedAt: row.updated_at,
           activeTargetLang: activeSettings?.target_lang || null,
           activeNativeLang: activeSettings?.native_lang || null,
@@ -1461,9 +1550,14 @@ Deno.serve(async (req) => {
 
     const { data: sessionRow, error: sessionError } = await admin.adminClient
       .from('coaching_sessions')
-      .select('id, status, coach_user_id')
+      .select('id, user_id, status, coach_user_id')
       .eq('id', sessionId)
-      .maybeSingle<{ id: string; status: string; coach_user_id: string | null }>()
+      .maybeSingle<{
+        id: string
+        user_id: string
+        status: string
+        coach_user_id: string | null
+      }>()
 
     if (sessionError) {
       return jsonResponse(500, { error: sessionError.message })
@@ -1518,7 +1612,9 @@ Deno.serve(async (req) => {
       return jsonResponse(400, { error: 'Invalid week number' })
     }
 
-    if (activationDecision.ok) {
+    const didActivateWeek = activationDecision.ok
+
+    if (didActivateWeek) {
       const { error: insertError } = await admin.adminClient
         .from('coaching_session_week_activations')
         .insert({
@@ -1531,6 +1627,21 @@ Deno.serve(async (req) => {
       if (insertError) {
         return jsonResponse(500, { error: insertError.message })
       }
+
+      await sendCoachingActiveSessionNotification({
+        adminClient: admin.adminClient,
+        recipientUserId: sessionRow.user_id,
+        title: 'Coaching ICA',
+        body: `Tu coach activó la Semana ${weekNumber} de tu programa.`,
+        url: '/coaching-personalized',
+        tag: `coaching-week-activated-${sessionId}-${weekNumber}`,
+        data: {
+          type: 'coaching-week-activated',
+          sessionId,
+          weekKey,
+          weekNumber,
+        },
+      })
     }
 
     const { data: latestRows, error: latestError } = await admin.adminClient
@@ -1862,9 +1973,15 @@ Deno.serve(async (req) => {
 
     const { data: noteRow, error: noteError } = await admin.adminClient
       .from('master_notes')
-      .select('id, user_id')
+      .select('id, user_id, name, coaching_feedback_loom_url, coaching_feedback_notes')
       .eq('id', masterNoteId)
-      .maybeSingle<{ id: string; user_id: string }>()
+      .maybeSingle<{
+        id: string
+        user_id: string
+        name: string | null
+        coaching_feedback_loom_url: string | null
+        coaching_feedback_notes: string | null
+      }>()
 
     if (noteError) {
       return jsonResponse(500, { error: noteError.message })
@@ -1876,16 +1993,41 @@ Deno.serve(async (req) => {
       return jsonResponse(403, { error: 'Master note does not belong to this session user' })
     }
 
+    const nextFeedbackLoomUrl = normalizeUrl(safeString(payload.feedbackLoomUrl))
+    const nextFeedbackNotes = safeString(payload.feedbackNotes)
+    const hadFeedback =
+      Boolean(safeString(noteRow.coaching_feedback_loom_url)) ||
+      Boolean(safeString(noteRow.coaching_feedback_notes))
+    const hasFeedbackAfter =
+      Boolean(nextFeedbackLoomUrl) || Boolean(nextFeedbackNotes)
+    const shouldNotifyStudent = !hadFeedback && hasFeedbackAfter
+
     const { error: updateError } = await admin.adminClient
       .from('master_notes')
       .update({
-        coaching_feedback_loom_url: normalizeUrl(safeString(payload.feedbackLoomUrl)),
-        coaching_feedback_notes: safeString(payload.feedbackNotes),
+        coaching_feedback_loom_url: nextFeedbackLoomUrl,
+        coaching_feedback_notes: nextFeedbackNotes,
       })
       .eq('id', masterNoteId)
 
     if (updateError) {
       return jsonResponse(500, { error: updateError.message })
+    }
+
+    if (shouldNotifyStudent) {
+      await sendCoachingActiveSessionNotification({
+        adminClient: admin.adminClient,
+        recipientUserId: sessionRow.user_id,
+        title: 'Coaching ICA',
+        body: `Tu coach dejó feedback en ${noteRow.name || 'tu nota maestra'}.`,
+        url: '/coaching-personalized',
+        tag: `coaching-feedback-${sessionId}-${masterNoteId}`,
+        data: {
+          type: 'coaching-master-note-feedback',
+          sessionId,
+          masterNoteId,
+        },
+      })
     }
 
     return jsonResponse(200, { ok: true })
@@ -1952,6 +2094,7 @@ Deno.serve(async (req) => {
       sessionActivations,
       weeklyObjectives,
     )
+    const weekTimeline = buildWeekTimeline(sessionActivations)
 
     const weekProgress = await fetchWeekProgressForSession(admin.adminClient, {
       user_id: userId,
@@ -2091,6 +2234,7 @@ Deno.serve(async (req) => {
       weeklyObjectives,
       closedMasterNotesByWeek,
       weekActivation,
+      weekTimeline,
       weekProgress,
     })
   }
@@ -2172,6 +2316,9 @@ Deno.serve(async (req) => {
 
     const rows = await Promise.all(
       visibleRows.map(async (row) => ({
+        weekTimeline: buildWeekTimeline(
+          activationsData.activationsBySession.get(row.id) || [],
+        ),
         weekActivation: buildWeekActivationState(
           activationsData.activationsBySession.get(row.id) || [],
           programData.weeklyObjectivesBySession.get(row.id) || {},
