@@ -46,6 +46,12 @@ import {
   getReviewPlayStyleFromQuery,
   type ReviewPlayStyle,
 } from '../review/playStyle'
+import {
+  getSharedTargetFromParams,
+  SHARE_TARGET_INPUT_QUERY_PARAM,
+  SHARE_TARGET_SOURCE,
+  SHARE_TARGET_SOURCE_QUERY_PARAM,
+} from '../shareTarget'
 import type { ReviewMode } from '../types'
 import { DASHBOARD_ROUTES, getFlashcardsPlayRoute } from './paths'
 
@@ -76,6 +82,24 @@ export function NewIcaWordsPage() {
       />
     </PageLayout>
   )
+}
+
+export function ShareTargetPage() {
+  const [searchParams] = useSearchParams()
+  const sharedTarget = getSharedTargetFromParams(searchParams)
+  const params = new URLSearchParams()
+
+  if (sharedTarget) {
+    params.set(SHARE_TARGET_INPUT_QUERY_PARAM, sharedTarget)
+  }
+  params.set(SHARE_TARGET_SOURCE_QUERY_PARAM, SHARE_TARGET_SOURCE)
+
+  const query = params.toString()
+  const destination = query
+    ? `${DASHBOARD_ROUTES.newIcaWords}?${query}`
+    : DASHBOARD_ROUTES.newIcaWords
+
+  return <Navigate to={destination} replace />
 }
 
 export function MyIcaWordsPage() {

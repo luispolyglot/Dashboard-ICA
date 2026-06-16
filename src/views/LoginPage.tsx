@@ -17,8 +17,12 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const redirectTo =
-    (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/'
+  const fromLocation =
+    (location.state as { from?: { pathname?: string; search?: string } } | null)?.from ||
+    null
+  const redirectTo = fromLocation
+    ? `${fromLocation.pathname || '/'}${fromLocation.search || ''}`
+    : '/'
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()

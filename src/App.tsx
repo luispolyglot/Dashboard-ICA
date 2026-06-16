@@ -35,6 +35,7 @@ import {
   NewIcaWordsPage,
   PhraseHistoryPage,
   ProfilePage,
+  ShareTargetPage,
   StreaksPage,
   TrackerDetailPage,
   TrackersPage,
@@ -85,6 +86,7 @@ export function App() {
         </Route>
 
         <Route element={<PrivateRoute />}>
+          <Route path='share-target' element={<ShareTargetPage />} />
           <Route element={<DashboardShell />}>
             <Route index element={<HomePage />} />
             <Route path='new-ica-words' element={<NewIcaWordsPage />} />
