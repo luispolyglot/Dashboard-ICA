@@ -46,6 +46,18 @@ export function useDashboardICA() {
     setDailyProgress(sourceDailyProgress || {})
   }, [])
 
+  const refreshStreakProgressFromSource = useCallback(async (): Promise<void> => {
+    const [sourceCompletedDays, sourceCreationDays, sourceDailyProgress] = await Promise.all([
+      loadData('dashboard-ICA-completed', [] as string[]),
+      loadData('dashboard-ICA-creation-days', [] as string[]),
+      loadData('dashboard-ICA-daily-progress', {} as DailyProgressMap),
+    ])
+
+    setCompletedDays(sourceCompletedDays || [])
+    setCreationDays(sourceCreationDays || [])
+    setDailyProgress(sourceDailyProgress || {})
+  }, [])
+
   const refreshActivationProgressFromSource = useCallback(async (): Promise<void> => {
     if (!config) return
 
@@ -141,6 +153,55 @@ export function useDashboardICA() {
   }, [config, loading])
 
   useEffect(() => {
+    if (loading) return
+
+    let active = true
+
+    const tryRefreshStreaks = async (): Promise<void> => {
+      const [sourceCompletedDays, sourceCreationDays, sourceDailyProgress] = await Promise.all([
+        loadData('dashboard-ICA-completed', [] as string[]),
+        loadData('dashboard-ICA-creation-days', [] as string[]),
+        loadData('dashboard-ICA-daily-progress', {} as DailyProgressMap),
+      ])
+
+      if (!active) return
+
+      setCompletedDays(sourceCompletedDays || [])
+      setCreationDays(sourceCreationDays || [])
+      setDailyProgress(sourceDailyProgress || {})
+    }
+
+    if (completedDays.length === 0 && creationDays.length === 0) {
+      void tryRefreshStreaks()
+    }
+
+    const onFocus = () => {
+      void tryRefreshStreaks()
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void tryRefreshStreaks()
+      }
+    }
+
+    const onOnline = () => {
+      void tryRefreshStreaks()
+    }
+
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('online', onOnline)
+
+    return () => {
+      active = false
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('online', onOnline)
+    }
+  }, [completedDays.length, creationDays.length, loading])
+
+  useEffect(() => {
     if (!config) {
       setMetaTrackerLoading(false)
       return
@@ -217,7 +278,8 @@ export function useDashboardICA() {
 
   const refreshCreationDaysFromSource = useCallback(async (): Promise<void> => {
     await refreshCreationProgressFromSource()
-  }, [refreshCreationProgressFromSource])
+    await refreshStreakProgressFromSource()
+  }, [refreshCreationProgressFromSource, refreshStreakProgressFromSource])
 
   useEffect(() => {
     const syncFromTruthSource = () => {
