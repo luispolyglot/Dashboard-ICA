@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase'
 import { getSessionSafe } from '../../lib/supabaseAuthSafe'
 import { notifyCreationMetricsChanged } from './creationMetricsSync'
+import { recordBootstrapDiagnostic } from '../utils/bootstrapDiagnostics'
 import type { AppConfig, DailyProgressMap, Lexicard } from '../types'
 
 const MAX_SAFE_WORD_DELETES_PER_SAVE = 5
@@ -549,7 +550,11 @@ export async function loadData<T>(key: string, fallback: T): Promise<T> {
     const userId = await getCurrentUserId()
     if (!userId) {
       if (key === 'dashboard-ICA-config' && localConfigSnapshot) {
+        recordBootstrapDiagnostic('config.snapshot_used_no_user')
         return localConfigSnapshot as T
+      }
+      if (key === 'dashboard-ICA-config') {
+        recordBootstrapDiagnostic('config.missing_no_user')
       }
       return fallback
     }
@@ -562,12 +567,19 @@ export async function loadData<T>(key: string, fallback: T): Promise<T> {
       const remoteConfig = await loadConfig(userId)
       if (remoteConfig) {
         saveLocalJson(CONFIG_SNAPSHOT_STORAGE_KEY, remoteConfig)
+        recordBootstrapDiagnostic('config.remote_loaded', {
+          nativeLang: remoteConfig.nativeLang,
+          targetLang: remoteConfig.targetLang,
+        })
         return remoteConfig as T
       }
 
       if (localConfigSnapshot) {
+        recordBootstrapDiagnostic('config.snapshot_used_remote_empty')
         return localConfigSnapshot as T
       }
+
+      recordBootstrapDiagnostic('config.missing_remote_empty')
 
       return fallback
     }
@@ -584,8 +596,14 @@ export async function loadData<T>(key: string, fallback: T): Promise<T> {
     return fallback
   } catch {
     if (key === 'dashboard-ICA-config' && localConfigSnapshot) {
+      recordBootstrapDiagnostic('config.snapshot_used_after_error')
       return localConfigSnapshot as T
     }
+
+    if (key === 'dashboard-ICA-config') {
+      recordBootstrapDiagnostic('config.load_error_without_snapshot')
+    }
+
     return fallback
   }
 }

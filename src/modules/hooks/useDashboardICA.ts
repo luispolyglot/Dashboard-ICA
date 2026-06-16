@@ -8,6 +8,7 @@ import {
   CREATION_METRICS_CHANGED_EVENT,
 } from '../services/creationMetricsSync'
 import { loadData, saveData } from '../services/storage'
+import { recordBootstrapDiagnostic } from '../utils/bootstrapDiagnostics'
 import { todayKey } from '../utils'
 import type {
   AppConfig,
@@ -96,6 +97,12 @@ export function useDashboardICA() {
       setCreationDays(loadedCreationDays || [])
       setDailyProgress(loadedDailyProgress || {})
       setReviewSession(typeof loadedReviewSession === 'number' ? loadedReviewSession : 0)
+      recordBootstrapDiagnostic('dashboard.bootstrap_complete', {
+        hasConfig: Boolean(loadedConfig),
+        cardCount: (loadedCards || []).length,
+        completedDaysCount: (loadedCompletedDays || []).length,
+        creationDaysCount: (loadedCreationDays || []).length,
+      })
       setLoading(false)
     }).catch(() => {
       setCards([])
@@ -104,6 +111,7 @@ export function useDashboardICA() {
       setCreationDays([])
       setDailyProgress({})
       setReviewSession(0)
+      recordBootstrapDiagnostic('dashboard.bootstrap_failed')
       setLoading(false)
     })
 
@@ -122,6 +130,7 @@ export function useDashboardICA() {
       const loadedConfig = await loadData('dashboard-ICA-config', null as AppConfig | null)
       if (!active || !loadedConfig) return
       setConfig(loadedConfig)
+      recordBootstrapDiagnostic('dashboard.config_rehydrated')
     }
 
     void tryHydrateConfig()
@@ -169,6 +178,10 @@ export function useDashboardICA() {
       setCompletedDays(sourceCompletedDays || [])
       setCreationDays(sourceCreationDays || [])
       setDailyProgress(sourceDailyProgress || {})
+      recordBootstrapDiagnostic('dashboard.streaks_revalidated', {
+        completedDaysCount: (sourceCompletedDays || []).length,
+        creationDaysCount: (sourceCreationDays || []).length,
+      })
     }
 
     if (completedDays.length === 0 && creationDays.length === 0) {
