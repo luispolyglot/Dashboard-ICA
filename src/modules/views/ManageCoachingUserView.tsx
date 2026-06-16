@@ -1762,7 +1762,6 @@ export function ManageCoachingUserView({
 
                               <Button
                                 type='button'
-                                variant='outline'
                                 onClick={() => void handleSaveClass(weekKey)}
                                 disabled={
                                   savingClassWeek === weekKey ||
@@ -1886,7 +1885,6 @@ export function ManageCoachingUserView({
                               <div className='md:col-span-2'>
                                 <Button
                                   type='button'
-                                  variant='outline'
                                   onClick={() =>
                                     void handleSaveObjective(weekKey)
                                   }
