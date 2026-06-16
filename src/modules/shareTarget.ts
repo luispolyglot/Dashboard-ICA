@@ -1,7 +1,7 @@
 export const SHARE_TARGET_INPUT_QUERY_PARAM = 'sharedTarget'
 export const SHARE_TARGET_SOURCE_QUERY_PARAM = 'source'
 export const SHARE_TARGET_SOURCE = 'web-share-target'
-export const SHARE_TARGET_MAX_CHARS = 35
+export const SHARE_TARGET_MAX_CHARS = 50
 
 function truncateToMaxChars(value: string): string {
   return Array.from(value).slice(0, SHARE_TARGET_MAX_CHARS).join('')
