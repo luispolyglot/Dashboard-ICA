@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { PropsWithChildren } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { hasSupabaseConfig, supabase } from '../lib/supabase'
-import { getSessionWithTimeout } from '../lib/supabaseAuthSafe'
+import { getSessionSafe } from '../lib/supabaseAuthSafe'
 import { checkLoginEmail, normalizeEmail } from './whitelist'
 
 type AuthContextValue = {
@@ -27,17 +27,6 @@ function detectUserTimezone(): string {
   return timezone && timezone.trim().length > 0 ? timezone : 'UTC'
 }
 
-async function checkLoginEmailWithTimeout(email: string, timeoutMs = 2500) {
-  return await Promise.race([
-    checkLoginEmail(email),
-    new Promise<{ allowed: true }>((resolve) => {
-      globalThis.setTimeout(() => {
-        resolve({ allowed: true })
-      }, timeoutMs)
-    }),
-  ])
-}
-
 export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
@@ -50,7 +39,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (typeof navigator !== 'undefined' && !navigator.onLine) return true
 
     try {
-      const whitelist = await checkLoginEmailWithTimeout(activeSession.user.email)
+      const whitelist = await checkLoginEmail(activeSession.user.email)
       if (whitelist.allowed) return true
 
       isSigningOutForWhitelistRef.current = true
@@ -80,7 +69,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
 
     void (async () => {
-      const initialSession = await getSessionWithTimeout()
+      const initialSession = await getSessionSafe()
       const isAllowed = await enforceWhitelistAccess(initialSession)
       if (isAllowed) {
         setSession(initialSession)
