@@ -4,6 +4,14 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
@@ -31,7 +39,9 @@ import {
   getCalendarIcademyTodayKey,
   parseCalendarIcademySessionDateTime,
 } from '../../utils/calendarIcademyTime'
-import { Volume1, VolumeOff } from 'lucide-react'
+import { useCalendarIcademyExport } from '../../hooks/useCalendarIcademyExport'
+import { CalendarPlus, Check, Volume1, VolumeOff } from 'lucide-react'
+import { toast } from 'sonner'
 
 type CalendarIcademyBoardProps = {
   title: string
@@ -475,6 +485,32 @@ export function CalendarIcademyBoard({
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
   }, [effectiveTimezone, entriesForMonth, selectedClassKeys])
 
+  const {
+    sessionOptions,
+    selectedEntryIds,
+    isTimeZoneModalOpen,
+    isSelectionModalOpen,
+    timeZoneChoiceUseLocal,
+    exportTimeZone,
+    exportButtonLabel,
+    canExport,
+    startExportFlow,
+    cancelTimeZoneStep,
+    confirmTimeZoneStep,
+    cancelSelectionStep,
+    toggleEntrySelection,
+    selectAllEntries,
+    clearSelectedEntries,
+    setTimeZoneChoiceUseLocal,
+    exportSelectedAsIcs,
+  } = useCalendarIcademyExport({
+    entries: selectedSessions,
+    showLocalTime,
+    canUseLocalTime,
+    localTimezone,
+    onShowLocalTimeChange: setShowLocalTime,
+  })
+
   const languageLegend = useMemo(() => {
     const byLanguage = new Set<string>()
     for (const item of classOptions) {
@@ -596,58 +632,72 @@ export function CalendarIcademyBoard({
                 <TabsTrigger value='my-classes'>Mis clases</TabsTrigger>
               </TabsList>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant='outline' size='sm'>
-                    Filtrar clases
-                    {selectedClassKeys.length > 0
-                      ? ` (${selectedClassKeys.length})`
-                      : ''}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align='end' className='w-72'>
-                  <DropdownMenuLabel>
-                    Maximo 2 clases + Destripando Niveles siempre disponible
-                  </DropdownMenuLabel>
-                  <DropdownMenuCheckboxItem
-                    checked={showAllClasses}
-                    onSelect={(event) => event.preventDefault()}
-                    onCheckedChange={() => setSelectedClassKeys([])}
+              <div className='flex flex-wrap items-center gap-2'>
+                {activeTab === 'my-classes' && (
+                  <Button
+                    variant='secondary'
+                    size='sm'
+                    onClick={startExportFlow}
+                    disabled={selectedSessions.length === 0}
                   >
-                    Todas las clases
-                  </DropdownMenuCheckboxItem>
-                  <DropdownMenuSeparator />
-                  {classOptions.map((option) => {
-                    const isSelected = selectedClassKeys.includes(
-                      option.classKey,
-                    )
-                    const isSpecialClass =
-                      option.classKey === SPECIAL_ALWAYS_ALLOWED_CLASS_KEY
-                    const isDisabled =
-                      !isSelected &&
-                      !isSpecialClass &&
-                      nonSpecialSelectedCount >= 2
-                    const catalogEntry = getCalendarIcademyCatalogEntry(
-                      option.classKey,
-                    )
-                    const flag = catalogEntry?.flag || '🌐'
+                    <CalendarPlus />
+                    Exportar
+                  </Button>
+                )}
 
-                    return (
-                      <DropdownMenuCheckboxItem
-                        key={option.classKey}
-                        checked={isSelected}
-                        disabled={isDisabled}
-                        onSelect={(event) => event.preventDefault()}
-                        onCheckedChange={() =>
-                          handleToggleClass(option.classKey)
-                        }
-                      >
-                        {flag} {option.className}
-                      </DropdownMenuCheckboxItem>
-                    )
-                  })}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant='outline' size='sm'>
+                      Filtrar clases
+                      {selectedClassKeys.length > 0
+                        ? ` (${selectedClassKeys.length})`
+                        : ''}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align='end' className='w-72'>
+                    <DropdownMenuLabel>
+                      Maximo 2 clases + Destripando Niveles siempre disponible
+                    </DropdownMenuLabel>
+                    <DropdownMenuCheckboxItem
+                      checked={showAllClasses}
+                      onSelect={(event) => event.preventDefault()}
+                      onCheckedChange={() => setSelectedClassKeys([])}
+                    >
+                      Todas las clases
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuSeparator />
+                    {classOptions.map((option) => {
+                      const isSelected = selectedClassKeys.includes(
+                        option.classKey,
+                      )
+                      const isSpecialClass =
+                        option.classKey === SPECIAL_ALWAYS_ALLOWED_CLASS_KEY
+                      const isDisabled =
+                        !isSelected &&
+                        !isSpecialClass &&
+                        nonSpecialSelectedCount >= 2
+                      const catalogEntry = getCalendarIcademyCatalogEntry(
+                        option.classKey,
+                      )
+                      const flag = catalogEntry?.flag || '🌐'
+
+                      return (
+                        <DropdownMenuCheckboxItem
+                          key={option.classKey}
+                          checked={isSelected}
+                          disabled={isDisabled}
+                          onSelect={(event) => event.preventDefault()}
+                          onCheckedChange={() =>
+                            handleToggleClass(option.classKey)
+                          }
+                        >
+                          {flag} {option.className}
+                        </DropdownMenuCheckboxItem>
+                      )
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
 
             {canUseLocalTime && (
@@ -952,6 +1002,149 @@ export function CalendarIcademyBoard({
           </CardContent>
         </Tabs>
       </Card>
+
+      <Dialog
+        open={isTimeZoneModalOpen}
+        onOpenChange={(open) => {
+          if (!open) cancelTimeZoneStep()
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Zona horaria para exportar</DialogTitle>
+            <DialogDescription>
+              Detectamos que no estas en {CALENDAR_ICADEMY_TIMEZONE}. Elige si
+              quieres exportar con hora de Espana o con tu hora local.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className='rounded-lg border bg-muted/30 p-3'>
+            <Label
+              htmlFor='calendar-export-local-time-switch'
+              className='text-sm font-medium'
+            >
+              Usar mi zona local ({localTimezone})
+            </Label>
+            <div className='mt-2 flex items-center justify-between gap-3'>
+              <p className='text-xs text-muted-foreground'>
+                Si lo activas, el export se genera con tu zona local. Si no, se
+                mantiene en horario de Espana.
+              </p>
+              <Switch
+                id='calendar-export-local-time-switch'
+                checked={timeZoneChoiceUseLocal}
+                onCheckedChange={setTimeZoneChoiceUseLocal}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant='outline' onClick={cancelTimeZoneStep}>
+              Cancelar
+            </Button>
+            <Button onClick={() => confirmTimeZoneStep()}>
+              Continuar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isSelectionModalOpen}
+        onOpenChange={(open) => {
+          if (!open) cancelSelectionStep()
+        }}
+      >
+        <DialogContent className='max-h-[85vh] overflow-y-auto sm:max-w-xl'>
+          <DialogHeader>
+            <DialogTitle>Exportar clases a calendario</DialogTitle>
+            <DialogDescription>
+              Revisa tus clases y exporta a tu calendario ({exportTimeZone}).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className='flex items-center justify-between gap-2'>
+            <Button variant='ghost' size='sm' onClick={selectAllEntries}>
+              Marcar todas
+            </Button>
+            <Button variant='ghost' size='sm' onClick={clearSelectedEntries}>
+              Limpiar seleccion
+            </Button>
+          </div>
+
+          <div className='space-y-2'>
+            {sessionOptions.map((option) => {
+              const isChecked = selectedEntryIds.includes(option.entryId)
+              const entryDate = new Date(`${option.sessionDate}T00:00:00`)
+              const dayLabel = Number.isNaN(entryDate.getTime())
+                ? option.sessionDate
+                : formatSessionDayLabel(option.sessionDate)
+              const timeLabel = formatSessionTimeLabel(option.sessionTime)
+              const matchingEntry = selectedSessions.find(
+                (entry) => entry.id === option.entryId,
+              )
+              const catalogEntry = getCalendarIcademyCatalogEntry(
+                matchingEntry?.classKey || '',
+              )
+              const flag = catalogEntry?.flag || '🌐'
+
+              return (
+                <button
+                  key={`export-option-${option.entryId}`}
+                  type='button'
+                  onClick={() => toggleEntrySelection(option.entryId)}
+                  className={cn(
+                    'flex w-full items-start justify-between rounded-lg border px-3 py-2 text-left transition-colors hover:bg-accent/40',
+                    isChecked && 'border-primary/50 bg-primary/5',
+                  )}
+                >
+                  <div>
+                    <p className='font-medium'>
+                      {flag} {option.className}
+                    </p>
+                    <p className='text-xs text-muted-foreground'>
+                      {dayLabel} · {timeLabel} · con {option.teacher}
+                    </p>
+                  </div>
+                  <span
+                    className={cn(
+                      'mt-0.5 inline-flex size-5 items-center justify-center rounded-full border',
+                      isChecked
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border text-transparent',
+                    )}
+                  >
+                    <Check className='size-3.5' />
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          <DialogFooter>
+            <Button variant='outline' onClick={cancelSelectionStep}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={!canExport}
+              onClick={() => {
+                const exported = exportSelectedAsIcs('icademy-clases')
+                if (exported) {
+                  toast.success(
+                    `Calendario exportado (${exported.filename})`,
+                  )
+                  cancelSelectionStep()
+                } else {
+                  toast.error('No hay clases seleccionadas para exportar.')
+                }
+              }}
+            >
+              <CalendarPlus />
+              {exportButtonLabel}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }
