@@ -966,10 +966,7 @@ export function ManageCoachingUserView({
     }
   }
 
-  const handleSaveFeedback = async (
-    masterNoteId: string,
-    kind: 'video' | 'notes',
-  ) => {
+  const handleSaveFeedback = async (masterNoteId: string) => {
     if (!selectedMembership) return
     setSavingFeedbackNoteId(masterNoteId)
     setFeedback(null)
@@ -1001,18 +998,12 @@ export function ManageCoachingUserView({
         }
       })
 
-      setFeedback(
-        kind === 'video'
-          ? 'Video de feedback guardado.'
-          : 'Notas del coach guardadas.',
-      )
+      setFeedback('Nota maestra actualizada.')
     } catch (err) {
       setFeedback(
         err instanceof Error
           ? err.message
-          : kind === 'video'
-            ? 'No se pudo guardar el video de feedback.'
-            : 'No se pudieron guardar las notas del coach.',
+          : 'No se pudo actualizar la nota maestra.',
       )
     } finally {
       setSavingFeedbackNoteId(null)
@@ -1902,8 +1893,8 @@ export function ManageCoachingUserView({
                                   disabled={savingObjectiveWeek === weekKey}
                                 >
                                   {savingObjectiveWeek === weekKey
-                                    ? 'Guardando...'
-                                    : 'Guardar objetivos'}
+                                    ? 'Actualizando...'
+                                    : 'Actualizar objetivos'}
                                 </Button>
                               </div>
                             </CardContent>
@@ -1958,23 +1949,6 @@ export function ManageCoachingUserView({
                                             }
                                             placeholder='Ej: https://www.loom.com/share/...'
                                           />
-                                          <Button
-                                            type='button'
-                                            variant='outline'
-                                            onClick={() =>
-                                              void handleSaveFeedback(
-                                                note.id,
-                                                'video',
-                                              )
-                                            }
-                                            disabled={
-                                              savingFeedbackNoteId === note.id
-                                            }
-                                          >
-                                            {savingFeedbackNoteId === note.id
-                                              ? 'Guardando...'
-                                              : 'Guardar video'}
-                                          </Button>
                                         </div>
                                         {note.feedbackLoomUrl && (
                                           <a
@@ -2009,20 +1983,16 @@ export function ManageCoachingUserView({
                                         />
                                         <Button
                                           type='button'
-                                          variant='outline'
                                           onClick={() =>
-                                            void handleSaveFeedback(
-                                              note.id,
-                                              'notes',
-                                            )
+                                            void handleSaveFeedback(note.id)
                                           }
                                           disabled={
                                             savingFeedbackNoteId === note.id
                                           }
                                         >
                                           {savingFeedbackNoteId === note.id
-                                            ? 'Guardando...'
-                                            : 'Guardar notas'}
+                                            ? 'Acutalizando...'
+                                            : 'Acutalizar NM'}
                                         </Button>
                                       </div>
                                     </div>
