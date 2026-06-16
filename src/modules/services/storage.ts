@@ -1,11 +1,11 @@
 import { supabase } from '../../lib/supabase'
-import { getSessionWithTimeout } from '../../lib/supabaseAuthSafe'
+import { getSessionSafe } from '../../lib/supabaseAuthSafe'
 import { notifyCreationMetricsChanged } from './creationMetricsSync'
+import { recordBootstrapDiagnostic } from '../utils/bootstrapDiagnostics'
 import type { AppConfig, DailyProgressMap, Lexicard } from '../types'
 
 const MAX_SAFE_WORD_DELETES_PER_SAVE = 5
 const CONFIG_SNAPSHOT_STORAGE_KEY = 'dashboard-ICA-config-snapshot'
-const REMOTE_CONFIG_TIMEOUT_MS = 2500
 
 type DashboardStorageKey =
   | 'dashboard-ICA-words'
@@ -31,7 +31,7 @@ function assertSupportedKey(key: string): asserts key is DashboardStorageKey {
 }
 
 async function getCurrentUserId(): Promise<string | null> {
-  const session = await getSessionWithTimeout()
+  const session = await getSessionSafe()
   return session?.user?.id ?? null
 }
 
@@ -450,17 +450,6 @@ async function loadConfig(userId: string): Promise<AppConfig | null> {
   }
 }
 
-async function loadConfigWithTimeout(userId: string): Promise<AppConfig | null> {
-  return await Promise.race([
-    loadConfig(userId),
-    new Promise<AppConfig | null>((resolve) => {
-      globalThis.setTimeout(() => {
-        resolve(null)
-      }, REMOTE_CONFIG_TIMEOUT_MS)
-    }),
-  ])
-}
-
 async function saveConfig(userId: string, config: AppConfig): Promise<void> {
   if (!supabase) return
   const { error } = await supabase.from('user_settings').upsert({
@@ -561,7 +550,11 @@ export async function loadData<T>(key: string, fallback: T): Promise<T> {
     const userId = await getCurrentUserId()
     if (!userId) {
       if (key === 'dashboard-ICA-config' && localConfigSnapshot) {
+        recordBootstrapDiagnostic('config.snapshot_used_no_user')
         return localConfigSnapshot as T
+      }
+      if (key === 'dashboard-ICA-config') {
+        recordBootstrapDiagnostic('config.missing_no_user')
       }
       return fallback
     }
@@ -571,15 +564,22 @@ export async function loadData<T>(key: string, fallback: T): Promise<T> {
     }
 
     if (key === 'dashboard-ICA-config') {
-      const remoteConfig = await loadConfigWithTimeout(userId)
+      const remoteConfig = await loadConfig(userId)
       if (remoteConfig) {
         saveLocalJson(CONFIG_SNAPSHOT_STORAGE_KEY, remoteConfig)
+        recordBootstrapDiagnostic('config.remote_loaded', {
+          nativeLang: remoteConfig.nativeLang,
+          targetLang: remoteConfig.targetLang,
+        })
         return remoteConfig as T
       }
 
       if (localConfigSnapshot) {
+        recordBootstrapDiagnostic('config.snapshot_used_remote_empty')
         return localConfigSnapshot as T
       }
+
+      recordBootstrapDiagnostic('config.missing_remote_empty')
 
       return fallback
     }
@@ -596,8 +596,14 @@ export async function loadData<T>(key: string, fallback: T): Promise<T> {
     return fallback
   } catch {
     if (key === 'dashboard-ICA-config' && localConfigSnapshot) {
+      recordBootstrapDiagnostic('config.snapshot_used_after_error')
       return localConfigSnapshot as T
     }
+
+    if (key === 'dashboard-ICA-config') {
+      recordBootstrapDiagnostic('config.load_error_without_snapshot')
+    }
+
     return fallback
   }
 }

@@ -8,6 +8,7 @@ import {
   CREATION_METRICS_CHANGED_EVENT,
 } from '../services/creationMetricsSync'
 import { loadData, saveData } from '../services/storage'
+import { recordBootstrapDiagnostic } from '../utils/bootstrapDiagnostics'
 import { todayKey } from '../utils'
 import type {
   AppConfig,
@@ -16,17 +17,6 @@ import type {
   MetaTrackerProfile,
   MetaTrackerStartLevel,
 } from '../types'
-
-const LOAD_DATA_TIMEOUT_MS = 3500
-
-async function loadDataWithTimeout<T>(key: string, fallback: T): Promise<T> {
-  return await Promise.race([
-    loadData(key, fallback),
-    new Promise<T>((resolve) => {
-      globalThis.setTimeout(() => resolve(fallback), LOAD_DATA_TIMEOUT_MS)
-    }),
-  ])
-}
 
 function getMetaTrackerScopeKey(config: AppConfig): string {
   return `${config.nativeLang}::${config.targetLang}`
@@ -57,6 +47,18 @@ export function useDashboardICA() {
     setDailyProgress(sourceDailyProgress || {})
   }, [])
 
+  const refreshStreakProgressFromSource = useCallback(async (): Promise<void> => {
+    const [sourceCompletedDays, sourceCreationDays, sourceDailyProgress] = await Promise.all([
+      loadData('dashboard-ICA-completed', [] as string[]),
+      loadData('dashboard-ICA-creation-days', [] as string[]),
+      loadData('dashboard-ICA-daily-progress', {} as DailyProgressMap),
+    ])
+
+    setCompletedDays(sourceCompletedDays || [])
+    setCreationDays(sourceCreationDays || [])
+    setDailyProgress(sourceDailyProgress || {})
+  }, [])
+
   const refreshActivationProgressFromSource = useCallback(async (): Promise<void> => {
     if (!config) return
 
@@ -75,12 +77,12 @@ export function useDashboardICA() {
 
   useEffect(() => {
     Promise.all([
-      loadDataWithTimeout('dashboard-ICA-words', [] as Lexicard[]),
+      loadData('dashboard-ICA-words', [] as Lexicard[]),
       loadData('dashboard-ICA-config', null as AppConfig | null),
-      loadDataWithTimeout('dashboard-ICA-completed', [] as string[]),
-      loadDataWithTimeout('dashboard-ICA-creation-days', [] as string[]),
-      loadDataWithTimeout('dashboard-ICA-daily-progress', {} as DailyProgressMap),
-      loadDataWithTimeout('dashboard-ICA-review-session', 0 as number),
+      loadData('dashboard-ICA-completed', [] as string[]),
+      loadData('dashboard-ICA-creation-days', [] as string[]),
+      loadData('dashboard-ICA-daily-progress', {} as DailyProgressMap),
+      loadData('dashboard-ICA-review-session', 0 as number),
     ]).then(([
       loadedCards,
       loadedConfig,
@@ -95,6 +97,12 @@ export function useDashboardICA() {
       setCreationDays(loadedCreationDays || [])
       setDailyProgress(loadedDailyProgress || {})
       setReviewSession(typeof loadedReviewSession === 'number' ? loadedReviewSession : 0)
+      recordBootstrapDiagnostic('dashboard.bootstrap_complete', {
+        hasConfig: Boolean(loadedConfig),
+        cardCount: (loadedCards || []).length,
+        completedDaysCount: (loadedCompletedDays || []).length,
+        creationDaysCount: (loadedCreationDays || []).length,
+      })
       setLoading(false)
     }).catch(() => {
       setCards([])
@@ -103,6 +111,7 @@ export function useDashboardICA() {
       setCreationDays([])
       setDailyProgress({})
       setReviewSession(0)
+      recordBootstrapDiagnostic('dashboard.bootstrap_failed')
       setLoading(false)
     })
 
@@ -121,6 +130,7 @@ export function useDashboardICA() {
       const loadedConfig = await loadData('dashboard-ICA-config', null as AppConfig | null)
       if (!active || !loadedConfig) return
       setConfig(loadedConfig)
+      recordBootstrapDiagnostic('dashboard.config_rehydrated')
     }
 
     void tryHydrateConfig()
@@ -150,6 +160,59 @@ export function useDashboardICA() {
       window.removeEventListener('online', onOnline)
     }
   }, [config, loading])
+
+  useEffect(() => {
+    if (loading) return
+
+    let active = true
+
+    const tryRefreshStreaks = async (): Promise<void> => {
+      const [sourceCompletedDays, sourceCreationDays, sourceDailyProgress] = await Promise.all([
+        loadData('dashboard-ICA-completed', [] as string[]),
+        loadData('dashboard-ICA-creation-days', [] as string[]),
+        loadData('dashboard-ICA-daily-progress', {} as DailyProgressMap),
+      ])
+
+      if (!active) return
+
+      setCompletedDays(sourceCompletedDays || [])
+      setCreationDays(sourceCreationDays || [])
+      setDailyProgress(sourceDailyProgress || {})
+      recordBootstrapDiagnostic('dashboard.streaks_revalidated', {
+        completedDaysCount: (sourceCompletedDays || []).length,
+        creationDaysCount: (sourceCreationDays || []).length,
+      })
+    }
+
+    if (completedDays.length === 0 && creationDays.length === 0) {
+      void tryRefreshStreaks()
+    }
+
+    const onFocus = () => {
+      void tryRefreshStreaks()
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void tryRefreshStreaks()
+      }
+    }
+
+    const onOnline = () => {
+      void tryRefreshStreaks()
+    }
+
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('online', onOnline)
+
+    return () => {
+      active = false
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('online', onOnline)
+    }
+  }, [completedDays.length, creationDays.length, loading])
 
   useEffect(() => {
     if (!config) {
@@ -228,7 +291,8 @@ export function useDashboardICA() {
 
   const refreshCreationDaysFromSource = useCallback(async (): Promise<void> => {
     await refreshCreationProgressFromSource()
-  }, [refreshCreationProgressFromSource])
+    await refreshStreakProgressFromSource()
+  }, [refreshCreationProgressFromSource, refreshStreakProgressFromSource])
 
   useEffect(() => {
     const syncFromTruthSource = () => {

@@ -2,7 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { PropsWithChildren } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { hasSupabaseConfig, supabase } from '../lib/supabase'
-import { getSessionWithTimeout } from '../lib/supabaseAuthSafe'
+import { getSessionSafe } from '../lib/supabaseAuthSafe'
+import { recordBootstrapDiagnostic } from '@/modules/utils/bootstrapDiagnostics'
 import { checkLoginEmail, normalizeEmail } from './whitelist'
 
 type AuthContextValue = {
@@ -27,17 +28,6 @@ function detectUserTimezone(): string {
   return timezone && timezone.trim().length > 0 ? timezone : 'UTC'
 }
 
-async function checkLoginEmailWithTimeout(email: string, timeoutMs = 2500) {
-  return await Promise.race([
-    checkLoginEmail(email),
-    new Promise<{ allowed: true }>((resolve) => {
-      globalThis.setTimeout(() => {
-        resolve({ allowed: true })
-      }, timeoutMs)
-    }),
-  ])
-}
-
 export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
@@ -50,8 +40,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (typeof navigator !== 'undefined' && !navigator.onLine) return true
 
     try {
-      const whitelist = await checkLoginEmailWithTimeout(activeSession.user.email)
+      const whitelist = await checkLoginEmail(activeSession.user.email)
       if (whitelist.allowed) return true
+      recordBootstrapDiagnostic('auth.whitelist_denied', {
+        email: activeSession.user.email,
+      })
 
       isSigningOutForWhitelistRef.current = true
       const { error } = await supabase.auth.signOut()
@@ -64,6 +57,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       return false
     } catch (error) {
       console.warn('No se pudo validar whitelist activa', error)
+      recordBootstrapDiagnostic('auth.whitelist_check_failed')
       return true
     }
   }, [])
@@ -80,7 +74,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
 
     void (async () => {
-      const initialSession = await getSessionWithTimeout()
+      const initialSession = await getSessionSafe()
+      recordBootstrapDiagnostic('auth.initial_session_loaded', {
+        hasSession: Boolean(initialSession),
+      })
       const isAllowed = await enforceWhitelistAccess(initialSession)
       if (isAllowed) {
         setSession(initialSession)
@@ -109,6 +106,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
         !isSigningOutForWhitelistRef.current &&
         (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED')
       ) {
+        recordBootstrapDiagnostic('auth.state_change', {
+          event,
+          hasSession: Boolean(nextSession),
+        })
         void enforceWhitelistAccess(nextSession)
       }
     })

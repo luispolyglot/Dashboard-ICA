@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { getSessionWithTimeout } from '@/lib/supabaseAuthSafe'
+import { getSessionSafe } from '@/lib/supabaseAuthSafe'
 import type {
   MasterNote,
   MasterNotePlaylist,
@@ -90,7 +90,7 @@ function getPlaylistItemRecordId(userId: string, playlistItemId: string): string
 
 async function getCurrentUserId(): Promise<string | null> {
   if (!supabase) return null
-  const session = await getSessionWithTimeout()
+  const session = await getSessionSafe()
   return session?.user?.id || null
 }
 

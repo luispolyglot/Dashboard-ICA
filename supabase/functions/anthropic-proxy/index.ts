@@ -123,7 +123,7 @@ async function callAnthropic(
   options?: { maxTokens?: number; temperature?: number },
 ): Promise<string | null> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
-  const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-20250514'
+  const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6'
   const baseUrl = Deno.env.get('ANTHROPIC_BASE_URL') || 'https://api.anthropic.com'
 
   if (!apiKey) {
