@@ -99,12 +99,19 @@ export function ImportantInfoModal() {
     navigate(DASHBOARD_ROUTES.masterNotes)
   }
 
+  const handleClose = (): void => {
+    if (isImageMode) {
+      window.localStorage.setItem(DISMISS_STORAGE_KEY, '1')
+      setOpen(false)
+    }
+  }
+
   if (!open) return null
 
   return (
-    <Dialog open={open} onOpenChange={() => null}>
+    <Dialog open={open} onOpenChange={isImageMode ? handleClose : () => null}>
       <DialogContent
-        showCloseButton={false}
+        showCloseButton={isImageMode ? true : false}
         className='sm:max-w-3xl p-0 overflow-hidden'
         onPointerDownOutside={(event) => event.preventDefault()}
         onEscapeKeyDown={(event) => {
@@ -136,6 +143,7 @@ export function ImportantInfoModal() {
                 src={importantInfoNmImage}
                 alt={IMPORTANT_INFO_IMAGE_ALT}
                 className='h-auto w-full'
+                onClick={handleGoToActivation}
               />
             )}
           </div>
