@@ -13,6 +13,7 @@ import { DASHBOARD_ROUTES, getIcaTestMonthRoute } from '../routes/paths'
 import {
   getIcaTestWindowStartDay,
   getIcaTestMonthLabel,
+  ICA_TEST_MAX_WORDS_PER_ITEM,
   ICA_TEST_REQUIRED_WORDS,
 } from '../services/icaTests'
 import type { Lexicard } from '../types'
@@ -98,8 +99,10 @@ export function IcaTestsView({
 
               {!hasCurrentMonthTest && !wordPool.eligible && (
                 <p className='text-amber-600'>
-                  Necesitas {ICA_TEST_REQUIRED_WORDS} palabras ICA entre este
-                  mes y el anterior. Ahora hay {wordPool.availableWords}.
+                  Necesitas {ICA_TEST_REQUIRED_WORDS} palabras ICA para armar el
+                  test. Priorizamos frases de hasta {ICA_TEST_MAX_WORDS_PER_ITEM}{' '}
+                  palabras y, si no alcanza, ampliamos el filtro. Ahora hay{' '}
+                  {wordPool.availableWords}.
                 </p>
               )}
 

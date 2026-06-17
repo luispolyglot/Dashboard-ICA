@@ -25,6 +25,7 @@ import {
   getCurrentIcaTestMonthDate,
   getIcaTestByMonth,
   getIcaTestMonthLabel,
+  ICA_TEST_MAX_WORDS_PER_ITEM,
   getIcaTestWindowStartDay,
   getIcaTestWordsUsed,
   ICA_TEST_MIN_MONTH_DATE,
@@ -39,7 +40,7 @@ import {
 } from '../services/icaTests'
 import { IcaTestResultCard } from '../components/IcaTestResultCard'
 import { DASHBOARD_ROUTES, getIcaTestMonthRoute } from '../routes/paths'
-import type { IcaTestQuestion, IcaTestRecord, Lexicard } from '../types'
+import type { IcaTestAnswer, IcaTestQuestion, IcaTestRecord, Lexicard } from '../types'
 
 type IcaTestMode = 'official' | 'redo'
 
@@ -117,6 +118,36 @@ function getOfficialBlockedMessage(test: IcaTestRecord): string {
   return 'Este intento se cerró por salida/recarga y quedó fallido.'
 }
 
+type IcaTestErrorReviewItem = {
+  questionNumber: number
+  promptNative: string
+  selectedOption: string
+  correctOption: string
+}
+
+function buildIcaTestErrorReviewItems(
+  questions: IcaTestQuestion[],
+  answers: IcaTestAnswer[],
+): IcaTestErrorReviewItem[] {
+  return answers
+    .filter((answer) => !answer.isCorrect)
+    .map((answer) => {
+      const question = questions[answer.questionIndex]
+      const selectedOption =
+        answer.selectedOptionIndex !== null &&
+        question?.options[answer.selectedOptionIndex]
+          ? question.options[answer.selectedOptionIndex]
+          : 'Sin respuesta (tiempo agotado)'
+
+      return {
+        questionNumber: answer.questionIndex + 1,
+        promptNative: question?.promptNative || '-',
+        selectedOption,
+        correctOption: question?.correctTarget || '-',
+      }
+    })
+}
+
 export function IcaTestMonthView({
   targetLang,
   nativeLang,
@@ -130,6 +161,11 @@ export function IcaTestMonthView({
   const [isLoadingStoredTest, setIsLoadingStoredTest] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [errorReviewOpen, setErrorReviewOpen] = useState(false)
+  const [errorReviewTitle, setErrorReviewTitle] = useState('')
+  const [errorReviewItems, setErrorReviewItems] = useState<IcaTestErrorReviewItem[]>(
+    [],
+  )
   const [isStarting, setIsStarting] = useState(false)
   const [isFinalizing, setIsFinalizing] = useState(false)
   const [hasAcceptedDisclaimer, setHasAcceptedDisclaimer] = useState(false)
@@ -446,6 +482,7 @@ export function IcaTestMonthView({
     totalQuestions,
     timeLeft,
     progressPercent,
+    answers,
     score,
     isFinished,
     isAnswering,
@@ -559,6 +596,46 @@ export function IcaTestMonthView({
     monthCode,
     score,
   ])
+
+  const openErrorReview = (
+    title: string,
+    questions: IcaTestQuestion[],
+    answersList: IcaTestAnswer[],
+  ): void => {
+    const items = buildIcaTestErrorReviewItems(questions, answersList)
+    if (items.length === 0) return
+    setErrorReviewTitle(title)
+    setErrorReviewItems(items)
+    setErrorReviewOpen(true)
+  }
+
+  const errorReviewDialog = (
+    <Dialog open={errorReviewOpen} onOpenChange={setErrorReviewOpen}>
+      <DialogContent className='sm:max-w-lg'>
+        <DialogHeader>
+          <DialogTitle>{errorReviewTitle || 'Detalle de errores'}</DialogTitle>
+          <DialogDescription>
+            Revisión de preguntas incorrectas: opción elegida vs respuesta correcta.
+          </DialogDescription>
+        </DialogHeader>
+        <div className='max-h-[50vh] space-y-2 overflow-y-auto pr-1 text-sm'>
+          {errorReviewItems.map((item) => (
+            <div
+              key={`error-review-${item.questionNumber}-${item.correctOption}`}
+              className='rounded-md border border-destructive/30 bg-destructive/5 p-3'
+            >
+              <p className='font-semibold'>Pregunta #{item.questionNumber}</p>
+              <p className='text-muted-foreground'>Enunciado: {item.promptNative}</p>
+              <p className='text-muted-foreground'>Elegiste: {item.selectedOption}</p>
+              <p className='text-emerald-700 dark:text-emerald-300'>
+                Correcta: {item.correctOption}
+              </p>
+            </div>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
 
   if (!monthDate) {
     return (
@@ -679,7 +756,32 @@ export function IcaTestMonthView({
             score={storedTest.score}
             totalQuestions={storedTest.totalQuestions}
             message={message}
+            leaderboardPoints={
+              storedTest.status === 'completed' ? storedTest.score / 10 : null
+            }
             note={getOfficialBlockedMessage(storedTest)}
+            errorReviewAction={
+              storedTest.status === 'completed' &&
+              storedTest.score < storedTest.totalQuestions &&
+              buildIcaTestErrorReviewItems(
+                storedTest.questions,
+                storedTest.answers,
+              ).length > 0 ? (
+                <Button
+                  type='button'
+                  variant='destructive'
+                  onClick={() =>
+                    openErrorReview(
+                      `Errores · ${getIcaTestMonthLabel(monthDate)}`,
+                      storedTest.questions,
+                      storedTest.answers,
+                    )
+                  }
+                >
+                  Ver errores
+                </Button>
+              ) : null
+            }
             actions={
               <div className='flex flex-wrap justify-center gap-2'>
                 <Button type='button' variant='outline' asChild>
@@ -694,6 +796,7 @@ export function IcaTestMonthView({
             }
           />
         </div>
+        {errorReviewDialog}
       </section>
     )
   }
@@ -704,14 +807,17 @@ export function IcaTestMonthView({
         <CardHeader>
           <CardTitle>No hay palabras suficientes</CardTitle>
           <CardDescription>
-            Necesitas al menos {ICA_TEST_REQUIRED_WORDS} palabras ICA entre este
-            mes y el anterior.
+            Necesitas al menos {ICA_TEST_REQUIRED_WORDS} palabras ICA.
+            Priorizamos frases de hasta {ICA_TEST_MAX_WORDS_PER_ITEM} palabras
+            y, si no alcanza, ampliamos el filtro automáticamente.
           </CardDescription>
         </CardHeader>
         <CardContent className='space-y-1 text-sm text-muted-foreground'>
           <p>Disponibles: {wordPool.availableWords}</p>
           <p>Mes actual: {wordPool.fromCurrentMonth}</p>
           <p>Mes anterior: {wordPool.fromPreviousMonth}</p>
+          <p>Meses anteriores: {wordPool.fromOlderMonths}</p>
+          <p>Frases de más de 4 palabras: {wordPool.overWordLimit}</p>
         </CardContent>
       </Card>
     )
@@ -737,6 +843,10 @@ export function IcaTestMonthView({
                 <li>No podrás navegar fuera del test sin finalizarlo.</li>
                 <li>
                   Cada respuesta se guarda en tiempo real en la base de datos.
+                </li>
+                <li>
+                  El ICA Test suma puntos para el leaderboard mensual y cada
+                  respuesta correcta vale 0,1 puntos.
                 </li>
                 <li>
                   <strong>Posees 6 segundos</strong> para responder cada
@@ -808,9 +918,29 @@ export function IcaTestMonthView({
             score={attempt.score}
             totalQuestions={attempt.totalQuestions}
             message={result.message}
+            leaderboardPoints={attempt.score / 10}
             note={`Se usaron ${getIcaTestWordsUsed(activeQuestions).length} palabras entre preguntas y opciones.`}
             isSaving={isFinalizing}
             errorMessage={saveError}
+            errorReviewAction={
+              attempt.score < attempt.totalQuestions &&
+              buildIcaTestErrorReviewItems(activeQuestions, attempt.answers).length >
+                0 ? (
+                <Button
+                  type='button'
+                  variant='destructive'
+                  onClick={() =>
+                    openErrorReview(
+                      `Errores · ${getIcaTestMonthLabel(monthDate)}`,
+                      activeQuestions,
+                      attempt.answers,
+                    )
+                  }
+                >
+                  Ver errores
+                </Button>
+              ) : null
+            }
             actions={
               <div className='flex flex-wrap justify-center gap-2'>
                 <Button type='button' asChild>
@@ -825,6 +955,7 @@ export function IcaTestMonthView({
             }
           />
         </div>
+        {errorReviewDialog}
       </section>
     )
   }
@@ -842,6 +973,24 @@ export function IcaTestMonthView({
             totalQuestions={totalQuestions}
             message={result.message}
             note='Este resultado no cambia el original.'
+            errorReviewAction={
+              score < totalQuestions &&
+              buildIcaTestErrorReviewItems(activeQuestions, answers).length > 0 ? (
+                <Button
+                  type='button'
+                  variant='destructive'
+                  onClick={() =>
+                    openErrorReview(
+                      `Errores · ${getIcaTestMonthLabel(monthDate)} · Rehacer`,
+                      activeQuestions,
+                      answers,
+                    )
+                  }
+                >
+                  Ver errores
+                </Button>
+              ) : null
+            }
             actions={
               <div className='flex flex-wrap justify-center gap-2'>
                 <Button type='button' asChild>
@@ -851,6 +1000,7 @@ export function IcaTestMonthView({
             }
           />
         </div>
+        {errorReviewDialog}
       </section>
     )
   }
