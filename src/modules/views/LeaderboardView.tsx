@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CalendarClockIcon, InfoIcon, TrophyIcon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -7,6 +8,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/auth/AuthContext'
 import type { LeaderboardEntry } from '../types'
@@ -15,6 +23,7 @@ import {
   fetchMonthlySnapshotLeaderboard,
   fetchMonthlyStreakLeaderboard,
 } from '../services/leaderboard'
+import { getIcaTestWindowStartDay } from '../services/icaTests'
 
 const HISTORY_START_MONTH = '2026-05-01'
 const FOCUS_TOP_LIMIT = 30
@@ -93,6 +102,10 @@ function toComparablePercent(value: number | undefined): number {
   return Math.round(value || 0)
 }
 
+function toComparablePoints(value: number | string | undefined | null): number {
+  return Math.round(toSafeNumber(value, 0) * 10)
+}
+
 function buildVisibleRowsWithSharedRank(
   rows: LeaderboardEntry[],
 ): VisibleLeaderboardRow[] {
@@ -100,14 +113,17 @@ function buildVisibleRowsWithSharedRank(
   let sharedRank = 0
   let prevStreak: number | null = null
   let prevPercent: number | null = null
+  let prevPoints: number | null = null
 
   rows.forEach((row, index) => {
     const currentStreak = row.ica_streak_days || 0
     const currentPercent = toComparablePercent(row.avg_percent)
+    const currentPoints = toComparablePoints(row.total_points)
     const sameAsPrevious =
       index > 0 &&
       currentStreak === prevStreak &&
-      currentPercent === prevPercent
+      currentPercent === prevPercent &&
+      currentPoints === prevPoints
 
     if (!sameAsPrevious) {
       sharedRank = index + 1
@@ -120,6 +136,7 @@ function buildVisibleRowsWithSharedRank(
 
     prevStreak = currentStreak
     prevPercent = currentPercent
+    prevPoints = currentPoints
   })
 
   return result
@@ -152,6 +169,15 @@ function trailingRankOpacityClass(position: number): string {
   return ''
 }
 
+function toSafeNumber(value: number | string | null | undefined, fallback = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return fallback
+}
+
 export function LeaderboardView() {
   const { user } = useAuth()
   const currentMonthStart = useMemo(() => toLocalMonthStart(new Date()), [])
@@ -166,6 +192,7 @@ export function LeaderboardView() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [nowMs, setNowMs] = useState(() => Date.now())
+  const [scoreInfoOpen, setScoreInfoOpen] = useState(false)
 
   const isCurrentMonth = selectedMonth === currentMonthStart
   const closeAt = useMemo(
@@ -174,6 +201,8 @@ export function LeaderboardView() {
   )
   const remainingMs = closeAt.getTime() - nowMs
   const leaderboardClosed = remainingMs <= 0
+  const icaTestWindowStartDay = getIcaTestWindowStartDay()
+  const currentDay = new Date(nowMs).getDate()
 
   useEffect(() => {
     const intervalId = window.setInterval(() => setNowMs(Date.now()), 30000)
@@ -242,6 +271,14 @@ export function LeaderboardView() {
       ),
     [missingPlaceholderCount, topWindowRows.length],
   )
+  const hasSnapshotIcaPoints = useMemo(
+    () => rows.some((row) => row.ica_test_points !== null && row.ica_test_points !== undefined),
+    [rows],
+  )
+  const showIcaTestColumn =
+    (isCurrentMonth && currentDay >= icaTestWindowStartDay) ||
+    (!isCurrentMonth && hasSnapshotIcaPoints)
+  const tableColumnCount = showIcaTestColumn ? 6 : 5
 
   return (
     <section className='mx-auto w-full max-w-5xl flex-1 overflow-y-auto px-5 py-8'>
@@ -317,9 +354,28 @@ export function LeaderboardView() {
                   <tr className='border-b text-muted-foreground'>
                     <th className='w-[15%] pb-2 font-medium'>Rank</th>
                     <th className='w-auto pb-2 font-medium'>Usuario</th>
+                    {showIcaTestColumn && (
+                      <th className='w-[14%] pb-2 font-medium'>ICA Test</th>
+                    )}
                     <th className='w-[18%] pb-2 font-medium'>Racha ICA</th>
                     <th className='w-[18%] pb-2 font-medium'>% mensual</th>
-                    <th className='w-[18%] pb-2 font-medium'>Puntaje</th>
+                    <th className='w-[18%] pb-2 font-medium'>
+                      <span className='inline-flex items-center gap-1'>
+                        Puntaje total
+                        {showIcaTestColumn && (
+                          <Button
+                            type='button'
+                            variant='ghost'
+                            size='icon-sm'
+                            className='h-5 w-5 text-muted-foreground'
+                            aria-label='Cómo se calcula el puntaje total'
+                            onClick={() => setScoreInfoOpen(true)}
+                          >
+                            <InfoIcon className='size-3.5' />
+                          </Button>
+                        )}
+                      </span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className='block lg:max-h-[50dvh] lg:overflow-y-auto'>
@@ -341,6 +397,13 @@ export function LeaderboardView() {
                           </p>
                         )}
                       </td>
+                      {showIcaTestColumn && (
+                        <td className='w-[14%] py-2 font-medium'>
+                          {row.ica_test_points === null || row.ica_test_points === undefined
+                            ? '-'
+                            : toSafeNumber(row.ica_test_points).toFixed(1)}
+                        </td>
+                      )}
                       <td
                         className={`w-[18%] py-2 ${row.ica_streak_days && row.ica_streak_days > 0 ? '' : 'grayscale'}`}
                       >
@@ -352,9 +415,9 @@ export function LeaderboardView() {
                         {Math.round(row.avg_percent || 0)}%
                       </td>
                       <td className='w-[18%] py-2 font-medium'>
-                        {row.avg_percent
-                          ? (Math.round(row.avg_percent) * 0.1).toFixed(1)
-                          : '0'}
+                        {toSafeNumber(row.total_points) > 0
+                          ? toSafeNumber(row.total_points).toFixed(1)
+                          : (Math.round(toSafeNumber(row.avg_percent)) * 0.1).toFixed(1)}
                       </td>
                     </tr>
                   ))}
@@ -368,6 +431,9 @@ export function LeaderboardView() {
                       <td className='w-auto py-2 pr-2 text-muted-foreground'>
                         -
                       </td>
+                      {showIcaTestColumn && (
+                        <td className='w-[14%] py-2 text-muted-foreground'>-</td>
+                      )}
                       <td className='w-[18%] py-2 text-muted-foreground'>-</td>
                       <td className='w-[18%] py-2 text-muted-foreground'>-</td>
                       <td className='w-[18%] py-2 text-muted-foreground'>-</td>
@@ -376,7 +442,7 @@ export function LeaderboardView() {
 
                   <tr className='table w-full table-fixed align-middle opacity-40'>
                     <td
-                      colSpan={5}
+                      colSpan={tableColumnCount}
                       className='py-2 text-center text-lg tracking-[0.6em] text-muted-foreground'
                     >
                       ...
@@ -401,6 +467,13 @@ export function LeaderboardView() {
                           </p>
                         )}
                       </td>
+                      {showIcaTestColumn && (
+                        <td className='w-[14%] py-2 font-medium'>
+                          {row.ica_test_points === null || row.ica_test_points === undefined
+                            ? '-'
+                            : toSafeNumber(row.ica_test_points).toFixed(1)}
+                        </td>
+                      )}
                       <td
                         className={`w-[18%] py-2 ${row.ica_streak_days && row.ica_streak_days > 0 ? '' : 'grayscale'}`}
                       >
@@ -412,9 +485,9 @@ export function LeaderboardView() {
                         {Math.round(row.avg_percent || 0)}%
                       </td>
                       <td className='w-[18%] py-2 font-medium'>
-                        {row.avg_percent
-                          ? (Math.round(row.avg_percent) * 0.1).toFixed(1)
-                          : '0'}
+                        {toSafeNumber(row.total_points) > 0
+                          ? toSafeNumber(row.total_points).toFixed(1)
+                          : (Math.round(toSafeNumber(row.avg_percent)) * 0.1).toFixed(1)}
                       </td>
                     </tr>
                   ))}
@@ -424,6 +497,21 @@ export function LeaderboardView() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={scoreInfoOpen} onOpenChange={setScoreInfoOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cómo se calcula el puntaje total</DialogTitle>
+            <DialogDescription>
+              Puntaje total = (% mensual / 10) + puntos de ICA Test.
+              <br />
+              Cada respuesta correcta del ICA Test vale 0,1 puntos.
+              <br />
+              Ejemplo: 84% mensual y 11/15 en ICA Test = 8,4 + 1,1 = 9,5.
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

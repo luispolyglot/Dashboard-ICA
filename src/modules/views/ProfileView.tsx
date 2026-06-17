@@ -43,7 +43,10 @@ import {
   fetchMyCoachingDashboard,
 } from '../services/coaching'
 import { DASHBOARD_ROUTES } from '../routes/paths'
-import { ICA_TEST_REQUIRED_WORDS } from '../services/icaTests'
+import {
+  ICA_TEST_MAX_WORDS_PER_ITEM,
+  ICA_TEST_REQUIRED_WORDS,
+} from '../services/icaTests'
 import type { AppConfig, Lexicard } from '../types'
 
 type ProfileViewProps = {
@@ -508,8 +511,9 @@ export function ProfileView({
 
             {featureAvailable && !hasCurrentMonthTest && !wordPool.eligible && (
               <p className='text-sm text-amber-600'>
-                Necesitas {ICA_TEST_REQUIRED_WORDS} palabras ICA (este mes +
-                anterior). Tienes {wordPool.availableWords}.
+                Necesitas {ICA_TEST_REQUIRED_WORDS} palabras ICA. Priorizamos
+                frases de hasta {ICA_TEST_MAX_WORDS_PER_ITEM} palabras y, si no
+                alcanza, ampliamos el filtro. Tienes {wordPool.availableWords}.
               </p>
             )}
 

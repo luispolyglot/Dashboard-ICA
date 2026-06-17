@@ -12,6 +12,7 @@ export const ICA_TEST_OPTIONS_PER_QUESTION = 4
 export const ICA_TEST_SECONDS_PER_QUESTION = 6
 export const ICA_TEST_REQUIRED_WORDS =
   ICA_TEST_TOTAL_QUESTIONS * ICA_TEST_OPTIONS_PER_QUESTION
+export const ICA_TEST_MAX_WORDS_PER_ITEM = 4
 export const ICA_TEST_MIN_MONTH_DATE = '2026-05-01'
 export const ICA_TEST_WINDOW_START_DAY = 25
 export const ICA_TEST_WINDOW_END_DAY = 28
@@ -84,6 +85,8 @@ export type IcaTestWordPoolResult = {
   availableWords: number
   fromCurrentMonth: number
   fromPreviousMonth: number
+  fromOlderMonths: number
+  overWordLimit: number
   eligible: boolean
 }
 
@@ -289,23 +292,58 @@ export function buildIcaTestWordPool(
   const previousMonth = shiftMonthDate(testMonth, -1)
   const uniqueByTarget = new Set<string>()
 
+  const countWords = (value: string): number => {
+    const trimmed = value.trim()
+    if (!trimmed) return 0
+    return trimmed.split(/\s+/).length
+  }
+
   const isValidWord = (card: Lexicard): boolean => {
     const target = card.target.trim()
     const native = card.native.trim()
     return Boolean(target && native)
   }
 
+  const isWithinWordLimit = (card: Lexicard): boolean =>
+    countWords(card.target) <= ICA_TEST_MAX_WORDS_PER_ITEM &&
+    countWords(card.native) <= ICA_TEST_MAX_WORDS_PER_ITEM
+
   const toTargetKey = (card: Lexicard): string => card.target.trim().toLowerCase()
 
-  const currentMonthCandidates = cards.filter((card) => {
-    if (!isValidWord(card)) return false
-    return getLexicardMonthDate(card.createdAt) === testMonth
-  })
+  const currentMonthShort: Lexicard[] = []
+  const previousMonthShort: Lexicard[] = []
+  const olderMonthsShort: Lexicard[] = []
+  const currentMonthLong: Lexicard[] = []
+  const previousMonthLong: Lexicard[] = []
+  const olderMonthsLong: Lexicard[] = []
 
-  const previousMonthCandidates = cards.filter((card) => {
-    if (!previousMonth || !isValidWord(card)) return false
-    return getLexicardMonthDate(card.createdAt) === previousMonth
-  })
+  for (const card of cards) {
+    if (!isValidWord(card)) continue
+
+    const monthDate = getLexicardMonthDate(card.createdAt)
+    const isCurrentMonth = monthDate === testMonth
+    const isPreviousMonth = previousMonth ? monthDate === previousMonth : false
+    const isShort = isWithinWordLimit(card)
+
+    if (isShort) {
+      if (isCurrentMonth) {
+        currentMonthShort.push(card)
+      } else if (isPreviousMonth) {
+        previousMonthShort.push(card)
+      } else {
+        olderMonthsShort.push(card)
+      }
+      continue
+    }
+
+    if (isCurrentMonth) {
+      currentMonthLong.push(card)
+    } else if (isPreviousMonth) {
+      previousMonthLong.push(card)
+    } else {
+      olderMonthsLong.push(card)
+    }
+  }
 
   const selected: Lexicard[] = []
   const addCard = (card: Lexicard): void => {
@@ -316,16 +354,31 @@ export function buildIcaTestWordPool(
     selected.push(card)
   }
 
-  for (const card of currentMonthCandidates) addCard(card)
-  for (const card of previousMonthCandidates) addCard(card)
+  const candidateBuckets: Lexicard[][] = [
+    currentMonthShort,
+    previousMonthShort,
+    olderMonthsShort,
+    currentMonthLong,
+    previousMonthLong,
+    olderMonthsLong,
+  ]
 
-  const currentMonthKeys = new Set(
-    currentMonthCandidates.map((card) => toTargetKey(card)),
-  )
-  const fromCurrentMonth = selected.filter((card) =>
-    currentMonthKeys.has(toTargetKey(card)),
+  for (const bucket of candidateBuckets) {
+    for (const card of bucket) {
+      addCard(card)
+    }
+  }
+
+  const fromCurrentMonth = selected.filter(
+    (card) => getLexicardMonthDate(card.createdAt) === testMonth,
   ).length
-  const fromPreviousMonth = selected.length - fromCurrentMonth
+  const fromPreviousMonth = selected.filter(
+    (card) => (previousMonth ? getLexicardMonthDate(card.createdAt) === previousMonth : false),
+  ).length
+  const fromOlderMonths = selected.length - fromCurrentMonth - fromPreviousMonth
+  const overWordLimit = selected.filter(
+    (card) => !isWithinWordLimit(card),
+  ).length
 
   return {
     pool: selected,
@@ -333,6 +386,8 @@ export function buildIcaTestWordPool(
     availableWords: selected.length,
     fromCurrentMonth,
     fromPreviousMonth,
+    fromOlderMonths,
+    overWordLimit,
     eligible: selected.length >= ICA_TEST_REQUIRED_WORDS,
   }
 }

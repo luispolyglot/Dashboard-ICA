@@ -40,6 +40,8 @@ const EMPTY_WORD_POOL: IcaTestWordPoolResult = {
   availableWords: 0,
   fromCurrentMonth: 0,
   fromPreviousMonth: 0,
+  fromOlderMonths: 0,
+  overWordLimit: 0,
   eligible: false,
 }
 

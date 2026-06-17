@@ -128,6 +128,15 @@ export function IcaTestsAvailableModal({
             <br />
             Puedes hacerlo ahora o más tarde desde la sección Perfil.
           </DialogDescription>
+          <div className='rounded-lg border border-amber-300/70 bg-amber-50/60 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100'>
+            <strong>⚠️ IMPORTANTE</strong>
+            <ul className='mt-2 list-inside list-disc'>
+              <li>
+                El ICA Test suma puntos para el leaderboard mensual y cada
+                respuesta correcta vale 0,1 puntos.
+              </li>
+            </ul>
+          </div>
         </DialogHeader>
         <DialogFooter>
           <Button

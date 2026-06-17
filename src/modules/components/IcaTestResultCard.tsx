@@ -17,6 +17,8 @@ type IcaTestResultCardProps = {
   className?: string
   isSaving?: boolean
   errorMessage?: string | null
+  leaderboardPoints?: number | null
+  errorReviewAction?: ReactNode
   actions: ReactNode
 }
 
@@ -30,6 +32,8 @@ export function IcaTestResultCard({
   className,
   isSaving = false,
   errorMessage = null,
+  leaderboardPoints = null,
+  errorReviewAction = null,
   actions,
 }: IcaTestResultCardProps) {
   return (
@@ -46,11 +50,17 @@ export function IcaTestResultCard({
           <span className='text-2xl text-muted-foreground'>/{totalQuestions}</span>
         </p>
         <p className='text-sm text-muted-foreground'>{message}</p>
+        {leaderboardPoints !== null && (
+          <div className='rounded-md border border-emerald-300/70 bg-emerald-50/80 px-3 py-2 text-sm font-medium text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100'>
+            +{leaderboardPoints.toFixed(1)} puntos al leaderboard mensual
+          </div>
+        )}
         <p className='text-xs text-muted-foreground'>{note}</p>
         {isSaving && (
           <p className='text-sm text-muted-foreground'>Guardando resultado...</p>
         )}
         {errorMessage && <p className='text-sm text-destructive'>{errorMessage}</p>}
+        {errorReviewAction}
         {actions}
       </CardContent>
     </Card>
