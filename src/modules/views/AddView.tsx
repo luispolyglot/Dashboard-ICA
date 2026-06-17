@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   CREATION_WORDS_GOAL,
   IMPORTANCE_LEVELS,
@@ -19,6 +19,13 @@ import { RomanizationHint } from '../components/RomanizationHint'
 import { SpeakButton } from '../components/SpeakButton'
 import { TranslationSuggestion } from '../components/TranslationSuggestion'
 import { DASHBOARD_ROUTES } from '../routes/paths'
+import {
+  sanitizeShareTargetInput,
+  SHARE_TARGET_INPUT_QUERY_PARAM,
+  SHARE_TARGET_MAX_CHARS,
+  SHARE_TARGET_SOURCE,
+  SHARE_TARGET_SOURCE_QUERY_PARAM,
+} from '../shareTarget'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -68,6 +75,13 @@ export function AddView({
   onWordAdded,
 }: AddViewProps) {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialSharedTargetRef = useRef(
+    sanitizeShareTargetInput(searchParams.get(SHARE_TARGET_INPUT_QUERY_PARAM) || ''),
+  )
+  const initialShareSourceRef = useRef(
+    searchParams.get(SHARE_TARGET_SOURCE_QUERY_PARAM) === SHARE_TARGET_SOURCE,
+  )
   const [target, setTarget] = useState('')
   const [native, setNative] = useState('')
   const [importance, setImportance] = useState<ImportanceKey | null>(null)
@@ -81,6 +95,9 @@ export function AddView({
     null,
   )
   const [checkingSpelling, setCheckingSpelling] = useState(false)
+  const [sharedPrefillStatus, setSharedPrefillStatus] = useState<
+    'none' | 'prefilled' | 'missing'
+  >('none')
   const targetDebounceRef = useRef<number | null>(null)
   const nativeDebounceRef = useRef<number | null>(null)
   const spellingDebounceRef = useRef<number | null>(null)
@@ -92,6 +109,7 @@ export function AddView({
   const todayProgress = getTodayProgress(dailyProgress)
   const canCreatePhrase = todayProgress.wordsAdded >= CREATION_WORDS_GOAL
   const trimmedTarget = target.trim()
+  const targetCharsCount = Array.from(target).length
   const duplicateWord = cards.find(
     (card) =>
       normalizeComparableText(card.target) ===
@@ -102,8 +120,12 @@ export function AddView({
   const isDuplicate = Boolean(trimmedTarget && duplicateWord)
   const showDuplicateWarning = isDuplicate && !saving && !saved
 
+  const clampTarget = (value: string): string =>
+    Array.from(value).slice(0, SHARE_TARGET_MAX_CHARS).join('')
+
   const handleTargetChange = (value: string): void => {
-    setTarget(value)
+    const nextValue = clampTarget(value)
+    setTarget(nextValue)
     setSuggestionNative(null)
     setSpellingSuggestion(null)
     targetRequestRef.current += 1
@@ -116,7 +138,7 @@ export function AddView({
       window.clearTimeout(spellingDebounceRef.current)
     }
 
-    if (value.trim().length < 2) {
+    if (nextValue.trim().length < 2) {
       setLoadingNative(false)
       setCheckingSpelling(false)
       return
@@ -126,7 +148,7 @@ export function AddView({
     targetDebounceRef.current = window.setTimeout(async () => {
       setLoadingNative(true)
       const result = await fetchTranslation(
-        value.trim(),
+        nextValue.trim(),
         config.targetLang,
         config.nativeLang,
       )
@@ -135,7 +157,7 @@ export function AddView({
       setLoadingNative(false)
     }, 900)
 
-    const spellingCandidate = value.trim()
+    const spellingCandidate = nextValue.trim()
     const looksLikeSingleWord = !spellingCandidate.includes(' ')
     if (!looksLikeSingleWord || spellingCandidate.length < 4) {
       setCheckingSpelling(false)
@@ -189,6 +211,25 @@ export function AddView({
       setLoadingTarget(false)
     }, 900)
   }
+
+  useEffect(() => {
+    const sharedTarget = initialSharedTargetRef.current
+    const fromShareTarget = initialShareSourceRef.current
+
+    if (!sharedTarget && !fromShareTarget) return
+
+    if (sharedTarget) {
+      handleTargetChange(sharedTarget)
+      setSharedPrefillStatus('prefilled')
+    } else if (fromShareTarget) {
+      setSharedPrefillStatus('missing')
+    }
+
+    const nextSearchParams = new URLSearchParams(searchParams)
+    nextSearchParams.delete(SHARE_TARGET_INPUT_QUERY_PARAM)
+    nextSearchParams.delete(SHARE_TARGET_SOURCE_QUERY_PARAM)
+    setSearchParams(nextSearchParams, { replace: true })
+  }, [])
 
   const canSave =
     target.trim() && native.trim() && importance && !saving && !isDuplicate
@@ -350,9 +391,23 @@ export function AddView({
               value={target}
               onChange={(e) => handleTargetChange(e.target.value)}
               disabled={saving}
+              maxLength={SHARE_TARGET_MAX_CHARS}
               placeholder={`Escribe en ${config.targetLang}...`}
               className='h-11'
             />
+            <p className='mt-1 text-[11px] text-muted-foreground'>
+              Máximo {SHARE_TARGET_MAX_CHARS} caracteres ({targetCharsCount}/{SHARE_TARGET_MAX_CHARS})
+            </p>
+            {sharedPrefillStatus === 'prefilled' && (
+              <p className='mt-1 text-xs text-emerald-600 dark:text-emerald-300'>
+                Texto compartido detectado y traducción automática en curso.
+              </p>
+            )}
+            {sharedPrefillStatus === 'missing' && (
+              <p className='mt-1 text-xs text-amber-600 dark:text-amber-300'>
+                No llegó texto válido desde compartir. Escríbelo manualmente.
+              </p>
+            )}
             <RomanizationHint text={target} language={config.targetLang} />
             {trimmedTarget && (
               <SpeakButton

@@ -240,6 +240,124 @@ function formatSeconds(seconds: number): string {
   return `${minutes}:${String(rest).padStart(2, '0')}`
 }
 
+function writeAscii(view: DataView, offset: number, value: string): void {
+  for (let index = 0; index < value.length; index += 1) {
+    view.setUint8(offset + index, value.charCodeAt(index))
+  }
+}
+
+function encodeAudioBufferToWav(buffer: AudioBuffer): Blob {
+  const channelCount = buffer.numberOfChannels
+  const sampleRate = buffer.sampleRate
+  const frameCount = buffer.length
+  const bytesPerSample = 2
+  const blockAlign = channelCount * bytesPerSample
+  const byteRate = sampleRate * blockAlign
+  const dataSize = frameCount * blockAlign
+  const wavBuffer = new ArrayBuffer(44 + dataSize)
+  const view = new DataView(wavBuffer)
+
+  writeAscii(view, 0, 'RIFF')
+  view.setUint32(4, 36 + dataSize, true)
+  writeAscii(view, 8, 'WAVE')
+  writeAscii(view, 12, 'fmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true)
+  view.setUint16(22, channelCount, true)
+  view.setUint32(24, sampleRate, true)
+  view.setUint32(28, byteRate, true)
+  view.setUint16(32, blockAlign, true)
+  view.setUint16(34, 16, true)
+  writeAscii(view, 36, 'data')
+  view.setUint32(40, dataSize, true)
+
+  let offset = 44
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    for (let channel = 0; channel < channelCount; channel += 1) {
+      const sample = buffer.getChannelData(channel)[frame] || 0
+      const clamped = Math.max(-1, Math.min(1, sample))
+      const int16 = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff
+      view.setInt16(offset, int16, true)
+      offset += bytesPerSample
+    }
+  }
+
+  return new Blob([wavBuffer], { type: 'audio/wav' })
+}
+
+async function mergeAudioBlobsToWav(
+  blobs: Blob[],
+): Promise<{ blob: Blob; durationSec: number } | null> {
+  if (blobs.length === 0) return null
+
+  const AudioContextCtor =
+    globalThis.AudioContext ||
+    (globalThis as typeof globalThis & {
+      webkitAudioContext?: typeof AudioContext
+    }).webkitAudioContext
+
+  if (!AudioContextCtor) {
+    const mergedType = blobs.find((blob) => blob.type)?.type || 'audio/mpeg'
+    return {
+      blob: new Blob(blobs, { type: mergedType }),
+      durationSec: 0,
+    }
+  }
+
+  const context = new AudioContextCtor()
+
+  try {
+    const decodedBuffers = await Promise.all(
+      blobs.map(async (blob) => {
+        const arrayBuffer = await blob.arrayBuffer()
+        return context.decodeAudioData(arrayBuffer)
+      }),
+    )
+
+    if (decodedBuffers.length === 0) return null
+
+    const maxChannels = decodedBuffers.reduce(
+      (max, buffer) => Math.max(max, buffer.numberOfChannels),
+      1,
+    )
+    const targetSampleRate = decodedBuffers.reduce(
+      (max, buffer) => Math.max(max, buffer.sampleRate),
+      context.sampleRate,
+    )
+    const totalDurationSec = decodedBuffers.reduce(
+      (sum, buffer) => sum + buffer.duration,
+      0,
+    )
+    const totalLengthFrames = Math.max(
+      1,
+      Math.ceil(totalDurationSec * targetSampleRate),
+    )
+
+    const offlineContext = new OfflineAudioContext(
+      maxChannels,
+      totalLengthFrames,
+      targetSampleRate,
+    )
+    let cursorSec = 0
+
+    for (const decodedBuffer of decodedBuffers) {
+      const source = offlineContext.createBufferSource()
+      source.buffer = decodedBuffer
+      source.connect(offlineContext.destination)
+      source.start(cursorSec)
+      cursorSec += decodedBuffer.duration
+    }
+
+    const rendered = await offlineContext.startRendering()
+    return {
+      blob: encodeAudioBufferToWav(rendered),
+      durationSec: rendered.duration,
+    }
+  } finally {
+    await context.close()
+  }
+}
+
 function SeekBack10Icon() {
   return (
     <div className='relative'>
@@ -273,134 +391,196 @@ function MasterNoteCoachAudioPlayer({
   audioChunks: Array<{ audioUrl: string | null; durationMs: number }>
   totalDurationMs: number
 }) {
+  const [isPreparing, setIsPreparing] = useState(false)
   const [playingId, setPlayingId] = useState<string | null>(null)
   const [isPaused, setIsPaused] = useState(false)
   const [positionSec, setPositionSec] = useState(0)
   const [durationSec, setDurationSec] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const [trackIndex, setTrackIndex] = useState(0)
-  const [trackBaseSec, setTrackBaseSec] = useState(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
-
-  const tracks = useMemo(() => {
-    if (audioUrl) {
-      return [
-        {
-          url: audioUrl,
-          durationSec: totalDurationMs > 0 ? totalDurationMs / 1000 : 0,
-        },
-      ]
-    }
-
-    return audioChunks
-      .filter((chunk) => Boolean(chunk.audioUrl))
-      .map((chunk) => ({
-        url: chunk.audioUrl as string,
-        durationSec: Math.max(0, chunk.durationMs) / 1000,
-      }))
-  }, [audioChunks, audioUrl, totalDurationMs])
+  const localTrackRef = useRef<{
+    signature: string
+    url: string
+    durationSec: number
+    revokeOnReset: boolean
+  } | null>(null)
 
   const expectedTotalSec = useMemo(() => {
     if (totalDurationMs > 0) return totalDurationMs / 1000
-    return tracks.reduce(
-      (sum, track) => sum + Math.max(0, track.durationSec),
+    return audioChunks.reduce(
+      (sum, chunk) => sum + Math.max(0, chunk.durationMs) / 1000,
       0,
     )
-  }, [totalDurationMs, tracks])
+  }, [totalDurationMs, audioChunks])
+
+  const trackSignature = useMemo(() => {
+    const chunksSignature = audioChunks
+      .map((chunk) => `${chunk.audioUrl || '-'}:${chunk.durationMs}`)
+      .join('|')
+    return `${noteId}:${audioUrl || 'chunks'}:${totalDurationMs}:${chunksSignature}`
+  }, [audioChunks, audioUrl, noteId, totalDurationMs])
+
+  const releaseLocalTrack = useCallback(() => {
+    const localTrack = localTrackRef.current
+    if (!localTrack) return
+    if (localTrack.revokeOnReset) {
+      URL.revokeObjectURL(localTrack.url)
+    }
+    localTrackRef.current = null
+  }, [])
+
+  const resetAudioElement = useCallback((audio: HTMLAudioElement | null) => {
+    if (!audio) return
+    audio.onended = null
+    audio.onerror = null
+    audio.ontimeupdate = null
+    audio.onloadedmetadata = null
+    audio.pause()
+    audio.currentTime = 0
+    audio.src = ''
+  }, [])
 
   useEffect(() => {
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause()
-      }
+      resetAudioElement(audioRef.current)
+      releaseLocalTrack()
     }
-  }, [])
+  }, [releaseLocalTrack, resetAudioElement])
 
-  const stop = () => {
-    if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.currentTime = 0
-    }
-    audioRef.current = null
+  useEffect(() => {
+    resetAudioElement(audioRef.current)
     setPlayingId(null)
     setIsPaused(false)
     setPositionSec(0)
     setDurationSec(expectedTotalSec)
-    setTrackBaseSec(0)
-    setTrackIndex(0)
+    releaseLocalTrack()
+  }, [expectedTotalSec, releaseLocalTrack, resetAudioElement, trackSignature])
+
+  const stop = () => {
+    resetAudioElement(audioRef.current)
+    setPlayingId(null)
+    setIsPaused(false)
+    setPositionSec(0)
+    setDurationSec(expectedTotalSec)
+    setIsPreparing(false)
   }
 
-  const playTrack = useCallback(
-    async (nextTrackIndex: number, baseSec: number) => {
-      const track = tracks[nextTrackIndex]
-      if (!track) return
-
-      const nextAudio = new Audio(track.url)
-      nextAudio.ontimeupdate = () => {
-        setPositionSec(baseSec + (nextAudio.currentTime || 0))
+  const resolveTrack = useCallback(async () => {
+    if (audioUrl) {
+      return {
+        url: audioUrl,
+        durationSec: expectedTotalSec,
+        revokeOnReset: false,
       }
-      nextAudio.onloadedmetadata = () => {
-        if (expectedTotalSec > 0) {
-          setDurationSec(expectedTotalSec)
-          return
+    }
+
+    const cached = localTrackRef.current
+    if (cached && cached.signature === trackSignature) {
+      return {
+        url: cached.url,
+        durationSec: cached.durationSec,
+        revokeOnReset: cached.revokeOnReset,
+      }
+    }
+
+    const chunkUrls = audioChunks
+      .map((chunk) => chunk.audioUrl)
+      .filter((url): url is string => Boolean(url))
+    if (chunkUrls.length === 0) return null
+
+    const chunkBlobs = await Promise.all(
+      chunkUrls.map(async (chunkUrl) => {
+        const response = await fetch(chunkUrl)
+        if (!response.ok) {
+          throw new Error('No se pudo descargar un chunk de la nota maestra.')
         }
-        const remaining = tracks
-          .slice(nextTrackIndex + 1)
-          .reduce((sum, item) => sum + Math.max(0, item.durationSec), 0)
-        const thisDuration = Number.isFinite(nextAudio.duration)
-          ? nextAudio.duration
-          : Math.max(0, track.durationSec)
-        setDurationSec(baseSec + thisDuration + remaining)
-      }
-      nextAudio.onended = () => {
-        const finishedDuration =
-          track.durationSec > 0
-            ? track.durationSec
-            : Number.isFinite(nextAudio.duration)
-              ? nextAudio.duration
-              : 0
-        const nextBase = baseSec + finishedDuration
-        if (nextTrackIndex + 1 < tracks.length) {
-          setTrackBaseSec(nextBase)
-          void playTrack(nextTrackIndex + 1, nextBase)
-          return
-        }
-        setPlayingId(null)
-        setIsPaused(false)
-        setPositionSec(expectedTotalSec > 0 ? expectedTotalSec : nextBase)
-      }
-      nextAudio.onerror = () => {
-        setError('No se pudo reproducir el audio de la nota maestra.')
-        setPlayingId(null)
-        setIsPaused(false)
-      }
+        return response.blob()
+      }),
+    )
 
-      if (audioRef.current) {
-        audioRef.current.pause()
-      }
+    const merged = await mergeAudioBlobsToWav(chunkBlobs)
+    if (!merged) return null
 
-      audioRef.current = nextAudio
-      setTrackIndex(nextTrackIndex)
-      setTrackBaseSec(baseSec)
+    releaseLocalTrack()
 
-      try {
-        await nextAudio.play()
-        setPlayingId(noteId)
-        setIsPaused(false)
-        setError(null)
-      } catch {
-        setError('No se pudo reproducir el audio de la nota maestra.')
-        setPlayingId(null)
-      }
-    },
-    [expectedTotalSec, noteId, tracks],
-  )
+    const mergedUrl = URL.createObjectURL(merged.blob)
+    const nextDurationSec =
+      merged.durationSec > 0
+        ? merged.durationSec
+        : expectedTotalSec > 0
+          ? expectedTotalSec
+          : 0
+
+    localTrackRef.current = {
+      signature: trackSignature,
+      url: mergedUrl,
+      durationSec: nextDurationSec,
+      revokeOnReset: true,
+    }
+
+    return {
+      url: mergedUrl,
+      durationSec: nextDurationSec,
+      revokeOnReset: true,
+    }
+  }, [audioChunks, audioUrl, expectedTotalSec, releaseLocalTrack, trackSignature])
 
   const play = async () => {
-    if (tracks.length === 0) return
+    if (!audioUrl && audioChunks.every((chunk) => !chunk.audioUrl)) return
     if (playingId === noteId) return
-    setDurationSec(expectedTotalSec)
-    void playTrack(0, 0)
+
+    setIsPreparing(true)
+    setError(null)
+
+    try {
+      const track = await resolveTrack()
+      if (!track) {
+        setError('No hay audios para reproducir en esta nota maestra.')
+        setIsPreparing(false)
+        return
+      }
+
+      const audio = audioRef.current || new Audio()
+      audio.pause()
+      audio.currentTime = 0
+      audio.src = track.url
+      audioRef.current = audio
+
+      audio.ontimeupdate = () => {
+        setPositionSec(audio.currentTime || 0)
+      }
+      audio.onloadedmetadata = () => {
+        const metaDuration =
+          Number.isFinite(audio.duration) && audio.duration > 0
+            ? audio.duration
+            : track.durationSec
+        setDurationSec(metaDuration > 0 ? metaDuration : expectedTotalSec)
+      }
+      audio.onended = () => {
+        const total =
+          Number.isFinite(audio.duration) && audio.duration > 0
+            ? audio.duration
+            : track.durationSec
+        setPlayingId(null)
+        setIsPaused(false)
+        setPositionSec(total)
+      }
+      audio.onerror = () => {
+        setError('No se pudo reproducir el audio de la nota maestra.')
+        setPlayingId(null)
+        setIsPaused(false)
+      }
+
+      setDurationSec(track.durationSec > 0 ? track.durationSec : expectedTotalSec)
+      await audio.play()
+      setPlayingId(noteId)
+      setIsPaused(false)
+    } catch {
+      setError('No se pudo reproducir el audio de la nota maestra.')
+      setPlayingId(null)
+    } finally {
+      setIsPreparing(false)
+    }
   }
 
   const togglePause = async () => {
@@ -419,16 +599,14 @@ function MasterNoteCoachAudioPlayer({
     const audio = audioRef.current
     if (!audio || playingId !== noteId) return
     const trackMaxSec =
-      tracks[trackIndex]?.durationSec > 0
-        ? tracks[trackIndex].durationSec
-        : Number.isFinite(audio.duration)
-          ? audio.duration
-          : 0
+      Number.isFinite(audio.duration) && audio.duration > 0
+        ? audio.duration
+        : durationSec
     audio.currentTime = Math.max(
       0,
       Math.min((audio.currentTime || 0) + delta, trackMaxSec || 0),
     )
-    setPositionSec(trackBaseSec + audio.currentTime)
+    setPositionSec(audio.currentTime)
   }
 
   return (
@@ -440,9 +618,13 @@ function MasterNoteCoachAudioPlayer({
             size='sm'
             variant='outline'
             onClick={() => void play()}
-            disabled={tracks.length === 0}
+            disabled={
+              isPreparing ||
+              (!audioUrl && audioChunks.every((chunk) => !chunk.audioUrl))
+            }
           >
-            <Volume2Icon className='mr-1 size-4' /> Escuchar
+            <Volume2Icon className='mr-1 size-4' />
+            {isPreparing ? 'Preparando...' : 'Escuchar'}
           </Button>
         ) : (
           <>
@@ -1762,7 +1944,6 @@ export function ManageCoachingUserView({
 
                               <Button
                                 type='button'
-                                variant='outline'
                                 onClick={() => void handleSaveClass(weekKey)}
                                 disabled={
                                   savingClassWeek === weekKey ||
@@ -1886,7 +2067,6 @@ export function ManageCoachingUserView({
                               <div className='md:col-span-2'>
                                 <Button
                                   type='button'
-                                  variant='outline'
                                   onClick={() =>
                                     void handleSaveObjective(weekKey)
                                   }
