@@ -5,6 +5,7 @@ import {
   ArrowRightIcon,
   ArrowLeftIcon,
   CheckCheckIcon,
+  Clock2Icon,
   MoreHorizontalIcon,
   PauseIcon,
   PlayIcon,
@@ -50,6 +51,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
+import { Calendar } from '@/components/ui/calendar'
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@/components/ui/input-group'
 import {
   deleteCoachingClassReportImage,
   deleteCoachingSession,
@@ -71,6 +79,10 @@ import {
 import { CoachingProgramPreview } from './CoachingProgramPreview'
 import { PendingReviewDot } from '../components/PendingReviewDot'
 import { formatDateTime } from '../utils'
+import {
+  toDateAndTimeFromIso,
+  toIsoFromDateAndTime,
+} from './coachingClassResources'
 
 type ManageCoachingUserViewProps = {
   userId: string
@@ -84,6 +96,8 @@ type ClassSessionItem = {
   report: string | null
   reportImagePath: string | null
   reportImageUrl: string | null
+  scheduledAt: string | null
+  classJoinUrl: string | null
 }
 
 type ObjectiveDraft = {
@@ -97,6 +111,9 @@ type ObjectiveDraft = {
 type ClassDraft = {
   loomUrl: string
   report: string
+  scheduledDate: string
+  scheduledTime: string
+  classJoinUrl: string
   imageFile: File | null
   removeImage: boolean
 }
@@ -171,6 +188,8 @@ function normalizeClassSessions(value: unknown): ClassSessionItem[] {
           toString(row.reportImagePath ?? row.report_image_path) || null,
         reportImageUrl:
           toString(row.reportImageUrl ?? row.report_image_url) || null,
+        scheduledAt: toString(row.scheduledAt ?? row.scheduled_at) || null,
+        classJoinUrl: toString(row.classJoinUrl ?? row.class_join_url) || null,
       }
     })
 }
@@ -224,6 +243,26 @@ function formatShortDate(value: string): string {
     month: '2-digit',
     year: 'numeric',
   })
+}
+
+function formatClassScheduleDateTime(value: string): string {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return 'Fecha no disponible'
+  return parsed.toLocaleString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
+function toLocalYmd(value: Date): string {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function estimateWeekClosureDate(activatedAt: string): string | null {
@@ -292,9 +331,11 @@ async function mergeAudioBlobsToWav(
 
   const AudioContextCtor =
     globalThis.AudioContext ||
-    (globalThis as typeof globalThis & {
-      webkitAudioContext?: typeof AudioContext
-    }).webkitAudioContext
+    (
+      globalThis as typeof globalThis & {
+        webkitAudioContext?: typeof AudioContext
+      }
+    ).webkitAudioContext
 
   if (!AudioContextCtor) {
     const mergedType = blobs.find((blob) => blob.type)?.type || 'audio/mpeg'
@@ -523,7 +564,13 @@ function MasterNoteCoachAudioPlayer({
       durationSec: nextDurationSec,
       revokeOnReset: true,
     }
-  }, [audioChunks, audioUrl, expectedTotalSec, releaseLocalTrack, trackSignature])
+  }, [
+    audioChunks,
+    audioUrl,
+    expectedTotalSec,
+    releaseLocalTrack,
+    trackSignature,
+  ])
 
   const play = async () => {
     if (!audioUrl && audioChunks.every((chunk) => !chunk.audioUrl)) return
@@ -571,7 +618,9 @@ function MasterNoteCoachAudioPlayer({
         setIsPaused(false)
       }
 
-      setDurationSec(track.durationSec > 0 ? track.durationSec : expectedTotalSec)
+      setDurationSec(
+        track.durationSec > 0 ? track.durationSec : expectedTotalSec,
+      )
       await audio.play()
       setPlayingId(noteId)
       setIsPaused(false)
@@ -721,6 +770,14 @@ export function ManageCoachingUserView({
   )
   const [closeWeekModalOpen, setCloseWeekModalOpen] = useState(false)
   const [isClosingWeek, setIsClosingWeek] = useState(false)
+  const [schedulePickerWeekKey, setSchedulePickerWeekKey] = useState<
+    string | null
+  >(null)
+  const [schedulePickerDraft, setSchedulePickerDraft] = useState<{
+    weekKey: string
+    scheduledDate: string
+    scheduledTime: string
+  } | null>(null)
 
   const selectedMembership = useMemo(
     () => memberships.find((row) => row.id === selectedSessionId) || null,
@@ -756,9 +813,15 @@ export function ManageCoachingUserView({
       const key = weekKeyFromNumber(week)
       nextObjectives[key] = draftFromObjective(weekObjectives[key])
       const currentClass = (classesByWeek.get(key) || [])[0]
+      const scheduledDraft = toDateAndTimeFromIso(
+        currentClass?.scheduledAt || null,
+      )
       nextClassDrafts[key] = {
         loomUrl: currentClass?.loomUrl || '',
         report: currentClass?.report || '',
+        scheduledDate: scheduledDraft.date,
+        scheduledTime: scheduledDraft.time,
+        classJoinUrl: currentClass?.classJoinUrl || '',
         imageFile: null,
         removeImage: false,
       }
@@ -1000,9 +1063,16 @@ export function ManageCoachingUserView({
 
       const nextLoomUrl = draft.loomUrl.trim() || null
       const nextReport = draft.report.trim() || null
+      const nextScheduledAt = toIsoFromDateAndTime(
+        draft.scheduledDate,
+        draft.scheduledTime,
+      )
+      const nextClassJoinUrl = draft.classJoinUrl.trim() || null
 
       const previousLoomUrl = existingWeekClass?.loomUrl || null
       const previousReport = existingWeekClass?.report || null
+      const previousScheduledAt = existingWeekClass?.scheduledAt || null
+      const previousClassJoinUrl = existingWeekClass?.classJoinUrl || null
 
       let nextImagePath = existingImagePath
       if (draft.imageFile) {
@@ -1017,7 +1087,10 @@ export function ManageCoachingUserView({
       }
 
       const textChanged =
-        nextLoomUrl !== previousLoomUrl || nextReport !== previousReport
+        nextLoomUrl !== previousLoomUrl ||
+        nextReport !== previousReport ||
+        nextScheduledAt !== previousScheduledAt ||
+        nextClassJoinUrl !== previousClassJoinUrl
       const imageChanged =
         Boolean(draft.imageFile) ||
         (draft.removeImage && Boolean(existingImagePath))
@@ -1035,7 +1108,11 @@ export function ManageCoachingUserView({
       }
 
       const nextWeekClass =
-        nextLoomUrl || nextReport || nextImagePath
+        nextLoomUrl ||
+        nextReport ||
+        nextImagePath ||
+        nextScheduledAt ||
+        nextClassJoinUrl
           ? {
               id: existingWeekClass?.id || crypto.randomUUID(),
               key: weekKey,
@@ -1044,6 +1121,8 @@ export function ManageCoachingUserView({
               loomUrl: nextLoomUrl,
               report: nextReport,
               reportImagePath: nextImagePath,
+              scheduledAt: nextScheduledAt,
+              classJoinUrl: nextClassJoinUrl,
               reportImageUrl:
                 nextImagePath && nextImagePath === existingImagePath
                   ? existingWeekClass?.reportImageUrl || null
@@ -1075,11 +1154,15 @@ export function ManageCoachingUserView({
         ),
       )
 
+      const savedScheduledDraft = toDateAndTimeFromIso(nextScheduledAt)
       setClassDrafts((prev) => ({
         ...prev,
         [weekKey]: {
           loomUrl: nextLoomUrl || '',
           report: nextReport || '',
+          scheduledDate: savedScheduledDraft.date,
+          scheduledTime: savedScheduledDraft.time,
+          classJoinUrl: nextClassJoinUrl || '',
           imageFile: null,
           removeImage: false,
         },
@@ -1665,22 +1748,48 @@ export function ManageCoachingUserView({
                     objectiveDrafts[weekKey] || draftFromObjective()
                   const weekClasses = classesByWeek.get(weekKey) || []
                   const weekClass = weekClasses[0] || null
+                  const defaultScheduledDraft = toDateAndTimeFromIso(
+                    weekClass?.scheduledAt || null,
+                  )
                   const classDraft = classDrafts[weekKey] || {
                     loomUrl: weekClass?.loomUrl || '',
                     report: weekClass?.report || '',
+                    scheduledDate: defaultScheduledDraft.date,
+                    scheduledTime: defaultScheduledDraft.time,
+                    classJoinUrl: weekClass?.classJoinUrl || '',
                     imageFile: null,
                     removeImage: false,
                   }
+                  const scheduledPickerDate = classDraft.scheduledDate
+                    ? new Date(`${classDraft.scheduledDate}T00:00:00`)
+                    : undefined
                   const draftLoom = classDraft.loomUrl.trim()
                   const draftReport = classDraft.report.trim()
+                  const draftScheduledAt =
+                    toIsoFromDateAndTime(
+                      classDraft.scheduledDate,
+                      classDraft.scheduledTime,
+                    ) || ''
+                  const draftClassJoinUrl = classDraft.classJoinUrl.trim()
+                  const scheduledClassSummary = draftScheduledAt
+                    ? formatClassScheduleDateTime(draftScheduledAt)
+                    : 'Sin fecha y horario configurados.'
                   const previousLoom = (weekClass?.loomUrl || '').trim()
                   const previousReport = (weekClass?.report || '').trim()
+                  const previousScheduledAt = (
+                    weekClass?.scheduledAt || ''
+                  ).trim()
+                  const previousClassJoinUrl = (
+                    weekClass?.classJoinUrl || ''
+                  ).trim()
                   const hasExistingImage = Boolean(
                     weekClass?.reportImagePath || weekClass?.reportImageUrl,
                   )
                   const hasClassChanges =
                     draftLoom !== previousLoom ||
                     draftReport !== previousReport ||
+                    draftScheduledAt !== previousScheduledAt ||
+                    draftClassJoinUrl !== previousClassJoinUrl ||
                     Boolean(classDraft.imageFile) ||
                     (classDraft.removeImage && hasExistingImage)
                   const closedNotes = closedNotesByWeek.get(weekKey) || []
@@ -1780,6 +1889,9 @@ export function ManageCoachingUserView({
                                         ...(prev[weekKey] || {
                                           loomUrl: '',
                                           report: '',
+                                          scheduledDate: '',
+                                          scheduledTime: '',
+                                          classJoinUrl: '',
                                           imageFile: null,
                                           removeImage: false,
                                         }),
@@ -1793,10 +1905,229 @@ export function ManageCoachingUserView({
                                   <a
                                     href={draftLoom}
                                     target='_blank'
-                                    rel='noreferrer'
+                                    rel='noopener noreferrer'
                                     className='inline-flex text-sm text-blue-600 underline underline-offset-2'
                                   >
                                     Ver clase en Loom
+                                  </a>
+                                )}
+                              </div>
+
+                              <div className='space-y-1.5'>
+                                <Label>Fecha y hora de clase</Label>
+                                <div className='flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-3'>
+                                  <p className='mb-0! text-sm text-muted-foreground'>
+                                    {scheduledClassSummary}
+                                  </p>
+                                  {!isPastWeek ? (
+                                    <Button
+                                      type='button'
+                                      variant='outline'
+                                      size='sm'
+                                      onClick={() => {
+                                        setSchedulePickerWeekKey(weekKey)
+                                        setSchedulePickerDraft({
+                                          weekKey,
+                                          scheduledDate:
+                                            classDraft.scheduledDate,
+                                          scheduledTime:
+                                            classDraft.scheduledTime,
+                                        })
+                                      }}
+                                    >
+                                      {draftScheduledAt
+                                        ? 'Editar horario'
+                                        : 'Configurar horario'}
+                                    </Button>
+                                  ) : (
+                                    <p className='text-xs text-muted-foreground'>
+                                      Semana cerrada: no editable.
+                                    </p>
+                                  )}
+                                </div>
+                                <Dialog
+                                  open={
+                                    !isPastWeek &&
+                                    schedulePickerWeekKey === weekKey
+                                  }
+                                  onOpenChange={(open) => {
+                                    if (open && !isPastWeek) {
+                                      setSchedulePickerWeekKey(weekKey)
+                                      return
+                                    }
+                                    setSchedulePickerWeekKey(null)
+                                    setSchedulePickerDraft(null)
+                                  }}
+                                >
+                                  <DialogContent className='w-fit'>
+                                    <DialogHeader>
+                                      <DialogTitle>
+                                        Fecha y horario de la clase
+                                      </DialogTitle>
+                                    </DialogHeader>
+                                    <Calendar
+                                      mode='single'
+                                      selected={
+                                        schedulePickerDraft?.weekKey === weekKey
+                                          ? schedulePickerDraft.scheduledDate
+                                            ? new Date(
+                                                `${schedulePickerDraft.scheduledDate}T00:00:00`,
+                                              )
+                                            : undefined
+                                          : scheduledPickerDate
+                                      }
+                                      onSelect={(date) => {
+                                        const nextDate = date
+                                          ? toLocalYmd(date)
+                                          : ''
+                                        setSchedulePickerDraft((prev) =>
+                                          prev && prev.weekKey === weekKey
+                                            ? {
+                                                ...prev,
+                                                scheduledDate: nextDate,
+                                              }
+                                            : {
+                                                weekKey,
+                                                scheduledDate: nextDate,
+                                                scheduledTime:
+                                                  classDraft.scheduledTime,
+                                              },
+                                        )
+                                      }}
+                                      className='p-0'
+                                    />
+                                    <FieldGroup>
+                                      <Field>
+                                        <FieldLabel
+                                          htmlFor={`class-start-time-${weekKey}`}
+                                        >
+                                          Horario de la clase
+                                        </FieldLabel>
+                                        <InputGroup>
+                                          <InputGroupInput
+                                            id={`class-start-time-${weekKey}`}
+                                            type='time'
+                                            step='1'
+                                            value={
+                                              schedulePickerDraft?.weekKey ===
+                                              weekKey
+                                                ? schedulePickerDraft.scheduledTime
+                                                : classDraft.scheduledTime
+                                            }
+                                            onChange={(event) => {
+                                              const rawValue =
+                                                event.target.value
+                                              const normalized = rawValue
+                                                ? rawValue.slice(0, 5)
+                                                : ''
+                                              setSchedulePickerDraft((prev) =>
+                                                prev && prev.weekKey === weekKey
+                                                  ? {
+                                                      ...prev,
+                                                      scheduledTime: normalized,
+                                                    }
+                                                  : {
+                                                      weekKey,
+                                                      scheduledDate:
+                                                        classDraft.scheduledDate,
+                                                      scheduledTime: normalized,
+                                                    },
+                                              )
+                                            }}
+                                            className='appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none'
+                                          />
+                                          <InputGroupAddon>
+                                            <Clock2Icon className='text-muted-foreground' />
+                                          </InputGroupAddon>
+                                        </InputGroup>
+                                      </Field>
+                                    </FieldGroup>
+                                    <DialogFooter>
+                                      <Button
+                                        type='button'
+                                        variant='outline'
+                                        onClick={() => {
+                                          setSchedulePickerWeekKey(null)
+                                          setSchedulePickerDraft(null)
+                                        }}
+                                      >
+                                        Cancelar
+                                      </Button>
+                                      <Button
+                                        type='button'
+                                        onClick={() => {
+                                          const applied =
+                                            schedulePickerDraft?.weekKey ===
+                                            weekKey
+                                              ? schedulePickerDraft
+                                              : {
+                                                  weekKey,
+                                                  scheduledDate:
+                                                    classDraft.scheduledDate,
+                                                  scheduledTime:
+                                                    classDraft.scheduledTime,
+                                                }
+
+                                          setClassDrafts((prev) => ({
+                                            ...prev,
+                                            [weekKey]: {
+                                              ...(prev[weekKey] || {
+                                                loomUrl: '',
+                                                report: '',
+                                                scheduledDate: '',
+                                                scheduledTime: '',
+                                                classJoinUrl: '',
+                                                imageFile: null,
+                                                removeImage: false,
+                                              }),
+                                              scheduledDate:
+                                                applied.scheduledDate,
+                                              scheduledTime:
+                                                applied.scheduledTime,
+                                            },
+                                          }))
+                                          setSchedulePickerWeekKey(null)
+                                          setSchedulePickerDraft(null)
+                                        }}
+                                      >
+                                        Aceptar
+                                      </Button>
+                                    </DialogFooter>
+                                  </DialogContent>
+                                </Dialog>
+                              </div>
+
+                              <div className='space-y-1.5'>
+                                <Label>Link clase en vivo (opcional)</Label>
+                                <Input
+                                  value={classDraft.classJoinUrl}
+                                  onChange={(event) =>
+                                    setClassDrafts((prev) => ({
+                                      ...prev,
+                                      [weekKey]: {
+                                        ...(prev[weekKey] || {
+                                          loomUrl: '',
+                                          report: '',
+                                          scheduledDate: '',
+                                          scheduledTime: '',
+                                          classJoinUrl: '',
+                                          imageFile: null,
+                                          removeImage: false,
+                                        }),
+                                        classJoinUrl: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder='Ej: https://meet.google.com/...'
+                                />
+                                {classDraft.classJoinUrl.trim() && (
+                                  <a
+                                    href={classDraft.classJoinUrl.trim()}
+                                    target='_blank'
+                                    rel='noopener noreferrer'
+                                    className='inline-flex text-sm text-blue-600 underline underline-offset-2'
+                                  >
+                                    Abrir link de clase en vivo
                                   </a>
                                 )}
                               </div>
@@ -1812,6 +2143,9 @@ export function ManageCoachingUserView({
                                         ...(prev[weekKey] || {
                                           loomUrl: '',
                                           report: '',
+                                          scheduledDate: '',
+                                          scheduledTime: '',
+                                          classJoinUrl: '',
                                           imageFile: null,
                                           removeImage: false,
                                         }),
@@ -1836,6 +2170,9 @@ export function ManageCoachingUserView({
                                         ...(prev[weekKey] || {
                                           loomUrl: '',
                                           report: '',
+                                          scheduledDate: '',
+                                          scheduledTime: '',
+                                          classJoinUrl: '',
                                           imageFile: null,
                                           removeImage: false,
                                         }),
