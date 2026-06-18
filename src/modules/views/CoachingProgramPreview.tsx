@@ -28,12 +28,20 @@ import {
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  formatScheduledClassDateTime,
+  hasPostClassResources,
+  shouldRenderUpcomingClassResources,
+} from './coachingClassResources'
 
 type ClassSession = {
   key: string
   loomUrl: string | null
   report: string | null
+  reportImagePath: string | null
   reportImageUrl: string | null
+  scheduledAt: string | null
+  classJoinUrl: string | null
 }
 
 type ProgramPreviewMembership = {
@@ -170,7 +178,10 @@ function normalizeClassSessions(value: unknown[]): ClassSession[] {
         'W01',
       loomUrl: toString(item.loomUrl ?? item.loom_url),
       report: toString(item.report),
+      reportImagePath: toString(item.reportImagePath ?? item.report_image_path),
       reportImageUrl: toString(item.reportImageUrl ?? item.report_image_url),
+      scheduledAt: toString(item.scheduledAt ?? item.scheduled_at),
+      classJoinUrl: toString(item.classJoinUrl ?? item.class_join_url),
     }))
 }
 
@@ -417,6 +428,9 @@ export function CoachingProgramPreview({
           }
           const weekClasses = classSessionsByWeek.get(weekKey) || []
           const latestClass = weekClasses[0] || null
+          const hasRecordedClassResources = latestClass
+            ? hasPostClassResources(latestClass)
+            : false
           const closedNotes = [
             ...(membership.closedMasterNotesByWeek?.[weekKey] || []),
           ].sort((a, b) =>
@@ -662,7 +676,34 @@ export function CoachingProgramPreview({
                         <div className='rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground'>
                           Aún no hay clase cargada para esta semana.
                         </div>
-                      ) : (
+                      ) : shouldRenderUpcomingClassResources(latestClass) ? (
+                        <div className='rounded-lg border bg-muted/20 p-3'>
+                          <p className='mb-1 text-xs font-medium tracking-wide text-muted-foreground'>
+                            Fecha y hora de la clase, y enlace de acceso
+                          </p>
+                          <div className='flex flex-col gap-0'>
+                            {latestClass.scheduledAt && (
+                              <p className='inline-flex items-center gap-1 text-sm text-foreground'>
+                                <CalendarIcon className='h-4 w-4 text-primary' />
+                                {formatScheduledClassDateTime(
+                                  latestClass.scheduledAt,
+                                )}
+                              </p>
+                            )}
+                            {latestClass.classJoinUrl && (
+                              <a
+                                href={latestClass.classJoinUrl}
+                                target='_blank'
+                                rel='noopener noreferrer'
+                                className='inline-flex w-fit items-center gap-2 text-sm text-primary underline underline-offset-2'
+                              >
+                                <PlayCircleIcon className='h-4 w-4' />
+                                Ir a mi clase en vivo
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ) : hasRecordedClassResources ? (
                         <>
                           <div className='grid gap-3 md:grid-cols-2'>
                             <div className='space-y-2'>
@@ -684,7 +725,7 @@ export function CoachingProgramPreview({
                                 <a
                                   href={latestClass.loomUrl}
                                   target='_blank'
-                                  rel='noreferrer'
+                                  rel='noopener noreferrer'
                                   className='inline-flex w-fit items-center gap-2 text-sm text-primary underline underline-offset-2'
                                 >
                                   <PlayCircleIcon className='h-4 w-4' />
@@ -722,7 +763,7 @@ export function CoachingProgramPreview({
                                     href={latestClass.reportImageUrl}
                                     download
                                     target='_blank'
-                                    rel='noreferrer'
+                                    rel='noopener noreferrer'
                                     className='inline-flex items-center gap-1 text-sm text-primary underline underline-offset-2'
                                   >
                                     <DownloadIcon className='h-3.5 w-3.5' />
@@ -746,6 +787,10 @@ export function CoachingProgramPreview({
                             </div>
                           )}
                         </>
+                      ) : (
+                        <div className='rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground'>
+                          Aún no hay recursos de clase disponibles.
+                        </div>
                       )}
                     </CardContent>
                   </Card>

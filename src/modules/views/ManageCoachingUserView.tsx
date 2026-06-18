@@ -71,6 +71,10 @@ import {
 import { CoachingProgramPreview } from './CoachingProgramPreview'
 import { PendingReviewDot } from '../components/PendingReviewDot'
 import { formatDateTime } from '../utils'
+import {
+  toDateTimeLocalInputValue,
+  toIsoFromDateTimeLocalInput,
+} from './coachingClassResources'
 
 type ManageCoachingUserViewProps = {
   userId: string
@@ -84,6 +88,8 @@ type ClassSessionItem = {
   report: string | null
   reportImagePath: string | null
   reportImageUrl: string | null
+  scheduledAt: string | null
+  classJoinUrl: string | null
 }
 
 type ObjectiveDraft = {
@@ -97,6 +103,8 @@ type ObjectiveDraft = {
 type ClassDraft = {
   loomUrl: string
   report: string
+  scheduledAt: string
+  classJoinUrl: string
   imageFile: File | null
   removeImage: boolean
 }
@@ -171,6 +179,8 @@ function normalizeClassSessions(value: unknown): ClassSessionItem[] {
           toString(row.reportImagePath ?? row.report_image_path) || null,
         reportImageUrl:
           toString(row.reportImageUrl ?? row.report_image_url) || null,
+        scheduledAt: toString(row.scheduledAt ?? row.scheduled_at) || null,
+        classJoinUrl: toString(row.classJoinUrl ?? row.class_join_url) || null,
       }
     })
 }
@@ -759,6 +769,8 @@ export function ManageCoachingUserView({
       nextClassDrafts[key] = {
         loomUrl: currentClass?.loomUrl || '',
         report: currentClass?.report || '',
+        scheduledAt: toDateTimeLocalInputValue(currentClass?.scheduledAt || null),
+        classJoinUrl: currentClass?.classJoinUrl || '',
         imageFile: null,
         removeImage: false,
       }
@@ -1000,9 +1012,13 @@ export function ManageCoachingUserView({
 
       const nextLoomUrl = draft.loomUrl.trim() || null
       const nextReport = draft.report.trim() || null
+      const nextScheduledAt = toIsoFromDateTimeLocalInput(draft.scheduledAt)
+      const nextClassJoinUrl = draft.classJoinUrl.trim() || null
 
       const previousLoomUrl = existingWeekClass?.loomUrl || null
       const previousReport = existingWeekClass?.report || null
+      const previousScheduledAt = existingWeekClass?.scheduledAt || null
+      const previousClassJoinUrl = existingWeekClass?.classJoinUrl || null
 
       let nextImagePath = existingImagePath
       if (draft.imageFile) {
@@ -1017,7 +1033,10 @@ export function ManageCoachingUserView({
       }
 
       const textChanged =
-        nextLoomUrl !== previousLoomUrl || nextReport !== previousReport
+        nextLoomUrl !== previousLoomUrl ||
+        nextReport !== previousReport ||
+        nextScheduledAt !== previousScheduledAt ||
+        nextClassJoinUrl !== previousClassJoinUrl
       const imageChanged =
         Boolean(draft.imageFile) ||
         (draft.removeImage && Boolean(existingImagePath))
@@ -1035,7 +1054,7 @@ export function ManageCoachingUserView({
       }
 
       const nextWeekClass =
-        nextLoomUrl || nextReport || nextImagePath
+        nextLoomUrl || nextReport || nextImagePath || nextScheduledAt || nextClassJoinUrl
           ? {
               id: existingWeekClass?.id || crypto.randomUUID(),
               key: weekKey,
@@ -1044,6 +1063,8 @@ export function ManageCoachingUserView({
               loomUrl: nextLoomUrl,
               report: nextReport,
               reportImagePath: nextImagePath,
+              scheduledAt: nextScheduledAt,
+              classJoinUrl: nextClassJoinUrl,
               reportImageUrl:
                 nextImagePath && nextImagePath === existingImagePath
                   ? existingWeekClass?.reportImageUrl || null
@@ -1080,6 +1101,8 @@ export function ManageCoachingUserView({
         [weekKey]: {
           loomUrl: nextLoomUrl || '',
           report: nextReport || '',
+          scheduledAt: toDateTimeLocalInputValue(nextScheduledAt),
+          classJoinUrl: nextClassJoinUrl || '',
           imageFile: null,
           removeImage: false,
         },
@@ -1668,19 +1691,31 @@ export function ManageCoachingUserView({
                   const classDraft = classDrafts[weekKey] || {
                     loomUrl: weekClass?.loomUrl || '',
                     report: weekClass?.report || '',
+                    scheduledAt: toDateTimeLocalInputValue(
+                      weekClass?.scheduledAt || null,
+                    ),
+                    classJoinUrl: weekClass?.classJoinUrl || '',
                     imageFile: null,
                     removeImage: false,
                   }
                   const draftLoom = classDraft.loomUrl.trim()
                   const draftReport = classDraft.report.trim()
+                  const draftScheduledAt =
+                    toIsoFromDateTimeLocalInput(classDraft.scheduledAt) || ''
+                  const draftClassJoinUrl = classDraft.classJoinUrl.trim()
                   const previousLoom = (weekClass?.loomUrl || '').trim()
                   const previousReport = (weekClass?.report || '').trim()
+                  const previousScheduledAt = (weekClass?.scheduledAt || '').trim()
+                  const previousClassJoinUrl =
+                    (weekClass?.classJoinUrl || '').trim()
                   const hasExistingImage = Boolean(
                     weekClass?.reportImagePath || weekClass?.reportImageUrl,
                   )
                   const hasClassChanges =
                     draftLoom !== previousLoom ||
                     draftReport !== previousReport ||
+                    draftScheduledAt !== previousScheduledAt ||
+                    draftClassJoinUrl !== previousClassJoinUrl ||
                     Boolean(classDraft.imageFile) ||
                     (classDraft.removeImage && hasExistingImage)
                   const closedNotes = closedNotesByWeek.get(weekKey) || []
@@ -1780,6 +1815,8 @@ export function ManageCoachingUserView({
                                         ...(prev[weekKey] || {
                                           loomUrl: '',
                                           report: '',
+                                          scheduledAt: '',
+                                          classJoinUrl: '',
                                           imageFile: null,
                                           removeImage: false,
                                         }),
@@ -1793,10 +1830,68 @@ export function ManageCoachingUserView({
                                   <a
                                     href={draftLoom}
                                     target='_blank'
-                                    rel='noreferrer'
+                                    rel='noopener noreferrer'
                                     className='inline-flex text-sm text-blue-600 underline underline-offset-2'
                                   >
                                     Ver clase en Loom
+                                  </a>
+                                )}
+                              </div>
+
+                              <div className='space-y-1.5'>
+                                <Label>Fecha y hora de clase (opcional)</Label>
+                                <Input
+                                  type='datetime-local'
+                                  value={classDraft.scheduledAt}
+                                  onChange={(event) =>
+                                    setClassDrafts((prev) => ({
+                                      ...prev,
+                                      [weekKey]: {
+                                        ...(prev[weekKey] || {
+                                          loomUrl: '',
+                                          report: '',
+                                          scheduledAt: '',
+                                          classJoinUrl: '',
+                                          imageFile: null,
+                                          removeImage: false,
+                                        }),
+                                        scheduledAt: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                />
+                              </div>
+
+                              <div className='space-y-1.5'>
+                                <Label>Link clase en vivo (opcional)</Label>
+                                <Input
+                                  value={classDraft.classJoinUrl}
+                                  onChange={(event) =>
+                                    setClassDrafts((prev) => ({
+                                      ...prev,
+                                      [weekKey]: {
+                                        ...(prev[weekKey] || {
+                                          loomUrl: '',
+                                          report: '',
+                                          scheduledAt: '',
+                                          classJoinUrl: '',
+                                          imageFile: null,
+                                          removeImage: false,
+                                        }),
+                                        classJoinUrl: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                  placeholder='Ej: https://meet.google.com/...'
+                                />
+                                {classDraft.classJoinUrl.trim() && (
+                                  <a
+                                    href={classDraft.classJoinUrl.trim()}
+                                    target='_blank'
+                                    rel='noopener noreferrer'
+                                    className='inline-flex text-sm text-blue-600 underline underline-offset-2'
+                                  >
+                                    Abrir link de clase en vivo
                                   </a>
                                 )}
                               </div>
@@ -1812,6 +1907,8 @@ export function ManageCoachingUserView({
                                         ...(prev[weekKey] || {
                                           loomUrl: '',
                                           report: '',
+                                          scheduledAt: '',
+                                          classJoinUrl: '',
                                           imageFile: null,
                                           removeImage: false,
                                         }),
@@ -1836,6 +1933,8 @@ export function ManageCoachingUserView({
                                         ...(prev[weekKey] || {
                                           loomUrl: '',
                                           report: '',
+                                          scheduledAt: '',
+                                          classJoinUrl: '',
                                           imageFile: null,
                                           removeImage: false,
                                         }),

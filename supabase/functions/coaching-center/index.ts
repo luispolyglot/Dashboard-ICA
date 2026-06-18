@@ -86,6 +86,8 @@ type CoachingSessionClassRow = {
   loom_url: string | null
   report: string | null
   report_image_path: string | null
+  scheduled_at: string | null
+  class_join_url: string | null
   created_at: string
   updated_at: string
 }
@@ -159,7 +161,8 @@ function normalizeExerciseObjective(value: unknown): ExerciseObjective {
 
 function normalizeUrl(value: string | null): string | null {
   if (!value) return null
-  const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`
+  const withProtocol = ensureUrlProtocol(value)
+  if (!withProtocol) return null
 
   if (/loom\.com/i.test(withProtocol)) {
     return withProtocol
@@ -168,6 +171,19 @@ function normalizeUrl(value: string | null): string | null {
   }
 
   return withProtocol
+}
+
+function ensureUrlProtocol(value: string | null): string | null {
+  if (!value) return null
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`
+}
+
+function normalizeIsoDateTime(value: unknown): string | null {
+  const raw = safeString(value)
+  if (!raw) return null
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed.toISOString()
 }
 
 function buildWeekKeyFromIso(value: string | null): string | null {
@@ -226,6 +242,10 @@ function safeClassSessions(value: unknown): unknown[] {
         report: safeString(item.report),
         reportImagePath:
           safeString(item.reportImagePath ?? item.report_image_path) || null,
+        scheduledAt: normalizeIsoDateTime(item.scheduledAt ?? item.scheduled_at),
+        classJoinUrl: ensureUrlProtocol(
+          safeString(item.classJoinUrl ?? item.class_join_url),
+        ),
         createdAt,
         updatedAt: safeString(item.updatedAt ?? item.updated_at) || new Date().toISOString(),
       }
@@ -502,6 +522,8 @@ function serializeClassSessions(rows: CoachingSessionClassRow[]): unknown[] {
     loomUrl: normalizeUrl(row.loom_url),
     report: row.report,
     reportImagePath: row.report_image_path,
+    scheduledAt: row.scheduled_at,
+    classJoinUrl: row.class_join_url,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }))
@@ -565,6 +587,8 @@ function classRowsFromPayload(
   loom_url: string | null
   report: string | null
   report_image_path: string | null
+  scheduled_at: string | null
+  class_join_url: string | null
   created_at: string
   updated_at: string
 }> {
@@ -582,6 +606,10 @@ function classRowsFromPayload(
       loom_url: normalizeUrl(safeString(row.loomUrl ?? row.loom_url)),
       report: safeString(row.report),
       report_image_path: safeString(row.reportImagePath ?? row.report_image_path),
+      scheduled_at: normalizeIsoDateTime(row.scheduledAt ?? row.scheduled_at),
+      class_join_url: ensureUrlProtocol(
+        safeString(row.classJoinUrl ?? row.class_join_url),
+      ),
       created_at: createdAt,
       updated_at: safeString(row.updatedAt) || new Date().toISOString(),
     }
@@ -664,7 +692,7 @@ async function fetchProgramDataBySessionIds(
     adminClient
       .from('coaching_session_classes')
       .select(
-        'id, session_id, week_number, title, loom_url, report, report_image_path, created_at, updated_at',
+        'id, session_id, week_number, title, loom_url, report, report_image_path, scheduled_at, class_join_url, created_at, updated_at',
       )
       .in('session_id', sessionIds)
       .order('created_at', { ascending: false }),
