@@ -8,12 +8,18 @@ type CoachingNotificationPreferenceRow = {
   user_id: string
   master_note_closed_enabled: boolean
   active_session_enabled: boolean
+  class_schedule_reminder_minutes: number
   created_at: string
   updated_at: string
 }
 
 const SELECT_FIELDS =
-  'user_id, master_note_closed_enabled, active_session_enabled, created_at, updated_at'
+  'user_id, master_note_closed_enabled, active_session_enabled, class_schedule_reminder_minutes, created_at, updated_at'
+
+function normalizeReminderMinutes(value: unknown): 10 | 30 | 60 {
+  if (value === 10 || value === 30 || value === 60) return value
+  return 30
+}
 
 export class CoachingNotificationPreferencesRequestError extends Error {
   status: number | null
@@ -61,6 +67,9 @@ function mapRow(
     userId: row.user_id,
     masterNoteClosedEnabled: Boolean(row.master_note_closed_enabled),
     activeSessionEnabled: Boolean(row.active_session_enabled),
+    classScheduleReminderMinutes: normalizeReminderMinutes(
+      row.class_schedule_reminder_minutes,
+    ),
     createdAt: row.created_at || null,
     updatedAt: row.updated_at || null,
   }
@@ -71,6 +80,7 @@ function getDefaultPreference(userId: string): CoachingNotificationPreference {
     userId,
     masterNoteClosedEnabled: true,
     activeSessionEnabled: true,
+    classScheduleReminderMinutes: 30,
     createdAt: null,
     updatedAt: null,
   }
@@ -109,6 +119,9 @@ export async function upsertMyCoachingNotificationPreference(
         user_id: userId,
         master_note_closed_enabled: Boolean(input.masterNoteClosedEnabled),
         active_session_enabled: Boolean(input.activeSessionEnabled),
+        class_schedule_reminder_minutes: normalizeReminderMinutes(
+          input.classScheduleReminderMinutes,
+        ),
       },
       { onConflict: 'user_id' },
     )

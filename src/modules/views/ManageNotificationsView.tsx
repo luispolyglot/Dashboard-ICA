@@ -47,6 +47,7 @@ import type {
 } from '../types'
 
 const CALENDAR_REMINDER_OPTIONS = [10, 20, 30, 60, 120]
+const COACHING_CLASS_REMINDER_OPTIONS: Array<10 | 30 | 60> = [10, 30, 60]
 const REMINDER_HOUR_OPTIONS = Array.from(
   { length: 19 },
   (_, index) => index + 5,
@@ -345,6 +346,9 @@ export function ManageNotificationsView() {
       activeSessionEnabled:
         nextPartial.activeSessionEnabled ??
         coachingNotificationPrefs.activeSessionEnabled,
+      classScheduleReminderMinutes:
+        nextPartial.classScheduleReminderMinutes ??
+        coachingNotificationPrefs.classScheduleReminderMinutes,
     }
 
     try {
@@ -553,8 +557,8 @@ export function ManageNotificationsView() {
                             Coaching: sesión activa
                           </p>
                           <p className='text-xs text-muted-foreground'>
-                            Te avisa cuando tu coach activa semana o deja
-                            feedback en tu nota maestra.
+                            Te avisa cuando tu coach activa semana, agenda tu
+                            clase y deja feedback en tu nota maestra.
                           </p>
                         </div>
                         <div className='flex items-center gap-2'>
@@ -572,6 +576,43 @@ export function ManageNotificationsView() {
                             }
                           />
                         </div>
+                      </div>
+
+                      <div className='mt-3 flex items-center gap-2'>
+                        <Label htmlFor='manage-coaching-class-reminder-minutes'>
+                          Clase: anticipación
+                        </Label>
+                        <Select
+                          value={String(
+                            coachingNotificationPrefs.classScheduleReminderMinutes,
+                          )}
+                          onValueChange={(value) =>
+                            void handleUpdateCoachingNotificationPreferences({
+                              classScheduleReminderMinutes: Number(value) as
+                                | 10
+                                | 30
+                                | 60,
+                            })
+                          }
+                          disabled={
+                            isSavingCoachingNotificationPrefs ||
+                            !coachingNotificationPrefs.activeSessionEnabled
+                          }
+                        >
+                          <SelectTrigger id='manage-coaching-class-reminder-minutes'>
+                            <SelectValue placeholder='Selecciona minutos' />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              <SelectLabel>Minutos antes</SelectLabel>
+                              {COACHING_CLASS_REMINDER_OPTIONS.map((minutes) => (
+                                <SelectItem key={minutes} value={String(minutes)}>
+                                  {minutes} min antes
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                   )}

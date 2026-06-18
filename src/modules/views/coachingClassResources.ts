@@ -51,6 +51,34 @@ export function toIsoFromDateTimeLocalInput(value: string): string | null {
   return parsed.toISOString()
 }
 
+export function toDateAndTimeFromIso(value: string | null): {
+  date: string
+  time: string
+} {
+  if (!value) return { date: '', time: '' }
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return { date: '', time: '' }
+
+  const offsetMs = parsed.getTimezoneOffset() * 60 * 1000
+  const localDate = new Date(parsed.getTime() - offsetMs)
+  return {
+    date: localDate.toISOString().slice(0, 10),
+    time: localDate.toISOString().slice(11, 16),
+  }
+}
+
+export function toIsoFromDateAndTime(
+  dateValue: string,
+  timeValue: string,
+): string | null {
+  const date = dateValue.trim()
+  const time = timeValue.trim()
+  if (!date || !time) return null
+  const parsed = new Date(`${date}T${time}`)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed.toISOString()
+}
+
 export function formatScheduledClassDateTime(value: string): string {
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) return 'Fecha no disponible'
@@ -60,5 +88,6 @@ export function formatScheduledClassDateTime(value: string): string {
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    hour12: false,
   })
 }

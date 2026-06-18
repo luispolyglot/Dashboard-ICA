@@ -15,6 +15,11 @@ import {
   type CoachingSessionWeekActivationRow,
   type WeekWindow,
 } from './week-activation.ts'
+import {
+  resolveClassScheduleNotificationEvent,
+  type ClassNotificationRow,
+  type ClassScheduleNotificationEvent,
+} from './class-notification.ts'
 
 type CoachingCenterPayload = {
   action?: string
@@ -783,7 +788,7 @@ async function sendCoachingActiveSessionNotification(input: {
   url: string
   tag: string
   data?: Record<string, unknown>
-}): Promise<void> {
+}): Promise<{ sent: boolean; skippedReason: string | null }> {
   const { data: preference } = await input.adminClient
     .from('user_coaching_notification_preferences')
     .select('active_session_enabled')
@@ -791,14 +796,14 @@ async function sendCoachingActiveSessionNotification(input: {
     .maybeSingle<{ active_session_enabled: boolean }>()
 
   if (preference && !preference.active_session_enabled) {
-    return
+    return { sent: false, skippedReason: 'notifications_disabled' }
   }
 
   const vapidPublicKey = Deno.env.get('VAPID_PUBLIC_KEY')
   const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY')
   const vapidSubject = Deno.env.get('VAPID_SUBJECT')
   if (!vapidPublicKey || !vapidPrivateKey || !vapidSubject) {
-    return
+    return { sent: false, skippedReason: 'vapid_not_configured' }
   }
 
   webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
@@ -810,12 +815,12 @@ async function sendCoachingActiveSessionNotification(input: {
     .eq('is_active', true)
 
   if (subscriptionsError) {
-    return
+    return { sent: false, skippedReason: 'subscriptions_query_failed' }
   }
 
   const activeSubscriptions = (subscriptions || []) as PushSubscriptionRow[]
   if (activeSubscriptions.length === 0) {
-    return
+    return { sent: false, skippedReason: 'no_active_subscriptions' }
   }
 
   const payload = JSON.stringify({
@@ -829,6 +834,7 @@ async function sendCoachingActiveSessionNotification(input: {
     },
   })
 
+  let sentCount = 0
   for (const subscription of activeSubscriptions) {
     try {
       await webpush.sendNotification(
@@ -841,6 +847,7 @@ async function sendCoachingActiveSessionNotification(input: {
         },
         payload,
       )
+      sentCount += 1
     } catch {
       await input.adminClient
         .from('user_push_subscriptions')
@@ -848,6 +855,166 @@ async function sendCoachingActiveSessionNotification(input: {
         .eq('id', subscription.id)
     }
   }
+
+  return {
+    sent: sentCount > 0,
+    skippedReason: sentCount > 0 ? null : 'send_failed',
+  }
+}
+
+function formatClassScheduleDateInTimezone(
+  value: string | null,
+  timezone: string | null,
+): string {
+  if (!value) return 'fecha pendiente'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return 'fecha pendiente'
+  return parsed.toLocaleString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    ...(timezone ? { timeZone: timezone } : {}),
+  })
+}
+
+async function fetchProfileTimezone(
+  adminClient: any,
+  userId: string,
+): Promise<string | null> {
+  const { data } = await adminClient
+    .from('profiles')
+    .select('timezone')
+    .eq('id', userId)
+    .maybeSingle<{ timezone: string | null }>()
+
+  return safeString(data?.timezone) || null
+}
+
+async function logAndSendCoachingClassNotification(input: {
+  adminClient: any
+  sessionId: string
+  userId: string
+  weekNumber: number
+  type: 'scheduled' | 'rescheduled' | 'reminder'
+  scheduleSignature: string
+  scheduledAt: string | null
+  classJoinUrl: string | null
+  reminderMinutes: 0 | 10 | 30 | 60
+}): Promise<void> {
+  const { data: createdLog, error: insertLogError } = await input.adminClient
+    .from('coaching_class_schedule_notifications')
+    .insert({
+      session_id: input.sessionId,
+      user_id: input.userId,
+      week_number: input.weekNumber,
+      notification_type: input.type,
+      schedule_signature: input.scheduleSignature,
+      reminder_minutes: input.reminderMinutes,
+      scheduled_at: input.scheduledAt,
+      class_join_url: input.classJoinUrl,
+      status: 'pending',
+      sent_at: null,
+    })
+    .select('id')
+    .maybeSingle<{ id: number }>()
+
+  if (insertLogError) {
+    const duplicateError =
+      typeof insertLogError === 'object' &&
+      insertLogError &&
+      'code' in insertLogError &&
+      (insertLogError as { code?: string }).code === '23505'
+
+    if (duplicateError) return
+    return
+  }
+
+  const logId = createdLog?.id || null
+  if (!logId) return
+
+  const recipientTimezone = await fetchProfileTimezone(
+    input.adminClient,
+    input.userId,
+  )
+
+  const title = 'Coaching ICA'
+  const body =
+    input.type === 'scheduled'
+      ? `Tu coach agendó tu clase de Semana ${input.weekNumber} para ${formatClassScheduleDateInTimezone(input.scheduledAt, recipientTimezone)}.`
+      : input.type === 'rescheduled'
+        ? `Tu coach reprogramó tu clase de Semana ${input.weekNumber} para ${formatClassScheduleDateInTimezone(input.scheduledAt, recipientTimezone)}.`
+        : `Tu clase de coaching empieza en ${input.reminderMinutes} minutos.`
+
+  const notificationType =
+    input.type === 'scheduled'
+      ? 'coaching-class-scheduled'
+      : input.type === 'rescheduled'
+        ? 'coaching-class-rescheduled'
+        : 'coaching-class-reminder'
+
+  const sendResult = await sendCoachingActiveSessionNotification({
+    adminClient: input.adminClient,
+    recipientUserId: input.userId,
+    title,
+    body,
+    url: '/coaching-personalized',
+    tag: `coaching-class-${input.type}-${input.sessionId}-${input.weekNumber}-${input.reminderMinutes}`,
+    data: {
+      type: notificationType,
+      sessionId: input.sessionId,
+      weekNumber: input.weekNumber,
+      scheduledAt: input.scheduledAt,
+      classJoinUrl: input.classJoinUrl,
+      reminderMinutes: input.reminderMinutes,
+    },
+  })
+
+  await input.adminClient
+    .from('coaching_class_schedule_notifications')
+    .update({
+      status: sendResult.sent ? 'sent' : 'skipped',
+      error_message: sendResult.sent ? null : sendResult.skippedReason,
+      sent_at: sendResult.sent ? new Date().toISOString() : null,
+    })
+    .eq('id', logId)
+}
+
+async function enqueueCoachingClassReminderNotification(input: {
+  adminClient: any
+  sessionId: string
+  userId: string
+  weekNumber: number
+  scheduleSignature: string
+  scheduledAt: string | null
+  classJoinUrl: string | null
+  reminderMinutes: 10 | 30 | 60
+}): Promise<void> {
+  const { error } = await input.adminClient
+    .from('coaching_class_schedule_notifications')
+    .insert({
+      session_id: input.sessionId,
+      user_id: input.userId,
+      week_number: input.weekNumber,
+      notification_type: 'reminder',
+      schedule_signature: input.scheduleSignature,
+      reminder_minutes: input.reminderMinutes,
+      scheduled_at: input.scheduledAt,
+      class_join_url: input.classJoinUrl,
+      status: 'pending',
+      sent_at: null,
+    })
+
+  if (!error) return
+
+  const isDuplicate =
+    typeof error === 'object' &&
+    error &&
+    'code' in error &&
+    (error as { code?: string }).code === '23505'
+  if (isDuplicate) return
 }
 
 Deno.serve(async (req) => {
@@ -1418,9 +1585,16 @@ Deno.serve(async (req) => {
     if (sessionId) {
       const { data: existingRow, error: existingError } = await admin.adminClient
         .from('coaching_sessions')
-        .select('id, target_lang, level, coach_user_id')
+        .select('id, user_id, target_lang, level, status, coach_user_id')
         .eq('id', sessionId)
-        .maybeSingle<{ id: string; target_lang: string; level: string; coach_user_id: string | null }>()
+        .maybeSingle<{
+          id: string
+          user_id: string
+          target_lang: string
+          level: string
+          status: string
+          coach_user_id: string | null
+        }>()
 
       if (existingError) {
         return jsonResponse(500, { error: existingError.message })
@@ -1437,6 +1611,47 @@ Deno.serve(async (req) => {
         admin.adminRole === 'super_admin'
           ? requestedCoachUserId || existingRow.coach_user_id
           : admin.userId
+
+      let classScheduleEvent: ClassScheduleNotificationEvent | null = null
+      if (hasClassSessions && classSessions && existingRow.status === 'active') {
+        const [existingClassesResult, activationRowsResult] = await Promise.all([
+          admin.adminClient
+            .from('coaching_session_classes')
+            .select(
+              'week_number, loom_url, report, report_image_path, scheduled_at, class_join_url, created_at',
+            )
+            .eq('session_id', sessionId)
+            .order('created_at', { ascending: false }),
+          admin.adminClient
+            .from('coaching_session_week_activations')
+            .select('session_id, week_number, activated_at, ended_at')
+            .eq('session_id', sessionId)
+            .order('week_number', { ascending: true }),
+        ])
+
+        if (existingClassesResult.error || activationRowsResult.error) {
+          return jsonResponse(500, {
+            error:
+              existingClassesResult.error?.message ||
+              activationRowsResult.error?.message ||
+              'No se pudo validar notificaciones de clase.',
+          })
+        }
+
+        const activationState = buildWeekActivationState(
+          (activationRowsResult.data || []) as CoachingSessionWeekActivationRow[],
+          {},
+        )
+
+        classScheduleEvent = resolveClassScheduleNotificationEvent({
+          activeWeekNumber: activationState.currentActiveWeek,
+          previousRows: (existingClassesResult.data || []) as ClassNotificationRow[],
+          nextRows: classRowsFromPayload(
+            sessionId,
+            classSessions,
+          ) as ClassNotificationRow[],
+        })
+      }
 
       const updatePayload: Record<string, unknown> = {
         coach_user_id: coachUserId,
@@ -1470,6 +1685,48 @@ Deno.serve(async (req) => {
 
       if (programWriteError) {
         return jsonResponse(500, { error: programWriteError })
+      }
+
+      if (classScheduleEvent) {
+        await logAndSendCoachingClassNotification({
+          adminClient: admin.adminClient,
+          sessionId,
+          userId: existingRow.user_id,
+          weekNumber: classScheduleEvent.weekNumber,
+          type: classScheduleEvent.type,
+          scheduleSignature: classScheduleEvent.scheduleSignature,
+          scheduledAt: classScheduleEvent.scheduledAt,
+          classJoinUrl: classScheduleEvent.classJoinUrl,
+          reminderMinutes: 0,
+        })
+
+        const { data: preferences } = await admin.adminClient
+          .from('user_coaching_notification_preferences')
+          .select('class_schedule_reminder_minutes')
+          .eq('user_id', existingRow.user_id)
+          .maybeSingle<{
+            class_schedule_reminder_minutes: number
+          }>()
+
+        const reminderMinutesRaw =
+          preferences?.class_schedule_reminder_minutes ?? 30
+        const reminderMinutes: 10 | 30 | 60 =
+          reminderMinutesRaw === 10 ||
+          reminderMinutesRaw === 60 ||
+          reminderMinutesRaw === 30
+            ? reminderMinutesRaw
+            : 30
+
+        await enqueueCoachingClassReminderNotification({
+          adminClient: admin.adminClient,
+          sessionId,
+          userId: existingRow.user_id,
+          weekNumber: classScheduleEvent.weekNumber,
+          scheduleSignature: classScheduleEvent.scheduleSignature,
+          scheduledAt: classScheduleEvent.scheduledAt,
+          classJoinUrl: classScheduleEvent.classJoinUrl,
+          reminderMinutes,
+        })
       }
 
       return jsonResponse(200, { ok: true, id: data?.id || null })
