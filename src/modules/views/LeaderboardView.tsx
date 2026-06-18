@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/auth/AuthContext'
+import useBreakpoints from '@/modules/hooks/useBreakpoints'
 import type { LeaderboardEntry } from '../types'
 import {
   fetchTotalIcademers,
@@ -37,6 +38,15 @@ type MonthOption = {
 type VisibleLeaderboardRow = {
   row: LeaderboardEntry
   rankLabel: string
+}
+
+type ScoreBreakdown = {
+  userName: string
+  monthlyPercent: number
+  monthlyPoints: number
+  icaTestPoints: number
+  includeIcaTest: boolean
+  totalPoints: number
 }
 
 function toUtcMonthStart(date: Date): string {
@@ -169,7 +179,10 @@ function trailingRankOpacityClass(position: number): string {
   return ''
 }
 
-function toSafeNumber(value: number | string | null | undefined, fallback = 0): number {
+function toSafeNumber(
+  value: number | string | null | undefined,
+  fallback = 0,
+): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string') {
     const parsed = Number(value)
@@ -178,8 +191,47 @@ function toSafeNumber(value: number | string | null | undefined, fallback = 0): 
   return fallback
 }
 
+function getMonthlyPercentPoints(row: LeaderboardEntry): number {
+  return Math.round(toSafeNumber(row.avg_percent)) * 0.1
+}
+
+function getIcaTestPoints(row: LeaderboardEntry): number {
+  if (row.ica_test_points === null || row.ica_test_points === undefined) return 0
+  return toSafeNumber(row.ica_test_points)
+}
+
+function getDisplayedTotalPoints(
+  row: LeaderboardEntry,
+  includeIcaTest: boolean,
+): number {
+  const totalFromApi = toSafeNumber(row.total_points)
+  if (totalFromApi > 0) return totalFromApi
+
+  const monthlyPoints = getMonthlyPercentPoints(row)
+  return includeIcaTest ? monthlyPoints + getIcaTestPoints(row) : monthlyPoints
+}
+
+function buildScoreBreakdown(
+  row: LeaderboardEntry,
+  includeIcaTest: boolean,
+): ScoreBreakdown {
+  const monthlyPercent = Math.round(toSafeNumber(row.avg_percent))
+  const monthlyPoints = getMonthlyPercentPoints(row)
+  const icaTestPoints = includeIcaTest ? getIcaTestPoints(row) : 0
+
+  return {
+    userName: row.display_name || row.username || 'Usuario',
+    monthlyPercent,
+    monthlyPoints,
+    icaTestPoints,
+    includeIcaTest,
+    totalPoints: getDisplayedTotalPoints(row, includeIcaTest),
+  }
+}
+
 export function LeaderboardView() {
   const { user } = useAuth()
+  const { isMd } = useBreakpoints()
   const currentMonthStart = useMemo(() => toLocalMonthStart(new Date()), [])
   const monthOptions = useMemo(
     () => buildMonthOptions(currentMonthStart),
@@ -193,6 +245,8 @@ export function LeaderboardView() {
   const [error, setError] = useState<string | null>(null)
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [scoreInfoOpen, setScoreInfoOpen] = useState(false)
+  const [selectedScoreBreakdown, setSelectedScoreBreakdown] =
+    useState<ScoreBreakdown | null>(null)
 
   const isCurrentMonth = selectedMonth === currentMonthStart
   const closeAt = useMemo(
@@ -272,13 +326,21 @@ export function LeaderboardView() {
     [missingPlaceholderCount, topWindowRows.length],
   )
   const hasSnapshotIcaPoints = useMemo(
-    () => rows.some((row) => row.ica_test_points !== null && row.ica_test_points !== undefined),
+    () =>
+      rows.some(
+        (row) =>
+          row.ica_test_points !== null && row.ica_test_points !== undefined,
+      ),
     [rows],
   )
   const showIcaTestColumn =
     (isCurrentMonth && currentDay >= icaTestWindowStartDay) ||
     (!isCurrentMonth && hasSnapshotIcaPoints)
-  const tableColumnCount = showIcaTestColumn ? 6 : 5
+  const desktopTableColumnCount = showIcaTestColumn ? 6 : 5
+  const tableColumnCount = isMd ? desktopTableColumnCount : 4
+  const includeIcaTestInScoreExplanation =
+    (isCurrentMonth && currentDay >= icaTestWindowStartDay) ||
+    (!isCurrentMonth && hasSnapshotIcaPoints)
 
   return (
     <section className='mx-auto w-full max-w-5xl flex-1 overflow-y-auto px-5 py-8'>
@@ -352,28 +414,30 @@ export function LeaderboardView() {
               <table className='w-full lg:min-w-160 table-fixed text-left text-sm'>
                 <thead className='table w-full table-fixed'>
                   <tr className='border-b text-muted-foreground'>
-                    <th className='w-[15%] pb-2 font-medium'>Rank</th>
-                    <th className='w-auto pb-2 font-medium'>Usuario</th>
+                    <th className='w-[18%] md:w-[15%] pb-2 font-medium'>Rank</th>
+                    <th className='w-auto pb-2 font-medium'>Nombre</th>
                     {showIcaTestColumn && (
-                      <th className='w-[14%] pb-2 font-medium'>ICA Test</th>
+                      <th className='hidden md:table-cell w-[14%] pb-2 font-medium'>
+                        ICA Test
+                      </th>
                     )}
-                    <th className='w-[18%] pb-2 font-medium'>Racha ICA</th>
-                    <th className='w-[18%] pb-2 font-medium'>% mensual</th>
-                    <th className='w-[18%] pb-2 font-medium'>
+                    <th className='w-[22%] md:w-[18%] pb-2 font-medium'>Racha ICA</th>
+                    <th className='hidden md:table-cell w-[18%] pb-2 font-medium'>
+                      % mensual
+                    </th>
+                    <th className='w-[26%] md:w-[18%] pb-2 font-medium'>
                       <span className='inline-flex items-center gap-1'>
                         Puntaje total
-                        {showIcaTestColumn && (
-                          <Button
-                            type='button'
-                            variant='ghost'
-                            size='icon-sm'
-                            className='h-5 w-5 text-muted-foreground'
-                            aria-label='Cómo se calcula el puntaje total'
-                            onClick={() => setScoreInfoOpen(true)}
-                          >
-                            <InfoIcon className='size-3.5' />
-                          </Button>
-                        )}
+                        <Button
+                          type='button'
+                          variant='ghost'
+                          size='icon-sm'
+                          className='h-5 w-5 text-muted-foreground'
+                          aria-label='Cómo se calcula el puntaje total'
+                          onClick={() => setScoreInfoOpen(true)}
+                        >
+                          <InfoIcon className='size-3.5' />
+                        </Button>
                       </span>
                     </th>
                   </tr>
@@ -398,26 +462,43 @@ export function LeaderboardView() {
                         )}
                       </td>
                       {showIcaTestColumn && (
-                        <td className='w-[14%] py-2 font-medium'>
-                          {row.ica_test_points === null || row.ica_test_points === undefined
+                        <td className='hidden md:table-cell w-[14%] py-2 font-medium'>
+                          {row.ica_test_points === null ||
+                          row.ica_test_points === undefined
                             ? '-'
                             : toSafeNumber(row.ica_test_points).toFixed(1)}
                         </td>
                       )}
                       <td
-                        className={`w-[18%] py-2 ${row.ica_streak_days && row.ica_streak_days > 0 ? '' : 'grayscale'}`}
+                        className={`w-[22%] md:w-[18%] py-2 ${row.ica_streak_days && row.ica_streak_days > 0 ? '' : 'grayscale'}`}
                       >
                         {row.ica_streak_days && row.ica_streak_days > 0
                           ? `🔥 ${row.ica_streak_days}`
                           : '🔥 0'}
                       </td>
-                      <td className='w-[18%] py-2 font-medium'>
+                      <td className='hidden md:table-cell w-[18%] py-2 font-medium'>
                         {Math.round(row.avg_percent || 0)}%
                       </td>
-                      <td className='w-[18%] py-2 font-medium'>
-                        {toSafeNumber(row.total_points) > 0
-                          ? toSafeNumber(row.total_points).toFixed(1)
-                          : (Math.round(toSafeNumber(row.avg_percent)) * 0.1).toFixed(1)}
+                      <td className='w-[26%] md:w-[18%] py-2'>
+                        <Button
+                          type='button'
+                          variant='ghost'
+                          className='h-auto p-0 text-sm font-bold md:font-medium'
+                          onClick={() =>
+                            setSelectedScoreBreakdown(
+                              buildScoreBreakdown(
+                                row,
+                                includeIcaTestInScoreExplanation,
+                              ),
+                            )
+                          }
+                          aria-label='Ver cómo se calculó este puntaje total'
+                        >
+                          {getDisplayedTotalPoints(
+                            row,
+                            includeIcaTestInScoreExplanation,
+                          ).toFixed(1)}
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -432,11 +513,19 @@ export function LeaderboardView() {
                         -
                       </td>
                       {showIcaTestColumn && (
-                        <td className='w-[14%] py-2 text-muted-foreground'>-</td>
+                        <td className='hidden md:table-cell w-[14%] py-2 text-muted-foreground'>
+                          -
+                        </td>
                       )}
-                      <td className='w-[18%] py-2 text-muted-foreground'>-</td>
-                      <td className='w-[18%] py-2 text-muted-foreground'>-</td>
-                      <td className='w-[18%] py-2 text-muted-foreground'>-</td>
+                      <td className='w-[22%] md:w-[18%] py-2 text-muted-foreground'>
+                        -
+                      </td>
+                      <td className='hidden md:table-cell w-[18%] py-2 text-muted-foreground'>
+                        -
+                      </td>
+                      <td className='w-[26%] md:w-[18%] py-2 text-muted-foreground'>
+                        -
+                      </td>
                     </tr>
                   ))}
 
@@ -468,26 +557,43 @@ export function LeaderboardView() {
                         )}
                       </td>
                       {showIcaTestColumn && (
-                        <td className='w-[14%] py-2 font-medium'>
-                          {row.ica_test_points === null || row.ica_test_points === undefined
+                        <td className='hidden md:table-cell w-[14%] py-2 font-medium'>
+                          {row.ica_test_points === null ||
+                          row.ica_test_points === undefined
                             ? '-'
                             : toSafeNumber(row.ica_test_points).toFixed(1)}
                         </td>
                       )}
                       <td
-                        className={`w-[18%] py-2 ${row.ica_streak_days && row.ica_streak_days > 0 ? '' : 'grayscale'}`}
+                        className={`w-[22%] md:w-[18%] py-2 ${row.ica_streak_days && row.ica_streak_days > 0 ? '' : 'grayscale'}`}
                       >
                         {row.ica_streak_days && row.ica_streak_days > 0
                           ? `🔥 ${row.ica_streak_days}`
                           : '🔥 0'}
                       </td>
-                      <td className='w-[18%] py-2 font-medium'>
+                      <td className='hidden md:table-cell w-[18%] py-2 font-medium'>
                         {Math.round(row.avg_percent || 0)}%
                       </td>
-                      <td className='w-[18%] py-2 font-medium'>
-                        {toSafeNumber(row.total_points) > 0
-                          ? toSafeNumber(row.total_points).toFixed(1)
-                          : (Math.round(toSafeNumber(row.avg_percent)) * 0.1).toFixed(1)}
+                      <td className='w-[26%] md:w-[18%] py-2'>
+                        <Button
+                          type='button'
+                          variant='ghost'
+                          className='h-auto p-0 text-sm font-bold md:font-medium'
+                          onClick={() =>
+                            setSelectedScoreBreakdown(
+                              buildScoreBreakdown(
+                                row,
+                                includeIcaTestInScoreExplanation,
+                              ),
+                            )
+                          }
+                          aria-label='Ver cómo se calculó este puntaje total'
+                        >
+                          {getDisplayedTotalPoints(
+                            row,
+                            includeIcaTestInScoreExplanation,
+                          ).toFixed(1)}
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -503,11 +609,56 @@ export function LeaderboardView() {
           <DialogHeader>
             <DialogTitle>Cómo se calcula el puntaje total</DialogTitle>
             <DialogDescription>
-              Puntaje total = (% mensual / 10) + puntos de ICA Test.
+              {includeIcaTestInScoreExplanation
+                ? 'Puntaje total = (% mensual / 10) + puntos de ICA Test.'
+                : 'Puntaje total = % mensual / 10.'}
               <br />
-              Cada respuesta correcta del ICA Test vale 0,1 puntos.
               <br />
-              Ejemplo: 84% mensual y 11/15 en ICA Test = 8,4 + 1,1 = 9,5.
+              {includeIcaTestInScoreExplanation
+                ? 'Cada respuesta correcta del ICA Test vale 0,1 puntos.'
+                : `El ICA Test empieza a sumar desde el día ${icaTestWindowStartDay} de cada mes.`}
+              <br />
+              <br />
+              {includeIcaTestInScoreExplanation
+                ? 'Ejemplo: 84% mensual y 11/15 en ICA Test = 8,4 + 1,1 = 9,5.'
+                : 'Ejemplo: 84% mensual = 8,4 puntos totales.'}
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(selectedScoreBreakdown)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedScoreBreakdown(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Desglose de puntaje</DialogTitle>
+            <DialogDescription>
+              {selectedScoreBreakdown
+                ? `${selectedScoreBreakdown.userName}: ${selectedScoreBreakdown.totalPoints.toFixed(1)} puntos totales.`
+                : ''}
+              <br />
+              <br />
+              {selectedScoreBreakdown
+                ? `${selectedScoreBreakdown.monthlyPercent}% mensual = ${selectedScoreBreakdown.monthlyPoints.toFixed(1)} puntos.`
+                : ''}
+              <br />
+              <br />
+              {selectedScoreBreakdown
+                ? selectedScoreBreakdown.includeIcaTest
+                  ? `ICA Test = ${selectedScoreBreakdown.icaTestPoints.toFixed(1)} puntos.`
+                  : `ICA Test no suma antes del día ${icaTestWindowStartDay}.`
+                : ''}
+              <br />
+              <br />
+              {selectedScoreBreakdown
+                ? selectedScoreBreakdown.includeIcaTest
+                  ? `Total = ${selectedScoreBreakdown.monthlyPoints.toFixed(1)} + ${selectedScoreBreakdown.icaTestPoints.toFixed(1)} = ${selectedScoreBreakdown.totalPoints.toFixed(1)}.`
+                  : `Total = ${selectedScoreBreakdown.monthlyPoints.toFixed(1)}.`
+                : ''}
             </DialogDescription>
           </DialogHeader>
         </DialogContent>
