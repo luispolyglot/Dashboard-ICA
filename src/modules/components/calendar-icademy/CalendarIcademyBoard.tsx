@@ -830,8 +830,7 @@ export function CalendarIcademyBoard({
                                         'rounded-sm border border-border border-l-2 px-1.5 py-0.5 text-left text-[11px] leading-tight',
                                         tone.rowClassName,
                                         isDimmed && 'opacity-25',
-                                        isPastEntry &&
-                                          'opacity-60 saturate-75',
+                                        isPastEntry && 'opacity-60 saturate-75',
                                         isOutOfMonth &&
                                           'opacity-45 saturate-50',
                                         onEntryClick &&
@@ -850,7 +849,7 @@ export function CalendarIcademyBoard({
                                     </div>
                                   )
 
-                                  if (!onEntryClick || isPastEntry) {
+                                  if (!onEntryClick) {
                                     return <div key={entry.id}>{content}</div>
                                   }
 
@@ -1042,9 +1041,7 @@ export function CalendarIcademyBoard({
             <Button variant='outline' onClick={cancelTimeZoneStep}>
               Cancelar
             </Button>
-            <Button onClick={() => confirmTimeZoneStep()}>
-              Continuar
-            </Button>
+            <Button onClick={() => confirmTimeZoneStep()}>Continuar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1130,9 +1127,7 @@ export function CalendarIcademyBoard({
               onClick={() => {
                 const exported = exportSelectedAsIcs('icademy-clases')
                 if (exported) {
-                  toast.success(
-                    `Calendario exportado (${exported.filename})`,
-                  )
+                  toast.success(`Calendario exportado (${exported.filename})`)
                   cancelSelectionStep()
                 } else {
                   toast.error('No hay clases seleccionadas para exportar.')
