@@ -100,6 +100,9 @@ export function AddView({
   const [sharedPrefillStatus, setSharedPrefillStatus] = useState<
     'none' | 'prefilled' | 'missing'
   >('none')
+  const [activeRecentSpeakerId, setActiveRecentSpeakerId] = useState<
+    string | null
+  >(null)
   const targetDebounceRef = useRef<number | null>(null)
   const nativeDebounceRef = useRef<number | null>(null)
   const spellingDebounceRef = useRef<number | null>(null)
@@ -334,19 +337,34 @@ export function AddView({
                   <span
                     className={`mt-1.5 h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importanceMeta.key]}`}
                   />
-                  <div>
-                    <div className='flex items-center gap-2.5'>
+                  <div className='w-full flex items-start justify-between gap-2'>
+                    <div className='flex flex-wrap items-center gap-2.5'>
                       <span className='text-sm font-medium'>{card.target}</span>
                       <span className='text-muted-foreground'>→</span>
                       <span className='text-sm text-muted-foreground'>
                         {card.native}
                       </span>
                     </div>
-                    <RomanizationHint
+                    <SpeakButton
                       text={card.target}
-                      language={card.targetLang || ''}
+                      langName={card.targetLang || config.targetLang}
+                      color={importanceMeta.color}
+                      variant='icon'
+                      label={`Escuchar ${card.target}`}
+                      isPlaying={activeRecentSpeakerId === card.id}
+                      onPlayingChange={(isPlaying) => {
+                        setActiveRecentSpeakerId(isPlaying ? card.id : null)
+                      }}
+                      disabled={
+                        activeRecentSpeakerId !== null &&
+                        activeRecentSpeakerId !== card.id
+                      }
                     />
                   </div>
+                  <RomanizationHint
+                    text={card.target}
+                    language={card.targetLang || ''}
+                  />
                 </CardContent>
               </Card>
             )
