@@ -40,6 +40,7 @@ const EMPTY_KPIS: MonthlyAnalyticsKpis = {
   wordsAdded: 0,
   phrasesCreated: 0,
   masterNotesClosed: 0,
+  masterNotesListenedMinutes: 0,
   flashcardsCorrect: 0,
 }
 
@@ -298,7 +299,7 @@ export function MyAnalyticsView() {
 
       {error && <p className='mt-4 text-sm text-destructive'>{error}</p>}
 
-      <div className='mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
+      <div className='mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5'>
         <Card>
           <CardHeader>
             <CardTitle className='flex items-center gap-2 text-base'>
@@ -360,6 +361,28 @@ export function MyAnalyticsView() {
                 : formatDeltaLabel(
                     kpis.masterNotesClosed,
                     previousKpis?.masterNotesClosed ?? null,
+                  )}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className='flex items-center gap-2 text-base'>
+              <Volume2Icon className='h-4 w-4' />
+              Minutos escuchados NM
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className='text-3xl font-semibold'>
+              {loading ? '...' : kpis.masterNotesListenedMinutes}
+            </p>
+            <p className='mt-1 text-xs text-muted-foreground'>
+              {loading
+                ? '...'
+                : formatDeltaLabel(
+                    kpis.masterNotesListenedMinutes,
+                    previousKpis?.masterNotesListenedMinutes ?? null,
                   )}
             </p>
           </CardContent>
