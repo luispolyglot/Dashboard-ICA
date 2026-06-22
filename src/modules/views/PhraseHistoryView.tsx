@@ -3,8 +3,10 @@ import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { CopyIcon, MicIcon, Trash2Icon } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { ActivatePhraseInMasterNoteModal } from '../components/ActivatePhraseInMasterNoteModal'
+import { ExplorePhraseTokenModal } from '../components/ExplorePhraseTokenModal'
 import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
 import { IcaDeletionWarningDialog } from '../components/IcaDeletionWarningDialog'
+import { InteractivePhraseText } from '../components/InteractivePhraseText'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -101,6 +103,10 @@ export function PhraseHistoryView({
   const [activatePhraseId, setActivatePhraseId] = useState<string | null>(null)
   const [extractModalOpen, setExtractModalOpen] = useState(false)
   const [extractPhraseId, setExtractPhraseId] = useState<string | null>(null)
+  const [exploreModalOpen, setExploreModalOpen] = useState(false)
+  const [exploreToken, setExploreToken] = useState('')
+  const [explorePhrase, setExplorePhrase] = useState('')
+  const [exploreTranslation, setExploreTranslation] = useState('')
   const todayKey = useMemo(() => {
     const now = new Date()
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
@@ -177,6 +183,17 @@ export function PhraseHistoryView({
   const handleOpenExtractModal = (phraseId: string): void => {
     setExtractPhraseId(phraseId)
     setExtractModalOpen(true)
+  }
+
+  const handleOpenExploreModal = (
+    token: string,
+    phrase: string,
+    translation: string,
+  ): void => {
+    setExploreToken(token)
+    setExplorePhrase(phrase)
+    setExploreTranslation(translation)
+    setExploreModalOpen(true)
   }
 
   const extractPhrase = items.find((item) => item.id === extractPhraseId) || null
@@ -278,12 +295,23 @@ export function PhraseHistoryView({
                     </span>
                   </div>
 
-                  <p className='font-serif text-xl font-bold'>
-                    {highlightMatch(
-                      item.generated_phrase || 'Sin frase registrada',
-                      query,
-                    )}
-                  </p>
+                  {item.generated_phrase ? (
+                    <InteractivePhraseText
+                      text={item.generated_phrase}
+                      language={targetLang}
+                      query={query}
+                      onTokenClick={(token) =>
+                        handleOpenExploreModal(
+                          token,
+                          item.generated_phrase || '',
+                          item.translation || '',
+                        )
+                      }
+                      className='font-serif text-xl font-bold'
+                    />
+                  ) : (
+                    <p className='font-serif text-xl font-bold'>Sin frase registrada</p>
+                  )}
                   {item.generated_phrase && (
                     <RomanizationHint
                       text={item.generated_phrase}
@@ -459,6 +487,20 @@ export function PhraseHistoryView({
         text={extractPhrase?.generated_phrase || ''}
         translation={extractPhrase?.translation || ''}
         seedWords={extractPhrase?.source_words || []}
+        targetLang={targetLang}
+        nativeLang={nativeLang}
+        level={level}
+        cards={cards}
+        setCards={setCards}
+        onWordAdded={onWordAdded}
+      />
+
+      <ExplorePhraseTokenModal
+        open={exploreModalOpen}
+        onOpenChange={setExploreModalOpen}
+        token={exploreToken}
+        phrase={explorePhrase}
+        phraseTranslation={exploreTranslation}
         targetLang={targetLang}
         nativeLang={nativeLang}
         level={level}

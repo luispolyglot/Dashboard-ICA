@@ -3,6 +3,7 @@ import type {
   ActivationPhraseResult,
   CEFRLevel,
   Lexicard,
+  PhraseTokenInsightResult,
 } from '../types'
 
 type TranslateResponse = {
@@ -19,6 +20,10 @@ type WordExampleResponse = {
 
 type ActivationPhraseResponse = {
   result?: ActivationPhraseResult | null
+}
+
+type PhraseTokenInsightResponse = {
+  result?: PhraseTokenInsightResult | null
 }
 
 export async function fetchTranslation(
@@ -143,6 +148,37 @@ export async function fetchActivationPhrase(
 
     if (!data?.result) return null
     return data.result
+  } catch (error) {
+    console.error(error)
+    return null
+  }
+}
+
+export async function fetchPhraseTokenInsight(
+  token: string,
+  phrase: string,
+  targetLang: string,
+  nativeLang: string,
+): Promise<PhraseTokenInsightResult | null> {
+  if (!supabase) return null
+
+  try {
+    const { data, error } = await supabase.functions.invoke<PhraseTokenInsightResponse>('anthropic-proxy', {
+      body: {
+        action: 'phrase_token_insight',
+        token,
+        phrase,
+        targetLang,
+        nativeLang,
+      },
+    })
+
+    if (error) {
+      console.error(error)
+      return null
+    }
+
+    return data?.result || null
   } catch (error) {
     console.error(error)
     return null

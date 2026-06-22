@@ -34,7 +34,12 @@ export function useWordExtractionCandidates({
       byScope.map((card) => normalizeComparableText(card.target)),
     )
     const extracted = extractWordsFromText(text, targetLang)
-    const queue = [...extracted.tokens, ...(seedWords || [])]
+    const normalizedSeedWords = (seedWords || []).flatMap((seed) => {
+      const trimmed = seed.trim()
+      if (!trimmed) return []
+      return extractWordsFromText(trimmed, targetLang).tokens
+    })
+    const queue = [...extracted.tokens, ...normalizedSeedWords]
     const dedup = new Set<string>()
     const candidates: WordExtractionCandidate[] = []
 

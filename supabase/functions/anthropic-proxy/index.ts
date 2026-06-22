@@ -61,11 +61,20 @@ type WordExamplePayload = {
   level: string
 }
 
+type PhraseTokenInsightPayload = {
+  action: 'phrase_token_insight'
+  token: string
+  phrase: string
+  targetLang: string
+  nativeLang: string
+}
+
 type RequestPayload =
   | TranslatePayload
   | ActivationPhrasePayload
   | SpellcheckPayload
   | WordExamplePayload
+  | PhraseTokenInsightPayload
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -218,6 +227,47 @@ function parseSpellcheckSuggestion(raw: string | null): string | null {
     const fallback = raw.trim()
     if (!fallback || fallback === '—') return null
     return fallback
+  }
+}
+
+function parsePhraseTokenInsight(raw: string | null): {
+  translation: string
+  meaning: string
+  grammarTip: string
+  examples: string[]
+} | null {
+  if (!raw) return null
+
+  try {
+    const cleaned = raw.replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(cleaned) as {
+      translation?: unknown
+      meaning?: unknown
+      grammarTip?: unknown
+      examples?: unknown
+    }
+
+    const translation = typeof parsed.translation === 'string' ? parsed.translation.trim() : ''
+    const meaning = typeof parsed.meaning === 'string' ? parsed.meaning.trim() : ''
+    const grammarTip = typeof parsed.grammarTip === 'string' ? parsed.grammarTip.trim() : ''
+    const examples = Array.isArray(parsed.examples)
+      ? parsed.examples
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 2)
+      : []
+
+    if (!translation || !meaning || !grammarTip) return null
+
+    return {
+      translation,
+      meaning,
+      grammarTip,
+      examples,
+    }
+  } catch {
+    return null
   }
 }
 
@@ -386,6 +436,35 @@ Deno.serve(async (req) => {
 
       return jsonResponse(200, {
         suggestion: parseSpellcheckSuggestion(raw),
+      })
+    }
+
+    if (payload.action === 'phrase_token_insight') {
+      const token = payload.token.trim()
+      const phrase = payload.phrase.trim()
+      if (!token || !phrase) {
+        return jsonResponse(400, { error: 'token and phrase are required' })
+      }
+
+      const prompt = [
+        `Analyze this token inside a phrase for a ${payload.nativeLang}-speaking learner.`,
+        `Target language: ${payload.targetLang}.`,
+        `Token: ${token}`,
+        `Phrase: ${phrase}`,
+        'Return concise, practical guidance.',
+        `Write all explanations in ${payload.nativeLang}.`,
+        'Reply ONLY valid JSON with this exact shape:',
+        '{"translation":"...","meaning":"...","grammarTip":"...","examples":["...","..."]}',
+      ].join('\n')
+
+      const raw = await callAnthropic(
+        'You are a precise language tutor. Keep responses short and useful. Reply ONLY JSON.',
+        prompt,
+        { maxTokens: 260, temperature: 0.1 },
+      )
+
+      return jsonResponse(200, {
+        result: parsePhraseTokenInsight(raw),
       })
     }
 
