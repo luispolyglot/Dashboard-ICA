@@ -287,7 +287,9 @@ function formatSeconds(seconds: number): string {
   return `${minutes}:${String(rest).padStart(2, '0')}`
 }
 
-function getActivatedPhrasesFromNote(note: CoachingInsightNote): ActivatedMasterNotePhrase[] {
+function getActivatedPhrasesFromNote(
+  note: CoachingInsightNote,
+): ActivatedMasterNotePhrase[] {
   return (note.audioChunks || []).map((chunk) => ({
     chunkId: chunk.id,
     durationMs: Math.max(0, chunk.duration_ms || 0),
@@ -2466,7 +2468,9 @@ export function ManageCoachingUserView({
                                             noteId={note.id}
                                             audioUrl={note.audioUrl}
                                             audioChunks={note.audioChunks}
-                                            totalDurationMs={note.totalDurationMs}
+                                            totalDurationMs={
+                                              note.totalDurationMs
+                                            }
                                           />
                                         </div>
 
@@ -2483,7 +2487,8 @@ export function ManageCoachingUserView({
                                                 setFeedbackLoomDraftByNoteId(
                                                   (prev) => ({
                                                     ...prev,
-                                                    [note.id]: event.target.value,
+                                                    [note.id]:
+                                                      event.target.value,
                                                   }),
                                                 )
                                               }
@@ -2505,11 +2510,15 @@ export function ManageCoachingUserView({
 
                                       <div className='flex flex-col gap-3 xl:flex-row'>
                                         <div className='w-full space-y-1.5 xl:flex-1'>
-                                          <Label>Frases de la nota maestra</Label>
+                                          <Label>
+                                            Frases de la nota maestra
+                                          </Label>
                                           <div className='space-y-2 rounded-md border p-2'>
-                                            {note.activatedPhrases.length === 0 && (
+                                            {note.activatedPhrases.length ===
+                                              0 && (
                                               <p className='text-xs text-muted-foreground'>
-                                                No hay frases activadas en esta nota.
+                                                No hay frases activadas en esta
+                                                nota.
                                               </p>
                                             )}
                                             {note.activatedPhrases.map(
@@ -2519,13 +2528,21 @@ export function ManageCoachingUserView({
                                                   className='rounded-md border border-border/70 p-2'
                                                 >
                                                   <p className='text-xs text-muted-foreground'>
-                                                    #{index + 1} · {formatSeconds(Math.round(phrase.durationMs / 1000))}
+                                                    #{index + 1} ·{' '}
+                                                    {formatSeconds(
+                                                      Math.round(
+                                                        phrase.durationMs /
+                                                          1000,
+                                                      ),
+                                                    )}
                                                   </p>
                                                   <p className='font-serif text-base font-bold leading-tight'>
-                                                    {phrase.generatedPhrase || 'Sin frase registrada'}
+                                                    {phrase.generatedPhrase ||
+                                                      'Sin frase registrada'}
                                                   </p>
                                                   <p className='text-xs text-muted-foreground'>
-                                                    {phrase.translation || 'Sin traducción'}
+                                                    {phrase.translation ||
+                                                      'Sin traducción'}
                                                   </p>
                                                 </div>
                                               ),
@@ -2562,8 +2579,8 @@ export function ManageCoachingUserView({
                                             }
                                           >
                                             {savingFeedbackNoteId === note.id
-                                              ? 'Acutalizando...'
-                                              : 'Acutalizar NM'}
+                                              ? 'Actualizando...'
+                                              : 'Actualizar NM'}
                                           </Button>
                                         </div>
                                       </div>
