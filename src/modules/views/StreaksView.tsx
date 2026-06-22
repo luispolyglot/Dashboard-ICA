@@ -262,18 +262,18 @@ export function StreaksView({
 
           <div className='flex justify-center gap-6 border-t pt-4'>
             <Stat
-              label='Dias completados'
+              label='Días completados'
               value={completedCount}
               valueClass='text-primary'
             />
             <Stat
-              label='Dias sin completar'
+              label='Días sin completar'
               value={isFutureMonth ? 0 : missedCount}
               valueClass='text-destructive'
             />
             {tab === 'creation' && (
               <Stat
-                label='Dias salvados'
+                label='Días salvados'
                 value={savedCount}
                 valueClass='text-amber-600 dark:text-amber-300'
                 icon='🛟'
@@ -296,7 +296,7 @@ export function StreaksView({
               <div className='mb-2 flex items-center justify-between'>
                 <div className='text-xs text-muted-foreground'>
                   {isSaveModeActive
-                    ? 'Clickea en el dia que quieres salvar.'
+                    ? 'Haz clic en el día que quieres salvar.'
                     : `SalvadICA usado este mes: ${creationSavesUsedThisMonth}/${creationSavesLimit}`}
                 </div>
                 <Button
@@ -317,12 +317,12 @@ export function StreaksView({
               </div>
               <div className='text-xs text-muted-foreground'>
                 {isSaveModeActive
-                  ? 'Solo puedes seleccionar dias no completados del mes actual.'
+                  ? 'Solo puedes seleccionar días no completados del mes actual.'
                   : hasSaveQuota
                   ? latestSavableDay
-                    ? 'Puedes elegir cualquier dia rojo del mes actual para salvarlo.'
-                    : 'No hay dias elegibles para salvar en este mes.'
-                  : 'Ya alcanzaste el limite mensual de 3 salvadas.'}
+                    ? 'Puedes elegir cualquier día rojo del mes actual para salvarlo.'
+                    : 'No hay días elegibles para salvar en este mes.'
+                  : 'Ya alcanzaste el límite mensual de 3 salvadas.'}
               </div>
             </div>
           )}
