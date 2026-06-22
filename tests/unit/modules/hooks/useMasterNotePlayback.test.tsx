@@ -6,6 +6,7 @@ const createSignedMasterNoteAudioUrlMock = vi.fn()
 const fetchMasterNoteChunksMock = vi.fn()
 const getOfflineClosedMasterNoteAudioMock = vi.fn()
 const upsertOfflineClosedMasterNoteAudioMock = vi.fn()
+const flushPendingMasterNoteListeningDeltasMock = vi.fn()
 
 vi.mock('@/modules/services/masterNotes', () => ({
   createSignedMasterNoteAudioUrl: (...args: unknown[]) => createSignedMasterNoteAudioUrlMock(...args),
@@ -15,6 +16,17 @@ vi.mock('@/modules/services/masterNotes', () => ({
 vi.mock('@/modules/services/masterNotesOfflineStore', () => ({
   getOfflineClosedMasterNoteAudio: (...args: unknown[]) => getOfflineClosedMasterNoteAudioMock(...args),
   upsertOfflineClosedMasterNoteAudio: (...args: unknown[]) => upsertOfflineClosedMasterNoteAudioMock(...args),
+}))
+
+vi.mock('@/auth/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'test-user-id' } }),
+}))
+
+vi.mock('@/modules/services/masterNoteListeningMetrics', () => ({
+  enqueueMasterNoteListeningDelta: vi.fn(),
+  flushPendingMasterNoteListeningDeltas: (...args: unknown[]) =>
+    flushPendingMasterNoteListeningDeltasMock(...args),
+  getUtcDayStamp: () => '2026-06-22',
 }))
 
 import { useMasterNotePlayback } from '@/modules/hooks/useMasterNotePlayback'
@@ -89,6 +101,7 @@ describe('useMasterNotePlayback', () => {
     fetchMasterNoteChunksMock.mockReset()
     getOfflineClosedMasterNoteAudioMock.mockReset()
     upsertOfflineClosedMasterNoteAudioMock.mockReset()
+    flushPendingMasterNoteListeningDeltasMock.mockReset()
     mockAudioInstances.length = 0
 
     let objectUrlCount = 0
@@ -106,6 +119,7 @@ describe('useMasterNotePlayback', () => {
     createSignedMasterNoteAudioUrlMock.mockImplementation(async (path: string) => `https://audio/${path}`)
     getOfflineClosedMasterNoteAudioMock.mockResolvedValue(null)
     upsertOfflineClosedMasterNoteAudioMock.mockResolvedValue(undefined)
+    flushPendingMasterNoteListeningDeltasMock.mockResolvedValue(undefined)
     fetchMasterNoteChunksMock.mockResolvedValue([
       {
         id: 'chunk-1',

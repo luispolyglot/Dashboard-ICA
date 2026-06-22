@@ -77,7 +77,9 @@ export function AddView({
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const initialSharedTargetRef = useRef(
-    sanitizeShareTargetInput(searchParams.get(SHARE_TARGET_INPUT_QUERY_PARAM) || ''),
+    sanitizeShareTargetInput(
+      searchParams.get(SHARE_TARGET_INPUT_QUERY_PARAM) || '',
+    ),
   )
   const initialShareSourceRef = useRef(
     searchParams.get(SHARE_TARGET_SOURCE_QUERY_PARAM) === SHARE_TARGET_SOURCE,
@@ -98,6 +100,9 @@ export function AddView({
   const [sharedPrefillStatus, setSharedPrefillStatus] = useState<
     'none' | 'prefilled' | 'missing'
   >('none')
+  const [activeRecentSpeakerId, setActiveRecentSpeakerId] = useState<
+    string | null
+  >(null)
   const targetDebounceRef = useRef<number | null>(null)
   const nativeDebounceRef = useRef<number | null>(null)
   const spellingDebounceRef = useRef<number | null>(null)
@@ -105,7 +110,7 @@ export function AddView({
   const nativeRequestRef = useRef(0)
   const spellingRequestRef = useRef(0)
 
-  const recent = cards.slice(-5).reverse()
+  const recent = cards.slice(-25).reverse()
   const todayProgress = getTodayProgress(dailyProgress)
   const canCreatePhrase = todayProgress.wordsAdded >= CREATION_WORDS_GOAL
   const trimmedTarget = target.trim()
@@ -323,7 +328,7 @@ export function AddView({
         <h3 className='mt-2 text-[11px] uppercase tracking-wider text-muted-foreground'>
           Últimas añadidas
         </h3>
-        <div className='space-y-2'>
+        <div className='space-y-2 lg:overflow-y-auto lg:max-h-72 lg:pr-2'>
           {recent.map((card) => {
             const importanceMeta = getImportance(card.importance)
             return (
@@ -332,19 +337,34 @@ export function AddView({
                   <span
                     className={`mt-1.5 h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importanceMeta.key]}`}
                   />
-                  <div>
-                    <div className='flex items-center gap-2.5'>
+                  <div className='w-full flex items-start justify-between gap-2'>
+                    <div className='flex flex-wrap items-center gap-2.5'>
                       <span className='text-sm font-medium'>{card.target}</span>
                       <span className='text-muted-foreground'>→</span>
                       <span className='text-sm text-muted-foreground'>
                         {card.native}
                       </span>
                     </div>
-                    <RomanizationHint
+                    <SpeakButton
                       text={card.target}
-                      language={card.targetLang || ''}
+                      langName={card.targetLang || config.targetLang}
+                      color={importanceMeta.color}
+                      variant='icon'
+                      label={`Escuchar ${card.target}`}
+                      isPlaying={activeRecentSpeakerId === card.id}
+                      onPlayingChange={(isPlaying) => {
+                        setActiveRecentSpeakerId(isPlaying ? card.id : null)
+                      }}
+                      disabled={
+                        activeRecentSpeakerId !== null &&
+                        activeRecentSpeakerId !== card.id
+                      }
                     />
                   </div>
+                  <RomanizationHint
+                    text={card.target}
+                    language={card.targetLang || ''}
+                  />
                 </CardContent>
               </Card>
             )
@@ -396,7 +416,8 @@ export function AddView({
               className='h-11'
             />
             <p className='mt-1 text-[11px] text-muted-foreground'>
-              Máximo {SHARE_TARGET_MAX_CHARS} caracteres ({targetCharsCount}/{SHARE_TARGET_MAX_CHARS})
+              Máximo {SHARE_TARGET_MAX_CHARS} caracteres ({targetCharsCount}/
+              {SHARE_TARGET_MAX_CHARS})
             </p>
             {sharedPrefillStatus === 'prefilled' && (
               <p className='mt-1 text-xs text-emerald-600 dark:text-emerald-300'>
@@ -544,7 +565,7 @@ export function AddView({
           {recentList && <div className='mt-8 lg:hidden'>{recentList}</div>}
         </div>
 
-        <div className='hidden w-1/4 lg:block pt-12'>
+        <div className='hidden w-1/4 lg:block pt-5'>
           {recentList}
           <Button
             disabled={!canCreatePhrase}

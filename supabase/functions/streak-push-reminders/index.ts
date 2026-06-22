@@ -314,7 +314,7 @@ Deno.serve(async (req) => {
           localDay: local.day,
           payload: {
             title: 'Racha Flashcards pendiente',
-            body: 'Tu racha de flashcards de hoy sigue abierta. Cerrala para mantener el ritmo.',
+            body: 'Tu racha de flashcards de hoy sigue abierta. Ciérrala para mantener el ritmo.',
             url: '/streaks',
             tag: `flashcards-streak-${local.day}`,
           },

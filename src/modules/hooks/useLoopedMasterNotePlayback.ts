@@ -7,6 +7,8 @@ type UseLoopedMasterNotePlaybackParams = {
   playTransitionCue: (kind: 'start' | 'step' | 'finish') => Promise<unknown>
   pausePlayback?: () => void
   resumePlayback?: () => Promise<void>
+  seekBack10?: () => void
+  seekForward10?: () => void
   resolveNowPlayingMetadata?: (noteId: string) => {
     title: string
     artist?: string
@@ -34,6 +36,8 @@ export function useLoopedMasterNotePlayback({
   playTransitionCue,
   pausePlayback,
   resumePlayback,
+  seekBack10,
+  seekForward10,
   resolveNowPlayingMetadata,
   stopPlayback,
   autoAdvanceDelayMs = 900,
@@ -174,6 +178,16 @@ export function useLoopedMasterNotePlayback({
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return
 
     const mediaSession = navigator.mediaSession
+    const setActionHandlerSafely = (
+      action: MediaSessionAction,
+      handler: MediaSessionActionHandler | null,
+    ) => {
+      try {
+        mediaSession.setActionHandler(action, handler)
+      } catch {
+        // noop
+      }
+    }
     const effectiveNoteId = playingNoteId || (looping ? loopIds[loopIndex] || null : null)
     const playbackState: MediaSessionPlaybackState = effectiveNoteId
       ? (isPaused ? 'paused' : 'playing')
@@ -191,28 +205,38 @@ export function useLoopedMasterNotePlayback({
     }
     mediaSession.playbackState = playbackState
 
-    mediaSession.setActionHandler('play', () => {
+    setActionHandlerSafely('play', () => {
       if (!resumePlayback) return
       void resumePlayback()
     })
 
-    mediaSession.setActionHandler('pause', () => {
+    setActionHandlerSafely('pause', () => {
       pausePlayback?.()
     })
 
-    mediaSession.setActionHandler('nexttrack', () => {
+    setActionHandlerSafely('nexttrack', () => {
       void playNext()
     })
 
-    mediaSession.setActionHandler('previoustrack', () => {
+    setActionHandlerSafely('previoustrack', () => {
       void playPrevious()
     })
 
+    setActionHandlerSafely('seekbackward', () => {
+      seekBack10?.()
+    })
+
+    setActionHandlerSafely('seekforward', () => {
+      seekForward10?.()
+    })
+
     return () => {
-      mediaSession.setActionHandler('play', null)
-      mediaSession.setActionHandler('pause', null)
-      mediaSession.setActionHandler('nexttrack', null)
-      mediaSession.setActionHandler('previoustrack', null)
+      setActionHandlerSafely('play', null)
+      setActionHandlerSafely('pause', null)
+      setActionHandlerSafely('nexttrack', null)
+      setActionHandlerSafely('previoustrack', null)
+      setActionHandlerSafely('seekbackward', null)
+      setActionHandlerSafely('seekforward', null)
     }
   }, [
     isPaused,
@@ -225,6 +249,8 @@ export function useLoopedMasterNotePlayback({
     playingNoteId,
     resolveNowPlayingMetadata,
     resumePlayback,
+    seekBack10,
+    seekForward10,
   ])
 
   return {

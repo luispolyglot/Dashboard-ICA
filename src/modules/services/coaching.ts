@@ -141,6 +141,9 @@ export type CoachingInsightNote = {
   audioChunks: Array<{
     id: string
     storage_path: string
+    phrase_generation_id?: string | null
+    generated_phrase?: string | null
+    translation?: string | null
     sort_order: number
     duration_ms: number | null
     audioUrl: string | null

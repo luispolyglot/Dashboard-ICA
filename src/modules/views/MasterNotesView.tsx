@@ -279,6 +279,8 @@ export function MasterNotesView({
     playTransitionCue: playCue,
     pausePlayback: pause,
     resumePlayback: resume,
+    seekBack10,
+    seekForward10,
     resolveNowPlayingMetadata,
     stopPlayback: stop,
   })

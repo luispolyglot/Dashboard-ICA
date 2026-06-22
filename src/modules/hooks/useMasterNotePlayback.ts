@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useAuth } from '@/auth/AuthContext'
 import type { MasterNote } from '../types'
 import {
   createSignedMasterNoteAudioUrl,
@@ -8,6 +9,11 @@ import {
   getOfflineClosedMasterNoteAudio,
   upsertOfflineClosedMasterNoteAudio,
 } from '../services/masterNotesOfflineStore'
+import {
+  enqueueMasterNoteListeningDelta,
+  flushPendingMasterNoteListeningDeltas,
+  getUtcDayStamp,
+} from '../services/masterNoteListeningMetrics'
 
 type PlaybackTrack = {
   url: string
@@ -157,6 +163,7 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 export function useMasterNotePlayback() {
+  const { user } = useAuth()
   const [playingNoteId, setPlayingNoteId] = useState<string | null>(null)
   const [isPaused, setIsPaused] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -168,6 +175,13 @@ export function useMasterNotePlayback() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const unifiedChunkCacheRef = useRef<Map<string, UnifiedChunkCacheEntry>>(new Map())
   const offlineTrackCacheRef = useRef<Map<string, OfflineTrackCacheEntry>>(new Map())
+  const currentTrackMetaRef = useRef<{
+    targetLang: string
+    nativeLang: string
+  } | null>(null)
+  const listeningLastTickAtRef = useRef<number | null>(null)
+  const listeningBufferedSecondsRef = useRef(0)
+  const listeningFlushIntervalRef = useRef<number | null>(null)
 
   const clearUnifiedChunkCache = (): void => {
     for (const cachedTrack of unifiedChunkCacheRef.current.values()) {
@@ -200,6 +214,8 @@ export function useMasterNotePlayback() {
   }
 
   const stop = (): void => {
+    checkpointListening(true)
+    stopListeningTicker()
     tokenRef.current += 1
     if (audioRef.current) {
       audioRef.current.pause()
@@ -214,6 +230,8 @@ export function useMasterNotePlayback() {
   const pause = (): void => {
     if (!audioRef.current || !playingNoteId) return
     if (!audioRef.current.paused) {
+      checkpointListening(true)
+      stopListeningTicker()
       audioRef.current.pause()
       setIsPaused(true)
     }
@@ -225,6 +243,7 @@ export function useMasterNotePlayback() {
 
     try {
       await audioRef.current.play()
+      startListeningTicker()
       setIsPaused(false)
     } catch (err) {
       pushDebugEvent('No se pudo reanudar audio', err)
@@ -241,7 +260,27 @@ export function useMasterNotePlayback() {
   }
 
   useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        checkpointListening(true)
+      }
+    }
+
+    const onPageHide = () => {
+      checkpointListening(true)
+    }
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibilityChange)
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pagehide', onPageHide)
+    }
+
     return () => {
+      checkpointListening(true)
+      stopListeningTicker()
       stop()
 
       if (audioRef.current) {
@@ -256,8 +295,93 @@ export function useMasterNotePlayback() {
 
       clearUnifiedChunkCache()
       clearOfflineTrackCache()
+
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibilityChange)
+      }
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('pagehide', onPageHide)
+      }
     }
-  }, [])
+  }, [user?.id])
+
+  const flushListeningAsync = async (): Promise<void> => {
+    if (!user?.id) return
+    await flushPendingMasterNoteListeningDeltas(user.id)
+  }
+
+  useEffect(() => {
+    if (!user?.id) return
+    void flushPendingMasterNoteListeningDeltas(user.id).catch(() => {})
+  }, [user?.id])
+
+  const commitListeningDelta = (forceFlush = false): void => {
+    const currentUserId = user?.id
+    const meta = currentTrackMetaRef.current
+    if (!currentUserId || !meta) {
+      listeningBufferedSecondsRef.current = 0
+      return
+    }
+
+    const wholeSeconds = Math.floor(listeningBufferedSecondsRef.current)
+    listeningBufferedSecondsRef.current -= wholeSeconds
+
+    if (wholeSeconds <= 0) {
+      if (forceFlush) {
+        void flushListeningAsync().catch(() => {})
+      }
+      return
+    }
+
+    enqueueMasterNoteListeningDelta({
+      userId: currentUserId,
+      day: getUtcDayStamp(),
+      targetLang: meta.targetLang,
+      nativeLang: meta.nativeLang,
+      deltaSeconds: wholeSeconds,
+    })
+
+    if (forceFlush || wholeSeconds >= 15) {
+      void flushListeningAsync().catch(() => {})
+    }
+  }
+
+  const checkpointListening = (forceFlush = false): void => {
+    if (!audioRef.current || audioRef.current.paused) {
+      commitListeningDelta(forceFlush)
+      listeningLastTickAtRef.current = null
+      return
+    }
+
+    const now = Date.now()
+    const last = listeningLastTickAtRef.current
+    listeningLastTickAtRef.current = now
+
+    if (last !== null) {
+      const deltaSec = clamp((now - last) / 1000, 0, 15)
+      listeningBufferedSecondsRef.current += deltaSec
+    }
+
+    commitListeningDelta(forceFlush)
+  }
+
+  const stopListeningTicker = (): void => {
+    if (listeningFlushIntervalRef.current !== null) {
+      window.clearInterval(listeningFlushIntervalRef.current)
+      listeningFlushIntervalRef.current = null
+    }
+    listeningLastTickAtRef.current = null
+  }
+
+  const startListeningTicker = (): void => {
+    if (!audioRef.current || audioRef.current.paused) return
+    if (listeningFlushIntervalRef.current !== null) return
+
+    listeningLastTickAtRef.current = Date.now()
+    listeningFlushIntervalRef.current = window.setInterval(() => {
+      checkpointListening(false)
+    }, 10_000)
+  }
 
   const getOfflineClosedTrack = async (note: MasterNote): Promise<PlaybackTrack | null> => {
     if (note.state !== 'closed') return null
@@ -333,6 +457,8 @@ export function useMasterNotePlayback() {
 
     const onEnded = () => {
       if (token !== tokenRef.current) return
+      checkpointListening(true)
+      stopListeningTicker()
       setPositionSec(getCurrentDuration())
       setPlayingNoteId(null)
       setIsPaused(false)
@@ -340,6 +466,8 @@ export function useMasterNotePlayback() {
 
     const onError = () => {
       if (token !== tokenRef.current) return
+      checkpointListening(true)
+      stopListeningTicker()
       const mediaErrorCode = audio.error?.code
       pushDebugEvent(
         `HTMLAudioElement lanzó error durante reproducción${mediaErrorCode ? ` (code ${mediaErrorCode})` : ''}`,
@@ -381,6 +509,7 @@ export function useMasterNotePlayback() {
 
     try {
       await audio.play()
+      startListeningTicker()
       setIsPaused(false)
     } catch (err) {
       if (token !== tokenRef.current) return
@@ -393,6 +522,7 @@ export function useMasterNotePlayback() {
 
   const playTransitionCue = async (cueSource: string | Blob): Promise<boolean> => {
     stop()
+    currentTrackMetaRef.current = null
     setError(null)
     const token = tokenRef.current
 
@@ -627,6 +757,13 @@ export function useMasterNotePlayback() {
     setDurationSec(track.durationSec)
     setPositionSec(0)
     setPlayingNoteId(note.id)
+    currentTrackMetaRef.current =
+      note.target_lang && note.native_lang
+        ? {
+            targetLang: note.target_lang,
+            nativeLang: note.native_lang,
+          }
+        : null
     await playTrack(track, 0, token)
   }
 

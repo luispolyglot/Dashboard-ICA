@@ -3,7 +3,7 @@ import type { MouseEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { speakNatural, stopTTS } from '../services/tts'
-import { Volume1Icon, SquareIcon } from 'lucide-react'
+import { SquareIcon, Volume1Icon } from 'lucide-react'
 
 type SpeakButtonProps = {
   text: string
@@ -12,6 +12,9 @@ type SpeakButtonProps = {
   label?: string
   className?: string
   disabled?: boolean
+  variant?: 'default' | 'icon'
+  isPlaying?: boolean
+  onPlayingChange?: (isPlaying: boolean) => void
 }
 
 const SPEAK_RATE_STORAGE_KEY = 'speak-button-rate'
@@ -30,9 +33,20 @@ export function SpeakButton({
   label,
   className,
   disabled,
+  variant = 'default',
+  isPlaying,
+  onPlayingChange,
 }: SpeakButtonProps) {
-  const [s, setS] = useState(false)
+  const [internalPlaying, setInternalPlaying] = useState(false)
   const [rate, setRate] = useState<0.75 | 1>(getInitialRate)
+  const playing = isPlaying ?? internalPlaying
+
+  const setPlaying = (next: boolean) => {
+    if (isPlaying === undefined) {
+      setInternalPlaying(next)
+    }
+    onPlayingChange?.(next)
+  }
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -52,24 +66,44 @@ export function SpeakButton({
 
   const go = (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
-    if (s) {
+    if (playing) {
       stopTTS()
-      setS(false)
+      setPlaying(false)
       return
     }
-    setS(true)
-    speakNatural(text, langName, () => setS(false), rate)
+    setPlaying(true)
+    speakNatural(text, langName, () => setPlaying(false), rate)
   }
 
   const handleRate = (e: MouseEvent<HTMLButtonElement>, nextRate: 0.75 | 1) => {
     e.stopPropagation()
     setRate(nextRate)
 
-    if (!s) return
+    if (!playing) return
 
     stopTTS()
-    setS(true)
-    speakNatural(text, langName, () => setS(false), nextRate)
+    setPlaying(true)
+    speakNatural(text, langName, () => setPlaying(false), nextRate)
+  }
+
+  if (variant === 'icon') {
+    return (
+      <Button
+        type='button'
+        onClick={go}
+        variant='outline'
+        size='icon'
+        disabled={disabled}
+        aria-label={label || `Escuchar ${langName}`}
+        className={cn(tone, playing ? 'brightness-125' : '', className)}
+      >
+        {playing ? (
+          <SquareIcon className='size-4' />
+        ) : (
+          <Volume1Icon className='size-4' />
+        )}
+      </Button>
+    )
   }
 
   return (
@@ -83,7 +117,7 @@ export function SpeakButton({
         size='sm'
         variant={rate === 1 ? 'default' : 'outline'}
         onClick={(e) => handleRate(e, 1)}
-        disabled={s || disabled}
+        disabled={playing || disabled}
       >
         x1
       </Button>
@@ -92,7 +126,7 @@ export function SpeakButton({
         size='sm'
         variant={rate === 0.75 ? 'default' : 'outline'}
         onClick={(e) => handleRate(e, 0.75)}
-        disabled={s || disabled}
+        disabled={playing || disabled}
       >
         x0.75
       </Button>
@@ -102,10 +136,10 @@ export function SpeakButton({
         onClick={go}
         variant='outline'
         disabled={disabled}
-        className={`${tone} ${s ? 'brightness-125' : ''}`}
+        className={`${tone} ${playing ? 'brightness-125' : ''}`}
       >
-        {s ? 'Reproduciendo...' : 'Escuchar'}
-        {s ? (
+        {playing ? 'Reproduciendo...' : 'Escuchar'}
+        {playing ? (
           <SquareIcon className='size-4 ml-1' />
         ) : (
           <Volume1Icon className='size-4 ml-1' />
