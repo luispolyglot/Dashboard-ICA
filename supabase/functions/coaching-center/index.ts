@@ -67,9 +67,16 @@ type CoachingUserRow = {
 type MasterNoteChunkRow = {
   id: string
   master_note_id: string
+  phrase_generation_id: string | null
   storage_path: string
   sort_order: number
   duration_ms: number | null
+}
+
+type PhraseGenerationRow = {
+  id: string
+  generated_phrase: string | null
+  translation: string | null
 }
 
 type CoachingSessionWeeklyObjectiveRow = {
@@ -2431,11 +2438,12 @@ Deno.serve(async (req) => {
 
     const noteIds = (notesResult.data || []).map((note) => String(note.id))
     let chunksByNoteId = new Map<string, MasterNoteChunkRow[]>()
+    const phraseById = new Map<string, PhraseGenerationRow>()
 
     if (noteIds.length > 0) {
       const { data: chunksData, error: chunksError } = await admin.adminClient
         .from('master_note_chunks')
-        .select('id, master_note_id, storage_path, sort_order, duration_ms')
+        .select('id, master_note_id, phrase_generation_id, storage_path, sort_order, duration_ms')
         .eq('user_id', userId)
         .in('master_note_id', noteIds)
         .order('sort_order', { ascending: true })
@@ -2448,6 +2456,27 @@ Deno.serve(async (req) => {
         const existing = chunksByNoteId.get(chunk.master_note_id) || []
         existing.push(chunk)
         chunksByNoteId.set(chunk.master_note_id, existing)
+      }
+
+      const phraseIds = Array.from(new Set(
+        ((chunksData || []) as MasterNoteChunkRow[])
+          .map((chunk) => safeString(chunk.phrase_generation_id))
+          .filter(Boolean),
+      ))
+
+      if (phraseIds.length > 0) {
+        const { data: phraseRows, error: phraseError } = await admin.adminClient
+          .from('phrase_generations')
+          .select('id, generated_phrase, translation')
+          .in('id', phraseIds)
+
+        if (phraseError) {
+          return jsonResponse(500, { error: phraseError.message })
+        }
+
+        for (const phrase of (phraseRows || []) as PhraseGenerationRow[]) {
+          phraseById.set(phrase.id, phrase)
+        }
       }
     }
 
@@ -2471,9 +2500,15 @@ Deno.serve(async (req) => {
               .from('master-notes')
               .createSignedUrl(chunk.storage_path, 60 * 60)
 
+            const phraseId = safeString(chunk.phrase_generation_id)
+            const phrase = phraseById.get(phraseId)
+
             return {
               id: chunk.id,
               storage_path: chunk.storage_path,
+              phrase_generation_id: phraseId || null,
+              generated_phrase: phrase?.generated_phrase || null,
+              translation: phrase?.translation || null,
               sort_order: chunk.sort_order,
               duration_ms: chunk.duration_ms,
               audioUrl: signedChunkError || !signedChunkData?.signedUrl ? null : signedChunkData.signedUrl,

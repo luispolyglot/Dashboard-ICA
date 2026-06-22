@@ -66,6 +66,7 @@ import {
   fetchCoachingUserInsights,
   fetchCoachingUserMemberships,
   type CoachingAdminRow,
+  type CoachingInsightNote,
   type CoachingUserInsights,
   type CoachingUserMembership,
   uploadCoachingClassReportImage,
@@ -120,6 +121,13 @@ type ClassDraft = {
 
 type SessionActionType = 'archive' | 'close' | 'hard-delete'
 type CoachingViewMode = 'coach' | 'user-preview'
+
+type ActivatedMasterNotePhrase = {
+  chunkId: string
+  durationMs: number
+  generatedPhrase: string | null
+  translation: string | null
+}
 
 function toString(value: unknown): string {
   if (typeof value === 'number' && Number.isFinite(value)) return String(value)
@@ -277,6 +285,15 @@ function formatSeconds(seconds: number): string {
   const minutes = Math.floor(safe / 60)
   const rest = safe % 60
   return `${minutes}:${String(rest).padStart(2, '0')}`
+}
+
+function getActivatedPhrasesFromNote(note: CoachingInsightNote): ActivatedMasterNotePhrase[] {
+  return (note.audioChunks || []).map((chunk) => ({
+    chunkId: chunk.id,
+    durationMs: Math.max(0, chunk.duration_ms || 0),
+    generatedPhrase: chunk.generated_phrase || null,
+    translation: chunk.translation || null,
+  }))
 }
 
 function writeAscii(view: DataView, offset: number, value: string): void {
@@ -1285,6 +1302,7 @@ export function ManageCoachingUserView({
         closedAt: string
         audioUrl: string | null
         audioChunks: Array<{ audioUrl: string | null; durationMs: number }>
+        activatedPhrases: ActivatedMasterNotePhrase[]
         totalDurationMs: number
         feedbackLoomUrl: string | null
         feedbackNotes: string | null
@@ -1318,6 +1336,7 @@ export function ManageCoachingUserView({
               audioUrl: item.audioUrl || null,
               durationMs: item.duration_ms || 0,
             })),
+            activatedPhrases: getActivatedPhrasesFromNote(source),
             totalDurationMs: source.total_duration_ms || 0,
             feedbackLoomUrl: source.coachingFeedbackLoomUrl || null,
             feedbackNotes: source.coachingFeedbackNotes || null,
@@ -1362,6 +1381,7 @@ export function ManageCoachingUserView({
           audioUrl: item.audioUrl || null,
           durationMs: item.duration_ms || 0,
         })),
+        activatedPhrases: getActivatedPhrasesFromNote(note),
         totalDurationMs: note.total_duration_ms || 0,
         feedbackLoomUrl: note.coachingFeedbackLoomUrl || null,
         feedbackNotes: note.coachingFeedbackNotes || null,
@@ -2440,77 +2460,112 @@ export function ManageCoachingUserView({
                                         {formatDateTime(note.closedAt)}
                                       </p>
 
-                                      <MasterNoteCoachAudioPlayer
-                                        noteId={note.id}
-                                        audioUrl={note.audioUrl}
-                                        audioChunks={note.audioChunks}
-                                        totalDurationMs={note.totalDurationMs}
-                                      />
+                                      <div className='flex flex-col gap-3 xl:flex-row'>
+                                        <div className='w-full xl:flex-1'>
+                                          <MasterNoteCoachAudioPlayer
+                                            noteId={note.id}
+                                            audioUrl={note.audioUrl}
+                                            audioChunks={note.audioChunks}
+                                            totalDurationMs={note.totalDurationMs}
+                                          />
+                                        </div>
 
-                                      <div className='space-y-1.5'>
-                                        <Label>Video feedback (Loom)</Label>
-                                        <div className='flex flex-wrap gap-2'>
-                                          <Input
+                                        <div className='w-full space-y-1.5 xl:flex-1'>
+                                          <Label>Video feedback (Loom)</Label>
+                                          <div className='flex flex-wrap gap-2'>
+                                            <Input
+                                              value={
+                                                feedbackLoomDraftByNoteId[
+                                                  note.id
+                                                ] || ''
+                                              }
+                                              onChange={(event) =>
+                                                setFeedbackLoomDraftByNoteId(
+                                                  (prev) => ({
+                                                    ...prev,
+                                                    [note.id]: event.target.value,
+                                                  }),
+                                                )
+                                              }
+                                              placeholder='Ej: https://www.loom.com/share/...'
+                                            />
+                                          </div>
+                                          {note.feedbackLoomUrl && (
+                                            <a
+                                              href={note.feedbackLoomUrl}
+                                              target='_blank'
+                                              rel='noreferrer'
+                                              className='text-blue-600 underline underline-offset-2'
+                                            >
+                                              Abrir video actual
+                                            </a>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <div className='flex flex-col gap-3 xl:flex-row'>
+                                        <div className='w-full space-y-1.5 xl:flex-1'>
+                                          <Label>Frases de la nota maestra</Label>
+                                          <div className='space-y-2 rounded-md border p-2'>
+                                            {note.activatedPhrases.length === 0 && (
+                                              <p className='text-xs text-muted-foreground'>
+                                                No hay frases activadas en esta nota.
+                                              </p>
+                                            )}
+                                            {note.activatedPhrases.map(
+                                              (phrase, index) => (
+                                                <div
+                                                  key={phrase.chunkId}
+                                                  className='rounded-md border border-border/70 p-2'
+                                                >
+                                                  <p className='text-xs text-muted-foreground'>
+                                                    #{index + 1} · {formatSeconds(Math.round(phrase.durationMs / 1000))}
+                                                  </p>
+                                                  <p className='font-serif text-base font-bold leading-tight'>
+                                                    {phrase.generatedPhrase || 'Sin frase registrada'}
+                                                  </p>
+                                                  <p className='text-xs text-muted-foreground'>
+                                                    {phrase.translation || 'Sin traducción'}
+                                                  </p>
+                                                </div>
+                                              ),
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <div className='w-full space-y-1.5 xl:flex-1'>
+                                          <Label>Notas del coach</Label>
+                                          <Textarea
                                             value={
-                                              feedbackLoomDraftByNoteId[
+                                              feedbackNotesDraftByNoteId[
                                                 note.id
                                               ] || ''
                                             }
                                             onChange={(event) =>
-                                              setFeedbackLoomDraftByNoteId(
+                                              setFeedbackNotesDraftByNoteId(
                                                 (prev) => ({
                                                   ...prev,
                                                   [note.id]: event.target.value,
                                                 }),
                                               )
                                             }
-                                            placeholder='Ej: https://www.loom.com/share/...'
+                                            placeholder='Escribe observaciones mientras escuchas el audio...'
+                                            rows={8}
                                           />
-                                        </div>
-                                        {note.feedbackLoomUrl && (
-                                          <a
-                                            href={note.feedbackLoomUrl}
-                                            target='_blank'
-                                            rel='noreferrer'
-                                            className='text-blue-600 underline underline-offset-2'
+                                          <Button
+                                            type='button'
+                                            onClick={() =>
+                                              void handleSaveFeedback(note.id)
+                                            }
+                                            disabled={
+                                              savingFeedbackNoteId === note.id
+                                            }
                                           >
-                                            Abrir video actual
-                                          </a>
-                                        )}
-                                      </div>
-
-                                      <div className='space-y-1.5'>
-                                        <Label>Notas del coach</Label>
-                                        <Textarea
-                                          value={
-                                            feedbackNotesDraftByNoteId[
-                                              note.id
-                                            ] || ''
-                                          }
-                                          onChange={(event) =>
-                                            setFeedbackNotesDraftByNoteId(
-                                              (prev) => ({
-                                                ...prev,
-                                                [note.id]: event.target.value,
-                                              }),
-                                            )
-                                          }
-                                          placeholder='Escribe observaciones mientras escuchas el audio...'
-                                          rows={4}
-                                        />
-                                        <Button
-                                          type='button'
-                                          onClick={() =>
-                                            void handleSaveFeedback(note.id)
-                                          }
-                                          disabled={
-                                            savingFeedbackNoteId === note.id
-                                          }
-                                        >
-                                          {savingFeedbackNoteId === note.id
-                                            ? 'Acutalizando...'
-                                            : 'Acutalizar NM'}
-                                        </Button>
+                                            {savingFeedbackNoteId === note.id
+                                              ? 'Acutalizando...'
+                                              : 'Acutalizar NM'}
+                                          </Button>
+                                        </div>
                                       </div>
                                     </div>
                                   ))}
