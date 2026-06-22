@@ -9,15 +9,15 @@ type LoopCueKind = 'start' | 'step' | 'finish'
 
 const LOOP_CUE_CONFIG: Record<LoopCueKind, { id: string; url: string }> = {
   start: {
-    id: 'loop-cue-start',
+    id: 'loop-cue-start-female',
     url: LOOP_START_CUE_URL,
   },
   step: {
-    id: 'loop-cue-step',
+    id: 'loop-cue-step-female',
     url: LOOP_STEP_CUE_URL,
   },
   finish: {
-    id: 'loop-cue-finish',
+    id: 'loop-cue-finish-female',
     url: LOOP_FINISH_CUE_URL,
   },
 }
