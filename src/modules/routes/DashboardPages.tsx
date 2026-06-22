@@ -337,11 +337,25 @@ export function LeaderboardPage() {
 }
 
 export function StreaksPage() {
-  const { completedDays, creationDays } = useDashboardContext()
+  const {
+    completedDays,
+    creationDays,
+    savedCreationDays,
+    creationSavesUsedThisMonth,
+    creationSavesLimit,
+    saveCreationStreakDay,
+  } = useDashboardContext()
 
   return (
     <PageLayout>
-      <StreaksView completedDays={completedDays} creationDays={creationDays} />
+      <StreaksView
+        completedDays={completedDays}
+        creationDays={creationDays}
+        savedCreationDays={savedCreationDays}
+        creationSavesUsedThisMonth={creationSavesUsedThisMonth}
+        creationSavesLimit={creationSavesLimit}
+        onSaveCreationStreakDay={saveCreationStreakDay}
+      />
     </PageLayout>
   )
 }

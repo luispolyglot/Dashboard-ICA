@@ -8,7 +8,7 @@ export function generateId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-function shiftIsoDay(isoDay: string, days: number): string {
+export function shiftIsoDay(isoDay: string, days: number): string {
   const [year, month, day] = isoDay.split('-').map(Number)
   const date = new Date(Date.UTC(year, (month || 1) - 1, day || 1))
   date.setUTCDate(date.getUTCDate() + days)
@@ -99,6 +99,33 @@ export function getStreak(completedDays: string[]): number {
       streak++
       cursor = shiftIsoDay(cursor, -1)
     } else break
+  }
+
+  return streak
+}
+
+export function getStreakWithSaved(completedDays: string[], savedDays: string[]): number {
+  if ((!completedDays || completedDays.length === 0) && (!savedDays || savedDays.length === 0)) {
+    return 0
+  }
+
+  const completedSet = new Set(completedDays || [])
+  const continuitySet = new Set([...(completedDays || []), ...(savedDays || [])])
+  if (continuitySet.size === 0) return 0
+
+  const sorted = [...continuitySet].sort().reverse()
+  const today = todayKey()
+  const yesterday = shiftIsoDay(today, -1)
+
+  if (sorted[0] !== today && sorted[0] !== yesterday) return 0
+
+  let streak = 0
+  let cursor = sorted[0] === today ? today : yesterday
+
+  for (let i = 0; i < 365; i++) {
+    if (!continuitySet.has(cursor)) break
+    if (completedSet.has(cursor)) streak++
+    cursor = shiftIsoDay(cursor, -1)
   }
 
   return streak

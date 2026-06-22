@@ -7,6 +7,10 @@ import {
   ACTIVATION_METRICS_CHANGED_EVENT,
   CREATION_METRICS_CHANGED_EVENT,
 } from '../services/creationMetricsSync'
+import {
+  loadCreationStreakSaveState,
+  saveCreationStreakDay as saveCreationStreakDayRpc,
+} from '../services/creationStreakSaves'
 import { loadData, saveData } from '../services/storage'
 import { recordBootstrapDiagnostic } from '../utils/bootstrapDiagnostics'
 import { todayKey } from '../utils'
@@ -31,6 +35,9 @@ export function useDashboardICA() {
   const [creationDays, setCreationDays] = useState<string[]>([])
   const [dailyProgress, setDailyProgress] = useState<DailyProgressMap>({})
   const [reviewSession, setReviewSession] = useState(0)
+  const [savedCreationDays, setSavedCreationDays] = useState<string[]>([])
+  const [creationSavesUsedThisMonth, setCreationSavesUsedThisMonth] = useState(0)
+  const [creationSavesLimit, setCreationSavesLimit] = useState(3)
   const [metaTrackerByScope, setMetaTrackerByScope] = useState<
     Record<string, MetaTrackerProfile | null | undefined>
   >({})
@@ -38,25 +45,33 @@ export function useDashboardICA() {
   const [metaTrackerSaving, setMetaTrackerSaving] = useState(false)
 
   const refreshCreationProgressFromSource = useCallback(async (): Promise<void> => {
-    const [sourceDays, sourceDailyProgress] = await Promise.all([
+    const [sourceDays, sourceDailyProgress, saveState] = await Promise.all([
       loadData('dashboard-ICA-creation-days', [] as string[]),
       loadData('dashboard-ICA-daily-progress', {} as DailyProgressMap),
+      loadCreationStreakSaveState(),
     ])
 
     setCreationDays(sourceDays || [])
     setDailyProgress(sourceDailyProgress || {})
+    setSavedCreationDays(saveState.savedDays)
+    setCreationSavesUsedThisMonth(saveState.savesUsedThisMonth)
+    setCreationSavesLimit(saveState.savesLimit)
   }, [])
 
   const refreshStreakProgressFromSource = useCallback(async (): Promise<void> => {
-    const [sourceCompletedDays, sourceCreationDays, sourceDailyProgress] = await Promise.all([
+    const [sourceCompletedDays, sourceCreationDays, sourceDailyProgress, saveState] = await Promise.all([
       loadData('dashboard-ICA-completed', [] as string[]),
       loadData('dashboard-ICA-creation-days', [] as string[]),
       loadData('dashboard-ICA-daily-progress', {} as DailyProgressMap),
+      loadCreationStreakSaveState(),
     ])
 
     setCompletedDays(sourceCompletedDays || [])
     setCreationDays(sourceCreationDays || [])
     setDailyProgress(sourceDailyProgress || {})
+    setSavedCreationDays(saveState.savedDays)
+    setCreationSavesUsedThisMonth(saveState.savesUsedThisMonth)
+    setCreationSavesLimit(saveState.savesLimit)
   }, [])
 
   const refreshActivationProgressFromSource = useCallback(async (): Promise<void> => {
@@ -83,6 +98,7 @@ export function useDashboardICA() {
       loadData('dashboard-ICA-creation-days', [] as string[]),
       loadData('dashboard-ICA-daily-progress', {} as DailyProgressMap),
       loadData('dashboard-ICA-review-session', 0 as number),
+      loadCreationStreakSaveState(),
     ]).then(([
       loadedCards,
       loadedConfig,
@@ -90,6 +106,7 @@ export function useDashboardICA() {
       loadedCreationDays,
       loadedDailyProgress,
       loadedReviewSession,
+      loadedSaveState,
     ]) => {
       setCards(loadedCards)
       setConfig(loadedConfig)
@@ -97,6 +114,9 @@ export function useDashboardICA() {
       setCreationDays(loadedCreationDays || [])
       setDailyProgress(loadedDailyProgress || {})
       setReviewSession(typeof loadedReviewSession === 'number' ? loadedReviewSession : 0)
+      setSavedCreationDays(loadedSaveState.savedDays)
+      setCreationSavesUsedThisMonth(loadedSaveState.savesUsedThisMonth)
+      setCreationSavesLimit(loadedSaveState.savesLimit)
       recordBootstrapDiagnostic('dashboard.bootstrap_complete', {
         hasConfig: Boolean(loadedConfig),
         cardCount: (loadedCards || []).length,
@@ -111,6 +131,9 @@ export function useDashboardICA() {
       setCreationDays([])
       setDailyProgress({})
       setReviewSession(0)
+      setSavedCreationDays([])
+      setCreationSavesUsedThisMonth(0)
+      setCreationSavesLimit(3)
       recordBootstrapDiagnostic('dashboard.bootstrap_failed')
       setLoading(false)
     })
@@ -167,10 +190,11 @@ export function useDashboardICA() {
     let active = true
 
     const tryRefreshStreaks = async (): Promise<void> => {
-      const [sourceCompletedDays, sourceCreationDays, sourceDailyProgress] = await Promise.all([
+      const [sourceCompletedDays, sourceCreationDays, sourceDailyProgress, saveState] = await Promise.all([
         loadData('dashboard-ICA-completed', [] as string[]),
         loadData('dashboard-ICA-creation-days', [] as string[]),
         loadData('dashboard-ICA-daily-progress', {} as DailyProgressMap),
+        loadCreationStreakSaveState(),
       ])
 
       if (!active) return
@@ -178,6 +202,9 @@ export function useDashboardICA() {
       setCompletedDays(sourceCompletedDays || [])
       setCreationDays(sourceCreationDays || [])
       setDailyProgress(sourceDailyProgress || {})
+      setSavedCreationDays(saveState.savedDays)
+      setCreationSavesUsedThisMonth(saveState.savesUsedThisMonth)
+      setCreationSavesLimit(saveState.savesLimit)
       recordBootstrapDiagnostic('dashboard.streaks_revalidated', {
         completedDaysCount: (sourceCompletedDays || []).length,
         creationDaysCount: (sourceCreationDays || []).length,
@@ -296,14 +323,20 @@ export function useDashboardICA() {
 
   useEffect(() => {
     const syncFromTruthSource = () => {
-      void refreshCreationProgressFromSource()
+      void refreshStreakProgressFromSource()
     }
 
     window.addEventListener(CREATION_METRICS_CHANGED_EVENT, syncFromTruthSource)
     return () => {
       window.removeEventListener(CREATION_METRICS_CHANGED_EVENT, syncFromTruthSource)
     }
-  }, [refreshCreationProgressFromSource])
+  }, [refreshStreakProgressFromSource])
+
+  const saveCreationStreakDay = useCallback(async (day?: string): Promise<{ savedDay: string }> => {
+    const saved = await saveCreationStreakDayRpc(day)
+    await refreshStreakProgressFromSource()
+    return { savedDay: saved.savedDay }
+  }, [refreshStreakProgressFromSource])
 
   useEffect(() => {
     const syncActivationFromTruthSource = () => {
@@ -398,6 +431,9 @@ export function useDashboardICA() {
     completedDays,
     setCompletedDays,
     creationDays,
+    savedCreationDays,
+    creationSavesUsedThisMonth,
+    creationSavesLimit,
     dailyProgress,
     reviewSession,
     metaTrackerProfile,
@@ -412,5 +448,6 @@ export function useDashboardICA() {
     setMetaTrackerActivationWordsTotal,
     startReviewSession,
     refreshCreationDaysFromSource,
+    saveCreationStreakDay,
   }
 }
