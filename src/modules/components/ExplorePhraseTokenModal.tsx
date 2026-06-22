@@ -14,7 +14,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { IMPORTANCE_LEVELS } from '../constants'
 import { normalizeComparableText } from '../wordExtraction'
-import { fetchPhraseTokenInsight, fetchWordExample } from '../services/anthropic'
+import {
+  fetchPhraseTokenInsight,
+  fetchWordExample,
+} from '../services/anthropic'
 import { insertWord } from '../services/storage'
 import { speakNatural, stopTTS } from '../services/tts'
 import type {
@@ -70,13 +73,20 @@ function persistInsightCache(): void {
 
   try {
     const payload = Object.fromEntries(insightCache.entries())
-    window.sessionStorage.setItem(INSIGHT_CACHE_STORAGE_KEY, JSON.stringify(payload))
+    window.sessionStorage.setItem(
+      INSIGHT_CACHE_STORAGE_KEY,
+      JSON.stringify(payload),
+    )
   } catch {
     // Ignore storage quota errors.
   }
 }
 
-function getInsightCacheKey(token: string, targetLang: string, nativeLang: string): string {
+function getInsightCacheKey(
+  token: string,
+  targetLang: string,
+  nativeLang: string,
+): string {
   return `${targetLang}::${nativeLang}::${normalizeComparableText(token)}`
 }
 
@@ -144,7 +154,14 @@ export function ExplorePhraseTokenModal({
       hasDuplicateWord(cards, trimmedToken, targetLang, nativeLang) ||
       recentlyAddedScopedTargets.has(scopedKey)
     )
-  }, [cards, nativeLang, recentlyAddedScopedTargets, scopedKey, targetLang, trimmedToken])
+  }, [
+    cards,
+    nativeLang,
+    recentlyAddedScopedTargets,
+    scopedKey,
+    targetLang,
+    trimmedToken,
+  ])
 
   const canSave =
     Boolean(trimmedToken) &&
@@ -320,15 +337,17 @@ export function ExplorePhraseTokenModal({
               isPlaying={isPlaying}
               onPlayingChange={setIsPlaying}
             />
-          </div>
-
-          <div>
-            <Label className='text-xs uppercase tracking-wider text-muted-foreground'>
-              Frase completa
-            </Label>
-            <p className='mt-1 rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-sm'>
-              {phrase}
-            </p>
+            <div>
+              <Label className='mb-1 block text-xs text-muted-foreground'>
+                Traducción ({nativeLang})
+              </Label>
+              <Input
+                value={nativeMeaning}
+                onChange={(event) => setNativeMeaning(event.target.value)}
+                placeholder='Escribe la traducción...'
+                disabled={saving || alreadyInVault || insightLoading}
+              />
+            </div>
           </div>
 
           <div className='space-y-2 rounded-lg border border-border/70 bg-muted/10 p-3'>
@@ -337,23 +356,30 @@ export function ExplorePhraseTokenModal({
             </Label>
 
             {insightLoading && (
-              <p className='text-sm text-muted-foreground'>Analizando en segundo plano...</p>
+              <p className='text-sm text-muted-foreground'>
+                Analizando por favor espere...
+              </p>
             )}
 
             {!insightLoading && insightError && (
-              <p className='text-sm text-amber-600 dark:text-amber-300'>{insightError}</p>
+              <p className='text-sm text-amber-600 dark:text-amber-300'>
+                {insightError}
+              </p>
             )}
 
             {!insightLoading && insight && (
               <div className='space-y-2 text-sm'>
                 <p>
-                  <span className='font-semibold'>Traducción:</span> {insight.translation}
+                  <span className='font-semibold'>Traducción:</span>{' '}
+                  {insight.translation}
                 </p>
                 <p>
-                  <span className='font-semibold'>Significado:</span> {insight.meaning}
+                  <span className='font-semibold'>Significado:</span>{' '}
+                  {insight.meaning}
                 </p>
                 <p>
-                  <span className='font-semibold'>Tip gramatical:</span> {insight.grammarTip}
+                  <span className='font-semibold'>Tip gramatical:</span>{' '}
+                  {insight.grammarTip}
                 </p>
                 {insight.examples.length > 0 && (
                   <div>
@@ -373,19 +399,6 @@ export function ExplorePhraseTokenModal({
             <Label className='text-xs uppercase tracking-wider text-muted-foreground'>
               Añadir al baúl ICA
             </Label>
-
-            <div>
-              <Label className='mb-1 block text-xs text-muted-foreground'>
-                Traducción ({nativeLang})
-              </Label>
-              <Input
-                value={nativeMeaning}
-                onChange={(event) => setNativeMeaning(event.target.value)}
-                placeholder='Escribe la traducción...'
-                disabled={saving || alreadyInVault}
-              />
-            </div>
-
             <div>
               <Label className='mb-2 block text-xs uppercase tracking-wider text-muted-foreground'>
                 Frecuencia de uso
@@ -418,7 +431,11 @@ export function ExplorePhraseTokenModal({
               </p>
             )}
 
-            {saveError && <p className='text-xs text-red-600 dark:text-red-300'>{saveError}</p>}
+            {saveError && (
+              <p className='text-xs text-red-600 dark:text-red-300'>
+                {saveError}
+              </p>
+            )}
           </div>
         </div>
 
@@ -431,8 +448,16 @@ export function ExplorePhraseTokenModal({
           >
             Cerrar
           </Button>
-          <Button type='button' onClick={() => void handleSave()} disabled={!canSave}>
-            {saving ? 'Guardando...' : saved ? '✓ Guardada' : '📦 Añadir al baúl ICA'}
+          <Button
+            type='button'
+            onClick={() => void handleSave()}
+            disabled={!canSave}
+          >
+            {saving
+              ? 'Guardando...'
+              : saved
+                ? '✓ Guardada'
+                : '📦 Añadir al baúl ICA'}
           </Button>
         </DialogFooter>
       </DialogContent>
