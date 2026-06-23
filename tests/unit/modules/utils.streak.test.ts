@@ -45,4 +45,17 @@ describe('streak utils', () => {
       getStreakWithSaved(['2026-06-05', '2026-06-06', '2026-06-09'], ['2026-06-07']),
     ).toBe(1)
   })
+
+  it('keeps streak frozen while pending day is active', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-24T12:00:00.000Z'))
+
+    expect(
+      getStreakWithSaved(
+        ['2026-06-13', '2026-06-14', '2026-06-15', '2026-06-16', '2026-06-17', '2026-06-18', '2026-06-19', '2026-06-20', '2026-06-21', '2026-06-22'],
+        [],
+        '2026-06-23',
+      ),
+    ).toBe(10)
+  })
 })

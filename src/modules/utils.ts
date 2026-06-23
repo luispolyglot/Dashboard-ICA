@@ -104,13 +104,25 @@ export function getStreak(completedDays: string[]): number {
   return streak
 }
 
-export function getStreakWithSaved(completedDays: string[], savedDays: string[]): number {
-  if ((!completedDays || completedDays.length === 0) && (!savedDays || savedDays.length === 0)) {
+export function getStreakWithSaved(
+  completedDays: string[],
+  savedDays: string[],
+  pendingFrozenDay?: string | null,
+): number {
+  if (
+    (!completedDays || completedDays.length === 0)
+    && (!savedDays || savedDays.length === 0)
+    && !pendingFrozenDay
+  ) {
     return 0
   }
 
   const completedSet = new Set(completedDays || [])
-  const continuitySet = new Set([...(completedDays || []), ...(savedDays || [])])
+  const continuitySet = new Set([
+    ...(completedDays || []),
+    ...(savedDays || []),
+    ...(pendingFrozenDay ? [pendingFrozenDay] : []),
+  ])
   if (continuitySet.size === 0) return 0
 
   const sorted = [...continuitySet].sort().reverse()
