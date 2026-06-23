@@ -362,6 +362,13 @@ export interface ActivationPhraseResult {
   words_used?: string[]
 }
 
+export interface PhraseTokenInsightResult {
+  translation: string
+  meaning: string
+  grammarTip: string
+  examples: string[]
+}
+
 export interface AnthropicTextBlock {
   type: 'text'
   text: string

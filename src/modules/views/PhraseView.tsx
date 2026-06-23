@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ActivatePhraseInMasterNoteModal } from '../components/ActivatePhraseInMasterNoteModal'
+import { ExplorePhraseTokenModal } from '../components/ExplorePhraseTokenModal'
 import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
+import { InteractivePhraseText } from '../components/InteractivePhraseText'
 import {
   MetaTrackerLevelUpModal,
   type MetaTrackerLevelUpCelebration,
@@ -82,6 +84,8 @@ export function PhraseView({
   const [resultPhraseId, setResultPhraseId] = useState<string | null>(null)
   const [activateModalOpen, setActivateModalOpen] = useState(false)
   const [extractWordsModalOpen, setExtractWordsModalOpen] = useState(false)
+  const [exploreModalOpen, setExploreModalOpen] = useState(false)
+  const [exploreToken, setExploreToken] = useState('')
   const [extraGenerationsCount, setExtraGenerationsCount] = useState(0)
   const [levelUpCelebration, setLevelUpCelebration] =
     useState<MetaTrackerLevelUpCelebration | null>(null)
@@ -423,6 +427,12 @@ export function PhraseView({
     }
   }
 
+  const handleOpenExploreModal = (token: string): void => {
+    if (!result?.phrase) return
+    setExploreToken(token)
+    setExploreModalOpen(true)
+  }
+
   return (
     <section className='mx-auto w-full max-w-2xl flex-1 flex flex-col justify-center items-center p-4 pb-24'>
       <div className='mb-4 w-full flex items-start justify-between gap-3'>
@@ -678,9 +688,12 @@ export function PhraseView({
                 <LevelBadge level={level} size='small' />
               </div>
             </div>
-            <p className='font-serif text-2xl font-bold leading-relaxed'>
-              {result.phrase}
-            </p>
+            <InteractivePhraseText
+              text={result.phrase}
+              language={config.targetLang}
+              onTokenClick={handleOpenExploreModal}
+              className='font-serif text-2xl font-bold leading-relaxed'
+            />
             <RomanizationHint
               text={result.phrase}
               language={config.targetLang}
@@ -793,6 +806,20 @@ export function PhraseView({
         text={result?.phrase || ''}
         translation={result?.translation || ''}
         seedWords={result?.words_used || []}
+        targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+        level={level}
+        cards={cards}
+        setCards={setCards}
+        onWordAdded={onWordAdded}
+      />
+
+      <ExplorePhraseTokenModal
+        open={exploreModalOpen}
+        onOpenChange={setExploreModalOpen}
+        token={exploreToken}
+        phrase={result?.phrase || ''}
+        phraseTranslation={result?.translation || ''}
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
         level={level}
