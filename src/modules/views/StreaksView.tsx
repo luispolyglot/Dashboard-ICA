@@ -32,6 +32,8 @@ type CalendarCell = {
   monthOffset: -1 | 0 | 1
 }
 
+const SAVE_MODE_ENABLED = false // disabled momentarily, as it was causing confusion and frustration for users. It can be re-enabled in the future if desired.
+
 export function StreaksView({
   completedDays,
   creationDays,
@@ -107,7 +109,11 @@ export function StreaksView({
 
   const latestSavableDay = selectableSaveDayKeys.values().next().value || null
   const hasSaveQuota = creationSavesUsedThisMonth < creationSavesLimit
-  const isSaveModeActive = saveSelectionMode && tab === 'creation' && isCurrentMonth
+  const isSaveModeActive =
+    SAVE_MODE_ENABLED &&
+    saveSelectionMode &&
+    tab === 'creation' &&
+    isCurrentMonth
 
   let completedCount = 0
   let savedCount = 0
@@ -131,7 +137,10 @@ export function StreaksView({
       setSaveSelectionMode(false)
       setRecentlySavedDay(result.savedDay)
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'No se pudo salvar la racha ICA.'
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No se pudo salvar la racha ICA.'
       toast.error(message)
     } finally {
       setSavingStreak(false)
@@ -219,11 +228,11 @@ export function StreaksView({
               const isFuture = dayDate > baselineToday
               const isPast = dayDate < baselineToday
               const isSelectableForSave =
-                isSaveModeActive
-                && cell.monthOffset === 0
-                && isPast
-                && selectableSaveDayKeys.has(key)
-                && hasSaveQuota
+                isSaveModeActive &&
+                cell.monthOffset === 0 &&
+                isPast &&
+                selectableSaveDayKeys.has(key) &&
+                hasSaveQuota
               const status: DayStatus =
                 cell.monthOffset !== 0
                   ? isFuture
@@ -231,17 +240,17 @@ export function StreaksView({
                     : isSaved
                       ? 'outside-saved'
                       : isCompleted
-                      ? 'outside-completed'
-                      : 'outside-missed'
+                        ? 'outside-completed'
+                        : 'outside-missed'
                   : isFuture
                     ? 'future'
                     : isSaved
                       ? 'saved'
                       : isCompleted
-                      ? 'completed'
-                      : isPast
-                        ? 'missed'
-                        : 'empty'
+                        ? 'completed'
+                        : isPast
+                          ? 'missed'
+                          : 'empty'
 
               return (
                 <DayCell
@@ -250,7 +259,9 @@ export function StreaksView({
                   status={status}
                   isToday={isToday}
                   selectableForSave={isSelectableForSave}
-                  mutedForSaveSelection={isSaveModeActive && !isSelectableForSave}
+                  mutedForSaveSelection={
+                    isSaveModeActive && !isSelectableForSave
+                  }
                   celebrateSave={recentlySavedDay === key && status === 'saved'}
                   onSaveClick={() => {
                     void handleSaveStreak(key)
@@ -271,7 +282,7 @@ export function StreaksView({
               value={isFutureMonth ? 0 : missedCount}
               valueClass='text-destructive'
             />
-            {tab === 'creation' && (
+            {tab === 'creation' && SAVE_MODE_ENABLED && (
               <Stat
                 label='Días salvados'
                 value={savedCount}
@@ -291,7 +302,7 @@ export function StreaksView({
             />
           </div>
 
-          {tab === 'creation' && isCurrentMonth && (
+          {tab === 'creation' && isCurrentMonth && SAVE_MODE_ENABLED && (
             <div className='rounded-xl border p-3'>
               <div className='mb-2 flex items-center justify-between'>
                 <div className='text-xs text-muted-foreground'>
@@ -310,19 +321,26 @@ export function StreaksView({
                     }
                     setSaveSelectionMode(true)
                   }}
-                  disabled={savingStreak || (!isSaveModeActive && (!latestSavableDay || !hasSaveQuota))}
+                  disabled={
+                    savingStreak ||
+                    (!isSaveModeActive && (!latestSavableDay || !hasSaveQuota))
+                  }
                 >
-                  {isSaveModeActive ? 'Cancelar' : savingStreak ? 'Salvando...' : '🛟 SalvadICA'}
+                  {isSaveModeActive
+                    ? 'Cancelar'
+                    : savingStreak
+                      ? 'Salvando...'
+                      : '🛟 SalvadICA'}
                 </Button>
               </div>
               <div className='text-xs text-muted-foreground'>
                 {isSaveModeActive
                   ? 'Solo puedes seleccionar días no completados del mes actual.'
                   : hasSaveQuota
-                  ? latestSavableDay
-                    ? 'Puedes elegir cualquier día rojo del mes actual para salvarlo.'
-                    : 'No hay días elegibles para salvar en este mes.'
-                  : 'Ya alcanzaste el límite mensual de 3 salvadas.'}
+                    ? latestSavableDay
+                      ? 'Puedes elegir cualquier día rojo del mes actual para salvarlo.'
+                      : 'No hay días elegibles para salvar en este mes.'
+                    : 'Ya alcanzaste el límite mensual de 3 salvadas.'}
               </div>
             </div>
           )}
@@ -410,21 +428,21 @@ function DayCell({
       ? 'border-primary/50 bg-primary/10 text-primary'
       : status === 'saved'
         ? 'border-amber-500/45 bg-amber-500/15 text-amber-700 dark:text-amber-300'
-      : status === 'missed'
-        ? selectableForSave
-          ? 'border-destructive/70 bg-destructive/20 text-destructive hover:border-amber-500/70 hover:bg-amber-500/20 hover:text-amber-700 dark:hover:text-amber-300'
-          : 'border-destructive/30 bg-destructive/10 text-destructive'
-      : status === 'outside-completed'
-          ? 'border-primary/25 bg-primary/10 text-primary opacity-60'
-          : status === 'outside-saved'
-            ? 'border-amber-500/30 bg-amber-500/15 text-amber-700 opacity-60 dark:text-amber-300'
-          : status === 'outside-missed'
-            ? 'border-destructive/20 bg-destructive/10 text-destructive opacity-60'
-            : status === 'outside'
-              ? 'border-transparent bg-background/30 text-muted-foreground opacity-60'
-              : status === 'future'
-                ? 'border-transparent bg-muted text-muted-foreground/60'
-                : 'border-border bg-background text-muted-foreground'
+        : status === 'missed'
+          ? selectableForSave
+            ? 'border-destructive/70 bg-destructive/20 text-destructive hover:border-amber-500/70 hover:bg-amber-500/20 hover:text-amber-700 dark:hover:text-amber-300'
+            : 'border-destructive/30 bg-destructive/10 text-destructive'
+          : status === 'outside-completed'
+            ? 'border-primary/25 bg-primary/10 text-primary opacity-60'
+            : status === 'outside-saved'
+              ? 'border-amber-500/30 bg-amber-500/15 text-amber-700 opacity-60 dark:text-amber-300'
+              : status === 'outside-missed'
+                ? 'border-destructive/20 bg-destructive/10 text-destructive opacity-60'
+                : status === 'outside'
+                  ? 'border-transparent bg-background/30 text-muted-foreground opacity-60'
+                  : status === 'future'
+                    ? 'border-transparent bg-muted text-muted-foreground/60'
+                    : 'border-border bg-background text-muted-foreground'
 
   return (
     <button
@@ -438,10 +456,14 @@ function DayCell({
         <div className='absolute bottom-0.75 h-1.5 w-1.5 rounded-full bg-primary' />
       )}
       {status === 'saved' && (
-        <div className='absolute right-1 top-0.5 text-[10px] leading-none'>🛟</div>
+        <div className='absolute right-1 top-0.5 text-[10px] leading-none'>
+          🛟
+        </div>
       )}
       {selectableForSave && (
-        <div className='pointer-events-none absolute right-1 top-0.5 text-[10px] leading-none opacity-0 transition-opacity group-hover:opacity-100'>🛟</div>
+        <div className='pointer-events-none absolute right-1 top-0.5 text-[10px] leading-none opacity-0 transition-opacity group-hover:opacity-100'>
+          🛟
+        </div>
       )}
       {celebrateSave && (
         <div className='pointer-events-none absolute inset-0 rounded-lg border border-amber-400/80 animate-ping' />
