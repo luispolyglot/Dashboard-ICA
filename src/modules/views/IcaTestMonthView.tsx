@@ -40,7 +40,12 @@ import {
 } from '../services/icaTests'
 import { IcaTestResultCard } from '../components/IcaTestResultCard'
 import { DASHBOARD_ROUTES, getIcaTestMonthRoute } from '../routes/paths'
-import type { IcaTestAnswer, IcaTestQuestion, IcaTestRecord, Lexicard } from '../types'
+import type {
+  IcaTestAnswer,
+  IcaTestQuestion,
+  IcaTestRecord,
+  Lexicard,
+} from '../types'
 
 type IcaTestMode = 'official' | 'redo'
 
@@ -93,7 +98,7 @@ function getScoreLiteral(
   if (ratio >= 0.6) {
     return {
       title: 'Buen avance',
-      message: 'Vas por buen camino. Rehacer puede consolidarte.',
+      message: 'Vas por buen camino. Reintentar puede consolidarte.',
     }
   }
 
@@ -163,9 +168,9 @@ export function IcaTestMonthView({
   const [saveError, setSaveError] = useState<string | null>(null)
   const [errorReviewOpen, setErrorReviewOpen] = useState(false)
   const [errorReviewTitle, setErrorReviewTitle] = useState('')
-  const [errorReviewItems, setErrorReviewItems] = useState<IcaTestErrorReviewItem[]>(
-    [],
-  )
+  const [errorReviewItems, setErrorReviewItems] = useState<
+    IcaTestErrorReviewItem[]
+  >([])
   const [isStarting, setIsStarting] = useState(false)
   const [isFinalizing, setIsFinalizing] = useState(false)
   const [hasAcceptedDisclaimer, setHasAcceptedDisclaimer] = useState(false)
@@ -615,7 +620,8 @@ export function IcaTestMonthView({
         <DialogHeader>
           <DialogTitle>{errorReviewTitle || 'Detalle de errores'}</DialogTitle>
           <DialogDescription>
-            Revisión de preguntas incorrectas: opción elegida vs respuesta correcta.
+            Revisión de preguntas incorrectas: opción elegida vs respuesta
+            correcta.
           </DialogDescription>
         </DialogHeader>
         <div className='max-h-[50vh] space-y-2 overflow-y-auto pr-1 text-sm'>
@@ -625,8 +631,12 @@ export function IcaTestMonthView({
               className='rounded-md border border-destructive/30 bg-destructive/5 p-3'
             >
               <p className='font-semibold'>Pregunta #{item.questionNumber}</p>
-              <p className='text-muted-foreground'>Enunciado: {item.promptNative}</p>
-              <p className='text-muted-foreground'>Elegiste: {item.selectedOption}</p>
+              <p className='text-muted-foreground'>
+                Enunciado: {item.promptNative}
+              </p>
+              <p className='text-muted-foreground'>
+                Elegiste: {item.selectedOption}
+              </p>
               <p className='text-emerald-700 dark:text-emerald-300'>
                 Correcta: {item.correctOption}
               </p>
@@ -679,7 +689,8 @@ export function IcaTestMonthView({
         <CardHeader>
           <CardTitle>Este test no existe aún</CardTitle>
           <CardDescription>
-            Solo puedes rehacer tests ICA que ya estén completados y guardados.
+            Solo puedes reintentar tests ICA que ya estén completados y
+            guardados.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -784,11 +795,16 @@ export function IcaTestMonthView({
             }
             actions={
               <div className='flex flex-wrap justify-center gap-2'>
-                <Button type='button' variant='outline' asChild>
-                  <Link to={getIcaTestMonthRoute(storedTest.monthCode, true)}>
-                    Rehacer sin guardar
-                  </Link>
-                </Button>
+                <div className='flex flex-col gap-1'>
+                  <Button type='button' variant='outline' asChild>
+                    <Link to={getIcaTestMonthRoute(storedTest.monthCode, true)}>
+                      Reintentar
+                    </Link>
+                  </Button>
+                  <div className='rounded-lg border border-amber-300/70 bg-amber-50/60 p-1 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100'>
+                    No afecta al resultado original
+                  </div>
+                </div>
                 <Button type='button' asChild>
                   <Link to={DASHBOARD_ROUTES.testsIca}>Ver Tests ICA</Link>
                 </Button>
@@ -890,11 +906,16 @@ export function IcaTestMonthView({
             note={getOfficialBlockedMessage(attempt)}
             actions={
               <div className='flex flex-wrap justify-center gap-2'>
-                <Button type='button' variant='outline' asChild>
-                  <Link to={getIcaTestMonthRoute(monthCode, true)}>
-                    Rehacer sin guardar
-                  </Link>
-                </Button>
+                <div className='flex flex-col gap-1'>
+                  <Button type='button' variant='outline' asChild>
+                    <Link to={getIcaTestMonthRoute(monthCode, true)}>
+                      Reintentar
+                    </Link>
+                  </Button>
+                  <div className='rounded-lg border border-amber-300/70 bg-amber-50/60 p-1 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100'>
+                    No afecta al resultado original
+                  </div>
+                </div>
                 <Button type='button' asChild>
                   <Link to={DASHBOARD_ROUTES.testsIca}>Volver a Tests ICA</Link>
                 </Button>
@@ -924,8 +945,8 @@ export function IcaTestMonthView({
             errorMessage={saveError}
             errorReviewAction={
               attempt.score < attempt.totalQuestions &&
-              buildIcaTestErrorReviewItems(activeQuestions, attempt.answers).length >
-                0 ? (
+              buildIcaTestErrorReviewItems(activeQuestions, attempt.answers)
+                .length > 0 ? (
                 <Button
                   type='button'
                   variant='destructive'
@@ -948,7 +969,7 @@ export function IcaTestMonthView({
                 </Button>
                 <Button type='button' variant='outline' asChild>
                   <Link to={getIcaTestMonthRoute(monthCode, true)}>
-                    Rehacer otra vez
+                    Reintentar otra vez
                   </Link>
                 </Button>
               </div>
@@ -967,7 +988,7 @@ export function IcaTestMonthView({
       <section className='relative mx-auto flex min-h-[68vh] w-full max-w-3xl flex-1 items-center justify-center p-4 pb-24 lg:pb-4'>
         <div ref={handlePerfectCardRef} className='w-full max-w-xl'>
           <IcaTestResultCard
-            monthLabel={`${getIcaTestMonthLabel(monthDate)} · Rehacer`}
+            monthLabel={`${getIcaTestMonthLabel(monthDate)} · Reintentar`}
             title={result.title}
             score={score}
             totalQuestions={totalQuestions}
@@ -975,13 +996,14 @@ export function IcaTestMonthView({
             note='Este resultado no cambia el original.'
             errorReviewAction={
               score < totalQuestions &&
-              buildIcaTestErrorReviewItems(activeQuestions, answers).length > 0 ? (
+              buildIcaTestErrorReviewItems(activeQuestions, answers).length >
+                0 ? (
                 <Button
                   type='button'
                   variant='destructive'
                   onClick={() =>
                     openErrorReview(
-                      `Errores · ${getIcaTestMonthLabel(monthDate)} · Rehacer`,
+                      `Errores · ${getIcaTestMonthLabel(monthDate)} · Reintentar`,
                       activeQuestions,
                       answers,
                     )
@@ -1095,7 +1117,7 @@ export function IcaTestMonthView({
       <Card>
         <CardHeader>
           <CardTitle className='capitalize'>
-            {mode === 'redo' ? 'Rehacer test ICA' : 'Test ICA oficial'} ·{' '}
+            {mode === 'redo' ? 'Reintentar test ICA' : 'Test ICA oficial'} ·{' '}
             {getIcaTestMonthLabel(monthDate)}
           </CardTitle>
           <CardDescription>

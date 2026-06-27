@@ -100,15 +100,15 @@ export function IcaTestsView({
               {!hasCurrentMonthTest && !wordPool.eligible && (
                 <p className='text-amber-600'>
                   Necesitas {ICA_TEST_REQUIRED_WORDS} palabras ICA para armar el
-                  test. Priorizamos frases de hasta {ICA_TEST_MAX_WORDS_PER_ITEM}{' '}
-                  palabras y, si no alcanza, ampliamos el filtro. Ahora hay{' '}
-                  {wordPool.availableWords}.
+                  test. Priorizamos frases de hasta{' '}
+                  {ICA_TEST_MAX_WORDS_PER_ITEM} palabras y, si no alcanza,
+                  ampliamos el filtro. Ahora hay {wordPool.availableWords}.
                 </p>
               )}
 
               {hasCurrentMonthTest && (
                 <p className='text-emerald-600'>
-                  Ya completaste este test. Puedes rehacerlo sin cambiar el
+                  Ya completaste este test. Puedes reintentarlo sin cambiar el
                   resultado original.
                 </p>
               )}
@@ -118,7 +118,7 @@ export function IcaTestsView({
                   <Button type='button' asChild>
                     <Link to={nextTestRoute}>
                       <PlayIcon data-icon='inline-start' />
-                      Hacer test del mes
+                      Reintentar test del mes
                     </Link>
                   </Button>
                 ) : (
@@ -131,7 +131,7 @@ export function IcaTestsView({
                   <Button type='button' variant='outline' asChild>
                     <Link to={getIcaTestMonthRoute(currentMonthCode, true)}>
                       <RotateCcwIcon data-icon='inline-start' />
-                      Rehacer test del mes
+                      Reintentar test del mes
                     </Link>
                   </Button>
                 )}
@@ -152,7 +152,7 @@ export function IcaTestsView({
                 <CardTitle>Aún no tienes Tests ICA guardados</CardTitle>
                 <CardDescription>
                   Cuando completes uno, aparecerá aquí con tu puntaje y acceso a
-                  rehacer.
+                  reintentarlo.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -168,8 +168,11 @@ export function IcaTestsView({
               <CardHeader>
                 <CardTitle>Histórico</CardTitle>
                 <CardDescription>
-                  Revisa resultados por mes y rehace cualquier intento sin
-                  guardar cambios.
+                  Revisa resultados por mes y{' '}
+                  <strong className='text-amber-900 dark:text-amber-100'>
+                    reintenta sin cambiar el resultado original
+                  </strong>
+                  .
                 </CardDescription>
               </CardHeader>
               <CardContent className='flex flex-col gap-3'>
@@ -195,7 +198,7 @@ export function IcaTestsView({
                     <Button type='button' variant='outline' asChild>
                       <Link to={getIcaTestMonthRoute(test.monthCode, true)}>
                         <RotateCcwIcon data-icon='inline-start' />
-                        Rehacer
+                        Reintentar
                       </Link>
                     </Button>
                   </div>
