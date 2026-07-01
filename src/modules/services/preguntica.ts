@@ -101,6 +101,7 @@ export type PregunticaAttempt = {
   id: string
   weekId: string
   questionId: string | null
+  questionTranslation: string | null
   attemptNumber: number
   wordMode: string
   questionText: string | null
@@ -142,6 +143,8 @@ export type PregunticaHistoryAudio = {
 
 export type PregunticaHistoryAttempt = {
   id: string
+  questionId: string | null
+  questionTranslation: string | null
   attemptNumber: number
   attemptKind: 'weekly' | 'token_unlock'
   wordMode: string
@@ -267,6 +270,30 @@ function parseWords(raw: unknown): string[] {
     .filter(Boolean)
 }
 
+async function fetchQuestionTranslationsById(
+  client: ReturnType<typeof requireSupabase>,
+  questionIds: string[],
+): Promise<Record<string, string>> {
+  if (questionIds.length === 0) return {}
+
+  const uniqueIds = Array.from(new Set(questionIds.filter(Boolean)))
+  if (uniqueIds.length === 0) return {}
+
+  const { data, error } = await client
+    .from('preguntica_question_bank')
+    .select('id, question_es')
+    .in('id', uniqueIds)
+
+  if (error) throw error
+
+  return (data || []).reduce<Record<string, string>>((acc, item) => {
+    const row = item as { id: string; question_es: string }
+    if (!row.id || !row.question_es) return acc
+    acc[row.id] = row.question_es
+    return acc
+  }, {})
+}
+
 function mapStatus(row: RpcWeekStatusRow): PregunticaWeekStatus {
   return {
     weekId: row.week_id,
@@ -290,6 +317,7 @@ function mapAttempt(row: RpcAttemptRow): PregunticaAttempt {
     id: row.id,
     weekId: row.preguntica_week_id,
     questionId: row.question_id,
+    questionTranslation: null,
     attemptNumber: Number(row.attempt_number || 1),
     wordMode: row.word_mode || 'mixed',
     questionText: row.question_text,
@@ -437,7 +465,15 @@ export async function fetchLatestPregunticaAttempt(
 
   if (error) throw error
   if (!data) return null
-  return mapAttempt(data as RpcAttemptRow)
+
+  const mapped = mapAttempt(data as RpcAttemptRow)
+  if (!mapped.questionId) return mapped
+
+  const translationsById = await fetchQuestionTranslationsById(client, [mapped.questionId])
+  return {
+    ...mapped,
+    questionTranslation: translationsById[mapped.questionId] || null,
+  }
 }
 
 export async function uploadPregunticaAttemptAudio(input: {
@@ -644,6 +680,10 @@ export async function fetchPregunticaHistory(
 
   const attempts = (attemptsData || []) as RpcAttemptRow[]
   const attemptIds = attempts.map((attemptItem) => attemptItem.id)
+  const questionIds = attempts
+    .map((attemptItem) => attemptItem.question_id)
+    .filter((value): value is string => Boolean(value))
+  const questionTranslationsById = await fetchQuestionTranslationsById(client, questionIds)
 
   let audioByAttempt: Record<string, PregunticaHistoryAudio[]> = {}
   let suggestionsByAttempt: Record<string, PregunticaHistorySuggestionSet[]> = {}
@@ -733,6 +773,10 @@ export async function fetchPregunticaHistory(
 
       acc[weekId].push({
         id: attemptItem.id,
+        questionId: attemptItem.question_id,
+        questionTranslation: attemptItem.question_id
+          ? questionTranslationsById[attemptItem.question_id] || null
+          : null,
         attemptNumber: Number(attemptItem.attempt_number || 1),
         attemptKind: attemptItem.attempt_kind,
         wordMode: attemptItem.word_mode || 'mixed',

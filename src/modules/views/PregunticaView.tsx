@@ -128,6 +128,7 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
   const [mode, setMode] = useState('mixed')
   const [questionText, setQuestionText] = useState('')
   const [questionId, setQuestionId] = useState<string | null>(null)
+  const [questionTranslation, setQuestionTranslation] = useState<string | null>(null)
   const [icaWords, setIcaWords] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
@@ -137,6 +138,7 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
   const [recordedUrl, setRecordedUrl] = useState<string | null>(null)
   const [questionWasPlayed, setQuestionWasPlayed] = useState(false)
   const [questionVisible, setQuestionVisible] = useState(false)
+  const [translationVisible, setTranslationVisible] = useState(false)
   const [showAttemptWorkspace, setShowAttemptWorkspace] = useState(false)
 
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -170,6 +172,7 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
           setAttempt(latest)
           if (latest?.questionText) setQuestionText(latest.questionText)
           if (latest?.questionId) setQuestionId(latest.questionId)
+          setQuestionTranslation(latest?.questionTranslation || null)
           if (latest?.icaWords?.length) setIcaWords(latest.icaWords)
           setShowAttemptWorkspace(!latest)
         }
@@ -220,14 +223,17 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
       setAttempt({
         ...created,
         questionId: selectedQuestion.questionId,
+        questionTranslation: selectedQuestion.questionTranslation,
         questionText: selectedQuestion.questionText,
         icaWords: words,
       })
       setQuestionId(selectedQuestion.questionId)
       setQuestionText(selectedQuestion.questionText)
+      setQuestionTranslation(selectedQuestion.questionTranslation)
       setIcaWords(words)
       setQuestionWasPlayed(false)
       setQuestionVisible(false)
+      setTranslationVisible(false)
       setShowAttemptWorkspace(true)
       setFeedback(null)
       setLatestTranscript(null)
@@ -250,7 +256,7 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
 
   async function resolveQuestionForAttempt(
     excludeQuestionId?: string | null,
-  ): Promise<{ questionId: string; questionText: string }> {
+  ): Promise<{ questionId: string; questionText: string; questionTranslation: string }> {
     const selectedQuestion = await pickPregunticaQuestion(
       config.targetLang,
       excludeQuestionId,
@@ -277,6 +283,7 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
     return {
       questionId: selectedQuestion.questionId,
       questionText: question,
+      questionTranslation: selectedQuestion.questionEs,
     }
   }
 
@@ -291,6 +298,7 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
     const sameQuestion = (attempt.questionText || questionText || '').trim()
     const sameWords = attempt.icaWords.length > 0 ? attempt.icaWords : icaWords
     const sameQuestionId = attempt.questionId || questionId
+    const sameQuestionTranslation = attempt.questionTranslation || questionTranslation
 
     if (!sameQuestion || sameWords.length === 0) {
       throw new Error('No se encontró una pregunta válida para reintentar')
@@ -309,14 +317,17 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
     setAttempt({
       ...created,
       questionId: sameQuestionId || null,
+      questionTranslation: sameQuestionTranslation || null,
       questionText: sameQuestion,
       icaWords: sameWords,
     })
     setQuestionId(sameQuestionId || null)
     setQuestionText(sameQuestion)
+    setQuestionTranslation(sameQuestionTranslation || null)
     setIcaWords(sameWords)
     setQuestionWasPlayed(false)
     setQuestionVisible(false)
+    setTranslationVisible(false)
     setShowAttemptWorkspace(true)
     setFeedback(null)
     setLatestTranscript(null)
@@ -353,41 +364,19 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
       toast.error('No se encontró la semana para canjear fichas')
       return
     }
-    if (!attempt) {
-      toast.error('No hay intento base para reutilizar pregunta y palabras')
-      return
-    }
 
     setWorking(true)
     try {
       await redeemPregunticaTokensForWeek(status.weekStart)
-      const retryMode = attempt.wordMode || mode
-      const created = await createPregunticaAttempt(retryMode)
-      const words = pickIcaWords(cards, retryMode, config.level)
-      const selectedQuestion = await resolveQuestionForAttempt(attempt.questionId)
-
-      await savePregunticaAttemptPromptData({
-        attemptId: created.id,
-        questionId: selectedQuestion.questionId,
-        questionText: selectedQuestion.questionText,
-        icaWords: words,
-        targetLang: config.targetLang,
-        nativeLang: config.nativeLang,
-        level: config.level || 'A2',
-      })
-
-      setAttempt({
-        ...created,
-        questionId: selectedQuestion.questionId,
-        questionText: selectedQuestion.questionText,
-        icaWords: words,
-      })
-      setQuestionId(selectedQuestion.questionId)
-      setQuestionText(selectedQuestion.questionText)
-      setIcaWords(words)
+      setAttempt(null)
+      setQuestionId(null)
+      setQuestionText('')
+      setQuestionTranslation(null)
+      setIcaWords([])
       setQuestionWasPlayed(false)
       setQuestionVisible(false)
-      setShowAttemptWorkspace(true)
+      setTranslationVisible(false)
+      setShowAttemptWorkspace(false)
       setFeedback(null)
       setLatestTranscript(null)
       setSuggestions([])
@@ -399,7 +388,7 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
       }
 
       await refreshStatus()
-      toast.success('Canje realizado. Nueva PreguntICA desbloqueada.')
+      toast.success('Canje realizado. Elige el tipo de palabras para iniciar la nueva PreguntICA.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo canjear fichas')
     } finally {
@@ -591,6 +580,10 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
 
   const locked = !status?.isUnlocked
   const hasCompletedWeek = Boolean(status?.completedAt)
+  const hasActiveAttempt = Boolean(attempt && attempt.status !== 'completed')
+  const activeAttempt = hasActiveAttempt ? attempt : null
+  const canStartAttempt = Boolean(status?.canStart)
+  const isWeekClosedWithoutActiveAttempt = !canStartAttempt && !hasActiveAttempt
   const currentWindowLabel = getWindowRemainingLabel(status)
 
   return (
@@ -650,7 +643,7 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
         </div>
       )}
 
-      {hasCompletedWeek && (
+      {hasCompletedWeek && isWeekClosedWithoutActiveAttempt && (
         <div className='mt-4 rounded-2xl border border-emerald-300/60 bg-emerald-50 p-4 text-emerald-900'>
           <p>
             Ya completaste esta semana. Puedes canjear fichas para desbloquear una
@@ -663,7 +656,7 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
               disabled={working || (tokenSummary?.balance ?? 0) < 2}
               className='rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60'
             >
-              Canjear 2 fichas y volver a intentar
+              Canjear 2 fichas y empezar nueva PreguntICA
             </button>
             <span className='text-xs text-emerald-900/80'>
               Saldo actual: {tokenSummary?.balance ?? 0} fichas
@@ -672,7 +665,7 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
         </div>
       )}
 
-      {!locked && !hasCompletedWeek && !attempt && (
+      {!locked && !isWeekClosedWithoutActiveAttempt && !hasActiveAttempt && (
         <div className='mt-4 rounded-2xl border border-border bg-background p-4'>
           <p className='text-sm font-semibold'>1) Elige tipo de palabras</p>
           <div className='mt-3 flex flex-wrap gap-2'>
@@ -694,15 +687,17 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
           <button
             type='button'
             onClick={handleStartAttempt}
-            disabled={working || attemptsLeft <= 0}
+            disabled={working || !canStartAttempt}
             className='mt-4 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60'
           >
-            Empezar intento semanal ({attemptsLeft} restantes)
+            {attemptsLeft > 0
+              ? `Empezar intento semanal (${attemptsLeft} restantes)`
+              : 'Empezar nueva PreguntICA'}
           </button>
         </div>
       )}
 
-      {attempt && !hasCompletedWeek && !showAttemptWorkspace && (
+      {activeAttempt && !isWeekClosedWithoutActiveAttempt && !showAttemptWorkspace && (
         <div className='mt-4 rounded-2xl border border-border bg-background p-4'>
           <p className='text-sm font-semibold'>Intento activo de esta semana</p>
           <p className='mt-1 text-xs text-muted-foreground'>
@@ -712,7 +707,7 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
           <div className='mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3'>
             <p className='text-xs font-semibold text-slate-700'>Pregunta actual</p>
             <p className='mt-1 text-sm text-slate-700'>
-              {attempt.questionText || questionText || 'Pregunta pendiente de generar'}
+              {activeAttempt.questionText || questionText || 'Pregunta pendiente de generar'}
             </p>
           </div>
 
@@ -735,19 +730,21 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
             <button
               type='button'
               onClick={handleRetryAttempt}
-              disabled={working || attemptsLeft <= 0}
+              disabled={working || !canStartAttempt}
               className='rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60'
             >
               Volver a intentar
             </button>
           </div>
           <p className='mt-2 text-xs text-muted-foreground'>
-            Te quedan {attemptsLeft} intentos.
+            {attemptsLeft > 0
+              ? `Te quedan ${attemptsLeft} intentos semanales.`
+              : 'Intento desbloqueado por canje de fichas.'}
           </p>
         </div>
       )}
 
-      {attempt && !hasCompletedWeek && showAttemptWorkspace && (
+      {activeAttempt && !isWeekClosedWithoutActiveAttempt && showAttemptWorkspace && (
         <div className='mt-4 space-y-4'>
           <div className='rounded-2xl border border-border bg-background p-4'>
             <p className='text-sm font-semibold'>2) Escucha y responde</p>
@@ -771,11 +768,28 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
               >
                 Mostrar pregunta
               </button>
+              <button
+                type='button'
+                onClick={() => setTranslationVisible((current) => !current)}
+                disabled={!questionVisible || !questionTranslation}
+                className='rounded-xl border border-border px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-60'
+              >
+                {translationVisible ? 'Ocultar traducción' : 'Mostrar traducción'}
+              </button>
             </div>
 
             {questionVisible && questionText && (
               <div className='mt-4 rounded-xl border border-[#0ea5e9]/20 bg-[#f0f9ff] p-3 text-sm text-[#0c4a6e]'>
                 {questionText}
+              </div>
+            )}
+
+            {questionVisible && translationVisible && questionTranslation && (
+              <div className='mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900'>
+                <p className='text-xs font-semibold uppercase tracking-wide text-emerald-700'>
+                  Traducción (español)
+                </p>
+                <p className='mt-1'>{questionTranslation}</p>
               </div>
             )}
 
@@ -844,11 +858,11 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
               </p>
               <p className='mt-1 text-sm text-slate-700'>{feedback.naturalness}</p>
 
-              {(latestTranscript || attempt.transcriptText) && (
+              {(latestTranscript || activeAttempt.transcriptText) && (
                 <div className='mt-3 rounded-lg border border-slate-200 bg-white/80 p-3'>
                   <p className='text-xs font-semibold text-slate-700'>Transcripción</p>
                   <p className='mt-1 text-sm text-slate-700'>
-                    {latestTranscript || attempt.transcriptText}
+                    {latestTranscript || activeAttempt.transcriptText}
                   </p>
                 </div>
               )}
@@ -872,10 +886,10 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
                   <button
                     type='button'
                     onClick={handleRefreshSuggestions}
-                    disabled={working || (attempt.suggestionsRefreshCount || 0) >= 3}
+                    disabled={working || (activeAttempt.suggestionsRefreshCount || 0) >= 3}
                     className='rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
                   >
-                    Actualizar sugerencias ({Math.max(0, 3 - (attempt.suggestionsRefreshCount || 0))})
+                    Actualizar sugerencias ({Math.max(0, 3 - (activeAttempt.suggestionsRefreshCount || 0))})
                   </button>
                 </div>
                 <div className='mt-2 flex flex-wrap gap-2'>

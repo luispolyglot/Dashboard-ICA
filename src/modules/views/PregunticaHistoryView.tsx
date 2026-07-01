@@ -12,6 +12,21 @@ import {
   type PregunticaHistoryWeek,
 } from '../services/preguntica'
 
+type PregunticaHistoryQuestionCard = {
+  id: string
+  questionText: string
+  questionTranslation: string | null
+  weekStart: string
+  weekEnd: string
+  timezone: string
+  isUnlocked: boolean
+  unlockedVia: 'progress' | 'tokens' | 'manual' | null
+  activationWordsCount: number
+  requiredActivationWords: number
+  completedAt: string | null
+  attempts: PregunticaHistoryAttempt[]
+}
+
 function formatDate(value: string | null): string {
   if (!value) return '-'
   const date = new Date(value)
@@ -61,13 +76,72 @@ function getUnlockLabel(source: string | null): string {
   return source
 }
 
+function toQuestionCards(weeks: PregunticaHistoryWeek[]): PregunticaHistoryQuestionCard[] {
+  return weeks.flatMap((week) => {
+    if (week.attempts.length === 0) {
+      return [
+        {
+          id: `week-${week.id}`,
+          questionText: 'Sin pregunta registrada',
+          questionTranslation: null,
+          weekStart: week.weekStart,
+          weekEnd: week.weekEnd,
+          timezone: week.timezone,
+          isUnlocked: week.isUnlocked,
+          unlockedVia: week.unlockedVia,
+          activationWordsCount: week.activationWordsCount,
+          requiredActivationWords: week.requiredActivationWords,
+          completedAt: week.completedAt,
+          attempts: [],
+        },
+      ]
+    }
+
+    const groups = new Map<string, PregunticaHistoryQuestionCard>()
+
+    week.attempts.forEach((attempt) => {
+      const rawQuestion = attempt.questionText?.trim() || ''
+      const questionText = rawQuestion || 'Sin pregunta registrada'
+      const questionKey = attempt.questionId || `text:${questionText.toLowerCase()}`
+      const key = `${week.id}:${questionKey}`
+
+      if (!groups.has(key)) {
+        groups.set(key, {
+          id: key,
+          questionText,
+          questionTranslation: attempt.questionTranslation,
+          weekStart: week.weekStart,
+          weekEnd: week.weekEnd,
+          timezone: week.timezone,
+          isUnlocked: week.isUnlocked,
+          unlockedVia: week.unlockedVia,
+          activationWordsCount: week.activationWordsCount,
+          requiredActivationWords: week.requiredActivationWords,
+          completedAt: week.completedAt,
+          attempts: [],
+        })
+      }
+
+      groups.get(key)?.attempts.push(attempt)
+    })
+
+    return Array.from(groups.values()).map((group) => ({
+      ...group,
+      attempts: [...group.attempts].sort((a, b) => {
+        const aTime = new Date(a.createdAt).getTime()
+        const bTime = new Date(b.createdAt).getTime()
+        if (Number.isNaN(aTime) || Number.isNaN(bTime)) return 0
+        return aTime - bTime
+      }),
+    }))
+  })
+}
+
 function AttemptContent({ attempt }: { attempt: PregunticaHistoryAttempt }) {
   return (
     <article className='rounded-xl border border-border/80 bg-background p-4'>
       <div className='flex flex-wrap items-center justify-between gap-2'>
-        <p className='text-sm font-semibold'>
-          Intento {attempt.attemptNumber} · Modo {getModeLabel(attempt.wordMode)}
-        </p>
+        <p className='text-sm font-semibold'>Modo {getModeLabel(attempt.wordMode)}</p>
         <span className='rounded-full bg-muted px-2 py-0.5 text-xs'>
           {getStatusLabel(attempt.status)}
         </span>
@@ -198,6 +272,8 @@ export function PregunticaHistoryView() {
     }
   }, [])
 
+  const cards = toQuestionCards(weeks)
+
   return (
     <section className='mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 pb-24 pt-6 md:pb-8'>
       <h1 className='font-serif text-3xl font-bold'>🗂️ Historial PreguntICA</h1>
@@ -214,28 +290,32 @@ export function PregunticaHistoryView() {
       )}
 
       <div className='mt-6 space-y-4'>
-        {weeks.map((week) => (
-          <section key={week.id} className='rounded-2xl border border-border bg-card p-4'>
+        {cards.map((card) => (
+          <section key={card.id} className='rounded-2xl border border-border bg-card p-4'>
             <div className='flex flex-wrap items-start justify-between gap-3'>
               <div>
-                <h2 className='font-serif text-xl font-bold'>
-                  Semana {week.weekStart} → {week.weekEnd}
-                </h2>
+                <h2 className='font-serif text-xl font-bold'>{card.questionText}</h2>
+                {card.questionTranslation && card.questionTranslation !== card.questionText && (
+                  <p className='mt-1 text-sm text-muted-foreground'>
+                    Traducción (español): {card.questionTranslation}
+                  </p>
+                )}
                 <p className='mt-1 text-xs text-muted-foreground'>
-                  {week.timezone} · Desbloqueo: {getUnlockLabel(week.unlockedVia)} ·{' '}
-                  {week.activationWordsCount}/{week.requiredActivationWords} palabras
+                  Semana {card.weekStart} → {card.weekEnd} · {card.timezone} · Desbloqueo:{' '}
+                  {getUnlockLabel(card.unlockedVia)} · {card.activationWordsCount}/
+                  {card.requiredActivationWords} palabras
                 </p>
               </div>
               <span className='rounded-full bg-muted px-2.5 py-1 text-xs'>
-                {week.completedAt ? 'Completada' : week.isUnlocked ? 'Desbloqueada' : 'Bloqueada'}
+                {card.completedAt ? 'Completada' : card.isUnlocked ? 'Desbloqueada' : 'Bloqueada'}
               </span>
             </div>
 
-            {week.attempts.length === 0 ? (
+            {card.attempts.length === 0 ? (
               <p className='mt-4 text-sm text-muted-foreground'>Sin intentos en esta semana.</p>
             ) : (
               <Accordion type='multiple' className='mt-4 space-y-2'>
-                {week.attempts.map((attempt: PregunticaHistoryAttempt) => (
+                {card.attempts.map((attempt: PregunticaHistoryAttempt, index) => (
                   <AccordionItem
                     key={attempt.id}
                     value={attempt.id}
@@ -243,9 +323,7 @@ export function PregunticaHistoryView() {
                   >
                     <AccordionTrigger className='py-3 hover:no-underline'>
                       <div className='flex w-full flex-wrap items-center gap-2 pr-2'>
-                        <span className='font-medium'>
-                          {attempt.questionText?.trim() || `Intento ${attempt.attemptNumber}`}
-                        </span>
+                        <span className='font-medium'>Intento {index + 1}</span>
                         <span className='rounded-full bg-muted px-2 py-0.5 text-[11px]'>
                           {getStatusLabel(attempt.status)}
                         </span>
