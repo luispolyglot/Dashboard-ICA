@@ -2513,7 +2513,7 @@ export function ManageCoachingUserView({
                                           <Label>
                                             Frases de la nota maestra
                                           </Label>
-                                          <div className='space-y-2 rounded-md border p-2'>
+                                          <div className='space-y-2 rounded-md border p-2 lg:overflow-y-auto lg:max-h-96'>
                                             {note.activatedPhrases.length ===
                                               0 && (
                                               <p className='text-xs text-muted-foreground'>

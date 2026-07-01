@@ -343,7 +343,6 @@ export function StreaksPage() {
     savedCreationDays,
     creationSavesUsedThisMonth,
     creationSavesLimit,
-    saveCreationStreakDay,
   } = useDashboardContext()
 
   return (
@@ -354,7 +353,6 @@ export function StreaksPage() {
         savedCreationDays={savedCreationDays}
         creationSavesUsedThisMonth={creationSavesUsedThisMonth}
         creationSavesLimit={creationSavesLimit}
-        onSaveCreationStreakDay={saveCreationStreakDay}
       />
     </PageLayout>
   )

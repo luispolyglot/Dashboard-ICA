@@ -1176,6 +1176,93 @@ $$;
 revoke all on function public.save_creation_streak_day(date) from public;
 grant execute on function public.save_creation_streak_day(date) to authenticated;
 
+create or replace function public.daily_metrics_auto_freeze_previous_day()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  tz text;
+  today_local date;
+  target_day date;
+  month_start date;
+  month_end date;
+  used_count integer;
+  has_previous_streak_anchor boolean;
+begin
+  if not coalesce(new.creation_goal_completed, false) then
+    return new;
+  end if;
+
+  tz := coalesce(
+    (select nullif(p.timezone, '') from public.profiles p where p.id = new.user_id),
+    'UTC'
+  );
+
+  today_local := (now() at time zone tz)::date;
+  if new.day <> today_local then
+    return new;
+  end if;
+
+  target_day := new.day - 1;
+  month_start := date_trunc('month', today_local::timestamp)::date;
+  month_end := (month_start + interval '1 month - 1 day')::date;
+
+  if target_day < month_start or target_day > month_end then
+    return new;
+  end if;
+
+  select exists (
+    select 1
+    from public.daily_metrics dm
+    where dm.user_id = new.user_id
+      and dm.day = target_day - 1
+      and (dm.creation_goal_completed or dm.creation_streak_saved_at is not null)
+  )
+  into has_previous_streak_anchor;
+
+  if not has_previous_streak_anchor then
+    return new;
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext(new.user_id::text || ':salvadica:' || month_start::text));
+
+  select count(*)::integer
+  into used_count
+  from public.daily_metrics dm
+  where dm.user_id = new.user_id
+    and dm.day >= month_start
+    and dm.day <= month_end
+    and dm.creation_streak_saved_at is not null;
+
+  if used_count >= 3 then
+    return new;
+  end if;
+
+  insert into public.daily_metrics (user_id, day)
+  values (new.user_id, target_day)
+  on conflict (user_id, day)
+  do nothing;
+
+  update public.daily_metrics dm
+  set
+    creation_streak_saved_at = now(),
+    day = dm.day
+  where dm.user_id = new.user_id
+    and dm.day = target_day
+    and not dm.creation_goal_completed
+    and dm.creation_streak_saved_at is null;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists daily_metrics_auto_freeze_previous_day_trigger on public.daily_metrics;
+create trigger daily_metrics_auto_freeze_previous_day_trigger
+after insert or update on public.daily_metrics
+for each row execute procedure public.daily_metrics_auto_freeze_previous_day();
+
 create or replace function public.get_monthly_streak_leaderboard(limit_count integer default 20)
 returns table (
   rank bigint,
@@ -1185,7 +1272,8 @@ returns table (
   ica_streak_days integer,
   avg_percent numeric,
   review_percent numeric,
-  creation_percent numeric
+  creation_percent numeric,
+  is_creation_streak_frozen boolean
 )
 language sql
 security definer
@@ -1258,21 +1346,85 @@ as $$
     where cs.streak_end_day between (mb.today_local - interval '1 day')::date and mb.today_local
     order by cs.user_id, cs.streak_end_day desc
   ),
+  frozen_creation_streak as (
+    select distinct on (cs.user_id)
+      cs.user_id,
+      cs.ica_streak_days
+    from creation_streaks cs
+    join month_bounds mb on mb.user_id = cs.user_id
+    where cs.streak_end_day = (mb.today_local - interval '2 day')::date
+    order by cs.user_id, cs.streak_end_day desc
+  ),
+  freeze_flags as (
+    select
+      mb.user_id,
+      (
+        not exists (
+          select 1
+          from public.daily_metrics dm
+          where dm.user_id = mb.user_id
+            and dm.day = mb.today_local
+            and dm.creation_goal_completed
+        )
+        and (mb.today_local - interval '1 day')::date >= mb.month_start
+        and not exists (
+          select 1
+          from public.daily_metrics dm
+          where dm.user_id = mb.user_id
+            and dm.day = (mb.today_local - interval '1 day')::date
+            and (dm.creation_goal_completed or dm.creation_streak_saved_at is not null)
+        )
+        and exists (
+          select 1
+          from public.daily_metrics dm
+          where dm.user_id = mb.user_id
+            and dm.day = (mb.today_local - interval '2 day')::date
+            and (dm.creation_goal_completed or dm.creation_streak_saved_at is not null)
+        )
+        and (
+          select count(*)
+          from public.daily_metrics dm
+          where dm.user_id = mb.user_id
+            and dm.day >= mb.month_start
+            and dm.day < mb.month_end
+            and dm.creation_streak_saved_at is not null
+        ) < 3
+      ) as is_creation_streak_frozen
+    from month_bounds mb
+  ),
   ranked as (
     select
       row_number() over (
-        order by s.avg_percent desc, coalesce(ccs.ica_streak_days, 0) desc, s.user_id
+        order by
+          s.avg_percent desc,
+          (
+            case
+              when coalesce(ff.is_creation_streak_frozen, false) and coalesce(ccs.ica_streak_days, 0) = 0
+                then coalesce(fcs.ica_streak_days, 0)
+              else coalesce(ccs.ica_streak_days, 0)
+            end
+          ) desc,
+          s.user_id
       ) as rank,
       s.user_id,
       coalesce(p.username, 'anon') as username,
       coalesce(p.display_name, p.username, 'Usuario') as display_name,
-      coalesce(ccs.ica_streak_days, 0) as ica_streak_days,
+      (
+        case
+          when coalesce(ff.is_creation_streak_frozen, false) and coalesce(ccs.ica_streak_days, 0) = 0
+            then coalesce(fcs.ica_streak_days, 0)
+          else coalesce(ccs.ica_streak_days, 0)
+        end
+      ) as ica_streak_days,
       s.avg_percent,
       s.review_percent,
-      s.creation_percent
+      s.creation_percent,
+      coalesce(ff.is_creation_streak_frozen, false) as is_creation_streak_frozen
     from scores s
     left join public.profiles p on p.id = s.user_id
     left join current_creation_streak ccs on ccs.user_id = s.user_id
+    left join frozen_creation_streak fcs on fcs.user_id = s.user_id
+    left join freeze_flags ff on ff.user_id = s.user_id
   )
   select
     r.rank,
@@ -1282,7 +1434,8 @@ as $$
     r.ica_streak_days,
     r.avg_percent,
     r.review_percent,
-    r.creation_percent
+    r.creation_percent,
+    r.is_creation_streak_frozen
   from ranked r
   order by r.rank
   limit greatest(limit_count, 1);

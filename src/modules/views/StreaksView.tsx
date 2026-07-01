@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react'
-import { toast } from 'sonner'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -13,7 +12,6 @@ type StreaksViewProps = {
   savedCreationDays: string[]
   creationSavesUsedThisMonth: number
   creationSavesLimit: number
-  onSaveCreationStreakDay: (day?: string) => Promise<{ savedDay: string }>
 }
 
 type DayStatus =
@@ -22,6 +20,7 @@ type DayStatus =
   | 'missed'
   | 'completed'
   | 'saved'
+  | 'frozen-pending'
   | 'outside'
   | 'outside-missed'
   | 'outside-completed'
@@ -32,15 +31,12 @@ type CalendarCell = {
   monthOffset: -1 | 0 | 1
 }
 
-const SAVE_MODE_ENABLED = false // disabled momentarily, as it was causing confusion and frustration for users. It can be re-enabled in the future if desired.
-
 export function StreaksView({
   completedDays,
   creationDays,
   savedCreationDays,
   creationSavesUsedThisMonth,
   creationSavesLimit,
-  onSaveCreationStreakDay,
 }: StreaksViewProps) {
   const todayStr = todayKey()
   const [todayYear, todayMonth, todayDay] = todayStr.split('-').map(Number)
@@ -48,9 +44,6 @@ export function StreaksView({
     () => new Date(todayYear, (todayMonth || 1) - 1, 1),
   )
   const [tab, setTab] = useState<CalendarTab>('creation')
-  const [savingStreak, setSavingStreak] = useState(false)
-  const [saveSelectionMode, setSaveSelectionMode] = useState(false)
-  const [recentlySavedDay, setRecentlySavedDay] = useState<string | null>(null)
 
   const year = viewDate.getFullYear()
   const month = viewDate.getMonth()
@@ -88,76 +81,38 @@ export function StreaksView({
   const lastDayToCount = isCurrentMonth ? todayDay : daysInMonth
 
   const monthStartKey = `${todayYear}-${String(todayMonth || 1).padStart(2, '0')}-01`
-  const selectableSaveDayKeys =
-    tab === 'creation' && isCurrentMonth
-      ? (() => {
-          const completedSet = new Set(creationDays)
-          const savedSet = new Set(savedCreationDays)
-          const keys = new Set<string>()
-          let cursor = shiftIsoDay(todayStr, -1)
-
-          while (cursor >= monthStartKey) {
-            if (!completedSet.has(cursor) && !savedSet.has(cursor)) {
-              keys.add(cursor)
-            }
-            cursor = shiftIsoDay(cursor, -1)
-          }
-
-          return keys
-        })()
-      : new Set<string>()
-
-  const latestSavableDay = selectableSaveDayKeys.values().next().value || null
+  const yesterdayKey = shiftIsoDay(todayStr, -1)
+  const twoDaysAgoKey = shiftIsoDay(todayStr, -2)
+  const todayCompleted = creationDays.includes(todayStr)
   const hasSaveQuota = creationSavesUsedThisMonth < creationSavesLimit
-  const isSaveModeActive =
-    SAVE_MODE_ENABLED &&
-    saveSelectionMode &&
-    tab === 'creation' &&
-    isCurrentMonth
+  const pendingFrozenDay =
+    !todayCompleted &&
+    hasSaveQuota &&
+    yesterdayKey >= monthStartKey &&
+    !creationDays.includes(yesterdayKey) &&
+    !savedCreationDays.includes(yesterdayKey) &&
+    (creationDays.includes(twoDaysAgoKey) ||
+      savedCreationDays.includes(twoDaysAgoKey))
+      ? yesterdayKey
+      : null
+  const hasActiveFreeze = tab === 'creation' && Boolean(pendingFrozenDay)
 
   let completedCount = 0
   let savedCount = 0
+  let pendingFrozenCount = 0
   for (let day = 1; day <= lastDayToCount; day++) {
     const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
     if (activeDays.includes(key)) completedCount++
     if (activeSavedDays.includes(key)) savedCount++
+    if (pendingFrozenDay && key === pendingFrozenDay) pendingFrozenCount++
   }
 
-  const missedCount = Math.max(0, lastDayToCount - completedCount - savedCount)
+  const missedCount = Math.max(
+    0,
+    lastDayToCount - completedCount - savedCount - pendingFrozenCount,
+  )
   const monthPercent =
     lastDayToCount > 0 ? Math.round((completedCount / lastDayToCount) * 100) : 0
-
-  const handleSaveStreak = async (day: string): Promise<void> => {
-    if (!day || !hasSaveQuota || savingStreak) return
-
-    try {
-      setSavingStreak(true)
-      const result = await onSaveCreationStreakDay(day)
-      toast.success(`Racha ICA salvada para ${result.savedDay}.`)
-      setSaveSelectionMode(false)
-      setRecentlySavedDay(result.savedDay)
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'No se pudo salvar la racha ICA.'
-      toast.error(message)
-    } finally {
-      setSavingStreak(false)
-    }
-  }
-
-  useEffect(() => {
-    if (!recentlySavedDay) return
-
-    const timeoutId = window.setTimeout(() => {
-      setRecentlySavedDay(null)
-    }, 1200)
-
-    return () => {
-      window.clearTimeout(timeoutId)
-    }
-  }, [recentlySavedDay])
 
   return (
     <section className='mx-auto w-full max-w-4xl flex-1 overflow-y-auto px-5 py-8'>
@@ -224,15 +179,11 @@ export function StreaksView({
               const key = `${dayDate.getFullYear()}-${String(dayDate.getMonth() + 1).padStart(2, '0')}-${String(dayDate.getDate()).padStart(2, '0')}`
               const isCompleted = activeDays.includes(key)
               const isSaved = activeSavedDays.includes(key)
+              const isPendingFrozen =
+                tab === 'creation' && key === pendingFrozenDay
               const isToday = key === todayStr
               const isFuture = dayDate > baselineToday
               const isPast = dayDate < baselineToday
-              const isSelectableForSave =
-                isSaveModeActive &&
-                cell.monthOffset === 0 &&
-                isPast &&
-                selectableSaveDayKeys.has(key) &&
-                hasSaveQuota
               const status: DayStatus =
                 cell.monthOffset !== 0
                   ? isFuture
@@ -244,13 +195,15 @@ export function StreaksView({
                         : 'outside-missed'
                   : isFuture
                     ? 'future'
-                    : isSaved
-                      ? 'saved'
-                      : isCompleted
-                        ? 'completed'
-                        : isPast
-                          ? 'missed'
-                          : 'empty'
+                    : isPendingFrozen
+                      ? 'frozen-pending'
+                      : isSaved
+                        ? 'saved'
+                        : isCompleted
+                          ? 'completed'
+                          : isPast
+                            ? 'missed'
+                            : 'empty'
 
               return (
                 <DayCell
@@ -258,14 +211,6 @@ export function StreaksView({
                   day={cell.day}
                   status={status}
                   isToday={isToday}
-                  selectableForSave={isSelectableForSave}
-                  mutedForSaveSelection={
-                    isSaveModeActive && !isSelectableForSave
-                  }
-                  celebrateSave={recentlySavedDay === key && status === 'saved'}
-                  onSaveClick={() => {
-                    void handleSaveStreak(key)
-                  }}
                 />
               )
             })}
@@ -282,65 +227,40 @@ export function StreaksView({
               value={isFutureMonth ? 0 : missedCount}
               valueClass='text-destructive'
             />
-            {tab === 'creation' && SAVE_MODE_ENABLED && (
-              <Stat
-                label='Días salvados'
-                value={savedCount}
-                valueClass='text-amber-600 dark:text-amber-300'
-                icon='🛟'
-              />
-            )}
             <Stat
               label='Racha actual'
               value={
                 tab === 'creation'
-                  ? getStreakWithSaved(creationDays, savedCreationDays)
+                  ? getStreakWithSaved(
+                      creationDays,
+                      savedCreationDays,
+                      pendingFrozenDay,
+                    )
                   : getStreak(activeDays)
               }
-              valueClass='text-slate-500 dark:text-slate-200'
+              valueClass={
+                hasActiveFreeze
+                  ? 'animate-pulse [filter:hue-rotate(165deg)_saturate(1.25)]'
+                  : 'text-slate-500 dark:text-slate-200'
+              }
               icon={tab === 'creation' ? '🔥' : '✦'}
             />
           </div>
 
-          {tab === 'creation' && isCurrentMonth && SAVE_MODE_ENABLED && (
+          {tab === 'creation' && isCurrentMonth && (
             <div className='rounded-xl border p-3'>
-              <div className='mb-2 flex items-center justify-between'>
-                <div className='text-xs text-muted-foreground'>
-                  {isSaveModeActive
-                    ? 'Haz clic en el día que quieres salvar.'
-                    : `SalvadICA usado este mes: ${creationSavesUsedThisMonth}/${creationSavesLimit}`}
-                </div>
-                <Button
-                  type='button'
-                  size='sm'
-                  variant={isSaveModeActive ? 'outline' : 'default'}
-                  onClick={() => {
-                    if (isSaveModeActive) {
-                      setSaveSelectionMode(false)
-                      return
-                    }
-                    setSaveSelectionMode(true)
-                  }}
-                  disabled={
-                    savingStreak ||
-                    (!isSaveModeActive && (!latestSavableDay || !hasSaveQuota))
-                  }
-                >
-                  {isSaveModeActive
-                    ? 'Cancelar'
-                    : savingStreak
-                      ? 'Salvando...'
-                      : '🛟 SalvadICA'}
-                </Button>
-              </div>
               <div className='text-xs text-muted-foreground'>
-                {isSaveModeActive
-                  ? 'Solo puedes seleccionar días no completados del mes actual.'
-                  : hasSaveQuota
-                    ? latestSavableDay
-                      ? 'Puedes elegir cualquier día rojo del mes actual para salvarlo.'
-                      : 'No hay días elegibles para salvar en este mes.'
-                    : 'Ya alcanzaste el límite mensual de 3 salvadas.'}
+                🧊 SalvadICA usado este mes: {creationSavesUsedThisMonth}/
+                {creationSavesLimit}
+              </div>
+              <div className='mt-1 text-xs text-muted-foreground'>
+                {hasActiveFreeze
+                  ? '🧊 Racha congelada: completa hoy ICA antes de las 23:59 para conservar la racha.'
+                  : todayCompleted
+                    ? '✅ Bien hecho hoy: no perdiste tu racha ICA.'
+                    : hasSaveQuota
+                      ? 'Si hoy fallas, mañana tendrás una ventana de 24 horas para recuperar la racha.'
+                      : 'Ya alcanzaste el límite mensual de 3 salvadas.'}
               </div>
             </div>
           )}
@@ -408,48 +328,33 @@ type DayCellProps = {
   day: number
   status: DayStatus
   isToday: boolean
-  selectableForSave: boolean
-  mutedForSaveSelection: boolean
-  celebrateSave: boolean
-  onSaveClick: () => void
 }
 
-function DayCell({
-  day,
-  status,
-  isToday,
-  selectableForSave,
-  mutedForSaveSelection,
-  celebrateSave,
-  onSaveClick,
-}: DayCellProps) {
+function DayCell({ day, status, isToday }: DayCellProps) {
   const statusClass =
     status === 'completed'
       ? 'border-primary/50 bg-primary/10 text-primary'
       : status === 'saved'
-        ? 'border-amber-500/45 bg-amber-500/15 text-amber-700 dark:text-amber-300'
-        : status === 'missed'
-          ? selectableForSave
-            ? 'border-destructive/70 bg-destructive/20 text-destructive hover:border-amber-500/70 hover:bg-amber-500/20 hover:text-amber-700 dark:hover:text-amber-300'
-            : 'border-destructive/30 bg-destructive/10 text-destructive'
-          : status === 'outside-completed'
-            ? 'border-primary/25 bg-primary/10 text-primary opacity-60'
-            : status === 'outside-saved'
-              ? 'border-amber-500/30 bg-amber-500/15 text-amber-700 opacity-60 dark:text-amber-300'
-              : status === 'outside-missed'
-                ? 'border-destructive/20 bg-destructive/10 text-destructive opacity-60'
-                : status === 'outside'
-                  ? 'border-transparent bg-background/30 text-muted-foreground opacity-60'
-                  : status === 'future'
-                    ? 'border-transparent bg-muted text-muted-foreground/60'
-                    : 'border-border bg-background text-muted-foreground'
+        ? 'border-sky-500/55 bg-sky-500/15 text-sky-700 dark:text-sky-300'
+        : status === 'frozen-pending'
+          ? 'border-sky-500/55 bg-sky-500/15 text-sky-700 dark:text-sky-300 animate-pulse'
+          : status === 'missed'
+            ? 'border-destructive/30 bg-destructive/10 text-destructive'
+            : status === 'outside-completed'
+              ? 'border-primary/25 bg-primary/10 text-primary opacity-60'
+              : status === 'outside-saved'
+                ? 'border-amber-500/30 bg-amber-500/15 text-amber-700 opacity-60 dark:text-amber-300'
+                : status === 'outside-missed'
+                  ? 'border-destructive/20 bg-destructive/10 text-destructive opacity-60'
+                  : status === 'outside'
+                    ? 'border-transparent bg-background/30 text-muted-foreground opacity-60'
+                    : status === 'future'
+                      ? 'border-transparent bg-muted text-muted-foreground/60'
+                      : 'border-border bg-background text-muted-foreground'
 
   return (
-    <button
-      type='button'
-      onClick={selectableForSave ? onSaveClick : undefined}
-      className={`group relative flex aspect-square items-center justify-center rounded-lg border text-sm font-medium transition-colors ${statusClass} ${isToday ? 'ring-2 ring-ring' : ''} ${selectableForSave ? 'cursor-pointer' : 'cursor-default'} ${mutedForSaveSelection ? 'opacity-50' : ''} ${celebrateSave ? 'ring-2 ring-amber-400 animate-pulse' : ''}`}
-      aria-disabled={!selectableForSave}
+    <div
+      className={`relative flex aspect-square items-center justify-center rounded-lg border text-sm font-medium ${statusClass} ${isToday ? 'ring-2 ring-ring' : ''}`}
     >
       {day}
       {status === 'completed' && (
@@ -457,18 +362,15 @@ function DayCell({
       )}
       {status === 'saved' && (
         <div className='absolute right-1 top-0.5 text-[10px] leading-none'>
-          🛟
+          🧊
         </div>
       )}
-      {selectableForSave && (
-        <div className='pointer-events-none absolute right-1 top-0.5 text-[10px] leading-none opacity-0 transition-opacity group-hover:opacity-100'>
-          🛟
+      {status === 'frozen-pending' && (
+        <div className='absolute right-1 top-0.5 text-[10px] leading-none'>
+          🧊
         </div>
       )}
-      {celebrateSave && (
-        <div className='pointer-events-none absolute inset-0 rounded-lg border border-amber-400/80 animate-ping' />
-      )}
-    </button>
+    </div>
   )
 }
 

@@ -49,14 +49,25 @@ function escapeRegex(value: string): string {
 }
 
 function highlightMatch(text: string, query: string): ReactNode {
-  const trimmedQuery = query.trim()
-  if (!trimmedQuery) return text
+  const terms = query
+    .trim()
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean)
 
-  const regex = new RegExp(`(${escapeRegex(trimmedQuery)})`, 'gi')
+  if (!terms.length) return text
+
+  const sortedTerms = Array.from(new Set(terms)).sort(
+    (a, b) => b.length - a.length,
+  )
+  const pattern = sortedTerms.map((term) => escapeRegex(term)).join('|')
+  if (!pattern) return text
+
+  const regex = new RegExp(`(${pattern})`, 'gi')
   const parts = text.split(regex)
 
   return parts.map((part, index) =>
-    part.toLowerCase() === trimmedQuery.toLowerCase() ? (
+    sortedTerms.some((term) => term.toLowerCase() === part.toLowerCase()) ? (
       <mark
         key={`${part}-${index}`}
         className='rounded-sm bg-primary/20 px-0.5 text-primary'

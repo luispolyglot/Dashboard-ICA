@@ -9,7 +9,6 @@ import {
 } from '../services/creationMetricsSync'
 import {
   loadCreationStreakSaveState,
-  saveCreationStreakDay as saveCreationStreakDayRpc,
 } from '../services/creationStreakSaves'
 import { loadData, saveData } from '../services/storage'
 import { recordBootstrapDiagnostic } from '../utils/bootstrapDiagnostics'
@@ -332,12 +331,6 @@ export function useDashboardICA() {
     }
   }, [refreshStreakProgressFromSource])
 
-  const saveCreationStreakDay = useCallback(async (day?: string): Promise<{ savedDay: string }> => {
-    const saved = await saveCreationStreakDayRpc(day)
-    await refreshStreakProgressFromSource()
-    return { savedDay: saved.savedDay }
-  }, [refreshStreakProgressFromSource])
-
   useEffect(() => {
     const syncActivationFromTruthSource = () => {
       void refreshActivationProgressFromSource()
@@ -448,6 +441,5 @@ export function useDashboardICA() {
     setMetaTrackerActivationWordsTotal,
     startReviewSession,
     refreshCreationDaysFromSource,
-    saveCreationStreakDay,
   }
 }

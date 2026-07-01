@@ -59,7 +59,7 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(title, {
       body,
       icon: '/android-chrome-192x192.png',
-      badge: '/favicon-32x32.png',
+      badge: '/badge-72.png',
       data: { url },
       tag: payload.tag || undefined,
       renotify: false,

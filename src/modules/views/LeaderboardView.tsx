@@ -196,7 +196,8 @@ function getMonthlyPercentPoints(row: LeaderboardEntry): number {
 }
 
 function getIcaTestPoints(row: LeaderboardEntry): number {
-  if (row.ica_test_points === null || row.ica_test_points === undefined) return 0
+  if (row.ica_test_points === null || row.ica_test_points === undefined)
+    return 0
   return toSafeNumber(row.ica_test_points)
 }
 
@@ -209,6 +210,18 @@ function getDisplayedTotalPoints(
 
   const monthlyPoints = getMonthlyPercentPoints(row)
   return includeIcaTest ? monthlyPoints + getIcaTestPoints(row) : monthlyPoints
+}
+
+function getStreakCellClass(row: LeaderboardEntry): string {
+  const streak = row.ica_streak_days || 0
+  const frozen = Boolean(row.is_creation_streak_frozen)
+  if (frozen) return '[filter:hue-rotate(165deg)_saturate(1.25)] animate-pulse'
+  return streak > 0 ? '' : 'grayscale'
+}
+
+function getStreakLabel(row: LeaderboardEntry): string {
+  const streak = row.ica_streak_days || 0
+  return `🔥 ${streak}`
 }
 
 function buildScoreBreakdown(
@@ -414,14 +427,18 @@ export function LeaderboardView() {
               <table className='w-full lg:min-w-160 table-fixed text-left text-sm'>
                 <thead className='table w-full table-fixed'>
                   <tr className='border-b text-muted-foreground'>
-                    <th className='w-[18%] md:w-[15%] pb-2 font-medium'>Rank</th>
+                    <th className='w-[18%] md:w-[15%] pb-2 font-medium'>
+                      Rank
+                    </th>
                     <th className='w-auto pb-2 font-medium'>Nombre</th>
                     {showIcaTestColumn && (
                       <th className='hidden md:table-cell w-[14%] pb-2 font-medium'>
                         ICA Test
                       </th>
                     )}
-                    <th className='w-[22%] md:w-[18%] pb-2 font-medium'>Racha ICA</th>
+                    <th className='w-[22%] md:w-[18%] pb-2 font-medium'>
+                      Racha ICA
+                    </th>
                     <th className='hidden md:table-cell w-[18%] pb-2 font-medium'>
                       % mensual
                     </th>
@@ -470,11 +487,9 @@ export function LeaderboardView() {
                         </td>
                       )}
                       <td
-                        className={`w-[22%] md:w-[18%] py-2 ${row.ica_streak_days && row.ica_streak_days > 0 ? '' : 'grayscale'}`}
+                        className={`w-[22%] md:w-[18%] py-2 ${getStreakCellClass(row)}`}
                       >
-                        {row.ica_streak_days && row.ica_streak_days > 0
-                          ? `🔥 ${row.ica_streak_days}`
-                          : '🔥 0'}
+                        {getStreakLabel(row)}
                       </td>
                       <td className='hidden md:table-cell w-[18%] py-2 font-medium'>
                         {Math.round(row.avg_percent || 0)}%
@@ -565,11 +580,9 @@ export function LeaderboardView() {
                         </td>
                       )}
                       <td
-                        className={`w-[22%] md:w-[18%] py-2 ${row.ica_streak_days && row.ica_streak_days > 0 ? '' : 'grayscale'}`}
+                        className={`w-[22%] md:w-[18%] py-2 ${getStreakCellClass(row)}`}
                       >
-                        {row.ica_streak_days && row.ica_streak_days > 0
-                          ? `🔥 ${row.ica_streak_days}`
-                          : '🔥 0'}
+                        {getStreakLabel(row)}
                       </td>
                       <td className='hidden md:table-cell w-[18%] py-2 font-medium'>
                         {Math.round(row.avg_percent || 0)}%
