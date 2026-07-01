@@ -182,7 +182,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
               <div className='pointer-events-none absolute inset-[-120%] z-0 animate-[rotateCW_8s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0deg,transparent_255deg,#eab30818_265deg,#eab30860_280deg,#eab308cc_305deg,#fde68a_322deg,#ffffffff_328deg,#fde68a_334deg,#eab308cc_350deg,#eab30860_368deg,#eab30818_378deg,transparent_390deg)]' />
               <button
                 type='button'
-                onClick={() => navigate(DASHBOARD_ROUTES.flashcards)}
+                onClick={() => navigate(DASHBOARD_ROUTES.gamesIca)}
                 className={cn(
                   cardBaseClass,
                   'relative z-1 m-0.5 min-h-40 overflow-hidden rounded-[20px]',
@@ -190,17 +190,17 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
               >
                 <div className='relative z-1'>
                   <div className='mb-1.25 flex items-center gap-2'>
-                    <div className='text-3xl'>📚</div>
+                    <div className='text-3xl'>🎮</div>
                     <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
-                      FLASHCARDS
+                      JUEGOS ICA
                     </h2>
                   </div>
                   <p className='m-0 text-xs leading-normal text-slate-500'>
-                    Refuerza tu memoria con repetición espaciada.
+                    Entrena con Flashcards y desbloquea tu PreguntICA semanal.
                   </p>
                   <div className='mt-2.5 inline-flex items-center gap-1.5 text-xs text-slate-400'>
                     <span aria-hidden='true'>✅</span>
-                    <span>Objetivo de flashcards completado</span>
+                    <span>Flashcards completadas hoy</span>
                   </div>
                 </div>
               </button>
@@ -208,7 +208,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           ) : (
             <button
               type='button'
-              onClick={() => navigate(DASHBOARD_ROUTES.flashcards)}
+              onClick={() => navigate(DASHBOARD_ROUTES.gamesIca)}
               disabled={cardCount === 0}
               className={cn(
                 cardBaseClass,
@@ -219,13 +219,13 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
             >
               <div className='relative z-1 my-auto'>
                 <div className='mb-1.25 flex items-center gap-2'>
-                  <div className='text-3xl'>📚</div>
+                  <div className='text-3xl'>🎮</div>
                   <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
-                    FLASHCARDS
+                    JUEGOS ICA
                   </h2>
                 </div>
                 <p className='m-0 text-xs leading-normal text-slate-500'>
-                  Refuerza tu memoria con repetición espaciada.
+                  Flashcards + PreguntICA en una sola pantalla.
                 </p>
                 <div className='mt-2.5 inline-flex items-center gap-1.5 text-xs text-slate-400'>
                   <span aria-hidden='true'>🕒</span>
