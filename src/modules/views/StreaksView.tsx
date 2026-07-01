@@ -250,7 +250,7 @@ export function StreaksView({
           {tab === 'creation' && isCurrentMonth && (
             <div className='rounded-xl border p-3'>
               <div className='text-xs text-muted-foreground'>
-                🧊 SalvadICA usado este mes: {creationSavesUsedThisMonth}/
+                🧊 CongeladICA usado este mes: {creationSavesUsedThisMonth}/
                 {creationSavesLimit}
               </div>
               <div className='mt-1 text-xs text-muted-foreground'>
@@ -258,9 +258,9 @@ export function StreaksView({
                   ? '🧊 Racha congelada: completa hoy ICA antes de las 23:59 para conservar la racha.'
                   : todayCompleted
                     ? '✅ Bien hecho hoy: no perdiste tu racha ICA.'
-                    : hasSaveQuota
-                      ? 'Si hoy fallas, mañana tendrás una ventana de 24 horas para recuperar la racha.'
-                      : 'Ya alcanzaste el límite mensual de 3 salvadas.'}
+                  : hasSaveQuota
+                    ? 'Si hoy fallas, mañana tendrás una ventana de 24 horas para recuperar la racha.'
+                    : 'Ya alcanzaste el límite mensual de 2 CongeladICA.'}
               </div>
             </div>
           )}

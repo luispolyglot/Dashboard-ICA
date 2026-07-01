@@ -36,7 +36,7 @@ export function useDashboardICA() {
   const [reviewSession, setReviewSession] = useState(0)
   const [savedCreationDays, setSavedCreationDays] = useState<string[]>([])
   const [creationSavesUsedThisMonth, setCreationSavesUsedThisMonth] = useState(0)
-  const [creationSavesLimit, setCreationSavesLimit] = useState(3)
+  const [creationSavesLimit, setCreationSavesLimit] = useState(2)
   const [metaTrackerByScope, setMetaTrackerByScope] = useState<
     Record<string, MetaTrackerProfile | null | undefined>
   >({})
@@ -132,7 +132,7 @@ export function useDashboardICA() {
       setReviewSession(0)
       setSavedCreationDays([])
       setCreationSavesUsedThisMonth(0)
-      setCreationSavesLimit(3)
+      setCreationSavesLimit(2)
       recordBootstrapDiagnostic('dashboard.bootstrap_failed')
       setLoading(false)
     })

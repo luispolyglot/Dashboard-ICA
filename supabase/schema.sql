@@ -1104,7 +1104,7 @@ begin
     raise exception 'DAY_NOT_ELIGIBLE';
   end if;
 
-  perform pg_advisory_xact_lock(hashtext(current_user_id::text || ':salvadica:' || month_start::text));
+  perform pg_advisory_xact_lock(hashtext(current_user_id::text || ':congeladica:' || month_start::text));
 
   select count(*)::integer
   into used_count
@@ -1114,7 +1114,7 @@ begin
     and dm.day <= month_end
     and dm.creation_streak_saved_at is not null;
 
-  if used_count >= 3 then
+  if used_count >= 2 then
     raise exception 'SAVE_LIMIT_REACHED';
   end if;
 
@@ -1169,7 +1169,7 @@ begin
   select
     saved_day,
     used_count,
-    greatest(0, 3 - used_count);
+    greatest(0, 2 - used_count);
 end;
 $$;
 
@@ -1226,7 +1226,7 @@ begin
     return new;
   end if;
 
-  perform pg_advisory_xact_lock(hashtext(new.user_id::text || ':salvadica:' || month_start::text));
+  perform pg_advisory_xact_lock(hashtext(new.user_id::text || ':congeladica:' || month_start::text));
 
   select count(*)::integer
   into used_count
@@ -1236,7 +1236,7 @@ begin
     and dm.day <= month_end
     and dm.creation_streak_saved_at is not null;
 
-  if used_count >= 3 then
+  if used_count >= 2 then
     return new;
   end if;
 
@@ -1388,7 +1388,7 @@ as $$
             and dm.day >= mb.month_start
             and dm.day < mb.month_end
             and dm.creation_streak_saved_at is not null
-        ) < 3
+        ) < 2
       ) as is_creation_streak_frozen
     from month_bounds mb
   ),
