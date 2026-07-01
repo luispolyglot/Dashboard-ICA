@@ -23,6 +23,8 @@ import {
 } from '../services/preguntica'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchTranslation } from '../services/anthropic'
+import { SpeakButton } from '../components/SpeakButton'
+import { Button } from '@/components/ui/button'
 
 type PregunticaViewProps = {
   config: AppConfig
@@ -36,6 +38,22 @@ const WORD_MODE_OPTIONS = [
   { key: 'occasional', label: 'Ocasional' },
   { key: 'rare', label: 'Raro' },
 ]
+
+const WORD_MODE_TONE: Record<string, string> = {
+  mixed: 'border-sky-500 text-sky-400 bg-sky-500/10',
+  vital: 'border-blue-500 text-blue-400 bg-blue-500/10',
+  frequent: 'border-emerald-500 text-emerald-400 bg-emerald-500/10',
+  occasional: 'border-amber-500 text-amber-400 bg-amber-500/10',
+  rare: 'border-orange-500 text-orange-400 bg-orange-500/10',
+}
+
+const WORD_MODE_DOT: Record<string, string> = {
+  mixed: 'bg-sky-400',
+  vital: 'bg-blue-400',
+  frequent: 'bg-emerald-400',
+  occasional: 'bg-amber-400',
+  rare: 'bg-orange-400',
+}
 
 const MIME_CANDIDATES = [
   'audio/webm;codecs=opus',
@@ -557,19 +575,6 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
     }
   }
 
-  function handlePlayQuestion() {
-    if (!questionText) return
-
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(questionText)
-      utterance.lang = config.targetLang || 'en-US'
-      window.speechSynthesis.cancel()
-      window.speechSynthesis.speak(utterance)
-    }
-
-    setQuestionWasPlayed(true)
-  }
-
   if (loading) {
     return (
       <section className='mx-auto w-full max-w-4xl px-4 pb-24 pt-8'>
@@ -583,7 +588,13 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
   const hasActiveAttempt = Boolean(attempt && attempt.status !== 'completed')
   const activeAttempt = hasActiveAttempt ? attempt : null
   const canStartAttempt = Boolean(status?.canStart)
+  const tokenBalance = tokenSummary?.balance ?? 0
+  const hasRedeemableTokens = tokenBalance >= 2
   const isWeekClosedWithoutActiveAttempt = !canStartAttempt && !hasActiveAttempt
+  const shouldShowStartCard =
+    !locked
+    && !hasActiveAttempt
+    && (!hasCompletedWeek || canStartAttempt || hasRedeemableTokens)
   const currentWindowLabel = getWindowRemainingLabel(status)
 
   return (
@@ -643,57 +654,64 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
         </div>
       )}
 
-      {hasCompletedWeek && isWeekClosedWithoutActiveAttempt && (
-        <div className='mt-4 rounded-2xl border border-emerald-300/60 bg-emerald-50 p-4 text-emerald-900'>
-          <p>
-            Ya completaste esta semana. Puedes canjear fichas para desbloquear una
-            nueva PreguntICA con una pregunta distinta.
-          </p>
-          <div className='mt-3 flex flex-wrap items-center gap-2'>
-            <button
-              type='button'
-              onClick={handleRedeemAndRetry}
-              disabled={working || (tokenSummary?.balance ?? 0) < 2}
-              className='rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60'
-            >
-              Canjear 2 fichas y empezar nueva PreguntICA
-            </button>
-            <span className='text-xs text-emerald-900/80'>
-              Saldo actual: {tokenSummary?.balance ?? 0} fichas
-            </span>
-          </div>
-        </div>
-      )}
-
-      {!locked && !isWeekClosedWithoutActiveAttempt && !hasActiveAttempt && (
+      {shouldShowStartCard && (
         <div className='mt-4 rounded-2xl border border-border bg-background p-4'>
           <p className='text-sm font-semibold'>1) Elige tipo de palabras</p>
-          <div className='mt-3 flex flex-wrap gap-2'>
-            {WORD_MODE_OPTIONS.map((option) => (
+          {!hasCompletedWeek || canStartAttempt ? (
+            <>
+              <p className='mt-1 text-xs text-muted-foreground'>
+                Selecciona la frecuencia ICA para esta nueva pregunta.
+              </p>
+              <div className='mt-3 flex flex-wrap gap-2'>
+                {WORD_MODE_OPTIONS.map((option) => {
+                  const selected = mode === option.key
+                  return (
+                    <Button
+                      key={option.key}
+                      type='button'
+                      onClick={() => setMode(option.key)}
+                      variant={selected ? 'default' : 'outline'}
+                      className={`min-w-22.5 h-auto flex-1 py-2.5 ${selected ? WORD_MODE_TONE[option.key] : ''}`}
+                    >
+                      <span
+                        className={`mr-1 h-1.5 w-1.5 rounded-full ${WORD_MODE_DOT[option.key]}`}
+                      />
+                      <div className='text-xs font-semibold'>{option.label}</div>
+                    </Button>
+                  )
+                })}
+              </div>
               <button
-                key={option.key}
                 type='button'
-                onClick={() => setMode(option.key)}
-                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                  mode === option.key
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border bg-background'
-                }`}
+                onClick={handleStartAttempt}
+                disabled={working || !canStartAttempt}
+                className='mt-4 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60'
               >
-                {option.label}
+                {attemptsLeft > 0
+                  ? `Empezar intento semanal (${attemptsLeft} restantes)`
+                  : 'Empezar nueva PreguntICA'}
               </button>
-            ))}
-          </div>
-          <button
-            type='button'
-            onClick={handleStartAttempt}
-            disabled={working || !canStartAttempt}
-            className='mt-4 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60'
-          >
-            {attemptsLeft > 0
-              ? `Empezar intento semanal (${attemptsLeft} restantes)`
-              : 'Empezar nueva PreguntICA'}
-          </button>
+            </>
+          ) : (
+            <>
+              <p className='mt-1 text-xs text-muted-foreground'>
+                Ya completaste la semanal. Canjea 2 fichas para desbloquear una nueva PreguntICA.
+              </p>
+              <div className='mt-3 flex flex-wrap items-center gap-2'>
+                <button
+                  type='button'
+                  onClick={handleRedeemAndRetry}
+                  disabled={working || !hasRedeemableTokens}
+                  className='rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60'
+                >
+                  Canjear 2 fichas y desbloquear nueva PreguntICA
+                </button>
+                <span className='text-xs text-muted-foreground'>
+                  Saldo actual: {tokenBalance} fichas
+                </span>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -753,13 +771,17 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
               palabras ICA indicadas.
             </p>
             <div className='mt-3 flex flex-wrap gap-2'>
-              <button
-                type='button'
-                onClick={handlePlayQuestion}
-                className='rounded-xl border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700'
-              >
-                🔊 Escuchar pregunta
-              </button>
+              <SpeakButton
+                text={questionText}
+                langName={config.targetLang}
+                color='#3B82F6'
+                label='Escuchar pregunta'
+                disabled={!questionText || working}
+                onPlayingChange={(isPlaying) => {
+                  if (isPlaying) setQuestionWasPlayed(true)
+                }}
+                className='mt-0'
+              />
               <button
                 type='button'
                 onClick={() => setQuestionVisible(true)}
