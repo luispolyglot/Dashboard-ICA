@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Separator } from '@/components/ui/separator'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/auth/AuthContext'
 import useBreakpoints from '@/modules/hooks/useBreakpoints'
@@ -45,6 +46,7 @@ type ScoreBreakdown = {
   monthlyPercent: number
   monthlyPoints: number
   icaTestPoints: number
+  listeningPoints: number
   includeIcaTest: boolean
   totalPoints: number
 }
@@ -201,6 +203,12 @@ function getIcaTestPoints(row: LeaderboardEntry): number {
   return toSafeNumber(row.ica_test_points)
 }
 
+function getListeningPoints(row: LeaderboardEntry): number {
+  if (row.listening_points === null || row.listening_points === undefined)
+    return 0
+  return toSafeNumber(row.listening_points)
+}
+
 function getDisplayedTotalPoints(
   row: LeaderboardEntry,
   includeIcaTest: boolean,
@@ -209,7 +217,10 @@ function getDisplayedTotalPoints(
   if (totalFromApi > 0) return totalFromApi
 
   const monthlyPoints = getMonthlyPercentPoints(row)
-  return includeIcaTest ? monthlyPoints + getIcaTestPoints(row) : monthlyPoints
+  const listeningPoints = getListeningPoints(row)
+  return includeIcaTest
+    ? monthlyPoints + listeningPoints + getIcaTestPoints(row)
+    : monthlyPoints + listeningPoints
 }
 
 function getStreakCellClass(row: LeaderboardEntry): string {
@@ -231,12 +242,14 @@ function buildScoreBreakdown(
   const monthlyPercent = Math.round(toSafeNumber(row.avg_percent))
   const monthlyPoints = getMonthlyPercentPoints(row)
   const icaTestPoints = includeIcaTest ? getIcaTestPoints(row) : 0
+  const listeningPoints = getListeningPoints(row)
 
   return {
     userName: row.display_name || row.username || 'Usuario',
     monthlyPercent,
     monthlyPoints,
     icaTestPoints,
+    listeningPoints,
     includeIcaTest,
     totalPoints: getDisplayedTotalPoints(row, includeIcaTest),
   }
@@ -427,8 +440,11 @@ export function LeaderboardView() {
               <table className='w-full lg:min-w-160 table-fixed text-left text-sm'>
                 <thead className='table w-full table-fixed'>
                   <tr className='border-b text-muted-foreground'>
-                    <th className='w-[18%] md:w-[15%] pb-2 font-medium'>
+                    <th className='w-[8%] pb-2 font-medium'>
                       Rank
+                    </th>
+                    <th className='w-[8%] pb-2 font-medium text-center'>
+                      🔥
                     </th>
                     <th className='w-auto pb-2 font-medium'>Nombre</th>
                     {showIcaTestColumn && (
@@ -436,9 +452,6 @@ export function LeaderboardView() {
                         ICA Test
                       </th>
                     )}
-                    <th className='w-[22%] md:w-[18%] pb-2 font-medium'>
-                      Racha ICA
-                    </th>
                     <th className='hidden md:table-cell w-[18%] pb-2 font-medium'>
                       % mensual
                     </th>
@@ -466,8 +479,13 @@ export function LeaderboardView() {
                       className={`table w-full table-fixed border-b align-middle ${trailingRankOpacityClass(index + 1)} ${
                         row.user_id === user?.id ? 'bg-emerald-500/10' : ''
                       }`}
-                    >
-                      <td className='w-[15%] py-2'>{rankLabel}</td>
+                      >
+                      <td className='w-[8%] py-2'>{rankLabel}</td>
+                      <td
+                        className={`w-[8%] py-2 text-center ${getStreakCellClass(row)}`}
+                      >
+                        {getStreakLabel(row)}
+                      </td>
                       <td className='w-auto py-2 flex flex-row gap-3 items-center pr-2'>
                         <p className='truncate font-medium'>
                           {row.display_name || row.username || 'Usuario'}
@@ -486,11 +504,6 @@ export function LeaderboardView() {
                             : toSafeNumber(row.ica_test_points).toFixed(1)}
                         </td>
                       )}
-                      <td
-                        className={`w-[22%] md:w-[18%] py-2 ${getStreakCellClass(row)}`}
-                      >
-                        {getStreakLabel(row)}
-                      </td>
                       <td className='hidden md:table-cell w-[18%] py-2 font-medium'>
                         {Math.round(row.avg_percent || 0)}%
                       </td>
@@ -523,7 +536,10 @@ export function LeaderboardView() {
                       key={`placeholder-rank-${rank}-${selectedMonth}`}
                       className={`table w-full table-fixed border-b align-middle ${trailingRankOpacityClass(rank)}`}
                     >
-                      <td className='w-[15%] py-2'>#{rank}</td>
+                      <td className='w-[8%] py-2'>#{rank}</td>
+                      <td className='w-[8%] py-2 text-center text-muted-foreground'>
+                        -
+                      </td>
                       <td className='w-auto py-2 pr-2 text-muted-foreground'>
                         -
                       </td>
@@ -532,9 +548,6 @@ export function LeaderboardView() {
                           -
                         </td>
                       )}
-                      <td className='w-[22%] md:w-[18%] py-2 text-muted-foreground'>
-                        -
-                      </td>
                       <td className='hidden md:table-cell w-[18%] py-2 text-muted-foreground'>
                         -
                       </td>
@@ -560,7 +573,12 @@ export function LeaderboardView() {
                         row.user_id === user?.id ? 'bg-emerald-500/10' : ''
                       }`}
                     >
-                      <td className='w-[15%] py-2'>{rankLabel}</td>
+                      <td className='w-[8%] py-2'>{rankLabel}</td>
+                      <td
+                        className={`w-[8%] py-2 text-center ${getStreakCellClass(row)}`}
+                      >
+                        {getStreakLabel(row)}
+                      </td>
                       <td className='w-auto py-2 flex flex-row gap-3 items-center pr-2'>
                         <p className='truncate font-medium'>
                           {row.display_name || row.username || 'Usuario'}
@@ -579,11 +597,6 @@ export function LeaderboardView() {
                             : toSafeNumber(row.ica_test_points).toFixed(1)}
                         </td>
                       )}
-                      <td
-                        className={`w-[22%] md:w-[18%] py-2 ${getStreakCellClass(row)}`}
-                      >
-                        {getStreakLabel(row)}
-                      </td>
                       <td className='hidden md:table-cell w-[18%] py-2 font-medium'>
                         {Math.round(row.avg_percent || 0)}%
                       </td>
@@ -622,19 +635,32 @@ export function LeaderboardView() {
           <DialogHeader>
             <DialogTitle>Cómo se calcula el puntaje total</DialogTitle>
             <DialogDescription>
-              {includeIcaTestInScoreExplanation
-                ? 'Puntaje total = (% mensual / 10) + puntos de ICA Test.'
-                : 'Puntaje total = % mensual / 10.'}
-              <br />
-              <br />
-              {includeIcaTestInScoreExplanation
-                ? 'Cada respuesta correcta del ICA Test vale 0,1 puntos.'
-                : `El ICA Test empieza a sumar desde el día ${icaTestWindowStartDay} de cada mes.`}
-              <br />
-              <br />
-              {includeIcaTestInScoreExplanation
-                ? 'Ejemplo: 84% mensual y 11/15 en ICA Test = 8,4 + 1,1 = 9,5.'
-                : 'Ejemplo: 84% mensual = 8,4 puntos totales.'}
+              <div className='space-y-2 text-foreground'>
+                <p>
+                  🧮 <strong>Fórmula:</strong>{' '}
+                  {includeIcaTestInScoreExplanation
+                    ? 'Puntaje total = (% mensual / 10) + puntos por escucha + puntos de ICA Test.'
+                    : 'Puntaje total = (% mensual / 10) + puntos por escucha.'}
+                </p>
+                <p>
+                  🎧 <strong>Escucha:</strong> 0,01 puntos por cada minuto escuchado,
+                  con tope de <strong>0,1 por día</strong> (solo cuentan 10 min por
+                  día). Se acumula solo hasta el <strong>día 28</strong>.
+                </p>
+                <p>
+                  📝 <strong>ICA Test:</strong>{' '}
+                  {includeIcaTestInScoreExplanation
+                    ? 'cada respuesta correcta vale 0,1 puntos.'
+                    : `empieza a sumar desde el día ${icaTestWindowStartDay} de cada mes.`}
+                </p>
+                <Separator className='my-2' />
+                <p>
+                  💡 <strong>Ejemplo:</strong>{' '}
+                  {includeIcaTestInScoreExplanation
+                    ? '84% mensual + 30 min escuchados en un mismo día (tope diario aplicado) + 11/15 en ICA Test = 8,4 + 0,1 + 1,1 = 9,6.'
+                    : '84% mensual + 30 min escuchados en un mismo día (tope diario aplicado) = 8,4 + 0,1 = 8,5.'}
+                </p>
+              </div>
             </DialogDescription>
           </DialogHeader>
         </DialogContent>
@@ -650,28 +676,34 @@ export function LeaderboardView() {
           <DialogHeader>
             <DialogTitle>Desglose de puntaje</DialogTitle>
             <DialogDescription>
-              {selectedScoreBreakdown
-                ? `${selectedScoreBreakdown.userName}: ${selectedScoreBreakdown.totalPoints.toFixed(1)} puntos totales.`
-                : ''}
-              <br />
-              <br />
-              {selectedScoreBreakdown
-                ? `${selectedScoreBreakdown.monthlyPercent}% mensual = ${selectedScoreBreakdown.monthlyPoints.toFixed(1)} puntos.`
-                : ''}
-              <br />
-              <br />
-              {selectedScoreBreakdown
-                ? selectedScoreBreakdown.includeIcaTest
-                  ? `ICA Test = ${selectedScoreBreakdown.icaTestPoints.toFixed(1)} puntos.`
-                  : `ICA Test no suma antes del día ${icaTestWindowStartDay}.`
-                : ''}
-              <br />
-              <br />
-              {selectedScoreBreakdown
-                ? selectedScoreBreakdown.includeIcaTest
-                  ? `Total = ${selectedScoreBreakdown.monthlyPoints.toFixed(1)} + ${selectedScoreBreakdown.icaTestPoints.toFixed(1)} = ${selectedScoreBreakdown.totalPoints.toFixed(1)}.`
-                  : `Total = ${selectedScoreBreakdown.monthlyPoints.toFixed(1)}.`
-                : ''}
+              {selectedScoreBreakdown ? (
+                <div className='space-y-2 text-foreground'>
+                  <p>
+                    🏁 <strong>{selectedScoreBreakdown.userName}</strong>: {selectedScoreBreakdown.totalPoints.toFixed(1)} puntos totales.
+                  </p>
+                  <p>
+                    📊 <strong>% mensual:</strong> {selectedScoreBreakdown.monthlyPercent}% = {selectedScoreBreakdown.monthlyPoints.toFixed(1)} puntos.
+                  </p>
+                  <p>
+                    🎧 <strong>Escucha:</strong> {selectedScoreBreakdown.listeningPoints.toFixed(1)} puntos (0,01 por minuto, tope 0,1 por día).
+                  </p>
+                  <p>
+                    📝 <strong>ICA Test:</strong>{' '}
+                    {selectedScoreBreakdown.includeIcaTest
+                      ? `${selectedScoreBreakdown.icaTestPoints.toFixed(1)} puntos.`
+                      : `no suma antes del día ${icaTestWindowStartDay}.`}
+                  </p>
+                  <Separator className='my-2' />
+                  <p>
+                    🧾 <strong>Total:</strong>{' '}
+                    {selectedScoreBreakdown.includeIcaTest
+                      ? `${selectedScoreBreakdown.monthlyPoints.toFixed(1)} + ${selectedScoreBreakdown.listeningPoints.toFixed(1)} + ${selectedScoreBreakdown.icaTestPoints.toFixed(1)} = ${selectedScoreBreakdown.totalPoints.toFixed(1)}.`
+                      : `${selectedScoreBreakdown.monthlyPoints.toFixed(1)} + ${selectedScoreBreakdown.listeningPoints.toFixed(1)} = ${selectedScoreBreakdown.totalPoints.toFixed(1)}.`}
+                  </p>
+                </div>
+              ) : (
+                ''
+              )}
             </DialogDescription>
           </DialogHeader>
         </DialogContent>
