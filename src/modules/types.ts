@@ -60,6 +60,7 @@ export interface LeaderboardEntry {
   review_percent?: number
   creation_percent?: number
   ica_test_points?: number | null
+  listening_points?: number | null
   total_points?: number
 }
 
