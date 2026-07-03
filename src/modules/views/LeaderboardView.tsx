@@ -440,10 +440,10 @@ export function LeaderboardView() {
               <table className='w-full lg:min-w-160 table-fixed text-left text-sm'>
                 <thead className='table w-full table-fixed'>
                   <tr className='border-b text-muted-foreground'>
-                    <th className='w-[8%] pb-2 font-medium'>
+                    <th className='w-[12%] lg:w-[8%] px-1 pb-2 font-medium'>
                       Rank
                     </th>
-                    <th className='w-[8%] pb-2 font-medium text-center'>
+                    <th className='w-[12%] lg:w-[8%] px-1 pb-2 font-medium'>
                       🔥
                     </th>
                     <th className='w-auto pb-2 font-medium'>Nombre</th>
@@ -455,19 +455,10 @@ export function LeaderboardView() {
                     <th className='hidden md:table-cell w-[18%] pb-2 font-medium'>
                       % mensual
                     </th>
-                    <th className='w-[26%] md:w-[18%] pb-2 font-medium'>
-                      <span className='inline-flex items-center gap-1'>
+                    <th className='w-[16%] pb-2 font-medium'>
+                      <span onClick={() => setScoreInfoOpen(true)}>
                         Puntaje total
-                        <Button
-                          type='button'
-                          variant='ghost'
-                          size='icon-sm'
-                          className='h-5 w-5 text-muted-foreground'
-                          aria-label='Cómo se calcula el puntaje total'
-                          onClick={() => setScoreInfoOpen(true)}
-                        >
-                          <InfoIcon className='size-3.5' />
-                        </Button>
+                        <InfoIcon className='size-4 ml-1' />
                       </span>
                     </th>
                   </tr>
@@ -479,10 +470,12 @@ export function LeaderboardView() {
                       className={`table w-full table-fixed border-b align-middle ${trailingRankOpacityClass(index + 1)} ${
                         row.user_id === user?.id ? 'bg-emerald-500/10' : ''
                       }`}
-                      >
-                      <td className='w-[8%] py-2'>{rankLabel}</td>
+                    >
+                      <td className='w-[12%] lg:w-[8%] px-1 py-2'>
+                        {rankLabel}
+                      </td>
                       <td
-                        className={`w-[8%] py-2 text-center ${getStreakCellClass(row)}`}
+                        className={`w-[12%] lg:w-[8%] px-1 py-2 ${getStreakCellClass(row)}`}
                       >
                         {getStreakLabel(row)}
                       </td>
@@ -507,7 +500,7 @@ export function LeaderboardView() {
                       <td className='hidden md:table-cell w-[18%] py-2 font-medium'>
                         {Math.round(row.avg_percent || 0)}%
                       </td>
-                      <td className='w-[26%] md:w-[18%] py-2'>
+                      <td className='w-[16%] py-2'>
                         <Button
                           type='button'
                           variant='ghost'
@@ -536,8 +529,8 @@ export function LeaderboardView() {
                       key={`placeholder-rank-${rank}-${selectedMonth}`}
                       className={`table w-full table-fixed border-b align-middle ${trailingRankOpacityClass(rank)}`}
                     >
-                      <td className='w-[8%] py-2'>#{rank}</td>
-                      <td className='w-[8%] py-2 text-center text-muted-foreground'>
+                      <td className='w-[12%] lg:w-[8%] px-1 py-2'>#{rank}</td>
+                      <td className='w-[12%] lg:w-[8%] px-1 py-2 text-muted-foreground'>
                         -
                       </td>
                       <td className='w-auto py-2 pr-2 text-muted-foreground'>
@@ -551,9 +544,7 @@ export function LeaderboardView() {
                       <td className='hidden md:table-cell w-[18%] py-2 text-muted-foreground'>
                         -
                       </td>
-                      <td className='w-[26%] md:w-[18%] py-2 text-muted-foreground'>
-                        -
-                      </td>
+                      <td className='w-[16%] py-2 text-muted-foreground'>-</td>
                     </tr>
                   ))}
 
@@ -573,9 +564,11 @@ export function LeaderboardView() {
                         row.user_id === user?.id ? 'bg-emerald-500/10' : ''
                       }`}
                     >
-                      <td className='w-[8%] py-2'>{rankLabel}</td>
+                      <td className='w-[12%] lg:w-[8%] px-1 py-2'>
+                        {rankLabel}
+                      </td>
                       <td
-                        className={`w-[8%] py-2 text-center ${getStreakCellClass(row)}`}
+                        className={`w-[12%] lg:w-[8%] px-1 py-2 ${getStreakCellClass(row)}`}
                       >
                         {getStreakLabel(row)}
                       </td>
@@ -600,7 +593,7 @@ export function LeaderboardView() {
                       <td className='hidden md:table-cell w-[18%] py-2 font-medium'>
                         {Math.round(row.avg_percent || 0)}%
                       </td>
-                      <td className='w-[26%] md:w-[18%] py-2'>
+                      <td className='w-[16%] py-2'>
                         <Button
                           type='button'
                           variant='ghost'
@@ -643,9 +636,10 @@ export function LeaderboardView() {
                     : 'Puntaje total = (% mensual / 10) + puntos por escucha.'}
                 </p>
                 <p>
-                  🎧 <strong>Escucha:</strong> 0,01 puntos por cada minuto escuchado,
-                  con tope de <strong>0,1 por día</strong> (solo cuentan 10 min por
-                  día). Se acumula solo hasta el <strong>día 28</strong>.
+                  🎧 <strong>Escucha:</strong> 0,01 puntos por cada minuto
+                  escuchado, con tope de <strong>0,1 por día</strong> (solo
+                  cuentan 10 min por día). Se acumula solo hasta el{' '}
+                  <strong>día 28</strong>.
                 </p>
                 <p>
                   📝 <strong>ICA Test:</strong>{' '}
@@ -679,13 +673,19 @@ export function LeaderboardView() {
               {selectedScoreBreakdown ? (
                 <div className='space-y-2 text-foreground'>
                   <p>
-                    🏁 <strong>{selectedScoreBreakdown.userName}</strong>: {selectedScoreBreakdown.totalPoints.toFixed(1)} puntos totales.
+                    🏁 <strong>{selectedScoreBreakdown.userName}</strong>:{' '}
+                    {selectedScoreBreakdown.totalPoints.toFixed(1)} puntos
+                    totales.
                   </p>
                   <p>
-                    📊 <strong>% mensual:</strong> {selectedScoreBreakdown.monthlyPercent}% = {selectedScoreBreakdown.monthlyPoints.toFixed(1)} puntos.
+                    📊 <strong>% mensual:</strong>{' '}
+                    {selectedScoreBreakdown.monthlyPercent}% ={' '}
+                    {selectedScoreBreakdown.monthlyPoints.toFixed(1)} puntos.
                   </p>
                   <p>
-                    🎧 <strong>Escucha:</strong> {selectedScoreBreakdown.listeningPoints.toFixed(1)} puntos (0,01 por minuto, tope 0,1 por día).
+                    🎧 <strong>Escucha:</strong>{' '}
+                    {selectedScoreBreakdown.listeningPoints.toFixed(1)} puntos
+                    (0,01 por minuto, tope 0,1 por día).
                   </p>
                   <p>
                     📝 <strong>ICA Test:</strong>{' '}
