@@ -440,6 +440,7 @@ export function ProfileView({
             </Button>
           </CardContent>
         </Card>
+        {/* disabled for now, as it is not fully implemented yet
         <Card>
           <CardHeader>
             <CardTitle className='flex items-center gap-2'>
@@ -459,6 +460,7 @@ export function ProfileView({
             </Button>
           </CardContent>
         </Card>
+*/}
         <Card>
           <CardHeader>
             <CardTitle className='flex items-center gap-2'>
