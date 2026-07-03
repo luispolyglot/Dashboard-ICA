@@ -35,6 +35,7 @@ import { TrackerDetailView } from '../views/TrackerDetailView'
 import { TrackersView } from '../views/TrackersView'
 import { IcaTestsView } from '../views/IcaTestsView'
 import { IcaTestMonthView } from '../views/IcaTestMonthView'
+import { InstagramTrackPostsView } from '../views/InstagramTrackPostsView'
 import {
   getReviewPendingOnlyFromQuery,
   loadSavedReviewPendingOnly,
@@ -423,6 +424,17 @@ export function IcaTestsPage() {
         nativeLang={config.nativeLang}
         cards={cards}
       />
+    </PageLayout>
+  )
+}
+
+export function InstagramTrackPostsPage() {
+  const { config } = useDashboardContext()
+  if (!config) return null
+
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+      <InstagramTrackPostsView targetLang={config.targetLang} nativeLang={config.nativeLang} />
     </PageLayout>
   )
 }

@@ -174,6 +174,23 @@ export interface ImprovementTrackerInput {
   improvisationPct: number
 }
 
+export interface InstagramTrackPostEntry {
+  id: string
+  trackMonth: string
+  dayIndex: number
+  postUrl: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface InstagramTrackPostInput {
+  targetLang: string
+  nativeLang: string
+  trackMonth: string
+  dayIndex: number
+  postUrl: string | null
+}
+
 export interface CalendarIcademyEntry {
   id: string
   classKey: string
