@@ -4,6 +4,7 @@ import {
   BarChart3Icon,
   BellIcon,
   CalendarDaysIcon,
+  CameraIcon,
   CheckIcon,
   ClipboardCheckIcon,
   GraduationCapIcon,
@@ -435,6 +436,25 @@ export function ProfileView({
             <Button type='button' variant='outline' asChild>
               <Link to={DASHBOARD_ROUTES.trackers}>
                 Abrir Trackers de mejora
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className='flex items-center gap-2'>
+              <CameraIcon className='h-4 w-4' />
+              Track post Instagram
+            </CardTitle>
+          </CardHeader>
+          <CardContent className='space-y-3'>
+            <p className='text-sm text-muted-foreground'>
+              Carga el link diario de Instagram en una tabla mensual de 28 días.
+              Cada fila se edita solo durante 48 horas desde su desbloqueo.
+            </p>
+            <Button type='button' variant='outline' asChild>
+              <Link to={DASHBOARD_ROUTES.instagramTrackPosts}>
+                Abrir Track post Instagram
               </Link>
             </Button>
           </CardContent>
