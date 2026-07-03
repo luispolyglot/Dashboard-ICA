@@ -4,7 +4,7 @@ import {
   BarChart3Icon,
   BellIcon,
   CalendarDaysIcon,
-  CameraIcon,
+  //CameraIcon,
   CheckIcon,
   ClipboardCheckIcon,
   GraduationCapIcon,
