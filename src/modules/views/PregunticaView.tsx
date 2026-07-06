@@ -67,7 +67,7 @@ const MIME_CANDIDATES = [
   'audio/mp4',
 ]
 
-const LIVE_BARS_COUNT = 24
+const LIVE_BARS_COUNT = 36
 
 function randomize<T>(items: T[]): T[] {
   const copy = [...items]
@@ -191,6 +191,7 @@ export function PregunticaView({
   const [isRecording, setIsRecording] = useState(false)
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
   const [recordedDurationMs, setRecordedDurationMs] = useState(0)
+  const [recordingElapsedMs, setRecordingElapsedMs] = useState(0)
   const [recordedUrl, setRecordedUrl] = useState<string | null>(null)
   const [questionWasPlayed, setQuestionWasPlayed] = useState(false)
   const [listenCount, setListenCount] = useState(0)
@@ -200,9 +201,6 @@ export function PregunticaView({
   const [suggestionModalOpen, setSuggestionModalOpen] = useState(false)
   const [selectedSuggestion, setSelectedSuggestion] = useState<PregunticaWordSuggestion | null>(null)
   const [addedSuggestionWords, setAddedSuggestionWords] = useState<string[]>([])
-  const [liveBars, setLiveBars] = useState<number[]>(() =>
-    Array.from({ length: LIVE_BARS_COUNT }, () => 12),
-  )
 
   const recorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
@@ -210,19 +208,13 @@ export function PregunticaView({
   const startedAtRef = useRef<number | null>(null)
 
   useEffect(() => {
-    if (!isRecording) {
-      setLiveBars(Array.from({ length: LIVE_BARS_COUNT }, () => 12))
-      return
-    }
+    if (!isRecording) return
 
     const timer = window.setInterval(() => {
-      setLiveBars(
-        Array.from({ length: LIVE_BARS_COUNT }, (_, index) => {
-          const base = index % 4 === 0 ? 20 : 14
-          return base + Math.round(Math.random() * 24)
-        }),
-      )
-    }, 140)
+      const startedAt = startedAtRef.current
+      if (!startedAt) return
+      setRecordingElapsedMs(Math.max(0, Date.now() - startedAt))
+    }, 100)
 
     return () => {
       window.clearInterval(timer)
@@ -324,6 +316,7 @@ export function PregunticaView({
       setSuggestions([])
       setRecordedBlob(null)
       setRecordedDurationMs(0)
+      setRecordingElapsedMs(0)
       if (recordedUrl) {
         URL.revokeObjectURL(recordedUrl)
         setRecordedUrl(null)
@@ -419,6 +412,7 @@ export function PregunticaView({
     setSuggestions([])
     setRecordedBlob(null)
     setRecordedDurationMs(0)
+    setRecordingElapsedMs(0)
     if (recordedUrl) {
       URL.revokeObjectURL(recordedUrl)
       setRecordedUrl(null)
@@ -468,6 +462,7 @@ export function PregunticaView({
       setSuggestions([])
       setRecordedBlob(null)
       setRecordedDurationMs(0)
+      setRecordingElapsedMs(0)
       if (recordedUrl) {
         URL.revokeObjectURL(recordedUrl)
         setRecordedUrl(null)
@@ -505,6 +500,7 @@ export function PregunticaView({
       recorderRef.current = recorder
       chunksRef.current = []
       startedAtRef.current = Date.now()
+      setRecordingElapsedMs(0)
 
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -520,6 +516,7 @@ export function PregunticaView({
           const nextUrl = URL.createObjectURL(blob)
           setRecordedBlob(blob)
           setRecordedDurationMs(duration)
+          setRecordingElapsedMs(duration)
           setRecordedUrl(nextUrl)
         }
         chunksRef.current = []
@@ -691,6 +688,7 @@ export function PregunticaView({
 
   return (
     <section className='mx-auto w-full max-w-4xl px-4 pb-28 pt-6 md:pb-10'>
+      <style>{`@keyframes preguntica-wave { 0%, 100% { height: 8px; } 50% { height: 28px; } }`}</style>
       <div className='rounded-[24px] border border-border bg-[linear-gradient(160deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-6'>
         <div className='mb-3 flex justify-end'>
           <button
@@ -1012,18 +1010,26 @@ export function PregunticaView({
                   </button>
                 )}
 
-                <div className='flex h-12 min-w-52 flex-1 items-end gap-1 overflow-hidden rounded-md border border-border/70 bg-background px-2 py-2'>
-                  {liveBars.map((height, index) => (
+                <div className='flex h-12 min-w-52 flex-1 items-end gap-1 overflow-hidden px-1'>
+                  {Array.from({ length: LIVE_BARS_COUNT }, (_, index) => {
+                    const delay = index % 3 === 0 ? 0.15 : index % 3 === 1 ? 0.3 : 0
+                    return (
                     <span
                       key={`bar-${index}`}
-                      className={`w-1 rounded-sm transition-all duration-150 ${isRecording ? 'bg-sky-500' : 'bg-slate-300'}`}
-                      style={{ height: `${height}px` }}
+                      className={`w-1 rounded-sm ${isRecording ? 'bg-sky-500' : 'bg-slate-300'}`}
+                      style={{
+                        height: '8px',
+                        animation: isRecording
+                          ? `preguntica-wave 1s ease-in-out ${delay}s infinite`
+                          : undefined,
+                      }}
                     />
-                  ))}
+                    )
+                  })}
                 </div>
 
                 <span className='min-w-16 text-right text-sm font-semibold text-muted-foreground'>
-                  {(recordedDurationMs / 1000).toFixed(1)}s
+                  {((isRecording ? recordingElapsedMs : recordedDurationMs) / 1000).toFixed(1)}s
                 </span>
               </div>
 
