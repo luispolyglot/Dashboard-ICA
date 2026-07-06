@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { toast } from 'sonner'
 import {
   Accordion,
@@ -9,8 +10,18 @@ import {
 import {
   fetchPregunticaHistory,
   type PregunticaHistoryAttempt,
+  type PregunticaWordSuggestion,
   type PregunticaHistoryWeek,
 } from '../services/preguntica'
+import { AddIcaSuggestionModal } from '../components/AddIcaSuggestionModal'
+import type { AppConfig, Lexicard } from '../types'
+
+type PregunticaHistoryViewProps = {
+  config: AppConfig
+  cards: Lexicard[]
+  setCards: Dispatch<SetStateAction<Lexicard[]>>
+  onWordAdded: () => Promise<unknown>
+}
 
 type PregunticaHistoryQuestionCard = {
   id: string
@@ -74,6 +85,10 @@ function getUnlockLabel(source: string | null): string {
   if (source === 'tokens') return 'Fichas'
   if (source === 'manual') return 'Manual'
   return source
+}
+
+function normalizeComparableText(value: string): string {
+  return value.normalize('NFKC').trim().toLowerCase()
 }
 
 function normalizeForWordMatch(value: string): string {
@@ -160,7 +175,15 @@ function toQuestionCards(weeks: PregunticaHistoryWeek[]): PregunticaHistoryQuest
   })
 }
 
-function AttemptContent({ attempt }: { attempt: PregunticaHistoryAttempt }) {
+function AttemptContent({
+  attempt,
+  onSuggestionClick,
+  isSuggestionAdded,
+}: {
+  attempt: PregunticaHistoryAttempt
+  onSuggestionClick: (suggestion: PregunticaWordSuggestion) => void
+  isSuggestionAdded: (word: string) => boolean
+}) {
   const transcriptForFeedback = attempt.transcriptText || attempt.responseText || ''
   const icaUsage = attempt.icaWords.map((word) => ({
     word,
@@ -303,14 +326,18 @@ function AttemptContent({ attempt }: { attempt: PregunticaHistoryAttempt }) {
               </p>
               <div className='mt-1 flex flex-wrap gap-1.5'>
                 {batch.words.map((item) => (
-                  <span
+                  <button
+                    type='button'
                     key={`${batch.id}-${item.word}`}
-                    className='rounded-md border border-border bg-muted/40 px-2 py-0.5 text-xs text-foreground'
+                    onClick={() => onSuggestionClick(item)}
+                    disabled={isSuggestionAdded(item.word)}
+                    className='rounded-md border border-amber-300/40 bg-amber-500/10 px-2 py-0.5 text-xs text-foreground transition hover:border-amber-300/80 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-70'
                     title={item.reason}
                   >
+                    {isSuggestionAdded(item.word) ? '✓ ' : '+ '}
                     {item.word}
                     {item.translation ? ` · ${item.translation}` : ''}
-                  </span>
+                  </button>
                 ))}
               </div>
             </div>
@@ -321,10 +348,18 @@ function AttemptContent({ attempt }: { attempt: PregunticaHistoryAttempt }) {
   )
 }
 
-export function PregunticaHistoryView() {
+export function PregunticaHistoryView({
+  config,
+  cards,
+  setCards,
+  onWordAdded,
+}: PregunticaHistoryViewProps) {
   const [weeks, setWeeks] = useState<PregunticaHistoryWeek[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [suggestionModalOpen, setSuggestionModalOpen] = useState(false)
+  const [selectedSuggestion, setSelectedSuggestion] = useState<PregunticaWordSuggestion | null>(null)
+  const [addedSuggestionWords, setAddedSuggestionWords] = useState<string[]>([])
 
   useEffect(() => {
     let active = true
@@ -352,7 +387,26 @@ export function PregunticaHistoryView() {
     }
   }, [])
 
-  const cards = toQuestionCards(weeks)
+  const questionCards = toQuestionCards(weeks)
+  const existingCardWords = useMemo(
+    () => new Set(cards.map((card) => normalizeComparableText(card.target))),
+    [cards],
+  )
+  const addedSuggestionSet = useMemo(
+    () => new Set(addedSuggestionWords.map(normalizeComparableText)),
+    [addedSuggestionWords],
+  )
+
+  function isSuggestionAdded(word: string): boolean {
+    const key = normalizeComparableText(word)
+    return existingCardWords.has(key) || addedSuggestionSet.has(key)
+  }
+
+  function handleOpenSuggestionModal(suggestion: PregunticaWordSuggestion) {
+    if (isSuggestionAdded(suggestion.word)) return
+    setSelectedSuggestion(suggestion)
+    setSuggestionModalOpen(true)
+  }
 
   return (
     <section className='mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 pb-24 pt-6 md:pb-8'>
@@ -370,7 +424,7 @@ export function PregunticaHistoryView() {
       )}
 
       <div className='mt-6 space-y-4'>
-        {cards.map((card) => (
+        {questionCards.map((card) => (
           <section key={card.id} className='rounded-2xl border border-border bg-card p-4'>
             <div className='flex flex-wrap items-start justify-between gap-3'>
               <div>
@@ -410,7 +464,11 @@ export function PregunticaHistoryView() {
                       </div>
                     </AccordionTrigger>
                     <AccordionContent className='pb-3'>
-                      <AttemptContent attempt={attempt} />
+                      <AttemptContent
+                        attempt={attempt}
+                        onSuggestionClick={handleOpenSuggestionModal}
+                        isSuggestionAdded={isSuggestionAdded}
+                      />
                     </AccordionContent>
                   </AccordionItem>
                 ))}
@@ -419,6 +477,23 @@ export function PregunticaHistoryView() {
           </section>
         ))}
       </div>
+
+      <AddIcaSuggestionModal
+        open={suggestionModalOpen}
+        onOpenChange={setSuggestionModalOpen}
+        suggestion={selectedSuggestion}
+        config={config}
+        cards={cards}
+        setCards={setCards}
+        onWordAdded={onWordAdded}
+        onAdded={(word) => {
+          setAddedSuggestionWords((current) => {
+            const normalized = normalizeComparableText(word)
+            if (current.map(normalizeComparableText).includes(normalized)) return current
+            return [...current, word]
+          })
+        }}
+      />
     </section>
   )
 }

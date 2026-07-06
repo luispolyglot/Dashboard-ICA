@@ -237,9 +237,17 @@ export function PregunticaPage() {
 }
 
 export function PregunticaHistoryPage() {
+  const { config, cards, setCards, handleWordAdded } = useDashboardContext()
+  if (!config) return null
+
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.preguntica}>
-      <PregunticaHistoryView />
+      <PregunticaHistoryView
+        config={config}
+        cards={cards}
+        setCards={setCards}
+        onWordAdded={handleWordAdded}
+      />
     </PageLayout>
   )
 }
