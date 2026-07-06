@@ -604,13 +604,17 @@ export function PregunticaView({
   const tokenBalance = tokenSummary?.balance ?? 0
   const hasRedeemableTokens = tokenBalance >= 2
   const canUseStep1 = !locked && (!hasCompletedWeek || canStartAttempt || hasRedeemableTokens)
+  const showRedeemCard = !hasActiveAttempt && hasCompletedWeek && !canStartAttempt
   const showCompletionMessage = hasCompletedWeek && !hasActiveAttempt
   const transcriptForFeedback = latestTranscript || activeAttempt?.transcriptText || ''
-  const step1Completed = Boolean(activeAttempt) || hasCompletedWeek
+  const currentStepMode = activeAttempt?.wordMode || mode
+  const step1Completed = Boolean(activeAttempt)
   const step2Enabled = Boolean(activeAttempt)
   const step2Completed = step2Enabled && questionWasPlayed
-  const step3Enabled = Boolean(activeAttempt)
-  const step3Completed = Boolean(feedback)
+  const step3Enabled = Boolean(activeAttempt) && questionWasPlayed
+  const step3Completed = Boolean(recordedBlob)
+  const step4Enabled = step3Enabled
+  const step4Completed = Boolean(feedback)
 
   const icaUsage = icaWords.map((word) => ({
     word,
@@ -658,9 +662,27 @@ export function PregunticaView({
         <div className='mt-4 rounded-2xl border border-emerald-300/60 bg-emerald-50 p-4 text-emerald-900'>
           <p className='text-sm font-semibold'>Reto completado 🎉</p>
           <p className='mt-1 text-sm'>
-            Tu respuesta y feedback quedaron guardados en el historial. Puedes cerrar por hoy o
-            canjear fichas para desbloquear una nueva PreguntICA.
+            Tu respuesta y feedback quedaron guardados en el historial.
           </p>
+        </div>
+      )}
+
+      {showRedeemCard && (
+        <div className='mt-4 rounded-2xl border border-amber-300/50 bg-amber-50 p-4 text-amber-900'>
+          <p className='text-sm font-semibold'>Canje de fichas disponible</p>
+          <p className='mt-1 text-sm'>
+            Ya completaste la semanal. Canjea 2 fichas para desbloquear una nueva PreguntICA.
+          </p>
+          <div className='mt-3 flex flex-wrap items-center gap-2'>
+            <Button
+              onClick={handleRedeemAndRetry}
+              disabled={working || !hasRedeemableTokens}
+              className='text-sm font-semibold'
+            >
+              Canjear 2 fichas y desbloquear nueva PreguntICA
+            </Button>
+            <span className='text-xs text-amber-900/80'>Saldo actual: {tokenBalance} fichas</span>
+          </div>
         </div>
       )}
 
@@ -674,34 +696,41 @@ export function PregunticaView({
               {step1Completed ? '✓ Completado' : hasCompletedWeek && !canStartAttempt ? 'Canje disponible' : 'Paso inicial'}
             </span>
           </div>
+          <p className='mt-1 text-xs text-muted-foreground'>
+            Selecciona la frecuencia ICA para esta nueva pregunta.
+          </p>
+
+          <div className='mt-3 flex flex-wrap gap-2'>
+            {WORD_MODE_OPTIONS.map((option) => {
+              const selected = currentStepMode === option.key
+              return (
+                <Button
+                  key={option.key}
+                  type='button'
+                  onClick={() => setMode(option.key)}
+                  disabled={!canUseStep1 || hasActiveAttempt}
+                  variant={selected ? 'default' : 'outline'}
+                  className={`min-w-22.5 h-auto flex-1 py-2.5 ${selected ? WORD_MODE_TONE[option.key] : ''}`}
+                >
+                  <span
+                    className={`mr-1 h-1.5 w-1.5 rounded-full ${WORD_MODE_DOT[option.key]}`}
+                  />
+                  <div className='text-xs font-semibold'>{option.label}</div>
+                </Button>
+              )
+            })}
+          </div>
+
           {!canUseStep1 ? (
             <p className='mt-2 text-xs text-muted-foreground'>
               Necesitas desbloquear PreguntICA desde Juegos ICA para iniciar este paso.
             </p>
+          ) : hasActiveAttempt ? (
+            <p className='mt-2 text-xs text-muted-foreground'>
+              Tipo bloqueado mientras haya un intento activo.
+            </p>
           ) : !hasCompletedWeek || canStartAttempt ? (
             <>
-              <p className='mt-1 text-xs text-muted-foreground'>
-                Selecciona la frecuencia ICA para esta nueva pregunta.
-              </p>
-              <div className='mt-3 flex flex-wrap gap-2'>
-                {WORD_MODE_OPTIONS.map((option) => {
-                  const selected = mode === option.key
-                  return (
-                    <Button
-                      key={option.key}
-                      type='button'
-                      onClick={() => setMode(option.key)}
-                      variant={selected ? 'default' : 'outline'}
-                      className={`min-w-22.5 h-auto flex-1 py-2.5 ${selected ? WORD_MODE_TONE[option.key] : ''}`}
-                    >
-                      <span
-                        className={`mr-1 h-1.5 w-1.5 rounded-full ${WORD_MODE_DOT[option.key]}`}
-                      />
-                      <div className='text-xs font-semibold'>{option.label}</div>
-                    </Button>
-                  )
-                })}
-              </div>
               <Button
                 onClick={handleStartAttempt}
                 disabled={working || !canStartAttempt}
@@ -713,37 +742,23 @@ export function PregunticaView({
               </Button>
             </>
           ) : (
-            <>
-              <p className='mt-1 text-xs text-muted-foreground'>
-                Ya completaste la semanal. Canjea 2 fichas para desbloquear una nueva PreguntICA.
-              </p>
-              <div className='mt-3 flex flex-wrap items-center gap-2'>
-                <Button
-                  onClick={handleRedeemAndRetry}
-                  disabled={working || !hasRedeemableTokens}
-                  className='text-sm font-semibold'
-                >
-                  Canjear 2 fichas y desbloquear nueva PreguntICA
-                </Button>
-                <span className='text-xs text-muted-foreground'>
-                  Saldo actual: {tokenBalance} fichas
-                </span>
-              </div>
-            </>
+            <p className='mt-2 text-xs text-muted-foreground'>
+              Completa el canje para poder iniciar una nueva PreguntICA.
+            </p>
           )}
       </div>
 
       <div className='mt-4 space-y-4' style={{ animation: 'preguntica-step-in 0.55s ease' }}>
           <div className={`rounded-2xl border border-border bg-background p-4 transition-all duration-500 ${!step2Enabled ? 'opacity-55' : ''}`}>
             <div className='flex flex-wrap items-center justify-between gap-2'>
-              <p className='text-sm font-semibold'>2) Escucha y responde</p>
+              <p className='text-sm font-semibold'>2) Escucha y descubre la pregunta</p>
               <span className={`rounded-full border px-2 py-0.5 text-[11px] ${step2Completed ? 'border-emerald-300/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
                 {step2Completed ? '✓ Completado' : questionVisible ? 'Pregunta revelada' : 'Pendiente de escucha'}
               </span>
             </div>
             <p className='mt-2 text-xs text-muted-foreground'>
-              Primero escucha la pregunta. Después puedes verla y responder usando las
-              palabras ICA indicadas.
+              Primero entrena el oído: la pregunta se muestra escrita después de escucharla
+              al menos una vez.
             </p>
             {!step2Enabled && (
               <p className='mt-2 text-xs text-muted-foreground'>Completa el paso 1 para habilitar este paso.</p>
@@ -850,7 +865,7 @@ export function PregunticaView({
 
           <div className={`rounded-2xl border border-border bg-background p-4 transition-all duration-500 ${!step3Enabled ? 'opacity-55' : ''}`}>
             <div className='flex flex-wrap items-center justify-between gap-2'>
-              <p className='text-sm font-semibold'>3) Graba, analiza y mejora</p>
+              <p className='text-sm font-semibold'>3) Graba tu respuesta</p>
               <span className={`rounded-full border px-2 py-0.5 text-[11px] ${step3Completed ? 'border-emerald-300/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
                 {step3Completed ? '✓ Completado' : feedback ? 'Feedback listo' : recordedBlob ? 'Listo para analizar' : 'Sin grabación'}
               </span>
@@ -907,7 +922,7 @@ export function PregunticaView({
                   variant={recordedBlob ? 'default' : 'secondary'}
                   onClick={handleAnalyze}
                   disabled={!step3Enabled || working || !recordedBlob}
-                  className='text-sm font-semibold'
+                  className='rounded-full px-4 py-2 text-sm font-semibold'
                 >
                   {isAnalyzing ? (
                     <span className='inline-flex items-center gap-2'>
@@ -931,8 +946,20 @@ export function PregunticaView({
             )}
           </div>
 
-          {feedback && (
-            <div className='rounded-2xl border border-border bg-[linear-gradient(165deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-4'>
+          <div className={`rounded-2xl border border-border bg-[linear-gradient(165deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-4 transition-all duration-500 ${!step4Enabled ? 'opacity-55' : ''}`}>
+            <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
+              <p className='text-sm font-semibold'>4) Tu feedback</p>
+              <span className={`rounded-full border px-2 py-0.5 text-[11px] ${step4Completed ? 'border-emerald-300/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
+                {step4Completed ? '✓ Completado' : isAnalyzing ? 'Analizando...' : 'Pendiente'}
+              </span>
+            </div>
+
+            {!feedback ? (
+              <p className='text-xs text-muted-foreground'>
+                Aquí aparecerán la naturalidad, la transcripción, correcciones y sugerencias ICA una vez analizada tu respuesta.
+              </p>
+            ) : (
+              <>
               <div className='flex flex-wrap items-center gap-3'>
                 <p className='font-serif text-3xl font-bold text-amber-500'>
                   {feedback.score.toFixed(1)}
@@ -1047,8 +1074,9 @@ export function PregunticaView({
               >
                 Finalizar PreguntICA semanal
               </Button>
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </div>
 
       <AddIcaSuggestionModal
