@@ -490,7 +490,7 @@ export async function uploadPregunticaAttemptAudio(input: {
 
   const userId = session?.user?.id
   if (!userId) {
-    throw new Error('Debes iniciar sesion para subir audio')
+    throw new Error('Debes iniciar sesión para subir audio')
   }
 
   const audioId = crypto.randomUUID()
@@ -557,7 +557,7 @@ export async function processPregunticaAttemptAudio(
   )
 
   if (error) throw error
-  if (!data) throw new Error('Respuesta vacia de preguntica-center')
+  if (!data) throw new Error('Respuesta vacía de preguntica-center')
   return data
 }
 
@@ -576,7 +576,7 @@ export async function refreshPregunticaSuggestions(
   )
 
   if (error) throw error
-  if (!data) throw new Error('Respuesta vacia de preguntica-center')
+  if (!data) throw new Error('Respuesta vacía de preguntica-center')
   return data
 }
 

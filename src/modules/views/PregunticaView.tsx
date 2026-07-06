@@ -562,7 +562,7 @@ export function PregunticaView({
             }
           : current,
       )
-      toast.success('Analisis completado')
+      toast.success('Análisis completado')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo analizar la respuesta')
     } finally {
