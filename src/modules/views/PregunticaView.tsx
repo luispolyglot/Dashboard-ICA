@@ -143,6 +143,29 @@ function normalizeComparableText(value: string): string {
   return value.normalize('NFKC').trim().toLowerCase()
 }
 
+function normalizeForWordMatch(value: string): string {
+  return value
+    .toLocaleLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/[^\p{L}\p{N}\s'-]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function textIncludesWord(text: string, word: string): boolean {
+  const normalizedText = normalizeForWordMatch(text)
+  const normalizedWord = normalizeForWordMatch(word)
+  if (!normalizedText || !normalizedWord) return false
+
+  if (normalizedWord.includes(' ')) {
+    return normalizedText.includes(normalizedWord)
+  }
+
+  const tokens = new Set(normalizedText.split(' '))
+  return tokens.has(normalizedWord)
+}
+
 export function PregunticaView({
   config,
   cards,
@@ -619,6 +642,13 @@ export function PregunticaView({
     && (!hasCompletedWeek || canStartAttempt || hasRedeemableTokens)
   const currentWindowLabel = getWindowRemainingLabel(status)
   const showCompletionMessage = hasCompletedWeek && !hasActiveAttempt
+  const transcriptForFeedback = latestTranscript || activeAttempt?.transcriptText || ''
+
+  const icaUsage = useMemo(
+    () => icaWords.map((word) => ({ word, used: textIncludesWord(transcriptForFeedback, word) })),
+    [icaWords, transcriptForFeedback],
+  )
+  const usedIcaCount = useMemo(() => icaUsage.filter((item) => item.used).length, [icaUsage])
 
   const existingCardWords = useMemo(() => new Set(cards.map((card) => normalizeComparableText(card.target))), [cards])
   const addedSuggestionSet = useMemo(() => new Set(addedSuggestionWords.map(normalizeComparableText)), [addedSuggestionWords])
@@ -972,6 +1002,29 @@ export function PregunticaView({
                 </div>
               )}
 
+              {icaUsage.length > 0 && (
+                <div className='mt-4'>
+                  <p className='text-xs font-semibold text-slate-700'>
+                    Palabras objetivo usadas · {usedIcaCount}/{icaUsage.length}
+                  </p>
+                  <div className='mt-2 flex flex-wrap gap-2'>
+                    {icaUsage.map((item) => (
+                      <span
+                        key={item.word}
+                        className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                          item.used
+                            ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                            : 'border-slate-200 bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {item.used ? '✓ ' : ''}
+                        {item.word}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {feedback.corrections.length > 0 && (
                 <ul className='mt-3 space-y-2 text-sm'>
                   {feedback.corrections.map((item, index) => (
@@ -987,7 +1040,7 @@ export function PregunticaView({
 
               <div className='mt-4 rounded-xl border border-slate-300/60 bg-white p-3'>
                 <div className='flex items-center justify-between gap-2'>
-                  <p className='text-xs font-semibold text-slate-700'>Sugerencias ICA</p>
+                  <p className='text-xs font-semibold text-slate-700'>Sugerencias ICA (toca para añadir al Baúl)</p>
                   <button
                     type='button'
                     onClick={handleRefreshSuggestions}

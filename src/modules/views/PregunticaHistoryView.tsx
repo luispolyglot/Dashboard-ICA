@@ -230,6 +230,7 @@ function AttemptContent({ attempt }: { attempt: PregunticaHistoryAttempt }) {
                     title={item.reason}
                   >
                     {item.word}
+                    {item.translation ? ` · ${item.translation}` : ''}
                   </span>
                 ))}
               </div>
