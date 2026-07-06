@@ -618,6 +618,7 @@ export function PregunticaView({
     && !hasActiveAttempt
     && (!hasCompletedWeek || canStartAttempt || hasRedeemableTokens)
   const currentWindowLabel = getWindowRemainingLabel(status)
+  const showCompletionMessage = hasCompletedWeek && !hasActiveAttempt
 
   const existingCardWords = useMemo(() => new Set(cards.map((card) => normalizeComparableText(card.target))), [cards])
   const addedSuggestionSet = useMemo(() => new Set(addedSuggestionWords.map(normalizeComparableText)), [addedSuggestionWords])
@@ -635,7 +636,7 @@ export function PregunticaView({
 
   return (
     <section className='mx-auto w-full max-w-4xl px-4 pb-28 pt-6 md:pb-10'>
-      <div className='rounded-[24px] border border-slate-800 bg-[linear-gradient(160deg,#ffffff,#eef3f9)] p-6 dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'>
+      <div className='rounded-[24px] border border-border bg-[linear-gradient(160deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-6'>
         <div className='mb-3 flex justify-end'>
           <button
             type='button'
@@ -690,9 +691,24 @@ export function PregunticaView({
         </div>
       )}
 
+      {showCompletionMessage && (
+        <div className='mt-4 rounded-2xl border border-emerald-300/60 bg-emerald-50 p-4 text-emerald-900'>
+          <p className='text-sm font-semibold'>Reto completado 🎉</p>
+          <p className='mt-1 text-sm'>
+            Tu respuesta y feedback quedaron guardados en el historial. Puedes cerrar por hoy o
+            canjear fichas para desbloquear una nueva PreguntICA.
+          </p>
+        </div>
+      )}
+
       {shouldShowStartCard && (
         <div className='mt-4 rounded-2xl border border-border bg-background p-4'>
-          <p className='text-sm font-semibold'>1) Elige tipo de palabras</p>
+          <div className='flex flex-wrap items-center justify-between gap-2'>
+            <p className='text-sm font-semibold'>1) Elige tipo de palabras</p>
+            <span className='rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground'>
+              {hasCompletedWeek && !canStartAttempt ? 'Canje disponible' : 'Paso inicial'}
+            </span>
+          </div>
           {!hasCompletedWeek || canStartAttempt ? (
             <>
               <p className='mt-1 text-xs text-muted-foreground'>
@@ -753,7 +769,12 @@ export function PregunticaView({
 
       {activeAttempt && !isWeekClosedWithoutActiveAttempt && !showAttemptWorkspace && (
         <div className='mt-4 rounded-2xl border border-border bg-background p-4'>
-          <p className='text-sm font-semibold'>Intento activo de esta semana</p>
+          <div className='flex flex-wrap items-center justify-between gap-2'>
+            <p className='text-sm font-semibold'>Intento activo de esta semana</p>
+            <span className='rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700'>
+              En progreso
+            </span>
+          </div>
           <p className='mt-1 text-xs text-muted-foreground'>
             Ventana: {status?.weekStart} a {status?.weekEnd} · {currentWindowLabel}
           </p>
@@ -801,7 +822,12 @@ export function PregunticaView({
       {activeAttempt && !isWeekClosedWithoutActiveAttempt && showAttemptWorkspace && (
         <div className='mt-4 space-y-4'>
           <div className='rounded-2xl border border-border bg-background p-4'>
-            <p className='text-sm font-semibold'>2) Escucha y responde</p>
+            <div className='flex flex-wrap items-center justify-between gap-2'>
+              <p className='text-sm font-semibold'>2) Escucha y responde</p>
+              <span className='rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground'>
+                {questionVisible ? 'Pregunta revelada' : 'Pendiente de escucha'}
+              </span>
+            </div>
             <p className='mt-2 text-xs text-muted-foreground'>
               Primero escucha la pregunta. Después puedes verla y responder usando las
               palabras ICA indicadas.
@@ -883,7 +909,12 @@ export function PregunticaView({
           </div>
 
           <div className='rounded-2xl border border-border bg-background p-4'>
-            <p className='text-sm font-semibold'>3) Graba, analiza y mejora</p>
+            <div className='flex flex-wrap items-center justify-between gap-2'>
+              <p className='text-sm font-semibold'>3) Graba, analiza y mejora</p>
+              <span className='rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground'>
+                {feedback ? 'Feedback listo' : recordedBlob ? 'Listo para analizar' : 'Sin grabación'}
+              </span>
+            </div>
             <div className='mt-3 flex flex-wrap items-center gap-2'>
               {!isRecording ? (
                 <button
