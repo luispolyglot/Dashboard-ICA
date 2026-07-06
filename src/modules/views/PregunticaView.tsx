@@ -669,14 +669,14 @@ export function PregunticaView({
   const showCompletionMessage = hasCompletedWeek && !hasActiveAttempt
   const transcriptForFeedback = latestTranscript || activeAttempt?.transcriptText || ''
 
-  const icaUsage = useMemo(
-    () => icaWords.map((word) => ({ word, used: textIncludesWord(transcriptForFeedback, word) })),
-    [icaWords, transcriptForFeedback],
-  )
-  const usedIcaCount = useMemo(() => icaUsage.filter((item) => item.used).length, [icaUsage])
+  const icaUsage = icaWords.map((word) => ({
+    word,
+    used: textIncludesWord(transcriptForFeedback, word),
+  }))
+  const usedIcaCount = icaUsage.filter((item) => item.used).length
 
-  const existingCardWords = useMemo(() => new Set(cards.map((card) => normalizeComparableText(card.target))), [cards])
-  const addedSuggestionSet = useMemo(() => new Set(addedSuggestionWords.map(normalizeComparableText)), [addedSuggestionWords])
+  const existingCardWords = new Set(cards.map((card) => normalizeComparableText(card.target)))
+  const addedSuggestionSet = new Set(addedSuggestionWords.map(normalizeComparableText))
 
   function isSuggestionAdded(word: string): boolean {
     const key = normalizeComparableText(word)
