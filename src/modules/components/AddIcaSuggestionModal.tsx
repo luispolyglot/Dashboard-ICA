@@ -84,6 +84,7 @@ export function AddIcaSuggestionModal({
     }),
     [cards, config.nativeLang, config.targetLang, trimmedTarget],
   )
+  const showDuplicateWarning = Boolean(duplicateWord) && !saving && trimmedTarget.length > 0
 
   const canSave = trimmedTarget && trimmedNative && importance && !saving && !duplicateWord
 
@@ -111,9 +112,9 @@ export function AddIcaSuggestionModal({
     }
 
     try {
-      setCards((prev) => [...prev, newCard])
       await insertWord(newCard)
       await onWordAdded()
+      setCards((prev) => [...prev, newCard])
       try {
         await recordWordAddedEvent()
       } catch (error) {
@@ -182,7 +183,7 @@ export function AddIcaSuggestionModal({
             </div>
           </div>
 
-          {duplicateWord && (
+          {showDuplicateWarning && (
             <p className='text-xs text-red-500'>Esta palabra ya existe en tu Baúl ICA.</p>
           )}
         </div>

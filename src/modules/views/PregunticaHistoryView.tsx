@@ -114,6 +114,19 @@ function textIncludesWord(text: string, word: string): boolean {
   return tokens.has(normalizedWord)
 }
 
+function normalizeCorrectionValue(value: string): string {
+  return value
+    .toLocaleLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function isSameCorrection(original: string, suggestion: string): boolean {
+  return normalizeCorrectionValue(original) === normalizeCorrectionValue(suggestion)
+}
+
 function toQuestionCards(weeks: PregunticaHistoryWeek[]): PregunticaHistoryQuestionCard[] {
   return weeks.flatMap((week) => {
     if (week.attempts.length === 0) {
@@ -272,9 +285,15 @@ function AttemptContent({
             <ul className='mt-3 space-y-2 text-sm'>
               {attempt.feedback.corrections.map((item, index) => (
                 <li key={`${attempt.id}-${index}-correction`} className='rounded-lg border border-border bg-background/70 p-2'>
-                  <span className='font-semibold text-red-500 line-through'>{item.original}</span>
-                  {' '}→{' '}
-                  <span className='font-semibold text-emerald-500'>{item.suggestion}</span>
+                  {isSameCorrection(item.original, item.suggestion) ? (
+                    <span className='font-semibold text-emerald-500'>✓ {item.suggestion}</span>
+                  ) : (
+                    <>
+                      <span className='font-semibold text-red-500 line-through'>{item.original}</span>
+                      {' '}→{' '}
+                      <span className='font-semibold text-emerald-500'>{item.suggestion}</span>
+                    </>
+                  )}
                   <div className='text-xs text-muted-foreground'>{item.reason}</div>
                 </li>
               ))}
