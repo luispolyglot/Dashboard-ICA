@@ -1012,7 +1012,7 @@ export function PregunticaView({
                   </button>
                 )}
 
-                <div className='flex min-w-52 flex-1 items-end gap-1 rounded-md border border-border/70 bg-background px-2 py-2'>
+                <div className='flex h-12 min-w-52 flex-1 items-end gap-1 overflow-hidden rounded-md border border-border/70 bg-background px-2 py-2'>
                   {liveBars.map((height, index) => (
                     <span
                       key={`bar-${index}`}
