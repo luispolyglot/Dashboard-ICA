@@ -67,6 +67,8 @@ const MIME_CANDIDATES = [
   'audio/mp4',
 ]
 
+const LIVE_BARS_COUNT = 24
+
 function randomize<T>(items: T[]): T[] {
   const copy = [...items]
   for (let i = copy.length - 1; i > 0; i -= 1) {
@@ -198,11 +200,34 @@ export function PregunticaView({
   const [suggestionModalOpen, setSuggestionModalOpen] = useState(false)
   const [selectedSuggestion, setSelectedSuggestion] = useState<PregunticaWordSuggestion | null>(null)
   const [addedSuggestionWords, setAddedSuggestionWords] = useState<string[]>([])
+  const [liveBars, setLiveBars] = useState<number[]>(() =>
+    Array.from({ length: LIVE_BARS_COUNT }, () => 12),
+  )
 
   const recorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const startedAtRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!isRecording) {
+      setLiveBars(Array.from({ length: LIVE_BARS_COUNT }, () => 12))
+      return
+    }
+
+    const timer = window.setInterval(() => {
+      setLiveBars(
+        Array.from({ length: LIVE_BARS_COUNT }, (_, index) => {
+          const base = index % 4 === 0 ? 20 : 14
+          return base + Math.round(Math.random() * 24)
+        }),
+      )
+    }, 140)
+
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [isRecording])
 
   const attemptsLeft = useMemo(() => {
     const used = Number(status?.attemptsUsed || 0)
@@ -902,20 +927,41 @@ export function PregunticaView({
                 : 'Aún no has escuchado la pregunta.'}
             </p>
 
-            {questionVisible && questionText && (
-              <div className='mt-4 rounded-xl border border-[#0ea5e9]/20 bg-[#f0f9ff] p-3 text-sm text-[#0c4a6e]'>
-                {questionText}
-              </div>
-            )}
-
-            {questionVisible && translationVisible && questionTranslation && (
-              <div className='mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900'>
-                <p className='text-xs font-semibold uppercase tracking-wide text-emerald-700'>
-                  Traducción (español)
+            <div className='mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-3 transition-all duration-500'>
+              <p className='text-[11px] font-semibold uppercase tracking-wide text-slate-500'>
+                Pregunta · {config.targetLang}
+              </p>
+              <div className='relative mt-1 min-h-10'>
+                <p
+                  className={`text-sm text-slate-700 transition-all duration-500 ${questionVisible ? 'blur-0 opacity-100' : 'select-none blur-sm opacity-70'}`}
+                >
+                  {questionText || 'Pregunta pendiente de generar'}
                 </p>
-                <p className='mt-1'>{questionTranslation}</p>
+                {!questionVisible && (
+                  <div className='absolute inset-0 flex items-center justify-center text-xs font-medium text-slate-500'>
+                    Escúchala primero para poder leerla.
+                  </div>
+                )}
               </div>
-            )}
+            </div>
+
+            <div className='mt-2 rounded-xl border border-emerald-200 bg-emerald-50/90 p-3 text-sm text-emerald-900 transition-all duration-500'>
+              <p className='text-xs font-semibold uppercase tracking-wide text-emerald-700'>
+                Traducción (español)
+              </p>
+              <div className='relative mt-1 min-h-9'>
+                <p
+                  className={`transition-all duration-500 ${questionVisible && translationVisible && questionTranslation ? 'blur-0 opacity-100' : 'select-none blur-sm opacity-70'}`}
+                >
+                  {questionTranslation || 'Traducción no disponible'}
+                </p>
+                {(!questionVisible || !translationVisible) && (
+                  <div className='absolute inset-0 flex items-center justify-center text-xs font-medium text-emerald-700/80'>
+                    Se desbloquea tras mostrar la pregunta.
+                  </div>
+                )}
+              </div>
+            </div>
 
             <div className='mt-4'>
               <p className='text-xs font-semibold text-muted-foreground'>Palabras ICA objetivo</p>
@@ -945,34 +991,52 @@ export function PregunticaView({
                 {feedback ? 'Feedback listo' : recordedBlob ? 'Listo para analizar' : 'Sin grabación'}
               </span>
             </div>
-            <div className='mt-3 flex flex-wrap items-center gap-2'>
-              {!isRecording ? (
-                <button
-                  type='button'
-                  onClick={handleStartRecording}
-                  disabled={working}
-                  className='rounded-xl border border-primary/40 bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60'
-                >
-                  🎙️ Empezar grabación
-                </button>
-              ) : (
-                <button
-                  type='button'
-                  onClick={handleStopRecording}
-                  className='rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700'
-                >
-                  ⏹️ Detener grabación
-                </button>
-              )}
+            <div className='mt-3 rounded-xl border border-border bg-muted/20 p-3'>
+              <div className='flex flex-wrap items-center gap-3'>
+                {!isRecording ? (
+                  <button
+                    type='button'
+                    onClick={handleStartRecording}
+                    disabled={working}
+                    className='rounded-full border border-primary/40 bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60'
+                  >
+                    🎙️ Empezar grabación
+                  </button>
+                ) : (
+                  <button
+                    type='button'
+                    onClick={handleStopRecording}
+                    className='rounded-full border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700'
+                  >
+                    ⏹️ Detener grabación
+                  </button>
+                )}
 
-              <button
-                type='button'
-                onClick={handleAnalyze}
-                disabled={working || !recordedBlob}
-                className='rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60'
-              >
-                Analizar respuesta
-              </button>
+                <div className='flex min-w-52 flex-1 items-end gap-1 rounded-md border border-border/70 bg-background px-2 py-2'>
+                  {liveBars.map((height, index) => (
+                    <span
+                      key={`bar-${index}`}
+                      className={`w-1 rounded-sm transition-all duration-150 ${isRecording ? 'bg-sky-500' : 'bg-slate-300'}`}
+                      style={{ height: `${height}px` }}
+                    />
+                  ))}
+                </div>
+
+                <span className='min-w-16 text-right text-sm font-semibold text-muted-foreground'>
+                  {(recordedDurationMs / 1000).toFixed(1)}s
+                </span>
+              </div>
+
+              <div className='mt-3 flex flex-wrap items-center gap-2'>
+                <button
+                  type='button'
+                  onClick={handleAnalyze}
+                  disabled={working || !recordedBlob}
+                  className='rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60'
+                >
+                  Analizar respuesta
+                </button>
+              </div>
             </div>
 
             {recordedUrl && (
