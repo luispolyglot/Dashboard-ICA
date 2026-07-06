@@ -207,9 +207,19 @@ function AttemptContent({ attempt }: { attempt: PregunticaHistoryAttempt }) {
 
       {attempt.feedback && (
         <div className='mt-3 rounded-lg border border-border bg-[linear-gradient(165deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-3'>
-          <p className='text-sm font-semibold text-foreground'>
-            Feedback del agente · {attempt.feedback.score.toFixed(1)} / 10
-          </p>
+          <div className='flex flex-wrap items-center gap-3'>
+            <p className='font-serif text-2xl font-bold text-amber-500'>
+              {attempt.feedback.score.toFixed(1)}
+              <span className='ml-1 text-sm font-medium text-muted-foreground'>/10</span>
+            </p>
+            <div className='h-2 min-w-28 flex-1 overflow-hidden rounded-full bg-muted/70'>
+              <i
+                className='block h-full rounded-full bg-gradient-to-r from-amber-400 to-yellow-300'
+                style={{ width: `${Math.max(0, Math.min(100, attempt.feedback.score * 10))}%` }}
+              />
+            </div>
+            <p className='text-xs font-semibold tracking-wide text-muted-foreground'>Naturalidad</p>
+          </div>
           <p className='mt-1 text-sm text-muted-foreground'>{attempt.feedback.naturalness}</p>
 
           {icaUsage.length > 0 && (
@@ -239,14 +249,18 @@ function AttemptContent({ attempt }: { attempt: PregunticaHistoryAttempt }) {
             <ul className='mt-3 space-y-2 text-sm'>
               {attempt.feedback.corrections.map((item, index) => (
                 <li key={`${attempt.id}-${index}-correction`} className='rounded-lg border border-border bg-background/70 p-2'>
-                  <strong>{item.original}</strong> → {item.suggestion}
+                  <span className='font-semibold text-red-500 line-through'>{item.original}</span>
+                  {' '}→{' '}
+                  <span className='font-semibold text-emerald-500'>{item.suggestion}</span>
                   <div className='text-xs text-muted-foreground'>{item.reason}</div>
                 </li>
               ))}
             </ul>
           )}
 
-          <p className='mt-3 text-sm text-foreground/90'>{attempt.feedback.coachReply}</p>
+          <div className='mt-3 rounded-lg border border-amber-400/30 bg-amber-500/10 p-3'>
+            <p className='text-sm text-foreground/90'>{attempt.feedback.coachReply}</p>
+          </div>
         </div>
       )}
 
