@@ -109,36 +109,19 @@ function parseDateOnly(value: string): Date | null {
   return new Date(Date.UTC(year, month - 1, day))
 }
 
-function getTodayForTimezone(timezone: string): Date {
-  try {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).formatToParts(new Date())
-
-    const year = Number(parts.find((part) => part.type === 'year')?.value || '0')
-    const month = Number(parts.find((part) => part.type === 'month')?.value || '0')
-    const day = Number(parts.find((part) => part.type === 'day')?.value || '0')
-    return new Date(Date.UTC(year, month - 1, day))
-  } catch {
-    const now = new Date()
-    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
-  }
-}
-
-function getWindowRemainingLabel(status: PregunticaWeekStatus | null): string {
-  if (!status) return '-'
+function getCountdownLabel(status: PregunticaWeekStatus | null): string {
+  if (!status?.weekEnd) return '-'
   const endDate = parseDateOnly(status.weekEnd)
   if (!endDate) return '-'
 
-  const today = getTodayForTimezone(status.timezone || 'UTC')
-  const dayDiff = Math.max(0, Math.ceil((endDate.getTime() - today.getTime()) / 86400000))
+  const diffMs = Math.max(0, endDate.getTime() - Date.now())
+  const totalSeconds = Math.floor(diffMs / 1000)
+  const days = Math.floor(totalSeconds / 86400)
+  const hours = Math.floor((totalSeconds % 86400) / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
 
-  if (dayDiff <= 0) return 'La ventana cierra hoy'
-  if (dayDiff === 1) return 'La ventana cierra en 1 día'
-  return `La ventana cierra en ${dayDiff} días`
+  return `${days} días ${hours} horas ${minutes} min ${seconds} seg`
 }
 
 function normalizeComparableText(value: string): string {
@@ -196,11 +179,12 @@ export function PregunticaView({
   const [suggestions, setSuggestions] = useState<PregunticaWordSuggestion[]>([])
   const [mode, setMode] = useState('mixed')
   const [questionText, setQuestionText] = useState('')
-  const [questionId, setQuestionId] = useState<string | null>(null)
   const [questionTranslation, setQuestionTranslation] = useState<string | null>(null)
   const [icaWords, setIcaWords] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [countdownLabel, setCountdownLabel] = useState('-')
   const [isRecording, setIsRecording] = useState(false)
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
   const [recordedDurationMs, setRecordedDurationMs] = useState(0)
@@ -210,7 +194,6 @@ export function PregunticaView({
   const [listenCount, setListenCount] = useState(0)
   const [questionVisible, setQuestionVisible] = useState(false)
   const [translationVisible, setTranslationVisible] = useState(false)
-  const [showAttemptWorkspace, setShowAttemptWorkspace] = useState(false)
   const [suggestionModalOpen, setSuggestionModalOpen] = useState(false)
   const [selectedSuggestion, setSelectedSuggestion] = useState<PregunticaWordSuggestion | null>(null)
   const [addedSuggestionWords, setAddedSuggestionWords] = useState<string[]>([])
@@ -239,6 +222,16 @@ export function PregunticaView({
     return Math.max(0, 3 - used)
   }, [status?.attemptsUsed])
 
+  const wordTranslationMap = useMemo(() => {
+    const map = new Map<string, string>()
+    cards.forEach((card) => {
+      const key = normalizeComparableText(card.target)
+      if (!key || map.has(key)) return
+      map.set(key, card.native || '')
+    })
+    return map
+  }, [cards])
+
   useEffect(() => {
     let active = true
 
@@ -259,10 +252,8 @@ export function PregunticaView({
           if (!active) return
           setAttempt(latest)
           if (latest?.questionText) setQuestionText(latest.questionText)
-          if (latest?.questionId) setQuestionId(latest.questionId)
           setQuestionTranslation(latest?.questionTranslation || null)
           if (latest?.icaWords?.length) setIcaWords(latest.icaWords)
-          setShowAttemptWorkspace(!latest)
         }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'No se pudo cargar PreguntICA')
@@ -281,6 +272,23 @@ export function PregunticaView({
       }
     }
   }, [])
+
+  useEffect(() => {
+    setCountdownLabel(getCountdownLabel(status))
+    const timer = window.setInterval(() => {
+      setCountdownLabel(getCountdownLabel(status))
+    }, 1000)
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [status])
+
+  useEffect(() => {
+    if (loading) return
+    if (!status) return
+    if (status.isUnlocked) return
+    navigate(DASHBOARD_ROUTES.gamesIca, { replace: true })
+  }, [loading, navigate, status])
 
   async function refreshStatus() {
     const [weekStatus, tokens] = await Promise.all([
@@ -315,7 +323,6 @@ export function PregunticaView({
         questionText: selectedQuestion.questionText,
         icaWords: words,
       })
-      setQuestionId(selectedQuestion.questionId)
       setQuestionText(selectedQuestion.questionText)
       setQuestionTranslation(selectedQuestion.questionTranslation)
       setIcaWords(words)
@@ -323,7 +330,6 @@ export function PregunticaView({
       setListenCount(0)
       setQuestionVisible(false)
       setTranslationVisible(false)
-      setShowAttemptWorkspace(true)
       setFeedback(null)
       setLatestTranscript(null)
       setSuggestions([])
@@ -377,80 +383,6 @@ export function PregunticaView({
     }
   }
 
-  async function createRetryAttemptWithSamePrompt() {
-    if (!attempt) {
-      throw new Error('No hay intento base para reutilizar pregunta y palabras')
-    }
-
-    const retryMode = attempt.wordMode || mode
-    const created = await createPregunticaAttempt(retryMode)
-
-    const sameQuestion = (attempt.questionText || questionText || '').trim()
-    const sameWords = attempt.icaWords.length > 0 ? attempt.icaWords : icaWords
-    const sameQuestionId = attempt.questionId || questionId
-    const sameQuestionTranslation = attempt.questionTranslation || questionTranslation
-
-    if (!sameQuestion || sameWords.length === 0) {
-      throw new Error('No se encontró una pregunta válida para reintentar')
-    }
-
-    await savePregunticaAttemptPromptData({
-      attemptId: created.id,
-      questionId: sameQuestionId || null,
-      questionText: sameQuestion,
-      icaWords: sameWords,
-      targetLang: config.targetLang,
-      nativeLang: config.nativeLang,
-      level: config.level || 'A2',
-    })
-
-    setAttempt({
-      ...created,
-      questionId: sameQuestionId || null,
-      questionTranslation: sameQuestionTranslation || null,
-      questionText: sameQuestion,
-      icaWords: sameWords,
-    })
-    setQuestionId(sameQuestionId || null)
-    setQuestionText(sameQuestion)
-    setQuestionTranslation(sameQuestionTranslation || null)
-    setIcaWords(sameWords)
-    setQuestionWasPlayed(false)
-    setListenCount(0)
-    setQuestionVisible(false)
-    setTranslationVisible(false)
-    setShowAttemptWorkspace(true)
-    setFeedback(null)
-    setLatestTranscript(null)
-    setSuggestions([])
-    setRecordedBlob(null)
-    setRecordedDurationMs(0)
-    setRecordingElapsedMs(0)
-    if (recordedUrl) {
-      URL.revokeObjectURL(recordedUrl)
-      setRecordedUrl(null)
-    }
-  }
-
-  async function handleRetryAttempt() {
-    if (!attempt) {
-      await handleStartAttempt()
-      return
-    }
-
-    setWorking(true)
-    try {
-      await createRetryAttemptWithSamePrompt()
-
-      await refreshStatus()
-      toast.success('Nuevo intento creado con la misma pregunta y palabras ICA')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo crear el reintento')
-    } finally {
-      setWorking(false)
-    }
-  }
-
   async function handleRedeemAndRetry() {
     if (!status?.weekStart) {
       toast.error('No se encontró la semana para canjear fichas')
@@ -461,7 +393,6 @@ export function PregunticaView({
     try {
       await redeemPregunticaTokensForWeek(status.weekStart)
       setAttempt(null)
-      setQuestionId(null)
       setQuestionText('')
       setQuestionTranslation(null)
       setIcaWords([])
@@ -469,7 +400,6 @@ export function PregunticaView({
       setListenCount(0)
       setQuestionVisible(false)
       setTranslationVisible(false)
-      setShowAttemptWorkspace(false)
       setFeedback(null)
       setLatestTranscript(null)
       setSuggestions([])
@@ -559,6 +489,7 @@ export function PregunticaView({
     }
 
     setWorking(true)
+    setIsAnalyzing(true)
 
     try {
       const audio = await uploadPregunticaAttemptAudio({
@@ -602,6 +533,7 @@ export function PregunticaView({
       toast.error(error instanceof Error ? error.message : 'No se pudo analizar la respuesta')
     } finally {
       setWorking(false)
+      setIsAnalyzing(false)
     }
   }
 
@@ -648,6 +580,7 @@ export function PregunticaView({
       await completePregunticaAttempt(attempt.id)
       await refreshStatus()
       toast.success('PreguntICA completada esta semana')
+      navigate(DASHBOARD_ROUTES.gamesIca)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo cerrar el intento')
     } finally {
@@ -670,14 +603,14 @@ export function PregunticaView({
   const canStartAttempt = Boolean(status?.canStart)
   const tokenBalance = tokenSummary?.balance ?? 0
   const hasRedeemableTokens = tokenBalance >= 2
-  const isWeekClosedWithoutActiveAttempt = !canStartAttempt && !hasActiveAttempt
-  const shouldShowStartCard =
-    !locked
-    && !hasActiveAttempt
-    && (!hasCompletedWeek || canStartAttempt || hasRedeemableTokens)
-  const currentWindowLabel = getWindowRemainingLabel(status)
+  const canUseStep1 = !locked && (!hasCompletedWeek || canStartAttempt || hasRedeemableTokens)
   const showCompletionMessage = hasCompletedWeek && !hasActiveAttempt
   const transcriptForFeedback = latestTranscript || activeAttempt?.transcriptText || ''
+  const step1Completed = Boolean(activeAttempt) || hasCompletedWeek
+  const step2Enabled = Boolean(activeAttempt)
+  const step2Completed = step2Enabled && questionWasPlayed
+  const step3Enabled = Boolean(activeAttempt)
+  const step3Completed = Boolean(feedback)
 
   const icaUsage = icaWords.map((word) => ({
     word,
@@ -701,7 +634,7 @@ export function PregunticaView({
 
   return (
     <section className='mx-auto w-full max-w-4xl px-4 pb-28 pt-6 md:pb-10'>
-      <style>{`@keyframes preguntica-wave { 0%, 100% { height: 8px; } 50% { height: 28px; } }`}</style>
+      <style>{`@keyframes preguntica-wave { 0%, 100% { height: 8px; } 50% { height: 28px; } } @keyframes preguntica-step-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
       <div className='rounded-[24px] border border-border bg-[linear-gradient(160deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-6'>
         <div className='mb-3 flex justify-end'>
           <button
@@ -717,45 +650,9 @@ export function PregunticaView({
           Tu reto semanal de expresión
         </h1>
         <p className='mt-2 text-sm text-slate-500'>
-          Se desbloquea cada viernes y tienes hasta el siguiente viernes para responder.
+          Cuenta atrás: {countdownLabel}
         </p>
       </div>
-
-      <div className='mt-4 rounded-2xl border border-border bg-background p-4'>
-        <p className='text-sm'>
-          Progreso de desbloqueo: <strong>{status?.activationWordsCount || 0}</strong> /
-          {' '}
-          <strong>{status?.requiredActivationWords || 20}</strong> palabras activadas
-        </p>
-        <p className='mt-1 text-xs text-muted-foreground'>
-          Ventana activa: {status?.weekStart} a {status?.weekEnd} ({status?.timezone || 'UTC'})
-        </p>
-        <div className='mt-3 grid gap-2 rounded-xl border border-emerald-200/50 bg-emerald-50/60 p-3 text-xs text-emerald-900 md:grid-cols-3'>
-          <div>
-            <p className='font-semibold'>Fichas disponibles</p>
-            <p className='text-base font-bold'>{tokenSummary?.balance ?? 0}</p>
-          </div>
-          <div>
-            <p className='font-semibold'>Último abono mensual</p>
-            <p>
-              {tokenSummary?.lastMonthlyEarnTokens ?? 0} fichas
-            </p>
-          </div>
-          <div>
-            <p className='font-semibold'>Origen</p>
-            <p>
-              {tokenSummary?.lastMonthlyEarnMonth || '-'} · {tokenSummary?.lastMonthlyEarnPoints ?? '-'} puntos
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {locked && (
-        <div className='mt-4 rounded-2xl border border-amber-300/50 bg-amber-50 p-4 text-amber-900'>
-          Aún no desbloqueaste esta PreguntICA semanal. Necesitas activar 20 palabras
-          entre viernes y viernes.
-        </div>
-      )}
 
       {showCompletionMessage && (
         <div className='mt-4 rounded-2xl border border-emerald-300/60 bg-emerald-50 p-4 text-emerald-900'>
@@ -767,15 +664,21 @@ export function PregunticaView({
         </div>
       )}
 
-      {shouldShowStartCard && (
-        <div className='mt-4 rounded-2xl border border-border bg-background p-4'>
+      <div
+        className={`mt-4 rounded-2xl border border-border bg-background p-4 transition-all duration-500 ${!canUseStep1 ? 'opacity-55' : ''}`}
+        style={{ animation: 'preguntica-step-in 0.45s ease' }}
+      >
           <div className='flex flex-wrap items-center justify-between gap-2'>
             <p className='text-sm font-semibold'>1) Elige tipo de palabras</p>
-            <span className='rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground'>
-              {hasCompletedWeek && !canStartAttempt ? 'Canje disponible' : 'Paso inicial'}
+            <span className={`rounded-full border px-2 py-0.5 text-[11px] ${step1Completed ? 'border-emerald-300/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
+              {step1Completed ? '✓ Completado' : hasCompletedWeek && !canStartAttempt ? 'Canje disponible' : 'Paso inicial'}
             </span>
           </div>
-          {!hasCompletedWeek || canStartAttempt ? (
+          {!canUseStep1 ? (
+            <p className='mt-2 text-xs text-muted-foreground'>
+              Necesitas desbloquear PreguntICA desde Juegos ICA para iniciar este paso.
+            </p>
+          ) : !hasCompletedWeek || canStartAttempt ? (
             <>
               <p className='mt-1 text-xs text-muted-foreground'>
                 Selecciona la frecuencia ICA para esta nueva pregunta.
@@ -799,16 +702,15 @@ export function PregunticaView({
                   )
                 })}
               </div>
-              <button
-                type='button'
+              <Button
                 onClick={handleStartAttempt}
                 disabled={working || !canStartAttempt}
-                className='mt-4 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60'
+                className='mt-4 text-sm font-semibold'
               >
                 {attemptsLeft > 0
                   ? `Empezar intento semanal (${attemptsLeft} restantes)`
                   : 'Empezar nueva PreguntICA'}
-              </button>
+              </Button>
             </>
           ) : (
             <>
@@ -816,95 +718,43 @@ export function PregunticaView({
                 Ya completaste la semanal. Canjea 2 fichas para desbloquear una nueva PreguntICA.
               </p>
               <div className='mt-3 flex flex-wrap items-center gap-2'>
-                <button
-                  type='button'
+                <Button
                   onClick={handleRedeemAndRetry}
                   disabled={working || !hasRedeemableTokens}
-                  className='rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60'
+                  className='text-sm font-semibold'
                 >
                   Canjear 2 fichas y desbloquear nueva PreguntICA
-                </button>
+                </Button>
                 <span className='text-xs text-muted-foreground'>
                   Saldo actual: {tokenBalance} fichas
                 </span>
               </div>
             </>
           )}
-        </div>
-      )}
+      </div>
 
-      {activeAttempt && !isWeekClosedWithoutActiveAttempt && !showAttemptWorkspace && (
-        <div className='mt-4 rounded-2xl border border-border bg-background p-4'>
-          <div className='flex flex-wrap items-center justify-between gap-2'>
-            <p className='text-sm font-semibold'>Intento activo de esta semana</p>
-            <span className='rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700'>
-              En progreso
-            </span>
-          </div>
-          <p className='mt-1 text-xs text-muted-foreground'>
-            Ventana: {status?.weekStart} a {status?.weekEnd} · {currentWindowLabel}
-          </p>
-
-          <div className='mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3'>
-            <p className='text-xs font-semibold text-slate-700'>Pregunta actual</p>
-            <p className='mt-1 text-sm text-slate-700'>
-              {activeAttempt.questionText || questionText || 'Pregunta pendiente de generar'}
-            </p>
-          </div>
-
-          <div className='mt-3 flex flex-wrap gap-2'>
-            <button
-              type='button'
-              onClick={() => setShowAttemptWorkspace(true)}
-              className='rounded-xl border border-border bg-background px-3 py-2 text-sm font-medium'
-            >
-              Continuar intento
-            </button>
-            <button
-              type='button'
-              onClick={handleCompleteAttempt}
-              disabled={working}
-              className='rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 disabled:cursor-not-allowed disabled:opacity-60'
-            >
-              Finalizar esta PreguntICA
-            </button>
-            <button
-              type='button'
-              onClick={handleRetryAttempt}
-              disabled={working || !canStartAttempt}
-              className='rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60'
-            >
-              Volver a intentar
-            </button>
-          </div>
-          <p className='mt-2 text-xs text-muted-foreground'>
-            {attemptsLeft > 0
-              ? `Te quedan ${attemptsLeft} intentos semanales.`
-              : 'Intento desbloqueado por canje de fichas.'}
-          </p>
-        </div>
-      )}
-
-      {activeAttempt && !isWeekClosedWithoutActiveAttempt && showAttemptWorkspace && (
-        <div className='mt-4 space-y-4'>
-          <div className='rounded-2xl border border-border bg-background p-4'>
+      <div className='mt-4 space-y-4' style={{ animation: 'preguntica-step-in 0.55s ease' }}>
+          <div className={`rounded-2xl border border-border bg-background p-4 transition-all duration-500 ${!step2Enabled ? 'opacity-55' : ''}`}>
             <div className='flex flex-wrap items-center justify-between gap-2'>
               <p className='text-sm font-semibold'>2) Escucha y responde</p>
-              <span className='rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground'>
-                {questionVisible ? 'Pregunta revelada' : 'Pendiente de escucha'}
+              <span className={`rounded-full border px-2 py-0.5 text-[11px] ${step2Completed ? 'border-emerald-300/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
+                {step2Completed ? '✓ Completado' : questionVisible ? 'Pregunta revelada' : 'Pendiente de escucha'}
               </span>
             </div>
             <p className='mt-2 text-xs text-muted-foreground'>
               Primero escucha la pregunta. Después puedes verla y responder usando las
               palabras ICA indicadas.
             </p>
+            {!step2Enabled && (
+              <p className='mt-2 text-xs text-muted-foreground'>Completa el paso 1 para habilitar este paso.</p>
+            )}
             <div className='mt-3 flex flex-wrap gap-2'>
               <SpeakButton
                 text={questionText}
                 langName={config.targetLang}
                 color='#3B82F6'
                 label='Escuchar pregunta'
-                disabled={!questionText || working}
+                disabled={!step2Enabled || !questionText || working}
                 onPlayingChange={(isPlaying) => {
                   if (isPlaying) {
                     setQuestionWasPlayed(true)
@@ -917,7 +767,7 @@ export function PregunticaView({
               <button
                 type='button'
                 onClick={() => setQuestionVisible(true)}
-                disabled={!questionWasPlayed}
+                disabled={!step2Enabled || !questionWasPlayed}
                 className='rounded-xl border border-border px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-60'
               >
                 Mostrar pregunta
@@ -925,7 +775,7 @@ export function PregunticaView({
               <button
                 type='button'
                 onClick={() => setTranslationVisible((current) => !current)}
-                disabled={!questionVisible || !questionTranslation}
+                disabled={!step2Enabled || !questionVisible || !questionTranslation}
                 className='rounded-xl border border-border px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-60'
               >
                 {translationVisible ? 'Ocultar traducción' : 'Mostrar traducción'}
@@ -984,6 +834,9 @@ export function PregunticaView({
                       className='rounded-full border border-[#86efac]/70 bg-[#f0fdf4] px-2.5 py-1 text-xs font-semibold text-[#166534]'
                     >
                       {word}
+                      {wordTranslationMap.get(normalizeComparableText(word))
+                        ? ` · ${wordTranslationMap.get(normalizeComparableText(word))}`
+                        : ''}
                     </span>
                   ))}
                 </div>
@@ -995,32 +848,35 @@ export function PregunticaView({
             </div>
           </div>
 
-          <div className='rounded-2xl border border-border bg-background p-4'>
+          <div className={`rounded-2xl border border-border bg-background p-4 transition-all duration-500 ${!step3Enabled ? 'opacity-55' : ''}`}>
             <div className='flex flex-wrap items-center justify-between gap-2'>
               <p className='text-sm font-semibold'>3) Graba, analiza y mejora</p>
-              <span className='rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground'>
-                {feedback ? 'Feedback listo' : recordedBlob ? 'Listo para analizar' : 'Sin grabación'}
+              <span className={`rounded-full border px-2 py-0.5 text-[11px] ${step3Completed ? 'border-emerald-300/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
+                {step3Completed ? '✓ Completado' : feedback ? 'Feedback listo' : recordedBlob ? 'Listo para analizar' : 'Sin grabación'}
               </span>
             </div>
+            {!step3Enabled && (
+              <p className='mt-2 text-xs text-muted-foreground'>Completa el paso 1 para habilitar este paso.</p>
+            )}
             <div className='mt-3 rounded-xl border border-border bg-muted/20 p-3'>
               <div className='flex flex-wrap items-center gap-3'>
                 {!isRecording ? (
-                  <button
-                    type='button'
+                  <Button
+                    variant='default'
                     onClick={handleStartRecording}
-                    disabled={working}
-                    className='rounded-full border border-primary/40 bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60'
+                    disabled={!step3Enabled || working}
+                    className='rounded-full px-4 py-2 text-sm font-semibold'
                   >
                     🎙️ Empezar grabación
-                  </button>
+                  </Button>
                 ) : (
-                  <button
-                    type='button'
+                  <Button
+                    variant='destructive'
                     onClick={handleStopRecording}
-                    className='rounded-full border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700'
+                    className='rounded-full px-4 py-2 text-sm font-semibold'
                   >
                     ⏹️ Detener grabación
-                  </button>
+                  </Button>
                 )}
 
                 <div className='flex h-12 min-w-52 flex-1 items-end gap-1 overflow-hidden px-1'>
@@ -1047,14 +903,21 @@ export function PregunticaView({
               </div>
 
               <div className='mt-3 flex flex-wrap items-center gap-2'>
-                <button
-                  type='button'
+                <Button
+                  variant={recordedBlob ? 'default' : 'secondary'}
                   onClick={handleAnalyze}
-                  disabled={working || !recordedBlob}
-                  className='rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60'
+                  disabled={!step3Enabled || working || !recordedBlob}
+                  className='text-sm font-semibold'
                 >
-                  Analizar respuesta
-                </button>
+                  {isAnalyzing ? (
+                    <span className='inline-flex items-center gap-2'>
+                      <span className='size-3 animate-spin rounded-full border-2 border-current border-t-transparent' />
+                      Analizando...
+                    </span>
+                  ) : (
+                    'Analizar respuesta'
+                  )}
+                </Button>
               </div>
             </div>
 
@@ -1086,11 +949,11 @@ export function PregunticaView({
 
               <p className='mt-1 text-sm text-muted-foreground'>{feedback.naturalness}</p>
 
-              {(latestTranscript || activeAttempt.transcriptText) && (
+              {(latestTranscript || activeAttempt?.transcriptText) && (
                 <div className='mt-3 rounded-lg border-l-4 border-cyan-400 bg-cyan-500/10 p-3'>
                   <p className='text-xs font-semibold text-muted-foreground'>Transcripción</p>
                   <p className='mt-1 text-sm text-foreground'>
-                    {latestTranscript || activeAttempt.transcriptText}
+                    {latestTranscript || activeAttempt?.transcriptText}
                   </p>
                 </div>
               )}
@@ -1147,10 +1010,10 @@ export function PregunticaView({
                   <button
                     type='button'
                     onClick={handleRefreshSuggestions}
-                    disabled={working || (activeAttempt.suggestionsRefreshCount || 0) >= 3}
+                    disabled={!activeAttempt || working || (activeAttempt.suggestionsRefreshCount || 0) >= 3}
                     className='rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-50'
                   >
-                    Actualizar sugerencias ({Math.max(0, 3 - (activeAttempt.suggestionsRefreshCount || 0))})
+                    Actualizar sugerencias ({Math.max(0, 3 - (activeAttempt?.suggestionsRefreshCount || 0))})
                   </button>
                 </div>
                 <div className='mt-2 flex flex-wrap gap-2'>
@@ -1177,18 +1040,16 @@ export function PregunticaView({
                 </div>
               </div>
 
-              <button
-                type='button'
+              <Button
                 onClick={handleCompleteAttempt}
-                disabled={working}
-                className='mt-4 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-60'
+                disabled={!activeAttempt || working}
+                className='mt-4 text-sm font-semibold'
               >
                 Finalizar PreguntICA semanal
-              </button>
+              </Button>
             </div>
           )}
         </div>
-      )}
 
       <AddIcaSuggestionModal
         open={suggestionModalOpen}

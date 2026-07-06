@@ -172,6 +172,7 @@ export function GamesIcaPage() {
   const [pregunticaLabel, setPregunticaLabel] = useState(
     'Cargando estado semanal...',
   )
+  const [pregunticaProgress, setPregunticaProgress] = useState('0/20')
   const [pregunticaUnlocked, setPregunticaUnlocked] = useState(false)
 
   useEffect(() => {
@@ -185,6 +186,9 @@ export function GamesIcaPage() {
         if (!active || !status) return
 
         setPregunticaUnlocked(status.isUnlocked)
+        setPregunticaProgress(
+          `${status.activationWordsCount}/${status.requiredActivationWords}`,
+        )
         if (status.isUnlocked) {
           setPregunticaLabel('Lista para responder')
           return
@@ -215,6 +219,7 @@ export function GamesIcaPage() {
         flashcardsCount={cards.length}
         pregunticaUnlocked={pregunticaUnlocked}
         pregunticaLabel={pregunticaLabel}
+        pregunticaProgress={pregunticaProgress}
       />
     </PageLayout>
   )
