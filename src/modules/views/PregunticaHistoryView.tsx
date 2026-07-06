@@ -76,6 +76,29 @@ function getUnlockLabel(source: string | null): string {
   return source
 }
 
+function normalizeForWordMatch(value: string): string {
+  return value
+    .toLocaleLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/[^\p{L}\p{N}\s'-]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function textIncludesWord(text: string, word: string): boolean {
+  const normalizedText = normalizeForWordMatch(text)
+  const normalizedWord = normalizeForWordMatch(word)
+  if (!normalizedText || !normalizedWord) return false
+
+  if (normalizedWord.includes(' ')) {
+    return normalizedText.includes(normalizedWord)
+  }
+
+  const tokens = new Set(normalizedText.split(' '))
+  return tokens.has(normalizedWord)
+}
+
 function toQuestionCards(weeks: PregunticaHistoryWeek[]): PregunticaHistoryQuestionCard[] {
   return weeks.flatMap((week) => {
     if (week.attempts.length === 0) {
@@ -138,6 +161,13 @@ function toQuestionCards(weeks: PregunticaHistoryWeek[]): PregunticaHistoryQuest
 }
 
 function AttemptContent({ attempt }: { attempt: PregunticaHistoryAttempt }) {
+  const transcriptForFeedback = attempt.transcriptText || attempt.responseText || ''
+  const icaUsage = attempt.icaWords.map((word) => ({
+    word,
+    used: textIncludesWord(transcriptForFeedback, word),
+  }))
+  const usedIcaCount = icaUsage.filter((item) => item.used).length
+
   return (
     <article className='rounded-xl border border-border/80 bg-background p-4'>
       <div className='flex flex-wrap items-center justify-between gap-2'>
@@ -156,7 +186,7 @@ function AttemptContent({ attempt }: { attempt: PregunticaHistoryAttempt }) {
             {attempt.icaWords.map((word) => (
               <span
                 key={`${attempt.id}-${word}`}
-                className='rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-900'
+                className='rounded-full border border-emerald-300/60 bg-emerald-100/70 px-2 py-0.5 text-xs font-medium text-emerald-900 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200'
               >
                 {word}
               </span>
@@ -176,12 +206,47 @@ function AttemptContent({ attempt }: { attempt: PregunticaHistoryAttempt }) {
       )}
 
       {attempt.feedback && (
-        <div className='mt-3 rounded-lg border border-emerald-300/40 bg-emerald-50 p-3'>
-          <p className='text-sm font-semibold text-emerald-900'>
+        <div className='mt-3 rounded-lg border border-border bg-[linear-gradient(165deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-3'>
+          <p className='text-sm font-semibold text-foreground'>
             Feedback del agente · {attempt.feedback.score.toFixed(1)} / 10
           </p>
-          <p className='mt-1 text-sm text-emerald-900'>{attempt.feedback.naturalness}</p>
-          <p className='mt-2 text-sm text-emerald-900'>{attempt.feedback.coachReply}</p>
+          <p className='mt-1 text-sm text-muted-foreground'>{attempt.feedback.naturalness}</p>
+
+          {icaUsage.length > 0 && (
+            <div className='mt-3'>
+              <p className='text-xs font-semibold text-muted-foreground'>
+                Palabras objetivo usadas · {usedIcaCount}/{icaUsage.length}
+              </p>
+              <div className='mt-1.5 flex flex-wrap gap-1.5'>
+                {icaUsage.map((item) => (
+                  <span
+                    key={`${attempt.id}-${item.word}-used`}
+                    className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
+                      item.used
+                        ? 'border-emerald-300/60 bg-emerald-100/70 text-emerald-900 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200'
+                        : 'border-border bg-muted/40 text-muted-foreground'
+                    }`}
+                  >
+                    {item.used ? '✓ ' : ''}
+                    {item.word}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {attempt.feedback.corrections.length > 0 && (
+            <ul className='mt-3 space-y-2 text-sm'>
+              {attempt.feedback.corrections.map((item, index) => (
+                <li key={`${attempt.id}-${index}-correction`} className='rounded-lg border border-border bg-background/70 p-2'>
+                  <strong>{item.original}</strong> → {item.suggestion}
+                  <div className='text-xs text-muted-foreground'>{item.reason}</div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <p className='mt-3 text-sm text-foreground/90'>{attempt.feedback.coachReply}</p>
         </div>
       )}
 
@@ -226,7 +291,7 @@ function AttemptContent({ attempt }: { attempt: PregunticaHistoryAttempt }) {
                 {batch.words.map((item) => (
                   <span
                     key={`${batch.id}-${item.word}`}
-                    className='rounded-md border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs text-violet-900'
+                    className='rounded-md border border-border bg-muted/40 px-2 py-0.5 text-xs text-foreground'
                     title={item.reason}
                   >
                     {item.word}

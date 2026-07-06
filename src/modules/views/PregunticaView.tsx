@@ -1056,17 +1056,17 @@ export function PregunticaView({
           </div>
 
           {feedback && (
-            <div className='rounded-2xl border border-slate-300/60 bg-slate-50 p-4'>
-              <p className='text-sm font-semibold text-slate-900'>Feedback</p>
-              <p className='mt-1 text-sm text-slate-700'>
+            <div className='rounded-2xl border border-border bg-[linear-gradient(165deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-4'>
+              <p className='text-sm font-semibold text-foreground'>Feedback</p>
+              <p className='mt-1 text-sm text-muted-foreground'>
                 Naturalidad: <strong>{feedback.score.toFixed(1)} / 10</strong>
               </p>
-              <p className='mt-1 text-sm text-slate-700'>{feedback.naturalness}</p>
+              <p className='mt-1 text-sm text-muted-foreground'>{feedback.naturalness}</p>
 
               {(latestTranscript || activeAttempt.transcriptText) && (
-                <div className='mt-3 rounded-lg border border-slate-200 bg-white/80 p-3'>
-                  <p className='text-xs font-semibold text-slate-700'>Transcripción</p>
-                  <p className='mt-1 text-sm text-slate-700'>
+                <div className='mt-3 rounded-lg border border-border bg-muted/35 p-3'>
+                  <p className='text-xs font-semibold text-muted-foreground'>Transcripción</p>
+                  <p className='mt-1 text-sm text-foreground'>
                     {latestTranscript || activeAttempt.transcriptText}
                   </p>
                 </div>
@@ -1074,7 +1074,7 @@ export function PregunticaView({
 
               {icaUsage.length > 0 && (
                 <div className='mt-4'>
-                  <p className='text-xs font-semibold text-slate-700'>
+                  <p className='text-xs font-semibold text-muted-foreground'>
                     Palabras objetivo usadas · {usedIcaCount}/{icaUsage.length}
                   </p>
                   <div className='mt-2 flex flex-wrap gap-2'>
@@ -1083,8 +1083,8 @@ export function PregunticaView({
                         key={item.word}
                         className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
                           item.used
-                            ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                            : 'border-slate-200 bg-slate-100 text-slate-600'
+                            ? 'border-emerald-300/60 bg-emerald-100/70 text-emerald-900 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200'
+                            : 'border-border bg-muted/40 text-muted-foreground'
                         }`}
                       >
                         {item.used ? '✓ ' : ''}
@@ -1098,24 +1098,24 @@ export function PregunticaView({
               {feedback.corrections.length > 0 && (
                 <ul className='mt-3 space-y-2 text-sm'>
                   {feedback.corrections.map((item, index) => (
-                    <li key={`${item.original}-${index}`} className='rounded-lg bg-white/70 p-2'>
+                    <li key={`${item.original}-${index}`} className='rounded-lg border border-border bg-background/70 p-2'>
                       <strong>{item.original}</strong> → {item.suggestion}
-                      <div className='text-xs text-slate-600'>{item.reason}</div>
+                      <div className='text-xs text-muted-foreground'>{item.reason}</div>
                     </li>
                   ))}
                 </ul>
               )}
 
-              <p className='mt-3 text-sm text-slate-700'>{feedback.coachReply}</p>
+              <p className='mt-3 text-sm text-foreground/90'>{feedback.coachReply}</p>
 
-              <div className='mt-4 rounded-xl border border-slate-300/60 bg-white p-3'>
+              <div className='mt-4 rounded-xl border border-border bg-background/85 p-3'>
                 <div className='flex items-center justify-between gap-2'>
-                  <p className='text-xs font-semibold text-slate-700'>Sugerencias ICA (toca para añadir al Baúl)</p>
+                  <p className='text-xs font-semibold text-muted-foreground'>Sugerencias ICA (toca para añadir al Baúl)</p>
                   <button
                     type='button'
                     onClick={handleRefreshSuggestions}
                     disabled={working || (activeAttempt.suggestionsRefreshCount || 0) >= 3}
-                    className='rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50'
+                    className='rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground disabled:cursor-not-allowed disabled:opacity-50'
                   >
                     Actualizar sugerencias ({Math.max(0, 3 - (activeAttempt.suggestionsRefreshCount || 0))})
                   </button>
@@ -1127,7 +1127,7 @@ export function PregunticaView({
                       key={`${item.word}-${item.reason}`}
                       onClick={() => handleOpenSuggestionModal(item)}
                       disabled={isSuggestionAdded(item.word)}
-                      className='rounded-lg border border-slate-200 bg-slate-100 px-2 py-1 text-left text-xs text-slate-700 transition hover:border-primary/50 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-70'
+                      className='rounded-lg border border-border bg-muted/40 px-2 py-1 text-left text-xs text-foreground transition hover:border-primary/50 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-70'
                       title={item.reason}
                     >
                       <span className='font-semibold'>
@@ -1135,7 +1135,7 @@ export function PregunticaView({
                         {item.word}
                       </span>
                       {item.translation && (
-                        <span className='ml-1 text-slate-500'>· {item.translation}</span>
+                        <span className='ml-1 text-muted-foreground'>· {item.translation}</span>
                       )}
                     </button>
                   ))}
