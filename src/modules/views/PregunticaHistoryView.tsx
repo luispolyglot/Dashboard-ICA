@@ -332,7 +332,9 @@ function AttemptContent({
                     onClick={() => onSuggestionClick(item)}
                     disabled={isSuggestionAdded(item.word)}
                     className='rounded-md border border-amber-300/40 bg-amber-500/10 px-2 py-0.5 text-xs text-foreground transition hover:border-amber-300/80 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-70'
-                    title={item.reason}
+                    title={item.translation
+                      ? `Traducción: ${item.translation}\nMotivo: ${item.reason}`
+                      : `Motivo: ${item.reason}`}
                   >
                     {isSuggestionAdded(item.word) ? '✓ ' : '+ '}
                     {item.word}
