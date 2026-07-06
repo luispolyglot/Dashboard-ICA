@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import type { AppConfig, Lexicard } from '../types'
@@ -23,12 +24,15 @@ import {
 } from '../services/preguntica'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchTranslation } from '../services/anthropic'
+import { AddIcaSuggestionModal } from '../components/AddIcaSuggestionModal'
 import { SpeakButton } from '../components/SpeakButton'
 import { Button } from '@/components/ui/button'
 
 type PregunticaViewProps = {
   config: AppConfig
   cards: Lexicard[]
+  setCards: Dispatch<SetStateAction<Lexicard[]>>
+  onWordAdded: () => Promise<unknown>
 }
 
 const WORD_MODE_OPTIONS = [
@@ -135,7 +139,16 @@ function getWindowRemainingLabel(status: PregunticaWeekStatus | null): string {
   return `La ventana cierra en ${dayDiff} días`
 }
 
-export function PregunticaView({ config, cards }: PregunticaViewProps) {
+function normalizeComparableText(value: string): string {
+  return value.normalize('NFKC').trim().toLowerCase()
+}
+
+export function PregunticaView({
+  config,
+  cards,
+  setCards,
+  onWordAdded,
+}: PregunticaViewProps) {
   const navigate = useNavigate()
   const [status, setStatus] = useState<PregunticaWeekStatus | null>(null)
   const [tokenSummary, setTokenSummary] = useState<PregunticaTokenSummary | null>(null)
@@ -155,9 +168,13 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
   const [recordedDurationMs, setRecordedDurationMs] = useState(0)
   const [recordedUrl, setRecordedUrl] = useState<string | null>(null)
   const [questionWasPlayed, setQuestionWasPlayed] = useState(false)
+  const [listenCount, setListenCount] = useState(0)
   const [questionVisible, setQuestionVisible] = useState(false)
   const [translationVisible, setTranslationVisible] = useState(false)
   const [showAttemptWorkspace, setShowAttemptWorkspace] = useState(false)
+  const [suggestionModalOpen, setSuggestionModalOpen] = useState(false)
+  const [selectedSuggestion, setSelectedSuggestion] = useState<PregunticaWordSuggestion | null>(null)
+  const [addedSuggestionWords, setAddedSuggestionWords] = useState<string[]>([])
 
   const recorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
@@ -250,6 +267,7 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
       setQuestionTranslation(selectedQuestion.questionTranslation)
       setIcaWords(words)
       setQuestionWasPlayed(false)
+      setListenCount(0)
       setQuestionVisible(false)
       setTranslationVisible(false)
       setShowAttemptWorkspace(true)
@@ -344,6 +362,7 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
     setQuestionTranslation(sameQuestionTranslation || null)
     setIcaWords(sameWords)
     setQuestionWasPlayed(false)
+    setListenCount(0)
     setQuestionVisible(false)
     setTranslationVisible(false)
     setShowAttemptWorkspace(true)
@@ -392,6 +411,7 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
       setQuestionTranslation(null)
       setIcaWords([])
       setQuestionWasPlayed(false)
+      setListenCount(0)
       setQuestionVisible(false)
       setTranslationVisible(false)
       setShowAttemptWorkspace(false)
@@ -508,6 +528,7 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
       setFeedback(processed.analysis || null)
       setLatestTranscript(processed.transcript || null)
       setSuggestions(processed.analysis?.suggestedIcaWords || [])
+      setAddedSuggestionWords([])
       setAttempt((current) =>
         current
           ? {
@@ -545,6 +566,7 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
       }
 
       setSuggestions(result.suggestions || [])
+      setAddedSuggestionWords([])
       setAttempt((current) =>
         current
           ? {
@@ -596,6 +618,20 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
     && !hasActiveAttempt
     && (!hasCompletedWeek || canStartAttempt || hasRedeemableTokens)
   const currentWindowLabel = getWindowRemainingLabel(status)
+
+  const existingCardWords = useMemo(() => new Set(cards.map((card) => normalizeComparableText(card.target))), [cards])
+  const addedSuggestionSet = useMemo(() => new Set(addedSuggestionWords.map(normalizeComparableText)), [addedSuggestionWords])
+
+  function isSuggestionAdded(word: string): boolean {
+    const key = normalizeComparableText(word)
+    return existingCardWords.has(key) || addedSuggestionSet.has(key)
+  }
+
+  function handleOpenSuggestionModal(suggestion: PregunticaWordSuggestion) {
+    if (isSuggestionAdded(suggestion.word)) return
+    setSelectedSuggestion(suggestion)
+    setSuggestionModalOpen(true)
+  }
 
   return (
     <section className='mx-auto w-full max-w-4xl px-4 pb-28 pt-6 md:pb-10'>
@@ -778,7 +814,11 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
                 label='Escuchar pregunta'
                 disabled={!questionText || working}
                 onPlayingChange={(isPlaying) => {
-                  if (isPlaying) setQuestionWasPlayed(true)
+                  if (isPlaying) {
+                    setQuestionWasPlayed(true)
+                    return
+                  }
+                  setListenCount((current) => current + 1)
                 }}
                 className='mt-0'
               />
@@ -800,6 +840,12 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
               </button>
             </div>
 
+            <p className='mt-2 text-xs text-muted-foreground'>
+              {listenCount > 0
+                ? `Escuchada ${listenCount} ${listenCount === 1 ? 'vez' : 'veces'}.`
+                : 'Aún no has escuchado la pregunta.'}
+            </p>
+
             {questionVisible && questionText && (
               <div className='mt-4 rounded-xl border border-[#0ea5e9]/20 bg-[#f0f9ff] p-3 text-sm text-[#0c4a6e]'>
                 {questionText}
@@ -817,16 +863,22 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
 
             <div className='mt-4'>
               <p className='text-xs font-semibold text-muted-foreground'>Palabras ICA objetivo</p>
-              <div className='mt-2 flex flex-wrap gap-2'>
-                {icaWords.map((word) => (
-                  <span
-                    key={word}
-                    className='rounded-full border border-[#86efac]/70 bg-[#f0fdf4] px-2.5 py-1 text-xs font-semibold text-[#166534]'
-                  >
-                    {word}
-                  </span>
-                ))}
-              </div>
+              {questionWasPlayed ? (
+                <div className='mt-2 flex flex-wrap gap-2'>
+                  {icaWords.map((word) => (
+                    <span
+                      key={word}
+                      className='rounded-full border border-[#86efac]/70 bg-[#f0fdf4] px-2.5 py-1 text-xs font-semibold text-[#166534]'
+                    >
+                      {word}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className='mt-2 text-xs text-muted-foreground'>
+                  Se desbloquean tras escuchar la pregunta al menos una vez.
+                </p>
+              )}
             </div>
           </div>
 
@@ -916,13 +968,22 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
                 </div>
                 <div className='mt-2 flex flex-wrap gap-2'>
                   {suggestions.map((item) => (
-                    <span
+                    <button
+                      type='button'
                       key={`${item.word}-${item.reason}`}
-                      className='rounded-lg border border-slate-200 bg-slate-100 px-2 py-1 text-xs text-slate-700'
+                      onClick={() => handleOpenSuggestionModal(item)}
+                      disabled={isSuggestionAdded(item.word)}
+                      className='rounded-lg border border-slate-200 bg-slate-100 px-2 py-1 text-left text-xs text-slate-700 transition hover:border-primary/50 hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-70'
                       title={item.reason}
                     >
-                      {item.word}
-                    </span>
+                      <span className='font-semibold'>
+                        {isSuggestionAdded(item.word) ? '✓ ' : '+ '}
+                        {item.word}
+                      </span>
+                      {item.translation && (
+                        <span className='ml-1 text-slate-500'>· {item.translation}</span>
+                      )}
+                    </button>
                   ))}
                 </div>
               </div>
@@ -939,6 +1000,23 @@ export function PregunticaView({ config, cards }: PregunticaViewProps) {
           )}
         </div>
       )}
+
+      <AddIcaSuggestionModal
+        open={suggestionModalOpen}
+        onOpenChange={setSuggestionModalOpen}
+        suggestion={selectedSuggestion}
+        config={config}
+        cards={cards}
+        setCards={setCards}
+        onWordAdded={onWordAdded}
+        onAdded={(word) => {
+          setAddedSuggestionWords((current) => {
+            const normalized = normalizeComparableText(word)
+            if (current.map(normalizeComparableText).includes(normalized)) return current
+            return [...current, word]
+          })
+        }}
+      />
     </section>
   )
 }

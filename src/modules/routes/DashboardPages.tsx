@@ -221,12 +221,17 @@ export function GamesIcaPage() {
 }
 
 export function PregunticaPage() {
-  const { config, cards } = useDashboardContext()
+  const { config, cards, setCards, handleWordAdded } = useDashboardContext()
   if (!config) return null
 
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.gamesIca}>
-      <PregunticaView config={config} cards={cards} />
+      <PregunticaView
+        config={config}
+        cards={cards}
+        setCards={setCards}
+        onWordAdded={handleWordAdded}
+      />
     </PageLayout>
   )
 }

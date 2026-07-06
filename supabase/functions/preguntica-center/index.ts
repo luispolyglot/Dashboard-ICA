@@ -61,6 +61,7 @@ type OpenAiTranscriptionResponse = {
 
 type SuggestionWord = {
   word: string
+  translation: string
   reason: string
 }
 
@@ -245,9 +246,10 @@ function parseFeedback(raw: string | null): FeedbackPayload | null {
         .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
         .map((item) => ({
           word: typeof item.word === 'string' ? item.word.trim() : '',
+          translation: typeof item.translation === 'string' ? item.translation.trim() : '',
           reason: typeof item.reason === 'string' ? item.reason.trim() : '',
         }))
-        .filter((item) => item.word && item.reason)
+        .filter((item) => item.word && item.translation && item.reason)
         .slice(0, 8)
       : []
 
@@ -277,9 +279,10 @@ function parseSuggestions(raw: string | null): SuggestionWord[] {
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
       .map((item) => ({
         word: typeof item.word === 'string' ? item.word.trim() : '',
+        translation: typeof item.translation === 'string' ? item.translation.trim() : '',
         reason: typeof item.reason === 'string' ? item.reason.trim() : '',
       }))
-      .filter((item) => item.word && item.reason)
+      .filter((item) => item.word && item.translation && item.reason)
       .slice(0, 8)
   } catch {
     return []
@@ -302,11 +305,12 @@ function buildFeedbackPrompt(input: {
     `Words the learner should try to use: ${wordsBlock}`,
     'Analyze the learner response and give clear, concise coaching in native language.',
     'Output STRICT JSON only with shape:',
-    '{"score":0-10,"naturalness":"...","corrections":[{"original":"...","suggestion":"...","reason":"..."}],"coachReply":"...","suggestedIcaWords":[{"word":"...","reason":"..."}]}',
+    '{"score":0-10,"naturalness":"...","corrections":[{"original":"...","suggestion":"...","reason":"..."}],"coachReply":"...","suggestedIcaWords":[{"word":"...","translation":"...","reason":"..."}]}',
     'Rules:',
     '- score from 0 to 10',
     '- corrections max 5',
     '- suggestedIcaWords max 8',
+    '- translation must be in learner native language',
     '- keep suggestions concrete and actionable',
     '',
     'Learner response:',
@@ -531,7 +535,8 @@ async function refreshSuggestions(
       `Current ICA words: ${icaWords.join(', ') || 'none'}`,
       'Give 4 to 8 alternative ICA words the learner could use to improve the response.',
       'Return STRICT JSON only with shape:',
-      '{"suggestedIcaWords":[{"word":"...","reason":"..."}]}',
+      '{"suggestedIcaWords":[{"word":"...","translation":"...","reason":"..."}]}',
+      `translation must be in: ${nativeLang}`,
       '',
       'Learner response:',
       transcript,

@@ -82,6 +82,7 @@ export type PregunticaWeekStatus = {
 
 export type PregunticaWordSuggestion = {
   word: string
+  translation: string | null
   reason: string
 }
 
@@ -607,6 +608,7 @@ function parseFeedback(raw: unknown): PregunticaFeedback | null {
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
       .map((item) => ({
         word: typeof item.word === 'string' ? item.word : '',
+        translation: typeof item.translation === 'string' ? item.translation : null,
         reason: typeof item.reason === 'string' ? item.reason : '',
       }))
       .filter((item) => item.word && item.reason)
@@ -627,6 +629,7 @@ function parseSuggestionWords(raw: unknown): PregunticaWordSuggestion[] {
     .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
     .map((item) => ({
       word: typeof item.word === 'string' ? item.word : '',
+      translation: typeof item.translation === 'string' ? item.translation : null,
       reason: typeof item.reason === 'string' ? item.reason : '',
     }))
     .filter((item) => item.word && item.reason)
