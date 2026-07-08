@@ -104,6 +104,7 @@ export type PregunticaAttempt = {
   questionId: string | null
   questionTranslation: string | null
   attemptNumber: number
+  attemptKind: 'weekly' | 'token_unlock'
   wordMode: string
   questionText: string | null
   icaWords: string[]
@@ -374,6 +375,7 @@ function mapAttempt(row: RpcAttemptRow): PregunticaAttempt {
     questionId: row.question_id,
     questionTranslation: null,
     attemptNumber: Number(row.attempt_number || 1),
+    attemptKind: row.attempt_kind,
     wordMode: row.word_mode || 'mixed',
     questionText: row.question_text,
     icaWords: parseWords(row.ica_words),

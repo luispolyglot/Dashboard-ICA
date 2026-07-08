@@ -80,18 +80,6 @@ function getModeLabel(mode: string): string {
   return mode
 }
 
-function getUnlockLabel(source: string | null): string {
-  if (!source) return 'Sin desbloquear'
-  if (source === 'progress') return 'Progreso'
-  if (source === 'tokens') return 'Fichas'
-  if (source === 'manual') return 'Manual'
-  return source
-}
-
-function getAttemptKindLabel(kind: 'weekly' | 'token_unlock'): string {
-  return kind === 'token_unlock' ? 'Canje de fichas' : 'Reto semanal'
-}
-
 function normalizeComparableText(value: string): string {
   return value.normalize('NFKC').trim().toLowerCase()
 }
@@ -183,8 +171,6 @@ function AttemptContent({
           {getStatusLabel(attempt.status)}
         </span>
       </div>
-
-      <p className='mt-1 text-xs text-muted-foreground'>{formatDate(attempt.createdAt)}</p>
 
       {attempt.icaWords.length > 0 && (
         <div className='mt-3'>
@@ -460,19 +446,22 @@ export function PregunticaHistoryView({
                   </p>
                 )}
                 <p className='mt-1 text-xs text-muted-foreground'>
-                  Semana {card.weekStart} → {card.weekEnd} · {card.timezone} · Desbloqueo:{' '}
-                  {getUnlockLabel(card.unlockedVia)} · {card.activationWordsCount}/
-                  {card.requiredActivationWords} palabras
+                  Semana {card.weekStart} → {card.weekEnd} · Creada: {formatDate(card.createdAt)} · {card.timezone}
                 </p>
-                <p className='mt-1 text-xs text-muted-foreground'>Creada: {formatDate(card.createdAt)}</p>
               </div>
               <div className='flex flex-col items-end gap-1'>
                 <span className='rounded-full bg-muted px-2.5 py-1 text-xs'>
                   {card.completedAt ? 'Completada' : card.isUnlocked ? 'Desbloqueada' : 'Bloqueada'}
                 </span>
-                <span className='rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground'>
-                  {getAttemptKindLabel(card.attempt.attemptKind)}
-                </span>
+                {card.attempt.attemptKind === 'token_unlock' ? (
+                  <span className='rounded-full border border-emerald-300/50 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300'>
+                    Canje de fichas
+                  </span>
+                ) : (
+                  <span className='rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary'>
+                    Reto semanal
+                  </span>
+                )}
               </div>
             </div>
 

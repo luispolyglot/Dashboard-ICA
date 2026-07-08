@@ -672,6 +672,7 @@ export function PregunticaView({
   const step3Completed = Boolean(recordedBlob)
   const step4Enabled = Boolean(recordedBlob || feedback)
   const step4Completed = Boolean(feedback)
+  const isPlusAttempt = activeAttempt?.attemptKind === 'token_unlock'
   const analysisAttemptsLeft = Math.max(0, MAX_ANALYSIS_ATTEMPTS - analysisAttemptsUsed)
   const canAnalyzeCurrentAudio =
     analysisReady && analysisAttemptsLeft > 0 && !working
@@ -1179,7 +1180,7 @@ export function PregunticaView({
                 disabled={!activeAttempt || working}
                 className='mt-4 text-sm font-semibold'
               >
-                Finalizar PreguntICA semanal
+                {isPlusAttempt ? 'Finalizar PreguntICA Plus' : 'Finalizar PreguntICA semanal'}
               </Button>
               </div>
             )}
