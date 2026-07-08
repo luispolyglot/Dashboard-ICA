@@ -107,7 +107,7 @@ export function ManagePregunticaQuestionsView() {
       )
       setEditingId(null)
       setEditingValue('')
-      setFeedback('Pregunta actualizada. Se reinició cache de traducciones para esa entrada.')
+      setFeedback('Pregunta actualizada. Se reinició caché de traducciones para esa entrada.')
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : 'No se pudo actualizar la pregunta')
     } finally {
@@ -120,7 +120,7 @@ export function ManagePregunticaQuestionsView() {
       <div className='mb-6'>
         <h2 className='mb-1 font-serif text-3xl font-bold'>Preguntas PreguntICA</h2>
         <p className='text-sm text-muted-foreground'>
-          Banco en español. La traducción al idioma objetivo se cachea automáticamente.
+          Banco en español. La traducción al idioma objetivo se almacena en caché automáticamente.
         </p>
       </div>
 

@@ -20,13 +20,10 @@ export function GamesIcaView({
 
   return (
     <section className='mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 pb-24 pt-6 md:pb-8'>
-      <div className='relative overflow-hidden rounded-[24px] border border-slate-800 bg-[linear-gradient(160deg,#ffffff,#eef3f9)] p-6 shadow-[0_14px_36px_-18px_rgba(15,23,42,0.35)] dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'>
-        <p className='text-xs font-semibold tracking-[0.22em] text-slate-500'>MODO JUEGO</p>
-        <h1 className='mt-2 font-serif text-3xl font-bold text-slate-700 md:text-4xl dark:text-slate-100'>
-          🎮 Juegos ICA
-        </h1>
-        <p className='mt-2 max-w-2xl text-sm text-slate-500 md:text-base'>
-          Elige tu forma de entrenar hoy. Refuerza tu memoria con Flashcards o
+      <div>
+        <h2 className='mb-1 font-serif text-3xl font-bold'>🎮 Juegos ICA</h2>
+        <p className='text-sm text-muted-foreground'>
+          Elige tu forma de entrenar hoy: refuerza tu memoria con Flashcards o
           práctica expresión real con PreguntICA.
         </p>
       </div>
@@ -41,7 +38,9 @@ export function GamesIcaView({
           <p className='text-3xl' aria-hidden='true'>
             📚
           </p>
-          <h2 className='mt-5 font-serif text-2xl font-bold text-slate-700 dark:text-slate-100'>Flashcards</h2>
+          <h2 className='mt-5 font-serif text-2xl font-bold text-slate-700 dark:text-slate-100'>
+            Flashcards
+          </h2>
           <p className='mt-1 text-sm text-slate-500'>
             Repetición espaciada para consolidar tu baúl ICA.
           </p>
@@ -61,7 +60,9 @@ export function GamesIcaView({
           <p className='text-3xl' aria-hidden='true'>
             {pregunticaUnlocked ? '🎙️' : '🔒'}
           </p>
-          <h2 className='mt-5 font-serif text-2xl font-bold text-slate-700 dark:text-slate-100'>PreguntICA</h2>
+          <h2 className='mt-5 font-serif text-2xl font-bold text-slate-700 dark:text-slate-100'>
+            PreguntICA
+          </h2>
           <p className='mt-1 text-sm text-slate-500'>
             Responde una pregunta semanal usando tus palabras ICA.
           </p>
