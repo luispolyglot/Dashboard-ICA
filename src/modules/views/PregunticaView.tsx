@@ -35,6 +35,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 type PregunticaViewProps = {
   config: AppConfig
@@ -50,14 +56,6 @@ const WORD_MODE_OPTIONS = [
   { key: 'occasional', label: 'Ocasional' },
   { key: 'rare', label: 'Raro' },
 ]
-
-const WORD_MODE_TONE: Record<string, string> = {
-  mixed: 'border-sky-500 text-sky-400 bg-sky-500/10',
-  vital: 'border-blue-500 text-blue-400 bg-blue-500/10',
-  frequent: 'border-emerald-500 text-emerald-400 bg-emerald-500/10',
-  occasional: 'border-amber-500 text-amber-400 bg-amber-500/10',
-  rare: 'border-orange-500 text-orange-400 bg-orange-500/10',
-}
 
 const WORD_MODE_DOT: Record<string, string> = {
   mixed: 'bg-sky-400',
@@ -195,7 +193,7 @@ export function PregunticaView({
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [countdownLabel, setCountdownLabel] = useState('-')
   const [plusModalOpen, setPlusModalOpen] = useState(false)
-  const [modeSelectedForNewAttempt, setModeSelectedForNewAttempt] = useState(false)
+  const [selectedStartMode, setSelectedStartMode] = useState<string | null>(null)
   const [isRecording, setIsRecording] = useState(false)
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
   const [recordedDurationMs, setRecordedDurationMs] = useState(0)
@@ -216,7 +214,6 @@ export function PregunticaView({
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const startedAtRef = useRef<number | null>(null)
-  const step1Ref = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!isRecording) return
@@ -359,7 +356,7 @@ export function PregunticaView({
     setRecordingElapsedMs(0)
     setAnalysisAttemptsUsed(0)
     setAnalysisReady(false)
-    setModeSelectedForNewAttempt(false)
+    setSelectedStartMode(null)
     if (recordedUrl) {
       URL.revokeObjectURL(recordedUrl)
       setRecordedUrl(null)
@@ -368,19 +365,16 @@ export function PregunticaView({
     await refreshStatus()
   }
 
-  async function handleStartAttempt() {
+  async function handleStartAttempt(selectedMode: string) {
     if (!canStartAttempt) {
       toast.error('Todavía no puedes iniciar una nueva PreguntICA')
-      return
-    }
-    if (!modeSelectedForNewAttempt) {
-      toast.error('Primero selecciona el tipo de palabras en el paso 1')
       return
     }
 
     setWorking(true)
     try {
-      await startAttemptWorkflow(mode)
+      await startAttemptWorkflow(selectedMode)
+      setMode(selectedMode)
       toast.success('Intento PreguntICA iniciado')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo crear el intento')
@@ -427,16 +421,18 @@ export function PregunticaView({
       toast.error('No se encontró la semana para canjear fichas')
       return
     }
-    if (!modeSelectedForNewAttempt) {
-      toast.error('Primero selecciona el tipo de palabras en el paso 1')
+    if (!selectedStartMode) {
+      toast.error('Selecciona un tipo de palabras para continuar')
       return
     }
 
     setWorking(true)
     try {
       await redeemPregunticaTokensForWeek(status.weekStart)
-      await startAttemptWorkflow(mode)
+      await startAttemptWorkflow(selectedStartMode)
+      setMode(selectedStartMode)
       setPlusModalOpen(false)
+      setSelectedStartMode(null)
       toast.success('Canje realizado. PreguntICA Plus iniciada.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo canjear fichas')
@@ -665,7 +661,8 @@ export function PregunticaView({
     working || hasActiveAttempt || locked || (!hasCompletedWeek && !canStartAttempt)
   const transcriptForFeedback = latestTranscript || activeAttempt?.transcriptText || ''
   const currentStepMode = activeAttempt?.wordMode || mode
-  const step1Completed = Boolean(activeAttempt)
+  const currentStepModeLabel =
+    WORD_MODE_OPTIONS.find((option) => option.key === currentStepMode)?.label || 'Aleatorio'
   const step2Enabled = Boolean(activeAttempt)
   const step2Completed = step2Enabled && questionWasPlayed
   const step3Enabled = Boolean(activeAttempt) && questionWasPlayed
@@ -697,9 +694,14 @@ export function PregunticaView({
     setSuggestionModalOpen(true)
   }
 
-  function handleSelectMode(nextMode: string) {
-    setMode(nextMode)
-    setModeSelectedForNewAttempt(true)
+  function handleStartMenuSelect(nextMode: string) {
+    if (hasCompletedWeek) {
+      setSelectedStartMode(nextMode)
+      setPlusModalOpen(true)
+      return
+    }
+
+    void handleStartAttempt(nextMode)
   }
 
   return (
@@ -725,111 +727,32 @@ export function PregunticaView({
               ? 'Reto completado. Tu intento quedó guardado en el historial.'
               : `Cuenta atrás: ${countdownLabel}`}
           </p>
-          <Button
-            onClick={() => {
-              if (hasActiveAttempt) return
-              if (!modeSelectedForNewAttempt) {
-                step1Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                toast.info('Selecciona primero el tipo de palabras en el paso 1')
-                return
-              }
-              if (hasCompletedWeek) {
-                setPlusModalOpen(true)
-                return
-              }
-              void handleStartAttempt()
-            }}
-            disabled={ctaDisabled}
-            className='text-sm font-semibold'
-          >
-            {hasCompletedWeek ? 'Iniciar PreguntICA Plus' : 'Iniciar PreguntICA'}
-          </Button>
-        </div>
-      </div>
-
-      <div
-        ref={step1Ref}
-        className={`mt-4 rounded-2xl border border-border bg-background p-4 transition-all duration-500 ${locked ? 'opacity-55' : ''}`}
-        style={{ animation: 'preguntica-step-in 0.45s ease' }}
-      >
-          <div className='flex flex-wrap items-center justify-between gap-2'>
-            <p className='text-sm font-semibold'>1) Elige tipo de palabras</p>
-            <span className={`rounded-full border px-2 py-0.5 text-[11px] ${step1Completed ? 'border-emerald-300/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
-              {step1Completed ? '✓ Completado' : 'Paso inicial'}
-            </span>
-          </div>
-          <p className='mt-1 text-xs text-muted-foreground'>
-            {hasActiveAttempt
-              ? 'Esta PreguntICA se inició con este tipo de palabras ICA.'
-              : 'Selecciona el tipo de palabras ICA y confirma para iniciar.'}
-          </p>
-
-          <div className='mt-3 flex flex-wrap gap-2'>
-            {WORD_MODE_OPTIONS.map((option) => {
-              const selected = currentStepMode === option.key
-              return (
-                <Button
-                  key={option.key}
-                  type='button'
-                  onClick={() => handleSelectMode(option.key)}
-                  disabled={locked || hasActiveAttempt || working}
-                  variant={selected ? 'default' : 'outline'}
-                  className={`min-w-22.5 h-auto flex-1 py-2.5 ${selected ? WORD_MODE_TONE[option.key] : ''}`}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button disabled={ctaDisabled} className='text-sm font-semibold'>
+                {hasCompletedWeek ? 'Iniciar PreguntICA Plus' : 'Iniciar PreguntICA'}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end' className='w-56'>
+              {WORD_MODE_OPTIONS.map((option) => (
+                <DropdownMenuItem
+                  key={`start-mode-${option.key}`}
+                  onClick={() => handleStartMenuSelect(option.key)}
                 >
-                  <span
-                    className={`mr-1 h-1.5 w-1.5 rounded-full ${WORD_MODE_DOT[option.key]}`}
-                  />
-                  <div className='text-xs font-semibold'>{option.label}</div>
-                </Button>
-              )
-            })}
-          </div>
-          {locked ? (
-            <p className='mt-2 text-xs text-muted-foreground'>
-              Necesitas desbloquear PreguntICA desde Juegos ICA para iniciar.
-            </p>
-          ) : hasActiveAttempt ? (
-            <p className='mt-2 text-xs text-muted-foreground'>
-              Tipo bloqueado mientras este intento esté en progreso.
-            </p>
-          ) : hasCompletedWeek ? (
-            <div className='mt-3 flex flex-wrap items-center gap-2'>
-              <Button
-                onClick={() => setPlusModalOpen(true)}
-                disabled={working || !hasRedeemableTokens || !modeSelectedForNewAttempt}
-                className='text-sm font-semibold'
-              >
-                Iniciar PreguntICA Plus
-              </Button>
-              <span className='text-xs text-muted-foreground'>
-                {modeSelectedForNewAttempt
-                  ? `Tipo seleccionado: ${WORD_MODE_OPTIONS.find((item) => item.key === mode)?.label || 'Aleatorio'}`
-                  : 'Selecciona primero un tipo de palabras.'}
-              </span>
-            </div>
-          ) : (
-            <div className='mt-3 flex flex-wrap items-center gap-2'>
-              <Button
-                onClick={() => void handleStartAttempt()}
-                disabled={working || !canStartAttempt || !modeSelectedForNewAttempt}
-                className='text-sm font-semibold'
-              >
-                Iniciar PreguntICA
-              </Button>
-              <span className='text-xs text-muted-foreground'>
-                {modeSelectedForNewAttempt
-                  ? `Tipo seleccionado: ${WORD_MODE_OPTIONS.find((item) => item.key === mode)?.label || 'Aleatorio'}`
-                  : 'Selecciona primero un tipo de palabras.'}
-              </span>
-            </div>
-          )}
+                  <span className={`h-1.5 w-1.5 rounded-full ${WORD_MODE_DOT[option.key]}`} />
+                  {option.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {showAttemptSteps && (
       <div className='mt-4 space-y-4' style={{ animation: 'preguntica-step-in 0.55s ease' }}>
           <div className={`rounded-2xl border border-border bg-background p-4 transition-all duration-500 ${!step2Enabled ? 'opacity-55' : ''}`}>
             <div className='flex flex-wrap items-center justify-between gap-2'>
-              <p className='text-sm font-semibold'>2) Escucha y descubre la pregunta</p>
+              <p className='text-sm font-semibold'>1) Escucha y descubre la pregunta</p>
               <span className={`rounded-full border px-2 py-0.5 text-[11px] ${step2Completed ? 'border-emerald-300/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
                 {step2Completed ? '✓ Completado' : questionVisible ? 'Pregunta revelada' : 'Pendiente de escucha'}
               </span>
@@ -838,8 +761,9 @@ export function PregunticaView({
               Primero entrena el oído: la pregunta se muestra escrita después de escucharla
               al menos una vez.
             </p>
+            <p className='mt-2 text-xs text-muted-foreground'>Modo ICA seleccionado: {currentStepModeLabel}</p>
             {!step2Enabled && (
-              <p className='mt-2 text-xs text-muted-foreground'>Completa el paso 1 para habilitar este paso.</p>
+              <p className='mt-2 text-xs text-muted-foreground'>Inicia una PreguntICA para habilitar este paso.</p>
             )}
             <div className='mt-3 flex flex-wrap gap-2'>
               <SpeakButton
@@ -943,13 +867,13 @@ export function PregunticaView({
 
           <div className={`rounded-2xl border border-border bg-background p-4 transition-all duration-500 ${!step3Enabled ? 'opacity-55' : ''}`}>
             <div className='flex flex-wrap items-center justify-between gap-2'>
-              <p className='text-sm font-semibold'>3) Graba tu respuesta</p>
+              <p className='text-sm font-semibold'>2) Graba tu respuesta</p>
               <span className={`rounded-full border px-2 py-0.5 text-[11px] ${step3Completed ? 'border-emerald-300/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
                 {step3Completed ? '✓ Completado' : recordedBlob ? 'Listo para analizar' : 'Sin grabación'}
               </span>
             </div>
             {!step3Enabled && (
-              <p className='mt-2 text-xs text-muted-foreground'>Completa el paso 1 para habilitar este paso.</p>
+              <p className='mt-2 text-xs text-muted-foreground'>Escucha la pregunta al menos una vez para habilitar este paso.</p>
             )}
             <div className='mt-3 rounded-xl border border-border bg-muted/20 p-3'>
               <div className='flex flex-wrap items-center gap-3'>
@@ -1019,7 +943,7 @@ export function PregunticaView({
             style={{ animation: step4JustEnabled ? 'preguntica-step-in 0.45s ease' : undefined }}
           >
             <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
-              <p className='text-sm font-semibold'>4) Tu feedback</p>
+              <p className='text-sm font-semibold'>3) Tu feedback</p>
               <span className={`rounded-full border px-2 py-0.5 text-[11px] ${step4Completed ? 'border-emerald-300/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
                 {step4Completed ? '✓ Completado' : isAnalyzing ? 'Analizando...' : 'Pendiente'}
               </span>
@@ -1188,7 +1112,13 @@ export function PregunticaView({
         </div>
       )}
 
-      <Dialog open={plusModalOpen} onOpenChange={setPlusModalOpen}>
+      <Dialog
+        open={plusModalOpen}
+        onOpenChange={(open) => {
+          setPlusModalOpen(open)
+          if (!open) setSelectedStartMode(null)
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Iniciar PreguntICA Plus</DialogTitle>
@@ -1206,6 +1136,12 @@ export function PregunticaView({
                 ? 'Tienes fichas suficientes para canjear ahora.'
                 : 'Necesitas 2 fichas para habilitar PreguntICA Plus.'}
             </p>
+            {selectedStartMode && (
+              <p className='mt-1 text-xs text-muted-foreground'>
+                Tipo seleccionado:{' '}
+                {WORD_MODE_OPTIONS.find((item) => item.key === selectedStartMode)?.label || 'Aleatorio'}
+              </p>
+            )}
           </div>
 
           <DialogFooter>
@@ -1220,7 +1156,7 @@ export function PregunticaView({
             <Button
               type='button'
               onClick={() => void handleRedeemAndRetry()}
-              disabled={working || hasActiveAttempt || !hasRedeemableTokens || !modeSelectedForNewAttempt}
+              disabled={working || hasActiveAttempt || !hasRedeemableTokens || !selectedStartMode}
             >
               Canjear
             </Button>
