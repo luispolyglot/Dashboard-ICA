@@ -45,6 +45,8 @@ type AudioRow = {
   storage_path: string
   mime_type: string | null
   status: string
+  analysis_score?: number | null
+  analysis_payload?: Record<string, unknown> | null
 }
 
 type AnthropicTextBlock = {
@@ -530,7 +532,11 @@ async function processAttemptAudio(
 
   await adminClient
     .from('preguntica_attempt_audios')
-    .update({ status: 'ready' })
+    .update({
+      status: 'ready',
+      analysis_score: parsed.score,
+      analysis_payload: parsed as unknown as Record<string, unknown>,
+    })
     .eq('id', audio.id)
 
   return jsonResponse(200, {

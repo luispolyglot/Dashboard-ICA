@@ -168,18 +168,12 @@ function AttemptContent({
   onSuggestionClick: (suggestion: PregunticaWordSuggestion) => void
   isSuggestionAdded: (word: string) => boolean
 }) {
-  const transcriptForFeedback = attempt.transcriptText || attempt.responseText || ''
   const analysisAudios = [...attempt.audios].sort((a, b) => {
     const aTime = new Date(a.createdAt).getTime()
     const bTime = new Date(b.createdAt).getTime()
     if (Number.isNaN(aTime) || Number.isNaN(bTime)) return 0
     return aTime - bTime
   })
-  const icaUsage = attempt.icaWords.map((word) => ({
-    word,
-    used: textIncludesWord(transcriptForFeedback, word),
-  }))
-  const usedIcaCount = icaUsage.filter((item) => item.used).length
 
   return (
     <article className='rounded-xl border border-border/80 bg-background p-4'>
@@ -208,81 +202,6 @@ function AttemptContent({
         </div>
       )}
 
-      {attempt.transcriptText && (
-        <div className='mt-3 rounded-lg border border-border bg-muted/30 p-2'>
-          <p className='text-xs font-semibold text-muted-foreground'>Transcripción</p>
-          <p className='mt-1 text-sm'>{attempt.transcriptText}</p>
-          <p className='mt-1 text-[11px] text-muted-foreground'>
-            {attempt.responseCharCount || 0} caracteres
-          </p>
-        </div>
-      )}
-
-      {attempt.feedback && (
-        <div className='mt-3 rounded-lg border border-border bg-[linear-gradient(165deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-3'>
-          <div className='flex flex-wrap items-center gap-3'>
-            <p className='font-serif text-2xl font-bold text-amber-500'>
-              {attempt.feedback.score.toFixed(1)}
-              <span className='ml-1 text-sm font-medium text-muted-foreground'>/10</span>
-            </p>
-            <div className='h-2 min-w-28 flex-1 overflow-hidden rounded-full bg-muted/70'>
-              <i
-                className='block h-full rounded-full bg-gradient-to-r from-amber-400 to-yellow-300'
-                style={{ width: `${Math.max(0, Math.min(100, attempt.feedback.score * 10))}%` }}
-              />
-            </div>
-            <p className='text-xs font-semibold tracking-wide text-muted-foreground'>Naturalidad</p>
-          </div>
-          <p className='mt-1 text-sm text-muted-foreground'>{attempt.feedback.naturalness}</p>
-
-          {icaUsage.length > 0 && (
-            <div className='mt-3'>
-              <p className='text-xs font-semibold text-muted-foreground'>
-                Palabras objetivo usadas · {usedIcaCount}/{icaUsage.length}
-              </p>
-              <div className='mt-1.5 flex flex-wrap gap-1.5'>
-                {icaUsage.map((item) => (
-                  <span
-                    key={`${attempt.id}-${item.word}-used`}
-                    className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
-                      item.used
-                        ? 'border-emerald-300/60 bg-emerald-100/70 text-emerald-900 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200'
-                        : 'border-border bg-muted/40 text-muted-foreground'
-                    }`}
-                  >
-                    {item.used ? '✓ ' : ''}
-                    {item.word}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {attempt.feedback.corrections.length > 0 && (
-            <ul className='mt-3 space-y-2 text-sm'>
-              {attempt.feedback.corrections.map((item, index) => (
-                <li key={`${attempt.id}-${index}-correction`} className='rounded-lg border border-border bg-background/70 p-2'>
-                  {isSameCorrection(item.original, item.suggestion) ? (
-                    <span className='font-semibold text-emerald-500'>✓ {item.suggestion}</span>
-                  ) : (
-                    <>
-                      <span className='font-semibold text-red-500 line-through'>{item.original}</span>
-                      {' '}→{' '}
-                      <span className='font-semibold text-emerald-500'>{item.suggestion}</span>
-                    </>
-                  )}
-                  <div className='text-xs text-muted-foreground'>{item.reason}</div>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <div className='mt-3 rounded-lg border border-amber-400/30 bg-amber-500/10 p-3'>
-            <p className='text-sm text-foreground/90'>{attempt.feedback.coachReply}</p>
-          </div>
-        </div>
-      )}
-
       {attempt.errorMessage && (
         <p className='mt-3 rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-800'>
           {attempt.errorMessage}
@@ -294,22 +213,124 @@ function AttemptContent({
           <p className='text-xs font-semibold text-muted-foreground'>
             Intentos de análisis ({analysisAudios.length}/3)
           </p>
-          {analysisAudios.map((audio, index) => (
-            <div key={audio.id} className='rounded-lg border border-border p-2'>
-              <div className='mb-1 flex items-center justify-between gap-2'>
-                <span className='text-xs font-semibold'>Intento {index + 1}</span>
-                <span className='text-xs text-muted-foreground'>
-                  {formatDate(audio.createdAt)} · {formatDuration(audio.durationMs)}
-                </span>
-                <span className='text-xs text-muted-foreground'>{getStatusLabel(audio.status)}</span>
-              </div>
-              {audio.signedUrl ? (
-                <audio controls src={audio.signedUrl} className='w-full' />
-              ) : (
-                <p className='text-xs text-muted-foreground'>No se pudo cargar el audio</p>
-              )}
-            </div>
-          ))}
+          <Accordion type='multiple' className='space-y-2'>
+            {analysisAudios.map((audio, index) => {
+              const transcript = audio.transcriptionText || ''
+              const usage = attempt.icaWords.map((word) => ({
+                word,
+                used: textIncludesWord(transcript, word),
+              }))
+              const usedCount = usage.filter((item) => item.used).length
+
+              return (
+                <AccordionItem
+                  key={audio.id}
+                  value={audio.id}
+                  className='rounded-lg border border-border bg-background px-3'
+                >
+                  <AccordionTrigger className='py-3 hover:no-underline'>
+                    <div className='flex w-full flex-wrap items-center gap-2 pr-2'>
+                      <span className='font-medium'>Análisis {index + 1}</span>
+                      <span className='text-[11px] text-muted-foreground'>
+                        {formatDate(audio.createdAt)} · {formatDuration(audio.durationMs)}
+                      </span>
+                      {audio.feedback && (
+                        <span className='rounded-full border border-amber-300/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-600 dark:text-amber-300'>
+                          {audio.feedback.score.toFixed(1)}/10
+                        </span>
+                      )}
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className='pb-3'>
+                    <div className='space-y-3'>
+                      {audio.signedUrl ? (
+                        <audio controls src={audio.signedUrl} className='w-full' />
+                      ) : (
+                        <p className='text-xs text-muted-foreground'>No se pudo cargar el audio</p>
+                      )}
+
+                      {audio.transcriptionText && (
+                        <div className='rounded-lg border border-border bg-muted/30 p-2'>
+                          <p className='text-xs font-semibold text-muted-foreground'>Transcripción</p>
+                          <p className='mt-1 text-sm'>{audio.transcriptionText}</p>
+                          <p className='mt-1 text-[11px] text-muted-foreground'>
+                            {audio.transcriptionText.length} caracteres
+                          </p>
+                        </div>
+                      )}
+
+                      {audio.feedback && (
+                        <div className='rounded-lg border border-border bg-[linear-gradient(165deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-3'>
+                          <div className='flex flex-wrap items-center gap-3'>
+                            <p className='font-serif text-2xl font-bold text-amber-500'>
+                              {audio.feedback.score.toFixed(1)}
+                              <span className='ml-1 text-sm font-medium text-muted-foreground'>/10</span>
+                            </p>
+                            <div className='h-2 min-w-28 flex-1 overflow-hidden rounded-full bg-muted/70'>
+                              <i
+                                className='block h-full rounded-full bg-gradient-to-r from-amber-400 to-yellow-300'
+                                style={{ width: `${Math.max(0, Math.min(100, audio.feedback.score * 10))}%` }}
+                              />
+                            </div>
+                            <p className='text-xs font-semibold tracking-wide text-muted-foreground'>
+                              Naturalidad
+                            </p>
+                          </div>
+                          <p className='mt-1 text-sm text-muted-foreground'>{audio.feedback.naturalness}</p>
+
+                          {usage.length > 0 && (
+                            <div className='mt-3'>
+                              <p className='text-xs font-semibold text-muted-foreground'>
+                                Palabras objetivo usadas · {usedCount}/{usage.length}
+                              </p>
+                              <div className='mt-1.5 flex flex-wrap gap-1.5'>
+                                {usage.map((item) => (
+                                  <span
+                                    key={`${audio.id}-${item.word}-used`}
+                                    className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
+                                      item.used
+                                        ? 'border-emerald-300/60 bg-emerald-100/70 text-emerald-900 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200'
+                                        : 'border-border bg-muted/40 text-muted-foreground'
+                                    }`}
+                                  >
+                                    {item.used ? '✓ ' : ''}
+                                    {item.word}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {audio.feedback.corrections.length > 0 && (
+                            <ul className='mt-3 space-y-2 text-sm'>
+                              {audio.feedback.corrections.map((item, corrIndex) => (
+                                <li key={`${audio.id}-${corrIndex}-correction`} className='rounded-lg border border-border bg-background/70 p-2'>
+                                  {isSameCorrection(item.original, item.suggestion) ? (
+                                    <span className='font-semibold text-emerald-500'>✓ {item.suggestion}</span>
+                                  ) : (
+                                    <>
+                                      <span className='font-semibold text-red-500 line-through'>{item.original}</span>
+                                      {' '}→{' '}
+                                      <span className='font-semibold text-emerald-500'>{item.suggestion}</span>
+                                    </>
+                                  )}
+                                  <div className='text-xs text-muted-foreground'>{item.reason}</div>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+
+                          <div className='mt-3 rounded-lg border border-amber-400/30 bg-amber-500/10 p-3'>
+                            <p className='text-sm text-foreground/90'>{audio.feedback.coachReply}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              )
+            })}
+          </Accordion>
         </div>
       )}
 
@@ -455,31 +476,13 @@ export function PregunticaHistoryView({
               </div>
             </div>
 
-            <Accordion type='single' collapsible className='mt-4'>
-              <AccordionItem
-                value={card.attempt.id}
-                className='rounded-xl border border-border bg-background px-3'
-              >
-                <AccordionTrigger className='py-3 hover:no-underline'>
-                  <div className='flex w-full flex-wrap items-center gap-2 pr-2'>
-                    <span className='font-medium'>Ver detalle</span>
-                    <span className='rounded-full bg-muted px-2 py-0.5 text-[11px]'>
-                      {getStatusLabel(card.attempt.status)}
-                    </span>
-                    <span className='text-[11px] text-muted-foreground'>
-                      Análisis: {card.attempt.retryCount}/3
-                    </span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className='pb-3'>
-                  <AttemptContent
-                    attempt={card.attempt}
-                    onSuggestionClick={handleOpenSuggestionModal}
-                    isSuggestionAdded={isSuggestionAdded}
-                  />
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
+            <div className='mt-4'>
+              <AttemptContent
+                attempt={card.attempt}
+                onSuggestionClick={handleOpenSuggestionModal}
+                isSuggestionAdded={isSuggestionAdded}
+              />
+            </div>
           </section>
         ))}
       </div>

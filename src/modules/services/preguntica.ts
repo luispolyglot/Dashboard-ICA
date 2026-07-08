@@ -140,6 +140,8 @@ export type PregunticaHistoryAudio = {
   sizeBytes: number | null
   status: string
   transcriptionText: string | null
+  analysisScore: number | null
+  feedback: PregunticaFeedback | null
   createdAt: string
 }
 
@@ -205,6 +207,8 @@ type PregunticaAttemptAudioRow = {
   size_bytes: number | null
   status: string
   transcription_text: string | null
+  analysis_score: number | null
+  analysis_payload: unknown
   created_at: string
 }
 
@@ -747,7 +751,7 @@ export async function fetchPregunticaHistory(
       client
         .from('preguntica_attempt_audios')
         .select(
-          'id, preguntica_attempt_id, storage_path, duration_ms, mime_type, size_bytes, status, transcription_text, created_at',
+          'id, preguntica_attempt_id, storage_path, duration_ms, mime_type, size_bytes, status, transcription_text, analysis_score, analysis_payload, created_at',
         )
         .in('preguntica_attempt_id', attemptIds)
         .order('created_at', { ascending: false }),
@@ -795,6 +799,8 @@ export async function fetchPregunticaHistory(
           sizeBytes: audio.size_bytes,
           status: audio.status,
           transcriptionText: audio.transcription_text,
+          analysisScore: typeof audio.analysis_score === 'number' ? audio.analysis_score : null,
+          feedback: parseFeedback(audio.analysis_payload),
           createdAt: audio.created_at,
         })
 
