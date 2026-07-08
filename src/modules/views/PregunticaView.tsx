@@ -202,6 +202,7 @@ export function PregunticaView({
   const [recordedUrl, setRecordedUrl] = useState<string | null>(null)
   const [analysisAttemptsUsed, setAnalysisAttemptsUsed] = useState(0)
   const [analysisReady, setAnalysisReady] = useState(false)
+  const [step4JustEnabled, setStep4JustEnabled] = useState(false)
   const [questionWasPlayed, setQuestionWasPlayed] = useState(false)
   const [listenCount, setListenCount] = useState(0)
   const [questionVisible, setQuestionVisible] = useState(false)
@@ -228,6 +229,17 @@ export function PregunticaView({
       window.clearInterval(timer)
     }
   }, [isRecording])
+
+  useEffect(() => {
+    if (!analysisReady) return
+    setStep4JustEnabled(true)
+    const timer = window.setTimeout(() => {
+      setStep4JustEnabled(false)
+    }, 520)
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [analysisReady])
 
   const wordTranslationMap = useMemo(() => {
     const map = new Map<string, string>()
@@ -635,12 +647,11 @@ export function PregunticaView({
   const step2Completed = step2Enabled && questionWasPlayed
   const step3Enabled = Boolean(activeAttempt) && questionWasPlayed
   const step3Completed = Boolean(recordedBlob)
-  const step4Visible = Boolean(recordedBlob || feedback)
-  const step4Enabled = step4Visible
+  const step4Enabled = Boolean(recordedBlob || feedback)
   const step4Completed = Boolean(feedback)
   const analysisAttemptsLeft = Math.max(0, MAX_ANALYSIS_ATTEMPTS - analysisAttemptsUsed)
   const canAnalyzeCurrentAudio =
-    step4Visible && analysisReady && analysisAttemptsLeft > 0 && !working
+    analysisReady && analysisAttemptsLeft > 0 && !working
 
   const icaUsage = icaWords.map((word) => ({
     word,
@@ -664,7 +675,7 @@ export function PregunticaView({
 
   return (
     <section className='mx-auto w-full max-w-4xl px-4 pb-28 pt-6 md:pb-10'>
-      <style>{`@keyframes preguntica-wave { 0%, 100% { height: 8px; } 50% { height: 28px; } } @keyframes preguntica-step-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } } @keyframes preguntica-feedback-in { from { opacity: 0; transform: translateY(10px) scale(0.995); } to { opacity: 1; transform: translateY(0) scale(1); } }`}</style>
+      <style>{`@keyframes preguntica-wave-mid { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1.6); } } @keyframes preguntica-step-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } } @keyframes preguntica-feedback-in { from { opacity: 0; transform: translateY(10px) scale(0.995); } to { opacity: 1; transform: translateY(0) scale(1); } }`}</style>
       <div className='rounded-[24px] border border-border bg-[linear-gradient(160deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-6'>
         <div className='mb-3 flex justify-end'>
           <button
@@ -855,7 +866,7 @@ export function PregunticaView({
             <div className='flex flex-wrap items-center justify-between gap-2'>
               <p className='text-sm font-semibold'>3) Graba tu respuesta</p>
               <span className={`rounded-full border px-2 py-0.5 text-[11px] ${step3Completed ? 'border-emerald-300/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
-                {step3Completed ? '✓ Audio listo' : recordedBlob ? 'Listo para analizar' : 'Sin grabación'}
+                {step3Completed ? '✓ Completado' : recordedBlob ? 'Listo para analizar' : 'Sin grabación'}
               </span>
             </div>
             {!step3Enabled && (
@@ -882,7 +893,7 @@ export function PregunticaView({
                   </Button>
                 )}
 
-                <div className='flex h-12 min-w-52 flex-1 items-end gap-1 overflow-hidden px-1'>
+                <div className='flex h-12 min-w-52 flex-1 items-center gap-1 overflow-hidden px-1'>
                   {Array.from({ length: LIVE_BARS_COUNT }, (_, index) => {
                     const delay = index % 3 === 0 ? 0.15 : index % 3 === 1 ? 0.3 : 0
                     return (
@@ -890,9 +901,11 @@ export function PregunticaView({
                       key={`bar-${index}`}
                       className={`w-1 rounded-sm ${isRecording ? 'bg-sky-500' : 'bg-slate-300'}`}
                       style={{
-                        height: '8px',
+                        height: '20px',
+                        transformOrigin: 'center',
+                        transform: isRecording ? undefined : 'scaleY(0.35)',
                         animation: isRecording
-                          ? `preguntica-wave 1s ease-in-out ${delay}s infinite`
+                          ? `preguntica-wave-mid 1s ease-in-out ${delay}s infinite`
                           : undefined,
                       }}
                     />
@@ -922,10 +935,9 @@ export function PregunticaView({
             )}
           </div>
 
-          {step4Visible && (
           <div
             className={`rounded-2xl border border-border bg-[linear-gradient(165deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-4 transition-all duration-500 ${!step4Enabled ? 'opacity-55' : ''}`}
-            style={{ animation: 'preguntica-step-in 0.45s ease' }}
+            style={{ animation: step4JustEnabled ? 'preguntica-step-in 0.45s ease' : undefined }}
           >
             <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
               <p className='text-sm font-semibold'>4) Tu feedback</p>
@@ -1094,7 +1106,6 @@ export function PregunticaView({
               </div>
             )}
           </div>
-          )}
         </div>
         </>
       )}

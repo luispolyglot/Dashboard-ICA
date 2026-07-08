@@ -260,6 +260,52 @@ function requireSupabase() {
   return supabase
 }
 
+async function mapEdgeFunctionError(error: unknown, fallback: string): Promise<Error> {
+  const rawMessage = error instanceof Error && error.message ? error.message : fallback
+
+  let functionError = ''
+  const maybeError = error as { context?: { text?: () => Promise<string> } }
+  if (maybeError?.context?.text) {
+    try {
+      const body = await maybeError.context.text()
+      if (body) {
+        try {
+          const parsed = JSON.parse(body) as { error?: unknown }
+          if (typeof parsed.error === 'string') {
+            functionError = parsed.error
+          } else {
+            functionError = body
+          }
+        } catch {
+          functionError = body
+        }
+      }
+    } catch {
+      functionError = ''
+    }
+  }
+
+  const source = functionError || rawMessage
+
+  if (source.includes('EMPTY_TRANSCRIPTION')) {
+    return new Error('No se detectó voz en el audio. Intenta grabar de nuevo y hablar un poco más fuerte.')
+  }
+
+  if (source.includes('INVALID_RESPONSE_LENGTH')) {
+    return new Error('Tu respuesta debe tener entre 100 y 1200 caracteres para poder analizarse.')
+  }
+
+  if (source.includes('ANALYSIS_LIMIT_REACHED')) {
+    return new Error('Ya usaste los 3 análisis disponibles para esta PreguntICA.')
+  }
+
+  if (functionError) {
+    return new Error(functionError)
+  }
+
+  return new Error(rawMessage)
+}
+
 function parseWords(raw: unknown): string[] {
   if (!Array.isArray(raw)) return []
   return raw
@@ -560,7 +606,7 @@ export async function processPregunticaAttemptAudio(
     },
   )
 
-  if (error) throw error
+  if (error) throw await mapEdgeFunctionError(error, 'No se pudo analizar la respuesta')
   if (!data) throw new Error('Respuesta vacía de preguntica-center')
   return data
 }
