@@ -27,6 +27,7 @@ type PregunticaHistoryQuestionCard = {
   id: string
   questionText: string
   questionTranslation: string | null
+  createdAt: string
   weekStart: string
   weekEnd: string
   timezone: string
@@ -35,7 +36,7 @@ type PregunticaHistoryQuestionCard = {
   activationWordsCount: number
   requiredActivationWords: number
   completedAt: string | null
-  attempts: PregunticaHistoryAttempt[]
+  attempt: PregunticaHistoryAttempt
 }
 
 function formatDate(value: string | null): string {
@@ -87,6 +88,10 @@ function getUnlockLabel(source: string | null): string {
   return source
 }
 
+function getAttemptKindLabel(kind: 'weekly' | 'token_unlock'): string {
+  return kind === 'token_unlock' ? 'Canje de fichas' : 'Reto semanal'
+}
+
 function normalizeComparableText(value: string): string {
   return value.normalize('NFKC').trim().toLowerCase()
 }
@@ -128,64 +133,30 @@ function isSameCorrection(original: string, suggestion: string): boolean {
 }
 
 function toQuestionCards(weeks: PregunticaHistoryWeek[]): PregunticaHistoryQuestionCard[] {
-  return weeks.flatMap((week) => {
-    if (week.attempts.length === 0) {
-      return [
-        {
-          id: `week-${week.id}`,
-          questionText: 'Sin pregunta registrada',
-          questionTranslation: null,
-          weekStart: week.weekStart,
-          weekEnd: week.weekEnd,
-          timezone: week.timezone,
-          isUnlocked: week.isUnlocked,
-          unlockedVia: week.unlockedVia,
-          activationWordsCount: week.activationWordsCount,
-          requiredActivationWords: week.requiredActivationWords,
-          completedAt: week.completedAt,
-          attempts: [],
-        },
-      ]
-    }
-
-    const groups = new Map<string, PregunticaHistoryQuestionCard>()
-
-    week.attempts.forEach((attempt) => {
-      const rawQuestion = attempt.questionText?.trim() || ''
-      const questionText = rawQuestion || 'Sin pregunta registrada'
-      const questionKey = attempt.questionId || `text:${questionText.toLowerCase()}`
-      const key = `${week.id}:${questionKey}`
-
-      if (!groups.has(key)) {
-        groups.set(key, {
-          id: key,
-          questionText,
-          questionTranslation: attempt.questionTranslation,
-          weekStart: week.weekStart,
-          weekEnd: week.weekEnd,
-          timezone: week.timezone,
-          isUnlocked: week.isUnlocked,
-          unlockedVia: week.unlockedVia,
-          activationWordsCount: week.activationWordsCount,
-          requiredActivationWords: week.requiredActivationWords,
-          completedAt: week.completedAt,
-          attempts: [],
-        })
-      }
-
-      groups.get(key)?.attempts.push(attempt)
+  return weeks
+    .flatMap((week) =>
+      week.attempts.map((attempt) => ({
+        id: attempt.id,
+        questionText: attempt.questionText?.trim() || 'Sin pregunta registrada',
+        questionTranslation: attempt.questionTranslation,
+        createdAt: attempt.createdAt,
+        weekStart: week.weekStart,
+        weekEnd: week.weekEnd,
+        timezone: week.timezone,
+        isUnlocked: week.isUnlocked,
+        unlockedVia: week.unlockedVia,
+        activationWordsCount: week.activationWordsCount,
+        requiredActivationWords: week.requiredActivationWords,
+        completedAt: week.completedAt,
+        attempt,
+      })),
+    )
+    .sort((a, b) => {
+      const aTime = new Date(a.createdAt).getTime()
+      const bTime = new Date(b.createdAt).getTime()
+      if (Number.isNaN(aTime) || Number.isNaN(bTime)) return 0
+      return bTime - aTime
     })
-
-    return Array.from(groups.values()).map((group) => ({
-      ...group,
-      attempts: [...group.attempts].sort((a, b) => {
-        const aTime = new Date(a.createdAt).getTime()
-        const bTime = new Date(b.createdAt).getTime()
-        if (Number.isNaN(aTime) || Number.isNaN(bTime)) return 0
-        return aTime - bTime
-      }),
-    }))
-  })
 }
 
 function AttemptContent({
@@ -198,6 +169,12 @@ function AttemptContent({
   isSuggestionAdded: (word: string) => boolean
 }) {
   const transcriptForFeedback = attempt.transcriptText || attempt.responseText || ''
+  const analysisAudios = [...attempt.audios].sort((a, b) => {
+    const aTime = new Date(a.createdAt).getTime()
+    const bTime = new Date(b.createdAt).getTime()
+    if (Number.isNaN(aTime) || Number.isNaN(bTime)) return 0
+    return aTime - bTime
+  })
   const icaUsage = attempt.icaWords.map((word) => ({
     word,
     used: textIncludesWord(transcriptForFeedback, word),
@@ -312,12 +289,15 @@ function AttemptContent({
         </p>
       )}
 
-      {attempt.audios.length > 0 && (
+      {analysisAudios.length > 0 && (
         <div className='mt-4 space-y-2'>
-          <p className='text-xs font-semibold text-muted-foreground'>Audios ({attempt.audios.length})</p>
-          {attempt.audios.map((audio) => (
+          <p className='text-xs font-semibold text-muted-foreground'>
+            Intentos de análisis ({analysisAudios.length}/3)
+          </p>
+          {analysisAudios.map((audio, index) => (
             <div key={audio.id} className='rounded-lg border border-border p-2'>
               <div className='mb-1 flex items-center justify-between gap-2'>
+                <span className='text-xs font-semibold'>Intento {index + 1}</span>
                 <span className='text-xs text-muted-foreground'>
                   {formatDate(audio.createdAt)} · {formatDuration(audio.durationMs)}
                 </span>
@@ -443,6 +423,9 @@ export function PregunticaHistoryView({
       {!loading && !error && weeks.length === 0 && (
         <p className='mt-6 text-sm text-muted-foreground'>Aún no tienes PreguntICAs registradas.</p>
       )}
+      {!loading && !error && weeks.length > 0 && questionCards.length === 0 && (
+        <p className='mt-6 text-sm text-muted-foreground'>Aún no tienes PreguntICAs registradas.</p>
+      )}
 
       <div className='mt-6 space-y-4'>
         {questionCards.map((card) => (
@@ -460,44 +443,43 @@ export function PregunticaHistoryView({
                   {getUnlockLabel(card.unlockedVia)} · {card.activationWordsCount}/
                   {card.requiredActivationWords} palabras
                 </p>
+                <p className='mt-1 text-xs text-muted-foreground'>Creada: {formatDate(card.createdAt)}</p>
               </div>
-              <span className='rounded-full bg-muted px-2.5 py-1 text-xs'>
-                {card.completedAt ? 'Completada' : card.isUnlocked ? 'Desbloqueada' : 'Bloqueada'}
-              </span>
+              <div className='flex flex-col items-end gap-1'>
+                <span className='rounded-full bg-muted px-2.5 py-1 text-xs'>
+                  {card.completedAt ? 'Completada' : card.isUnlocked ? 'Desbloqueada' : 'Bloqueada'}
+                </span>
+                <span className='rounded-full border border-border px-2.5 py-1 text-[11px] text-muted-foreground'>
+                  {getAttemptKindLabel(card.attempt.attemptKind)}
+                </span>
+              </div>
             </div>
 
-            {card.attempts.length === 0 ? (
-              <p className='mt-4 text-sm text-muted-foreground'>Sin intentos en esta semana.</p>
-            ) : (
-              <Accordion type='multiple' className='mt-4 space-y-2'>
-                {card.attempts.map((attempt: PregunticaHistoryAttempt, index) => (
-                  <AccordionItem
-                    key={attempt.id}
-                    value={attempt.id}
-                    className='rounded-xl border border-border bg-background px-3'
-                  >
-                    <AccordionTrigger className='py-3 hover:no-underline'>
-                      <div className='flex w-full flex-wrap items-center gap-2 pr-2'>
-                        <span className='font-medium'>PreguntICA {index + 1}</span>
-                        <span className='rounded-full bg-muted px-2 py-0.5 text-[11px]'>
-                          {getStatusLabel(attempt.status)}
-                        </span>
-                        <span className='text-[11px] text-muted-foreground'>
-                          Análisis: {attempt.retryCount}/3
-                        </span>
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent className='pb-3'>
-                      <AttemptContent
-                        attempt={attempt}
-                        onSuggestionClick={handleOpenSuggestionModal}
-                        isSuggestionAdded={isSuggestionAdded}
-                      />
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-            )}
+            <Accordion type='single' collapsible className='mt-4'>
+              <AccordionItem
+                value={card.attempt.id}
+                className='rounded-xl border border-border bg-background px-3'
+              >
+                <AccordionTrigger className='py-3 hover:no-underline'>
+                  <div className='flex w-full flex-wrap items-center gap-2 pr-2'>
+                    <span className='font-medium'>Ver detalle</span>
+                    <span className='rounded-full bg-muted px-2 py-0.5 text-[11px]'>
+                      {getStatusLabel(card.attempt.status)}
+                    </span>
+                    <span className='text-[11px] text-muted-foreground'>
+                      Análisis: {card.attempt.retryCount}/3
+                    </span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className='pb-3'>
+                  <AttemptContent
+                    attempt={card.attempt}
+                    onSuggestionClick={handleOpenSuggestionModal}
+                    isSuggestionAdded={isSuggestionAdded}
+                  />
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </section>
         ))}
       </div>
