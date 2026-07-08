@@ -162,8 +162,23 @@ async function callWhisper(audioBlob: Blob, mimeType: string | null): Promise<Op
   form.append('model', model)
   form.append('response_format', 'json')
 
-  const file = new File([audioBlob], `preguntica.${mimeType?.includes('ogg') ? 'ogg' : 'webm'}`, {
-    type: mimeType || 'audio/webm',
+  const normalizedMime = (mimeType || '').toLowerCase()
+  const ext = normalizedMime.includes('flac')
+    ? 'flac'
+    : normalizedMime.includes('wav')
+      ? 'wav'
+      : normalizedMime.includes('mp4') || normalizedMime.includes('m4a')
+        ? 'm4a'
+        : normalizedMime.includes('mpeg') || normalizedMime.includes('mpga') || normalizedMime.includes('mp3')
+          ? 'mp3'
+          : normalizedMime.includes('oga')
+            ? 'oga'
+            : normalizedMime.includes('ogg')
+              ? 'ogg'
+              : 'webm'
+
+  const file = new File([audioBlob], `preguntica.${ext}`, {
+    type: normalizedMime || 'audio/webm',
   })
   form.append('file', file)
 

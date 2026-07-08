@@ -633,7 +633,7 @@ export function PregunticaView({
 
   return (
     <section className='mx-auto w-full max-w-4xl px-4 pb-28 pt-6 md:pb-10'>
-      <style>{`@keyframes preguntica-wave { 0%, 100% { height: 8px; } 50% { height: 28px; } } @keyframes preguntica-step-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+      <style>{`@keyframes preguntica-wave { 0%, 100% { height: 8px; } 50% { height: 28px; } } @keyframes preguntica-step-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } } @keyframes preguntica-feedback-in { from { opacity: 0; transform: translateY(10px) scale(0.995); } to { opacity: 1; transform: translateY(0) scale(1); } }`}</style>
       <div className='rounded-[24px] border border-border bg-[linear-gradient(160deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-6'>
         <div className='mb-3 flex justify-end'>
           <button
@@ -916,7 +916,7 @@ export function PregunticaView({
                 Aquí aparecerán la naturalidad, la transcripción, correcciones y sugerencias ICA una vez analizada tu respuesta.
               </p>
             ) : (
-              <>
+              <div style={{ animation: 'preguntica-feedback-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both' }}>
               <div className='flex flex-wrap items-center gap-3'>
                 <p className='font-serif text-3xl font-bold text-amber-500'>
                   {feedback.score.toFixed(1)}
@@ -1031,7 +1031,7 @@ export function PregunticaView({
               >
                 Finalizar PreguntICA semanal
               </Button>
-              </>
+              </div>
             )}
           </div>
         </div>
