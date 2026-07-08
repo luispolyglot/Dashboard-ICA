@@ -65,6 +65,14 @@ const WORD_MODE_DOT: Record<string, string> = {
   rare: 'bg-orange-400',
 }
 
+const WORD_MODE_BADGE: Record<string, string> = {
+  mixed: 'border-sky-300/60 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+  vital: 'border-blue-300/60 bg-blue-500/10 text-blue-700 dark:text-blue-300',
+  frequent: 'border-emerald-300/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  occasional: 'border-amber-300/60 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+  rare: 'border-orange-300/60 bg-orange-500/10 text-orange-700 dark:text-orange-300',
+}
+
 const MIME_CANDIDATES = [
   'audio/webm;codecs=opus',
   'audio/webm',
@@ -761,7 +769,6 @@ export function PregunticaView({
               Primero entrena el oído: la pregunta se muestra escrita después de escucharla
               al menos una vez.
             </p>
-            <p className='mt-2 text-xs text-muted-foreground'>Modo ICA seleccionado: {currentStepModeLabel}</p>
             {!step2Enabled && (
               <p className='mt-2 text-xs text-muted-foreground'>Inicia una PreguntICA para habilitar este paso.</p>
             )}
@@ -842,7 +849,14 @@ export function PregunticaView({
             </div>
 
             <div className='mt-4'>
-              <p className='text-xs font-semibold text-muted-foreground'>Palabras ICA objetivo</p>
+              <div className='flex flex-wrap items-center gap-2'>
+                <p className='text-xs font-semibold text-muted-foreground'>Palabras ICA objetivo</p>
+                <span
+                  className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${WORD_MODE_BADGE[currentStepMode] || 'border-border bg-muted/40 text-muted-foreground'}`}
+                >
+                  Modo: {currentStepModeLabel}
+                </span>
+              </div>
               {questionWasPlayed ? (
                 <div className='mt-2 flex flex-wrap gap-2'>
                   {icaWords.map((word) => (
