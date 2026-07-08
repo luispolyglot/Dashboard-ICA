@@ -27,6 +27,14 @@ import { fetchTranslation } from '../services/anthropic'
 import { AddIcaSuggestionModal } from '../components/AddIcaSuggestionModal'
 import { SpeakButton } from '../components/SpeakButton'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 type PregunticaViewProps = {
   config: AppConfig
@@ -185,6 +193,7 @@ export function PregunticaView({
   const [working, setWorking] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [countdownLabel, setCountdownLabel] = useState('-')
+  const [plusModalOpen, setPlusModalOpen] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
   const [recordedDurationMs, setRecordedDurationMs] = useState(0)
@@ -216,11 +225,6 @@ export function PregunticaView({
       window.clearInterval(timer)
     }
   }, [isRecording])
-
-  const attemptsLeft = useMemo(() => {
-    const used = Number(status?.attemptsUsed || 0)
-    return Math.max(0, 3 - used)
-  }, [status?.attemptsUsed])
 
   const wordTranslationMap = useMemo(() => {
     const map = new Map<string, string>()
@@ -299,49 +303,58 @@ export function PregunticaView({
     setTokenSummary(tokens)
   }
 
+  async function startAttemptWorkflow(selectedMode: string) {
+    const created = await createPregunticaAttempt(selectedMode)
+    const words = pickIcaWords(cards, selectedMode, config.level)
+    const selectedQuestion = await resolveQuestionForAttempt()
+
+    await savePregunticaAttemptPromptData({
+      attemptId: created.id,
+      questionId: selectedQuestion.questionId,
+      questionText: selectedQuestion.questionText,
+      icaWords: words,
+      targetLang: config.targetLang,
+      nativeLang: config.nativeLang,
+      level: config.level || 'A2',
+    })
+
+    setAttempt({
+      ...created,
+      questionId: selectedQuestion.questionId,
+      questionTranslation: selectedQuestion.questionTranslation,
+      questionText: selectedQuestion.questionText,
+      icaWords: words,
+    })
+    setQuestionText(selectedQuestion.questionText)
+    setQuestionTranslation(selectedQuestion.questionTranslation)
+    setIcaWords(words)
+    setQuestionWasPlayed(false)
+    setListenCount(0)
+    setQuestionVisible(false)
+    setTranslationVisible(false)
+    setFeedback(null)
+    setLatestTranscript(null)
+    setSuggestions([])
+    setRecordedBlob(null)
+    setRecordedDurationMs(0)
+    setRecordingElapsedMs(0)
+    if (recordedUrl) {
+      URL.revokeObjectURL(recordedUrl)
+      setRecordedUrl(null)
+    }
+
+    await refreshStatus()
+  }
+
   async function handleStartAttempt() {
+    if (!canStartAttempt) {
+      toast.error('Todavía no puedes iniciar una nueva PreguntICA')
+      return
+    }
+
     setWorking(true)
     try {
-      const created = await createPregunticaAttempt(mode)
-      const words = pickIcaWords(cards, mode, config.level)
-      const selectedQuestion = await resolveQuestionForAttempt()
-
-      await savePregunticaAttemptPromptData({
-        attemptId: created.id,
-        questionId: selectedQuestion.questionId,
-        questionText: selectedQuestion.questionText,
-        icaWords: words,
-        targetLang: config.targetLang,
-        nativeLang: config.nativeLang,
-        level: config.level || 'A2',
-      })
-
-      setAttempt({
-        ...created,
-        questionId: selectedQuestion.questionId,
-        questionTranslation: selectedQuestion.questionTranslation,
-        questionText: selectedQuestion.questionText,
-        icaWords: words,
-      })
-      setQuestionText(selectedQuestion.questionText)
-      setQuestionTranslation(selectedQuestion.questionTranslation)
-      setIcaWords(words)
-      setQuestionWasPlayed(false)
-      setListenCount(0)
-      setQuestionVisible(false)
-      setTranslationVisible(false)
-      setFeedback(null)
-      setLatestTranscript(null)
-      setSuggestions([])
-      setRecordedBlob(null)
-      setRecordedDurationMs(0)
-      setRecordingElapsedMs(0)
-      if (recordedUrl) {
-        URL.revokeObjectURL(recordedUrl)
-        setRecordedUrl(null)
-      }
-
-      await refreshStatus()
+      await startAttemptWorkflow(mode)
       toast.success('Intento PreguntICA iniciado')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo crear el intento')
@@ -392,27 +405,9 @@ export function PregunticaView({
     setWorking(true)
     try {
       await redeemPregunticaTokensForWeek(status.weekStart)
-      setAttempt(null)
-      setQuestionText('')
-      setQuestionTranslation(null)
-      setIcaWords([])
-      setQuestionWasPlayed(false)
-      setListenCount(0)
-      setQuestionVisible(false)
-      setTranslationVisible(false)
-      setFeedback(null)
-      setLatestTranscript(null)
-      setSuggestions([])
-      setRecordedBlob(null)
-      setRecordedDurationMs(0)
-      setRecordingElapsedMs(0)
-      if (recordedUrl) {
-        URL.revokeObjectURL(recordedUrl)
-        setRecordedUrl(null)
-      }
-
-      await refreshStatus()
-      toast.success('Canje realizado. Elige el tipo de palabras para iniciar la nueva PreguntICA.')
+      await startAttemptWorkflow(mode)
+      setPlusModalOpen(false)
+      toast.success('Canje realizado. PreguntICA Plus iniciada.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo canjear fichas')
     } finally {
@@ -603,9 +598,9 @@ export function PregunticaView({
   const canStartAttempt = Boolean(status?.canStart)
   const tokenBalance = tokenSummary?.balance ?? 0
   const hasRedeemableTokens = tokenBalance >= 2
-  const canUseStep1 = !locked && (!hasCompletedWeek || canStartAttempt || hasRedeemableTokens)
-  const showRedeemCard = !hasActiveAttempt && hasCompletedWeek && !canStartAttempt
-  const showCompletionMessage = hasCompletedWeek && !hasActiveAttempt
+  const showSteps = hasActiveAttempt
+  const ctaDisabled =
+    working || hasActiveAttempt || locked || (!hasCompletedWeek && !canStartAttempt)
   const transcriptForFeedback = latestTranscript || activeAttempt?.transcriptText || ''
   const currentStepMode = activeAttempt?.wordMode || mode
   const step1Completed = Boolean(activeAttempt)
@@ -653,51 +648,36 @@ export function PregunticaView({
         <h1 className='mt-2 font-serif text-3xl font-bold text-slate-700 dark:text-slate-100'>
           Tu reto semanal de expresión
         </h1>
-        <p className='mt-2 text-sm text-slate-500'>
-          Cuenta atrás: {countdownLabel}
-        </p>
+        <div className='mt-5 flex flex-wrap items-end justify-between gap-3'>
+          <p className='text-sm text-slate-500'>
+            {hasCompletedWeek
+              ? 'Reto completado. Tu intento quedó guardado en el historial.'
+              : `Cuenta atrás: ${countdownLabel}`}
+          </p>
+          <Button
+            onClick={hasCompletedWeek ? () => setPlusModalOpen(true) : handleStartAttempt}
+            disabled={ctaDisabled}
+            className='text-sm font-semibold'
+          >
+            {hasCompletedWeek ? 'Iniciar PreguntICA Plus' : 'Iniciar PreguntICA'}
+          </Button>
+        </div>
       </div>
 
-      {showCompletionMessage && (
-        <div className='mt-4 rounded-2xl border border-emerald-300/60 bg-emerald-50 p-4 text-emerald-900'>
-          <p className='text-sm font-semibold'>Reto completado 🎉</p>
-          <p className='mt-1 text-sm'>
-            Tu respuesta y feedback quedaron guardados en el historial.
-          </p>
-        </div>
-      )}
-
-      {showRedeemCard && (
-        <div className='mt-4 rounded-2xl border border-amber-300/50 bg-amber-50 p-4 text-amber-900'>
-          <p className='text-sm font-semibold'>Canje de fichas disponible</p>
-          <p className='mt-1 text-sm'>
-            Ya completaste la semanal. Canjea 2 fichas para desbloquear una nueva PreguntICA.
-          </p>
-          <div className='mt-3 flex flex-wrap items-center gap-2'>
-            <Button
-              onClick={handleRedeemAndRetry}
-              disabled={working || !hasRedeemableTokens}
-              className='text-sm font-semibold'
-            >
-              Canjear 2 fichas y desbloquear nueva PreguntICA
-            </Button>
-            <span className='text-xs text-amber-900/80'>Saldo actual: {tokenBalance} fichas</span>
-          </div>
-        </div>
-      )}
-
+      {showSteps && (
+        <>
       <div
-        className={`mt-4 rounded-2xl border border-border bg-background p-4 transition-all duration-500 ${!canUseStep1 ? 'opacity-55' : ''}`}
+        className='mt-4 rounded-2xl border border-border bg-background p-4 transition-all duration-500'
         style={{ animation: 'preguntica-step-in 0.45s ease' }}
       >
           <div className='flex flex-wrap items-center justify-between gap-2'>
             <p className='text-sm font-semibold'>1) Elige tipo de palabras</p>
             <span className={`rounded-full border px-2 py-0.5 text-[11px] ${step1Completed ? 'border-emerald-300/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
-              {step1Completed ? '✓ Completado' : hasCompletedWeek && !canStartAttempt ? 'Canje disponible' : 'Paso inicial'}
+              {step1Completed ? '✓ Completado' : 'Paso inicial'}
             </span>
           </div>
           <p className='mt-1 text-xs text-muted-foreground'>
-            Selecciona la frecuencia ICA para esta nueva pregunta.
+            Esta PreguntICA se inició con este tipo de palabras ICA.
           </p>
 
           <div className='mt-3 flex flex-wrap gap-2'>
@@ -708,7 +688,7 @@ export function PregunticaView({
                   key={option.key}
                   type='button'
                   onClick={() => setMode(option.key)}
-                  disabled={!canUseStep1 || hasActiveAttempt}
+                  disabled
                   variant={selected ? 'default' : 'outline'}
                   className={`min-w-22.5 h-auto flex-1 py-2.5 ${selected ? WORD_MODE_TONE[option.key] : ''}`}
                 >
@@ -720,32 +700,9 @@ export function PregunticaView({
               )
             })}
           </div>
-
-          {!canUseStep1 ? (
-            <p className='mt-2 text-xs text-muted-foreground'>
-              Necesitas desbloquear PreguntICA desde Juegos ICA para iniciar este paso.
-            </p>
-          ) : hasActiveAttempt ? (
-            <p className='mt-2 text-xs text-muted-foreground'>
-              Tipo bloqueado mientras haya un intento activo.
-            </p>
-          ) : !hasCompletedWeek || canStartAttempt ? (
-            <>
-              <Button
-                onClick={handleStartAttempt}
-                disabled={working || !canStartAttempt}
-                className='mt-4 text-sm font-semibold'
-              >
-                {attemptsLeft > 0
-                  ? `Empezar intento semanal (${attemptsLeft} restantes)`
-                  : 'Empezar nueva PreguntICA'}
-              </Button>
-            </>
-          ) : (
-            <p className='mt-2 text-xs text-muted-foreground'>
-              Completa el canje para poder iniciar una nueva PreguntICA.
-            </p>
-          )}
+          <p className='mt-2 text-xs text-muted-foreground'>
+            Tipo bloqueado mientras este intento esté en progreso.
+          </p>
       </div>
 
       <div className='mt-4 space-y-4' style={{ animation: 'preguntica-step-in 0.55s ease' }}>
@@ -877,12 +834,12 @@ export function PregunticaView({
               <div className='flex flex-wrap items-center gap-3'>
                 {!isRecording ? (
                   <Button
-                    variant='default'
+                    variant={recordedBlob ? 'outline' : 'default'}
                     onClick={handleStartRecording}
                     disabled={!step3Enabled || working}
                     className='rounded-full px-4 py-2 text-sm font-semibold'
                   >
-                    🎙️ Empezar grabación
+                    {recordedBlob ? '🔁 Volver a grabar' : '🎙️ Empezar grabación'}
                   </Button>
                 ) : (
                   <Button
@@ -1078,6 +1035,48 @@ export function PregunticaView({
             )}
           </div>
         </div>
+        </>
+      )}
+
+      <Dialog open={plusModalOpen} onOpenChange={setPlusModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Iniciar PreguntICA Plus</DialogTitle>
+            <DialogDescription>
+              Canjea 2 fichas para desbloquear una nueva PreguntICA esta semana.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className='rounded-xl border border-amber-300/40 bg-amber-500/10 p-3 text-sm'>
+            <p className='font-semibold text-amber-700 dark:text-amber-300'>
+              Fichas disponibles: {tokenBalance}/2
+            </p>
+            <p className='mt-1 text-xs text-muted-foreground'>
+              {hasRedeemableTokens
+                ? 'Tienes fichas suficientes para canjear ahora.'
+                : 'Necesitas 2 fichas para habilitar PreguntICA Plus.'}
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setPlusModalOpen(false)}
+              disabled={working}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type='button'
+              onClick={handleRedeemAndRetry}
+              disabled={working || hasActiveAttempt || !hasRedeemableTokens}
+            >
+              Canjear
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AddIcaSuggestionModal
         open={suggestionModalOpen}
