@@ -155,6 +155,7 @@ export type PregunticaHistoryAttempt = {
   responseText: string | null
   responseCharCount: number | null
   transcriptText: string | null
+  retryCount: number
   status: string
   errorMessage: string | null
   feedback: PregunticaFeedback | null
@@ -780,6 +781,8 @@ export async function fetchPregunticaHistory(
 
     audioByAttempt = audios.reduce<Record<string, PregunticaHistoryAudio[]>>(
       (acc, audio) => {
+        if (audio.status !== 'ready') return acc
+
         const key = audio.preguntica_attempt_id
         if (!acc[key]) acc[key] = []
 
@@ -838,6 +841,7 @@ export async function fetchPregunticaHistory(
         responseText: attemptItem.response_text,
         responseCharCount: attemptItem.response_char_count,
         transcriptText: attemptItem.transcript_text,
+        retryCount: Number(attemptItem.retry_count || 0),
         status: attemptItem.status,
         errorMessage: attemptItem.error_message,
         feedback: parseFeedback(attemptItem.analysis_payload),

@@ -538,8 +538,20 @@ export function PregunticaView({
           toast.error('Ya usaste los 3 análisis disponibles')
           return
         }
-        toast.error('La respuesta no cumple el mínimo de caracteres')
-        await refreshStatus()
+
+        if (processed.error === 'EMPTY_TRANSCRIPTION') {
+          setAnalysisReady(false)
+          toast.error('No se detectó voz en el audio. Vuelve a grabar y prueba de nuevo.')
+          return
+        }
+
+        if (processed.error === 'INVALID_RESPONSE_LENGTH') {
+          setAnalysisReady(false)
+          toast.error('Tu respuesta debe tener entre 100 y 1200 caracteres.')
+          return
+        }
+
+        toast.error('No se pudo analizar la respuesta. Graba de nuevo e inténtalo otra vez.')
         return
       }
 

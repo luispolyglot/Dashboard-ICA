@@ -478,9 +478,12 @@ export function PregunticaHistoryView({
                   >
                     <AccordionTrigger className='py-3 hover:no-underline'>
                       <div className='flex w-full flex-wrap items-center gap-2 pr-2'>
-                        <span className='font-medium'>Intento {index + 1}</span>
+                        <span className='font-medium'>PreguntICA {index + 1}</span>
                         <span className='rounded-full bg-muted px-2 py-0.5 text-[11px]'>
                           {getStatusLabel(attempt.status)}
+                        </span>
+                        <span className='text-[11px] text-muted-foreground'>
+                          Análisis: {attempt.retryCount}/3
                         </span>
                       </div>
                     </AccordionTrigger>

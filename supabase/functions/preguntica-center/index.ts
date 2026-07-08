@@ -378,6 +378,18 @@ async function getAudio(
   return data as AudioRow
 }
 
+async function cleanupFailedAudio(adminClient: any, audio: AudioRow): Promise<void> {
+  await adminClient
+    .storage
+    .from('preguntica-audios')
+    .remove([audio.storage_path])
+
+  await adminClient
+    .from('preguntica_attempt_audios')
+    .delete()
+    .eq('id', audio.id)
+}
+
 async function processAttemptAudio(
   adminClient: any,
   userId: string,
@@ -447,10 +459,15 @@ async function processAttemptAudio(
     .eq('id', attempt.id)
 
   if (!transcript) {
-    throw new Error('EMPTY_TRANSCRIPTION')
+    await cleanupFailedAudio(adminClient, audio)
+    return jsonResponse(200, {
+      ok: false,
+      error: 'EMPTY_TRANSCRIPTION',
+    })
   }
 
   if (!isLengthValid) {
+    await cleanupFailedAudio(adminClient, audio)
     return jsonResponse(200, {
       ok: false,
       error: 'INVALID_RESPONSE_LENGTH',
@@ -635,7 +652,17 @@ Deno.serve(async (req: Request) => {
 
     if ((payload as ProcessAttemptPayload).action === 'process_attempt_audio') {
       const attemptId = (payload as ProcessAttemptPayload).attemptId
+      const audioId = (payload as ProcessAttemptPayload).audioId
       if (attemptId) {
+        if (audioId) {
+          try {
+            const failedAudio = await getAudio(clients.adminClient, clients.userId, attemptId, audioId)
+            await cleanupFailedAudio(clients.adminClient, failedAudio)
+          } catch {
+            // ignore cleanup errors
+          }
+        }
+
         await clients.adminClient
           .from('preguntica_attempts')
           .update({ status: 'failed', error_code: 'PROCESS_FAILED', error_message: message })
