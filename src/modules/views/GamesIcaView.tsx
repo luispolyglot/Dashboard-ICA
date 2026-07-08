@@ -19,16 +19,17 @@ export function GamesIcaView({
   const navigate = useNavigate()
 
   return (
-    <section className='mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 pb-24 pt-6 md:pb-8'>
-      <div>
-        <h2 className='mb-1 font-serif text-3xl font-bold'>🎮 Juegos ICA</h2>
-        <p className='text-sm text-muted-foreground'>
-          Elige tu forma de entrenar hoy: refuerza tu memoria con Flashcards o
-          práctica expresión real con PreguntICA.
-        </p>
-      </div>
+    <section className='mx-auto flex w-full max-w-6xl flex-1 items-center justify-center p-4 pb-24'>
+      <div className='w-full max-w-5xl'>
+        <div>
+          <h2 className='mb-1 font-serif text-2xl font-bold lg:text-3xl'>🎮 Juegos ICA</h2>
+          <p className='text-sm text-muted-foreground'>
+            Elige tu forma de entrenar hoy: refuerza tu memoria con Flashcards o
+            práctica expresión real con PreguntICA.
+          </p>
+        </div>
 
-      <div className='mt-6 grid gap-4 md:grid-cols-2'>
+        <div className='mt-6 grid gap-4 md:grid-cols-2'>
         <button
           type='button'
           onClick={() => navigate(DASHBOARD_ROUTES.flashcards)}
@@ -73,6 +74,7 @@ export function GamesIcaView({
             {pregunticaUnlocked ? 'Desbloqueada esta semana' : pregunticaLabel}
           </p>
         </button>
+        </div>
       </div>
     </section>
   )
