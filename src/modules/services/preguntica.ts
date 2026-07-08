@@ -110,6 +110,7 @@ export type PregunticaAttempt = {
   transcriptText: string | null
   responseCharCount: number | null
   status: string
+  retryCount: number
   suggestionsRefreshCount: number
   errorMessage: string | null
 }
@@ -225,6 +226,8 @@ export type ProcessAttemptAudioResult = {
   min?: number
   max?: number
   analysis?: PregunticaFeedback
+  retriesUsed?: number
+  maxRetries?: number
 }
 
 export type RefreshSuggestionsResult = {
@@ -326,6 +329,7 @@ function mapAttempt(row: RpcAttemptRow): PregunticaAttempt {
     transcriptText: row.transcript_text,
     responseCharCount: row.response_char_count,
     status: row.status,
+    retryCount: Number(row.retry_count || 0),
     suggestionsRefreshCount: Number(row.suggestions_refresh_count || 0),
     errorMessage: row.error_message,
   }

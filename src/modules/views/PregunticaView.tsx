@@ -76,6 +76,7 @@ const MIME_CANDIDATES = [
 ]
 
 const LIVE_BARS_COUNT = 36
+const MAX_ANALYSIS_ATTEMPTS = 3
 
 function randomize<T>(items: T[]): T[] {
   const copy = [...items]
@@ -199,6 +200,8 @@ export function PregunticaView({
   const [recordedDurationMs, setRecordedDurationMs] = useState(0)
   const [recordingElapsedMs, setRecordingElapsedMs] = useState(0)
   const [recordedUrl, setRecordedUrl] = useState<string | null>(null)
+  const [analysisAttemptsUsed, setAnalysisAttemptsUsed] = useState(0)
+  const [analysisReady, setAnalysisReady] = useState(false)
   const [questionWasPlayed, setQuestionWasPlayed] = useState(false)
   const [listenCount, setListenCount] = useState(0)
   const [questionVisible, setQuestionVisible] = useState(false)
@@ -258,6 +261,8 @@ export function PregunticaView({
           if (latest?.questionText) setQuestionText(latest.questionText)
           setQuestionTranslation(latest?.questionTranslation || null)
           if (latest?.icaWords?.length) setIcaWords(latest.icaWords)
+          setAnalysisAttemptsUsed(latest?.retryCount || 0)
+          setAnalysisReady(false)
         }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'No se pudo cargar PreguntICA')
@@ -338,6 +343,8 @@ export function PregunticaView({
     setRecordedBlob(null)
     setRecordedDurationMs(0)
     setRecordingElapsedMs(0)
+    setAnalysisAttemptsUsed(0)
+    setAnalysisReady(false)
     if (recordedUrl) {
       URL.revokeObjectURL(recordedUrl)
       setRecordedUrl(null)
@@ -456,6 +463,7 @@ export function PregunticaView({
           setRecordedDurationMs(duration)
           setRecordingElapsedMs(duration)
           setRecordedUrl(nextUrl)
+          setAnalysisReady(true)
         }
         chunksRef.current = []
         setIsRecording(false)
@@ -482,6 +490,14 @@ export function PregunticaView({
       toast.error('Primero debes grabar tu respuesta')
       return
     }
+    if (!analysisReady) {
+      toast.error('Graba un nuevo audio para volver a analizar')
+      return
+    }
+    if (analysisAttemptsUsed >= MAX_ANALYSIS_ATTEMPTS) {
+      toast.error('Ya usaste los 3 análisis disponibles')
+      return
+    }
 
     setWorking(true)
     setIsAnalyzing(true)
@@ -504,6 +520,12 @@ export function PregunticaView({
       })
 
       if (!processed.ok) {
+        if (processed.error === 'ANALYSIS_LIMIT_REACHED') {
+          setAnalysisAttemptsUsed(processed.retriesUsed || MAX_ANALYSIS_ATTEMPTS)
+          setAnalysisReady(false)
+          toast.error('Ya usaste los 3 análisis disponibles')
+          return
+        }
         toast.error('La respuesta no cumple el mínimo de caracteres')
         await refreshStatus()
         return
@@ -520,9 +542,14 @@ export function PregunticaView({
               transcriptText: processed.transcript || current.transcriptText,
               responseCharCount:
                 processed.responseCharCount ?? current.responseCharCount,
+              retryCount: processed.retriesUsed ?? current.retryCount,
             }
           : current,
       )
+      setAnalysisAttemptsUsed((current) =>
+        processed.retriesUsed || Math.min(MAX_ANALYSIS_ATTEMPTS, current + 1),
+      )
+      setAnalysisReady(false)
       toast.success('Análisis completado')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo analizar la respuesta')
@@ -608,8 +635,12 @@ export function PregunticaView({
   const step2Completed = step2Enabled && questionWasPlayed
   const step3Enabled = Boolean(activeAttempt) && questionWasPlayed
   const step3Completed = Boolean(recordedBlob)
-  const step4Enabled = step3Enabled
+  const step4Visible = Boolean(recordedBlob || feedback)
+  const step4Enabled = step4Visible
   const step4Completed = Boolean(feedback)
+  const analysisAttemptsLeft = Math.max(0, MAX_ANALYSIS_ATTEMPTS - analysisAttemptsUsed)
+  const canAnalyzeCurrentAudio =
+    step4Visible && analysisReady && analysisAttemptsLeft > 0 && !working
 
   const icaUsage = icaWords.map((word) => ({
     word,
@@ -824,7 +855,7 @@ export function PregunticaView({
             <div className='flex flex-wrap items-center justify-between gap-2'>
               <p className='text-sm font-semibold'>3) Graba tu respuesta</p>
               <span className={`rounded-full border px-2 py-0.5 text-[11px] ${step3Completed ? 'border-emerald-300/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
-                {step3Completed ? '✓ Completado' : feedback ? 'Feedback listo' : recordedBlob ? 'Listo para analizar' : 'Sin grabación'}
+                {step3Completed ? '✓ Audio listo' : recordedBlob ? 'Listo para analizar' : 'Sin grabación'}
               </span>
             </div>
             {!step3Enabled && (
@@ -875,21 +906,9 @@ export function PregunticaView({
               </div>
 
               <div className='mt-3 flex flex-wrap items-center gap-2'>
-                <Button
-                  variant={recordedBlob ? 'default' : 'secondary'}
-                  onClick={handleAnalyze}
-                  disabled={!step3Enabled || working || !recordedBlob}
-                  className='rounded-full px-4 py-2 text-sm font-semibold'
-                >
-                  {isAnalyzing ? (
-                    <span className='inline-flex items-center gap-2'>
-                      <span className='size-3 animate-spin rounded-full border-2 border-current border-t-transparent' />
-                      Analizando...
-                    </span>
-                  ) : (
-                    'Analizar respuesta'
-                  )}
-                </Button>
+                <p className='text-xs text-muted-foreground'>
+                  Cuando termines de grabar, pasa al paso 4 para analizar tu respuesta.
+                </p>
               </div>
             </div>
 
@@ -903,13 +922,54 @@ export function PregunticaView({
             )}
           </div>
 
-          <div className={`rounded-2xl border border-border bg-[linear-gradient(165deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-4 transition-all duration-500 ${!step4Enabled ? 'opacity-55' : ''}`}>
+          {step4Visible && (
+          <div
+            className={`rounded-2xl border border-border bg-[linear-gradient(165deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-4 transition-all duration-500 ${!step4Enabled ? 'opacity-55' : ''}`}
+            style={{ animation: 'preguntica-step-in 0.45s ease' }}
+          >
             <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
               <p className='text-sm font-semibold'>4) Tu feedback</p>
               <span className={`rounded-full border px-2 py-0.5 text-[11px] ${step4Completed ? 'border-emerald-300/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
                 {step4Completed ? '✓ Completado' : isAnalyzing ? 'Analizando...' : 'Pendiente'}
               </span>
             </div>
+
+            <div className='mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background/70 p-2.5'>
+              <p className='text-xs font-semibold text-muted-foreground'>
+                Análisis usados: {analysisAttemptsUsed}/{MAX_ANALYSIS_ATTEMPTS}
+              </p>
+              <Button
+                variant={feedback ? 'outline' : 'default'}
+                onClick={handleAnalyze}
+                disabled={!canAnalyzeCurrentAudio}
+                className='rounded-full px-4 py-2 text-sm font-semibold'
+              >
+                {isAnalyzing ? (
+                  <span className='inline-flex items-center gap-2'>
+                    <span className='size-3 animate-spin rounded-full border-2 border-current border-t-transparent' />
+                    Analizando...
+                  </span>
+                ) : feedback ? (
+                  'Volver a analizar'
+                ) : (
+                  'Analizar respuesta'
+                )}
+              </Button>
+            </div>
+
+            {analysisAttemptsLeft <= 0 ? (
+              <p className='mb-3 text-xs text-muted-foreground'>
+                Ya usaste los 3 análisis máximos para esta PreguntICA.
+              </p>
+            ) : feedback && !analysisReady ? (
+              <p className='mb-3 text-xs text-muted-foreground'>
+                Para volver a analizar, graba un nuevo audio en el paso 3.
+              </p>
+            ) : analysisReady ? (
+              <p className='mb-3 text-xs text-muted-foreground'>
+                Audio listo. Puedes analizar esta respuesta ahora.
+              </p>
+            ) : null}
 
             {!feedback ? (
               <p className='text-xs text-muted-foreground'>
@@ -1034,6 +1094,7 @@ export function PregunticaView({
               </div>
             )}
           </div>
+          )}
         </div>
         </>
       )}

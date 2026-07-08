@@ -33,6 +33,7 @@ type AttemptRow = {
   level: string | null
   ica_words: unknown
   analysis_payload: Record<string, unknown> | null
+  retry_count: number
   suggestions_refresh_count: number
   status: string
 }
@@ -337,7 +338,7 @@ async function getAttempt(adminClient: any, userId: string, attemptId: string): 
   const { data, error } = await adminClient
     .from('preguntica_attempts')
     .select(
-      'id, user_id, transcript_text, response_text, response_char_count, target_lang, native_lang, level, ica_words, analysis_payload, suggestions_refresh_count, status',
+      'id, user_id, transcript_text, response_text, response_char_count, target_lang, native_lang, level, ica_words, analysis_payload, retry_count, suggestions_refresh_count, status',
     )
     .eq('id', attemptId)
     .eq('user_id', userId)
@@ -383,6 +384,17 @@ async function processAttemptAudio(
   payload: ProcessAttemptPayload,
 ): Promise<Response> {
   const attempt = await getAttempt(adminClient, userId, payload.attemptId)
+  const retriesUsed = Number(attempt.retry_count || 0)
+
+  if (retriesUsed >= 3) {
+    return jsonResponse(200, {
+      ok: false,
+      error: 'ANALYSIS_LIMIT_REACHED',
+      retriesUsed,
+      maxRetries: 3,
+    })
+  }
+
   const audio = await getAudio(adminClient, userId, payload.attemptId, payload.audioId)
 
   await adminClient
@@ -479,6 +491,7 @@ async function processAttemptAudio(
       analysis_model: Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6',
       analysis_score: parsed.score,
       analysis_payload: parsed as unknown as Record<string, unknown>,
+      retry_count: retriesUsed + 1,
       status: 'analyzed',
       error_code: null,
       error_message: null,
@@ -510,6 +523,8 @@ async function processAttemptAudio(
     transcript,
     responseCharCount: charCount,
     analysis: parsed,
+    retriesUsed: retriesUsed + 1,
+    maxRetries: 3,
   })
 }
 
