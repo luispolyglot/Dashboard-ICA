@@ -478,7 +478,7 @@ export function LeaderboardView() {
           <div>
             <Button
               type='button'
-              variant='outline'
+              variant='default'
               size='sm'
               onClick={() => {
                 if (!currentUserRow) return
@@ -486,7 +486,7 @@ export function LeaderboardView() {
               }}
               disabled={!currentUserRow || loading || Boolean(error)}
             >
-              Mi Puntaje
+              Mi Puntaje 🏅
             </Button>
           </div>
         </CardHeader>
@@ -524,7 +524,7 @@ export function LeaderboardView() {
                     <th className='hidden md:table-cell w-[18%] pb-2 font-medium'>
                       % mensual
                     </th>
-                      <th className='w-[16%] pb-2 font-medium'>Puntaje total</th>
+                    <th className='w-[16%] pb-2 font-medium'>Puntaje total</th>
                   </tr>
                 </thead>
                 <tbody className='block lg:max-h-[50dvh] lg:overflow-y-auto'>
@@ -682,25 +682,34 @@ export function LeaderboardView() {
           }
         }}
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {selectedScoreBreakdown?.isCurrentUser
-                ? 'Mi puntaje'
-                : 'Detalle de puntaje'}
-            </DialogTitle>
+        <DialogContent
+          className={
+            selectedScoreBreakdown?.isCurrentUser
+              ? 'border-2 border-emerald-400/70'
+              : undefined
+          }
+        >
+          <DialogHeader className='sr-only'>
+            <DialogTitle>Detalle de puntaje</DialogTitle>
           </DialogHeader>
 
           {selectedScoreBreakdown ? (
             <div className='space-y-3 text-foreground'>
               <div className='flex items-center justify-between gap-3'>
-                <p className='font-medium'>
-                  <strong>{selectedScoreBreakdown.userName}</strong>{' '}
-                  <span className='text-amber-500'>
-                    {formatPoints(selectedScoreBreakdown.totalPoints)}
-                  </span>{' '}
-                  / {formatPoints(selectedScoreBreakdown.totalMaxPoints)}
-                </p>
+                <div>
+                  <p className='font-semibold text-base'>
+                    <strong>{selectedScoreBreakdown.userName}</strong>{' '}
+                    <span className='text-amber-500'>
+                      {formatPoints(selectedScoreBreakdown.totalPoints)}
+                    </span>{' '}
+                    / {formatPoints(selectedScoreBreakdown.totalMaxPoints)}
+                  </p>
+                  <p className='text-xs text-muted-foreground'>
+                    {selectedScoreBreakdown.isCurrentUser
+                      ? 'Este es tu puntaje acumulado del periodo seleccionado.'
+                      : 'Puntaje acumulado del periodo seleccionado.'}
+                  </p>
+                </div>
 
                 {selectedScoreBreakdown.isCurrentUser && (
                   <Button
@@ -716,16 +725,6 @@ export function LeaderboardView() {
                 )}
               </div>
 
-              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
-                <p className='text-xs text-sky-600'>
-                  % mensual: promedio de rachas ICA y flashcards (hasta día 28).
-                  Escucha: 0,01 por minuto con tope 0,1 por día. ICA Test:{' '}
-                  {selectedScoreBreakdown.includeIcaTest
-                    ? '0,1 puntos por respuesta correcta.'
-                    : `disponible desde el día ${icaTestWindowStartDay} al 28.`}
-                </p>
-              )}
-
               <p>
                 📊{' '}
                 <span className='text-amber-500'>
@@ -733,6 +732,13 @@ export function LeaderboardView() {
                 </span>{' '}
                 / {formatPoints(selectedScoreBreakdown.monthlyMaxPoints)}
               </p>
+              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
+                <p className='text-xs text-sky-600 -mt-2'>
+                  Promedio mensual de rachas ICA y flashcards, con corte al día
+                  28.
+                </p>
+              )}
+
               <p>
                 🎧{' '}
                 <span className='text-amber-500'>
@@ -740,6 +746,12 @@ export function LeaderboardView() {
                 </span>{' '}
                 / {formatPoints(selectedScoreBreakdown.listeningMaxPoints)}
               </p>
+              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
+                <p className='text-xs text-sky-600 -mt-2'>
+                  0,01 puntos por minuto escuchado, con tope de 0,1 por dia.
+                </p>
+              )}
+
               <p>
                 📝{' '}
                 {selectedScoreBreakdown.includeIcaTest ? (
@@ -756,6 +768,13 @@ export function LeaderboardView() {
                   </>
                 )}
               </p>
+              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
+                <p className='text-xs text-sky-600 -mt-2'>
+                  {selectedScoreBreakdown.includeIcaTest
+                    ? 'Cada respuesta correcta del ICA Test suma 0,1 puntos.'
+                    : `ICA Test disponible desde el dia ${icaTestWindowStartDay} al 28.`}
+                </p>
+              )}
 
               <Separator className='my-2' />
 
