@@ -704,25 +704,13 @@ export function LeaderboardView() {
                     </span>{' '}
                     / {formatPoints(selectedScoreBreakdown.totalMaxPoints)}
                   </p>
-                  <p className='text-xs text-muted-foreground'>
-                    {selectedScoreBreakdown.isCurrentUser
-                      ? 'Este es tu puntaje acumulado del periodo seleccionado.'
-                      : 'Puntaje acumulado del periodo seleccionado.'}
-                  </p>
+                  {selectedScoreBreakdown.isCurrentUser ? (
+                    <p className='text-xs text-muted-foreground'>
+                      Vas muy bien: cada micro avance suma y te acerca al top.
+                      Sostenelo dia a dia.
+                    </p>
+                  ) : null}
                 </div>
-
-                {selectedScoreBreakdown.isCurrentUser && (
-                  <Button
-                    type='button'
-                    variant={isBreakdownInfoOpen ? 'secondary' : 'outline'}
-                    size='icon'
-                    className={isBreakdownInfoOpen ? 'ring-1 ring-primary' : ''}
-                    aria-pressed={isBreakdownInfoOpen}
-                    onClick={() => setIsBreakdownInfoOpen((prev) => !prev)}
-                  >
-                    <InfoIcon className='size-4' />
-                  </Button>
-                )}
               </div>
 
               <p>
@@ -778,12 +766,27 @@ export function LeaderboardView() {
 
               <Separator className='my-2' />
 
-              <p>
-                🧾 <strong>Total:</strong>{' '}
-                <span className='text-amber-500'>
-                  {formatPoints(selectedScoreBreakdown.totalPoints)}
-                </span>
-              </p>
+              <div className='flex items-center justify-between gap-3'>
+                <p>
+                  🧾 <strong>Total:</strong>{' '}
+                  <span className='text-amber-500'>
+                    {formatPoints(selectedScoreBreakdown.totalPoints)}
+                  </span>
+                </p>
+
+                {selectedScoreBreakdown.isCurrentUser && (
+                  <Button
+                    type='button'
+                    variant={isBreakdownInfoOpen ? 'secondary' : 'outline'}
+                    size='icon'
+                    className={isBreakdownInfoOpen ? 'ring-1 ring-primary' : ''}
+                    aria-pressed={isBreakdownInfoOpen}
+                    onClick={() => setIsBreakdownInfoOpen((prev) => !prev)}
+                  >
+                    <InfoIcon className='size-4' />
+                  </Button>
+                )}
+              </div>
             </div>
           ) : null}
         </DialogContent>
