@@ -195,6 +195,7 @@ export function PregunticaView({
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [countdownLabel, setCountdownLabel] = useState('-')
   const [plusModalOpen, setPlusModalOpen] = useState(false)
+  const [modeSelectedForNewAttempt, setModeSelectedForNewAttempt] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null)
   const [recordedDurationMs, setRecordedDurationMs] = useState(0)
@@ -215,6 +216,7 @@ export function PregunticaView({
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const startedAtRef = useRef<number | null>(null)
+  const step1Ref = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!isRecording) return
@@ -357,6 +359,7 @@ export function PregunticaView({
     setRecordingElapsedMs(0)
     setAnalysisAttemptsUsed(0)
     setAnalysisReady(false)
+    setModeSelectedForNewAttempt(false)
     if (recordedUrl) {
       URL.revokeObjectURL(recordedUrl)
       setRecordedUrl(null)
@@ -368,6 +371,10 @@ export function PregunticaView({
   async function handleStartAttempt() {
     if (!canStartAttempt) {
       toast.error('Todavía no puedes iniciar una nueva PreguntICA')
+      return
+    }
+    if (!modeSelectedForNewAttempt) {
+      toast.error('Primero selecciona el tipo de palabras en el paso 1')
       return
     }
 
@@ -418,6 +425,10 @@ export function PregunticaView({
   async function handleRedeemAndRetry() {
     if (!status?.weekStart) {
       toast.error('No se encontró la semana para canjear fichas')
+      return
+    }
+    if (!modeSelectedForNewAttempt) {
+      toast.error('Primero selecciona el tipo de palabras en el paso 1')
       return
     }
 
@@ -649,7 +660,7 @@ export function PregunticaView({
   const canStartAttempt = Boolean(status?.canStart)
   const tokenBalance = tokenSummary?.balance ?? 0
   const hasRedeemableTokens = tokenBalance >= 2
-  const showSteps = hasActiveAttempt
+  const showAttemptSteps = hasActiveAttempt
   const ctaDisabled =
     working || hasActiveAttempt || locked || (!hasCompletedWeek && !canStartAttempt)
   const transcriptForFeedback = latestTranscript || activeAttempt?.transcriptText || ''
@@ -685,6 +696,11 @@ export function PregunticaView({
     setSuggestionModalOpen(true)
   }
 
+  function handleSelectMode(nextMode: string) {
+    setMode(nextMode)
+    setModeSelectedForNewAttempt(true)
+  }
+
   return (
     <section className='mx-auto w-full max-w-4xl px-4 pb-28 pt-6 md:pb-10'>
       <style>{`@keyframes preguntica-wave-mid { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1.6); } } @keyframes preguntica-step-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } } @keyframes preguntica-feedback-in { from { opacity: 0; transform: translateY(10px) scale(0.995); } to { opacity: 1; transform: translateY(0) scale(1); } }`}</style>
@@ -709,7 +725,19 @@ export function PregunticaView({
               : `Cuenta atrás: ${countdownLabel}`}
           </p>
           <Button
-            onClick={hasCompletedWeek ? () => setPlusModalOpen(true) : handleStartAttempt}
+            onClick={() => {
+              if (hasActiveAttempt) return
+              if (!modeSelectedForNewAttempt) {
+                step1Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                toast.info('Selecciona primero el tipo de palabras en el paso 1')
+                return
+              }
+              if (hasCompletedWeek) {
+                setPlusModalOpen(true)
+                return
+              }
+              void handleStartAttempt()
+            }}
             disabled={ctaDisabled}
             className='text-sm font-semibold'
           >
@@ -718,10 +746,9 @@ export function PregunticaView({
         </div>
       </div>
 
-      {showSteps && (
-        <>
       <div
-        className='mt-4 rounded-2xl border border-border bg-background p-4 transition-all duration-500'
+        ref={step1Ref}
+        className={`mt-4 rounded-2xl border border-border bg-background p-4 transition-all duration-500 ${locked ? 'opacity-55' : ''}`}
         style={{ animation: 'preguntica-step-in 0.45s ease' }}
       >
           <div className='flex flex-wrap items-center justify-between gap-2'>
@@ -731,7 +758,9 @@ export function PregunticaView({
             </span>
           </div>
           <p className='mt-1 text-xs text-muted-foreground'>
-            Esta PreguntICA se inició con este tipo de palabras ICA.
+            {hasActiveAttempt
+              ? 'Esta PreguntICA se inició con este tipo de palabras ICA.'
+              : 'Selecciona el tipo de palabras ICA y confirma para iniciar.'}
           </p>
 
           <div className='mt-3 flex flex-wrap gap-2'>
@@ -741,8 +770,8 @@ export function PregunticaView({
                 <Button
                   key={option.key}
                   type='button'
-                  onClick={() => setMode(option.key)}
-                  disabled
+                  onClick={() => handleSelectMode(option.key)}
+                  disabled={locked || hasActiveAttempt || working}
                   variant={selected ? 'default' : 'outline'}
                   className={`min-w-22.5 h-auto flex-1 py-2.5 ${selected ? WORD_MODE_TONE[option.key] : ''}`}
                 >
@@ -754,11 +783,48 @@ export function PregunticaView({
               )
             })}
           </div>
-          <p className='mt-2 text-xs text-muted-foreground'>
-            Tipo bloqueado mientras este intento esté en progreso.
-          </p>
+          {locked ? (
+            <p className='mt-2 text-xs text-muted-foreground'>
+              Necesitas desbloquear PreguntICA desde Juegos ICA para iniciar.
+            </p>
+          ) : hasActiveAttempt ? (
+            <p className='mt-2 text-xs text-muted-foreground'>
+              Tipo bloqueado mientras este intento esté en progreso.
+            </p>
+          ) : hasCompletedWeek ? (
+            <div className='mt-3 flex flex-wrap items-center gap-2'>
+              <Button
+                onClick={() => setPlusModalOpen(true)}
+                disabled={working || !hasRedeemableTokens || !modeSelectedForNewAttempt}
+                className='text-sm font-semibold'
+              >
+                Iniciar PreguntICA Plus
+              </Button>
+              <span className='text-xs text-muted-foreground'>
+                {modeSelectedForNewAttempt
+                  ? `Tipo seleccionado: ${WORD_MODE_OPTIONS.find((item) => item.key === mode)?.label || 'Aleatorio'}`
+                  : 'Selecciona primero un tipo de palabras.'}
+              </span>
+            </div>
+          ) : (
+            <div className='mt-3 flex flex-wrap items-center gap-2'>
+              <Button
+                onClick={() => void handleStartAttempt()}
+                disabled={working || !canStartAttempt || !modeSelectedForNewAttempt}
+                className='text-sm font-semibold'
+              >
+                Iniciar PreguntICA
+              </Button>
+              <span className='text-xs text-muted-foreground'>
+                {modeSelectedForNewAttempt
+                  ? `Tipo seleccionado: ${WORD_MODE_OPTIONS.find((item) => item.key === mode)?.label || 'Aleatorio'}`
+                  : 'Selecciona primero un tipo de palabras.'}
+              </span>
+            </div>
+          )}
       </div>
 
+      {showAttemptSteps && (
       <div className='mt-4 space-y-4' style={{ animation: 'preguntica-step-in 0.55s ease' }}>
           <div className={`rounded-2xl border border-border bg-background p-4 transition-all duration-500 ${!step2Enabled ? 'opacity-55' : ''}`}>
             <div className='flex flex-wrap items-center justify-between gap-2'>
@@ -1119,7 +1185,6 @@ export function PregunticaView({
             )}
           </div>
         </div>
-        </>
       )}
 
       <Dialog open={plusModalOpen} onOpenChange={setPlusModalOpen}>
@@ -1153,8 +1218,8 @@ export function PregunticaView({
             </Button>
             <Button
               type='button'
-              onClick={handleRedeemAndRetry}
-              disabled={working || hasActiveAttempt || !hasRedeemableTokens}
+              onClick={() => void handleRedeemAndRetry()}
+              disabled={working || hasActiveAttempt || !hasRedeemableTokens || !modeSelectedForNewAttempt}
             >
               Canjear
             </Button>
