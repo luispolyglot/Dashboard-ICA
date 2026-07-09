@@ -920,7 +920,7 @@ export async function redeemPregunticaTokensForWeek(
 
   const { data, error } = await client.rpc('redeem_preguntica_tokens_for_week', {
     p_week_start: weekStart,
-    p_tokens_to_spend: 2,
+    p_tokens_to_spend: 1,
   })
 
   if (error) throw error

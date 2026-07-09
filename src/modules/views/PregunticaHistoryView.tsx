@@ -80,6 +80,16 @@ function getModeLabel(mode: string): string {
   return mode
 }
 
+function getModeTone(mode: string): string {
+  const normalized = mode.trim().toLowerCase()
+  if (normalized === 'mixed') return 'border-violet-300/60 bg-violet-500/10 text-violet-700 dark:text-violet-300'
+  if (normalized === 'vital') return 'border-blue-300/60 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+  if (normalized === 'frequent') return 'border-emerald-300/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+  if (normalized === 'occasional') return 'border-amber-300/60 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+  if (normalized === 'rare') return 'border-orange-300/60 bg-orange-500/10 text-orange-700 dark:text-orange-300'
+  return 'border-border bg-muted/40 text-muted-foreground'
+}
+
 function normalizeComparableText(value: string): string {
   return value.normalize('NFKC').trim().toLowerCase()
 }
@@ -166,7 +176,9 @@ function AttemptContent({
   return (
     <article className='rounded-xl border border-border/80 bg-background p-4'>
       <div className='flex flex-wrap items-center justify-between gap-2'>
-        <p className='text-sm font-semibold'>Modo {getModeLabel(attempt.wordMode)}</p>
+        <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${getModeTone(attempt.wordMode)}`}>
+          Modo {getModeLabel(attempt.wordMode)}
+        </span>
         <span className='rounded-full bg-muted px-2 py-0.5 text-xs'>
           {getStatusLabel(attempt.status)}
         </span>

@@ -12,7 +12,7 @@ type SpeakButtonProps = {
   label?: string
   className?: string
   disabled?: boolean
-  variant?: 'default' | 'icon'
+  variant?: 'default' | 'icon' | 'cta'
   isPlaying?: boolean
   onPlayingChange?: (isPlaying: boolean) => void
 }
@@ -103,6 +103,50 @@ export function SpeakButton({
           <Volume1Icon className='size-4' />
         )}
       </Button>
+    )
+  }
+
+  if (variant === 'cta') {
+    return (
+      <div className={cn('mt-4 flex flex-wrap items-center gap-2', className)}>
+        <Button
+          type='button'
+          onClick={go}
+          variant='default'
+          disabled={disabled}
+          className={cn('font-semibold', playing ? 'brightness-110' : '')}
+        >
+          {playing ? 'Reproduciendo...' : label || `Escuchar ${langName}`}
+          {playing ? (
+            <SquareIcon className='ml-1 size-4' />
+          ) : (
+            <Volume1Icon className='ml-1 size-4' />
+          )}
+        </Button>
+
+        <div className='inline-flex overflow-hidden rounded-md border border-border'>
+          <Button
+            type='button'
+            size='sm'
+            variant='ghost'
+            onClick={(e) => handleRate(e, 1)}
+            disabled={playing || disabled}
+            className={cn('rounded-none px-3 text-xs', rate === 1 ? 'bg-muted text-foreground' : 'text-muted-foreground')}
+          >
+            x1
+          </Button>
+          <Button
+            type='button'
+            size='sm'
+            variant='ghost'
+            onClick={(e) => handleRate(e, 0.75)}
+            disabled={playing || disabled}
+            className={cn('rounded-none border-l border-border px-3 text-xs', rate === 0.75 ? 'bg-muted text-foreground' : 'text-muted-foreground')}
+          >
+            x0.75
+          </Button>
+        </div>
+      </div>
     )
   }
 

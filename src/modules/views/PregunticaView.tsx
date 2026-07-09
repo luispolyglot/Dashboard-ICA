@@ -58,7 +58,7 @@ const WORD_MODE_OPTIONS = [
 ]
 
 const WORD_MODE_DOT: Record<string, string> = {
-  mixed: 'bg-sky-400',
+  mixed: 'bg-violet-400',
   vital: 'bg-blue-400',
   frequent: 'bg-emerald-400',
   occasional: 'bg-amber-400',
@@ -66,7 +66,7 @@ const WORD_MODE_DOT: Record<string, string> = {
 }
 
 const WORD_MODE_BADGE: Record<string, string> = {
-  mixed: 'border-sky-300/60 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+  mixed: 'border-violet-300/60 bg-violet-500/10 text-violet-700 dark:text-violet-300',
   vital: 'border-blue-300/60 bg-blue-500/10 text-blue-700 dark:text-blue-300',
   frequent: 'border-emerald-300/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
   occasional: 'border-amber-300/60 bg-amber-500/10 text-amber-700 dark:text-amber-300',
@@ -441,7 +441,7 @@ export function PregunticaView({
       setMode(selectedStartMode)
       setPlusModalOpen(false)
       setSelectedStartMode(null)
-      toast.success('Canje realizado. PreguntICA Plus iniciada.')
+      toast.success('Canje realizado. PreguntICA + iniciada.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'No se pudo canjear fichas')
     } finally {
@@ -663,7 +663,7 @@ export function PregunticaView({
   const activeAttempt = hasActiveAttempt ? attempt : null
   const canStartAttempt = Boolean(status?.canStart)
   const tokenBalance = tokenSummary?.balance ?? 0
-  const hasRedeemableTokens = tokenBalance >= 2
+  const hasRedeemableTokens = tokenBalance >= 1
   const showAttemptSteps = hasActiveAttempt
   const ctaDisabled =
     working || hasActiveAttempt || locked || (!hasCompletedWeek && !canStartAttempt)
@@ -732,13 +732,13 @@ export function PregunticaView({
         <div className='mt-5 flex flex-wrap items-end justify-between gap-3'>
           <p className='text-sm text-slate-500'>
             {hasCompletedWeek
-              ? 'Reto completado. Tu intento quedó guardado en el historial.'
+              ? '✅ Reto completado. Tu intento quedó guardado en el historial.'
               : `Cuenta atrás: ${countdownLabel}`}
           </p>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button disabled={ctaDisabled} className='text-sm font-semibold'>
-                {hasCompletedWeek ? 'Iniciar PreguntICA Plus' : 'Iniciar PreguntICA'}
+                {hasCompletedWeek ? 'Iniciar PreguntICA +' : 'Iniciar PreguntICA'}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align='end' className='w-56'>
@@ -778,6 +778,7 @@ export function PregunticaView({
                 langName={config.targetLang}
                 color='#3B82F6'
                 label='Escuchar pregunta'
+                variant='cta'
                 disabled={!step2Enabled || !questionText || working}
                 onPlayingChange={(isPlaying) => {
                   if (isPlaying) {
@@ -812,36 +813,36 @@ export function PregunticaView({
                 : 'Aún no has escuchado la pregunta.'}
             </p>
 
-            <div className='mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-3 transition-all duration-500'>
-              <p className='text-[11px] font-semibold uppercase tracking-wide text-slate-500'>
+            <div className='mt-4 rounded-xl border border-dashed border-border bg-background p-3 transition-all duration-500'>
+              <p className='text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'>
                 Pregunta · {config.targetLang}
               </p>
               <div className='relative mt-1 min-h-10'>
                 <p
-                  className={`text-sm text-slate-700 transition-all duration-500 ${questionVisible ? 'blur-0 opacity-100' : 'select-none blur-sm opacity-70'}`}
+                  className={`text-sm text-foreground transition-all duration-500 ${questionVisible ? 'blur-0 opacity-100' : 'select-none blur-sm opacity-70'}`}
                 >
                   {questionText || 'Pregunta pendiente de generar'}
                 </p>
                 {!questionVisible && (
-                  <div className='absolute inset-0 flex items-center justify-center text-xs font-medium text-slate-500'>
+                  <div className='absolute inset-0 flex items-center justify-center text-xs font-medium text-muted-foreground'>
                     Escúchala primero para poder leerla.
                   </div>
                 )}
               </div>
             </div>
 
-            <div className='mt-2 rounded-xl border border-emerald-200 bg-emerald-50/90 p-3 text-sm text-emerald-900 transition-all duration-500'>
-              <p className='text-xs font-semibold uppercase tracking-wide text-emerald-700'>
+            <div className='mt-2 rounded-xl border border-dashed border-border bg-background p-3 text-sm transition-all duration-500'>
+              <p className='text-xs font-semibold uppercase tracking-wide text-muted-foreground'>
                 Traducción (español)
               </p>
               <div className='relative mt-1 min-h-9'>
                 <p
-                  className={`transition-all duration-500 ${questionVisible && translationVisible && questionTranslation ? 'blur-0 opacity-100' : 'select-none blur-sm opacity-70'}`}
+                  className={`text-foreground/80 transition-all duration-500 ${questionVisible && translationVisible && questionTranslation ? 'blur-0 opacity-100' : 'select-none blur-sm opacity-70'}`}
                 >
                   {questionTranslation || 'Traducción no disponible'}
                 </p>
                 {(!questionVisible || !translationVisible) && (
-                  <div className='absolute inset-0 flex items-center justify-center text-xs font-medium text-emerald-700/80'>
+                  <div className='absolute inset-0 flex items-center justify-center text-xs font-medium text-muted-foreground'>
                     Se desbloquea tras mostrar la pregunta.
                   </div>
                 )}
@@ -1118,7 +1119,7 @@ export function PregunticaView({
                 disabled={!activeAttempt || working}
                 className='mt-4 text-sm font-semibold'
               >
-                {isPlusAttempt ? 'Finalizar PreguntICA Plus' : 'Finalizar PreguntICA semanal'}
+                {isPlusAttempt ? 'Finalizar PreguntICA +' : 'Finalizar PreguntICA semanal'}
               </Button>
               </div>
             )}
@@ -1135,20 +1136,20 @@ export function PregunticaView({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Iniciar PreguntICA Plus</DialogTitle>
+            <DialogTitle>Iniciar PreguntICA +</DialogTitle>
             <DialogDescription>
-              Canjea 2 fichas para desbloquear una nueva PreguntICA esta semana.
+              Canjea 1 ficha para desbloquear una nueva PreguntICA esta semana.
             </DialogDescription>
           </DialogHeader>
 
           <div className='rounded-xl border border-amber-300/40 bg-amber-500/10 p-3 text-sm'>
             <p className='font-semibold text-amber-700 dark:text-amber-300'>
-              Fichas disponibles: {tokenBalance}/2
+              Fichas disponibles: {tokenBalance.toFixed(2)}/1.00
             </p>
             <p className='mt-1 text-xs text-muted-foreground'>
               {hasRedeemableTokens
                 ? 'Tienes fichas suficientes para canjear ahora.'
-                : 'Necesitas 2 fichas para habilitar PreguntICA Plus.'}
+                : 'Necesitas 1 ficha para habilitar PreguntICA +.'}
             </p>
             {selectedStartMode && (
               <p className='mt-1 text-xs text-muted-foreground'>
