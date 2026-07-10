@@ -41,6 +41,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { EyeIcon, EyeOffIcon } from 'lucide-react'
 
 type PregunticaViewProps = {
   config: AppConfig
@@ -214,6 +215,7 @@ export function PregunticaView({
   const [listenCount, setListenCount] = useState(0)
   const [questionVisible, setQuestionVisible] = useState(false)
   const [translationVisible, setTranslationVisible] = useState(false)
+  const [showIcaWordTranslations, setShowIcaWordTranslations] = useState(false)
   const [suggestionModalOpen, setSuggestionModalOpen] = useState(false)
   const [selectedSuggestion, setSelectedSuggestion] = useState<PregunticaWordSuggestion | null>(null)
   const [addedSuggestionWords, setAddedSuggestionWords] = useState<string[]>([])
@@ -356,6 +358,7 @@ export function PregunticaView({
     setListenCount(0)
     setQuestionVisible(false)
     setTranslationVisible(false)
+    setShowIcaWordTranslations(false)
     setFeedback(null)
     setLatestTranscript(null)
     setSuggestions([])
@@ -682,6 +685,24 @@ export function PregunticaView({
   const canAnalyzeCurrentAudio =
     analysisReady && analysisAttemptsLeft > 0 && !working
 
+  const step2Tone = step2Completed
+    ? 'border-emerald-300/50 bg-emerald-500/5'
+    : step2Enabled
+      ? 'border-blue-300/60 bg-blue-50/80 dark:border-blue-500/40 dark:bg-blue-950/35'
+      : 'border-border bg-slate-100/75 opacity-45 dark:bg-slate-900/70'
+
+  const step3Tone = step3Completed
+    ? 'border-emerald-300/50 bg-emerald-500/5'
+    : step3Enabled
+      ? 'border-blue-300/60 bg-blue-50/80 dark:border-blue-500/40 dark:bg-blue-950/35'
+      : 'border-border bg-slate-100/75 opacity-45 dark:bg-slate-900/70'
+
+  const step4Tone = step4Completed
+    ? 'border-emerald-300/50 bg-[linear-gradient(165deg,hsl(var(--background)),hsl(var(--muted)/0.35))]'
+    : step4Enabled
+      ? 'border-blue-300/60 bg-blue-50/80 dark:border-blue-500/40 dark:bg-blue-950/35'
+      : 'border-border bg-slate-100/75 opacity-45 dark:bg-slate-900/70'
+
   const icaUsage = icaWords.map((word) => ({
     word,
     used: textIncludesWord(transcriptForFeedback, word),
@@ -758,7 +779,7 @@ export function PregunticaView({
 
       {showAttemptSteps && (
       <div className='mt-4 space-y-4' style={{ animation: 'preguntica-step-in 0.55s ease' }}>
-          <div className={`rounded-2xl border border-border bg-background p-4 transition-all duration-500 ${!step2Enabled ? 'opacity-55' : ''}`}>
+          <div className={`rounded-2xl border p-4 transition-all duration-500 ${step2Tone}`}>
             <div className='flex flex-wrap items-center justify-between gap-2'>
               <p className='text-sm font-semibold'>1) Escucha y descubre la pregunta</p>
               <span className={`rounded-full border px-2 py-0.5 text-[11px] ${step2Completed ? 'border-emerald-300/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
@@ -813,7 +834,7 @@ export function PregunticaView({
                 : 'Aún no has escuchado la pregunta.'}
             </p>
 
-            <div className='mt-4 rounded-xl border border-dashed border-border bg-background p-3 transition-all duration-500'>
+            <div className='mt-4 rounded-xl border border-dashed border-border bg-background/90 p-3 transition-all duration-500'>
               <p className='text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'>
                 Pregunta · {config.targetLang}
               </p>
@@ -831,7 +852,7 @@ export function PregunticaView({
               </div>
             </div>
 
-            <div className='mt-2 rounded-xl border border-dashed border-border bg-background p-3 text-sm transition-all duration-500'>
+            <div className='mt-2 rounded-xl border border-dashed border-border bg-background/90 p-3 text-sm transition-all duration-500'>
               <p className='text-xs font-semibold uppercase tracking-wide text-muted-foreground'>
                 Traducción (español)
               </p>
@@ -857,6 +878,14 @@ export function PregunticaView({
                 >
                   Modo: {currentStepModeLabel}
                 </span>
+                <button
+                  type='button'
+                  onClick={() => setShowIcaWordTranslations((current) => !current)}
+                  className='inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground transition hover:bg-muted/40'
+                >
+                  {showIcaWordTranslations ? <EyeOffIcon className='size-3' /> : <EyeIcon className='size-3' />}
+                  {showIcaWordTranslations ? 'Ocultar traducción' : 'Ver traducción'}
+                </button>
               </div>
               {questionWasPlayed ? (
                 <div className='mt-2 flex flex-wrap gap-2'>
@@ -866,7 +895,7 @@ export function PregunticaView({
                       className='rounded-full border border-[#86efac]/70 bg-[#f0fdf4] px-2.5 py-1 text-xs font-semibold text-[#166534]'
                     >
                       {word}
-                      {wordTranslationMap.get(normalizeComparableText(word))
+                      {showIcaWordTranslations && wordTranslationMap.get(normalizeComparableText(word))
                         ? ` · ${wordTranslationMap.get(normalizeComparableText(word))}`
                         : ''}
                     </span>
@@ -880,7 +909,7 @@ export function PregunticaView({
             </div>
           </div>
 
-          <div className={`rounded-2xl border border-border bg-background p-4 transition-all duration-500 ${!step3Enabled ? 'opacity-55' : ''}`}>
+          <div className={`rounded-2xl border p-4 transition-all duration-500 ${step3Tone}`}>
             <div className='flex flex-wrap items-center justify-between gap-2'>
               <p className='text-sm font-semibold'>2) Graba tu respuesta</p>
               <span className={`rounded-full border px-2 py-0.5 text-[11px] ${step3Completed ? 'border-emerald-300/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300' : 'border-border bg-muted/40 text-muted-foreground'}`}>
@@ -938,7 +967,7 @@ export function PregunticaView({
 
               <div className='mt-3 flex flex-wrap items-center gap-2'>
                 <p className='text-xs text-muted-foreground'>
-                  Cuando termines de grabar, pasa al paso 4 para analizar tu respuesta.
+                  Cuando termines de grabar, pasa al paso 3 para analizar tu respuesta.
                 </p>
               </div>
             </div>
@@ -954,7 +983,7 @@ export function PregunticaView({
           </div>
 
           <div
-            className={`rounded-2xl border border-border bg-[linear-gradient(165deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-4 transition-all duration-500 ${!step4Enabled ? 'opacity-55' : ''}`}
+            className={`rounded-2xl border p-4 transition-all duration-500 ${step4Tone}`}
             style={{ animation: step4JustEnabled ? 'preguntica-step-in 0.45s ease' : undefined }}
           >
             <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
