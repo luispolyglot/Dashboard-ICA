@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import type { AppConfig, Lexicard } from '../types'
 import {
   completePregunticaAttempt,
-  createPregunticaAttempt,
+  createPregunticaAttemptWithPromptData,
   fetchLatestPregunticaAttempt,
   fetchPregunticaTokenSummary,
   fetchPregunticaWeekStatus,
@@ -14,7 +14,6 @@ import {
   redeemPregunticaTokensForWeek,
   refreshPregunticaSuggestions,
   savePregunticaQuestionTranslation,
-  savePregunticaAttemptPromptData,
   uploadPregunticaAttemptAudio,
   type PregunticaAttempt,
   type PregunticaFeedback,
@@ -330,12 +329,11 @@ export function PregunticaView({
   }
 
   async function startAttemptWorkflow(selectedMode: string) {
-    const created = await createPregunticaAttempt(selectedMode)
     const words = pickIcaWords(cards, selectedMode, config.level)
     const selectedQuestion = await resolveQuestionForAttempt()
 
-    await savePregunticaAttemptPromptData({
-      attemptId: created.id,
+    const created = await createPregunticaAttemptWithPromptData({
+      wordMode: selectedMode,
       questionId: selectedQuestion.questionId,
       questionText: selectedQuestion.questionText,
       icaWords: words,

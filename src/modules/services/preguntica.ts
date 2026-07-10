@@ -412,6 +412,33 @@ export async function createPregunticaAttempt(wordMode: string): Promise<Pregunt
   return mapAttempt(row)
 }
 
+export async function createPregunticaAttemptWithPromptData(input: {
+  wordMode: string
+  questionText: string
+  questionId?: string | null
+  icaWords: string[]
+  targetLang: string
+  nativeLang: string
+  level: string
+}): Promise<PregunticaAttempt> {
+  const client = requireSupabase()
+  const { data, error } = await client.rpc('create_preguntica_attempt_with_prompt_data', {
+    p_word_mode: input.wordMode,
+    p_question_text: input.questionText,
+    p_question_id: input.questionId || null,
+    p_ica_words: input.icaWords,
+    p_target_lang: input.targetLang,
+    p_native_lang: input.nativeLang,
+    p_level: input.level,
+  })
+
+  if (error) throw error
+
+  const row = Array.isArray(data) ? (data[0] as RpcAttemptRow | undefined) : (data as RpcAttemptRow | null)
+  if (!row) throw new Error('No se pudo crear el intento de PreguntICA')
+  return mapAttempt(row)
+}
+
 export async function completePregunticaAttempt(attemptId: string): Promise<PregunticaAttempt> {
   const client = requireSupabase()
   const { data, error } = await client.rpc('complete_preguntica_attempt', {
