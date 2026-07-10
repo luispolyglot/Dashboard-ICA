@@ -52,6 +52,17 @@ function formatDate(value: string | null): string {
   })
 }
 
+function formatDateShort(value: string | null): string {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const year = String(date.getFullYear())
+  return `${day}-${month}-${year}`
+}
+
 function formatDuration(durationMs: number | null): string {
   if (!durationMs || durationMs <= 0) return '-'
   const seconds = Math.round(durationMs / 1000)
@@ -159,10 +170,14 @@ function toQuestionCards(weeks: PregunticaHistoryWeek[]): PregunticaHistoryQuest
 
 function AttemptContent({
   attempt,
+  questionText,
+  questionTranslation,
   onSuggestionClick,
   isSuggestionAdded,
 }: {
   attempt: PregunticaHistoryAttempt
+  questionText: string
+  questionTranslation: string | null
   onSuggestionClick: (suggestion: PregunticaWordSuggestion) => void
   isSuggestionAdded: (word: string) => boolean
 }) {
@@ -174,19 +189,27 @@ function AttemptContent({
   })
 
   return (
-    <article className='rounded-xl border border-border/80 bg-background p-4'>
-      <div className='flex flex-wrap items-center justify-between gap-2'>
-        <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${getModeTone(attempt.wordMode)}`}>
-          Modo {getModeLabel(attempt.wordMode)}
-        </span>
+    <article className='pb-1'>
+      <div className='flex flex-wrap items-center justify-end gap-2'>
         <span className='rounded-full bg-muted px-2 py-0.5 text-xs'>
           {getStatusLabel(attempt.status)}
         </span>
       </div>
 
-      {attempt.icaWords.length > 0 && (
-        <div className='mt-3'>
+      <div className='mt-3'>
+        {questionTranslation && questionTranslation !== questionText && (
+          <p className='text-sm text-muted-foreground'>Traducción (español): {questionTranslation}</p>
+        )}
+      </div>
+
+      <div className='mt-3'>
+        <div className='flex items-center gap-2'>
           <p className='text-xs font-semibold text-muted-foreground'>Palabras ICA:</p>
+          <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${getModeTone(attempt.wordMode)}`}>
+            {getModeLabel(attempt.wordMode)}
+          </span>
+        </div>
+        {attempt.icaWords.length > 0 ? (
           <div className='mt-1.5 flex flex-wrap gap-1.5'>
             {attempt.icaWords.map((word) => (
               <span
@@ -197,8 +220,10 @@ function AttemptContent({
               </span>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <p className='mt-1.5 text-xs text-muted-foreground'>Sin palabras ICA registradas.</p>
+        )}
+      </div>
 
       {attempt.errorMessage && (
         <p className='mt-3 rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-800'>
@@ -452,12 +477,9 @@ export function PregunticaHistoryView({
             <AccordionTrigger className='py-4 hover:no-underline'>
               <div className='flex w-full flex-wrap items-start justify-between gap-3 pr-2 text-left'>
                 <div>
-                  <h2 className='font-serif text-xl font-bold'>{card.questionText}</h2>
-                  {card.questionTranslation && card.questionTranslation !== card.questionText && (
-                    <p className='mt-1 text-sm text-muted-foreground'>
-                      Traducción (español): {card.questionTranslation}
-                    </p>
-                  )}
+                  <h2 className='font-serif text-xl font-bold'>
+                    {formatDateShort(card.createdAt)} - {card.questionText}
+                  </h2>
                   <p className='mt-1 text-xs text-muted-foreground'>
                     Semana {card.weekStart} → {card.weekEnd}
                   </p>
@@ -479,13 +501,13 @@ export function PregunticaHistoryView({
               </div>
             </AccordionTrigger>
             <AccordionContent className='pb-4'>
-              <div className='rounded-xl border border-border bg-background p-3'>
-                <AttemptContent
-                  attempt={card.attempt}
-                  onSuggestionClick={handleOpenSuggestionModal}
-                  isSuggestionAdded={isSuggestionAdded}
-                />
-              </div>
+              <AttemptContent
+                attempt={card.attempt}
+                questionText={card.questionText}
+                questionTranslation={card.questionTranslation}
+                onSuggestionClick={handleOpenSuggestionModal}
+                isSuggestionAdded={isSuggestionAdded}
+              />
             </AccordionContent>
           </AccordionItem>
         ))}
