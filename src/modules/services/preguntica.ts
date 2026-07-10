@@ -64,6 +64,24 @@ type RefreshSuggestionsPayload = {
   icaWords?: string[]
 }
 
+type PrepareAttemptPayload = {
+  action: 'prepare_attempt'
+  wordMode: string
+  targetLang?: string
+  nativeLang?: string
+  level?: string
+  excludeQuestionId?: string | null
+}
+
+type PrepareAttemptResult = {
+  ok: boolean
+  error?: string
+  attempt?: RpcAttemptRow
+  questionText?: string | null
+  questionTranslation?: string | null
+  icaWords?: string[]
+}
+
 export type PregunticaWeekStatus = {
   weekId: string
   weekStart: string
@@ -303,6 +321,14 @@ async function mapEdgeFunctionError(error: unknown, fallback: string): Promise<E
 
   if (source.includes('ANALYSIS_LIMIT_REACHED')) {
     return new Error('Ya usaste los 3 análisis disponibles para esta PreguntICA.')
+  }
+
+  if (source.includes('NO_ICA_WORDS_AVAILABLE')) {
+    return new Error('No tienes suficientes palabras ICA para iniciar PreguntICA. Agrega más al Baúl y vuelve a intentar.')
+  }
+
+  if (source.includes('QUESTION_TRANSLATION_REQUIRED')) {
+    return new Error('No se pudo preparar la pregunta en tu idioma objetivo. Intenta de nuevo en unos segundos.')
   }
 
   if (functionError) {
@@ -662,6 +688,47 @@ export async function refreshPregunticaSuggestions(
   if (error) throw error
   if (!data) throw new Error('Respuesta vacía de preguntica-center')
   return data
+}
+
+export async function preparePregunticaAttempt(
+  payload: Omit<PrepareAttemptPayload, 'action'>,
+): Promise<PregunticaAttempt> {
+  const client = requireSupabase()
+  const { data, error } = await client.functions.invoke<PrepareAttemptResult>('preguntica-center', {
+    body: {
+      action: 'prepare_attempt',
+      ...payload,
+    } satisfies PrepareAttemptPayload,
+  })
+
+  if (error) throw await mapEdgeFunctionError(error, 'No se pudo iniciar la PreguntICA')
+  if (!data) throw new Error('Respuesta vacía de preguntica-center')
+  if (!data.ok || !data.attempt) {
+    throw new Error(data.error || 'No se pudo iniciar la PreguntICA')
+  }
+
+  const mapped = mapAttempt(data.attempt)
+  const preparedWords = Array.isArray(data.icaWords)
+    ? data.icaWords
+      .filter((word): word is string => typeof word === 'string')
+      .map((word) => word.trim())
+      .filter(Boolean)
+    : []
+
+  const preparedQuestion = typeof data.questionText === 'string' && data.questionText.trim()
+    ? data.questionText.trim()
+    : mapped.questionText
+
+  const preparedTranslation = typeof data.questionTranslation === 'string' && data.questionTranslation.trim()
+    ? data.questionTranslation.trim()
+    : null
+
+  return {
+    ...mapped,
+    questionText: preparedQuestion,
+    questionTranslation: preparedTranslation,
+    icaWords: preparedWords.length > 0 ? preparedWords : mapped.icaWords,
+  }
 }
 
 function parseFeedback(raw: unknown): PregunticaFeedback | null {

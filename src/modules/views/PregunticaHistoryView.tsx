@@ -446,47 +446,50 @@ export function PregunticaHistoryView({
         <p className='mt-6 text-sm text-muted-foreground'>Aún no tienes PreguntICAs registradas.</p>
       )}
 
-      <div className='mt-6 space-y-4'>
+      <Accordion type='multiple' className='mt-6 space-y-4'>
         {questionCards.map((card) => (
-          <section key={card.id} className='rounded-2xl border border-border bg-card p-4'>
-            <div className='flex flex-wrap items-start justify-between gap-3'>
-              <div>
-                <h2 className='font-serif text-xl font-bold'>{card.questionText}</h2>
-                {card.questionTranslation && card.questionTranslation !== card.questionText && (
-                  <p className='mt-1 text-sm text-muted-foreground'>
-                    Traducción (español): {card.questionTranslation}
+          <AccordionItem key={card.id} value={card.id} className='rounded-2xl border border-border bg-card px-4'>
+            <AccordionTrigger className='py-4 hover:no-underline'>
+              <div className='flex w-full flex-wrap items-start justify-between gap-3 pr-2 text-left'>
+                <div>
+                  <h2 className='font-serif text-xl font-bold'>{card.questionText}</h2>
+                  {card.questionTranslation && card.questionTranslation !== card.questionText && (
+                    <p className='mt-1 text-sm text-muted-foreground'>
+                      Traducción (español): {card.questionTranslation}
+                    </p>
+                  )}
+                  <p className='mt-1 text-xs text-muted-foreground'>
+                    Semana {card.weekStart} → {card.weekEnd}
                   </p>
-                )}
-                <p className='mt-1 text-xs text-muted-foreground'>
-                  Semana {card.weekStart} → {card.weekEnd} · Creada: {formatDate(card.createdAt)} · {card.timezone}
-                </p>
-              </div>
-              <div className='flex flex-col items-end gap-1'>
-                <span className='rounded-full bg-muted px-2.5 py-1 text-xs'>
-                  {card.completedAt ? 'Completada' : card.isUnlocked ? 'Desbloqueada' : 'Bloqueada'}
-                </span>
-                {card.attempt.attemptKind === 'token_unlock' ? (
-                  <span className='rounded-full border border-emerald-300/50 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300'>
-                    Canje de fichas
+                </div>
+                <div className='flex flex-col items-end gap-1'>
+                  <span className='rounded-full bg-muted px-2.5 py-1 text-xs'>
+                    {card.completedAt ? 'Completada' : card.isUnlocked ? 'Desbloqueada' : 'Bloqueada'}
                   </span>
-                ) : (
-                  <span className='rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary'>
-                    Reto semanal
-                  </span>
-                )}
+                  {card.attempt.attemptKind === 'token_unlock' ? (
+                    <span className='rounded-full border border-emerald-300/50 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300'>
+                      Canje de fichas
+                    </span>
+                  ) : (
+                    <span className='rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary'>
+                      Reto semanal
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-
-            <div className='mt-4'>
-              <AttemptContent
-                attempt={card.attempt}
-                onSuggestionClick={handleOpenSuggestionModal}
-                isSuggestionAdded={isSuggestionAdded}
-              />
-            </div>
-          </section>
+            </AccordionTrigger>
+            <AccordionContent className='pb-4'>
+              <div className='rounded-xl border border-border bg-background p-3'>
+                <AttemptContent
+                  attempt={card.attempt}
+                  onSuggestionClick={handleOpenSuggestionModal}
+                  isSuggestionAdded={isSuggestionAdded}
+                />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
         ))}
-      </div>
+      </Accordion>
 
       <AddIcaSuggestionModal
         open={suggestionModalOpen}

@@ -20,7 +20,16 @@ type RefreshSuggestionsPayload = {
   icaWords?: string[]
 }
 
-type RequestPayload = ProcessAttemptPayload | RefreshSuggestionsPayload
+type PrepareAttemptPayload = {
+  action: 'prepare_attempt'
+  wordMode: string
+  targetLang?: string
+  nativeLang?: string
+  level?: string
+  excludeQuestionId?: string | null
+}
+
+type RequestPayload = ProcessAttemptPayload | RefreshSuggestionsPayload | PrepareAttemptPayload
 
 type AttemptRow = {
   id: string
@@ -47,6 +56,45 @@ type AudioRow = {
   status: string
   analysis_score?: number | null
   analysis_payload?: Record<string, unknown> | null
+}
+
+type AttemptCreateRow = {
+  id: string
+  user_id: string
+  preguntica_week_id: string
+  question_id: string | null
+  attempt_number: number
+  attempt_kind: 'weekly' | 'token_unlock'
+  word_mode: string
+  level: string | null
+  target_lang: string | null
+  native_lang: string | null
+  question_text: string | null
+  ica_words: unknown
+  response_text: string | null
+  response_char_count: number | null
+  transcript_text: string | null
+  analysis_score: number | null
+  analysis_payload: unknown
+  status: string
+  retry_count: number
+  suggestions_refresh_count: number
+  error_code: string | null
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+type LexicardWordRow = {
+  target: string | null
+  importance: string | null
+}
+
+type PickQuestionRow = {
+  question_id: string
+  question_es: string
+  question_target: string | null
+  needs_translation: boolean
 }
 
 type AnthropicTextBlock = {
@@ -88,6 +136,60 @@ function parseWords(raw: unknown): string[] {
     .filter(Boolean)
 }
 
+function normalizeComparableText(value: string): string {
+  return value.normalize('NFKC').trim().toLowerCase()
+}
+
+function normalizeWordMode(value: string | undefined): string {
+  const mode = (value || 'mixed').trim().toLowerCase()
+  if (!mode) return 'mixed'
+  if (['mixed', 'vital', 'frequent', 'occasional', 'rare'].includes(mode)) return mode
+  return 'mixed'
+}
+
+function wordsAllowedByLevel(level: string | undefined): number {
+  const normalized = (level || 'A2').trim().toUpperCase()
+  if (normalized === 'A1') return 1
+  if (normalized === 'A2') return 2
+  if (normalized === 'B1') return 3
+  if (normalized === 'B2') return 4
+  return 5
+}
+
+function randomize<T>(items: T[]): T[] {
+  const copy = [...items]
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[copy[i], copy[j]] = [copy[j], copy[i]]
+  }
+  return copy
+}
+
+function wordCount(value: string): number {
+  return value.trim().split(/\s+/).filter(Boolean).length
+}
+
+function isSpanishLanguage(value: string): boolean {
+  const normalized = value.trim().toLowerCase()
+  return normalized === 'español' || normalized === 'espanol' || normalized === 'spanish' || normalized === 'es'
+}
+
+function parseTranslationCandidate(raw: string | null): { translation: string; confidence: number } | null {
+  if (!raw) return null
+
+  try {
+    const cleaned = raw.replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(cleaned) as Record<string, unknown>
+    const translation = typeof parsed.translation === 'string' ? parsed.translation.trim() : ''
+    const confidenceRaw = Number(parsed.confidence)
+    const confidence = Number.isFinite(confidenceRaw) ? clamp(confidenceRaw, 0, 1) : 0
+    if (!translation || translation === '—') return null
+    return { translation, confidence }
+  } catch {
+    return null
+  }
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
@@ -109,6 +211,7 @@ async function createClients(req: Request): Promise<
   | {
       ok: true
       userId: string
+      authClient: any
       adminClient: any
     }
   | {
@@ -149,7 +252,7 @@ async function createClients(req: Request): Promise<
   }
 
   const adminClient = createClient<any>(supabaseUrl, serviceRoleKey)
-  return { ok: true, userId: user.id, adminClient }
+  return { ok: true, userId: user.id, authClient, adminClient }
 }
 
 async function callWhisper(audioBlob: Blob, mimeType: string | null): Promise<OpenAiTranscriptionResponse> {
@@ -390,6 +493,200 @@ async function cleanupFailedAudio(adminClient: any, audio: AudioRow): Promise<vo
     .from('preguntica_attempt_audios')
     .delete()
     .eq('id', audio.id)
+}
+
+async function fetchLexicardWords(
+  adminClient: any,
+  userId: string,
+  targetLang: string,
+  nativeLang: string,
+): Promise<LexicardWordRow[]> {
+  const baseQuery = () => adminClient
+    .from('lexicards')
+    .select('target, importance')
+    .eq('user_id', userId)
+
+  const withLang = await baseQuery()
+    .eq('target_lang', targetLang)
+    .eq('native_lang', nativeLang)
+    .limit(600)
+
+  if (withLang.error) {
+    throw new Error(withLang.error.message)
+  }
+
+  const withLangRows = (withLang.data || []) as LexicardWordRow[]
+  if (withLangRows.length > 0) return withLangRows
+
+  const fallback = await baseQuery().limit(600)
+  if (fallback.error) {
+    throw new Error(fallback.error.message)
+  }
+
+  return (fallback.data || []) as LexicardWordRow[]
+}
+
+function pickWordsForAttempt(
+  rows: LexicardWordRow[],
+  mode: string,
+  level: string,
+): string[] {
+  const cleaned = rows
+    .map((row) => ({
+      target: typeof row.target === 'string' ? row.target.trim() : '',
+      importance: typeof row.importance === 'string' ? row.importance.trim().toLowerCase() : '',
+    }))
+    .filter((row) => row.target.length > 0)
+
+  if (cleaned.length === 0) {
+    throw new Error('NO_ICA_WORDS_AVAILABLE')
+  }
+
+  const uniqueTargets = new Map<string, { target: string; importance: string }>()
+  for (const row of cleaned) {
+    const key = normalizeComparableText(row.target)
+    if (!key || uniqueTargets.has(key)) continue
+    uniqueTargets.set(key, row)
+  }
+
+  const all = Array.from(uniqueTargets.values())
+  const preferred = mode === 'mixed' ? all : all.filter((row) => row.importance === mode)
+  const shortPreferred = preferred.filter((row) => wordCount(row.target) <= 3)
+  const shortAll = all.filter((row) => wordCount(row.target) <= 3)
+
+  const pool = shortPreferred.length > 0
+    ? shortPreferred
+    : shortAll.length > 0
+      ? shortAll
+      : preferred.length > 0
+        ? preferred
+        : all
+
+  if (pool.length === 0) {
+    throw new Error('NO_ICA_WORDS_AVAILABLE')
+  }
+
+  const count = Math.max(1, Math.min(wordsAllowedByLevel(level), pool.length))
+  return randomize(pool)
+    .slice(0, count)
+    .map((item) => item.target)
+}
+
+async function pickQuestionForAttempt(
+  authClient: any,
+  targetLang: string,
+  excludeQuestionId?: string | null,
+): Promise<PickQuestionRow> {
+  const { data, error } = await authClient.rpc('pick_preguntica_question', {
+    p_target_lang: targetLang,
+    p_exclude_question_id: excludeQuestionId || null,
+  })
+
+  if (error) throw new Error(error.message)
+
+  const row = Array.isArray(data)
+    ? (data[0] as PickQuestionRow | undefined)
+    : (data as PickQuestionRow | null)
+
+  if (!row?.question_id || !row.question_es) {
+    throw new Error('QUESTION_BANK_EMPTY')
+  }
+
+  return row
+}
+
+async function translateQuestion(questionEs: string, targetLang: string): Promise<string | null> {
+  const raw = await callAnthropic(
+    [
+      'You are a cautious bilingual dictionary assistant.',
+      `Translate from Español to ${targetLang}.`,
+      'If the input is misspelled, unknown, or too ambiguous, do not guess.',
+      'Reply ONLY valid JSON with this exact shape:',
+      '{"translation":"... or —","confidence":0.0}',
+      'confidence must be a number between 0 and 1.',
+    ].join(' '),
+    questionEs,
+  )
+
+  const parsed = parseTranslationCandidate(raw)
+  if (!parsed) return null
+  if (parsed.confidence < 0.72) return null
+  return parsed.translation
+}
+
+async function prepareAttempt(
+  authClient: any,
+  adminClient: any,
+  userId: string,
+  payload: PrepareAttemptPayload,
+): Promise<Response> {
+  const wordMode = normalizeWordMode(payload.wordMode)
+  const targetLang = (payload.targetLang || 'English').trim() || 'English'
+  const nativeLang = (payload.nativeLang || 'Español').trim() || 'Español'
+  const level = (payload.level || 'A2').trim() || 'A2'
+
+  const lexicardRows = await fetchLexicardWords(adminClient, userId, targetLang, nativeLang)
+  const pickedWords = pickWordsForAttempt(lexicardRows, wordMode, level)
+
+  const selectedQuestion = await pickQuestionForAttempt(authClient, targetLang, payload.excludeQuestionId)
+  const cachedTarget = (selectedQuestion.question_target || '').trim()
+  const questionEs = selectedQuestion.question_es.trim()
+
+  let questionText = cachedTarget || questionEs
+  const shouldTranslate = !isSpanishLanguage(targetLang)
+    && (selectedQuestion.needs_translation || !cachedTarget || normalizeComparableText(cachedTarget) === normalizeComparableText(questionEs))
+
+  if (shouldTranslate) {
+    const translated = await translateQuestion(questionEs, targetLang)
+    if (!translated) {
+      throw new Error('QUESTION_TRANSLATION_REQUIRED')
+    }
+
+    questionText = translated.trim()
+
+    const { error: saveError } = await authClient.rpc('save_preguntica_question_translation', {
+      p_question_id: selectedQuestion.question_id,
+      p_target_lang: targetLang,
+      p_translation: questionText,
+    })
+
+    if (saveError) {
+      throw new Error(saveError.message)
+    }
+  }
+
+  const { data: createdData, error: createdError } = await authClient.rpc(
+    'create_preguntica_attempt_with_prompt_data',
+    {
+      p_word_mode: wordMode,
+      p_question_text: questionText,
+      p_question_id: selectedQuestion.question_id,
+      p_ica_words: pickedWords,
+      p_target_lang: targetLang,
+      p_native_lang: nativeLang,
+      p_level: level,
+    },
+  )
+
+  if (createdError) {
+    throw new Error(createdError.message)
+  }
+
+  const attemptRow = Array.isArray(createdData)
+    ? (createdData[0] as AttemptCreateRow | undefined)
+    : (createdData as AttemptCreateRow | null)
+
+  if (!attemptRow?.id) {
+    throw new Error('ATTEMPT_CREATION_FAILED')
+  }
+
+  return jsonResponse(200, {
+    ok: true,
+    attempt: attemptRow,
+    questionText,
+    questionTranslation: questionEs,
+    icaWords: pickedWords,
+  })
 }
 
 async function processAttemptAudio(
@@ -650,6 +947,10 @@ Deno.serve(async (req: Request) => {
 
     if (payload.action === 'refresh_suggestions') {
       return await refreshSuggestions(clients.adminClient, clients.userId, payload)
+    }
+
+    if (payload.action === 'prepare_attempt') {
+      return await prepareAttempt(clients.authClient, clients.adminClient, clients.userId, payload)
     }
 
     return jsonResponse(400, { error: 'Unsupported action' })

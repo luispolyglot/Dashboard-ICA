@@ -5,15 +5,13 @@ import { toast } from 'sonner'
 import type { AppConfig, Lexicard } from '../types'
 import {
   completePregunticaAttempt,
-  createPregunticaAttemptWithPromptData,
   fetchLatestPregunticaAttempt,
   fetchPregunticaTokenSummary,
   fetchPregunticaWeekStatus,
-  pickPregunticaQuestion,
+  preparePregunticaAttempt,
   processPregunticaAttemptAudio,
   redeemPregunticaTokensForWeek,
   refreshPregunticaSuggestions,
-  savePregunticaQuestionTranslation,
   uploadPregunticaAttemptAudio,
   type PregunticaAttempt,
   type PregunticaFeedback,
@@ -22,7 +20,6 @@ import {
   type PregunticaWordSuggestion,
 } from '../services/preguntica'
 import { DASHBOARD_ROUTES } from '../routes/paths'
-import { fetchTranslation } from '../services/anthropic'
 import { AddIcaSuggestionModal } from '../components/AddIcaSuggestionModal'
 import { SpeakButton } from '../components/SpeakButton'
 import { Button } from '@/components/ui/button'
@@ -83,36 +80,6 @@ const MIME_CANDIDATES = [
 
 const LIVE_BARS_COUNT = 36
 const MAX_ANALYSIS_ATTEMPTS = 3
-
-function randomize<T>(items: T[]): T[] {
-  const copy = [...items]
-  for (let i = copy.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[copy[i], copy[j]] = [copy[j], copy[i]]
-  }
-  return copy
-}
-
-function getWordsByLevel(level: string | undefined): number {
-  const normalized = (level || 'A2').toUpperCase()
-  if (normalized === 'A1') return 1
-  if (normalized === 'A2') return 2
-  if (normalized === 'B1') return 3
-  if (normalized === 'B2') return 4
-  return 5
-}
-
-function getModeCards(cards: Lexicard[], mode: string): Lexicard[] {
-  if (mode === 'mixed') return cards
-  return cards.filter((card) => card.importance === mode)
-}
-
-function pickIcaWords(cards: Lexicard[], mode: string, level: string | undefined): string[] {
-  const preferred = getModeCards(cards, mode)
-  const fallbackPool = preferred.length > 0 ? preferred : cards
-  const count = Math.max(1, Math.min(getWordsByLevel(level), fallbackPool.length || 1))
-  return randomize(fallbackPool).slice(0, count).map((card) => card.target.trim())
-}
 
 function parseDateOnly(value: string): Date | null {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
@@ -329,29 +296,18 @@ export function PregunticaView({
   }
 
   async function startAttemptWorkflow(selectedMode: string) {
-    const words = pickIcaWords(cards, selectedMode, config.level)
-    const selectedQuestion = await resolveQuestionForAttempt()
-
-    const created = await createPregunticaAttemptWithPromptData({
+    const created = await preparePregunticaAttempt({
       wordMode: selectedMode,
-      questionId: selectedQuestion.questionId,
-      questionText: selectedQuestion.questionText,
-      icaWords: words,
       targetLang: config.targetLang,
       nativeLang: config.nativeLang,
       level: config.level || 'A2',
+      excludeQuestionId: attempt?.questionId || null,
     })
 
-    setAttempt({
-      ...created,
-      questionId: selectedQuestion.questionId,
-      questionTranslation: selectedQuestion.questionTranslation,
-      questionText: selectedQuestion.questionText,
-      icaWords: words,
-    })
-    setQuestionText(selectedQuestion.questionText)
-    setQuestionTranslation(selectedQuestion.questionTranslation)
-    setIcaWords(words)
+    setAttempt(created)
+    setQuestionText(created.questionText || '')
+    setQuestionTranslation(created.questionTranslation || null)
+    setIcaWords(created.icaWords)
     setQuestionWasPlayed(false)
     setListenCount(0)
     setQuestionVisible(false)
@@ -389,39 +345,6 @@ export function PregunticaView({
       toast.error(error instanceof Error ? error.message : 'No se pudo crear el intento')
     } finally {
       setWorking(false)
-    }
-  }
-
-  async function resolveQuestionForAttempt(
-    excludeQuestionId?: string | null,
-  ): Promise<{ questionId: string; questionText: string; questionTranslation: string }> {
-    const selectedQuestion = await pickPregunticaQuestion(
-      config.targetLang,
-      excludeQuestionId,
-    )
-    let question = selectedQuestion.questionTarget || selectedQuestion.questionEs
-
-    if (selectedQuestion.needsTranslation) {
-      const translated = await fetchTranslation(
-        selectedQuestion.questionEs,
-        'Español',
-        config.targetLang,
-      )
-
-      if (translated?.trim()) {
-        question = translated.trim()
-        await savePregunticaQuestionTranslation({
-          questionId: selectedQuestion.questionId,
-          targetLang: config.targetLang,
-          translatedText: question,
-        })
-      }
-    }
-
-    return {
-      questionId: selectedQuestion.questionId,
-      questionText: question,
-      questionTranslation: selectedQuestion.questionEs,
     }
   }
 
@@ -684,22 +607,20 @@ export function PregunticaView({
     analysisReady && analysisAttemptsLeft > 0 && !working
 
   const step2Tone = step2Completed
-    ? 'border-emerald-300/50 bg-emerald-500/5'
+    ? 'border-emerald-300/50 bg-background'
     : step2Enabled
       ? 'border-blue-300/60 bg-blue-50/80 dark:border-blue-500/40 dark:bg-blue-950/35'
       : 'border-border bg-slate-100/75 opacity-45 dark:bg-slate-900/70'
 
   const step3Tone = step3Completed
-    ? 'border-emerald-300/50 bg-emerald-500/5'
+    ? 'border-emerald-300/50 bg-background'
     : step3Enabled
       ? 'border-blue-300/60 bg-blue-50/80 dark:border-blue-500/40 dark:bg-blue-950/35'
       : 'border-border bg-slate-100/75 opacity-45 dark:bg-slate-900/70'
 
-  const step4Tone = step4Completed
-    ? 'border-emerald-300/50 bg-[linear-gradient(165deg,hsl(var(--background)),hsl(var(--muted)/0.35))]'
-    : step4Enabled
-      ? 'border-blue-300/60 bg-blue-50/80 dark:border-blue-500/40 dark:bg-blue-950/35'
-      : 'border-border bg-slate-100/75 opacity-45 dark:bg-slate-900/70'
+  const step4Tone = step4Enabled
+    ? `${step4Completed ? 'border-emerald-300/50' : 'border-blue-300/60 dark:border-blue-500/40'} bg-blue-50/80 dark:bg-blue-950/35`
+    : 'border-border bg-slate-100/75 opacity-45 dark:bg-slate-900/70'
 
   const icaUsage = icaWords.map((word) => ({
     word,
