@@ -71,16 +71,6 @@ function formatDuration(durationMs: number | null): string {
   return `${minutes}:${String(remaining).padStart(2, '0')}`
 }
 
-function getStatusLabel(status: string): string {
-  const normalized = status.trim().toLowerCase()
-  if (normalized === 'pending_response') return 'Pendiente de respuesta'
-  if (normalized === 'analyzing') return 'Analizando'
-  if (normalized === 'analyzed') return 'Analizada'
-  if (normalized === 'completed') return 'Completada'
-  if (normalized === 'failed') return 'Con errores'
-  return status
-}
-
 function getModeLabel(mode: string): string {
   const normalized = mode.trim().toLowerCase()
   if (normalized === 'mixed') return 'Aleatorio'
@@ -189,26 +179,26 @@ function AttemptContent({
   })
 
   return (
-    <article className='pb-1'>
-      <div className='flex flex-wrap items-center justify-end gap-2'>
-        <span className='rounded-full bg-muted px-2 py-0.5 text-xs'>
-          {getStatusLabel(attempt.status)}
-        </span>
-      </div>
+    <article className='space-y-3 pb-1'>
+      {questionTranslation && questionTranslation !== questionText && (
+        <div className='rounded-xl border border-sky-200/70 bg-sky-50/80 p-3 dark:border-sky-500/30 dark:bg-sky-950/25'>
+          <p className='text-[11px] font-semibold uppercase tracking-wide text-sky-700/90 dark:text-sky-300/90'>
+            Traduccion (espanol)
+          </p>
+          <p className='mt-1 font-serif text-[15px] leading-relaxed text-slate-700 dark:text-slate-100'>
+            {questionTranslation}
+          </p>
+        </div>
+      )}
 
-      <div className='mt-3'>
-        {questionTranslation && questionTranslation !== questionText && (
-          <p className='text-sm text-muted-foreground'>Traducción (español): {questionTranslation}</p>
-        )}
-      </div>
-
-      <div className='mt-3'>
-        <div className='flex items-center gap-2'>
-          <p className='text-xs font-semibold text-muted-foreground'>Palabras ICA:</p>
+      <div>
+        <p className='inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground'>
+          <span>Palabras ICA</span>
           <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${getModeTone(attempt.wordMode)}`}>
             {getModeLabel(attempt.wordMode)}
           </span>
-        </div>
+          <span>:</span>
+        </p>
         {attempt.icaWords.length > 0 ? (
           <div className='mt-1.5 flex flex-wrap gap-1.5'>
             {attempt.icaWords.map((word) => (
@@ -500,7 +490,7 @@ export function PregunticaHistoryView({
                 </div>
               </div>
             </AccordionTrigger>
-            <AccordionContent className='pb-4'>
+            <AccordionContent className='pb-4 pt-2'>
               <AttemptContent
                 attempt={card.attempt}
                 questionText={card.questionText}
