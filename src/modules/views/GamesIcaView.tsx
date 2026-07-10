@@ -24,7 +24,6 @@ export function GamesIcaView({
   flashcardsReady,
   flashcardsCount,
   pregunticaUnlocked,
-  pregunticaLabel,
   pregunticaProgress,
 }: GamesIcaViewProps) {
   const navigate = useNavigate()
@@ -80,8 +79,8 @@ export function GamesIcaView({
           <p className='mt-1 text-sm text-slate-500'>
             Responde una pregunta semanal usando tus palabras ICA.
           </p>
-          <p className='mt-2 text-xs font-semibold text-slate-600 dark:text-slate-300'>
-            Progreso de desbloqueo: {pregunticaProgress}
+          <p className='mt-2 text-xs text-slate-600 dark:text-slate-300'>
+            <strong>{pregunticaProgress}</strong> <strong>palabras activadas</strong>
           </p>
           <div className='mt-2 flex items-center gap-2'>
             <div className='h-2 flex-1 overflow-hidden rounded-full border border-slate-300/70 bg-slate-200/70 dark:border-slate-600 dark:bg-slate-800'>
@@ -99,7 +98,9 @@ export function GamesIcaView({
             </span>
           </div>
           <p className='mt-3 text-xs font-medium text-slate-600 dark:text-slate-300'>
-            {pregunticaUnlocked ? 'Desbloqueada esta semana' : pregunticaLabel}
+            {pregunticaUnlocked
+              ? 'Desbloqueada esta semana'
+              : 'Activa 20 palabras para desbloquearla'}
           </p>
         </button>
         </div>
