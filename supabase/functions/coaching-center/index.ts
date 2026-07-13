@@ -2287,12 +2287,16 @@ Deno.serve(async (req) => {
 
     const nextFeedbackLoomUrl = normalizeUrl(safeString(payload.feedbackLoomUrl))
     const nextFeedbackNotes = safeString(payload.feedbackNotes)
-    const hadFeedback =
-      Boolean(safeString(noteRow.coaching_feedback_loom_url)) ||
-      Boolean(safeString(noteRow.coaching_feedback_notes))
+    const previousFeedbackLoomUrl = normalizeUrl(
+      safeString(noteRow.coaching_feedback_loom_url),
+    )
+    const previousFeedbackNotes = safeString(noteRow.coaching_feedback_notes)
     const hasFeedbackAfter =
       Boolean(nextFeedbackLoomUrl) || Boolean(nextFeedbackNotes)
-    const shouldNotifyStudent = !hadFeedback && hasFeedbackAfter
+    const feedbackChanged =
+      previousFeedbackLoomUrl !== nextFeedbackLoomUrl
+      || previousFeedbackNotes !== nextFeedbackNotes
+    const shouldNotifyStudent = hasFeedbackAfter && feedbackChanged
 
     const { error: updateError } = await admin.adminClient
       .from('master_notes')
