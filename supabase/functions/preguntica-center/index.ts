@@ -140,6 +140,16 @@ function normalizeComparableText(value: string): string {
   return value.normalize('NFKC').trim().toLowerCase()
 }
 
+function normalizeLooseText(value: string): string {
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function normalizeWordMode(value: string | undefined): string {
   const mode = (value || 'mixed').trim().toLowerCase()
   if (!mode) return 'mixed'
@@ -175,19 +185,47 @@ function isSpanishLanguage(value: string): boolean {
 }
 
 function parseTranslationCandidate(raw: string | null): { translation: string; confidence: number } | null {
-  if (!raw) return null
+  const parsed = parseLastJsonObject(raw)
+  if (!parsed) return null
 
-  try {
-    const cleaned = raw.replace(/```json|```/g, '').trim()
-    const parsed = JSON.parse(cleaned) as Record<string, unknown>
-    const translation = typeof parsed.translation === 'string' ? parsed.translation.trim() : ''
-    const confidenceRaw = Number(parsed.confidence)
-    const confidence = Number.isFinite(confidenceRaw) ? clamp(confidenceRaw, 0, 1) : 0
-    if (!translation || translation === '—') return null
-    return { translation, confidence }
-  } catch {
-    return null
-  }
+  const translationRaw = typeof parsed.translation === 'string' ? parsed.translation.trim() : ''
+  const translation = translationRaw
+    .split(/\s*[\/|]\s*/)[0]
+    ?.replace(/\([^)]*\)/g, '')
+    .trim() || ''
+  const confidenceRaw = Number(parsed.confidence)
+  const confidence = Number.isFinite(confidenceRaw) ? clamp(confidenceRaw, 0, 1) : 0
+  if (!translation || translation === '—') return null
+  return { translation, confidence }
+}
+
+function filterSuggestedWords(
+  suggestions: SuggestionWord[],
+  transcript: string,
+  corrections: Array<{ original: string; suggestion: string; reason: string }>,
+): SuggestionWord[] {
+  if (!suggestions.length) return []
+
+  const transcriptNormalized = normalizeLooseText(transcript)
+  const correctionOriginals = corrections
+    .map((item) => normalizeLooseText(item.original))
+    .filter(Boolean)
+
+  const reinforcementPattern =
+    /(used correctly|already used|ya la usaste|ya lo usaste|usaste correctamente|refuerz|keep using)/i
+
+  return suggestions.filter((item) => {
+    if (reinforcementPattern.test(item.reason)) return false
+
+    const normalizedWord = normalizeLooseText(item.word)
+    if (!normalizedWord || !transcriptNormalized.includes(normalizedWord)) return true
+
+    const appearsInCorrections = correctionOriginals.some((original) => {
+      return original.includes(normalizedWord) || normalizedWord.includes(original)
+    })
+
+    return appearsInCorrections
+  })
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -197,6 +235,81 @@ function clamp(value: number, min: number, max: number): number {
 function toErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message
   return fallback
+}
+
+function extractJsonObjects(raw: string): string[] {
+  const results: string[] = []
+  let depth = 0
+  let start = -1
+  let inString = false
+  let escaped = false
+
+  for (let i = 0; i < raw.length; i += 1) {
+    const char = raw[i]
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inString = true
+      continue
+    }
+
+    if (char === '{') {
+      if (depth === 0) start = i
+      depth += 1
+      continue
+    }
+
+    if (char === '}') {
+      if (depth === 0) continue
+      depth -= 1
+      if (depth === 0 && start !== -1) {
+        results.push(raw.slice(start, i + 1))
+        start = -1
+      }
+    }
+  }
+
+  return results
+}
+
+function parseLastJsonObject(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return null
+
+  const cleaned = raw.replace(/```json|```/gi, '').trim()
+  if (!cleaned) return null
+
+  try {
+    const direct = JSON.parse(cleaned)
+    if (direct && typeof direct === 'object' && !Array.isArray(direct)) {
+      return direct as Record<string, unknown>
+    }
+  } catch {
+    // fallback to extracted objects
+  }
+
+  const objects = extractJsonObjects(cleaned)
+  for (let i = objects.length - 1; i >= 0; i -= 1) {
+    try {
+      const parsed = JSON.parse(objects[i])
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+    } catch {
+      // continue
+    }
+  }
+
+  return null
 }
 
 function readTextBlocks(data: AnthropicResponse): string | null {
@@ -339,64 +452,28 @@ async function callAnthropic(system: string, userPrompt: string): Promise<string
 }
 
 function parseFeedback(raw: string | null): FeedbackPayload | null {
-  if (!raw) return null
+  const parsed = parseLastJsonObject(raw)
+  if (!parsed) return null
 
-  try {
-    const cleaned = raw.replace(/```json|```/g, '').trim()
-    const parsed = JSON.parse(cleaned) as Record<string, unknown>
+  const scoreRaw = Number(parsed.score)
+  const score = Number.isFinite(scoreRaw) ? clamp(Math.round(scoreRaw * 10) / 10, 0, 10) : 0
+  const naturalness = typeof parsed.naturalness === 'string' ? parsed.naturalness.trim() : ''
+  const coachReply = typeof parsed.coachReply === 'string' ? parsed.coachReply.trim() : ''
 
-    const scoreRaw = Number(parsed.score)
-    const score = Number.isFinite(scoreRaw) ? clamp(Math.round(scoreRaw * 10) / 10, 0, 10) : 0
-    const naturalness = typeof parsed.naturalness === 'string' ? parsed.naturalness.trim() : ''
-    const coachReply = typeof parsed.coachReply === 'string' ? parsed.coachReply.trim() : ''
+  const corrections = Array.isArray(parsed.corrections)
+    ? parsed.corrections
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => ({
+        original: typeof item.original === 'string' ? item.original.trim() : '',
+        suggestion: typeof item.suggestion === 'string' ? item.suggestion.trim() : '',
+        reason: typeof item.reason === 'string' ? item.reason.trim() : '',
+      }))
+      .filter((item) => item.original && item.suggestion && item.reason)
+      .slice(0, 5)
+    : []
 
-    const corrections = Array.isArray(parsed.corrections)
-      ? parsed.corrections
-        .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
-        .map((item) => ({
-          original: typeof item.original === 'string' ? item.original.trim() : '',
-          suggestion: typeof item.suggestion === 'string' ? item.suggestion.trim() : '',
-          reason: typeof item.reason === 'string' ? item.reason.trim() : '',
-        }))
-        .filter((item) => item.original && item.suggestion && item.reason)
-        .slice(0, 5)
-      : []
-
-    const suggestedIcaWords = Array.isArray(parsed.suggestedIcaWords)
-      ? parsed.suggestedIcaWords
-        .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
-        .map((item) => ({
-          word: typeof item.word === 'string' ? item.word.trim() : '',
-          translation: typeof item.translation === 'string' ? item.translation.trim() : '',
-          reason: typeof item.reason === 'string' ? item.reason.trim() : '',
-        }))
-        .filter((item) => item.word && item.translation && item.reason)
-        .slice(0, 8)
-      : []
-
-    if (!naturalness || !coachReply) return null
-
-    return {
-      score,
-      naturalness,
-      corrections,
-      coachReply,
-      suggestedIcaWords,
-    }
-  } catch {
-    return null
-  }
-}
-
-function parseSuggestions(raw: string | null): SuggestionWord[] {
-  if (!raw) return []
-
-  try {
-    const cleaned = raw.replace(/```json|```/g, '').trim()
-    const parsed = JSON.parse(cleaned) as Record<string, unknown>
-    if (!Array.isArray(parsed.suggestedIcaWords)) return []
-
-    return parsed.suggestedIcaWords
+  const suggestedIcaWords = Array.isArray(parsed.suggestedIcaWords)
+    ? parsed.suggestedIcaWords
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
       .map((item) => ({
         word: typeof item.word === 'string' ? item.word.trim() : '',
@@ -405,9 +482,32 @@ function parseSuggestions(raw: string | null): SuggestionWord[] {
       }))
       .filter((item) => item.word && item.translation && item.reason)
       .slice(0, 8)
-  } catch {
-    return []
+    : []
+
+  if (!naturalness || !coachReply) return null
+
+  return {
+    score,
+    naturalness,
+    corrections,
+    coachReply,
+    suggestedIcaWords,
   }
+}
+
+function parseSuggestions(raw: string | null): SuggestionWord[] {
+  const parsed = parseLastJsonObject(raw)
+  if (!parsed || !Array.isArray(parsed.suggestedIcaWords)) return []
+
+  return parsed.suggestedIcaWords
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    .map((item) => ({
+      word: typeof item.word === 'string' ? item.word.trim() : '',
+      translation: typeof item.translation === 'string' ? item.translation.trim() : '',
+      reason: typeof item.reason === 'string' ? item.reason.trim() : '',
+    }))
+    .filter((item) => item.word && item.translation && item.reason)
+    .slice(0, 8)
 }
 
 function buildFeedbackPrompt(input: {
@@ -424,7 +524,17 @@ function buildFeedbackPrompt(input: {
     `Learner native language: ${input.nativeLang}`,
     `CEFR level: ${input.level}`,
     `Words the learner should try to use: ${wordsBlock}`,
+    '',
     'Analyze the learner response and give clear, concise coaching in native language.',
+    '',
+    'Rules for suggestedIcaWords (CRITICAL):',
+    'A suggestion may be included only if it matches exactly one of these:',
+    '1) The learner used it incorrectly (wrong form, context, or spelling).',
+    '2) The learner did not use it, but it would be natural and useful in this exact context and CEFR level.',
+    'NEVER include a word or phrase the learner already used correctly.',
+    'Reinforcement or praise are not valid reasons for suggestedIcaWords.',
+    'If fewer than 8 items qualify, return fewer. Empty array is valid.',
+    '',
     'Output STRICT JSON only with shape:',
     '{"score":0-10,"naturalness":"...","corrections":[{"original":"...","suggestion":"...","reason":"..."}],"coachReply":"...","suggestedIcaWords":[{"word":"...","translation":"...","reason":"..."}]}',
     'Rules:',
@@ -433,6 +543,7 @@ function buildFeedbackPrompt(input: {
     '- suggestedIcaWords max 8',
     '- translation must be in learner native language',
     '- keep suggestions concrete and actionable',
+    '- return ONLY one JSON object, no markdown, no extra text',
     '',
     'Learner response:',
     input.transcript,
@@ -598,13 +709,21 @@ async function pickQuestionForAttempt(
 async function translateQuestion(questionEs: string, targetLang: string): Promise<string | null> {
   const raw = await callAnthropic(
     [
-      'You are a cautious bilingual dictionary assistant.',
+      'You are a bilingual dictionary assistant.',
       `Translate from Español to ${targetLang}.`,
-      'If the input is misspelled, unknown, or too ambiguous, do not guess.',
-      'Reply ONLY valid JSON with this exact shape:',
-      '{"translation":"... or —","confidence":0.0}',
-      'confidence must be a number between 0 and 1.',
-    ].join(' '),
+      '',
+      'Rules for "translation":',
+      `- Return ONLY the translation, written ONLY in ${targetLang}.`,
+      '- NEVER include the original input text.',
+      '- NEVER include alternatives, slashes, parentheses, or explanations.',
+      '- If multiple valid translations exist, return only the single most common one.',
+      '- If misspelled, unknown, or too ambiguous, return "—" with confidence 0.',
+      '',
+      'Output format (CRITICAL):',
+      '- Return exactly one JSON object on one line: {"translation":"...","confidence":0.0}',
+      '- confidence must be a number between 0 and 1.',
+      '- No markdown. No text before or after JSON.',
+    ].join('\n'),
     questionEs,
   )
 
@@ -800,6 +919,8 @@ async function processAttemptAudio(
     throw new Error('INVALID_ANALYSIS_PAYLOAD')
   }
 
+  parsed.suggestedIcaWords = filterSuggestedWords(parsed.suggestedIcaWords, transcript, parsed.corrections)
+
   await adminClient
     .from('preguntica_attempts')
     .update({
@@ -884,16 +1005,20 @@ async function refreshSuggestions(
       `Learner level: ${level}`,
       `Current ICA words: ${icaWords.join(', ') || 'none'}`,
       'Give 4 to 8 alternative ICA words the learner could use to improve the response.',
+      'Only suggest words that were used incorrectly or were not used but would be natural and useful.',
+      'Never suggest words already used correctly in the learner response.',
+      'If fewer than 4 qualify, return fewer. Empty array is valid.',
       'Return STRICT JSON only with shape:',
       '{"suggestedIcaWords":[{"word":"...","translation":"...","reason":"..."}]}',
       `translation must be in: ${nativeLang}`,
+      'No markdown. No text before or after JSON.',
       '',
       'Learner response:',
       transcript,
     ].join('\n'),
   )
 
-  const suggestions = parseSuggestions(raw)
+  const suggestions = filterSuggestedWords(parseSuggestions(raw), transcript, [])
   const nextRefresh = currentRefresh + 1
 
   await adminClient

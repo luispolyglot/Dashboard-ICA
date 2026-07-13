@@ -21,8 +21,28 @@ type AnthropicTextBlock = {
   text: string
 }
 
+type AnthropicToolUseBlock = {
+  type: 'tool_use'
+  name: string
+  input?: Record<string, unknown>
+}
+
+type AnthropicContentBlock = AnthropicTextBlock | AnthropicToolUseBlock
+
 type AnthropicResponse = {
-  content?: AnthropicTextBlock[]
+  content?: AnthropicContentBlock[]
+}
+
+type AnthropicToolDefinition = {
+  name: string
+  description: string
+  input_schema: Record<string, unknown>
+}
+
+type CallAnthropicOptions = {
+  maxTokens?: number
+  temperature?: number
+  tool?: AnthropicToolDefinition
 }
 
 type TranslationCandidate = {
@@ -94,6 +114,116 @@ function readTextBlocks(data: AnthropicResponse): string | null {
   return text || null
 }
 
+function readToolInput(data: AnthropicResponse, toolName: string): Record<string, unknown> | null {
+  const block = data.content?.find((item): item is AnthropicToolUseBlock => {
+    return item.type === 'tool_use' && item.name === toolName
+  })
+
+  if (!block || !block.input || typeof block.input !== 'object') return null
+  return block.input
+}
+
+function extractJsonObjects(raw: string): string[] {
+  const results: string[] = []
+  let depth = 0
+  let start = -1
+  let inString = false
+  let escaped = false
+
+  for (let i = 0; i < raw.length; i += 1) {
+    const char = raw[i]
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inString = true
+      continue
+    }
+
+    if (char === '{') {
+      if (depth === 0) start = i
+      depth += 1
+      continue
+    }
+
+    if (char === '}') {
+      if (depth === 0) continue
+      depth -= 1
+      if (depth === 0 && start !== -1) {
+        results.push(raw.slice(start, i + 1))
+        start = -1
+      }
+    }
+  }
+
+  return results
+}
+
+function parseLastJsonObject(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return null
+
+  const cleaned = raw.replace(/```json|```/gi, '').trim()
+  if (!cleaned) return null
+
+  try {
+    const direct = JSON.parse(cleaned)
+    if (direct && typeof direct === 'object' && !Array.isArray(direct)) {
+      return direct as Record<string, unknown>
+    }
+  } catch {
+    // fallback to extracted objects
+  }
+
+  const objects = extractJsonObjects(cleaned)
+  for (let i = objects.length - 1; i >= 0; i -= 1) {
+    try {
+      const parsed = JSON.parse(objects[i])
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+    } catch {
+      // continue
+    }
+  }
+
+  return null
+}
+
+function sanitizeTranslation(value: string): string | null {
+  if (!value) return null
+
+  let cleaned = value.trim()
+  if (!cleaned || cleaned === '—') return null
+
+  if (/[\n\r]/.test(cleaned)) return null
+
+  cleaned = cleaned.split(/\s*[\/|]\s*/)[0]?.trim() || ''
+  cleaned = cleaned.replace(/\([^)]*\)/g, '').trim()
+  cleaned = cleaned.replace(/^['"`]+|['"`]+$/g, '').trim()
+
+  if (!cleaned || cleaned === '—') return null
+  if (cleaned.length > 80) return null
+
+  return cleaned
+}
+
+function sanitizeSpellingSuggestion(value: string): string | null {
+  const cleaned = value.trim()
+  if (!cleaned || cleaned === '—') return null
+  if (cleaned.length > 50) return null
+  if (/\s/.test(cleaned)) return null
+  return cleaned
+}
+
 async function requireUser(req: Request): Promise<{ ok: true } | { ok: false; response: Response }> {
   const authHeader = req.headers.get('Authorization')
   if (!authHeader) {
@@ -129,8 +259,8 @@ async function requireUser(req: Request): Promise<{ ok: true } | { ok: false; re
 async function callAnthropic(
   system: string,
   userPrompt: string,
-  options?: { maxTokens?: number; temperature?: number },
-): Promise<string | null> {
+  options?: CallAnthropicOptions,
+): Promise<{ text: string | null; toolInput: Record<string, unknown> | null }> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
   const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6'
   const baseUrl = Deno.env.get('ANTHROPIC_BASE_URL') || 'https://api.anthropic.com'
@@ -152,6 +282,8 @@ async function callAnthropic(
       temperature: options?.temperature ?? 0.2,
       system,
       messages: [{ role: 'user', content: userPrompt }],
+      tools: options?.tool ? [options.tool] : undefined,
+      tool_choice: options?.tool ? { type: 'tool', name: options.tool.name } : undefined,
     }),
   })
 
@@ -160,74 +292,48 @@ async function callAnthropic(
   }
 
   const data = (await response.json()) as AnthropicResponse
-  return readTextBlocks(data)
-}
-
-function parseTranslationCandidate(raw: string | null): TranslationCandidate {
-  if (!raw) return { translation: null, confidence: 0 }
-
-  try {
-    const cleaned = raw.replace(/```json|```/g, '').trim()
-    const parsed = JSON.parse(cleaned) as {
-      translation?: unknown
-      confidence?: unknown
-    }
-
-    const translation = typeof parsed.translation === 'string' ? parsed.translation.trim() : ''
-    const confidence = typeof parsed.confidence === 'number'
-      ? Math.min(1, Math.max(0, parsed.confidence))
-      : 0
-
-    if (!translation || translation === '—') {
-      return { translation: null, confidence }
-    }
-
-    return { translation, confidence }
-  } catch {
-    const fallback = raw.trim()
-    if (!fallback || fallback === '—') {
-      return { translation: null, confidence: 0 }
-    }
-    return { translation: fallback, confidence: 0.5 }
+  return {
+    text: readTextBlocks(data),
+    toolInput: options?.tool ? readToolInput(data, options.tool.name) : null,
   }
 }
 
+function parseTranslationCandidate(raw: string | null): TranslationCandidate {
+  const parsed = parseLastJsonObject(raw)
+  if (!parsed) return { translation: null, confidence: 0 }
+
+  const translationRaw = typeof parsed.translation === 'string' ? parsed.translation : ''
+  const translation = sanitizeTranslation(translationRaw)
+  const confidence = typeof parsed.confidence === 'number'
+    ? Math.min(1, Math.max(0, parsed.confidence))
+    : 0
+
+  return { translation, confidence }
+}
+
 function parseActivationPhrase(raw: string | null): { phrase: string; translation: string; words_used?: string[] } | null {
-  if (!raw) return null
+  const parsed = parseLastJsonObject(raw)
+  if (!parsed) return null
 
-  try {
-    const cleaned = raw.replace(/```json|```/g, '').trim()
-    const parsed = JSON.parse(cleaned) as { phrase?: unknown; translation?: unknown; words_used?: unknown }
-    if (typeof parsed.phrase !== 'string' || typeof parsed.translation !== 'string') {
-      return null
-    }
-
-    return {
-      phrase: parsed.phrase,
-      translation: parsed.translation,
-      words_used: Array.isArray(parsed.words_used)
-        ? parsed.words_used.filter((word): word is string => typeof word === 'string')
-        : undefined,
-    }
-  } catch {
+  if (typeof parsed.phrase !== 'string' || typeof parsed.translation !== 'string') {
     return null
+  }
+
+  return {
+    phrase: parsed.phrase,
+    translation: parsed.translation,
+    words_used: Array.isArray(parsed.words_used)
+      ? parsed.words_used.filter((word): word is string => typeof word === 'string')
+      : undefined,
   }
 }
 
 function parseSpellcheckSuggestion(raw: string | null): string | null {
-  if (!raw) return null
+  const parsed = parseLastJsonObject(raw)
+  if (!parsed) return null
 
-  try {
-    const cleaned = raw.replace(/```json|```/g, '').trim()
-    const parsed = JSON.parse(cleaned) as { suggestion?: unknown }
-    const suggestion = typeof parsed.suggestion === 'string' ? parsed.suggestion.trim() : ''
-    if (!suggestion || suggestion === '—') return null
-    return suggestion
-  } catch {
-    const fallback = raw.trim()
-    if (!fallback || fallback === '—') return null
-    return fallback
-  }
+  const suggestion = typeof parsed.suggestion === 'string' ? parsed.suggestion : ''
+  return sanitizeSpellingSuggestion(suggestion)
 }
 
 function parsePhraseTokenInsight(raw: string | null): {
@@ -236,38 +342,27 @@ function parsePhraseTokenInsight(raw: string | null): {
   grammarTip: string
   examples: string[]
 } | null {
-  if (!raw) return null
+  const parsed = parseLastJsonObject(raw)
+  if (!parsed) return null
 
-  try {
-    const cleaned = raw.replace(/```json|```/g, '').trim()
-    const parsed = JSON.parse(cleaned) as {
-      translation?: unknown
-      meaning?: unknown
-      grammarTip?: unknown
-      examples?: unknown
-    }
+  const translation = typeof parsed.translation === 'string' ? parsed.translation.trim() : ''
+  const meaning = typeof parsed.meaning === 'string' ? parsed.meaning.trim() : ''
+  const grammarTip = typeof parsed.grammarTip === 'string' ? parsed.grammarTip.trim() : ''
+  const examples = Array.isArray(parsed.examples)
+    ? parsed.examples
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 2)
+    : []
 
-    const translation = typeof parsed.translation === 'string' ? parsed.translation.trim() : ''
-    const meaning = typeof parsed.meaning === 'string' ? parsed.meaning.trim() : ''
-    const grammarTip = typeof parsed.grammarTip === 'string' ? parsed.grammarTip.trim() : ''
-    const examples = Array.isArray(parsed.examples)
-      ? parsed.examples
-        .filter((item): item is string => typeof item === 'string')
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .slice(0, 2)
-      : []
+  if (!translation || !meaning || !grammarTip) return null
 
-    if (!translation || !meaning || !grammarTip) return null
-
-    return {
-      translation,
-      meaning,
-      grammarTip,
-      examples,
-    }
-  } catch {
-    return null
+  return {
+    translation,
+    meaning,
+    grammarTip,
+    examples,
   }
 }
 
@@ -292,20 +387,49 @@ Deno.serve(async (req) => {
 
   try {
     if (payload.action === 'translate') {
-      const translatedRaw = await callAnthropic(
+      const translated = await callAnthropic(
         [
-          'You are a cautious bilingual dictionary assistant.',
+          'You are a bilingual dictionary assistant.',
           `Translate from ${payload.fromLang} to ${payload.toLang}.`,
-          'If the input is misspelled, unknown, or too ambiguous, do not guess.',
-          'Reply ONLY valid JSON with this exact shape:',
-          '{"translation":"... or —","confidence":0.0}',
-          'confidence must be a number between 0 and 1.',
-        ].join(' '),
+          '',
+          'Rules for "translation":',
+          `- Return ONLY the translation, written ONLY in ${payload.toLang}.`,
+          '- NEVER include the original input text.',
+          '- NEVER include alternatives, slashes, parentheses, or explanations.',
+          '- If multiple valid translations exist, return only the single most common one.',
+          '- If misspelled, unknown, or too ambiguous, return "—" with confidence 0.',
+          '',
+          'Output format (CRITICAL):',
+          '- Return exactly one JSON object on one line: {"translation":"...","confidence":0.0}',
+          '- confidence must be a number between 0 and 1.',
+          '- No markdown. No text before or after JSON.',
+          '',
+          `Example: Input "Wasser" -> {"translation":"agua","confidence":1}`,
+          `Example: Input "xkrtz" -> {"translation":"—","confidence":0}`,
+        ].join('\n'),
         payload.text,
-        { maxTokens: 120, temperature: 0 },
+        {
+          maxTokens: 120,
+          temperature: 0,
+          tool: {
+            name: 'report_translation',
+            description: 'Return the translation result',
+            input_schema: {
+              type: 'object',
+              properties: {
+                translation: { type: 'string' },
+                confidence: { type: 'number' },
+              },
+              required: ['translation', 'confidence'],
+            },
+          },
+        },
       )
 
-      const parsed = parseTranslationCandidate(translatedRaw)
+      const parsedFromTool = translated.toolInput
+        ? parseTranslationCandidate(JSON.stringify(translated.toolInput))
+        : null
+      const parsed = parsedFromTool || parseTranslationCandidate(translated.text)
       const accepted = parsed.translation && parsed.confidence >= 0.72
 
       return jsonResponse(200, {
@@ -380,7 +504,7 @@ Deno.serve(async (req) => {
       )
 
       return jsonResponse(200, {
-        result: parseActivationPhrase(raw),
+        result: parseActivationPhrase(raw.text),
       })
     }
 
@@ -411,7 +535,7 @@ Deno.serve(async (req) => {
       )
 
       return jsonResponse(200, {
-        result: parseActivationPhrase(raw),
+        result: parseActivationPhrase(raw.text),
       })
     }
 
@@ -421,21 +545,46 @@ Deno.serve(async (req) => {
         return jsonResponse(200, { suggestion: null })
       }
 
-      const raw = await callAnthropic(
+      const result = await callAnthropic(
         [
-          'You are a strict single-word spelling checker.',
-          `Language: ${payload.lang}.`,
-          'If the word is correct, return suggestion as —.',
-          'If there is a likely typo, return the corrected word only.',
-          'Do not translate.',
-          'Reply ONLY valid JSON: {"suggestion":"... or —"}',
-        ].join(' '),
+          'You are a spelling checker for single words.',
+          `Language of the word: ${payload.lang}.`,
+          '',
+          'Rules:',
+          '- Check spelling only. Never translate. Never explain.',
+          '- If the word is correct, return "—".',
+          '- If there is a likely typo, return only the corrected word in the same language.',
+          '- If unsure, treat as correct and return "—".',
+          '',
+          'Output format (CRITICAL):',
+          '- Return exactly one JSON object on one line: {"suggestion":"..."}',
+          '- No markdown. No text before or after JSON.',
+          '- Never return more than one JSON object.',
+        ].join('\n'),
         text,
-        { maxTokens: 60, temperature: 0 },
+        {
+          maxTokens: 60,
+          temperature: 0,
+          tool: {
+            name: 'report_spelling',
+            description: 'Return spelling suggestion result',
+            input_schema: {
+              type: 'object',
+              properties: {
+                suggestion: { type: 'string' },
+              },
+              required: ['suggestion'],
+            },
+          },
+        },
       )
 
+      const suggestionFromTool = result.toolInput
+        ? parseSpellcheckSuggestion(JSON.stringify(result.toolInput))
+        : null
+
       return jsonResponse(200, {
-        suggestion: parseSpellcheckSuggestion(raw),
+        suggestion: suggestionFromTool ?? parseSpellcheckSuggestion(result.text),
       })
     }
 
@@ -464,7 +613,7 @@ Deno.serve(async (req) => {
       )
 
       return jsonResponse(200, {
-        result: parsePhraseTokenInsight(raw),
+        result: parsePhraseTokenInsight(raw.text),
       })
     }
 
