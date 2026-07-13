@@ -37,6 +37,7 @@ type RecordingDraft = {
 }
 
 const MAX_DURATION_MS = 3 * 60 * 1000 + 30 * 1000
+const MIN_SAVE_DURATION_MS = 10 * 1000
 
 type PendingLeaveAction =
   | {
@@ -334,6 +335,8 @@ export function MasterNoteActivatePhraseView({
     recording && remainingDuringRecordingMs === 0
   const exceededLimitForNewRecordings =
     !recording && remainingBeforeRecordingMs === 0
+  const isDraftTooShort =
+    !!recordingDraft && recordingDraft.durationMs < MIN_SAVE_DURATION_MS
 
   const startWave = (stream: MediaStream): void => {
     try {
@@ -683,6 +686,9 @@ export function MasterNoteActivatePhraseView({
                     Borrador: {formatDuration(recordingDraft.durationMs)} ·{' '}
                     {Math.round(recordingDraft.sizeBytes / 1024)} KB
                   </p>
+                  <p className='mb-2 text-xs text-muted-foreground'>
+                    Para guardar, el audio debe durar al menos 0:10.
+                  </p>
                   <audio controls src={recordingDraft.url} className='w-full' />
                   <div className='mt-2 flex gap-2'>
                     <Button
@@ -690,7 +696,7 @@ export function MasterNoteActivatePhraseView({
                       onClick={() => void handleSaveChunk()}
                       size='sm'
                       variant='outline'
-                      disabled={saving}
+                      disabled={saving || isDraftTooShort}
                     >
                       {saving ? 'Guardando...' : 'Guardar audio'}
                     </Button>
@@ -705,6 +711,11 @@ export function MasterNoteActivatePhraseView({
                       </Button>
                     )}
                   </div>
+                  {isDraftTooShort && (
+                    <p className='mt-2 text-xs font-semibold text-red-400'>
+                      Mínimo 10s para guardar.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
