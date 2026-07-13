@@ -36,10 +36,12 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
     'relative flex min-h-[220px] w-full flex-col px-[26px] py-8 text-left font-sans transition-[transform,border-color,box-shadow,background] duration-250 ease-[cubic-bezier(0.2,0.8,0.2,1)]'
   const cardSurfaceClass =
     'overflow-hidden rounded-[20px] border border-sky-400/35 bg-[linear-gradient(180deg,rgba(59,130,246,0.1),rgba(59,130,246,0.03)),linear-gradient(160deg,#ffffff,#eef3f9)] dark:bg-[linear-gradient(180deg,rgba(59,130,246,0.12),rgba(59,130,246,0.04)),linear-gradient(160deg,#0f172a,#0a0f1a)]'
+  const cardSurfaceHaloClass =
+    'overflow-hidden rounded-[20px] bg-[linear-gradient(180deg,rgba(59,130,246,0.1),rgba(59,130,246,0.03)),linear-gradient(160deg,#ffffff,#eef3f9)] shadow-[inset_0_0_0_1px_rgba(96,165,250,0.35)] dark:bg-[linear-gradient(180deg,rgba(59,130,246,0.12),rgba(59,130,246,0.04)),linear-gradient(160deg,#0f172a,#0a0f1a)]'
   const cardHoverClass =
     'hover:-translate-y-[2px] hover:border-sky-300/75 hover:shadow-[0_0_0_1px_rgba(96,165,250,0.5),0_0_24px_rgba(59,130,246,0.33)]'
   const cardHoverWithHaloClass =
-    'hover:-translate-y-[2px] hover:border-sky-300/65 hover:shadow-[0_0_0_1px_rgba(96,165,250,0.35),0_0_20px_rgba(59,130,246,0.22)]'
+    'hover:-translate-y-[2px] hover:shadow-[inset_0_0_0_1px_rgba(96,165,250,0.5),0_0_0_1px_rgba(96,165,250,0.28),0_0_20px_rgba(59,130,246,0.22)]'
   const disabledCardClass =
     'cursor-not-allowed opacity-75 hover:translate-y-0 hover:shadow-none'
 
@@ -155,7 +157,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
                       onClick={() => !card.disabled && navigate(card.to)}
                       className={cn(
                         cardBaseClass,
-                        cardSurfaceClass,
+                        cardSurfaceHaloClass,
                         cardHoverWithHaloClass,
                         'relative z-1 m-0.5',
                         card.disabled && disabledCardClass,
@@ -194,7 +196,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
                 onClick={() => navigate(DASHBOARD_ROUTES.gamesIca)}
                 className={cn(
                   cardBaseClass,
-                  cardSurfaceClass,
+                  cardSurfaceHaloClass,
                   cardHoverWithHaloClass,
                   'relative z-1 m-0.5 min-h-40',
                 )}
