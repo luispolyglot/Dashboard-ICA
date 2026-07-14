@@ -38,6 +38,7 @@ type RecordingDraft = {
 }
 
 const MAX_DURATION_MS = 3 * 60 * 1000 + 30 * 1000
+const MIN_CLOSED_NOTE_DURATION_MS = 3 * 60 * 1000 + 30 * 1000
 const MIN_SAVE_DURATION_MS = 10 * 1000
 
 type PendingLeaveAction =
@@ -303,7 +304,7 @@ export function MasterNoteActivatePhraseView({
           0,
         )
 
-        if (foundNote.state !== 'open') {
+        if (foundNote.state !== 'open' && !rerecordMode) {
           setError(
             'La nota maestra está cerrada y no admite nuevas activaciones',
           )
@@ -374,19 +375,31 @@ export function MasterNoteActivatePhraseView({
     0,
     remainingBeforeRecordingMs - recordingElapsedMs,
   )
+  const isClosedRerecord =
+    rerecordMode && note?.state === 'closed' && Boolean(rerecordChunk)
   const canRecord =
     !!note &&
-    note.state === 'open' &&
-    remainingBeforeRecordingMs > 0 &&
+    (rerecordMode || note.state === 'open') &&
+    (rerecordMode || remainingBeforeRecordingMs > 0) &&
     !phraseAlreadyActivated &&
     (!rerecordMode || Boolean(rerecordChunk))
 
   const exceededLimitWhileRecording =
-    recording && remainingDuringRecordingMs === 0
+    recording && !rerecordMode && remainingDuringRecordingMs === 0
   const exceededLimitForNewRecordings =
-    !recording && remainingBeforeRecordingMs === 0
+    !recording && !rerecordMode && remainingBeforeRecordingMs === 0
   const isDraftTooShort =
     !!recordingDraft && recordingDraft.durationMs < MIN_SAVE_DURATION_MS
+  const closedRerecordPreviewTotalMs =
+    isClosedRerecord && recordingDraft && note && rerecordChunk
+      ? Math.max(
+          0,
+          note.total_duration_ms - rerecordChunk.duration_ms + recordingDraft.durationMs,
+        )
+      : null
+  const breaksClosedMinTotal =
+    closedRerecordPreviewTotalMs !== null &&
+    closedRerecordPreviewTotalMs < MIN_CLOSED_NOTE_DURATION_MS
 
   const startWave = (stream: MediaStream): void => {
     try {
@@ -549,6 +562,11 @@ export function MasterNoteActivatePhraseView({
 
   const handleSaveChunk = async (): Promise<void> => {
     if (!recordingDraft || !note || !phrase || saving) return
+    if (breaksClosedMinTotal) {
+      setError('Una nota cerrada no puede quedar por debajo de 3:30')
+      return
+    }
+
     setSaving(true)
     try {
       if (rerecordMode) {
@@ -582,10 +600,15 @@ export function MasterNoteActivatePhraseView({
       )
     } catch (err) {
       console.error(err)
+      const message =
+        err instanceof Error && err.message.includes('CLOSED_NOTE_MIN_TOTAL_3_30')
+          ? 'Una nota cerrada no puede quedar por debajo de 3:30'
+          : null
       setError(
-        rerecordMode
-          ? 'No se pudo guardar la regrabación en la nota maestra'
-          : 'No se pudo guardar el audio en la nota maestra',
+        message ||
+          (rerecordMode
+            ? 'No se pudo guardar la regrabación en la nota maestra'
+            : 'No se pudo guardar el audio en la nota maestra'),
       )
     } finally {
       setSaving(false)
@@ -644,9 +667,14 @@ export function MasterNoteActivatePhraseView({
           </p>
         )}
         <p className='mb-4 text-sm text-muted-foreground'>
-          Acumulado: {formatDuration(note.total_duration_ms)} · Disponible:{' '}
-          {formatDuration(remainingBeforeRecordingMs)}
+          Acumulado: {formatDuration(note.total_duration_ms)}
+          {rerecordMode ? '' : ` · Disponible: ${formatDuration(remainingBeforeRecordingMs)}`}
         </p>
+        {isClosedRerecord && (
+          <p className='mb-2 text-xs text-muted-foreground'>
+            Regla: al regrabar, el total debe mantenerse en al menos 3:30.
+          </p>
+        )}
         {error && <p className='mb-3 text-sm text-red-400'>{error}</p>}
 
         <Card className='rounded-2xl'>
@@ -699,8 +727,9 @@ export function MasterNoteActivatePhraseView({
                     {formatDuration(recordingElapsedMs)}
                   </p>
                   <p className='text-xs text-muted-foreground'>
-                    Tiempo restante para la nota:{' '}
-                    {formatDuration(remainingDuringRecordingMs)}
+                    {rerecordMode
+                      ? `Duración actual de esta toma: ${formatDuration(recordingElapsedMs)}`
+                      : `Tiempo restante para la nota: ${formatDuration(remainingDuringRecordingMs)}`}
                   </p>
                   {exceededLimitWhileRecording && (
                     <p className='text-xs font-semibold text-red-400'>
@@ -775,7 +804,7 @@ export function MasterNoteActivatePhraseView({
                       onClick={() => void handleSaveChunk()}
                       size='sm'
                       variant='outline'
-                      disabled={saving || isDraftTooShort}
+                      disabled={saving || isDraftTooShort || breaksClosedMinTotal}
                     >
                       {saving
                         ? 'Guardando...'
@@ -797,6 +826,17 @@ export function MasterNoteActivatePhraseView({
                   {isDraftTooShort && (
                     <p className='mt-2 text-xs font-semibold text-red-400'>
                       Mínimo 10s para guardar.
+                    </p>
+                  )}
+                  {breaksClosedMinTotal && (
+                    <p className='mt-2 text-xs font-semibold text-red-400'>
+                      Esta regrabación dejaría la nota cerrada debajo de 3:30.
+                    </p>
+                  )}
+                  {closedRerecordPreviewTotalMs !== null && (
+                    <p className='mt-2 text-xs text-muted-foreground'>
+                      Total estimado tras guardar:{' '}
+                      {formatDuration(closedRerecordPreviewTotalMs)}
                     </p>
                   )}
                 </div>

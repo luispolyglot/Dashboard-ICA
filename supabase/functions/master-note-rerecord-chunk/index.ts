@@ -92,6 +92,8 @@ function mapRpcErrorToStatus(message: string): number {
 
   if (
     message.includes('MASTER_NOTE_NOT_OPEN') ||
+    message.includes('MASTER_NOTE_NOT_EDITABLE') ||
+    message.includes('CLOSED_NOTE_MIN_TOTAL_3_30') ||
     message.includes('CHUNK_PHRASE_MISMATCH')
   ) {
     return 409

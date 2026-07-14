@@ -505,9 +505,24 @@ export function MasterNoteDetailView({
                   key={chunk.id}
                   className='rounded-xl border border-border/70 p-3'
                 >
-                  <p className='mb-0.5 text-xs text-muted-foreground'>
-                    #{index + 1} · {formatDuration(chunk.duration_ms)}
-                  </p>
+                  <div className='mb-0.5 flex items-center justify-between gap-2'>
+                    <p className='text-xs text-muted-foreground'>
+                      #{index + 1} · {formatDuration(chunk.duration_ms)}
+                    </p>
+                    <Button
+                      asChild
+                      type='button'
+                      size='sm'
+                      variant='ghost'
+                      className='h-6 px-2 text-[11px]'
+                    >
+                      <Link
+                        to={`${DASHBOARD_ROUTES.masterNotes}/note/${note.id}/activate/${chunk.phrase_generation_id}?mode=rerecord&chunkId=${chunk.id}`}
+                      >
+                        Regrabar
+                      </Link>
+                    </Button>
+                  </div>
                   <p className='font-serif text-lg font-bold'>
                     {phrase?.generated_phrase || 'Sin frase registrada'}
                   </p>
