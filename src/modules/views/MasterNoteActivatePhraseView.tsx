@@ -38,7 +38,7 @@ type RecordingDraft = {
 }
 
 const MAX_DURATION_MS = 3 * 60 * 1000 + 30 * 1000
-const MIN_CLOSED_NOTE_DURATION_MS = 3 * 60 * 1000 + 30 * 1000
+const MIN_CLOSED_NOTE_DURATION_MS = 3 * 60 * 1000
 const MIN_SAVE_DURATION_MS = 10 * 1000
 
 type PendingLeaveAction =
@@ -563,7 +563,7 @@ export function MasterNoteActivatePhraseView({
   const handleSaveChunk = async (): Promise<void> => {
     if (!recordingDraft || !note || !phrase || saving) return
     if (breaksClosedMinTotal) {
-      setError('Una nota cerrada no puede quedar por debajo de 3:30')
+      setError('Una nota cerrada no puede quedar por debajo de 3:00')
       return
     }
 
@@ -601,8 +601,10 @@ export function MasterNoteActivatePhraseView({
     } catch (err) {
       console.error(err)
       const message =
-        err instanceof Error && err.message.includes('CLOSED_NOTE_MIN_TOTAL_3_30')
-          ? 'Una nota cerrada no puede quedar por debajo de 3:30'
+        err instanceof Error &&
+        (err.message.includes('CLOSED_NOTE_MIN_TOTAL_3_00') ||
+          err.message.includes('CLOSED_NOTE_MIN_TOTAL_3_30'))
+          ? 'Una nota cerrada no puede quedar por debajo de 3:00'
           : null
       setError(
         message ||
@@ -672,7 +674,7 @@ export function MasterNoteActivatePhraseView({
         </p>
         {isClosedRerecord && (
           <p className='mb-2 text-xs text-muted-foreground'>
-            Regla: al regrabar, el total debe mantenerse en al menos 3:30.
+            Regla: al regrabar, el total debe mantenerse en al menos 3:00.
           </p>
         )}
         {error && <p className='mb-3 text-sm text-red-400'>{error}</p>}
@@ -830,7 +832,7 @@ export function MasterNoteActivatePhraseView({
                   )}
                   {breaksClosedMinTotal && (
                     <p className='mt-2 text-xs font-semibold text-red-400'>
-                      Esta regrabación dejaría la nota cerrada debajo de 3:30.
+                      Esta regrabación dejaría la nota cerrada debajo de 3:00.
                     </p>
                   )}
                   {closedRerecordPreviewTotalMs !== null && (
