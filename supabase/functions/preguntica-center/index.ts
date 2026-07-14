@@ -213,10 +213,16 @@ function filterSuggestedWords(
   suggestions: SuggestionWord[],
   transcript: string,
   corrections: Array<{ original: string; suggestion: string; reason: string }>,
+  blockedWords: string[],
 ): SuggestionWord[] {
   if (!suggestions.length) return []
 
   const transcriptNormalized = normalizeLooseText(transcript)
+  const blocked = new Set(
+    blockedWords
+      .map((word) => normalizeLooseText(word))
+      .filter(Boolean),
+  )
   const correctionOriginals = corrections
     .map((item) => normalizeLooseText(item.original))
     .filter(Boolean)
@@ -224,10 +230,11 @@ function filterSuggestedWords(
   const reinforcementPattern =
     /(used correctly|already used|ya la usaste|ya lo usaste|usaste correctamente|refuerz|keep using)/i
 
-  return suggestions.filter((item) => {
+  const filtered = suggestions.filter((item) => {
     if (reinforcementPattern.test(item.reason)) return false
 
     const normalizedWord = normalizeLooseText(item.word)
+    if (blocked.has(normalizedWord)) return false
     if (!normalizedWord || !transcriptNormalized.includes(normalizedWord)) return true
 
     const appearsInCorrections = correctionOriginals.some((original) => {
@@ -235,6 +242,14 @@ function filterSuggestedWords(
     })
 
     return appearsInCorrections
+  })
+
+  const seen = new Set<string>()
+  return filtered.filter((item) => {
+    const key = normalizeLooseText(item.word)
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
   })
 }
 
@@ -542,6 +557,7 @@ function buildFeedbackPrompt(input: {
     '1) The learner used it incorrectly (wrong form, context, or spelling).',
     '2) The learner did not use it, but it would be natural and useful in this exact context and CEFR level.',
     'NEVER include a word or phrase the learner already used correctly.',
+    'NEVER include a word or phrase that is already in "Words the learner should try to use".',
     'Reinforcement or praise are not valid reasons for suggestedIcaWords.',
     'If fewer than 8 items qualify, return fewer. Empty array is valid.',
     '',
@@ -931,7 +947,12 @@ async function processAttemptAudio(
     throw new Error('INVALID_ANALYSIS_PAYLOAD')
   }
 
-  parsed.suggestedIcaWords = filterSuggestedWords(parsed.suggestedIcaWords, transcript, parsed.corrections)
+  parsed.suggestedIcaWords = filterSuggestedWords(
+    parsed.suggestedIcaWords,
+    transcript,
+    parsed.corrections,
+    icaWords,
+  )
 
   await adminClient
     .from('preguntica_attempts')
@@ -1019,6 +1040,7 @@ async function refreshSuggestions(
       'Give 4 to 8 alternative ICA words the learner could use to improve the response.',
       'Only suggest words that were used incorrectly or were not used but would be natural and useful.',
       'Never suggest words already used correctly in the learner response.',
+      'Never suggest any word from Current ICA words (those are already in the learner bag).',
       'If fewer than 4 qualify, return fewer. Empty array is valid.',
       'Return STRICT JSON only with shape:',
       '{"suggestedIcaWords":[{"word":"...","translation":"...","reason":"..."}]}',
@@ -1030,7 +1052,7 @@ async function refreshSuggestions(
     ].join('\n'),
   )
 
-  const suggestions = filterSuggestedWords(parseSuggestions(raw), transcript, [])
+  const suggestions = filterSuggestedWords(parseSuggestions(raw), transcript, [], icaWords)
   const nextRefresh = currentRefresh + 1
 
   await adminClient
