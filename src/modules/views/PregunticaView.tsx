@@ -819,11 +819,6 @@ export function PregunticaView({
                 <p className='text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'>
                   Pregunta · {config.targetLang}
                 </p>
-                {questionVisible && (
-                  <span className='text-[11px] font-semibold text-emerald-600 dark:text-emerald-300'>
-                    ✅ Pregunta mostrada
-                  </span>
-                )}
               </div>
               <div className='relative mt-1 min-h-10'>
                 <p
@@ -856,11 +851,6 @@ export function PregunticaView({
                 <p className='text-xs font-semibold uppercase tracking-wide text-muted-foreground'>
                   Traducción (español)
                 </p>
-                {translationVisible && (
-                  <span className='text-[11px] font-semibold text-emerald-600 dark:text-emerald-300'>
-                    ✅ Traducción mostrada
-                  </span>
-                )}
               </div>
               <div className='relative mt-1 min-h-9'>
                 <p
