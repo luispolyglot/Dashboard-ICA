@@ -32,6 +32,19 @@ async function getCurrentUserId(): Promise<string | null> {
   return session?.user?.id || null
 }
 
+async function blobToBase64(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  const chunkSize = 0x8000
+  let binary = ''
+
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, offset + chunkSize)
+    binary += String.fromCharCode(...chunk)
+  }
+
+  return btoa(binary)
+}
+
 export async function fetchMasterNotes(
   targetLang?: string,
   nativeLang?: string,
@@ -286,6 +299,83 @@ type AddMasterNoteChunkParams = {
   audioBlob: Blob
   mimeType: string
   durationMs: number
+}
+
+type RerecordMasterNoteChunkParams = {
+  noteId: string
+  chunkId: string
+  phraseGenerationId: string
+  audioBlob: Blob
+  mimeType: string
+  durationMs: number
+}
+
+export type RerecordMasterNoteChunkResult = {
+  chunkId: string
+  noteId: string
+  phraseGenerationId: string
+  storagePath: string
+  durationMs: number
+  mimeType: string | null
+  sizeBytes: number | null
+  totalDurationMs: number
+  cleanedPreviousAudio: boolean
+}
+
+export async function rerecordMasterNoteChunk({
+  noteId,
+  chunkId,
+  phraseGenerationId,
+  audioBlob,
+  mimeType,
+  durationMs,
+}: RerecordMasterNoteChunkParams): Promise<RerecordMasterNoteChunkResult> {
+  if (!supabase) throw new Error('Falta configurar Supabase')
+
+  const normalizedDurationMs = Math.max(1, Math.round(durationMs))
+  const audioBase64 = await blobToBase64(audioBlob)
+
+  const { data, error } = await supabase.functions.invoke(
+    'master-note-rerecord-chunk',
+    {
+      body: {
+        noteId,
+        chunkId,
+        phraseGenerationId,
+        mimeType,
+        durationMs: normalizedDurationMs,
+        sizeBytes: audioBlob.size,
+        audioBase64,
+      },
+    },
+  )
+
+  if (error) throw error
+
+  const result = data as Partial<RerecordMasterNoteChunkResult> | null
+  if (
+    !result ||
+    typeof result.chunkId !== 'string' ||
+    typeof result.noteId !== 'string' ||
+    typeof result.phraseGenerationId !== 'string' ||
+    typeof result.storagePath !== 'string' ||
+    typeof result.durationMs !== 'number' ||
+    typeof result.totalDurationMs !== 'number'
+  ) {
+    throw new Error('Respuesta invalida al regrabar el audio')
+  }
+
+  return {
+    chunkId: result.chunkId,
+    noteId: result.noteId,
+    phraseGenerationId: result.phraseGenerationId,
+    storagePath: result.storagePath,
+    durationMs: result.durationMs,
+    mimeType: result.mimeType ?? null,
+    sizeBytes: typeof result.sizeBytes === 'number' ? result.sizeBytes : null,
+    totalDurationMs: result.totalDurationMs,
+    cleanedPreviousAudio: result.cleanedPreviousAudio !== false,
+  }
 }
 
 export async function addMasterNoteChunk({
