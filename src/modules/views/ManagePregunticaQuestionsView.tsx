@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { RefreshCwIcon, SaveIcon } from 'lucide-react'
+import { RefreshCwIcon, SaveIcon, Trash2Icon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
   bulkImportPregunticaQuestions,
+  deletePregunticaQuestionIfUnused,
   fetchPregunticaQuestions,
   updatePregunticaQuestionState,
   updatePregunticaQuestionText,
@@ -115,6 +116,32 @@ export function ManagePregunticaQuestionsView() {
     }
   }
 
+  const handleDelete = async (row: PregunticaAdminQuestion) => {
+    if (!row.canDelete) {
+      setFeedback('No se puede eliminar esta pregunta porque ya fue usada en intentos.')
+      return
+    }
+
+    const confirmed = window.confirm(`¿Eliminar esta pregunta?\n\n"${row.questionEs}"`)
+    if (!confirmed) return
+
+    setSaving(true)
+    setFeedback(null)
+    try {
+      await deletePregunticaQuestionIfUnused(row.id)
+      setRows((prev) => prev.filter((item) => item.id !== row.id))
+      if (editingId === row.id) {
+        setEditingId(null)
+        setEditingValue('')
+      }
+      setFeedback('Pregunta eliminada correctamente.')
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'No se pudo eliminar la pregunta')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <section className='mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-5 py-8'>
       <div className='mb-6'>
@@ -197,6 +224,18 @@ export function ManagePregunticaQuestionsView() {
                         <span className='text-xs text-muted-foreground'>
                           Traducciones: {Object.keys(row.translations || {}).length}
                         </span>
+                        <span className='text-xs text-muted-foreground'>
+                          Usos: {row.usageCount}
+                        </span>
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                            row.canDelete
+                              ? 'border-emerald-300/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                              : 'border-rose-300/60 bg-rose-500/10 text-rose-700 dark:text-rose-300'
+                          }`}
+                        >
+                          {row.canDelete ? 'Sin uso' : 'Usada'}
+                        </span>
 
                         <button
                           type='button'
@@ -241,6 +280,19 @@ export function ManagePregunticaQuestionsView() {
                             Editar
                           </Button>
                         )}
+
+                        <Button
+                          size='sm'
+                          variant='outline'
+                          onClick={() => void handleDelete(row)}
+                          disabled={saving || !row.canDelete}
+                          title={row.canDelete
+                            ? 'Eliminar pregunta'
+                            : 'No se puede eliminar porque ya fue usada'}
+                        >
+                          <Trash2Icon className='h-4 w-4' />
+                          Eliminar
+                        </Button>
                       </div>
                     </div>
                   </article>
