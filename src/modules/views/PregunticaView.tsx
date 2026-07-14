@@ -37,7 +37,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { EyeIcon, EyeOffIcon } from 'lucide-react'
+import { CircleHelpIcon, EyeIcon, EyeOffIcon } from 'lucide-react'
 
 type PregunticaViewProps = {
   config: AppConfig
@@ -195,6 +195,7 @@ export function PregunticaView({
   const [suggestionModalOpen, setSuggestionModalOpen] = useState(false)
   const [selectedSuggestion, setSelectedSuggestion] = useState<PregunticaWordSuggestion | null>(null)
   const [addedSuggestionWords, setAddedSuggestionWords] = useState<string[]>([])
+  const [infoModalOpen, setInfoModalOpen] = useState(false)
 
   const recorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
@@ -225,6 +226,15 @@ export function PregunticaView({
       window.clearTimeout(timer)
     }
   }, [analysisReady])
+
+  useEffect(() => {
+    if (!attempt || attempt.status === 'completed') return
+    const storageKey = `preguntica-info-shown:${attempt.id}`
+    const wasShown = window.localStorage.getItem(storageKey) === '1'
+    if (wasShown) return
+    setInfoModalOpen(true)
+    window.localStorage.setItem(storageKey, '1')
+  }, [attempt])
 
   const wordTranslationMap = useMemo(() => {
     const map = new Map<string, string>()
@@ -679,13 +689,25 @@ export function PregunticaView({
       <style>{`@keyframes preguntica-wave-mid { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1.6); } } @keyframes preguntica-step-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } } @keyframes preguntica-feedback-in { from { opacity: 0; transform: translateY(10px) scale(0.995); } to { opacity: 1; transform: translateY(0) scale(1); } }`}</style>
       <div className='rounded-[24px] border border-border bg-[linear-gradient(160deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-6'>
         <div className='mb-3 flex justify-end'>
-          <button
-            type='button'
-            onClick={() => navigate(DASHBOARD_ROUTES.pregunticaHistory)}
-            className='rounded-lg border border-slate-300 bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-100'
-          >
-            Ver historial completo
-          </button>
+          <div className='flex items-center gap-2'>
+            {hasActiveAttempt && (
+              <button
+                type='button'
+                onClick={() => setInfoModalOpen(true)}
+                className='inline-flex items-center gap-1 rounded-lg border border-sky-300/60 bg-sky-50/90 px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-100 dark:border-sky-500/40 dark:bg-sky-950/30 dark:text-sky-200'
+              >
+                <CircleHelpIcon className='size-3.5' />
+                Ver gu\u00eda
+              </button>
+            )}
+            <button
+              type='button'
+              onClick={() => navigate(DASHBOARD_ROUTES.pregunticaHistory)}
+              className='rounded-lg border border-slate-300 bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-100'
+            >
+              Ver historial completo
+            </button>
+          </div>
         </div>
         <p className='text-xs font-semibold tracking-[0.2em] text-slate-500'>PREGUNTICA</p>
         <h1 className='mt-2 font-serif text-3xl font-bold text-slate-700 dark:text-slate-100'>
@@ -1147,6 +1169,41 @@ export function PregunticaView({
               disabled={working || hasActiveAttempt || !hasRedeemableTokens || !selectedStartMode}
             >
               Canjear
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={infoModalOpen} onOpenChange={setInfoModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Gu\u00eda r\u00e1pida de PreguntICA</DialogTitle>
+            <DialogDescription>
+              Este reto tiene un flujo concreto para aprovechar mejor tu pr\u00e1ctica.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className='space-y-2 text-sm text-foreground/90'>
+            <p>
+              1) <strong>Escucha</strong> la pregunta, luego <strong>mu\u00e9strala</strong> y, si quieres,
+              activa tambi\u00e9n su traducci\u00f3n.
+            </p>
+            <p>
+              2) Graba tu respuesta usando las <strong>palabras ICA objetivo</strong> de este intento.
+            </p>
+            <p>
+              3) Tu audio debe tener al menos <strong>{minCharactersRequired} caracteres</strong> para
+              analizarse en tu nivel ({config.level || 'A2'}).
+            </p>
+            <p>
+              4) Tienes <strong>3 intentos de an\u00e1lisis</strong> por PreguntICA. Si quieres reanalizar,
+              primero graba un audio nuevo.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button type='button' onClick={() => setInfoModalOpen(false)}>
+              Entendido
             </Button>
           </DialogFooter>
         </DialogContent>
