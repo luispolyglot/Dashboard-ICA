@@ -697,7 +697,7 @@ export function PregunticaView({
                 className='inline-flex items-center gap-1 rounded-lg border border-sky-300/60 bg-sky-50/90 px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-100 dark:border-sky-500/40 dark:bg-sky-950/30 dark:text-sky-200'
               >
                 <CircleHelpIcon className='size-3.5' />
-                Ver gu\u00eda
+                Ver guía
               </button>
             )}
             <button
@@ -773,22 +773,6 @@ export function PregunticaView({
                 }}
                 className='mt-0'
               />
-              <button
-                type='button'
-                onClick={() => setQuestionVisible(true)}
-                disabled={!step2Enabled || !questionWasPlayed}
-                className='rounded-xl border border-border px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-60'
-              >
-                Mostrar pregunta
-              </button>
-              <button
-                type='button'
-                onClick={() => setTranslationVisible((current) => !current)}
-                disabled={!step2Enabled || !questionVisible || !questionTranslation}
-                className='rounded-xl border border-border px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-60'
-              >
-                {translationVisible ? 'Ocultar traducción' : 'Mostrar traducción'}
-              </button>
             </div>
 
             <p className='mt-2 text-xs text-muted-foreground'>
@@ -797,10 +781,29 @@ export function PregunticaView({
                 : 'Aún no has escuchado la pregunta.'}
             </p>
 
-            <div className='mt-4 rounded-xl border border-dashed border-border bg-background/90 p-3 transition-all duration-500'>
-              <p className='text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'>
-                Pregunta · {config.targetLang}
-              </p>
+            <button
+              type='button'
+              onClick={() => {
+                if (!step2Enabled || !questionWasPlayed || questionVisible) return
+                setQuestionVisible(true)
+              }}
+              disabled={!step2Enabled || !questionWasPlayed || questionVisible}
+              className='mt-4 w-full rounded-xl border border-dashed border-border bg-background/90 p-3 text-left transition-all duration-500 disabled:cursor-not-allowed'
+            >
+              <div className='flex items-center justify-between gap-2'>
+                <p className='text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'>
+                  Pregunta · {config.targetLang}
+                </p>
+                <span className='text-[11px] font-semibold text-muted-foreground'>
+                  {!step2Enabled
+                    ? 'Inicia una PreguntICA'
+                    : !questionWasPlayed
+                      ? '🔒 Escucha para desbloquear'
+                      : questionVisible
+                        ? '✅ Pregunta mostrada'
+                        : '👁 Mostrar pregunta'}
+                </span>
+              </div>
               <div className='relative mt-1 min-h-10'>
                 <p
                   className={`text-sm text-foreground transition-all duration-500 ${questionVisible ? 'blur-0 opacity-100' : 'select-none blur-sm opacity-70'}`}
@@ -813,12 +816,33 @@ export function PregunticaView({
                   </div>
                 )}
               </div>
-            </div>
+            </button>
 
-            <div className='mt-2 rounded-xl border border-dashed border-border bg-background/90 p-3 text-sm transition-all duration-500'>
-              <p className='text-xs font-semibold uppercase tracking-wide text-muted-foreground'>
-                Traducción (español)
-              </p>
+            <button
+              type='button'
+              onClick={() => {
+                if (!step2Enabled || !questionVisible || !questionTranslation || translationVisible) return
+                setTranslationVisible(true)
+              }}
+              disabled={!step2Enabled || !questionVisible || !questionTranslation || translationVisible}
+              className='mt-2 w-full rounded-xl border border-dashed border-border bg-background/90 p-3 text-left text-sm transition-all duration-500 disabled:cursor-not-allowed'
+            >
+              <div className='flex items-center justify-between gap-2'>
+                <p className='text-xs font-semibold uppercase tracking-wide text-muted-foreground'>
+                  Traducción (español)
+                </p>
+                <span className='text-[11px] font-semibold text-muted-foreground'>
+                  {!step2Enabled
+                    ? 'Inicia una PreguntICA'
+                    : !questionVisible
+                      ? '🔒 Muestra la pregunta'
+                      : !questionTranslation
+                        ? 'Sin traducción'
+                        : translationVisible
+                          ? '✅ Traducción mostrada'
+                          : '👁 Mostrar traducción'}
+                </span>
+              </div>
               <div className='relative mt-1 min-h-9'>
                 <p
                   className={`text-foreground/80 transition-all duration-500 ${questionVisible && translationVisible && questionTranslation ? 'blur-0 opacity-100' : 'select-none blur-sm opacity-70'}`}
@@ -831,7 +855,7 @@ export function PregunticaView({
                   </div>
                 )}
               </div>
-            </div>
+            </button>
 
             <div className='mt-4'>
               <div className='flex flex-wrap items-center gap-2'>
@@ -841,28 +865,30 @@ export function PregunticaView({
                 >
                   Modo: {currentStepModeLabel}
                 </span>
-                <button
-                  type='button'
-                  onClick={() => setShowIcaWordTranslations((current) => !current)}
-                  className='inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground transition hover:bg-muted/40'
-                >
-                  {showIcaWordTranslations ? <EyeOffIcon className='size-3' /> : <EyeIcon className='size-3' />}
-                  {showIcaWordTranslations ? 'Ocultar traducción' : 'Ver traducción'}
-                </button>
               </div>
               {questionWasPlayed ? (
-                <div className='mt-2 flex flex-wrap gap-2'>
-                  {icaWords.map((word) => (
-                    <span
-                      key={word}
-                      className='rounded-full border border-[#86efac]/70 bg-[#f0fdf4] px-2.5 py-1 text-xs font-semibold text-[#166534]'
-                    >
-                      {word}
-                      {showIcaWordTranslations && wordTranslationMap.get(normalizeComparableText(word))
-                        ? ` · ${wordTranslationMap.get(normalizeComparableText(word))}`
-                        : ''}
-                    </span>
-                  ))}
+                <div className='mt-2'>
+                  <button
+                    type='button'
+                    onClick={() => setShowIcaWordTranslations((current) => !current)}
+                    className='inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground transition hover:bg-muted/40'
+                  >
+                    {showIcaWordTranslations ? <EyeOffIcon className='size-3' /> : <EyeIcon className='size-3' />}
+                    {showIcaWordTranslations ? 'Ocultar traducción' : 'Ver traducción'}
+                  </button>
+                  <div className='mt-2 flex flex-wrap gap-2'>
+                    {icaWords.map((word) => (
+                      <span
+                        key={word}
+                        className='rounded-full border border-[#86efac]/70 bg-[#f0fdf4] px-2.5 py-1 text-xs font-semibold text-[#166534]'
+                      >
+                        {word}
+                        {showIcaWordTranslations && wordTranslationMap.get(normalizeComparableText(word))
+                          ? ` · ${wordTranslationMap.get(normalizeComparableText(word))}`
+                          : ''}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <p className='mt-2 text-xs text-muted-foreground'>
@@ -1177,26 +1203,26 @@ export function PregunticaView({
       <Dialog open={infoModalOpen} onOpenChange={setInfoModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Gu\u00eda r\u00e1pida de PreguntICA</DialogTitle>
+            <DialogTitle>Guía rápida de PreguntICA</DialogTitle>
             <DialogDescription>
-              Este reto tiene un flujo concreto para aprovechar mejor tu pr\u00e1ctica.
+              Este reto tiene un flujo concreto para aprovechar mejor tu práctica.
             </DialogDescription>
           </DialogHeader>
 
           <div className='space-y-2 text-sm text-foreground/90'>
             <p>
-              1) <strong>Escucha</strong> la pregunta, luego <strong>mu\u00e9strala</strong> y, si quieres,
-              activa tambi\u00e9n su traducci\u00f3n.
+              1) 🎧 <strong>Escucha</strong> la pregunta, luego <strong>muéstrala</strong> y, si quieres,
+              activa también su traducción.
             </p>
             <p>
-              2) Graba tu respuesta usando las <strong>palabras ICA objetivo</strong> de este intento.
+              2) 🎙️ Graba tu respuesta usando las <strong>palabras ICA objetivo</strong> de este intento.
             </p>
             <p>
-              3) Tu audio debe tener al menos <strong>{minCharactersRequired} caracteres</strong> para
+              3) ✍️ Tu audio debe tener al menos <strong>{minCharactersRequired} caracteres</strong> para
               analizarse en tu nivel ({config.level || 'A2'}).
             </p>
             <p>
-              4) Tienes <strong>3 intentos de an\u00e1lisis</strong> por PreguntICA. Si quieres reanalizar,
+              4) 🔁 Tienes <strong>3 intentos de análisis</strong> por PreguntICA. Si quieres reanalizar,
               primero graba un audio nuevo.
             </p>
           </div>
