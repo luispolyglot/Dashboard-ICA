@@ -166,6 +166,16 @@ function wordsAllowedByLevel(level: string | undefined): number {
   return 5
 }
 
+function minCharsByLevel(level: string | undefined): number {
+  const normalized = (level || 'A2').trim().toUpperCase()
+  if (['0', 'A0', 'LEVEL0', 'PRE-A1', 'PREA1'].includes(normalized)) return 30
+  if (normalized === 'A1') return 40
+  if (normalized === 'A2') return 55
+  if (normalized === 'B1') return 70
+  if (normalized === 'B2') return 85
+  return 100
+}
+
 function randomize<T>(items: T[]): T[] {
   const copy = [...items]
   for (let i = copy.length - 1; i > 0; i -= 1) {
@@ -849,7 +859,10 @@ async function processAttemptAudio(
   const whisper = await callWhisper(audioBlob, audio.mime_type)
   const transcript = (whisper.text || '').trim()
   const charCount = transcript.length
-  const isLengthValid = charCount >= 100 && charCount <= 1200
+  const level = (payload.level || attempt.level || 'A2').trim()
+  const minRequired = minCharsByLevel(level)
+  const maxAllowed = 1200
+  const isLengthValid = charCount >= minRequired && charCount <= maxAllowed
 
   await adminClient
     .from('preguntica_attempt_audios')
@@ -872,7 +885,7 @@ async function processAttemptAudio(
       error_code: isLengthValid ? null : 'INVALID_RESPONSE_LENGTH',
       error_message: isLengthValid
         ? null
-        : 'La respuesta debe tener entre 100 y 1200 caracteres.',
+        : `La respuesta debe tener entre ${minRequired} y ${maxAllowed} caracteres para este nivel.`,
     })
     .eq('id', attempt.id)
 
@@ -891,14 +904,13 @@ async function processAttemptAudio(
       error: 'INVALID_RESPONSE_LENGTH',
       transcript,
       responseCharCount: charCount,
-      min: 100,
-      max: 1200,
+      min: minRequired,
+      max: maxAllowed,
     })
   }
 
   const targetLang = (payload.targetLang || attempt.target_lang || 'English').trim()
   const nativeLang = (payload.nativeLang || attempt.native_lang || 'Español').trim()
-  const level = (payload.level || attempt.level || 'A2').trim()
   const icaWords = payload.icaWords && payload.icaWords.length
     ? payload.icaWords
     : parseWords(attempt.ica_words)

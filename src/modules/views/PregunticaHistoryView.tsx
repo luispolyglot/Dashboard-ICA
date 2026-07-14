@@ -183,7 +183,7 @@ function AttemptContent({
       {questionTranslation && questionTranslation !== questionText && (
         <div className='rounded-xl border border-sky-200/70 bg-sky-50/80 p-3 dark:border-sky-500/30 dark:bg-sky-950/25'>
           <p className='text-[11px] font-semibold uppercase tracking-wide text-sky-700/90 dark:text-sky-300/90'>
-            Traduccion (espanol)
+            Traducción (español)
           </p>
           <p className='mt-1 font-serif text-[15px] leading-relaxed text-slate-700 dark:text-slate-100'>
             {questionTranslation}
@@ -402,7 +402,13 @@ export function PregunticaHistoryView({
     const load = async () => {
       setLoading(true)
       try {
-        const rows = await fetchPregunticaHistory(30)
+        const rows = await fetchPregunticaHistory(
+          {
+            targetLang: config.targetLang,
+            nativeLang: config.nativeLang,
+          },
+          30,
+        )
         if (!active) return
         setWeeks(rows)
         setError(null)
@@ -420,7 +426,7 @@ export function PregunticaHistoryView({
     return () => {
       active = false
     }
-  }, [])
+  }, [config.nativeLang, config.targetLang])
 
   const questionCards = toQuestionCards(weeks)
   const existingCardWords = useMemo(

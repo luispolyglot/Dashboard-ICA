@@ -168,7 +168,7 @@ export function FlashcardsPage() {
 }
 
 export function GamesIcaPage() {
-  const { cards } = useDashboardContext()
+  const { cards, config } = useDashboardContext()
   const [pregunticaLabel, setPregunticaLabel] = useState(
     'Cargando estado semanal...',
   )
@@ -182,7 +182,11 @@ export function GamesIcaPage() {
       try {
         const { fetchPregunticaWeekStatus } =
           await import('../services/preguntica')
-        const status = await fetchPregunticaWeekStatus()
+        if (!config) return
+        const status = await fetchPregunticaWeekStatus({
+          targetLang: config.targetLang,
+          nativeLang: config.nativeLang,
+        })
         if (!active || !status) return
 
         setPregunticaUnlocked(status.isUnlocked)
@@ -210,7 +214,7 @@ export function GamesIcaPage() {
     return () => {
       active = false
     }
-  }, [])
+  }, [config])
 
   return (
     <PageLayout>

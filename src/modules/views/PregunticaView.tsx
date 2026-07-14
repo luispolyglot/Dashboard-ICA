@@ -81,6 +81,16 @@ const MIME_CANDIDATES = [
 const LIVE_BARS_COUNT = 36
 const MAX_ANALYSIS_ATTEMPTS = 3
 
+function getMinCharactersByLevel(level: string | undefined): number {
+  const normalized = (level || 'A2').trim().toUpperCase()
+  if (['0', 'A0', 'LEVEL0', 'PRE-A1', 'PREA1'].includes(normalized)) return 30
+  if (normalized === 'A1') return 40
+  if (normalized === 'A2') return 55
+  if (normalized === 'B1') return 70
+  if (normalized === 'B2') return 85
+  return 100
+}
+
 function parseDateOnly(value: string): Date | null {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
   if (!match) return null
@@ -233,7 +243,10 @@ export function PregunticaView({
       setLoading(true)
       try {
         const [weekStatus, tokens] = await Promise.all([
-          fetchPregunticaWeekStatus(),
+          fetchPregunticaWeekStatus({
+            targetLang: config.targetLang,
+            nativeLang: config.nativeLang,
+          }),
           fetchPregunticaTokenSummary(),
         ])
         if (!active) return
@@ -288,7 +301,10 @@ export function PregunticaView({
 
   async function refreshStatus() {
     const [weekStatus, tokens] = await Promise.all([
-      fetchPregunticaWeekStatus(),
+      fetchPregunticaWeekStatus({
+        targetLang: config.targetLang,
+        nativeLang: config.nativeLang,
+      }),
       fetchPregunticaTokenSummary(),
     ])
     setStatus(weekStatus)
@@ -360,7 +376,10 @@ export function PregunticaView({
 
     setWorking(true)
     try {
-      await redeemPregunticaTokensForWeek(status.weekStart)
+      await redeemPregunticaTokensForWeek(status.weekStart, {
+        targetLang: config.targetLang,
+        nativeLang: config.nativeLang,
+      })
       await startAttemptWorkflow(selectedStartMode)
       setMode(selectedStartMode)
       setPlusModalOpen(false)
@@ -486,7 +505,9 @@ export function PregunticaView({
 
         if (processed.error === 'INVALID_RESPONSE_LENGTH') {
           setAnalysisReady(false)
-          toast.error('Tu respuesta debe tener entre 100 y 1200 caracteres.')
+          toast.error(
+            `Tu respuesta debe tener entre ${processed.min || minCharactersRequired} y ${processed.max || 1200} caracteres.`,
+          )
           return
         }
 
@@ -603,6 +624,7 @@ export function PregunticaView({
   const step4Completed = Boolean(feedback)
   const isPlusAttempt = activeAttempt?.attemptKind === 'token_unlock'
   const analysisAttemptsLeft = Math.max(0, MAX_ANALYSIS_ATTEMPTS - analysisAttemptsUsed)
+  const minCharactersRequired = getMinCharactersByLevel(config.level)
   const canAnalyzeCurrentAudio =
     analysisReady && analysisAttemptsLeft > 0 && !working
 
@@ -887,6 +909,9 @@ export function PregunticaView({
               <div className='mt-3 flex flex-wrap items-center gap-2'>
                 <p className='text-xs text-muted-foreground'>
                   Cuando termines de grabar, pasa al paso 3 para analizar tu respuesta.
+                </p>
+                <p className='text-xs font-medium text-sky-700 dark:text-sky-300'>
+                  Mínimo requerido según tu nivel ({config.level || 'A2'}): {minCharactersRequired} caracteres.
                 </p>
               </div>
             </div>

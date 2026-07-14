@@ -18,6 +18,11 @@ type RpcWeekStatusRow = {
   can_start: boolean
 }
 
+type ActiveLanguagePair = {
+  targetLang: string
+  nativeLang: string
+}
+
 type RpcAttemptRow = {
   id: string
   user_id: string
@@ -284,6 +289,10 @@ function requireSupabase() {
   return supabase
 }
 
+function normalizeLangKey(value: string): string {
+  return value.trim().toLocaleLowerCase()
+}
+
 async function mapEdgeFunctionError(error: unknown, fallback: string): Promise<Error> {
   const rawMessage = error instanceof Error && error.message ? error.message : fallback
 
@@ -316,7 +325,7 @@ async function mapEdgeFunctionError(error: unknown, fallback: string): Promise<E
   }
 
   if (source.includes('INVALID_RESPONSE_LENGTH')) {
-    return new Error('Tu respuesta debe tener entre 100 y 1200 caracteres para poder analizarse.')
+    return new Error('Tu respuesta no cumple el mínimo de caracteres requerido para tu nivel.')
   }
 
   if (source.includes('ANALYSIS_LIMIT_REACHED')) {
@@ -414,9 +423,12 @@ function mapAttempt(row: RpcAttemptRow): PregunticaAttempt {
   }
 }
 
-export async function fetchPregunticaWeekStatus(): Promise<PregunticaWeekStatus | null> {
+export async function fetchPregunticaWeekStatus(input: ActiveLanguagePair): Promise<PregunticaWeekStatus | null> {
   const client = requireSupabase()
-  const { data, error } = await client.rpc('get_my_preguntica_week_status')
+  const { data, error } = await client.rpc('get_my_preguntica_week_status', {
+    p_target_lang: normalizeLangKey(input.targetLang),
+    p_native_lang: normalizeLangKey(input.nativeLang),
+  })
 
   if (error) throw error
 
@@ -425,10 +437,15 @@ export async function fetchPregunticaWeekStatus(): Promise<PregunticaWeekStatus 
   return mapStatus(row)
 }
 
-export async function createPregunticaAttempt(wordMode: string): Promise<PregunticaAttempt> {
+export async function createPregunticaAttempt(
+  wordMode: string,
+  input: ActiveLanguagePair,
+): Promise<PregunticaAttempt> {
   const client = requireSupabase()
   const { data, error } = await client.rpc('create_preguntica_attempt', {
     p_word_mode: wordMode,
+    p_target_lang: normalizeLangKey(input.targetLang),
+    p_native_lang: normalizeLangKey(input.nativeLang),
   })
 
   if (error) throw error
@@ -803,6 +820,7 @@ export async function createSignedPregunticaAudioUrl(
 }
 
 export async function fetchPregunticaHistory(
+  input: ActiveLanguagePair,
   limit = 24,
 ): Promise<PregunticaHistoryWeek[]> {
   const client = requireSupabase()
@@ -812,6 +830,8 @@ export async function fetchPregunticaHistory(
     .select(
       'id, week_start, week_end, timezone, is_unlocked, unlocked_via, activation_words_count, required_activation_words, completed_at',
     )
+    .eq('target_lang', normalizeLangKey(input.targetLang))
+    .eq('native_lang', normalizeLangKey(input.nativeLang))
     .order('week_start', { ascending: false })
     .limit(Math.max(1, limit))
 
@@ -1009,11 +1029,14 @@ export async function fetchPregunticaTokenSummary(): Promise<PregunticaTokenSumm
 
 export async function redeemPregunticaTokensForWeek(
   weekStart: string,
+  input: ActiveLanguagePair,
 ): Promise<RedeemPregunticaResult> {
   const client = requireSupabase()
 
   const { data, error } = await client.rpc('redeem_preguntica_tokens_for_week', {
     p_week_start: weekStart,
+    p_target_lang: normalizeLangKey(input.targetLang),
+    p_native_lang: normalizeLangKey(input.nativeLang),
     p_tokens_to_spend: 1,
   })
 
