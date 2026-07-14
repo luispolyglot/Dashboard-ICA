@@ -637,6 +637,27 @@ export function PregunticaView({
   const minCharactersRequired = getMinCharactersByLevel(config.level)
   const canAnalyzeCurrentAudio =
     analysisReady && analysisAttemptsLeft > 0 && !working
+  const questionRevealReady = step2Enabled && questionWasPlayed && !questionVisible
+  const translationRevealReady =
+    step2Enabled && questionVisible && Boolean(questionTranslation) && !translationVisible
+
+  const questionRevealLabel = !step2Enabled
+    ? 'Inicia una PreguntICA'
+    : !questionWasPlayed
+      ? '🔒 Escúchala primero para poder leerla'
+      : questionVisible
+        ? ''
+        : '👁 Toca aquí para mostrar la pregunta'
+
+  const translationRevealLabel = !step2Enabled
+    ? 'Inicia una PreguntICA'
+    : !questionVisible
+      ? '🔒 Se desbloquea tras mostrar la pregunta'
+      : !questionTranslation
+        ? 'Sin traducción'
+        : translationVisible
+          ? ''
+          : '👁 Toca aquí para mostrar la traducción'
 
   const step2Tone = step2Completed
     ? 'border-emerald-300/50 bg-background'
@@ -788,21 +809,21 @@ export function PregunticaView({
                 setQuestionVisible(true)
               }}
               disabled={!step2Enabled || !questionWasPlayed || questionVisible}
-              className='mt-4 w-full rounded-xl border border-dashed border-border bg-background/90 p-3 text-left transition-all duration-500 disabled:cursor-not-allowed'
+              className={`mt-4 w-full rounded-xl border border-dashed bg-background/90 p-3 text-left transition-all duration-500 disabled:cursor-not-allowed ${
+                questionRevealReady
+                  ? 'border-sky-300 bg-sky-50/40 animate-pulse dark:border-sky-500/60 dark:bg-sky-950/25'
+                  : 'border-border'
+              }`}
             >
               <div className='flex items-center justify-between gap-2'>
                 <p className='text-[11px] font-semibold uppercase tracking-wide text-muted-foreground'>
                   Pregunta · {config.targetLang}
                 </p>
-                <span className='text-[11px] font-semibold text-muted-foreground'>
-                  {!step2Enabled
-                    ? 'Inicia una PreguntICA'
-                    : !questionWasPlayed
-                      ? '🔒 Escucha para desbloquear'
-                      : questionVisible
-                        ? '✅ Pregunta mostrada'
-                        : '👁 Mostrar pregunta'}
-                </span>
+                {questionVisible && (
+                  <span className='text-[11px] font-semibold text-emerald-600 dark:text-emerald-300'>
+                    ✅ Pregunta mostrada
+                  </span>
+                )}
               </div>
               <div className='relative mt-1 min-h-10'>
                 <p
@@ -810,9 +831,9 @@ export function PregunticaView({
                 >
                   {questionText || 'Pregunta pendiente de generar'}
                 </p>
-                {!questionVisible && (
+                {!questionVisible && questionRevealLabel && (
                   <div className='absolute inset-0 flex items-center justify-center text-xs font-medium text-muted-foreground'>
-                    Escúchala primero para poder leerla.
+                    {questionRevealLabel}
                   </div>
                 )}
               </div>
@@ -825,23 +846,21 @@ export function PregunticaView({
                 setTranslationVisible(true)
               }}
               disabled={!step2Enabled || !questionVisible || !questionTranslation || translationVisible}
-              className='mt-2 w-full rounded-xl border border-dashed border-border bg-background/90 p-3 text-left text-sm transition-all duration-500 disabled:cursor-not-allowed'
+              className={`mt-2 w-full rounded-xl border border-dashed bg-background/90 p-3 text-left text-sm transition-all duration-500 disabled:cursor-not-allowed ${
+                translationRevealReady
+                  ? 'border-sky-300 bg-sky-50/40 animate-pulse dark:border-sky-500/60 dark:bg-sky-950/25'
+                  : 'border-border'
+              }`}
             >
               <div className='flex items-center justify-between gap-2'>
                 <p className='text-xs font-semibold uppercase tracking-wide text-muted-foreground'>
                   Traducción (español)
                 </p>
-                <span className='text-[11px] font-semibold text-muted-foreground'>
-                  {!step2Enabled
-                    ? 'Inicia una PreguntICA'
-                    : !questionVisible
-                      ? '🔒 Muestra la pregunta'
-                      : !questionTranslation
-                        ? 'Sin traducción'
-                        : translationVisible
-                          ? '✅ Traducción mostrada'
-                          : '👁 Mostrar traducción'}
-                </span>
+                {translationVisible && (
+                  <span className='text-[11px] font-semibold text-emerald-600 dark:text-emerald-300'>
+                    ✅ Traducción mostrada
+                  </span>
+                )}
               </div>
               <div className='relative mt-1 min-h-9'>
                 <p
@@ -849,9 +868,9 @@ export function PregunticaView({
                 >
                   {questionTranslation || 'Traducción no disponible'}
                 </p>
-                {(!questionVisible || !translationVisible) && (
+                {!translationVisible && translationRevealLabel && (
                   <div className='absolute inset-0 flex items-center justify-center text-xs font-medium text-muted-foreground'>
-                    Se desbloquea tras mostrar la pregunta.
+                    {translationRevealLabel}
                   </div>
                 )}
               </div>
