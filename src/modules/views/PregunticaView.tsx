@@ -564,6 +564,7 @@ export function PregunticaView({
         nativeLang: config.nativeLang,
         level: config.level || 'A2',
         icaWords,
+        currentSuggestions: suggestions.map((item) => item.word),
       })
 
       if (!result.ok) {

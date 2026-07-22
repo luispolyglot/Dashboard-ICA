@@ -18,6 +18,7 @@ type RefreshSuggestionsPayload = {
   nativeLang?: string
   level?: string
   icaWords?: string[]
+  currentSuggestions?: string[]
 }
 
 type PrepareAttemptPayload = {
@@ -159,11 +160,10 @@ function normalizeWordMode(value: string | undefined): string {
 
 function wordsAllowedByLevel(level: string | undefined): number {
   const normalized = (level || 'A2').trim().toUpperCase()
-  if (normalized === 'A1') return 1
-  if (normalized === 'A2') return 2
-  if (normalized === 'B1') return 3
-  if (normalized === 'B2') return 4
-  return 5
+  if (['0', 'A0', 'LEVEL0', 'PRE-A1', 'PREA1', 'A1', 'A2'].includes(normalized)) return 1
+  if (['B1', 'B2'].includes(normalized)) return 2
+  if (['C1', 'C2'].includes(normalized)) return 3
+  return 1
 }
 
 function minCharsByLevel(level: string | undefined): number {
@@ -212,7 +212,6 @@ function parseTranslationCandidate(raw: string | null): { translation: string; c
 function filterSuggestedWords(
   suggestions: SuggestionWord[],
   transcript: string,
-  corrections: Array<{ original: string; suggestion: string; reason: string }>,
   blockedWords: string[],
 ): SuggestionWord[] {
   if (!suggestions.length) return []
@@ -223,10 +222,6 @@ function filterSuggestedWords(
       .map((word) => normalizeLooseText(word))
       .filter(Boolean),
   )
-  const correctionOriginals = corrections
-    .map((item) => normalizeLooseText(item.original))
-    .filter(Boolean)
-
   const reinforcementPattern =
     /(used correctly|already used|ya la usaste|ya lo usaste|usaste correctamente|refuerz|keep using)/i
 
@@ -234,14 +229,10 @@ function filterSuggestedWords(
     if (reinforcementPattern.test(item.reason)) return false
 
     const normalizedWord = normalizeLooseText(item.word)
+    if (!normalizedWord) return false
     if (blocked.has(normalizedWord)) return false
-    if (!normalizedWord || !transcriptNormalized.includes(normalizedWord)) return true
-
-    const appearsInCorrections = correctionOriginals.some((original) => {
-      return original.includes(normalizedWord) || normalizedWord.includes(original)
-    })
-
-    return appearsInCorrections
+    if (transcriptNormalized.includes(normalizedWord)) return false
+    return true
   })
 
   const seen = new Set<string>()
@@ -251,6 +242,17 @@ function filterSuggestedWords(
     seen.add(key)
     return true
   })
+}
+
+function parseSuggestionWordsFromRows(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== 'object') return ''
+      const record = item as Record<string, unknown>
+      return typeof record.word === 'string' ? record.word.trim() : ''
+    })
+    .filter(Boolean)
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -553,9 +555,8 @@ function buildFeedbackPrompt(input: {
     'Analyze the learner response and give clear, concise coaching in native language.',
     '',
     'Rules for suggestedIcaWords (CRITICAL):',
-    'A suggestion may be included only if it matches exactly one of these:',
-    '1) The learner used it incorrectly (wrong form, context, or spelling).',
-    '2) The learner did not use it, but it would be natural and useful in this exact context and CEFR level.',
+    'A suggestion may be included only if the learner did not use it and it would be natural and useful in this exact context and CEFR level.',
+    'NEVER include a word or phrase already present in the learner response.',
     'NEVER include a word or phrase the learner already used correctly.',
     'NEVER include a word or phrase that is already in "Words the learner should try to use".',
     'Reinforcement or praise are not valid reasons for suggestedIcaWords.',
@@ -950,7 +951,6 @@ async function processAttemptAudio(
   parsed.suggestedIcaWords = filterSuggestedWords(
     parsed.suggestedIcaWords,
     transcript,
-    parsed.corrections,
     icaWords,
   )
 
@@ -1030,6 +1030,24 @@ async function refreshSuggestions(
     ? payload.icaWords
     : parseWords(attempt.ica_words)
 
+  const currentSuggestions = (payload.currentSuggestions || []).filter((word): word is string => typeof word === 'string')
+
+  const { data: previousRows, error: previousError } = await adminClient
+    .from('preguntica_feedback_suggestions')
+    .select('suggested_words')
+    .eq('preguntica_attempt_id', attempt.id)
+
+  if (previousError) {
+    throw new Error(previousError.message)
+  }
+
+  const previousSuggestedWords = (previousRows || []).flatMap((row) => {
+    const record = row as { suggested_words: unknown }
+    return parseSuggestionWordsFromRows(record.suggested_words)
+  })
+
+  const blockedWords = [...icaWords, ...currentSuggestions, ...previousSuggestedWords]
+
   const raw = await callAnthropic(
     'You generate alternative ICA word suggestions. Reply only with valid JSON.',
     [
@@ -1037,10 +1055,12 @@ async function refreshSuggestions(
       `Native language: ${nativeLang}`,
       `Learner level: ${level}`,
       `Current ICA words: ${icaWords.join(', ') || 'none'}`,
+      `Already shown suggestions (do not repeat): ${currentSuggestions.join(', ') || 'none'}`,
       'Give 4 to 8 alternative ICA words the learner could use to improve the response.',
-      'Only suggest words that were used incorrectly or were not used but would be natural and useful.',
-      'Never suggest words already used correctly in the learner response.',
+      'Only suggest words that were not used but would be natural and useful.',
+      'Never suggest words already present in the learner response.',
       'Never suggest any word from Current ICA words (those are already in the learner bag).',
+      'Never suggest any word from Already shown suggestions.',
       'If fewer than 4 qualify, return fewer. Empty array is valid.',
       'Return STRICT JSON only with shape:',
       '{"suggestedIcaWords":[{"word":"...","translation":"...","reason":"..."}]}',
@@ -1052,7 +1072,7 @@ async function refreshSuggestions(
     ].join('\n'),
   )
 
-  const suggestions = filterSuggestedWords(parseSuggestions(raw), transcript, [], icaWords)
+  const suggestions = filterSuggestedWords(parseSuggestions(raw), transcript, blockedWords)
   const nextRefresh = currentRefresh + 1
 
   await adminClient

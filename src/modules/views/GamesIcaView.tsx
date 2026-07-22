@@ -7,6 +7,7 @@ type GamesIcaViewProps = {
   pregunticaUnlocked: boolean
   pregunticaLabel: string
   pregunticaProgress: string
+  showPregunticaPulse: boolean
 }
 
 function parseProgress(value: string): { current: number; total: number } {
@@ -25,6 +26,7 @@ export function GamesIcaView({
   flashcardsCount,
   pregunticaUnlocked,
   pregunticaProgress,
+  showPregunticaPulse,
 }: GamesIcaViewProps) {
   const navigate = useNavigate()
   const progress = parseProgress(pregunticaProgress)
@@ -70,9 +72,15 @@ export function GamesIcaView({
           disabled={!pregunticaUnlocked}
           className='group relative min-h-52 overflow-hidden rounded-[22px] border border-slate-800 bg-[linear-gradient(160deg,#ffffff,#eef3f9)] p-6 text-left transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-75 dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
         >
-          <p className='text-3xl' aria-hidden='true'>
-            🎙️
-          </p>
+          {showPregunticaPulse && (
+            <span
+              aria-hidden='true'
+              className='absolute right-4 top-4 inline-block text-xl text-amber-500 animate-pulse'
+            >
+              🎙️
+            </span>
+          )}
+          <p className='text-3xl' aria-hidden='true'>🎙️</p>
           <h2 className='mt-5 font-serif text-2xl font-bold text-slate-700 dark:text-slate-100'>
             PreguntICA
           </h2>

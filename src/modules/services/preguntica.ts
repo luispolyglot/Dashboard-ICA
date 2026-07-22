@@ -67,6 +67,7 @@ type RefreshSuggestionsPayload = {
   nativeLang?: string
   level?: string
   icaWords?: string[]
+  currentSuggestions?: string[]
 }
 
 type PrepareAttemptPayload = {
