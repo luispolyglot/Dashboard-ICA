@@ -48,6 +48,10 @@ type ScoreBreakdown = {
   icaTestMaxPoints: number
   listeningPoints: number
   listeningMaxPoints: number
+  pregunticaPoints: number
+  pregunticaMaxPoints: number
+  instagramPoints: number
+  instagramMaxPoints: number
   includeIcaTest: boolean
   totalPoints: number
   totalMaxPoints: number
@@ -58,6 +62,8 @@ const LEADERBOARD_CUTOFF_DAY = 28
 const MAX_MONTHLY_POINTS = 10
 const MAX_LISTENING_POINTS_PER_DAY = 0.1
 const MAX_ICA_TEST_POINTS = 1.5
+const MAX_PREGUNTICA_POINTS = 8
+const MAX_INSTAGRAM_POINTS_PER_DAY = 0.5
 
 function toUtcMonthStart(date: Date): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-01`
@@ -217,6 +223,17 @@ function getListeningPoints(row: LeaderboardEntry): number {
   return toSafeNumber(row.listening_points)
 }
 
+function getPregunticaPoints(row: LeaderboardEntry): number {
+  if (row.preguntica_points === null || row.preguntica_points === undefined)
+    return 0
+  return toSafeNumber(row.preguntica_points)
+}
+
+function getInstagramPoints(row: LeaderboardEntry): number {
+  if (row.instagram_points === null || row.instagram_points === undefined) return 0
+  return toSafeNumber(row.instagram_points)
+}
+
 function getDisplayedTotalPoints(
   row: LeaderboardEntry,
   includeIcaTest: boolean,
@@ -226,9 +243,11 @@ function getDisplayedTotalPoints(
 
   const monthlyPoints = getMonthlyPercentPoints(row)
   const listeningPoints = getListeningPoints(row)
+  const pregunticaPoints = getPregunticaPoints(row)
+  const instagramPoints = getInstagramPoints(row)
   return includeIcaTest
-    ? monthlyPoints + listeningPoints + getIcaTestPoints(row)
-    : monthlyPoints + listeningPoints
+    ? monthlyPoints + listeningPoints + getIcaTestPoints(row) + pregunticaPoints + instagramPoints
+    : monthlyPoints + listeningPoints + pregunticaPoints + instagramPoints
 }
 
 function getStreakCellClass(row: LeaderboardEntry): string {
@@ -252,11 +271,16 @@ function buildScoreBreakdown(
   const monthlyPoints = getMonthlyPercentPoints(row)
   const icaTestPoints = includeIcaTest ? getIcaTestPoints(row) : 0
   const listeningPoints = getListeningPoints(row)
+  const pregunticaPoints = getPregunticaPoints(row)
+  const instagramPoints = getInstagramPoints(row)
   const listeningMaxPoints = scoringDayCap * MAX_LISTENING_POINTS_PER_DAY
+  const instagramMaxPoints = scoringDayCap * MAX_INSTAGRAM_POINTS_PER_DAY
   const totalPoints = getDisplayedTotalPoints(row, includeIcaTest)
   const totalMaxPoints =
     MAX_MONTHLY_POINTS +
     listeningMaxPoints +
+    MAX_PREGUNTICA_POINTS +
+    instagramMaxPoints +
     (includeIcaTest ? MAX_ICA_TEST_POINTS : 0)
 
   return {
@@ -267,6 +291,10 @@ function buildScoreBreakdown(
     icaTestMaxPoints: MAX_ICA_TEST_POINTS,
     listeningPoints,
     listeningMaxPoints,
+    pregunticaPoints,
+    pregunticaMaxPoints: MAX_PREGUNTICA_POINTS,
+    instagramPoints,
+    instagramMaxPoints,
     includeIcaTest,
     totalPoints,
     totalMaxPoints,
@@ -513,7 +541,7 @@ export function LeaderboardView() {
           ) : rowsWithSharedRank.length === 0 ? (
             <p className='text-sm text-muted-foreground'>
               {isCurrentMonth
-                ? 'Todavía no hay datos disponibles para este periodo.'
+                ? 'Todavía no hay datos disponibles para este período.'
                 : `Se están calculando los resultados de ${formatMonthLabel(selectedMonth)}. En el transcurso del día estarán disponibles.`}
             </p>
           ) : (
@@ -727,7 +755,7 @@ export function LeaderboardView() {
                 </span>{' '}
                 / {formatPoints(selectedScoreBreakdown.monthlyMaxPoints)}
                 {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
-                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.monthlyPoints, selectedScoreBreakdown.monthlyMaxPoints)} de accion aplicada`
+                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.monthlyPoints, selectedScoreBreakdown.monthlyMaxPoints)} de acción aplicada`
                   : ''}
               </p>
               {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
@@ -744,12 +772,12 @@ export function LeaderboardView() {
                 </span>{' '}
                 / {formatPoints(selectedScoreBreakdown.listeningMaxPoints)}
                 {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
-                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.listeningPoints, selectedScoreBreakdown.listeningMaxPoints)} de accion aplicada`
+                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.listeningPoints, selectedScoreBreakdown.listeningMaxPoints)} de acción aplicada`
                   : ''}
               </p>
               {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
                 <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
-                  0,01 puntos por minuto escuchado, con tope de 0,1 por dia.
+                  0,01 puntos por minuto escuchado, con tope de 0,1 por día.
                 </p>
               )}
 
@@ -771,14 +799,48 @@ export function LeaderboardView() {
                 {selectedScoreBreakdown.isCurrentUser &&
                 openedFromMyScore &&
                 selectedScoreBreakdown.includeIcaTest
-                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.icaTestPoints, selectedScoreBreakdown.icaTestMaxPoints)} de accion aplicada`
+                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.icaTestPoints, selectedScoreBreakdown.icaTestMaxPoints)} de acción aplicada`
                   : ''}
               </p>
               {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
                 <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
                   {selectedScoreBreakdown.includeIcaTest
                     ? 'Cada respuesta correcta del ICA Test suma 0,1 puntos.'
-                    : `ICA Test disponible desde el dia ${icaTestWindowStartDay} al 28.`}
+                    : `ICA Test disponible desde el día ${icaTestWindowStartDay} al 28.`}
+                </p>
+              )}
+
+              <p>
+                🗣️{' '}
+                <span className='text-amber-500'>
+                  {formatPoints(selectedScoreBreakdown.pregunticaPoints)}
+                </span>{' '}
+                / {formatPoints(selectedScoreBreakdown.pregunticaMaxPoints)}
+                {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
+                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.pregunticaPoints, selectedScoreBreakdown.pregunticaMaxPoints)} de acción aplicada`
+                  : ''}
+              </p>
+              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
+                <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
+                  PreguntICA semanal completada suma 2 puntos por intento, con
+                  máximo de 4 intentos al mes (8 puntos).
+                </p>
+              )}
+
+              <p>
+                📸{' '}
+                <span className='text-amber-500'>
+                  {formatPoints(selectedScoreBreakdown.instagramPoints)}
+                </span>{' '}
+                / {formatPoints(selectedScoreBreakdown.instagramMaxPoints)}
+                {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
+                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.instagramPoints, selectedScoreBreakdown.instagramMaxPoints)} de acción aplicada`
+                  : ''}
+              </p>
+              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
+                <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
+                  Instagram Track suma 0,5 por cada día cumplido (1 al 28), sin
+                  importar idioma; se cuenta una sola vez por día.
                 </p>
               )}
 
