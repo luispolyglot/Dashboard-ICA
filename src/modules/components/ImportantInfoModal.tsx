@@ -13,10 +13,11 @@ import { DASHBOARD_ROUTES } from '../routes/paths'
 
 type ImportantInfoMode = 'video' | 'image'
 
-const IMPORTANT_INFO_VERSION = 'nm_video_monthly_score_v1'
+const IMPORTANT_INFO_VERSION = 'nm_video_monthly_score_v2'
 const IMPORTANT_INFO_MODE_BY_VERSION: Record<string, ImportantInfoMode> = {
   nm_image_v1: 'image',
   nm_video_monthly_score_v1: 'video',
+  nm_video_monthly_score_v2: 'video',
 }
 
 function resolveImportantInfoMode(version: string): ImportantInfoMode {
@@ -32,7 +33,7 @@ const DISMISS_DELAY_SECONDS =
     ? IMAGE_DISMISS_DELAY_SECONDS
     : VIDEO_DISMISS_DELAY_SECONDS
 const IMPORTANT_INFO_VIDEO_URL =
-  'https://www.loom.com/embed/5857a0cf8d7c4263b86aa89e6e603a3b'
+  'https://www.loom.com/embed/1932cdc979874bd7b5ab636920e80aa2'
 const IMPORTANT_INFO_IMAGE_ALT = 'Información importante sobre Notas Maestras'
 
 type ConfirmAction = 'close_once' | 'dismiss_forever' | null
@@ -129,14 +130,14 @@ export function ImportantInfoModal() {
         }}
       >
         <div className='relative p-5 pb-4'>
-          <DialogHeader>
-            <DialogTitle>INFORMACIÓN IMPORTANTE</DialogTitle>
-            <DialogDescription>
-              {IMPORTANT_INFO_MODE === 'video'
-                ? 'Actualización: escuchar las NM ahora cuenta para tu puntaje mensual.'
-                : 'Revisa esta imagen para conocer las novedades importantes.'}
-            </DialogDescription>
-          </DialogHeader>
+            <DialogHeader>
+              <DialogTitle>INFORMACIÓN IMPORTANTE</DialogTitle>
+              <DialogDescription>
+                {IMPORTANT_INFO_MODE === 'video'
+                  ? 'Conoce PreguntICA, el nuevo juego disponible en Juegos ICA.'
+                  : 'Revisa esta imagen para conocer PreguntICA en Juegos ICA.'}
+              </DialogDescription>
+            </DialogHeader>
 
           <div className='mt-4 overflow-hidden rounded-lg border border-border/70'>
             {IMPORTANT_INFO_MODE === 'video' ? (
