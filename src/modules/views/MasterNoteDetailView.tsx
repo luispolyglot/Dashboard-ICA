@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   DownloadIcon,
   MicIcon,
@@ -11,6 +11,7 @@ import {
   Trash2Icon,
   Volume2Icon,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import {
   Accordion,
   AccordionContent,
@@ -96,6 +97,7 @@ export function MasterNoteDetailView({
   todayVoiceActivationsCount,
 }: MasterNoteDetailViewProps) {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [note, setNote] = useState<MasterNote | null>(null)
   const [chunks, setChunks] = useState<MasterNoteChunk[]>([])
   const [phrases, setPhrases] = useState<PhraseGenerationEntry[]>([])
@@ -172,6 +174,16 @@ export function MasterNoteDetailView({
 
     void load()
   }, [noteId, targetLang])
+
+  useEffect(() => {
+    if (searchParams.get('rerecordUpdated') !== '1') return
+
+    toast.success('Regrabación guardada correctamente.')
+
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('rerecordUpdated')
+    setSearchParams(nextParams, { replace: true })
+  }, [searchParams, setSearchParams])
 
   const activatedInThisNote = useMemo(() => {
     return new Set(chunks.map((chunk) => chunk.phrase_generation_id))
@@ -493,9 +505,24 @@ export function MasterNoteDetailView({
                   key={chunk.id}
                   className='rounded-xl border border-border/70 p-3'
                 >
-                  <p className='mb-0.5 text-xs text-muted-foreground'>
-                    #{index + 1} · {formatDuration(chunk.duration_ms)}
-                  </p>
+                  <div className='mb-0.5 flex items-center justify-between gap-2'>
+                    <p className='text-xs text-muted-foreground'>
+                      #{index + 1} · {formatDuration(chunk.duration_ms)}
+                    </p>
+                    <Button
+                      asChild
+                      type='button'
+                      size='sm'
+                      variant='ghost'
+                      className='h-6 px-2 text-[11px]'
+                    >
+                      <Link
+                        to={`${DASHBOARD_ROUTES.masterNotes}/note/${note.id}/activate/${chunk.phrase_generation_id}?mode=rerecord&chunkId=${chunk.id}`}
+                      >
+                        Regrabar
+                      </Link>
+                    </Button>
+                  </div>
                   <p className='font-serif text-lg font-bold'>
                     {phrase?.generated_phrase || 'Sin frase registrada'}
                   </p>
@@ -542,6 +569,21 @@ export function MasterNoteDetailView({
                             <span className='shrink-0 text-muted-foreground'>
                               {formatDuration(chunk.duration_ms)}
                             </span>
+                            {note.state === 'open' && (
+                              <Button
+                                asChild
+                                type='button'
+                                size='sm'
+                                variant='ghost'
+                                className='h-6 px-2 text-[11px]'
+                              >
+                                <Link
+                                  to={`${DASHBOARD_ROUTES.masterNotes}/note/${note.id}/activate/${chunk.phrase_generation_id}?mode=rerecord&chunkId=${chunk.id}`}
+                                >
+                                  Regrabar
+                                </Link>
+                              </Button>
+                            )}
                             {note.state === 'open' && (
                               <Button
                                 type='button'

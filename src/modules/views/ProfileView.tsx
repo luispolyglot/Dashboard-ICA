@@ -654,6 +654,28 @@ export function ProfileView({
           </Card>
         )}
 
+        {canManageWhitelist && (
+          <Card>
+            <CardHeader>
+              <CardTitle className='flex items-center gap-2'>
+                <ClipboardCheckIcon className='h-4 w-4' />
+                Gestionar preguntas PreguntICA
+              </CardTitle>
+            </CardHeader>
+            <CardContent className='space-y-3'>
+              <p className='text-sm text-muted-foreground'>
+                Administra el banco de preguntas en español y su cache de
+                traducciones para idioma objetivo.
+              </p>
+              <Button type='button' variant='outline' asChild>
+                <Link to={DASHBOARD_ROUTES.managePregunticaQuestions}>
+                  Gestionar preguntas PreguntICA
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {canManageCalendarIcademy && (
           <Card>
             <CardHeader>

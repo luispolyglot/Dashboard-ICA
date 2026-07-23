@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -19,8 +19,9 @@ import {
   addMasterNoteChunk,
   fetchMasterNoteById,
   fetchMasterNoteChunks,
+  rerecordMasterNoteChunk,
 } from '../services/masterNotes'
-import type { MasterNote, PhraseGenerationEntry } from '../types'
+import type { MasterNote, MasterNoteChunk, PhraseGenerationEntry } from '../types'
 
 type MasterNoteActivatePhraseViewProps = {
   noteId: string
@@ -37,6 +38,8 @@ type RecordingDraft = {
 }
 
 const MAX_DURATION_MS = 3 * 60 * 1000 + 30 * 1000
+const MIN_CLOSED_NOTE_DURATION_MS = 3 * 60 * 1000
+const MIN_SAVE_DURATION_MS = 10 * 1000
 
 type PendingLeaveAction =
   | {
@@ -72,15 +75,31 @@ function getPreferredMimeType(): string {
   return supported || 'audio/webm'
 }
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  )
+}
+
 export function MasterNoteActivatePhraseView({
   noteId,
   phraseId,
   targetLang,
 }: MasterNoteActivatePhraseViewProps) {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { refreshCreationDaysFromSource } = useDashboardContext()
+  const rerecordMode = searchParams.get('mode') === 'rerecord'
+  const rerecordChunkId = useMemo(() => {
+    const raw = (searchParams.get('chunkId') || '').trim()
+    if (!raw || !isUuid(raw)) return null
+    return raw
+  }, [searchParams])
   const [note, setNote] = useState<MasterNote | null>(null)
   const [phrase, setPhrase] = useState<PhraseGenerationEntry | null>(null)
+  const [rerecordChunk, setRerecordChunk] = useState<MasterNoteChunk | null>(
+    null,
+  )
   const [recordingDraft, setRecordingDraft] = useState<RecordingDraft | null>(
     null,
   )
@@ -90,6 +109,7 @@ export function MasterNoteActivatePhraseView({
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [phraseAlreadyActivated, setPhraseAlreadyActivated] = useState(false)
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false)
   const pendingLeaveRef = useRef<PendingLeaveAction>(null)
   const allowNavigationRef = useRef(false)
@@ -272,20 +292,46 @@ export function MasterNoteActivatePhraseView({
           return
         }
 
+        const phraseChunk =
+          noteChunks.find((chunk) => chunk.phrase_generation_id === phraseId) ||
+          null
+        const targetRerecordChunk = rerecordChunkId
+          ? noteChunks.find((chunk) => chunk.id === rerecordChunkId) || null
+          : null
+
         const totalDuration = noteChunks.reduce(
           (sum, chunk) => sum + chunk.duration_ms,
           0,
         )
-        if (
-          noteChunks.some((chunk) => chunk.phrase_generation_id === phraseId)
-        ) {
-          setError('Esta frase ya fue activada en esta nota maestra')
-        } else if (foundNote.state !== 'open') {
+
+        if (foundNote.state !== 'open' && !rerecordMode) {
           setError(
             'La nota maestra está cerrada y no admite nuevas activaciones',
           )
+          setRerecordChunk(null)
+          setPhraseAlreadyActivated(false)
+        } else if (rerecordMode) {
+          if (!rerecordChunkId || !targetRerecordChunk) {
+            setError('No se encontró el audio a regrabar en esta nota maestra')
+            setRerecordChunk(null)
+            setPhraseAlreadyActivated(false)
+          } else if (targetRerecordChunk.phrase_generation_id !== phraseId) {
+            setError('El audio seleccionado no corresponde a esta frase')
+            setRerecordChunk(null)
+            setPhraseAlreadyActivated(false)
+          } else {
+            setError(null)
+            setRerecordChunk(targetRerecordChunk)
+            setPhraseAlreadyActivated(false)
+          }
+        } else if (phraseChunk) {
+          setError('Esta frase ya fue activada en esta nota maestra')
+          setRerecordChunk(null)
+          setPhraseAlreadyActivated(true)
         } else {
           setError(null)
+          setRerecordChunk(null)
+          setPhraseAlreadyActivated(false)
         }
 
         setNote({ ...foundNote, total_duration_ms: totalDuration })
@@ -314,26 +360,46 @@ export function MasterNoteActivatePhraseView({
       stopWave()
       if (recordingDraft) URL.revokeObjectURL(recordingDraft.url)
     }
-  }, [noteId, phraseId, targetLang])
+  }, [noteId, phraseId, rerecordChunkId, rerecordMode, targetLang])
 
+  const rerecordDurationMs = rerecordChunk?.duration_ms || 0
+  const effectiveNoteDurationMs = Math.max(
+    0,
+    (note?.total_duration_ms || 0) - (rerecordMode ? rerecordDurationMs : 0),
+  )
   const remainingBeforeRecordingMs = Math.max(
     0,
-    MAX_DURATION_MS - (note?.total_duration_ms || 0),
+    MAX_DURATION_MS - effectiveNoteDurationMs,
   )
   const remainingDuringRecordingMs = Math.max(
     0,
     remainingBeforeRecordingMs - recordingElapsedMs,
   )
+  const isClosedRerecord =
+    rerecordMode && note?.state === 'closed' && Boolean(rerecordChunk)
   const canRecord =
     !!note &&
-    note.state === 'open' &&
-    remainingBeforeRecordingMs > 0 &&
-    !error?.includes('ya fue activada')
+    (rerecordMode || note.state === 'open') &&
+    (rerecordMode || remainingBeforeRecordingMs > 0) &&
+    !phraseAlreadyActivated &&
+    (!rerecordMode || Boolean(rerecordChunk))
 
   const exceededLimitWhileRecording =
-    recording && remainingDuringRecordingMs === 0
+    recording && !rerecordMode && remainingDuringRecordingMs === 0
   const exceededLimitForNewRecordings =
-    !recording && remainingBeforeRecordingMs === 0
+    !recording && !rerecordMode && remainingBeforeRecordingMs === 0
+  const isDraftTooShort =
+    !!recordingDraft && recordingDraft.durationMs < MIN_SAVE_DURATION_MS
+  const closedRerecordPreviewTotalMs =
+    isClosedRerecord && recordingDraft && note && rerecordChunk
+      ? Math.max(
+          0,
+          note.total_duration_ms - rerecordChunk.duration_ms + recordingDraft.durationMs,
+        )
+      : null
+  const breaksClosedMinTotal =
+    closedRerecordPreviewTotalMs !== null &&
+    closedRerecordPreviewTotalMs < MIN_CLOSED_NOTE_DURATION_MS
 
   const startWave = (stream: MediaStream): void => {
     try {
@@ -496,20 +562,56 @@ export function MasterNoteActivatePhraseView({
 
   const handleSaveChunk = async (): Promise<void> => {
     if (!recordingDraft || !note || !phrase || saving) return
+    if (breaksClosedMinTotal) {
+      setError('Una nota cerrada no puede quedar por debajo de 3:00')
+      return
+    }
+
     setSaving(true)
     try {
-      await addMasterNoteChunk({
-        noteId: note.id,
-        phraseGenerationId: phrase.id,
-        audioBlob: recordingDraft.blob,
-        mimeType: recordingDraft.mimeType,
-        durationMs: recordingDraft.durationMs,
-      })
+      if (rerecordMode) {
+        if (!rerecordChunk) {
+          throw new Error('No se encontró el chunk a regrabar')
+        }
+
+        await rerecordMasterNoteChunk({
+          noteId: note.id,
+          chunkId: rerecordChunk.id,
+          phraseGenerationId: phrase.id,
+          audioBlob: recordingDraft.blob,
+          mimeType: recordingDraft.mimeType,
+          durationMs: recordingDraft.durationMs,
+        })
+      } else {
+        await addMasterNoteChunk({
+          noteId: note.id,
+          phraseGenerationId: phrase.id,
+          audioBlob: recordingDraft.blob,
+          mimeType: recordingDraft.mimeType,
+          durationMs: recordingDraft.durationMs,
+        })
+      }
+
       await refreshCreationDaysFromSource()
-      navigate(`${DASHBOARD_ROUTES.masterNotes}/note/${note.id}`)
+      navigate(
+        rerecordMode
+          ? `${DASHBOARD_ROUTES.masterNotes}/note/${note.id}?rerecordUpdated=1`
+          : `${DASHBOARD_ROUTES.masterNotes}/note/${note.id}`,
+      )
     } catch (err) {
       console.error(err)
-      setError('No se pudo guardar el audio en la nota maestra')
+      const message =
+        err instanceof Error &&
+        (err.message.includes('CLOSED_NOTE_MIN_TOTAL_3_00') ||
+          err.message.includes('CLOSED_NOTE_MIN_TOTAL_3_30'))
+          ? 'Una nota cerrada no puede quedar por debajo de 3:00'
+          : null
+      setError(
+        message ||
+          (rerecordMode
+            ? 'No se pudo guardar la regrabación en la nota maestra'
+            : 'No se pudo guardar el audio en la nota maestra'),
+      )
     } finally {
       setSaving(false)
     }
@@ -558,13 +660,23 @@ export function MasterNoteActivatePhraseView({
     <>
       <section className='mx-auto w-full max-w-3xl flex-1 px-5 pt-8 pb-24 lg:pb-8'>
         <h2 className='mb-1 font-serif text-2xl lg:text-3xl font-bold'>
-          🗣️ Activar frase
+          {rerecordMode ? '🎙️ Regrabar frase' : '🗣️ Activar frase'}
         </h2>
         <p className='mb-2 text-sm text-muted-foreground'>Nota: {note.name}</p>
+        {rerecordMode && rerecordChunk && (
+          <p className='mb-2 text-xs text-muted-foreground'>
+            Audio actual: {formatDuration(rerecordChunk.duration_ms)}
+          </p>
+        )}
         <p className='mb-4 text-sm text-muted-foreground'>
-          Acumulado: {formatDuration(note.total_duration_ms)} · Disponible:{' '}
-          {formatDuration(remainingBeforeRecordingMs)}
+          Acumulado: {formatDuration(note.total_duration_ms)}
+          {rerecordMode ? '' : ` · Disponible: ${formatDuration(remainingBeforeRecordingMs)}`}
         </p>
+        {isClosedRerecord && (
+          <p className='mb-2 text-xs text-muted-foreground'>
+            Regla: al regrabar, el total debe mantenerse en al menos 3:00.
+          </p>
+        )}
         {error && <p className='mb-3 text-sm text-red-400'>{error}</p>}
 
         <Card className='rounded-2xl'>
@@ -617,8 +729,9 @@ export function MasterNoteActivatePhraseView({
                     {formatDuration(recordingElapsedMs)}
                   </p>
                   <p className='text-xs text-muted-foreground'>
-                    Tiempo restante para la nota:{' '}
-                    {formatDuration(remainingDuringRecordingMs)}
+                    {rerecordMode
+                      ? `Duración actual de esta toma: ${formatDuration(recordingElapsedMs)}`
+                      : `Tiempo restante para la nota: ${formatDuration(remainingDuringRecordingMs)}`}
                   </p>
                   {exceededLimitWhileRecording && (
                     <p className='text-xs font-semibold text-red-400'>
@@ -667,7 +780,7 @@ export function MasterNoteActivatePhraseView({
                   size='sm'
                   disabled={!canRecord}
                 >
-                  Activar frase
+                  {rerecordMode ? 'Regrabar frase' : 'Activar frase'}
                 </Button>
               )}
 
@@ -683,6 +796,9 @@ export function MasterNoteActivatePhraseView({
                     Borrador: {formatDuration(recordingDraft.durationMs)} ·{' '}
                     {Math.round(recordingDraft.sizeBytes / 1024)} KB
                   </p>
+                  <p className='mb-2 text-xs text-muted-foreground'>
+                    Para guardar, el audio debe durar al menos 0:10.
+                  </p>
                   <audio controls src={recordingDraft.url} className='w-full' />
                   <div className='mt-2 flex gap-2'>
                     <Button
@@ -690,9 +806,13 @@ export function MasterNoteActivatePhraseView({
                       onClick={() => void handleSaveChunk()}
                       size='sm'
                       variant='outline'
-                      disabled={saving}
+                      disabled={saving || isDraftTooShort || breaksClosedMinTotal}
                     >
-                      {saving ? 'Guardando...' : 'Guardar audio'}
+                      {saving
+                        ? 'Guardando...'
+                        : rerecordMode
+                          ? 'Guardar regrabación'
+                          : 'Guardar audio'}
                     </Button>
                     {!saving && (
                       <Button
@@ -705,6 +825,22 @@ export function MasterNoteActivatePhraseView({
                       </Button>
                     )}
                   </div>
+                  {isDraftTooShort && (
+                    <p className='mt-2 text-xs font-semibold text-red-400'>
+                      Mínimo 10s para guardar.
+                    </p>
+                  )}
+                  {breaksClosedMinTotal && (
+                    <p className='mt-2 text-xs font-semibold text-red-400'>
+                      Esta regrabación dejaría la nota cerrada debajo de 3:00.
+                    </p>
+                  )}
+                  {closedRerecordPreviewTotalMs !== null && (
+                    <p className='mt-2 text-xs text-muted-foreground'>
+                      Total estimado tras guardar:{' '}
+                      {formatDuration(closedRerecordPreviewTotalMs)}
+                    </p>
+                  )}
                 </div>
               )}
             </div>

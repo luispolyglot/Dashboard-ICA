@@ -308,6 +308,7 @@ export function ExplorePhraseTokenModal({
       setSaveError(message)
       toast.error(message)
     } finally {
+      onOpenChange(false)
       setSaving(false)
     }
   }
@@ -425,7 +426,7 @@ export function ExplorePhraseTokenModal({
               </div>
             </div>
 
-            {alreadyInVault && (
+            {!saving && alreadyInVault && (
               <p className='text-xs text-amber-600 dark:text-amber-300'>
                 Esta palabra ya existe en tu baúl ICA para este idioma.
               </p>

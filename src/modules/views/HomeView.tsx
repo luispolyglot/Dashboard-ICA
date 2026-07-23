@@ -33,9 +33,17 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   const navigate = useNavigate()
   const todayProgress = getTodayProgress(dailyProgress)
   const cardBaseClass =
-    'relative flex min-h-[220px] w-full flex-col border-none px-[26px] py-8 text-left font-sans transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] hover:-translate-y-[3px] bg-[linear-gradient(160deg,#ffffff,#eef3f9)] dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
-  const plainCardClass =
-    'overflow-hidden rounded-[20px] border border-slate-800'
+    'relative flex min-h-[220px] w-full flex-col px-[25px] py-8 text-left font-sans transition-[transform,border-color,box-shadow,background] duration-250 ease-[cubic-bezier(0.2,0.8,0.2,1)]'
+  const cardSurfaceClass =
+    'overflow-hidden rounded-[20px] border border-sky-400/35 bg-[linear-gradient(180deg,rgba(59,130,246,0.1),rgba(59,130,246,0.03)),linear-gradient(160deg,#ffffff,#eef3f9)] dark:bg-[linear-gradient(180deg,rgba(59,130,246,0.12),rgba(59,130,246,0.04)),linear-gradient(160deg,#0f172a,#0a0f1a)]'
+  const cardSurfaceHaloClass =
+    'overflow-hidden rounded-[20px] bg-[linear-gradient(180deg,rgba(59,130,246,0.1),rgba(59,130,246,0.03)),linear-gradient(160deg,#ffffff,#eef3f9)] shadow-[inset_0_0_0_1px_rgba(96,165,250,0.35)] dark:bg-[linear-gradient(180deg,rgba(59,130,246,0.12),rgba(59,130,246,0.04)),linear-gradient(160deg,#0f172a,#0a0f1a)]'
+  const cardHoverClass =
+    'hover:-translate-y-[2px] hover:border-sky-300/75 hover:shadow-[0_0_0_1px_rgba(96,165,250,0.5),0_0_24px_rgba(59,130,246,0.33)]'
+  const cardHoverWithHaloClass =
+    'hover:-translate-y-[2px] hover:shadow-[inset_0_0_0_1px_rgba(96,165,250,0.5),0_0_0_1px_rgba(96,165,250,0.28),0_0_20px_rgba(59,130,246,0.22)]'
+  const disabledCardClass =
+    'cursor-not-allowed opacity-75 hover:translate-y-0 hover:shadow-none'
 
   const hasFiveWordsTotal = cardCount >= CREATION_WORDS_GOAL
   const hasFiveWordsToday = todayProgress.wordsAdded >= CREATION_WORDS_GOAL
@@ -149,8 +157,10 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
                       onClick={() => !card.disabled && navigate(card.to)}
                       className={cn(
                         cardBaseClass,
-                        'relative z-1 m-0.5 overflow-hidden rounded-[20px]',
-                        card.disabled && 'cursor-not-allowed',
+                        cardSurfaceHaloClass,
+                        cardHoverWithHaloClass,
+                        'relative z-1 m-0.5',
+                        card.disabled && disabledCardClass,
                       )}
                       disabled={card.disabled}
                     >
@@ -163,8 +173,9 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
                     onClick={() => !card.disabled && navigate(card.to)}
                     className={cn(
                       cardBaseClass,
-                      plainCardClass,
-                      card.disabled && 'cursor-not-allowed',
+                      cardSurfaceClass,
+                      cardHoverClass,
+                      card.disabled && disabledCardClass,
                     )}
                     disabled={card.disabled}
                   >
@@ -182,25 +193,27 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
               <div className='pointer-events-none absolute inset-[-120%] z-0 animate-[rotateCW_8s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0deg,transparent_255deg,#eab30818_265deg,#eab30860_280deg,#eab308cc_305deg,#fde68a_322deg,#ffffffff_328deg,#fde68a_334deg,#eab308cc_350deg,#eab30860_368deg,#eab30818_378deg,transparent_390deg)]' />
               <button
                 type='button'
-                onClick={() => navigate(DASHBOARD_ROUTES.flashcards)}
+                onClick={() => navigate(DASHBOARD_ROUTES.gamesIca)}
                 className={cn(
                   cardBaseClass,
-                  'relative z-1 m-0.5 min-h-40 overflow-hidden rounded-[20px]',
+                  cardSurfaceHaloClass,
+                  cardHoverWithHaloClass,
+                  'relative z-1 m-0.5 min-h-40',
                 )}
               >
                 <div className='relative z-1'>
                   <div className='mb-1.25 flex items-center gap-2'>
-                    <div className='text-3xl'>📚</div>
+                    <div className='text-3xl'>🎮</div>
                     <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
-                      FLASHCARDS
+                      JUEGOS ICA
                     </h2>
                   </div>
                   <p className='m-0 text-xs leading-normal text-slate-500'>
-                    Refuerza tu memoria con repetición espaciada.
+                    Entrena con Flashcards y desbloquea tu PreguntICA semanal.
                   </p>
                   <div className='mt-2.5 inline-flex items-center gap-1.5 text-xs text-slate-400'>
                     <span aria-hidden='true'>✅</span>
-                    <span>Objetivo de flashcards completado</span>
+                    <span>Flashcards completadas hoy</span>
                   </div>
                 </div>
               </button>
@@ -208,24 +221,25 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           ) : (
             <button
               type='button'
-              onClick={() => navigate(DASHBOARD_ROUTES.flashcards)}
+              onClick={() => navigate(DASHBOARD_ROUTES.gamesIca)}
               disabled={cardCount === 0}
               className={cn(
                 cardBaseClass,
-                plainCardClass,
+                cardSurfaceClass,
+                cardHoverClass,
                 'w-full max-w-80 min-h-40',
-                cardCount === 0 && 'cursor-not-allowed',
+                cardCount === 0 && disabledCardClass,
               )}
             >
               <div className='relative z-1 my-auto'>
                 <div className='mb-1.25 flex items-center gap-2'>
-                  <div className='text-3xl'>📚</div>
+                  <div className='text-3xl'>🎮</div>
                   <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
-                    FLASHCARDS
+                    JUEGOS ICA
                   </h2>
                 </div>
                 <p className='m-0 text-xs leading-normal text-slate-500'>
-                  Refuerza tu memoria con repetición espaciada.
+                  Flashcards + PreguntICA en una sola pantalla.
                 </p>
                 <div className='mt-2.5 inline-flex items-center gap-1.5 text-xs text-slate-400'>
                   <span aria-hidden='true'>🕒</span>

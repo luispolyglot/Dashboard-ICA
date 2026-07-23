@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import {
+  Navigate,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom'
 import { LevelBadge } from '../components/LevelBadge'
 import { getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
@@ -12,12 +17,14 @@ import { FlashcardsModeView } from '../views/FlashcardsModeView'
 import { HistoricLeaderboardView } from '../views/HistoricLeaderboardView'
 import { LeaderboardView } from '../views/LeaderboardView'
 import { HomeView } from '../views/HomeView'
+import { GamesIcaView } from '../views/GamesIcaView'
 import { ManageCoachingView } from '../views/ManageCoachingView'
 import { ManageCoachingUserView } from '../views/ManageCoachingUserView'
 import { ManageCoacherSessionsView } from '../views/ManageCoacherSessionsView'
 import { ManageCalendarIcademyView } from '../views/ManageCalendarIcademyView'
 import { ManageIcademyTeachersView } from '../views/ManageIcademyTeachersView'
 import { ManageNotificationsView } from '../views/ManageNotificationsView'
+import { ManagePregunticaQuestionsView } from '../views/ManagePregunticaQuestionsView'
 import { ManageWhitelistView } from '../views/ManageWhitelistView'
 import { ManageView } from '../views/ManageView'
 import { MasterNoteActivatePhraseView } from '../views/MasterNoteActivatePhraseView'
@@ -36,6 +43,8 @@ import { TrackersView } from '../views/TrackersView'
 import { IcaTestsView } from '../views/IcaTestsView'
 import { IcaTestMonthView } from '../views/IcaTestMonthView'
 import { InstagramTrackPostsView } from '../views/InstagramTrackPostsView'
+import { PregunticaView } from '../views/PregunticaView'
+import { PregunticaHistoryView } from '../views/PregunticaHistoryView'
 import {
   getReviewPendingOnlyFromQuery,
   loadSavedReviewPendingOnly,
@@ -62,7 +71,11 @@ export function HomePage() {
 
   return (
     <PageLayout withBackButton={false}>
-      <HomeView config={config} cardCount={cards.length} dailyProgress={dailyProgress} />
+      <HomeView
+        config={config}
+        cardCount={cards.length}
+        dailyProgress={dailyProgress}
+      />
     </PageLayout>
   )
 }
@@ -149,6 +162,104 @@ export function FlashcardsPage() {
         onStartMode={(mode) =>
           navigate(getFlashcardsPlayRoute(mode, playStyle, pendingOnly))
         }
+      />
+    </PageLayout>
+  )
+}
+
+export function GamesIcaPage() {
+  const { cards, config } = useDashboardContext()
+  const [pregunticaLabel, setPregunticaLabel] = useState(
+    'Cargando estado semanal...',
+  )
+  const [pregunticaProgress, setPregunticaProgress] = useState('0/20')
+  const [pregunticaUnlocked, setPregunticaUnlocked] = useState(false)
+  const [showPregunticaPulse, setShowPregunticaPulse] = useState(false)
+
+  useEffect(() => {
+    let active = true
+
+    const loadStatus = async () => {
+      try {
+        const { fetchPregunticaWeekStatus } =
+          await import('../services/preguntica')
+        if (!config) return
+        const status = await fetchPregunticaWeekStatus({
+          targetLang: config.targetLang,
+          nativeLang: config.nativeLang,
+        })
+        if (!active || !status) return
+
+        setPregunticaUnlocked(status.isUnlocked)
+        setShowPregunticaPulse(status.isUnlocked && !status.completedAt)
+        setPregunticaProgress(
+          `${status.activationWordsCount}/${status.requiredActivationWords}`,
+        )
+        if (status.isUnlocked) {
+          setPregunticaLabel('Lista para responder')
+          return
+        }
+
+        const missing = Math.max(
+          0,
+          status.requiredActivationWords - status.activationWordsCount,
+        )
+        setPregunticaLabel(`Te faltan ${missing} palabras para desbloquearla`)
+      } catch {
+        if (!active) return
+        setPregunticaLabel('No se pudo cargar el estado')
+        setShowPregunticaPulse(false)
+      }
+    }
+
+    void loadStatus()
+
+    return () => {
+      active = false
+    }
+  }, [config])
+
+  return (
+    <PageLayout>
+      <GamesIcaView
+        flashcardsReady={cards.length > 0}
+        flashcardsCount={cards.length}
+        pregunticaUnlocked={pregunticaUnlocked}
+        pregunticaLabel={pregunticaLabel}
+        pregunticaProgress={pregunticaProgress}
+        showPregunticaPulse={showPregunticaPulse}
+      />
+    </PageLayout>
+  )
+}
+
+export function PregunticaPage() {
+  const { config, cards, setCards, handleWordAdded } = useDashboardContext()
+  if (!config) return null
+
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.gamesIca}>
+      <PregunticaView
+        config={config}
+        cards={cards}
+        setCards={setCards}
+        onWordAdded={handleWordAdded}
+      />
+    </PageLayout>
+  )
+}
+
+export function PregunticaHistoryPage() {
+  const { config, cards, setCards, handleWordAdded } = useDashboardContext()
+  if (!config) return null
+
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.preguntica}>
+      <PregunticaHistoryView
+        config={config}
+        cards={cards}
+        setCards={setCards}
+        onWordAdded={handleWordAdded}
       />
     </PageLayout>
   )
@@ -434,7 +545,10 @@ export function InstagramTrackPostsPage() {
 
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.profile}>
-      <InstagramTrackPostsView targetLang={config.targetLang} nativeLang={config.nativeLang} />
+      <InstagramTrackPostsView
+        targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+      />
     </PageLayout>
   )
 }
@@ -481,7 +595,10 @@ export function TrackersPage() {
 
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.profile}>
-      <TrackersView targetLang={config.targetLang} nativeLang={config.nativeLang} />
+      <TrackersView
+        targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+      />
     </PageLayout>
   )
 }
@@ -492,7 +609,10 @@ export function NewTrackerPage() {
 
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.trackers}>
-      <NewTrackerView targetLang={config.targetLang} nativeLang={config.nativeLang} />
+      <NewTrackerView
+        targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+      />
     </PageLayout>
   )
 }
@@ -525,6 +645,14 @@ export function ManageWhitelistPage() {
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.profile}>
       <ManageWhitelistView />
+    </PageLayout>
+  )
+}
+
+export function ManagePregunticaQuestionsPage() {
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+      <ManagePregunticaQuestionsView />
     </PageLayout>
   )
 }

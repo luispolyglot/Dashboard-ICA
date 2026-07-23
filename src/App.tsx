@@ -14,6 +14,7 @@ import {
   CoachingPersonalizedPage,
   FlashcardsPage,
   FlashcardsPlayPage,
+  GamesIcaPage,
   HistoricLeaderboardPage,
   HomePage,
   IcaTestMonthPage,
@@ -26,6 +27,7 @@ import {
   ManageCoacherSessionsPage,
   ManageCoachingUserPage,
   ManageNotificationsPage,
+  ManagePregunticaQuestionsPage,
   MasterNoteActivatePhrasePage,
   MasterNoteDetailPage,
   MasterNotesPage,
@@ -36,6 +38,8 @@ import {
   NewIcaWordsPage,
   PhraseHistoryPage,
   ProfilePage,
+  PregunticaPage,
+  PregunticaHistoryPage,
   ShareTargetPage,
   StreaksPage,
   TrackerDetailPage,
@@ -92,8 +96,11 @@ export function App() {
             <Route index element={<HomePage />} />
             <Route path='new-ica-words' element={<NewIcaWordsPage />} />
             <Route path='my-ica-words' element={<MyIcaWordsPage />} />
+            <Route path='games-ica' element={<GamesIcaPage />} />
             <Route path='flashcards' element={<FlashcardsPage />} />
             <Route path='flashcards/play/:mode' element={<FlashcardsPlayPage />} />
+            <Route path='preguntica' element={<PregunticaPage />} />
+            <Route path='preguntica/history' element={<PregunticaHistoryPage />} />
             <Route path='activation-phrase' element={<ActivationPhrasePage />} />
             <Route path='phrase-history' element={<PhraseHistoryPage />} />
             <Route path='master-notes' element={<MasterNotesPage />} />
@@ -139,6 +146,10 @@ export function App() {
                 element={<CalendarIcademyTeachersPage />}
               />
               <Route path='manage-whitelist' element={<ManageWhitelistPage />} />
+              <Route
+                path='manage-preguntica-questions'
+                element={<ManagePregunticaQuestionsPage />}
+              />
               <Route path='historic-leaderboard' element={<HistoricLeaderboardPage />} />
             </Route>
           </Route>

@@ -34,11 +34,11 @@ export function MobileBottomNav() {
           </span>
         </NavLink>
 
-        <NavLink to={DASHBOARD_ROUTES.flashcards} className={linkClassName}>
+        <NavLink to={DASHBOARD_ROUTES.gamesIca} className={linkClassName}>
           <span className='text-lg leading-none' aria-hidden='true'>
-            📚
+            🎮
           </span>
-          <span className='text-[11px] font-medium'>Flashcards</span>
+          <span className='text-[11px] font-medium'>Juegos ICA</span>
         </NavLink>
 
         <NavLink to={DASHBOARD_ROUTES.profile} className={linkClassName}>

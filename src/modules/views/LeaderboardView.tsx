@@ -11,7 +11,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -43,13 +42,22 @@ type VisibleLeaderboardRow = {
 
 type ScoreBreakdown = {
   userName: string
-  monthlyPercent: number
   monthlyPoints: number
+  monthlyMaxPoints: number
   icaTestPoints: number
+  icaTestMaxPoints: number
   listeningPoints: number
+  listeningMaxPoints: number
   includeIcaTest: boolean
   totalPoints: number
+  totalMaxPoints: number
+  isCurrentUser: boolean
 }
+
+const LEADERBOARD_CUTOFF_DAY = 28
+const MAX_MONTHLY_POINTS = 10
+const MAX_LISTENING_POINTS_PER_DAY = 0.1
+const MAX_ICA_TEST_POINTS = 1.5
 
 function toUtcMonthStart(date: Date): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-01`
@@ -238,21 +246,59 @@ function getStreakLabel(row: LeaderboardEntry): string {
 function buildScoreBreakdown(
   row: LeaderboardEntry,
   includeIcaTest: boolean,
+  isCurrentUser: boolean,
+  scoringDayCap: number,
 ): ScoreBreakdown {
-  const monthlyPercent = Math.round(toSafeNumber(row.avg_percent))
   const monthlyPoints = getMonthlyPercentPoints(row)
   const icaTestPoints = includeIcaTest ? getIcaTestPoints(row) : 0
   const listeningPoints = getListeningPoints(row)
+  const listeningMaxPoints = scoringDayCap * MAX_LISTENING_POINTS_PER_DAY
+  const totalPoints = getDisplayedTotalPoints(row, includeIcaTest)
+  const totalMaxPoints =
+    MAX_MONTHLY_POINTS +
+    listeningMaxPoints +
+    (includeIcaTest ? MAX_ICA_TEST_POINTS : 0)
 
   return {
     userName: row.display_name || row.username || 'Usuario',
-    monthlyPercent,
     monthlyPoints,
+    monthlyMaxPoints: MAX_MONTHLY_POINTS,
     icaTestPoints,
+    icaTestMaxPoints: MAX_ICA_TEST_POINTS,
     listeningPoints,
+    listeningMaxPoints,
     includeIcaTest,
-    totalPoints: getDisplayedTotalPoints(row, includeIcaTest),
+    totalPoints,
+    totalMaxPoints,
+    isCurrentUser,
   }
+}
+
+function getScoringDayCap(
+  selectedMonth: string,
+  currentMonthStart: string,
+  currentDay: number,
+): number {
+  if (selectedMonth === currentMonthStart) {
+    return Math.min(Math.max(currentDay, 1), LEADERBOARD_CUTOFF_DAY)
+  }
+  return LEADERBOARD_CUTOFF_DAY
+}
+
+const pointsFormatter = new Intl.NumberFormat('es-ES', {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+})
+
+function formatPoints(value: number): string {
+  return pointsFormatter.format(value)
+}
+
+function formatAppliedPercent(value: number, maxValue: number): string {
+  if (maxValue <= 0) return '0%'
+  const rawPercent = (value / maxValue) * 100
+  const safePercent = Number.isFinite(rawPercent) ? Math.max(rawPercent, 0) : 0
+  return `${Math.round(safePercent)}%`
 }
 
 export function LeaderboardView() {
@@ -270,7 +316,8 @@ export function LeaderboardView() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [nowMs, setNowMs] = useState(() => Date.now())
-  const [scoreInfoOpen, setScoreInfoOpen] = useState(false)
+  const [isBreakdownInfoOpen, setIsBreakdownInfoOpen] = useState(false)
+  const [openedFromMyScore, setOpenedFromMyScore] = useState(false)
   const [selectedScoreBreakdown, setSelectedScoreBreakdown] =
     useState<ScoreBreakdown | null>(null)
 
@@ -367,6 +414,31 @@ export function LeaderboardView() {
   const includeIcaTestInScoreExplanation =
     (isCurrentMonth && currentDay >= icaTestWindowStartDay) ||
     (!isCurrentMonth && hasSnapshotIcaPoints)
+  const scoringDayCap = getScoringDayCap(
+    selectedMonth,
+    currentMonthStart,
+    currentDay,
+  )
+  const currentUserRow = useMemo(
+    () => rows.find((row) => row.user_id === user?.id),
+    [rows, user?.id],
+  )
+
+  const openScoreBreakdown = (
+    row: LeaderboardEntry,
+    source: 'my-button' | 'table',
+  ) => {
+    setIsBreakdownInfoOpen(false)
+    setOpenedFromMyScore(source === 'my-button')
+    setSelectedScoreBreakdown(
+      buildScoreBreakdown(
+        row,
+        includeIcaTestInScoreExplanation,
+        row.user_id === user?.id,
+        scoringDayCap,
+      ),
+    )
+  }
 
   return (
     <section className='mx-auto w-full max-w-5xl flex-1 overflow-y-auto px-5 py-8'>
@@ -415,11 +487,20 @@ export function LeaderboardView() {
             </div>
           </div>
 
-          <p className='text-sm text-muted-foreground'>
-            <InfoIcon className='size-4 mr-2 inline-flex' />
-            El porcentaje mensual es un promedio de las rachas ICA y flashcards,
-            hasta el día 28 inclusive.
-          </p>
+          <div>
+            <Button
+              type='button'
+              variant='default'
+              size='sm'
+              onClick={() => {
+                if (!currentUserRow) return
+                openScoreBreakdown(currentUserRow, 'my-button')
+              }}
+              disabled={!currentUserRow || loading || Boolean(error)}
+            >
+              Mi Puntaje 🏅
+            </Button>
+          </div>
         </CardHeader>
 
         <CardContent>
@@ -455,12 +536,7 @@ export function LeaderboardView() {
                     <th className='hidden md:table-cell w-[18%] pb-2 font-medium'>
                       % mensual
                     </th>
-                    <th className='w-[16%] pb-2 font-medium'>
-                      <span onClick={() => setScoreInfoOpen(true)}>
-                        Puntaje total
-                        <InfoIcon className='size-4 ml-1' />
-                      </span>
-                    </th>
+                    <th className='w-[16%] pb-2 font-medium'>Puntaje total</th>
                   </tr>
                 </thead>
                 <tbody className='block lg:max-h-[50dvh] lg:overflow-y-auto'>
@@ -505,14 +581,7 @@ export function LeaderboardView() {
                           type='button'
                           variant='ghost'
                           className='h-auto p-0 text-sm font-bold md:font-medium'
-                          onClick={() =>
-                            setSelectedScoreBreakdown(
-                              buildScoreBreakdown(
-                                row,
-                                includeIcaTestInScoreExplanation,
-                              ),
-                            )
-                          }
+                          onClick={() => openScoreBreakdown(row, 'table')}
                           aria-label='Ver cómo se calculó este puntaje total'
                         >
                           {getDisplayedTotalPoints(
@@ -598,14 +667,7 @@ export function LeaderboardView() {
                           type='button'
                           variant='ghost'
                           className='h-auto p-0 text-sm font-bold md:font-medium'
-                          onClick={() =>
-                            setSelectedScoreBreakdown(
-                              buildScoreBreakdown(
-                                row,
-                                includeIcaTestInScoreExplanation,
-                              ),
-                            )
-                          }
+                          onClick={() => openScoreBreakdown(row, 'table')}
                           aria-label='Ver cómo se calculó este puntaje total'
                         >
                           {getDisplayedTotalPoints(
@@ -623,89 +685,135 @@ export function LeaderboardView() {
         </CardContent>
       </Card>
 
-      <Dialog open={scoreInfoOpen} onOpenChange={setScoreInfoOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Cómo se calcula el puntaje total</DialogTitle>
-            <DialogDescription>
-              <div className='space-y-2 text-foreground'>
-                <p>
-                  🧮 <strong>Fórmula:</strong>{' '}
-                  {includeIcaTestInScoreExplanation
-                    ? 'Puntaje total = (% mensual / 10) + puntos por escucha + puntos de ICA Test.'
-                    : 'Puntaje total = (% mensual / 10) + puntos por escucha.'}
-                </p>
-                <p>
-                  🎧 <strong>Escucha:</strong> 0,01 puntos por cada minuto
-                  escuchado, con tope de <strong>0,1 por día</strong> (solo
-                  cuentan 10 min por día). Se acumula solo hasta el{' '}
-                  <strong>día 28</strong>.
-                </p>
-                <p>
-                  📝 <strong>ICA Test:</strong>{' '}
-                  {includeIcaTestInScoreExplanation
-                    ? 'cada respuesta correcta vale 0,1 puntos.'
-                    : `empieza a sumar desde el día ${icaTestWindowStartDay} de cada mes.`}
-                </p>
-                <Separator className='my-2' />
-                <p>
-                  💡 <strong>Ejemplo:</strong>{' '}
-                  {includeIcaTestInScoreExplanation
-                    ? '84% mensual + 30 min escuchados en un mismo día (tope diario aplicado) + 11/15 en ICA Test = 8,4 + 0,1 + 1,1 = 9,6.'
-                    : '84% mensual + 30 min escuchados en un mismo día (tope diario aplicado) = 8,4 + 0,1 = 8,5.'}
-                </p>
-              </div>
-            </DialogDescription>
-          </DialogHeader>
-        </DialogContent>
-      </Dialog>
-
       <Dialog
         open={Boolean(selectedScoreBreakdown)}
         onOpenChange={(open) => {
-          if (!open) setSelectedScoreBreakdown(null)
+          if (!open) {
+            setSelectedScoreBreakdown(null)
+            setIsBreakdownInfoOpen(false)
+            setOpenedFromMyScore(false)
+          }
         }}
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Desglose de puntaje</DialogTitle>
-            <DialogDescription>
-              {selectedScoreBreakdown ? (
-                <div className='space-y-2 text-foreground'>
-                  <p>
-                    🏁 <strong>{selectedScoreBreakdown.userName}</strong>:{' '}
-                    {selectedScoreBreakdown.totalPoints.toFixed(1)} puntos
-                    totales.
-                  </p>
-                  <p>
-                    📊 <strong>% mensual:</strong>{' '}
-                    {selectedScoreBreakdown.monthlyPercent}% ={' '}
-                    {selectedScoreBreakdown.monthlyPoints.toFixed(1)} puntos.
-                  </p>
-                  <p>
-                    🎧 <strong>Escucha:</strong>{' '}
-                    {selectedScoreBreakdown.listeningPoints.toFixed(1)} puntos
-                    (0,01 por minuto, tope 0,1 por día).
-                  </p>
-                  <p>
-                    📝 <strong>ICA Test:</strong>{' '}
-                    {selectedScoreBreakdown.includeIcaTest
-                      ? `${selectedScoreBreakdown.icaTestPoints.toFixed(1)} puntos.`
-                      : `no suma antes del día ${icaTestWindowStartDay}.`}
-                  </p>
-                  <Separator className='my-2' />
-                  <p>
-                    🧾 <strong>Total:</strong>{' '}
-                    {selectedScoreBreakdown.includeIcaTest
-                      ? `${selectedScoreBreakdown.monthlyPoints.toFixed(1)} + ${selectedScoreBreakdown.listeningPoints.toFixed(1)} + ${selectedScoreBreakdown.icaTestPoints.toFixed(1)} = ${selectedScoreBreakdown.totalPoints.toFixed(1)}.`
-                      : `${selectedScoreBreakdown.monthlyPoints.toFixed(1)} + ${selectedScoreBreakdown.listeningPoints.toFixed(1)} = ${selectedScoreBreakdown.totalPoints.toFixed(1)}.`}
+        <DialogContent
+          className={
+            selectedScoreBreakdown?.isCurrentUser
+              ? 'border-2 border-emerald-400/70'
+              : undefined
+          }
+        >
+          <DialogHeader className='sr-only'>
+            <DialogTitle>Detalle de puntaje</DialogTitle>
+          </DialogHeader>
+
+          {selectedScoreBreakdown ? (
+            <div className='space-y-3 text-foreground'>
+              <div className='flex items-center justify-between gap-3'>
+                <div>
+                  <p className='font-semibold text-base'>
+                    <strong>{selectedScoreBreakdown.userName}</strong>{' '}
+                    <span className='text-amber-500'>
+                      {formatPoints(selectedScoreBreakdown.totalPoints)}
+                    </span>{' '}
+                    / {formatPoints(selectedScoreBreakdown.totalMaxPoints)}
                   </p>
                 </div>
-              ) : (
-                ''
+              </div>
+
+              <p>
+                📊{' '}
+                <span className='text-amber-500'>
+                  {formatPoints(selectedScoreBreakdown.monthlyPoints)}
+                </span>{' '}
+                / {formatPoints(selectedScoreBreakdown.monthlyMaxPoints)}
+                {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
+                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.monthlyPoints, selectedScoreBreakdown.monthlyMaxPoints)} de accion aplicada`
+                  : ''}
+              </p>
+              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
+                <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
+                  Promedio mensual de rachas ICA y flashcards, con corte al día
+                  28.
+                </p>
               )}
-            </DialogDescription>
-          </DialogHeader>
+
+              <p>
+                🎧{' '}
+                <span className='text-amber-500'>
+                  {formatPoints(selectedScoreBreakdown.listeningPoints)}
+                </span>{' '}
+                / {formatPoints(selectedScoreBreakdown.listeningMaxPoints)}
+                {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
+                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.listeningPoints, selectedScoreBreakdown.listeningMaxPoints)} de accion aplicada`
+                  : ''}
+              </p>
+              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
+                <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
+                  0,01 puntos por minuto escuchado, con tope de 0,1 por dia.
+                </p>
+              )}
+
+              <p>
+                📝{' '}
+                {selectedScoreBreakdown.includeIcaTest ? (
+                  <>
+                    <span className='text-amber-500'>
+                      {formatPoints(selectedScoreBreakdown.icaTestPoints)}
+                    </span>{' '}
+                    / {formatPoints(selectedScoreBreakdown.icaTestMaxPoints)}
+                  </>
+                ) : (
+                  <>
+                    <span className='text-amber-500'>-</span>/
+                    {formatPoints(selectedScoreBreakdown.icaTestMaxPoints)}
+                  </>
+                )}
+                {selectedScoreBreakdown.isCurrentUser &&
+                openedFromMyScore &&
+                selectedScoreBreakdown.includeIcaTest
+                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.icaTestPoints, selectedScoreBreakdown.icaTestMaxPoints)} de accion aplicada`
+                  : ''}
+              </p>
+              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
+                <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
+                  {selectedScoreBreakdown.includeIcaTest
+                    ? 'Cada respuesta correcta del ICA Test suma 0,1 puntos.'
+                    : `ICA Test disponible desde el dia ${icaTestWindowStartDay} al 28.`}
+                </p>
+              )}
+
+              <Separator className='my-2' />
+
+              <div className='flex items-center justify-between gap-3'>
+                <p>
+                  🧾 <strong>Total:</strong>{' '}
+                  <span className='text-amber-500'>
+                    {formatPoints(selectedScoreBreakdown.totalPoints)}
+                  </span>
+                  {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
+                    ? ` - ${formatAppliedPercent(selectedScoreBreakdown.totalPoints, selectedScoreBreakdown.totalMaxPoints)} de eficacia aplicada`
+                    : ''}
+                </p>
+
+                {selectedScoreBreakdown.isCurrentUser && (
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='icon'
+                    className={
+                      isBreakdownInfoOpen
+                        ? 'border-yellow-500 bg-yellow-100 text-yellow-700 ring-1 ring-yellow-500 dark:border-yellow-400 dark:bg-yellow-500/15 dark:text-yellow-300 dark:ring-yellow-400'
+                        : 'border-yellow-500/60 text-yellow-700 hover:bg-yellow-100 hover:text-yellow-700 dark:border-yellow-400/70 dark:text-yellow-300 dark:hover:bg-yellow-500/10 dark:hover:text-yellow-200'
+                    }
+                    aria-pressed={isBreakdownInfoOpen}
+                    onClick={() => setIsBreakdownInfoOpen((prev) => !prev)}
+                  >
+                    <InfoIcon className='size-4' />
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
     </section>
