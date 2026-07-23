@@ -159,10 +159,10 @@ function normalizeWordMode(value: string | undefined): string {
 }
 
 function wordsAllowedByLevel(level: string | undefined): number {
-  const normalized = (level || 'A2').trim().toUpperCase()
+  const normalized = (level || 'A2').trim().toUpperCase().replace(/\s+/g, '')
   if (['0', 'A0', 'LEVEL0', 'PRE-A1', 'PREA1', 'A1', 'A2'].includes(normalized)) return 1
   if (['B1', 'B2'].includes(normalized)) return 2
-  if (['C1', 'C2'].includes(normalized)) return 3
+  if (['B2+', 'B2PLUS', 'C1', 'C2'].includes(normalized)) return 3
   return 1
 }
 
