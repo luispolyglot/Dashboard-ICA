@@ -41,7 +41,7 @@ describe('countPendingMasterNotesForSession', () => {
     expect(count).toBe(1)
   })
 
-  it('ignores notes outside the coaching period', () => {
+  it('ignores notes before activation and keeps post-activation notes pending', () => {
     const count = countPendingMasterNotesForSession(
       {
         userId: 'user-1',
@@ -69,7 +69,7 @@ describe('countPendingMasterNotesForSession', () => {
       ],
     )
 
-    expect(count).toBe(0)
+    expect(count).toBe(1)
   })
 
   it('uses updatedAt when closedAt is missing', () => {

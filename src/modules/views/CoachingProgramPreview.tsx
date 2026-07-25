@@ -245,13 +245,6 @@ function formatTimelineDateLabel(value: string): string {
   })
 }
 
-function estimateWeekClosureDate(activatedAt: string): string | null {
-  const parsed = new Date(activatedAt)
-  if (Number.isNaN(parsed.getTime())) return null
-  const estimated = new Date(parsed.getTime() + 7 * 24 * 60 * 60 * 1000)
-  return estimated.toISOString()
-}
-
 function statusLabel(status: ProgramPreviewMembership['status']): string {
   if (status === 'active') return 'Activo'
   if (status === 'completed') return 'Completado'
@@ -511,14 +504,6 @@ export function CoachingProgramPreview({
           const weekTimeline = weekTimelineByKey.get(weekKey) || null
           const weekActivatedAt = weekTimeline?.activatedAt || null
           const weekClosedAt = weekTimeline?.endedAt || null
-          const estimatedWeekCloseAt =
-            weekActivatedAt && !weekClosedAt
-              ? estimateWeekClosureDate(weekActivatedAt)
-              : null
-          const closingDate = weekClosedAt || estimatedWeekCloseAt
-          const shouldUseApproximateClose = Boolean(
-            isCurrentWeek && !weekClosedAt && closingDate,
-          )
 
           return (
             <AccordionItem
@@ -534,14 +519,11 @@ export function CoachingProgramPreview({
                     {isPastWeek && (
                       <Badge variant='secondary'>Finalizada</Badge>
                     )}
-                    {weekActivatedAt && closingDate && (
+                    {weekActivatedAt && weekClosedAt && (
                       <Badge variant='outline' className='gap-1'>
                         <span>{formatTimelineDateLabel(weekActivatedAt)}</span>
                         <ArrowRightIcon className='h-3 w-3' />
-                        <span>
-                          {shouldUseApproximateClose ? '≈ ' : ''}
-                          {formatTimelineDateLabel(closingDate)}
-                        </span>
+                        <span>{formatTimelineDateLabel(weekClosedAt)}</span>
                       </Badge>
                     )}
                   </div>
