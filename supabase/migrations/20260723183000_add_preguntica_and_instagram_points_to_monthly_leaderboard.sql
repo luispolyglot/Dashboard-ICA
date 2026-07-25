@@ -284,6 +284,8 @@ $$;
 revoke all on function public.get_monthly_streak_leaderboard(integer) from public;
 grant execute on function public.get_monthly_streak_leaderboard(integer) to authenticated;
 
+drop function if exists public.get_monthly_snapshot_leaderboard(date, integer, uuid);
+
 create or replace function public.get_monthly_snapshot_leaderboard(
   p_period_start date,
   limit_count integer default 33,
