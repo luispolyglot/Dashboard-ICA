@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Loader2Icon } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -49,15 +51,12 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
   const [isLoadingMonths, setIsLoadingMonths] = useState(true)
   const [isLoadingRows, setIsLoadingRows] = useState(false)
   const [savingDay, setSavingDay] = useState<number | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
 
   useEffect(() => {
     let mounted = true
 
     const loadMonths = async () => {
       setIsLoadingMonths(true)
-      setError(null)
 
       try {
         const months = await listInstagramTrackMonths(targetLang, nativeLang)
@@ -66,7 +65,7 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
         setAvailableMonths(months)
         setSelectedMonth((prev) => (prev && months.includes(prev) ? prev : months[0] || ''))
       } catch {
-        if (mounted) setError('No pudimos cargar los meses del track.')
+        if (mounted) toast.error('No pudimos cargar los meses del track.')
       } finally {
         if (mounted) setIsLoadingMonths(false)
       }
@@ -85,8 +84,6 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
 
     const loadRows = async () => {
       setIsLoadingRows(true)
-      setError(null)
-      setSuccess(null)
 
       try {
         const rows = await listInstagramTrackPostsByMonth(targetLang, nativeLang, selectedMonth)
@@ -103,7 +100,7 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
         setRowsByDay(byDay)
         setDraftsByDay(drafts)
       } catch {
-        if (mounted) setError('No pudimos cargar la tabla del mes seleccionado.')
+        if (mounted) toast.error('No pudimos cargar la tabla del mes seleccionado.')
       } finally {
         if (mounted) setIsLoadingRows(false)
       }
@@ -129,21 +126,18 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
     const trimmed = rawValue.trim()
     const windowState = getDayUnlockWindow(selectedMonth, dayIndex)
 
-    setError(null)
-    setSuccess(null)
-
     if (!windowState.isEditable) {
-      setError('La ventana de 48 horas para ese día no está disponible.')
+      toast.error('La ventana de 48 horas para ese día no está disponible.')
       return
     }
 
     if (trimmed.length === 0 && !rowsByDay[dayIndex]) {
-      setError('Ingresa un link de Instagram para guardar este día.')
+      toast.error('Ingresa un link de Instagram para guardar este día.')
       return
     }
 
     if (trimmed.length > 0 && !isInstagramUrl(trimmed)) {
-      setError('El link debe empezar con https://instagram.com o https://www.instagram.com')
+      toast.error('El link debe empezar con https://instagram.com o https://www.instagram.com')
       return
     }
 
@@ -159,9 +153,9 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
 
       setRowsByDay((prev) => ({ ...prev, [dayIndex]: saved }))
       setDraftsByDay((prev) => ({ ...prev, [dayIndex]: saved.postUrl || '' }))
-      setSuccess(`Día ${dayIndex} actualizado correctamente.`)
+      toast.success(`Día ${dayIndex} guardado correctamente.`)
     } catch (saveError) {
-      setError(getTrackPostErrorMessage(saveError))
+      toast.error(getTrackPostErrorMessage(saveError))
     } finally {
       setSavingDay(null)
     }
@@ -181,11 +175,7 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
           <Label htmlFor='instagram-track-month'>Mes</Label>
           <Select
             value={selectedMonth}
-            onValueChange={(value) => {
-              setSelectedMonth(value)
-              setError(null)
-              setSuccess(null)
-            }}
+            onValueChange={setSelectedMonth}
             disabled={isLoadingMonths || availableMonths.length === 0}
           >
             <SelectTrigger id='instagram-track-month'>
@@ -205,8 +195,6 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
       {(isLoadingMonths || isLoadingRows) && (
         <p className='mb-3 text-sm text-muted-foreground'>Cargando track de Instagram...</p>
       )}
-      {error && <p className='mb-3 text-sm text-destructive'>{error}</p>}
-      {success && <p className='mb-3 text-sm text-emerald-600'>{success}</p>}
 
       {!!selectedMonth && (
         <Card>
@@ -234,6 +222,13 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
                     const draftValue = draftsByDay[dayIndex] ?? current?.postUrl ?? ''
                     const windowState = getDayUnlockWindow(selectedMonth, dayIndex)
                     const dayDate = buildTrackPostDayDate(selectedMonth, dayIndex)
+                    const isWindowClosed = windowState.isUnlocked && !windowState.isEditable
+                    const isFutureLocked = !windowState.isUnlocked
+                    const hasExistingContent = Boolean(current?.postUrl && current.postUrl.trim().length > 0)
+                    const baseLabel = hasExistingContent ? 'Editar' : 'Guardar'
+                    const buttonLabel = isWindowClosed ? 'Ventana cerrada' : baseLabel
+                    const buttonVariant = isWindowClosed ? 'ghost' : isFutureLocked ? 'outline' : 'default'
+                    const isRowSaving = savingDay === dayIndex
 
                     const stateText = !windowState.isUnlocked
                       ? `Se desbloquea ${formatDate(windowState.unlockAt)}`
@@ -249,7 +244,7 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
                           <Input
                             value={draftValue}
                             placeholder='https://www.instagram.com/...'
-                            disabled={!windowState.isEditable || savingDay === dayIndex}
+                            disabled={!windowState.isEditable || savingDay !== null}
                             onChange={(event) => {
                               const value = event.target.value
                               setDraftsByDay((prev) => ({ ...prev, [dayIndex]: value }))
@@ -261,10 +256,18 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
                           <Button
                             type='button'
                             size='sm'
+                            variant={buttonVariant}
                             onClick={() => void handleSave(dayIndex)}
-                            disabled={!windowState.isEditable || savingDay === dayIndex}
+                            disabled={!windowState.isEditable || savingDay !== null}
                           >
-                            {savingDay === dayIndex ? 'Guardando...' : 'Guardar'}
+                            {isRowSaving ? (
+                              <>
+                                <Loader2Icon className='animate-spin' data-icon='inline-start' />
+                                Guardando...
+                              </>
+                            ) : (
+                              buttonLabel
+                            )}
                           </Button>
                         </td>
                       </tr>
