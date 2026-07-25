@@ -60,7 +60,7 @@ describe('buildIcaTestWordPool', () => {
 
     expect(wordPool.eligible).toBe(true)
     expect(wordPool.availableWords).toBe(ICA_TEST_REQUIRED_WORDS)
-    expect(wordPool.fromCurrentMonth).toBe(60)
+    expect(wordPool.fromCurrentMonth).toBe(ICA_TEST_REQUIRED_WORDS)
     expect(wordPool.fromPreviousMonth).toBe(0)
     expect(wordPool.fromOlderMonths).toBe(0)
     expect(wordPool.overWordLimit).toBe(0)
@@ -125,8 +125,8 @@ describe('buildIcaTestWordPool', () => {
     expect(wordPool.eligible).toBe(true)
     expect(wordPool.availableWords).toBe(ICA_TEST_REQUIRED_WORDS)
     expect(wordPool.fromCurrentMonth).toBe(30)
-    expect(wordPool.fromPreviousMonth).toBe(20)
-    expect(wordPool.fromOlderMonths).toBe(10)
+    expect(wordPool.fromPreviousMonth).toBe(18)
+    expect(wordPool.fromOlderMonths).toBe(0)
     expect(wordPool.overWordLimit).toBe(0)
   })
 
@@ -151,17 +151,6 @@ describe('buildIcaTestWordPool', () => {
           `short prev ${index}`,
           `corta previa ${index}`,
           '2026-05-12',
-        ),
-      )
-    }
-
-    for (let index = 0; index < 5; index += 1) {
-      cards.push(
-        buildCard(
-          `short-older-${index}`,
-          `short older ${index}`,
-          `corta antigua ${index}`,
-          '2026-02-01',
         ),
       )
     }
@@ -192,9 +181,9 @@ describe('buildIcaTestWordPool', () => {
 
     expect(wordPool.eligible).toBe(true)
     expect(wordPool.availableWords).toBe(ICA_TEST_REQUIRED_WORDS)
-    expect(wordPool.fromCurrentMonth).toBe(33)
-    expect(wordPool.fromPreviousMonth).toBe(22)
-    expect(wordPool.fromOlderMonths).toBe(5)
-    expect(wordPool.overWordLimit).toBe(10)
+    expect(wordPool.fromCurrentMonth).toBe(28)
+    expect(wordPool.fromPreviousMonth).toBe(20)
+    expect(wordPool.fromOlderMonths).toBe(0)
+    expect(wordPool.overWordLimit).toBe(3)
   })
 })

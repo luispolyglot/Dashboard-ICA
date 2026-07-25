@@ -451,7 +451,7 @@ export function IcaTestMonthView({
     try {
       const questions = buildIcaTestQuestions(wordPool.pool)
       if (questions.length !== ICA_TEST_TOTAL_QUESTIONS) {
-        throw new Error('No pudimos generar las 15 preguntas del test ICA.')
+        throw new Error('No pudimos generar las 12 preguntas del test ICA.')
       }
 
       const started = await startIcaTestAttempt({
