@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarClockIcon, InfoIcon, TrophyIcon } from 'lucide-react'
+import { CalendarClockIcon, InfoIcon, StarIcon, TrophyIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -349,7 +349,7 @@ function renderGoldScore(value: number, maxValue: number) {
 
   return (
     <span className='relative inline-flex items-center justify-center px-1'>
-      <span className='pointer-events-none absolute inset-0 rounded-full bg-amber-300/40 blur-[6px] animate-[spin_5s_linear_infinite]' />
+      <StarIcon className='pointer-events-none absolute -z-10 size-6 text-amber-300/85 blur-[1px] animate-[spin_5s_linear_infinite]' />
       <span className='relative font-extrabold text-amber-300 drop-shadow-[0_0_10px_rgba(245,158,11,0.9)] animate-pulse'>
         {formatPoints(value)}
       </span>
@@ -518,10 +518,6 @@ export function LeaderboardView() {
                   TOP {FOCUS_TOP_LIMIT} de {totalIcademers ?? '...'} icademers
                 </p>
               </div>
-              <blockquote className='mt-1 border-l-2 border-amber-400/80 pl-2 text-xs italic text-muted-foreground'>
-                Objetivo de referencia del leaderboard: {REFERENCE_MAX_POINTS}{' '}
-                puntos máximos.
-              </blockquote>
             </CardTitle>
 
             <div className='w-full max-w-72 space-y-2'>
@@ -546,6 +542,10 @@ export function LeaderboardView() {
               </p>
             </div>
           </div>
+
+          <blockquote className='border-l-2 border-amber-400/80 pl-2 text-xs italic text-muted-foreground'>
+            El puntaje total máximo mensual es de {REFERENCE_MAX_POINTS} puntos.
+          </blockquote>
 
           <div>
             <Button
@@ -795,7 +795,7 @@ export function LeaderboardView() {
               {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
                 <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
                   Promedio mensual de rachas ICA y flashcards, del día 1 al día
-                  28. (Máximo {formatPoints(selectedScoreBreakdown.monthlyMaxPoints)} puntos)
+                  28. (Máximo 10 puntos)
                 </p>
               )}
 
@@ -812,8 +812,8 @@ export function LeaderboardView() {
               </p>
               {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
                 <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
-                  Tope de 0,1 puntos por 10 minutos escuchados por día. (Máximo{' '}
-                  {formatPoints(selectedScoreBreakdown.listeningMaxPoints)} puntos)
+                  Tope de 0,1 puntos por 10 minutos escuchados por día. (Máximo
+                  2,8 puntos)
                 </p>
               )}
 
@@ -842,8 +842,8 @@ export function LeaderboardView() {
               {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
                 <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
                   {selectedScoreBreakdown.includeIcaTest
-                    ? `Cada respuesta correcta del ICA Test suma 0,1 puntos. Del día ${icaTestWindowStartDay} al 28 del mes. (Máximo ${formatPoints(selectedScoreBreakdown.icaTestMaxPoints)} puntos)`
-                    : `ICA Test disponible del día ${icaTestWindowStartDay} al 28 del mes. (Máximo ${formatPoints(selectedScoreBreakdown.icaTestMaxPoints)} puntos)`}
+                    ? `Cada respuesta correcta del ICA Test suma 0,1 puntos. Del día ${icaTestWindowStartDay} al 28 del mes. (Máximo 1,2 puntos)`
+                    : `ICA Test disponible del día ${icaTestWindowStartDay} al 28 del mes. (Máximo 1,2 puntos)`}
                 </p>
               )}
 
@@ -861,7 +861,7 @@ export function LeaderboardView() {
               {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
                 <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
                   PreguntICA semanal completada suma 2 puntos por semana.
-                  (Máximo {formatPoints(MAX_PREGUNTICA_POINTS)} puntos)
+                  (Máximo 8 puntos)
                 </p>
               )}
 
@@ -879,7 +879,7 @@ export function LeaderboardView() {
               {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
                 <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
                   Instagram Track suma 0,5 por cada día cumplido del 1 al 28.
-                  (Máximo {formatPoints(selectedScoreBreakdown.instagramMaxPoints)} puntos)
+                  (Máximo 14 puntos)
                 </p>
               )}
 
