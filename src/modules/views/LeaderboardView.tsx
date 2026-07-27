@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarClockIcon, InfoIcon, StarIcon, TrophyIcon } from 'lucide-react'
+import { CalendarClockIcon, InfoIcon, TrophyIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -349,8 +349,8 @@ function renderGoldScore(value: number, maxValue: number) {
 
   return (
     <span className='relative inline-flex items-center justify-center px-1'>
-      <StarIcon className='pointer-events-none absolute -z-10 size-6 text-amber-300/85 blur-[1px] animate-[spin_5s_linear_infinite]' />
-      <span className='relative font-extrabold text-amber-300 drop-shadow-[0_0_10px_rgba(245,158,11,0.9)] animate-pulse'>
+      <span className='glow-breathe pointer-events-none absolute inset-0 rounded-full bg-amber-300/45 blur-[6px]' />
+      <span className='score-scale-pop relative font-extrabold text-amber-300 drop-shadow-[0_0_10px_rgba(245,158,11,0.9)]'>
         {formatPoints(value)}
       </span>
     </span>
