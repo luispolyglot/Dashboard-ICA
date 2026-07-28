@@ -73,7 +73,7 @@ const MAX_LISTENING_POINTS_PER_DAY = 0.1
 const MAX_ICA_TEST_POINTS = 1.2
 const MAX_PREGUNTICA_POINTS = 8
 const MAX_INSTAGRAM_POINTS_PER_DAY = 0.5
-const REFERENCE_MAX_POINTS = 35
+const REFERENCE_MAX_POINTS = 36
 
 const LEADERBOARD_PRIZES: Record<LeaderboardPrizeRank, LeaderboardPrize> = {
   1: {
