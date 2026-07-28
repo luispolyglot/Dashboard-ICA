@@ -67,13 +67,7 @@ export function MobileBottomNav({
         </NavLink>
 
         <NavLink to={DASHBOARD_ROUTES.profile} className={linkClassName}>
-          <span
-            className={
-              shouldPulseProfileButton
-                ? 'relative inline-flex h-7 w-7 items-center justify-center rounded-full border border-amber-300 shadow-[0_0_0_1px_rgba(252,211,77,0.35),0_0_18px_rgba(251,191,36,0.25)]'
-                : 'relative inline-flex h-7 w-7 items-center justify-center'
-            }
-          >
+          <span className='relative inline-flex h-7 w-7 items-center justify-center'>
             {shouldPulseProfileButton && (
               <span className='pointer-events-none absolute -right-1 -top-1'>
                 <PendingReviewDot
