@@ -332,7 +332,10 @@ export function DashboardLayout() {
         <main className='flex flex-1 overflow-y-auto pb-20 md:pb-0'>
           <Outlet />
         </main>
-        <MobileBottomNav />
+        <MobileBottomNav
+          shouldHighlightProfileButton={canHighlightCurrentMonth}
+          shouldHighlightCoachingProfileButton={hasPendingCoachingReview}
+        />
 
         <BoltFlightFx
           trigger={activeFlight}

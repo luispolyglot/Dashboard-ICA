@@ -1,11 +1,36 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
+import { PendingReviewDot } from './PendingReviewDot'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 
-export function MobileBottomNav() {
+type MobileBottomNavProps = {
+  shouldHighlightProfileButton: boolean
+  shouldHighlightCoachingProfileButton?: boolean
+}
+
+export function MobileBottomNav({
+  shouldHighlightProfileButton,
+  shouldHighlightCoachingProfileButton = false,
+}: MobileBottomNavProps) {
+  const location = useLocation()
   const linkClassName = ({ isActive }: { isActive: boolean }) =>
     `flex flex-col items-center gap-1 ${
       isActive ? 'text-primary' : 'text-muted-foreground'
     }`
+  const isOnProfileRoute = location.pathname === DASHBOARD_ROUTES.profile
+  const isOnIcaTestsRoute = location.pathname.startsWith(DASHBOARD_ROUTES.testsIca)
+  const isOnManageCoachingRoute = location.pathname.startsWith(
+    DASHBOARD_ROUTES.manageCoaching,
+  )
+  const hasIcaProfileAlert = shouldHighlightProfileButton && !isOnIcaTestsRoute
+  const hasCoachingProfileAlert =
+    shouldHighlightCoachingProfileButton && !isOnManageCoachingRoute
+  const shouldPulseProfileButton =
+    (hasIcaProfileAlert || hasCoachingProfileAlert) && !isOnProfileRoute
+  const profileAlertTitle = hasCoachingProfileAlert
+    ? hasIcaProfileAlert
+      ? 'Tienes novedades: test ICA y coaching pendiente de revision.'
+      : 'Tienes notas maestras pendientes de revision en coaching.'
+    : 'Tienes un test ICA disponible este mes.'
 
   return (
     <nav className='fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/95 pb-[max(env(safe-area-inset-bottom),1.5rem)] pt-1.5 backdrop-blur md:hidden min-h-20'>
@@ -42,8 +67,24 @@ export function MobileBottomNav() {
         </NavLink>
 
         <NavLink to={DASHBOARD_ROUTES.profile} className={linkClassName}>
-          <span className='text-base leading-none' aria-hidden='true'>
-            👤
+          <span
+            className={
+              shouldPulseProfileButton
+                ? 'relative inline-flex h-7 w-7 items-center justify-center rounded-full border border-amber-300 shadow-[0_0_0_1px_rgba(252,211,77,0.35),0_0_18px_rgba(251,191,36,0.25)]'
+                : 'relative inline-flex h-7 w-7 items-center justify-center'
+            }
+          >
+            {shouldPulseProfileButton && (
+              <span className='pointer-events-none absolute -right-1 -top-1'>
+                <PendingReviewDot
+                  title={profileAlertTitle}
+                  useIconSpeaker={hasCoachingProfileAlert}
+                />
+              </span>
+            )}
+            <span className='text-base leading-none' aria-hidden='true'>
+              👤
+            </span>
           </span>
           <span className='text-[11px] font-medium'>Perfil</span>
         </NavLink>
