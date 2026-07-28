@@ -184,9 +184,9 @@ describe('LeaderboardView ICA test column', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ver premio del puesto 1' }))
 
     expect(
-      screen.getByText('🥇 El icademer que termine top1 ganará el día 28 del mes:'),
+      screen.getByText('🥇 El icademer que termine top 1 el día 28 del mes ganará:'),
     ).toBeTruthy()
-    expect(screen.getByText('Clase 1:1 con Luis [1h]')).toBeTruthy()
+    expect(screen.getByText('Clase 1 a 1 de 1 hora con Luis')).toBeTruthy()
     expect(screen.getByText('1 mes gratis en ICADEMY')).toBeTruthy()
     expect(screen.getByText('Insignia oficial de ICAwards')).toBeTruthy()
   })

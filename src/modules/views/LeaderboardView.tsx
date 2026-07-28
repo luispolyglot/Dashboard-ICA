@@ -12,6 +12,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -45,7 +46,6 @@ type VisibleLeaderboardRow = {
 type LeaderboardPrizeRank = 1 | 2 | 3
 
 type LeaderboardPrize = {
-  heading: string
   rewards: string[]
 }
 
@@ -77,25 +77,27 @@ const REFERENCE_MAX_POINTS = 35
 
 const LEADERBOARD_PRIZES: Record<LeaderboardPrizeRank, LeaderboardPrize> = {
   1: {
-    heading: '🥇 El icademer que termine top1 ganará el día 28 del mes:',
     rewards: [
-      'Clase 1:1 con Luis [1h]',
+      'Clase 1 a 1 de 1 hora con Luis',
       '1 mes gratis en ICADEMY',
       'Insignia oficial de ICAwards',
       '1 ticket para un viaje 🛩️',
     ],
   },
   2: {
-    heading: '🥈 El icademer que termine top2 ganará el día 28 del mes:',
     rewards: [
-      'Clase 1:1 con Luis [30 min]',
+      'Clase 1 a 1 de 30 minutos con Luis',
       '1 ticket bombo ganador viajero',
     ],
   },
   3: {
-    heading: '🥉 El icademer que termine top3 ganará:',
     rewards: ['3 fichas canjeables para preguntICA'],
   },
+}
+
+function getPrizeHeading(rank: LeaderboardPrizeRank): string {
+  const medal = rankBadge(rank)
+  return `${medal} El icademer que termine top ${rank} el día 28 del mes ganará:`
 }
 
 function toUtcMonthStart(date: Date): string {
@@ -988,20 +990,28 @@ export function LeaderboardView() {
           if (!open) setSelectedPrizeRank(null)
         }}
       >
-        <DialogContent>
+        <DialogContent className='sm:max-w-md'>
           {selectedPrizeRank ? (
             <>
-              <DialogHeader>
-                <DialogTitle>{LEADERBOARD_PRIZES[selectedPrizeRank].heading}</DialogTitle>
+              <DialogHeader className='pr-7'>
+                <DialogTitle className='leading-[1.4] tracking-[0.01em]'>
+                  {getPrizeHeading(selectedPrizeRank)}
+                </DialogTitle>
                 <DialogDescription className='sr-only'>
                   Detalle de premios para los puestos del leaderboard mensual.
                 </DialogDescription>
               </DialogHeader>
-              <ul className='list-disc space-y-1 pl-5 text-sm'>
+              <ul className='list-disc space-y-1.5 pl-5 text-sm'>
                 {LEADERBOARD_PRIZES[selectedPrizeRank].rewards.map((reward) => (
                   <li key={reward}>{reward}</li>
                 ))}
               </ul>
+              <Separator />
+              <DialogFooter className='-mx-0 -mb-0 rounded-b-none border-0 bg-transparent p-0'>
+                <Button type='button' onClick={() => setSelectedPrizeRank(null)}>
+                  Aceptar
+                </Button>
+              </DialogFooter>
             </>
           ) : null}
         </DialogContent>
