@@ -102,7 +102,7 @@ describe('LeaderboardView ICA test column', () => {
 
     await waitFor(() => {
       expect(screen.getByText('ICA Test')).toBeTruthy()
-      expect(screen.getByText('Puntaje total')).toBeTruthy()
+      expect(screen.getByText('Puntuación total')).toBeTruthy()
       expect(screen.getByText('1.3')).toBeTruthy()
       expect(screen.getByText('9.8')).toBeTruthy()
     })
@@ -159,5 +159,35 @@ describe('LeaderboardView ICA test column', () => {
       expect(screen.getByText('ICA Test')).toBeTruthy()
       expect(screen.getByText('0.0')).toBeTruthy()
     })
+  })
+
+  it('opens prize dialog when clicking top medal', async () => {
+    getIcaTestWindowStartDayMock.mockReturnValue(1)
+    fetchMonthlyStreakLeaderboardMock.mockResolvedValue([
+      {
+        rank: 1,
+        user_id: 'user-1',
+        username: 'ana',
+        display_name: 'Ana',
+        ica_streak_days: 6,
+        avg_percent: 85,
+        total_points: 9.8,
+      },
+    ])
+
+    render(<LeaderboardView />)
+
+    await waitFor(() => {
+      expect(fetchMonthlyStreakLeaderboardMock).toHaveBeenCalled()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver premio del puesto 1' }))
+
+    expect(
+      screen.getByText('🥇 El icademer que termine top1 ganará el día 28 del mes:'),
+    ).toBeTruthy()
+    expect(screen.getByText('Clase 1:1 con Luis [1h]')).toBeTruthy()
+    expect(screen.getByText('1 mes gratis en ICADEMY')).toBeTruthy()
+    expect(screen.getByText('Insignia oficial de ICAwards')).toBeTruthy()
   })
 })

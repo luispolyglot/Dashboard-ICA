@@ -91,7 +91,7 @@ function getScoreLiteral(
   if (ratio >= 0.8) {
     return {
       title: "Excelente resultado",
-      message: "Muy sólido. Estás muy cerca del puntaje perfecto.",
+      message: "Muy sólido. Estás muy cerca de la puntuación perfecta.",
     };
   }
 
@@ -117,7 +117,7 @@ function getScoreLiteral(
 
 function getOfficialBlockedMessage(test: IcaTestRecord): string {
   if (test.status === "completed") {
-    return `Puntaje guardado: ${test.score}/${test.totalQuestions}.`;
+    return `Puntuación guardada: ${test.score}/${test.totalQuestions}.`;
   }
 
   return "Este intento se cerró por salida/recarga y quedó fallido.";

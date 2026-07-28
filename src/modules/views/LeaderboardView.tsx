@@ -11,6 +11,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -37,7 +38,15 @@ type MonthOption = {
 
 type VisibleLeaderboardRow = {
   row: LeaderboardEntry
+  sharedRank: number
   rankLabel: string
+}
+
+type LeaderboardPrizeRank = 1 | 2 | 3
+
+type LeaderboardPrize = {
+  heading: string
+  rewards: string[]
 }
 
 type ScoreBreakdown = {
@@ -65,6 +74,29 @@ const MAX_ICA_TEST_POINTS = 1.2
 const MAX_PREGUNTICA_POINTS = 8
 const MAX_INSTAGRAM_POINTS_PER_DAY = 0.5
 const REFERENCE_MAX_POINTS = 35
+
+const LEADERBOARD_PRIZES: Record<LeaderboardPrizeRank, LeaderboardPrize> = {
+  1: {
+    heading: '🥇 El icademer que termine top1 ganará el día 28 del mes:',
+    rewards: [
+      'Clase 1:1 con Luis [1h]',
+      '1 mes gratis en ICADEMY',
+      'Insignia oficial de ICAwards',
+      '1 ticket para un viaje 🛩️',
+    ],
+  },
+  2: {
+    heading: '🥈 El icademer que termine top2 ganará el día 28 del mes:',
+    rewards: [
+      'Clase 1:1 con Luis [30 min]',
+      '1 ticket bombo ganador viajero',
+    ],
+  },
+  3: {
+    heading: '🥉 El icademer que termine top3 ganará:',
+    rewards: ['3 fichas canjeables para preguntICA'],
+  },
+}
 
 function toUtcMonthStart(date: Date): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-01`
@@ -158,6 +190,7 @@ function buildVisibleRowsWithSharedRank(
 
     result.push({
       row,
+      sharedRank,
       rankLabel: rankBadge(sharedRank),
     })
 
@@ -376,6 +409,8 @@ export function LeaderboardView() {
   const [openedFromMyScore, setOpenedFromMyScore] = useState(false)
   const [selectedScoreBreakdown, setSelectedScoreBreakdown] =
     useState<ScoreBreakdown | null>(null)
+  const [selectedPrizeRank, setSelectedPrizeRank] =
+    useState<LeaderboardPrizeRank | null>(null)
 
   const isCurrentMonth = selectedMonth === currentMonthStart
   const closeAt = useMemo(
@@ -544,7 +579,7 @@ export function LeaderboardView() {
           </div>
 
           <blockquote className='border-l-2 border-amber-400/80 pl-2 text-xs italic text-muted-foreground'>
-            El puntaje total máximo mensual es de {REFERENCE_MAX_POINTS} puntos.
+            La puntuación total máxima mensual es de {REFERENCE_MAX_POINTS} puntos.
           </blockquote>
 
           <div>
@@ -558,7 +593,7 @@ export function LeaderboardView() {
               }}
               disabled={!currentUserRow || loading || Boolean(error)}
             >
-              Mi Puntaje 🏅
+              Mi puntuación 🏅
             </Button>
           </div>
         </CardHeader>
@@ -596,11 +631,11 @@ export function LeaderboardView() {
                     <th className='hidden md:table-cell w-[18%] pb-2 font-medium'>
                       % mensual
                     </th>
-                    <th className='w-[16%] pb-2 font-medium'>Puntaje total</th>
+                    <th className='w-[16%] pb-2 font-medium'>Puntuación total</th>
                   </tr>
                 </thead>
                 <tbody className='block lg:max-h-[50dvh] lg:overflow-y-auto'>
-                  {topWindowRows.map(({ row, rankLabel }, index) => (
+                  {topWindowRows.map(({ row, rankLabel, sharedRank }, index) => (
                     <tr
                       key={`${row.user_id}-${row.rank}-${selectedMonth}`}
                       className={`table w-full table-fixed border-b align-middle ${trailingRankOpacityClass(index + 1)} ${
@@ -608,7 +643,21 @@ export function LeaderboardView() {
                       }`}
                     >
                       <td className='w-[12%] lg:w-[8%] px-1 py-2'>
-                        {rankLabel}
+                        {sharedRank <= 3 ? (
+                          <Button
+                            type='button'
+                            variant='ghost'
+                            className='h-auto p-0 text-base leading-none hover:bg-transparent'
+                            onClick={() =>
+                              setSelectedPrizeRank(sharedRank as LeaderboardPrizeRank)
+                            }
+                            aria-label={`Ver premio del puesto ${sharedRank}`}
+                          >
+                            {rankLabel}
+                          </Button>
+                        ) : (
+                          rankLabel
+                        )}
                       </td>
                       <td
                         className={`w-[12%] lg:w-[8%] px-1 py-2 ${getStreakCellClass(row)}`}
@@ -642,7 +691,7 @@ export function LeaderboardView() {
                           variant='ghost'
                           className='h-auto p-0 text-sm font-bold md:font-medium'
                           onClick={() => openScoreBreakdown(row, 'table')}
-                          aria-label='Ver cómo se calculó este puntaje total'
+                          aria-label='Ver cómo se calculó esta puntuación total'
                         >
                           {getDisplayedTotalPoints(
                             row,
@@ -686,7 +735,7 @@ export function LeaderboardView() {
                     </td>
                   </tr>
 
-                  {extraRows.map(({ row, rankLabel }) => (
+                  {extraRows.map(({ row, rankLabel, sharedRank }) => (
                     <tr
                       key={`${row.user_id}-${row.rank}-${selectedMonth}-extra`}
                       className={`table w-full table-fixed border-b align-middle last:border-b-0 ${
@@ -694,7 +743,21 @@ export function LeaderboardView() {
                       }`}
                     >
                       <td className='w-[12%] lg:w-[8%] px-1 py-2'>
-                        {rankLabel}
+                        {sharedRank <= 3 ? (
+                          <Button
+                            type='button'
+                            variant='ghost'
+                            className='h-auto p-0 text-base leading-none hover:bg-transparent'
+                            onClick={() =>
+                              setSelectedPrizeRank(sharedRank as LeaderboardPrizeRank)
+                            }
+                            aria-label={`Ver premio del puesto ${sharedRank}`}
+                          >
+                            {rankLabel}
+                          </Button>
+                        ) : (
+                          rankLabel
+                        )}
                       </td>
                       <td
                         className={`w-[12%] lg:w-[8%] px-1 py-2 ${getStreakCellClass(row)}`}
@@ -728,7 +791,7 @@ export function LeaderboardView() {
                           variant='ghost'
                           className='h-auto p-0 text-sm font-bold md:font-medium'
                           onClick={() => openScoreBreakdown(row, 'table')}
-                          aria-label='Ver cómo se calculó este puntaje total'
+                          aria-label='Ver cómo se calculó esta puntuación total'
                         >
                           {getDisplayedTotalPoints(
                             row,
@@ -763,7 +826,7 @@ export function LeaderboardView() {
           }
         >
           <DialogHeader className='sr-only'>
-            <DialogTitle>Detalle de puntaje</DialogTitle>
+            <DialogTitle>Detalle de puntuación</DialogTitle>
           </DialogHeader>
 
           {selectedScoreBreakdown ? (
@@ -915,6 +978,31 @@ export function LeaderboardView() {
                 )}
               </div>
             </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={selectedPrizeRank !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedPrizeRank(null)
+        }}
+      >
+        <DialogContent>
+          {selectedPrizeRank ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>{LEADERBOARD_PRIZES[selectedPrizeRank].heading}</DialogTitle>
+                <DialogDescription className='sr-only'>
+                  Detalle de premios para los puestos del leaderboard mensual.
+                </DialogDescription>
+              </DialogHeader>
+              <ul className='list-disc space-y-1 pl-5 text-sm'>
+                {LEADERBOARD_PRIZES[selectedPrizeRank].rewards.map((reward) => (
+                  <li key={reward}>{reward}</li>
+                ))}
+              </ul>
+            </>
           ) : null}
         </DialogContent>
       </Dialog>
