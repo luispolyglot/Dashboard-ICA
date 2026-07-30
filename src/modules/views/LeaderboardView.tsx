@@ -46,6 +46,7 @@ type VisibleLeaderboardRow = {
 type LeaderboardPrizeRank = 1 | 2 | 3
 
 type LeaderboardPrize = {
+  borderClassName: string
   rewards: string[]
 }
 
@@ -77,21 +78,25 @@ const REFERENCE_MAX_POINTS = 36
 
 const LEADERBOARD_PRIZES: Record<LeaderboardPrizeRank, LeaderboardPrize> = {
   1: {
+    borderClassName: 'border-2 border-amber-400/80',
     rewards: [
-      'Clase 1 a 1 de 1 hora con Luis',
-      '1 mes gratis en ICADEMY',
-      'Insignia oficial de ICAwards',
-      '1 ticket para un viaje 🛩️',
+      '👨🏻‍🏫 Clase 1 a 1 de 1 hora con Luis',
+      '💲 1 mes gratis en ICADEMY',
+      '🎖️ Insignia oficial de ICAwards',
+      '🛩️ 1 ticket para un viaje 🛩️',
     ],
   },
   2: {
+    borderClassName: 'border-2 border-slate-300/90',
     rewards: [
-      'Clase 1 a 1 de 30 minutos con Luis',
-      '1 ticket bombo ganador viajero',
+      '👨🏻‍🏫 Clase 1 a 1 de 30 minutos con Luis',
+      '💲 50% de reembolso en membresía mensual',
+      '🛩️ 1 ticket bombo ganador viajero',
     ],
   },
   3: {
-    rewards: ['3 fichas canjeables para preguntICA'],
+    borderClassName: 'border-2 border-amber-700/70',
+    rewards: ['🪙 3 fichas canjeables para preguntICA'],
   },
 }
 
@@ -990,7 +995,11 @@ export function LeaderboardView() {
           if (!open) setSelectedPrizeRank(null)
         }}
       >
-        <DialogContent className='sm:max-w-md'>
+        <DialogContent
+          className={`sm:max-w-md ${
+            selectedPrizeRank ? LEADERBOARD_PRIZES[selectedPrizeRank].borderClassName : ''
+          }`}
+        >
           {selectedPrizeRank ? (
             <>
               <DialogHeader className='pr-7'>
