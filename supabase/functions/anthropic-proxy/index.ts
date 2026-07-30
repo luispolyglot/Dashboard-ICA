@@ -89,12 +89,32 @@ type PhraseTokenInsightPayload = {
   nativeLang: string
 }
 
+type ManualPhraseSuggestionPayload = {
+  action: 'manual_phrase_suggestion'
+  targetPhrase: string
+  nativePhrase: string
+  requiredWords: string[]
+  targetLang: string
+  nativeLang: string
+}
+
+type ManualPhraseReviewResult = {
+  status: 'suggested' | 'perfect' | 'invalid'
+  suggestion: string | null
+  nativeSuggestion: string | null
+  comment: string
+  targetFeedback: string[]
+  nativeFeedback: string[]
+  issues: string[]
+}
+
 type RequestPayload =
   | TranslatePayload
   | ActivationPhrasePayload
   | SpellcheckPayload
   | WordExamplePayload
   | PhraseTokenInsightPayload
+  | ManualPhraseSuggestionPayload
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -222,6 +242,84 @@ function sanitizeSpellingSuggestion(value: string): string | null {
   if (cleaned.length > 50) return null
   if (/\s/.test(cleaned)) return null
   return cleaned
+}
+
+function sanitizeManualPhraseSuggestion(value: string): string | null {
+  const cleaned = value.trim()
+  if (!cleaned || cleaned === '—') return null
+  if (cleaned.length > 280) return null
+  return cleaned
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function includesRequiredWord(phrase: string, word: string): boolean {
+  const trimmedWord = word.trim()
+  if (!trimmedWord) return false
+
+  const regex = new RegExp(
+    `(^|[\\s.,;:!?()\"'“”‘’¿¡\\-])${escapeRegex(trimmedWord)}(?=$|[\\s.,;:!?()\"'“”‘’¿¡\\-])`,
+    'u',
+  )
+  return regex.test(phrase)
+}
+
+function sanitizeShortComment(value: string): string {
+  const cleaned = value.trim()
+  if (!cleaned) return 'Buen trabajo. Tu frase se entiende y esta bien encaminada.'
+  return cleaned.slice(0, 260)
+}
+
+function sanitizeFeedbackList(value: unknown, maxItems: number): string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, maxItems)
+}
+
+function normalizeLooseText(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function parseManualPhraseSuggestion(raw: string | null): ManualPhraseReviewResult | null {
+  const parsed = parseLastJsonObject(raw)
+  if (!parsed) return null
+
+  const rawStatus = typeof parsed.status === 'string' ? parsed.status.trim().toLowerCase() : ''
+  const status: ManualPhraseReviewResult['status'] =
+    rawStatus === 'suggested' || rawStatus === 'perfect' || rawStatus === 'invalid'
+      ? rawStatus
+      : 'perfect'
+
+  const suggestionRaw = typeof parsed.suggestion === 'string' ? parsed.suggestion : ''
+  const suggestion = sanitizeManualPhraseSuggestion(suggestionRaw)
+  const nativeSuggestionRaw =
+    typeof parsed.nativeSuggestion === 'string' ? parsed.nativeSuggestion : ''
+  const nativeSuggestion = sanitizeManualPhraseSuggestion(nativeSuggestionRaw)
+  const commentRaw = typeof parsed.comment === 'string' ? parsed.comment : ''
+  const targetFeedback = sanitizeFeedbackList(parsed.targetFeedback, 3)
+  const nativeFeedback = sanitizeFeedbackList(parsed.nativeFeedback, 3)
+  const issues = sanitizeFeedbackList(parsed.issues, 4)
+
+  return {
+    status,
+    suggestion,
+    nativeSuggestion,
+    comment: sanitizeShortComment(commentRaw),
+    targetFeedback,
+    nativeFeedback,
+    issues,
+  }
 }
 
 async function requireUser(req: Request): Promise<{ ok: true } | { ok: false; response: Response }> {
@@ -614,6 +712,140 @@ Deno.serve(async (req) => {
 
       return jsonResponse(200, {
         result: parsePhraseTokenInsight(raw.text),
+      })
+    }
+
+    if (payload.action === 'manual_phrase_suggestion') {
+      const targetPhrase = payload.targetPhrase.trim()
+      const nativePhrase = payload.nativePhrase.trim()
+      const requiredWords = payload.requiredWords
+        .map((word) => (typeof word === 'string' ? word.trim() : ''))
+        .filter(Boolean)
+
+      if (!targetPhrase || !nativePhrase) {
+        return jsonResponse(400, { error: 'targetPhrase and nativePhrase are required' })
+      }
+
+      if (!requiredWords.length) {
+        return jsonResponse(400, { error: 'requiredWords are required' })
+      }
+
+      const prompt = [
+        'You are a strict grammar and fluency assistant for language learners.',
+        `Target language: ${payload.targetLang}.`,
+        `Native language of the learner: ${payload.nativeLang}.`,
+        `Native phrase (context): ${nativePhrase}`,
+        `Current target phrase: ${targetPhrase}`,
+        `ICA words to preserve by meaning: ${requiredWords.join(', ')}`,
+        'Task:',
+        '- Suggest only one improved version of the target phrase.',
+        '- Correct grammar and make it natural while preserving learner intent from the native phrase.',
+        '- Use the ICA words by meaning. You MAY inflect/decline/conjugate them if grammar requires it.',
+        '- You may reorder sentence structure to make it natural and correct.',
+        '- If the phrase is already good, do NOT force a rewrite.',
+        '- Optionally suggest a better native-language version if helpful.',
+        `- If you provide "suggestion", it MUST be written only in ${payload.targetLang}.`,
+        `- If you provide "nativeSuggestion", it MUST be written only in ${payload.nativeLang}.`,
+        'Output format (CRITICAL):',
+        '- Return exactly one JSON object on one line with this shape:',
+        '{"status":"suggested|perfect","suggestion":"... or null","nativeSuggestion":"... or null","comment":"short guidance","targetFeedback":["..."],"nativeFeedback":["..."],"issues":["..."]}',
+        '- status="suggested" when you provide a better target phrase.',
+        '- status="perfect" when no target rewrite is needed; set suggestion to null.',
+        '- No markdown. No explanations. No extra keys.',
+      ].join('\n')
+
+      const result = await callAnthropic(
+        'You improve learner sentences. Preserve required tokens exactly. Reply ONLY JSON.',
+        prompt,
+        {
+          maxTokens: 180,
+          temperature: 0,
+          tool: {
+            name: 'report_manual_phrase_suggestion',
+            description: 'Return grammar review with optional target/native suggestion',
+            input_schema: {
+              type: 'object',
+              properties: {
+                status: { type: 'string' },
+                suggestion: { type: 'string' },
+                nativeSuggestion: { type: 'string' },
+                comment: { type: 'string' },
+                targetFeedback: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+                nativeFeedback: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+                issues: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+              },
+              required: ['status', 'comment', 'targetFeedback', 'nativeFeedback', 'issues'],
+            },
+          },
+        },
+      )
+
+      const parsedFromTool = result.toolInput
+        ? parseManualPhraseSuggestion(JSON.stringify(result.toolInput))
+        : null
+      const parsed = parsedFromTool ?? parseManualPhraseSuggestion(result.text)
+
+      const suggestion = parsed?.suggestion || null
+      const missingRequiredWords = suggestion
+        ? requiredWords.filter((word) => !includesRequiredWord(suggestion, word))
+        : []
+      const matchedRequiredWords = requiredWords.filter(
+        (word) => !missingRequiredWords.includes(word),
+      )
+      const suggestionRejectedReason = suggestion && missingRequiredWords.length > 0
+        ? 'La sugerencia ajusta algunas palabras ICA por gramatica (flexion/conjugacion). Revisa el borrador IA para entender los cambios.'
+        : null
+
+      const nativeSuggestionCandidate = parsed?.nativeSuggestion || null
+      const normalizedNativeInput = normalizeLooseText(nativePhrase)
+      const normalizedNativeSuggestion = nativeSuggestionCandidate
+        ? normalizeLooseText(nativeSuggestionCandidate)
+        : ''
+      const nativeSuggestion =
+        nativeSuggestionCandidate &&
+        normalizedNativeSuggestion &&
+        normalizedNativeSuggestion !== normalizedNativeInput
+          ? nativeSuggestionCandidate
+          : null
+
+      const canUseSuggestion = Boolean(suggestion)
+
+      const review: ManualPhraseReviewResult = {
+        status: canUseSuggestion
+          ? 'suggested'
+          : parsed?.status === 'invalid'
+            ? 'invalid'
+            : 'perfect',
+        suggestion: canUseSuggestion ? suggestion : null,
+        nativeSuggestion,
+        comment:
+          parsed?.comment ||
+          'Tu frase esta bien encaminada. Puedes seguir practicando con confianza.',
+        targetFeedback: parsed?.targetFeedback || [],
+        nativeFeedback: parsed?.nativeFeedback || [],
+        issues: parsed?.issues || [],
+      }
+
+      return jsonResponse(200, {
+        review: {
+          ...review,
+          diagnostics: {
+            requiredWords,
+            matchedRequiredWords,
+            missingRequiredWords,
+            suggestionRejectedReason,
+            suggestionCandidate: suggestion,
+          },
+        },
       })
     }
 
