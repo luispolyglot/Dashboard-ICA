@@ -245,6 +245,28 @@ button:disabled {
   }
 }
 
+@keyframes glow-breathe {
+  0%,
+  100% {
+    opacity: 0.28;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes score-scale-pop {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.2);
+  }
+}
+
 @layer utilities {
 
   .shadow-inital-letter {
@@ -279,5 +301,14 @@ button:disabled {
     box-shadow:
       0 0 14px #eab308aa,
       0 0 34px #facc1577;
+  }
+
+  .glow-breathe {
+    animation: glow-breathe 1.8s ease-in-out infinite;
+  }
+
+  .score-scale-pop {
+    transform-origin: center;
+    animation: score-scale-pop 1.2s ease-in-out infinite;
   }
 }

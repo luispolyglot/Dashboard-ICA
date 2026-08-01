@@ -273,13 +273,6 @@ function toLocalYmd(value: Date): string {
   return `${year}-${month}-${day}`
 }
 
-function estimateWeekClosureDate(activatedAt: string): string | null {
-  const parsed = new Date(activatedAt)
-  if (Number.isNaN(parsed.getTime())) return null
-  const estimated = new Date(parsed.getTime() + 7 * 24 * 60 * 60 * 1000)
-  return estimated.toISOString()
-}
-
 function formatSeconds(seconds: number): string {
   const safe = Math.max(0, Math.round(seconds))
   const minutes = Math.floor(safe / 60)
@@ -1409,23 +1402,16 @@ export function ManageCoachingUserView({
   ])
 
   const sessionCurrentWeek = useMemo(() => {
+    if (selectedMembership?.weekActivation?.currentActiveWeek) {
+      return selectedMembership.weekActivation.currentActiveWeek
+    }
     if (selectedMembership?.weekActivation?.lastActivatedWeek) {
       return selectedMembership.weekActivation.lastActivatedWeek
     }
-    if (!selectedMembership?.activatedAt) return null
-    const activated = new Date(selectedMembership.activatedAt)
-    if (Number.isNaN(activated.getTime())) return null
-    return Math.min(
-      12,
-      Math.max(
-        1,
-        Math.floor(
-          (Date.now() - activated.getTime()) / (7 * 24 * 60 * 60 * 1000),
-        ) + 1,
-      ),
-    )
+    return selectedMembership?.activatedAt ? 1 : null
   }, [
     selectedMembership?.activatedAt,
+    selectedMembership?.weekActivation?.currentActiveWeek,
     selectedMembership?.weekActivation?.lastActivatedWeek,
   ])
 
@@ -1836,14 +1822,6 @@ export function ManageCoachingUserView({
                   const weekTimeline = weekTimelineByKey.get(weekKey) || null
                   const weekActivatedAt = weekTimeline?.activatedAt || null
                   const weekClosedAt = weekTimeline?.endedAt || null
-                  const estimatedWeekCloseAt =
-                    weekActivatedAt && !weekClosedAt
-                      ? estimateWeekClosureDate(weekActivatedAt)
-                      : null
-                  const closingDate = weekClosedAt || estimatedWeekCloseAt
-                  const shouldUseApproximateClose = Boolean(
-                    isCurrentWeek && !weekClosedAt && closingDate,
-                  )
 
                   return (
                     <AccordionItem
@@ -1866,17 +1844,14 @@ export function ManageCoachingUserView({
                           >
                             {weekStatus}
                           </Badge>
-                          {weekActivatedAt && closingDate && (
+                          {weekActivatedAt && weekClosedAt && (
                             <Badge
                               variant='outline'
                               className='gap-1 text-[10px]'
                             >
                               <span>{formatShortDate(weekActivatedAt)}</span>
                               <ArrowRightIcon className='h-3 w-3' />
-                              <span>
-                                {shouldUseApproximateClose ? '≈ ' : ''}
-                                {formatShortDate(closingDate)}
-                              </span>
+                              <span>{formatShortDate(weekClosedAt)}</span>
                             </Badge>
                           )}
                           {hasPendingCoachReview && (

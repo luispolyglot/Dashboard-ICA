@@ -151,7 +151,7 @@ export function IcaTestsView({
               <CardHeader>
                 <CardTitle>Aún no tienes Tests ICA guardados</CardTitle>
                 <CardDescription>
-                  Cuando completes uno, aparecerá aquí con tu puntaje y acceso a
+                  Cuando completes uno, aparecerá aquí con tu puntuación y acceso a
                   reintentarlo.
                 </CardDescription>
               </CardHeader>
@@ -188,7 +188,7 @@ export function IcaTestsView({
                       <p className='text-sm text-muted-foreground'>
                         {test.status === 'failed'
                           ? 'Estado: fallido'
-                          : `Puntaje ${test.score}/${test.totalQuestions}`}{' '}
+                          : `Puntuación ${test.score}/${test.totalQuestions}`}{' '}
                         - Finalizado el{' '}
                         {test.finalizedAt
                           ? new Date(test.finalizedAt).toLocaleString()

@@ -7,7 +7,7 @@ import type {
   Lexicard,
 } from '../types'
 
-export const ICA_TEST_TOTAL_QUESTIONS = 15
+export const ICA_TEST_TOTAL_QUESTIONS = 12
 export const ICA_TEST_OPTIONS_PER_QUESTION = 4
 export const ICA_TEST_SECONDS_PER_QUESTION = 6
 export const ICA_TEST_REQUIRED_WORDS =

@@ -44,12 +44,31 @@ describe('week activation helpers', () => {
     expect(decision.reason).toBe('previous_week_not_finished')
   })
 
-  it('allows next week when previous is finished', () => {
+  it('keeps next week blocked even after 7+ days when previous is not manually closed', () => {
     const decision = evaluateWeekActivationRequest({
       weekNumber: 2,
       activations: [
         activation({
           activated_at: '2026-01-01T00:00:00.000Z',
+        }),
+      ],
+      weeklyObjectives: {
+        W02: { wordsTarget: 25 },
+      },
+      nowMs: Date.parse('2026-01-10T00:00:00.000Z'),
+    })
+
+    expect(decision.ok).toBe(false)
+    expect(decision.reason).toBe('previous_week_not_finished')
+  })
+
+  it('allows next week when previous is manually closed', () => {
+    const decision = evaluateWeekActivationRequest({
+      weekNumber: 2,
+      activations: [
+        activation({
+          activated_at: '2026-01-01T00:00:00.000Z',
+          ended_at: '2026-01-01T12:00:00.000Z',
         }),
       ],
       weeklyObjectives: {

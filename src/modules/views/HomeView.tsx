@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { DASHBOARD_ROUTES } from '../routes/paths'
@@ -31,6 +31,7 @@ function pluralize(value: number, singular: string, plural: string): string {
 
 export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   const navigate = useNavigate()
+  const [showPregunticaPulse, setShowPregunticaPulse] = useState(false)
   const todayProgress = getTodayProgress(dailyProgress)
   const cardBaseClass =
     'relative flex min-h-[220px] w-full flex-col px-[25px] py-8 text-left font-sans transition-[transform,border-color,box-shadow,background] duration-250 ease-[cubic-bezier(0.2,0.8,0.2,1)]'
@@ -53,6 +54,31 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   )
   const flashDone = todayProgress.reviewCorrect >= 10
   const phraseDone = todayProgress.phraseGenerated
+
+  useEffect(() => {
+    let active = true
+
+    const loadPregunticaStatus = async () => {
+      try {
+        const { fetchPregunticaWeekStatus } = await import('../services/preguntica')
+        const status = await fetchPregunticaWeekStatus({
+          targetLang: config.targetLang,
+          nativeLang: config.nativeLang,
+        })
+        if (!active || !status) return
+        setShowPregunticaPulse(status.isUnlocked && !status.completedAt)
+      } catch {
+        if (!active) return
+        setShowPregunticaPulse(false)
+      }
+    }
+
+    void loadPregunticaStatus()
+
+    return () => {
+      active = false
+    }
+  }, [config.nativeLang, config.targetLang])
 
   const cards: HomeCard[] = useMemo(
     () => [
@@ -201,6 +227,14 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
                   'relative z-1 m-0.5 min-h-40',
                 )}
               >
+                {showPregunticaPulse && (
+                  <span
+                    aria-hidden='true'
+                    className='absolute right-4 top-4 inline-block text-xl text-amber-500 animate-pulse'
+                  >
+                    🎙️
+                  </span>
+                )}
                 <div className='relative z-1'>
                   <div className='mb-1.25 flex items-center gap-2'>
                     <div className='text-3xl'>🎮</div>
@@ -231,6 +265,14 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
                 cardCount === 0 && disabledCardClass,
               )}
             >
+              {showPregunticaPulse && (
+                <span
+                  aria-hidden='true'
+                  className='absolute right-4 top-4 inline-block text-xl text-amber-500 animate-pulse'
+                >
+                  🎙️
+                </span>
+              )}
               <div className='relative z-1 my-auto'>
                 <div className='mb-1.25 flex items-center gap-2'>
                   <div className='text-3xl'>🎮</div>

@@ -1,5 +1,5 @@
 import { IMPORTANCE_ORDER } from './constants'
-import type { ImportanceKey, Lexicard, ReviewMode } from './types'
+import type { Lexicard, ReviewMode } from './types'
 
 export function generateId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -55,6 +55,11 @@ function isCardGraduated(card: Lexicard): boolean {
   return (card.streak || 0) >= 10
 }
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000
+const REVIEW_MIN_DECK_FOR_NEW_COOLDOWN = 20
+const REVIEW_NEW_CARD_COOLDOWN_DAYS = 2
+const REVIEW_MAX_NEW_CARDS_PER_ROUND = 2
+
 function getSuccessfulCadenceSessions(streak: number): number {
   if (streak <= 1) return 1
   if (streak <= 3) return 2
@@ -69,8 +74,7 @@ function isSuccessfulCardDue(card: Lexicard, currentSession: number): boolean {
   if (streak >= 8) {
     const lastReviewed = card.lastReviewed || 0
     if (!lastReviewed) return true
-    const msPerDay = 24 * 60 * 60 * 1000
-    return Date.now() - lastReviewed >= 7 * msPerDay
+    return Date.now() - lastReviewed >= 7 * MS_PER_DAY
   }
 
   const cadence = getSuccessfulCadenceSessions(streak)
@@ -171,84 +175,86 @@ export function sortChronological(cards: Lexicard[]): Lexicard[] {
   return [...cards].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
 }
 
-function getCardWeight(card: Lexicard, mode: ReviewMode): number {
-  const streak = card.streak || 0
-  const interval = card.interval || 1
-  const isNew = card.lastReviewed === null
-  const isFailed = streak === 0 && card.lastReviewed !== null
-
-  const baseByImportance: Record<ImportanceKey, number> = {
-    vital: 1.2,
-    frequent: 1,
-    occasional: 0.85,
-    rare: 0.72,
-    irrelevant: 0.58,
-  }
-
-  const streakFactor = 1 / (1 + streak * 0.55)
-  const intervalFactor = 1 / (1 + Math.max(0, interval - 1) * 0.08)
-  const noveltyFactor = isNew ? 1.25 : 1
-  const failedFactor = isFailed ? 1.35 : 1
-  const modeBoost = mode !== 'mixed' && card.importance === mode ? 2.4 : 1
-
-  return Math.max(
-    0.03,
-    (baseByImportance[card.importance] ?? 0.5) *
-      streakFactor *
-      intervalFactor *
-      noveltyFactor *
-      failedFactor *
-      modeBoost,
-  )
+function getNewCardAgeDays(card: Lexicard, now: number): number {
+  if (!card.createdAt) return 0
+  return Math.max(0, Math.floor((now - card.createdAt) / MS_PER_DAY))
 }
 
-function pickWeightedOne(cards: Lexicard[], mode: ReviewMode): Lexicard | null {
-  if (cards.length === 0) return null
-  const weighted = cards.map((card) => ({ card, weight: getCardWeight(card, mode) }))
-  const total = weighted.reduce((sum, item) => sum + item.weight, 0)
-  if (total <= 0) return weighted[Math.floor(Math.random() * weighted.length)].card
-
-  let target = Math.random() * total
-  for (const item of weighted) {
-    target -= item.weight
-    if (target <= 0) return item.card
-  }
-
-  return weighted[weighted.length - 1].card
+function isCardInNewCooldown(
+  card: Lexicard,
+  totalDeckSize: number,
+  now: number,
+): boolean {
+  if (!isCardNew(card)) return false
+  if (totalDeckSize < REVIEW_MIN_DECK_FOR_NEW_COOLDOWN) return false
+  return getNewCardAgeDays(card, now) < REVIEW_NEW_CARD_COOLDOWN_DAYS
 }
 
-function pickWeightedMany(
-  source: Lexicard[],
-  count: number,
-  mode: ReviewMode,
-  excludedIds: Set<string>,
+type ReviewBucket =
+  | 'failed'
+  | 'dueReview'
+  | 'learning'
+  | 'newEligible'
+  | 'newCooling'
+  | 'graduated'
+
+function getReviewBucket(
+  card: Lexicard,
+  totalDeckSize: number,
+  currentSession: number,
+  now: number,
+): ReviewBucket {
+  if (isCardFailed(card)) return 'failed'
+  if (isCardNew(card)) {
+    return isCardInNewCooldown(card, totalDeckSize, now)
+      ? 'newCooling'
+      : 'newEligible'
+  }
+  if (isCardGraduated(card)) return 'graduated'
+  if (isSuccessfulCardDue(card, currentSession)) return 'dueReview'
+  return 'learning'
+}
+
+function getReviewBucketPriority(bucket: ReviewBucket): number {
+  if (bucket === 'failed') return 0
+  if (bucket === 'dueReview') return 1
+  if (bucket === 'learning') return 2
+  if (bucket === 'newEligible') return 3
+  if (bucket === 'newCooling') return 4
+  return 5
+}
+
+function sortRoundByReviewPriority(
+  cards: Lexicard[],
+  totalDeckSize: number,
+  currentSession: number,
+  now: number,
 ): Lexicard[] {
-  const selected: Lexicard[] = []
-  const localExcluded = new Set(excludedIds)
-
-  while (selected.length < count) {
-    const candidates = source.filter((card) => !localExcluded.has(card.id))
-    if (candidates.length === 0) break
-    const picked = pickWeightedOne(candidates, mode)
-    if (!picked) break
-    selected.push(picked)
-    localExcluded.add(picked.id)
-  }
-
-  return selected
-}
-
-function sortRoundByLearningPriority(cards: Lexicard[]): Lexicard[] {
   return [...cards].sort((a, b) => {
-    const aNew = (a.streak || 0) === 0 && a.lastReviewed === null
-    const bNew = (b.streak || 0) === 0 && b.lastReviewed === null
-    if (aNew !== bNew) return aNew ? -1 : 1
+    const aBucket = getReviewBucket(a, totalDeckSize, currentSession, now)
+    const bBucket = getReviewBucket(b, totalDeckSize, currentSession, now)
+    const bucketDiff =
+      getReviewBucketPriority(aBucket) - getReviewBucketPriority(bBucket)
+    if (bucketDiff !== 0) return bucketDiff
 
-    const aStreak = a.streak || 0
-    const bStreak = b.streak || 0
-    if (aStreak !== bStreak) return aStreak - bStreak
+    const aImportance = IMPORTANCE_ORDER[a.importance] ?? 4
+    const bImportance = IMPORTANCE_ORDER[b.importance] ?? 4
+    if (aImportance !== bImportance) return aImportance - bImportance
 
-    return (a.lastReviewed || 0) - (b.lastReviewed || 0)
+    if (aBucket === 'newEligible' || aBucket === 'newCooling') {
+      const ageDiff = getNewCardAgeDays(b, now) - getNewCardAgeDays(a, now)
+      if (ageDiff !== 0) return ageDiff
+    }
+
+    if (aBucket === 'failed' || aBucket === 'dueReview' || aBucket === 'learning') {
+      const reviewDiff = (a.lastReviewed || 0) - (b.lastReviewed || 0)
+      if (reviewDiff !== 0) return reviewDiff
+    }
+
+    const streakDiff = (a.streak || 0) - (b.streak || 0)
+    if (streakDiff !== 0) return streakDiff
+
+    return (a.createdAt || 0) - (b.createdAt || 0)
   })
 }
 
@@ -256,54 +262,82 @@ export function buildReviewRound(
   cards: Lexicard[],
   mode: ReviewMode,
   roundSize: number,
+  currentSession = 0,
+  totalDeckSize = cards.length,
 ): Lexicard[] {
   if (cards.length === 0 || roundSize <= 0) return []
 
   const uniquePool = cards.filter(
     (card, index, self) => self.findIndex((value) => value.id === card.id) === index,
   )
+
+  const modePool =
+    mode === 'mixed'
+      ? uniquePool
+      : uniquePool.filter((card) => card.importance === mode)
+  if (modePool.length === 0) return []
+
+  const now = Date.now()
+  const sortedPool = sortRoundByReviewPriority(
+    modePool,
+    totalDeckSize,
+    currentSession,
+    now,
+  )
   const selected: Lexicard[] = []
-  const excluded = new Set<string>()
+  const deferredByNewLimit: Lexicard[] = []
+  const deferredByCooldown: Lexicard[] = []
+  const enforceNewExposureControls =
+    totalDeckSize >= REVIEW_MIN_DECK_FOR_NEW_COOLDOWN
+  const maxNewPerRound = Math.max(
+    1,
+    enforceNewExposureControls
+      ? Math.min(REVIEW_MAX_NEW_CARDS_PER_ROUND, Math.floor(roundSize / 4) || 1)
+      : roundSize,
+  )
+  let includedNewCards = 0
 
-  if (mode === 'mixed') {
-    const byImportance: Record<ImportanceKey, Lexicard[]> = {
-      vital: uniquePool.filter((card) => card.importance === 'vital'),
-      frequent: uniquePool.filter((card) => card.importance === 'frequent'),
-      occasional: uniquePool.filter((card) => card.importance === 'occasional'),
-      rare: uniquePool.filter((card) => card.importance === 'rare'),
-      irrelevant: uniquePool.filter((card) => card.importance === 'irrelevant'),
+  for (const card of sortedPool) {
+    if (selected.length >= roundSize) break
+
+    const isNew = isCardNew(card)
+    if (!isNew) {
+      selected.push(card)
+      continue
     }
 
-    const quotas: Array<{ key: ImportanceKey; count: number }> = [
-      { key: 'vital', count: 4 },
-      { key: 'frequent', count: 3 },
-      { key: 'occasional', count: 2 },
-    ]
-
-    for (const quota of quotas) {
-      const picks = pickWeightedMany(byImportance[quota.key], quota.count, mode, excluded)
-      selected.push(...picks)
-      for (const card of picks) excluded.add(card.id)
+    if (isCardInNewCooldown(card, totalDeckSize, now)) {
+      deferredByCooldown.push(card)
+      continue
     }
 
-    const warmPool = [...byImportance.rare, ...byImportance.irrelevant]
-    const warmPick = pickWeightedMany(warmPool, 1, mode, excluded)
-    selected.push(...warmPick)
-    for (const card of warmPick) excluded.add(card.id)
-  } else {
-    const primary = uniquePool.filter((card) => card.importance === mode)
-    const primaryPicks = pickWeightedMany(primary, roundSize, mode, excluded)
-    selected.push(...primaryPicks)
-    for (const card of primaryPicks) excluded.add(card.id)
-    return sortRoundByLearningPriority(selected)
+    if (includedNewCards >= maxNewPerRound) {
+      deferredByNewLimit.push(card)
+      continue
+    }
+
+    selected.push(card)
+    includedNewCards += 1
   }
 
-  if (selected.length < roundSize) {
-    const fillers = pickWeightedMany(uniquePool, roundSize - selected.length, mode, excluded)
-    selected.push(...fillers)
+  const shouldUseDeferredNewCards =
+    selected.length === 0 || !enforceNewExposureControls
+  if (shouldUseDeferredNewCards) {
+    for (const card of deferredByNewLimit) {
+      if (selected.length >= roundSize) break
+      selected.push(card)
+    }
   }
 
-  return sortRoundByLearningPriority(selected)
+  const shouldUseCooldownCards = selected.length === 0
+  if (shouldUseCooldownCards) {
+    for (const card of deferredByCooldown) {
+      if (selected.length >= roundSize) break
+      selected.push(card)
+    }
+  }
+
+  return selected.slice(0, roundSize)
 }
 
 export function updateCardAfterReview(

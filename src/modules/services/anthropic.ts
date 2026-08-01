@@ -14,6 +14,27 @@ type SpellcheckResponse = {
   suggestion?: string | null
 }
 
+type ManualPhraseSuggestionResponse = {
+  review?: ManualPhraseReviewResult | null
+}
+
+export type ManualPhraseReviewResult = {
+  status: 'suggested' | 'perfect' | 'invalid'
+  suggestion: string | null
+  nativeSuggestion: string | null
+  comment: string
+  targetFeedback: string[]
+  nativeFeedback: string[]
+  issues: string[]
+  diagnostics: {
+    requiredWords: string[]
+    matchedRequiredWords: string[]
+    missingRequiredWords: string[]
+    suggestionRejectedReason: string | null
+    suggestionCandidate: string | null
+  }
+}
+
 type WordExampleResponse = {
   result?: ActivationPhraseResult | null
 }
@@ -78,6 +99,43 @@ export async function fetchSpellingSuggestion(
 
     const result = data?.suggestion?.trim()
     return result ? result : null
+  } catch (error) {
+    console.error(error)
+    return null
+  }
+}
+
+export async function fetchManualPhraseSuggestion(
+  targetPhrase: string,
+  nativePhrase: string,
+  requiredWords: string[],
+  targetLang: string,
+  nativeLang: string,
+): Promise<ManualPhraseReviewResult | null> {
+  if (!supabase) return null
+
+  try {
+    const { data, error } =
+      await supabase.functions.invoke<ManualPhraseSuggestionResponse>(
+        'anthropic-proxy',
+        {
+          body: {
+            action: 'manual_phrase_suggestion',
+            targetPhrase,
+            nativePhrase,
+            requiredWords,
+            targetLang,
+            nativeLang,
+          },
+        },
+      )
+
+    if (error) {
+      console.error(error)
+      return null
+    }
+
+    return data?.review || null
   } catch (error) {
     console.error(error)
     return null

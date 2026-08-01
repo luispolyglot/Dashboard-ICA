@@ -106,18 +106,30 @@ export function buildWeekWindows(
 ): WeekWindow[] {
   const windows: WeekWindow[] = []
 
-  for (const activation of activations) {
+  const sortedActivations = [...activations].sort(
+    (a, b) => a.week_number - b.week_number,
+  )
+
+  for (let index = 0; index < sortedActivations.length; index += 1) {
+    const activation = sortedActivations[index]
+    const nextActivation = sortedActivations[index + 1] || null
     const start = toDate(activation.activated_at)
     if (!start) continue
+
+    const nextStart = nextActivation ? toDate(nextActivation.activated_at) : null
     const ended = activation.ended_at ? toDate(activation.ended_at) : null
-    const end = ended || new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
+    const end = ended || nextStart || new Date(nowMs)
     const weekNumber = Math.min(12, Math.max(1, activation.week_number || 1))
+
+    const explicitlyFinished = Boolean(ended && ended.getTime() <= nowMs)
+    const inferredFinishedByNextActivation = Boolean(nextStart)
+
     windows.push({
       weekNumber,
       weekKey: weekKeyFromNumber(weekNumber),
       start,
       end,
-      isFinished: end.getTime() <= nowMs,
+      isFinished: explicitlyFinished || inferredFinishedByNextActivation,
     })
   }
 

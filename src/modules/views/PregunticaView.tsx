@@ -46,6 +46,11 @@ type PregunticaViewProps = {
   onWordAdded: () => Promise<unknown>
 }
 
+type PendingLeaveAction =
+  | { kind: 'back' }
+  | { kind: 'path'; to: string }
+  | null
+
 const WORD_MODE_OPTIONS = [
   { key: 'mixed', label: 'Aleatorio' },
   { key: 'vital', label: 'Vital' },
@@ -196,11 +201,21 @@ export function PregunticaView({
   const [selectedSuggestion, setSelectedSuggestion] = useState<PregunticaWordSuggestion | null>(null)
   const [addedSuggestionWords, setAddedSuggestionWords] = useState<string[]>([])
   const [infoModalOpen, setInfoModalOpen] = useState(false)
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false)
 
   const recorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const startedAtRef = useRef<number | null>(null)
+  const pendingLeaveRef = useRef<PendingLeaveAction>(null)
+  const allowNavigationRef = useRef(false)
+  const pageSectionRef = useRef<HTMLElement | null>(null)
+
+  const hasAttemptInProgress = Boolean(attempt && attempt.status !== 'completed')
+  const hasAnalyzedProgress = Boolean(
+    feedback || (attempt && Number(attempt.retryCount || 0) > 0) || analysisAttemptsUsed > 0,
+  )
+  const shouldGuardLeave = hasAttemptInProgress && hasAnalyzedProgress
 
   useEffect(() => {
     if (!isRecording) return
@@ -226,6 +241,99 @@ export function PregunticaView({
       window.clearTimeout(timer)
     }
   }, [analysisReady])
+
+  useEffect(() => {
+    if (shouldGuardLeave) return
+    pendingLeaveRef.current = null
+    allowNavigationRef.current = false
+    setLeaveDialogOpen(false)
+  }, [shouldGuardLeave])
+
+  useEffect(() => {
+    if (!shouldGuardLeave) return
+
+    const onBeforeUnload = (event: BeforeUnloadEvent): void => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload)
+    }
+  }, [shouldGuardLeave])
+
+  useEffect(() => {
+    if (!shouldGuardLeave) return
+
+    const onDocumentClickCapture = (event: MouseEvent): void => {
+      if (allowNavigationRef.current || leaveDialogOpen) return
+      if (event.defaultPrevented) return
+      if (event.button !== 0) return
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+
+      const target = event.target as Element | null
+      if (!target) return
+      if (target.closest('[role="dialog"]')) return
+      if (pageSectionRef.current?.contains(target)) return
+
+      const anchor = target.closest('a[href]') as HTMLAnchorElement | null
+      if (!anchor) return
+      if (anchor.target && anchor.target !== '_self') return
+      if (anchor.hasAttribute('download')) return
+
+      let nextUrl: URL
+      try {
+        nextUrl = new URL(anchor.href, window.location.href)
+      } catch {
+        return
+      }
+
+      if (nextUrl.origin !== window.location.origin) return
+
+      const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`
+      const nextPath = `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`
+      if (nextPath === currentPath) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      pendingLeaveRef.current = { kind: 'path', to: nextPath }
+      setLeaveDialogOpen(true)
+    }
+
+    document.addEventListener('click', onDocumentClickCapture, true)
+    return () => {
+      document.removeEventListener('click', onDocumentClickCapture, true)
+    }
+  }, [leaveDialogOpen, shouldGuardLeave])
+
+  useEffect(() => {
+    if (!shouldGuardLeave) return
+
+    const markerState = { pregunticaLeaveGuard: true, at: Date.now() }
+    window.history.pushState(markerState, '', window.location.href)
+
+    const onPopState = (): void => {
+      if (allowNavigationRef.current) {
+        allowNavigationRef.current = false
+        return
+      }
+
+      if (leaveDialogOpen) {
+        window.history.pushState(markerState, '', window.location.href)
+        return
+      }
+
+      pendingLeaveRef.current = { kind: 'back' }
+      setLeaveDialogOpen(true)
+      window.history.pushState(markerState, '', window.location.href)
+    }
+
+    window.addEventListener('popstate', onPopState)
+    return () => {
+      window.removeEventListener('popstate', onPopState)
+    }
+  }, [leaveDialogOpen, shouldGuardLeave])
 
   useEffect(() => {
     if (!attempt || attempt.status === 'completed') return
@@ -706,8 +814,36 @@ export function PregunticaView({
     void handleStartAttempt(nextMode)
   }
 
+  function handleCancelLeave() {
+    pendingLeaveRef.current = null
+    setLeaveDialogOpen(false)
+  }
+
+  async function handleConfirmLeave() {
+    const pendingLeave = pendingLeaveRef.current
+    pendingLeaveRef.current = null
+    setLeaveDialogOpen(false)
+    if (!pendingLeave || !attempt) return
+
+    setWorking(true)
+    try {
+      await completePregunticaAttempt(attempt.id)
+      toast.success('PreguntICA finalizada antes de salir')
+      allowNavigationRef.current = true
+      if (pendingLeave.kind === 'back') {
+        window.history.back()
+        return
+      }
+      navigate(pendingLeave.to)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo finalizar la PreguntICA')
+    } finally {
+      setWorking(false)
+    }
+  }
+
   return (
-    <section className='mx-auto w-full max-w-4xl px-4 pb-28 pt-6 md:pb-10'>
+    <section ref={pageSectionRef} className='mx-auto w-full max-w-4xl px-4 pb-28 pt-6 md:pb-10'>
       <style>{`@keyframes preguntica-wave-mid { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1.6); } } @keyframes preguntica-step-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } } @keyframes preguntica-feedback-in { from { opacity: 0; transform: translateY(10px) scale(0.995); } to { opacity: 1; transform: translateY(0) scale(1); } }`}</style>
       <div className='rounded-[24px] border border-border bg-[linear-gradient(160deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-6'>
         <div className='mb-3 flex justify-end'>
@@ -724,7 +860,14 @@ export function PregunticaView({
             )}
             <button
               type='button'
-              onClick={() => navigate(DASHBOARD_ROUTES.pregunticaHistory)}
+              onClick={() => {
+                if (!shouldGuardLeave) {
+                  navigate(DASHBOARD_ROUTES.pregunticaHistory)
+                  return
+                }
+                pendingLeaveRef.current = { kind: 'path', to: DASHBOARD_ROUTES.pregunticaHistory }
+                setLeaveDialogOpen(true)
+              }}
               className='rounded-lg border border-slate-300 bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-900/60 dark:text-slate-100'
             >
               Ver historial completo
@@ -1240,6 +1383,32 @@ export function PregunticaView({
           <DialogFooter>
             <Button type='button' onClick={() => setInfoModalOpen(false)}>
               Entendido
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={leaveDialogOpen}
+        onOpenChange={(open) => {
+          setLeaveDialogOpen(open)
+          if (!open) pendingLeaveRef.current = null
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿Salir de PreguntICA?</DialogTitle>
+            <DialogDescription>
+              Si sales ahora, finalizaremos esta PreguntICA para guardar tu progreso.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <Button type='button' variant='outline' onClick={handleCancelLeave} disabled={working}>
+              Quedarme
+            </Button>
+            <Button type='button' onClick={() => void handleConfirmLeave()} disabled={working}>
+              Finalizar y salir
             </Button>
           </DialogFooter>
         </DialogContent>

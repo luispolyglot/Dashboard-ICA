@@ -138,6 +138,8 @@ export function ReviewView({
         reviewPool,
         mode,
         getReviewRoundSizeByStyle(playStyle, reviewPool.length),
+        reviewSession,
+        cards.length,
       ),
     )
     setCurrentIndex(0)
@@ -287,6 +289,8 @@ export function ReviewView({
                 reviewPool,
                 mode,
                 getReviewRoundSizeByStyle(playStyle, reviewPool.length),
+                reviewSession,
+                cards.length,
               )
               setCorrect(0)
               setAnswerResults([])

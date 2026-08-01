@@ -86,7 +86,7 @@ export function ManageView({
 }: ManageViewProps) {
   const { user } = useAuth()
   const { isLg } = useBreakpoints()
-  const [filter, setFilter] = useState<ImportanceKey | 'all'>('all')
+  const [filter, setFilter] = useState<ImportanceKey | 'all' | 'to_learn'>('all')
   const [query, setQuery] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draftTarget, setDraftTarget] = useState('')
@@ -157,7 +157,25 @@ export function ManageView({
   }, [])
 
   const filteredByImportance =
-    filter === 'all' ? cards : cards.filter((c) => c.importance === filter)
+    filter === 'all'
+      ? cards
+      : filter === 'to_learn'
+        ? cards.filter((c) => (c.streak || 0) === 0)
+        : cards.filter((c) => c.importance === filter)
+  const toLearnCount = cards.filter((card) => (card.streak || 0) === 0).length
+  const importanceCounts = cards.reduce<Record<ImportanceKey, number>>(
+    (acc, card) => {
+      acc[card.importance] += 1
+      return acc
+    },
+    {
+      vital: 0,
+      frequent: 0,
+      occasional: 0,
+      rare: 0,
+      irrelevant: 0,
+    },
+  )
   const filtered = filteredByImportance.filter((card) => {
     const q = query.trim().toLowerCase()
     if (!q) return true
@@ -423,7 +441,7 @@ export function ManageView({
           </Button>
 
           {IMPORTANCE_LEVELS.map((level) => {
-            const count = cards.filter((c) => c.importance === level.key).length
+            const count = importanceCounts[level.key]
             const selected = filter === level.key
             return (
               <Button
@@ -441,6 +459,15 @@ export function ManageView({
               </Button>
             )
           })}
+
+          <Button
+            type='button'
+            onClick={() => setFilter('to_learn')}
+            variant={filter === 'to_learn' ? 'default' : 'outline'}
+            size='sm'
+          >
+            Por aprender ({toLearnCount})
+          </Button>
         </div>
       </div>
 

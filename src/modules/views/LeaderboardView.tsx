@@ -11,6 +11,8 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -37,7 +39,15 @@ type MonthOption = {
 
 type VisibleLeaderboardRow = {
   row: LeaderboardEntry
+  sharedRank: number
   rankLabel: string
+}
+
+type LeaderboardPrizeRank = 1 | 2 | 3
+
+type LeaderboardPrize = {
+  borderClassName: string
+  rewards: string[]
 }
 
 type ScoreBreakdown = {
@@ -48,6 +58,10 @@ type ScoreBreakdown = {
   icaTestMaxPoints: number
   listeningPoints: number
   listeningMaxPoints: number
+  pregunticaPoints: number
+  pregunticaMaxPoints: number
+  instagramPoints: number
+  instagramMaxPoints: number
   includeIcaTest: boolean
   totalPoints: number
   totalMaxPoints: number
@@ -57,7 +71,39 @@ type ScoreBreakdown = {
 const LEADERBOARD_CUTOFF_DAY = 28
 const MAX_MONTHLY_POINTS = 10
 const MAX_LISTENING_POINTS_PER_DAY = 0.1
-const MAX_ICA_TEST_POINTS = 1.5
+const MAX_ICA_TEST_POINTS = 1.2
+const MAX_PREGUNTICA_POINTS = 8
+const MAX_INSTAGRAM_POINTS_PER_DAY = 0.5
+const REFERENCE_MAX_POINTS = 36
+
+const LEADERBOARD_PRIZES: Record<LeaderboardPrizeRank, LeaderboardPrize> = {
+  1: {
+    borderClassName: 'border-2 border-amber-400/80',
+    rewards: [
+      '👨🏻‍🏫 Clase 1 a 1 de 1 hora con Luis',
+      '💲 1 mes gratis en ICADEMY',
+      '🎖️ Insignia oficial de ICAwards',
+      '🛩️ 1 ticket para un viaje 🛩️',
+    ],
+  },
+  2: {
+    borderClassName: 'border-2 border-slate-300/90',
+    rewards: [
+      '👨🏻‍🏫 Clase 1 a 1 de 30 minutos con Luis',
+      '💲 50% de reembolso en membresía mensual',
+      '🛩️ 1 ticket bombo ganador viajero',
+    ],
+  },
+  3: {
+    borderClassName: 'border-2 border-amber-700/70',
+    rewards: ['🪙 3 fichas canjeables para preguntICA'],
+  },
+}
+
+function getPrizeHeading(rank: LeaderboardPrizeRank): string {
+  const medal = rankBadge(rank)
+  return `${medal} El icademer que termine top ${rank} el día 28 del mes ganará:`
+}
 
 function toUtcMonthStart(date: Date): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-01`
@@ -151,6 +197,7 @@ function buildVisibleRowsWithSharedRank(
 
     result.push({
       row,
+      sharedRank,
       rankLabel: rankBadge(sharedRank),
     })
 
@@ -217,6 +264,23 @@ function getListeningPoints(row: LeaderboardEntry): number {
   return toSafeNumber(row.listening_points)
 }
 
+function getPregunticaPoints(row: LeaderboardEntry): number {
+  if (row.preguntica_points === null || row.preguntica_points === undefined)
+    return 0
+  return toSafeNumber(row.preguntica_points)
+}
+
+function getInstagramPoints(row: LeaderboardEntry): number {
+  if (row.instagram_points === null || row.instagram_points === undefined) return 0
+  return toSafeNumber(row.instagram_points)
+}
+
+function getPregunticaMaxPoints(scoringDayCap: number): number {
+  const elapsedWeeks = Math.ceil(scoringDayCap / 7)
+  const maxPointsByWeek = elapsedWeeks * 4
+  return Math.min(Math.max(maxPointsByWeek, 4), MAX_PREGUNTICA_POINTS)
+}
+
 function getDisplayedTotalPoints(
   row: LeaderboardEntry,
   includeIcaTest: boolean,
@@ -226,9 +290,11 @@ function getDisplayedTotalPoints(
 
   const monthlyPoints = getMonthlyPercentPoints(row)
   const listeningPoints = getListeningPoints(row)
+  const pregunticaPoints = getPregunticaPoints(row)
+  const instagramPoints = getInstagramPoints(row)
   return includeIcaTest
-    ? monthlyPoints + listeningPoints + getIcaTestPoints(row)
-    : monthlyPoints + listeningPoints
+    ? monthlyPoints + listeningPoints + getIcaTestPoints(row) + pregunticaPoints + instagramPoints
+    : monthlyPoints + listeningPoints + pregunticaPoints + instagramPoints
 }
 
 function getStreakCellClass(row: LeaderboardEntry): string {
@@ -252,11 +318,17 @@ function buildScoreBreakdown(
   const monthlyPoints = getMonthlyPercentPoints(row)
   const icaTestPoints = includeIcaTest ? getIcaTestPoints(row) : 0
   const listeningPoints = getListeningPoints(row)
+  const pregunticaPoints = getPregunticaPoints(row)
+  const instagramPoints = getInstagramPoints(row)
   const listeningMaxPoints = scoringDayCap * MAX_LISTENING_POINTS_PER_DAY
+  const pregunticaMaxPoints = getPregunticaMaxPoints(scoringDayCap)
+  const instagramMaxPoints = scoringDayCap * MAX_INSTAGRAM_POINTS_PER_DAY
   const totalPoints = getDisplayedTotalPoints(row, includeIcaTest)
   const totalMaxPoints =
     MAX_MONTHLY_POINTS +
     listeningMaxPoints +
+    pregunticaMaxPoints +
+    instagramMaxPoints +
     (includeIcaTest ? MAX_ICA_TEST_POINTS : 0)
 
   return {
@@ -267,6 +339,10 @@ function buildScoreBreakdown(
     icaTestMaxPoints: MAX_ICA_TEST_POINTS,
     listeningPoints,
     listeningMaxPoints,
+    pregunticaPoints,
+    pregunticaMaxPoints,
+    instagramPoints,
+    instagramMaxPoints,
     includeIcaTest,
     totalPoints,
     totalMaxPoints,
@@ -301,6 +377,26 @@ function formatAppliedPercent(value: number, maxValue: number): string {
   return `${Math.round(safePercent)}%`
 }
 
+function isPerfectScore(value: number, maxValue: number): boolean {
+  if (maxValue <= 0) return false
+  return value >= maxValue - 0.001
+}
+
+function renderGoldScore(value: number, maxValue: number) {
+  if (!isPerfectScore(value, maxValue)) {
+    return <span className='text-amber-500'>{formatPoints(value)}</span>
+  }
+
+  return (
+    <span className='relative inline-flex items-center justify-center px-1'>
+      <span className='glow-breathe pointer-events-none absolute inset-0 rounded-full bg-amber-300/45 blur-[6px]' />
+      <span className='score-scale-pop relative font-extrabold text-amber-300 drop-shadow-[0_0_10px_rgba(245,158,11,0.9)]'>
+        {formatPoints(value)}
+      </span>
+    </span>
+  )
+}
+
 export function LeaderboardView() {
   const { user } = useAuth()
   const { isMd } = useBreakpoints()
@@ -320,6 +416,8 @@ export function LeaderboardView() {
   const [openedFromMyScore, setOpenedFromMyScore] = useState(false)
   const [selectedScoreBreakdown, setSelectedScoreBreakdown] =
     useState<ScoreBreakdown | null>(null)
+  const [selectedPrizeRank, setSelectedPrizeRank] =
+    useState<LeaderboardPrizeRank | null>(null)
 
   const isCurrentMonth = selectedMonth === currentMonthStart
   const closeAt = useMemo(
@@ -487,6 +585,10 @@ export function LeaderboardView() {
             </div>
           </div>
 
+          <blockquote className='border-l-2 border-amber-400/80 pl-2 text-xs italic text-muted-foreground'>
+            La puntuación total máxima mensual es de {REFERENCE_MAX_POINTS} puntos.
+          </blockquote>
+
           <div>
             <Button
               type='button'
@@ -498,7 +600,7 @@ export function LeaderboardView() {
               }}
               disabled={!currentUserRow || loading || Boolean(error)}
             >
-              Mi Puntaje 🏅
+              Mi puntuación 🏅
             </Button>
           </div>
         </CardHeader>
@@ -513,7 +615,7 @@ export function LeaderboardView() {
           ) : rowsWithSharedRank.length === 0 ? (
             <p className='text-sm text-muted-foreground'>
               {isCurrentMonth
-                ? 'Todavía no hay datos disponibles para este periodo.'
+                ? 'Todavía no hay datos disponibles para este período.'
                 : `Se están calculando los resultados de ${formatMonthLabel(selectedMonth)}. En el transcurso del día estarán disponibles.`}
             </p>
           ) : (
@@ -536,11 +638,11 @@ export function LeaderboardView() {
                     <th className='hidden md:table-cell w-[18%] pb-2 font-medium'>
                       % mensual
                     </th>
-                    <th className='w-[16%] pb-2 font-medium'>Puntaje total</th>
+                    <th className='w-[16%] pb-2 font-medium'>Puntuación total</th>
                   </tr>
                 </thead>
                 <tbody className='block lg:max-h-[50dvh] lg:overflow-y-auto'>
-                  {topWindowRows.map(({ row, rankLabel }, index) => (
+                  {topWindowRows.map(({ row, rankLabel, sharedRank }, index) => (
                     <tr
                       key={`${row.user_id}-${row.rank}-${selectedMonth}`}
                       className={`table w-full table-fixed border-b align-middle ${trailingRankOpacityClass(index + 1)} ${
@@ -548,7 +650,21 @@ export function LeaderboardView() {
                       }`}
                     >
                       <td className='w-[12%] lg:w-[8%] px-1 py-2'>
-                        {rankLabel}
+                        {sharedRank <= 3 ? (
+                          <Button
+                            type='button'
+                            variant='ghost'
+                            className='h-auto p-0 text-base leading-none hover:bg-transparent'
+                            onClick={() =>
+                              setSelectedPrizeRank(sharedRank as LeaderboardPrizeRank)
+                            }
+                            aria-label={`Ver premio del puesto ${sharedRank}`}
+                          >
+                            {rankLabel}
+                          </Button>
+                        ) : (
+                          rankLabel
+                        )}
                       </td>
                       <td
                         className={`w-[12%] lg:w-[8%] px-1 py-2 ${getStreakCellClass(row)}`}
@@ -582,7 +698,7 @@ export function LeaderboardView() {
                           variant='ghost'
                           className='h-auto p-0 text-sm font-bold md:font-medium'
                           onClick={() => openScoreBreakdown(row, 'table')}
-                          aria-label='Ver cómo se calculó este puntaje total'
+                          aria-label='Ver cómo se calculó esta puntuación total'
                         >
                           {getDisplayedTotalPoints(
                             row,
@@ -626,7 +742,7 @@ export function LeaderboardView() {
                     </td>
                   </tr>
 
-                  {extraRows.map(({ row, rankLabel }) => (
+                  {extraRows.map(({ row, rankLabel, sharedRank }) => (
                     <tr
                       key={`${row.user_id}-${row.rank}-${selectedMonth}-extra`}
                       className={`table w-full table-fixed border-b align-middle last:border-b-0 ${
@@ -634,7 +750,21 @@ export function LeaderboardView() {
                       }`}
                     >
                       <td className='w-[12%] lg:w-[8%] px-1 py-2'>
-                        {rankLabel}
+                        {sharedRank <= 3 ? (
+                          <Button
+                            type='button'
+                            variant='ghost'
+                            className='h-auto p-0 text-base leading-none hover:bg-transparent'
+                            onClick={() =>
+                              setSelectedPrizeRank(sharedRank as LeaderboardPrizeRank)
+                            }
+                            aria-label={`Ver premio del puesto ${sharedRank}`}
+                          >
+                            {rankLabel}
+                          </Button>
+                        ) : (
+                          rankLabel
+                        )}
                       </td>
                       <td
                         className={`w-[12%] lg:w-[8%] px-1 py-2 ${getStreakCellClass(row)}`}
@@ -668,7 +798,7 @@ export function LeaderboardView() {
                           variant='ghost'
                           className='h-auto p-0 text-sm font-bold md:font-medium'
                           onClick={() => openScoreBreakdown(row, 'table')}
-                          aria-label='Ver cómo se calculó este puntaje total'
+                          aria-label='Ver cómo se calculó esta puntuación total'
                         >
                           {getDisplayedTotalPoints(
                             row,
@@ -703,7 +833,7 @@ export function LeaderboardView() {
           }
         >
           <DialogHeader className='sr-only'>
-            <DialogTitle>Detalle de puntaje</DialogTitle>
+            <DialogTitle>Detalle de puntuación</DialogTitle>
           </DialogHeader>
 
           {selectedScoreBreakdown ? (
@@ -712,9 +842,10 @@ export function LeaderboardView() {
                 <div>
                   <p className='font-semibold text-base'>
                     <strong>{selectedScoreBreakdown.userName}</strong>{' '}
-                    <span className='text-amber-500'>
-                      {formatPoints(selectedScoreBreakdown.totalPoints)}
-                    </span>{' '}
+                    {renderGoldScore(
+                      selectedScoreBreakdown.totalPoints,
+                      selectedScoreBreakdown.totalMaxPoints,
+                    )}{' '}
                     / {formatPoints(selectedScoreBreakdown.totalMaxPoints)}
                   </p>
                 </div>
@@ -722,34 +853,37 @@ export function LeaderboardView() {
 
               <p>
                 📊{' '}
-                <span className='text-amber-500'>
-                  {formatPoints(selectedScoreBreakdown.monthlyPoints)}
-                </span>{' '}
+                {renderGoldScore(
+                  selectedScoreBreakdown.monthlyPoints,
+                  selectedScoreBreakdown.monthlyMaxPoints,
+                )}{' '}
                 / {formatPoints(selectedScoreBreakdown.monthlyMaxPoints)}
                 {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
-                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.monthlyPoints, selectedScoreBreakdown.monthlyMaxPoints)} de accion aplicada`
+                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.monthlyPoints, selectedScoreBreakdown.monthlyMaxPoints)} de acción aplicada`
                   : ''}
               </p>
               {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
                 <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
-                  Promedio mensual de rachas ICA y flashcards, con corte al día
-                  28.
+                  Promedio mensual de rachas ICA y flashcards, del día 1 al día
+                  28. (Máximo 10 puntos)
                 </p>
               )}
 
               <p>
                 🎧{' '}
-                <span className='text-amber-500'>
-                  {formatPoints(selectedScoreBreakdown.listeningPoints)}
-                </span>{' '}
+                {renderGoldScore(
+                  selectedScoreBreakdown.listeningPoints,
+                  selectedScoreBreakdown.listeningMaxPoints,
+                )}{' '}
                 / {formatPoints(selectedScoreBreakdown.listeningMaxPoints)}
                 {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
-                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.listeningPoints, selectedScoreBreakdown.listeningMaxPoints)} de accion aplicada`
+                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.listeningPoints, selectedScoreBreakdown.listeningMaxPoints)} de acción aplicada`
                   : ''}
               </p>
               {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
                 <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
-                  0,01 puntos por minuto escuchado, con tope de 0,1 por dia.
+                  Tope de 0,1 puntos por 10 minutos escuchados por día. (Máximo
+                  2,8 puntos)
                 </p>
               )}
 
@@ -757,9 +891,10 @@ export function LeaderboardView() {
                 📝{' '}
                 {selectedScoreBreakdown.includeIcaTest ? (
                   <>
-                    <span className='text-amber-500'>
-                      {formatPoints(selectedScoreBreakdown.icaTestPoints)}
-                    </span>{' '}
+                    {renderGoldScore(
+                      selectedScoreBreakdown.icaTestPoints,
+                      selectedScoreBreakdown.icaTestMaxPoints,
+                    )}{' '}
                     / {formatPoints(selectedScoreBreakdown.icaTestMaxPoints)}
                   </>
                 ) : (
@@ -771,14 +906,50 @@ export function LeaderboardView() {
                 {selectedScoreBreakdown.isCurrentUser &&
                 openedFromMyScore &&
                 selectedScoreBreakdown.includeIcaTest
-                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.icaTestPoints, selectedScoreBreakdown.icaTestMaxPoints)} de accion aplicada`
+                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.icaTestPoints, selectedScoreBreakdown.icaTestMaxPoints)} de acción aplicada`
                   : ''}
               </p>
               {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
                 <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
                   {selectedScoreBreakdown.includeIcaTest
-                    ? 'Cada respuesta correcta del ICA Test suma 0,1 puntos.'
-                    : `ICA Test disponible desde el dia ${icaTestWindowStartDay} al 28.`}
+                    ? `Cada respuesta correcta del ICA Test suma 0,1 puntos. Del día ${icaTestWindowStartDay} al 28 del mes. (Máximo 1,2 puntos)`
+                    : `ICA Test disponible del día ${icaTestWindowStartDay} al 28 del mes. (Máximo 1,2 puntos)`}
+                </p>
+              )}
+
+              <p>
+                🗣️{' '}
+                {renderGoldScore(
+                  selectedScoreBreakdown.pregunticaPoints,
+                  selectedScoreBreakdown.pregunticaMaxPoints,
+                )}{' '}
+                / {formatPoints(selectedScoreBreakdown.pregunticaMaxPoints)}
+                {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
+                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.pregunticaPoints, selectedScoreBreakdown.pregunticaMaxPoints)} de acción aplicada`
+                  : ''}
+              </p>
+              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
+                <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
+                  PreguntICA semanal completada suma 2 puntos por semana.
+                  (Máximo 8 puntos)
+                </p>
+              )}
+
+              <p>
+                📸{' '}
+                {renderGoldScore(
+                  selectedScoreBreakdown.instagramPoints,
+                  selectedScoreBreakdown.instagramMaxPoints,
+                )}{' '}
+                / {formatPoints(selectedScoreBreakdown.instagramMaxPoints)}
+                {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
+                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.instagramPoints, selectedScoreBreakdown.instagramMaxPoints)} de acción aplicada`
+                  : ''}
+              </p>
+              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
+                <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
+                  Instagram Track suma 0,5 por cada día cumplido del 1 al 28.
+                  (Máximo 14 puntos)
                 </p>
               )}
 
@@ -787,9 +958,10 @@ export function LeaderboardView() {
               <div className='flex items-center justify-between gap-3'>
                 <p>
                   🧾 <strong>Total:</strong>{' '}
-                  <span className='text-amber-500'>
-                    {formatPoints(selectedScoreBreakdown.totalPoints)}
-                  </span>
+                  {renderGoldScore(
+                    selectedScoreBreakdown.totalPoints,
+                    selectedScoreBreakdown.totalMaxPoints,
+                  )}
                   {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
                     ? ` - ${formatAppliedPercent(selectedScoreBreakdown.totalPoints, selectedScoreBreakdown.totalMaxPoints)} de eficacia aplicada`
                     : ''}
@@ -813,6 +985,43 @@ export function LeaderboardView() {
                 )}
               </div>
             </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={selectedPrizeRank !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedPrizeRank(null)
+        }}
+      >
+        <DialogContent
+          className={`sm:max-w-md ${
+            selectedPrizeRank ? LEADERBOARD_PRIZES[selectedPrizeRank].borderClassName : ''
+          }`}
+        >
+          {selectedPrizeRank ? (
+            <>
+              <DialogHeader className='pr-7'>
+                <DialogTitle className='leading-[1.4] tracking-[0.01em]'>
+                  {getPrizeHeading(selectedPrizeRank)}
+                </DialogTitle>
+                <DialogDescription className='sr-only'>
+                  Detalle de premios para los puestos del leaderboard mensual.
+                </DialogDescription>
+              </DialogHeader>
+              <ul className='list-disc space-y-1.5 pl-5 text-sm'>
+                {LEADERBOARD_PRIZES[selectedPrizeRank].rewards.map((reward) => (
+                  <li key={reward}>{reward}</li>
+                ))}
+              </ul>
+              <Separator />
+              <DialogFooter className='-mx-0 -mb-0 rounded-b-none border-0 bg-transparent p-0'>
+                <Button type='button' onClick={() => setSelectedPrizeRank(null)}>
+                  Aceptar
+                </Button>
+              </DialogFooter>
+            </>
           ) : null}
         </DialogContent>
       </Dialog>

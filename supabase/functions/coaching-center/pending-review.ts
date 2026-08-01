@@ -46,12 +46,9 @@ export function countPendingMasterNotesForSession(
     )
 
   const activatedAt = toDate(session.activatedAt)
-  const durationWeeks = Math.min(12, Math.max(1, session.durationWeeks || 12))
-  const fallbackPeriodEnd = activatedAt
-    ? new Date(activatedAt.getTime() + durationWeeks * 7 * 24 * 60 * 60 * 1000)
-    : null
+  const fallbackPeriodEnd = new Date()
 
-  if (windows.length === 0 && (!activatedAt || !fallbackPeriodEnd)) return 0
+  if (windows.length === 0 && !activatedAt) return 0
   const targetLang = normalizeLang(session.targetLang)
 
   return notes.filter((note) => {
@@ -76,7 +73,6 @@ export function countPendingMasterNotesForSession(
 
     return (
       Boolean(activatedAt) &&
-      Boolean(fallbackPeriodEnd) &&
       referenceAt.getTime() >= activatedAt.getTime() &&
       referenceAt.getTime() < fallbackPeriodEnd.getTime()
     )

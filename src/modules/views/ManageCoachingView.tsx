@@ -456,19 +456,18 @@ export function ManageCoachingView() {
   }, [users])
 
   const closePreviewWeek = useMemo(() => {
-    if (!userToClose?.activatedAt) return null
-    const activated = new Date(userToClose.activatedAt)
-    if (Number.isNaN(activated.getTime())) return null
-    return Math.min(
-      12,
-      Math.max(
-        1,
-        Math.floor(
-          (Date.now() - activated.getTime()) / (7 * 24 * 60 * 60 * 1000),
-        ) + 1,
-      ),
-    )
-  }, [userToClose?.activatedAt])
+    if (userToClose?.weekActivation?.currentActiveWeek) {
+      return userToClose.weekActivation.currentActiveWeek
+    }
+    if (userToClose?.weekActivation?.lastActivatedWeek) {
+      return userToClose.weekActivation.lastActivatedWeek
+    }
+    return userToClose?.activatedAt ? 1 : null
+  }, [
+    userToClose?.activatedAt,
+    userToClose?.weekActivation?.currentActiveWeek,
+    userToClose?.weekActivation?.lastActivatedWeek,
+  ])
 
   const isDirtySelectCoacher = useMemo(() => {
     if (!userToChangeCoacher || !nextCoacherUserId) return false

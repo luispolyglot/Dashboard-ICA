@@ -173,11 +173,16 @@ function getWeekFromActivations(
   const closedDate = toDate(closedAt)
   if (!closedDate) return null
 
-  for (const row of activations) {
+  const sorted = [...activations].sort((a, b) => a.week_number - b.week_number)
+
+  for (let index = 0; index < sorted.length; index += 1) {
+    const row = sorted[index]
+    const nextRow = sorted[index + 1] || null
     const start = toDate(row.activated_at)
     if (!start) continue
     const explicitEnd = row.ended_at ? toDate(row.ended_at) : null
-    const end = explicitEnd || new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
+    const nextStart = nextRow ? toDate(nextRow.activated_at) : null
+    const end = explicitEnd || nextStart || new Date('9999-12-31T23:59:59.999Z')
     if (closedDate.getTime() >= start.getTime() && closedDate.getTime() < end.getTime()) {
       return Math.min(12, Math.max(1, row.week_number))
     }

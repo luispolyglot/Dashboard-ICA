@@ -4,6 +4,14 @@ import { CopyIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -20,7 +28,11 @@ import { RomanizationHint } from '../components/RomanizationHint'
 import { SpeakButton } from '../components/SpeakButton'
 import { getImportance } from '../constants'
 import { DASHBOARD_ROUTES } from '../routes/paths'
-import { fetchActivationPhrase } from '../services/anthropic'
+import {
+  fetchActivationPhrase,
+  type ManualPhraseReviewResult,
+  fetchManualPhraseSuggestion,
+} from '../services/anthropic'
 import { recordPhraseGeneratedEvent } from '../services/gamification'
 import { fetchWordActivationCounts } from '../services/metaTracker'
 import type {
@@ -74,6 +86,11 @@ export function PhraseView({
   const [manualPhraseTarget, setManualPhraseTarget] = useState('')
   const [manualPhraseNative, setManualPhraseNative] = useState('')
   const [manualPhraseApproved, setManualPhraseApproved] = useState(false)
+  const [manualSuggestionLoading, setManualSuggestionLoading] = useState(false)
+  const [manualSuggestionModalOpen, setManualSuggestionModalOpen] =
+    useState(false)
+  const [manualSuggestionReview, setManualSuggestionReview] =
+    useState<ManualPhraseReviewResult | null>(null)
   const [result, setResult] = useState<ActivationPhraseResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [wordUsageCounts, setWordUsageCounts] = useState<
@@ -433,6 +450,51 @@ export function PhraseView({
     setExploreModalOpen(true)
   }
 
+  const handleManualPhraseSuggestion = async (): Promise<void> => {
+    if (manualSuggestionLoading) return
+
+    const targetPhrase = manualPhraseTarget.trim()
+    const nativePhrase = manualPhraseNative.trim()
+    const requiredWords = manualDetectedWords.map((word) => word.target)
+
+    if (!targetPhrase || !nativePhrase || requiredWords.length === 0) return
+
+    setManualSuggestionLoading(true)
+
+    try {
+      const suggestion = await fetchManualPhraseSuggestion(
+        targetPhrase,
+        nativePhrase,
+        requiredWords,
+        config.targetLang,
+        config.nativeLang,
+      )
+
+      if (!suggestion) {
+        toast.error('No pudimos revisar la frase por ahora. Intenta de nuevo.')
+        return
+      }
+
+      setManualSuggestionReview(suggestion)
+      setManualSuggestionModalOpen(true)
+    } catch (error) {
+      console.error(error)
+      toast.error('No pudimos generar sugerencia por ahora. Intenta de nuevo.')
+    } finally {
+      setManualSuggestionLoading(false)
+    }
+  }
+
+  const handleUseManualSuggestion = (): void => {
+    if (!manualSuggestionReview?.suggestion) return
+    setManualPhraseApproved(false)
+    setManualPhraseTarget(manualSuggestionReview.suggestion)
+    if (manualSuggestionReview.nativeSuggestion) {
+      setManualPhraseNative(manualSuggestionReview.nativeSuggestion)
+    }
+    setManualSuggestionModalOpen(false)
+  }
+
   return (
     <section className='mx-auto w-full max-w-2xl flex-1 flex flex-col justify-center items-center p-4 pb-24'>
       <div className='mb-4 w-full flex items-start justify-between gap-3'>
@@ -577,6 +639,7 @@ export function PhraseView({
                 value={manualPhraseTarget}
                 onChange={(event) => {
                   setManualPhraseApproved(false)
+                  setManualSuggestionReview(null)
                   setManualPhraseTarget(event.target.value)
                 }}
                 placeholder={`Escribe la frase en ${config.targetLang}...`}
@@ -592,6 +655,7 @@ export function PhraseView({
                 value={manualPhraseNative}
                 onChange={(event) => {
                   setManualPhraseApproved(false)
+                  setManualSuggestionReview(null)
                   setManualPhraseNative(event.target.value)
                 }}
                 placeholder={`Escribe la frase en ${config.nativeLang}...`}
@@ -604,6 +668,23 @@ export function PhraseView({
             Detectadas automáticamente: {manualDetectedWords.length}. Se aprueba
             con mínimo {minWordsRequired} palabras ICA.
           </p>
+
+          <Button
+            type='button'
+            onClick={() => void handleManualPhraseSuggestion()}
+            variant='outline'
+            className='mt-3 w-full'
+            disabled={
+              manualSuggestionLoading ||
+              !manualPhraseTarget.trim() ||
+              !manualPhraseNative.trim() ||
+              manualDetectedWords.length === 0
+            }
+          >
+            {manualSuggestionLoading
+              ? 'Analizando frase...'
+              : '🧠 Revisar gramática con IA'}
+          </Button>
         </div>
       )}
 
@@ -827,6 +908,160 @@ export function PhraseView({
         setCards={setCards}
         onWordAdded={onWordAdded}
       />
+
+      <Dialog
+        open={manualSuggestionModalOpen}
+        onOpenChange={setManualSuggestionModalOpen}
+      >
+        <DialogContent className='sm:max-w-lg'>
+          <DialogHeader>
+            <DialogTitle>Revisión IA de tu frase</DialogTitle>
+            <DialogDescription>
+              Te mostramos feedback en ambos idiomas y una sugerencia opcional.
+              La IA puede flexionar palabras ICA para que la gramática sea natural.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className='space-y-3'>
+            <div className='rounded-md border border-border/70 bg-muted/20 p-3'>
+              <p className='text-[11px] uppercase tracking-wider text-muted-foreground'>
+                Frase actual ({config.targetLang})
+              </p>
+              <p className='mt-1 text-sm'>{manualPhraseTarget.trim()}</p>
+            </div>
+
+            <div className='rounded-md border border-border/70 bg-muted/20 p-3'>
+              <p className='text-[11px] uppercase tracking-wider text-muted-foreground'>
+                Comentario IA
+              </p>
+              <p className='mt-1 text-sm'>{manualSuggestionReview?.comment}</p>
+            </div>
+
+            {manualSuggestionReview?.issues?.length ? (
+              <div className='rounded-md border border-amber-500/30 bg-amber-500/10 p-3'>
+                <p className='text-[11px] uppercase tracking-wider text-amber-700 dark:text-amber-300'>
+                  Posibles errores
+                </p>
+                <ul className='mt-1 list-disc space-y-1 pl-5 text-sm text-amber-800 dark:text-amber-200'>
+                  {manualSuggestionReview.issues.map((issue) => (
+                    <li key={issue}>{issue}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {manualSuggestionReview?.diagnostics?.suggestionRejectedReason ? (
+              <div className='rounded-md border border-amber-500/30 bg-amber-500/10 p-3'>
+                <p className='text-[11px] uppercase tracking-wider text-amber-700 dark:text-amber-300'>
+                  Nota ICA
+                </p>
+                <p className='mt-1 text-sm text-amber-800 dark:text-amber-200'>
+                  {manualSuggestionReview.diagnostics.suggestionRejectedReason}
+                </p>
+                {manualSuggestionReview.diagnostics.missingRequiredWords.length >
+                0 ? (
+                  <p className='mt-1 text-xs text-amber-800 dark:text-amber-200'>
+                    Formas ICA exactas no visibles en sugerencia:{' '}
+                    {manualSuggestionReview.diagnostics.missingRequiredWords.join(
+                      ', ',
+                    )}
+                  </p>
+                ) : null}
+                {manualSuggestionReview.diagnostics.suggestionCandidate ? (
+                  <p className='mt-2 text-xs text-amber-800 dark:text-amber-200'>
+                    Borrador IA descartado: "
+                    {manualSuggestionReview.diagnostics.suggestionCandidate}"
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {manualSuggestionReview?.targetFeedback?.length ? (
+              <div className='rounded-md border border-border/70 bg-muted/20 p-3'>
+                <p className='text-[11px] uppercase tracking-wider text-muted-foreground'>
+                  Feedback ({config.targetLang})
+                </p>
+                <ul className='mt-1 list-disc space-y-1 pl-5 text-sm'>
+                  {manualSuggestionReview.targetFeedback.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {manualSuggestionReview?.nativeFeedback?.length ? (
+              <div className='rounded-md border border-border/70 bg-muted/20 p-3'>
+                <p className='text-[11px] uppercase tracking-wider text-muted-foreground'>
+                  Feedback ({config.nativeLang})
+                </p>
+                <ul className='mt-1 list-disc space-y-1 pl-5 text-sm'>
+                  {manualSuggestionReview.nativeFeedback.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {manualSuggestionReview?.suggestion ? (
+              <div className='rounded-md border border-primary/30 bg-primary/5 p-3'>
+                <p className='text-[11px] uppercase tracking-wider text-primary'>
+                  Sugerencia ({config.targetLang})
+                </p>
+                <p className='mt-1 text-sm font-semibold'>
+                  {manualSuggestionReview.suggestion}
+                </p>
+                <p className='mt-1 text-xs text-primary/80'>
+                  Si te convence, puedes aplicarla con "Usar sugerencia".
+                </p>
+              </div>
+            ) : manualSuggestionReview?.status === 'perfect' ? (
+              <div className='rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3'>
+                <p className='text-sm font-semibold text-emerald-700 dark:text-emerald-300'>
+                  Tu frase ya esta muy bien. No necesitas cambiarla.
+                </p>
+              </div>
+            ) : (
+              <div className='rounded-md border border-amber-500/30 bg-amber-500/10 p-3'>
+                <p className='text-sm font-semibold text-amber-800 dark:text-amber-200'>
+                  No pudimos darte una sugerencia de {config.targetLang} que
+                  respete exactamente todas tus palabras ICA. Puedes reintentar.
+                </p>
+              </div>
+            )}
+
+            {manualSuggestionReview?.nativeSuggestion ? (
+              <div className='rounded-md border border-primary/30 bg-primary/5 p-3'>
+                <p className='text-[11px] uppercase tracking-wider text-primary'>
+                  Sugerencia ({config.nativeLang})
+                </p>
+                <p className='mt-1 text-sm'>
+                  {manualSuggestionReview.nativeSuggestion}
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => {
+                setManualSuggestionModalOpen(false)
+                setManualSuggestionReview(null)
+              }}
+            >
+              Descartar
+            </Button>
+            <Button
+              type='button'
+              onClick={handleUseManualSuggestion}
+              disabled={!manualSuggestionReview?.suggestion}
+            >
+              Usar sugerencia
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

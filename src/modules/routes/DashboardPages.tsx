@@ -174,7 +174,6 @@ export function GamesIcaPage() {
   )
   const [pregunticaProgress, setPregunticaProgress] = useState('0/20')
   const [pregunticaUnlocked, setPregunticaUnlocked] = useState(false)
-  const [showPregunticaPulse, setShowPregunticaPulse] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -191,7 +190,6 @@ export function GamesIcaPage() {
         if (!active || !status) return
 
         setPregunticaUnlocked(status.isUnlocked)
-        setShowPregunticaPulse(status.isUnlocked && !status.completedAt)
         setPregunticaProgress(
           `${status.activationWordsCount}/${status.requiredActivationWords}`,
         )
@@ -208,7 +206,6 @@ export function GamesIcaPage() {
       } catch {
         if (!active) return
         setPregunticaLabel('No se pudo cargar el estado')
-        setShowPregunticaPulse(false)
       }
     }
 
@@ -227,7 +224,6 @@ export function GamesIcaPage() {
         pregunticaUnlocked={pregunticaUnlocked}
         pregunticaLabel={pregunticaLabel}
         pregunticaProgress={pregunticaProgress}
-        showPregunticaPulse={showPregunticaPulse}
       />
     </PageLayout>
   )
