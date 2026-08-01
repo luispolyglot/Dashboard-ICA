@@ -277,8 +277,8 @@ function getInstagramPoints(row: LeaderboardEntry): number {
 
 function getPregunticaMaxPoints(scoringDayCap: number): number {
   const elapsedWeeks = Math.ceil(scoringDayCap / 7)
-  const maxPointsByWeek = elapsedWeeks * 4
-  return Math.min(Math.max(maxPointsByWeek, 4), MAX_PREGUNTICA_POINTS)
+  const maxPointsByWeek = elapsedWeeks * 2
+  return Math.min(Math.max(maxPointsByWeek, 2), MAX_PREGUNTICA_POINTS)
 }
 
 function getDisplayedTotalPoints(
@@ -400,6 +400,7 @@ function renderGoldScore(value: number, maxValue: number) {
 export function LeaderboardView() {
   const { user } = useAuth()
   const { isMd } = useBreakpoints()
+  const [nowMs, setNowMs] = useState(() => Date.now())
   const currentMonthStart = useMemo(() => toLocalMonthStart(new Date()), [])
   const monthOptions = useMemo(
     () => buildMonthOptions(currentMonthStart),
@@ -411,7 +412,6 @@ export function LeaderboardView() {
   const [totalIcademers, setTotalIcademers] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [nowMs, setNowMs] = useState(() => Date.now())
   const [isBreakdownInfoOpen, setIsBreakdownInfoOpen] = useState(false)
   const [openedFromMyScore, setOpenedFromMyScore] = useState(false)
   const [selectedScoreBreakdown, setSelectedScoreBreakdown] =
@@ -882,8 +882,44 @@ export function LeaderboardView() {
               </p>
               {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
                 <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
-                  Tope de 0,1 puntos por 10 minutos escuchados por día. (Máximo
-                  2,8 puntos)
+                  Solo suma 0,1 puntos cuando llegas a 10 minutos escuchados en
+                  el día. (Máximo 2,8 puntos)
+                </p>
+              )}
+
+              <p>
+                📸{' '}
+                {renderGoldScore(
+                  selectedScoreBreakdown.instagramPoints,
+                  selectedScoreBreakdown.instagramMaxPoints,
+                )}{' '}
+                / {formatPoints(selectedScoreBreakdown.instagramMaxPoints)}
+                {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
+                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.instagramPoints, selectedScoreBreakdown.instagramMaxPoints)} de acción aplicada`
+                  : ''}
+              </p>
+              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
+                <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
+                  Instagram Track suma 0,5 por cada día cumplido del 1 al 28.
+                  (Máximo 14 puntos)
+                </p>
+              )}
+
+              <p>
+                🗣️{' '}
+                {renderGoldScore(
+                  selectedScoreBreakdown.pregunticaPoints,
+                  selectedScoreBreakdown.pregunticaMaxPoints,
+                )}{' '}
+                / {formatPoints(selectedScoreBreakdown.pregunticaMaxPoints)}
+                {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
+                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.pregunticaPoints, selectedScoreBreakdown.pregunticaMaxPoints)} de acción aplicada`
+                  : ''}
+              </p>
+              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
+                <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
+                  PreguntICA semanal completada suma 2 puntos por semana.
+                  (Máximo 8 puntos)
                 </p>
               )}
 
@@ -914,42 +950,6 @@ export function LeaderboardView() {
                   {selectedScoreBreakdown.includeIcaTest
                     ? `Cada respuesta correcta del ICA Test suma 0,1 puntos. Del día ${icaTestWindowStartDay} al 28 del mes. (Máximo 1,2 puntos)`
                     : `ICA Test disponible del día ${icaTestWindowStartDay} al 28 del mes. (Máximo 1,2 puntos)`}
-                </p>
-              )}
-
-              <p>
-                🗣️{' '}
-                {renderGoldScore(
-                  selectedScoreBreakdown.pregunticaPoints,
-                  selectedScoreBreakdown.pregunticaMaxPoints,
-                )}{' '}
-                / {formatPoints(selectedScoreBreakdown.pregunticaMaxPoints)}
-                {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
-                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.pregunticaPoints, selectedScoreBreakdown.pregunticaMaxPoints)} de acción aplicada`
-                  : ''}
-              </p>
-              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
-                <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
-                  PreguntICA semanal completada suma 2 puntos por semana.
-                  (Máximo 8 puntos)
-                </p>
-              )}
-
-              <p>
-                📸{' '}
-                {renderGoldScore(
-                  selectedScoreBreakdown.instagramPoints,
-                  selectedScoreBreakdown.instagramMaxPoints,
-                )}{' '}
-                / {formatPoints(selectedScoreBreakdown.instagramMaxPoints)}
-                {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
-                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.instagramPoints, selectedScoreBreakdown.instagramMaxPoints)} de acción aplicada`
-                  : ''}
-              </p>
-              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
-                <p className='text-xs text-yellow-700 dark:text-yellow-300 -mt-2'>
-                  Instagram Track suma 0,5 por cada día cumplido del 1 al 28.
-                  (Máximo 14 puntos)
                 </p>
               )}
 
