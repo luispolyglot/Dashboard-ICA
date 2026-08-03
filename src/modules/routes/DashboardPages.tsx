@@ -19,6 +19,7 @@ import { LeaderboardView } from '../views/LeaderboardView'
 import { HomeView } from '../views/HomeView'
 import { GamesIcaView } from '../views/GamesIcaView'
 import { ManageCoachingView } from '../views/ManageCoachingView'
+import { ManageCoachingCalendarView } from '../views/ManageCoachingCalendarView'
 import { ManageCoachingUserView } from '../views/ManageCoachingUserView'
 import { ManageCoacherSessionsView } from '../views/ManageCoacherSessionsView'
 import { ManageCalendarIcademyView } from '../views/ManageCalendarIcademyView'
@@ -707,6 +708,14 @@ export function ManageCoachingPage() {
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.profile}>
       <ManageCoachingView />
+    </PageLayout>
+  )
+}
+
+export function ManageCoachingCalendarPage() {
+  return (
+    <PageLayout withBackButton={false}>
+      <ManageCoachingCalendarView />
     </PageLayout>
   )
 }

@@ -36,6 +36,7 @@ export const DASHBOARD_ROUTES = {
   historicLeaderboard: '/historic-leaderboard',
   coachingPersonalized: '/coaching-personalized',
   manageCoaching: '/manage-coaching',
+  manageCoachingCalendar: '/manage-coaching/calendar',
   offlineSafe: '/offline-safe',
 } as const
 
@@ -71,6 +72,7 @@ export const DASHBOARD_LABELS: Record<string, string> = {
   '/historic-leaderboard': 'Histórico leaderboard',
   '/coaching-personalized': 'Coaching Personalizado',
   '/manage-coaching': 'Administrar Coaching',
+  '/manage-coaching/calendar': 'Calendario Coaching',
   '/offline-safe': 'Modo sin conexión',
 }
 
