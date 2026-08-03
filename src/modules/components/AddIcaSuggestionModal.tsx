@@ -113,13 +113,16 @@ export function AddIcaSuggestionModal({
 
     try {
       await insertWord(newCard)
-      await onWordAdded()
       setCards((prev) => [...prev, newCard])
-      try {
-        await recordWordAddedEvent()
-      } catch (error) {
+
+      void onWordAdded().catch((error) => {
         console.error(error)
-      }
+      })
+
+      void recordWordAddedEvent().catch((error) => {
+        console.error(error)
+      })
+
       onAdded?.(trimmedTarget)
       toast.success(`"${trimmedTarget}" añadida al Baúl ICA`)
       onOpenChange(false)

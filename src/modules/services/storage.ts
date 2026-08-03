@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase'
 import { getSessionSafe } from '../../lib/supabaseAuthSafe'
 import { notifyCreationMetricsChanged } from './creationMetricsSync'
+import { kickLexicardExampleWorker } from './lexicardExampleJobs'
 import { recordBootstrapDiagnostic } from '../utils/bootstrapDiagnostics'
 import type { AppConfig, DailyProgressMap, Lexicard } from '../types'
 
@@ -652,6 +653,7 @@ export async function insertWord(card: Lexicard): Promise<void> {
   const userId = await getCurrentUserId()
   if (!userId) return
   await insertWordRecord(userId, card)
+  void kickLexicardExampleWorker({ batchSize: 2 })
 }
 
 export async function updateWord(card: Lexicard): Promise<void> {
