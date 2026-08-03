@@ -749,7 +749,7 @@ export function PhraseView({
           </>
         ) : mode === 'manualPhrase' ? (
           manualPhraseApproved ? (
-            '🔄 Generar otra frase manual'
+            '🔄 No me convence, quiero crear otra frase manual'
           ) : (
             `✅ Guardar frase manual · ${selectedWords.length}/${minWordsRequired}`
           )
@@ -861,7 +861,7 @@ export function PhraseView({
             variant='outline'
             className='mt-2 w-full'
           >
-            🔄 Generar otra frase
+            🔄 No me convence, genera otra sin repetir esta
           </Button>
         )}
 
