@@ -1,6 +1,7 @@
 import { CORS_HEADERS, jsonResponse } from '../_shared/http.ts'
 import { ensureSuperAdmin } from '../_shared/super-admin.ts'
 import { getCalendarIcademyCatalogByClassKey } from '../_shared/calendar-icademy-catalog.ts'
+import webpush from 'npm:web-push@3.6.7'
 
 type BulkClassEntry = {
   time?: string
@@ -23,6 +24,24 @@ type CalendarInsertRow = {
   teacher_id: string
   group_name: string | null
   note: string | null
+}
+
+type PushSubscriptionRow = {
+  id: string
+  user_id: string
+  endpoint: string
+  p256dh: string
+  auth: string
+  is_active: boolean
+}
+
+type CalendarReleaseNotificationResult = {
+  monthLabel: string
+  targetedUsers: number
+  targetedSubscriptions: number
+  sent: number
+  failed: number
+  skippedReason: string | null
 }
 
 const UUID_REGEX =
@@ -179,6 +198,155 @@ function parseBulkSchedule(input: unknown): {
   }
 }
 
+function getMonthLabelFromDates(dates: string[]): string {
+  const firstDate = dates.slice().sort((a, b) => a.localeCompare(b))[0]
+  if (!firstDate) return 'este mes'
+
+  const [yearRaw, monthRaw] = firstDate.split('-')
+  const year = Number(yearRaw)
+  const month = Number(monthRaw)
+
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    month < 1 ||
+    month > 12
+  ) {
+    return 'este mes'
+  }
+
+  const firstDay = new Date(Date.UTC(year, month - 1, 1))
+  if (Number.isNaN(firstDay.getTime())) return 'este mes'
+
+  return new Intl.DateTimeFormat('es-ES', { month: 'long' }).format(firstDay)
+}
+
+async function sendCalendarReleaseNotification(input: {
+  adminClient: any
+  sessionDates: string[]
+}): Promise<CalendarReleaseNotificationResult> {
+  const monthLabel = getMonthLabelFromDates(input.sessionDates)
+
+  const { data: activePreferenceRows, error: activePreferenceError } =
+    await input.adminClient
+      .from('users_calendar_icademy')
+      .select('user_id')
+      .eq('notifications_enabled', true)
+
+  if (activePreferenceError) {
+    throw new Error(
+      `No se pudieron leer usuarios con calendario activo: ${activePreferenceError.message}`,
+    )
+  }
+
+  const targetedUserIds = Array.from(
+    new Set(
+      (activePreferenceRows || []).map((row: { user_id: string }) =>
+        String(row.user_id),
+      ),
+    ),
+  )
+
+  if (targetedUserIds.length === 0) {
+    return {
+      monthLabel,
+      targetedUsers: 0,
+      targetedSubscriptions: 0,
+      sent: 0,
+      failed: 0,
+      skippedReason: 'no_active_calendar_users',
+    }
+  }
+
+  const { data: subscriptions, error: subscriptionsError } =
+    await input.adminClient
+      .from('user_push_subscriptions')
+      .select('id, user_id, endpoint, p256dh, auth, is_active')
+      .in('user_id', targetedUserIds)
+      .eq('is_active', true)
+
+  if (subscriptionsError) {
+    throw new Error(
+      `No se pudieron cargar suscripciones push activas: ${subscriptionsError.message}`,
+    )
+  }
+
+  const activeSubscriptions = (subscriptions || []) as PushSubscriptionRow[]
+
+  if (activeSubscriptions.length === 0) {
+    return {
+      monthLabel,
+      targetedUsers: targetedUserIds.length,
+      targetedSubscriptions: 0,
+      sent: 0,
+      failed: 0,
+      skippedReason: 'no_active_subscriptions',
+    }
+  }
+
+  const vapidPublicKey = Deno.env.get('VAPID_PUBLIC_KEY')
+  const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY')
+  const vapidSubject = Deno.env.get('VAPID_SUBJECT')
+
+  if (!vapidPublicKey || !vapidPrivateKey || !vapidSubject) {
+    return {
+      monthLabel,
+      targetedUsers: targetedUserIds.length,
+      targetedSubscriptions: activeSubscriptions.length,
+      sent: 0,
+      failed: 0,
+      skippedReason: 'vapid_not_configured',
+    }
+  }
+
+  webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
+
+  const payload = JSON.stringify({
+    title: 'Nuevo calendario ICADEMY',
+    body: `📅 El nuevo calendario para "${monthLabel}" ya está disponible. Clica aquí para verlo.`,
+    url: '/calendar-icademy',
+    tag: `calendar-release-${monthLabel}`,
+  })
+
+  let sent = 0
+  let failed = 0
+
+  for (const subscription of activeSubscriptions) {
+    try {
+      await webpush.sendNotification(
+        {
+          endpoint: subscription.endpoint,
+          keys: {
+            p256dh: subscription.p256dh,
+            auth: subscription.auth,
+          },
+        },
+        payload,
+      )
+      sent += 1
+    } catch (error) {
+      failed += 1
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 0)
+
+      if (statusCode === 404 || statusCode === 410) {
+        await input.adminClient
+          .from('user_push_subscriptions')
+          .update({ is_active: false, last_seen_at: new Date().toISOString() })
+          .eq('id', subscription.id)
+      }
+    }
+  }
+
+  return {
+    monthLabel,
+    targetedUsers: targetedUserIds.length,
+    targetedSubscriptions: activeSubscriptions.length,
+    sent,
+    failed,
+    skippedReason: null,
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
@@ -269,10 +437,25 @@ Deno.serve(async (req) => {
     }
   }
 
+  let calendarReleaseNotification: CalendarReleaseNotificationResult | null = null
+  let calendarReleaseNotificationError: string | null = null
+
+  try {
+    calendarReleaseNotification = await sendCalendarReleaseNotification({
+      adminClient: auth.adminClient,
+      sessionDates: uniqueDates,
+    })
+  } catch (error) {
+    calendarReleaseNotificationError =
+      error instanceof Error ? error.message : 'No se pudo enviar la notificacion de calendario.'
+  }
+
   return jsonResponse(200, {
     ok: true,
     replacedDates: uniqueDates.length,
     insertedRows: parsed.rows.length,
     totalInputEntries: parsed.totalInputEntries,
+    calendarReleaseNotification,
+    calendarReleaseNotificationError,
   })
 })
