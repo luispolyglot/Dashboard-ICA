@@ -1,3 +1,4 @@
+import { useEffect, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -29,6 +30,18 @@ export function LangEditModal({
   setConfig,
   onClose,
 }: LangEditModalProps) {
+  const availableTargetLanguages = useMemo(
+    () => LANGUAGES.filter((language) => language !== config.nativeLang),
+    [config.nativeLang],
+  )
+
+  useEffect(() => {
+    if (availableTargetLanguages.includes(config.targetLang)) return
+    const nextTargetLang = availableTargetLanguages[0] ?? ''
+    if (nextTargetLang === config.targetLang) return
+    setConfig({ ...config, targetLang: nextTargetLang })
+  }, [availableTargetLanguages, config, setConfig])
+
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
@@ -74,9 +87,7 @@ export function LangEditModal({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {LANGUAGES.filter(
-                    (language) => language !== config.nativeLang,
-                  ).map((language) => (
+                  {availableTargetLanguages.map((language) => (
                     <SelectItem key={language} value={language}>
                       {language}
                     </SelectItem>
