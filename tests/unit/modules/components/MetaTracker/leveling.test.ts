@@ -22,11 +22,11 @@ describe('meta tracker leveling', () => {
   it('keeps C1 and native path when total words exceed C1 threshold', () => {
     const thresholds = getLevelThresholds('Polaco')
 
-    const afterC1 = computeLevelPosition(3000, thresholds)
+    const afterC1 = computeLevelPosition(thresholds.C1 + 10, thresholds)
 
     expect(afterC1.currentLevelKey).toBe('C1')
     expect(afterC1.nextLevelKey).toBe(NATIVE_PATH_LABEL)
-    expect(afterC1.total).toBe(3000)
+    expect(afterC1.total).toBe(thresholds.C1 + 10)
     expect(afterC1.wordsToNext).toBeNull()
     expect(afterC1.isNativePath).toBe(true)
   })
@@ -43,11 +43,13 @@ describe('meta tracker leveling', () => {
   })
 
   it('builds snapshot with native-path literals for confirmed C1 users', () => {
+    const thresholds = getLevelThresholds('Polaco')
+
     const snapshot = getMetaTrackerSnapshot(
       {
         startLevel: '0',
         priorIcaWords: 0,
-        activationWordsTotal: 3000,
+        activationWordsTotal: thresholds.C1 + 10,
         confirmedAt: Date.now(),
       },
       'Polaco',
