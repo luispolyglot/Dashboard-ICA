@@ -1,5 +1,6 @@
 import type { ReviewMode } from '../types'
 import {
+  REVIEW_CONFIRM_ANSWER_QUERY_PARAM,
   REVIEW_PENDING_ONLY_QUERY_PARAM,
   REVIEW_PLAY_STYLE_QUERY_PARAM,
   type ReviewPlayStyle,
@@ -77,6 +78,7 @@ export function getFlashcardsPlayRoute(
   mode: ReviewMode,
   playStyle?: ReviewPlayStyle,
   pendingOnly?: boolean,
+  confirmAnswer?: boolean,
 ): string {
   const baseRoute = `${DASHBOARD_ROUTES.flashcardsPlay}/${mode}`
   const params = new URLSearchParams()
@@ -87,6 +89,10 @@ export function getFlashcardsPlayRoute(
 
   if (pendingOnly) {
     params.set(REVIEW_PENDING_ONLY_QUERY_PARAM, '1')
+  }
+
+  if (confirmAnswer) {
+    params.set(REVIEW_CONFIRM_ANSWER_QUERY_PARAM, '1')
   }
 
   const query = params.toString()
