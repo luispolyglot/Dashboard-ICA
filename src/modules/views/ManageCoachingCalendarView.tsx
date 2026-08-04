@@ -57,6 +57,7 @@ type AssignClassDraft = {
   weekKey: string
   scheduledDate: string
   scheduledTime: string
+  classJoinUrl: string
 }
 
 const WEEKDAY_LABELS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
@@ -124,6 +125,11 @@ function getClassSessionByWeek(
       return key === weekKey
     }) as Record<string, unknown> | undefined
   ) || null
+}
+
+function getClassJoinUrlByWeek(classSessions: unknown, weekKey: string): string {
+  const row = getClassSessionByWeek(classSessions, weekKey)
+  return toString(row?.classJoinUrl ?? row?.class_join_url)
 }
 
 function buildCalendarCells(monthKey: string): CalendarCell[] {
@@ -341,6 +347,7 @@ export function ManageCoachingCalendarView() {
       weekKey: initialWeek,
       scheduledDate: dateKey,
       scheduledTime: '',
+      classJoinUrl: getClassJoinUrlByWeek(initialSession?.classSessions, initialWeek),
     })
     setAssignModalOpen(true)
   }
@@ -407,10 +414,7 @@ export function ManageCoachingCalendarView() {
               existingWeekClass?.report_image_url,
           ) || null,
         classJoinUrl:
-          toString(
-            existingWeekClass?.classJoinUrl ??
-              existingWeekClass?.class_join_url,
-          ) || null,
+          assignDraft.classJoinUrl.trim() || null,
         scheduledAt: nextScheduledAt,
         createdAt:
           toString(existingWeekClass?.createdAt ?? existingWeekClass?.created_at) ||
@@ -704,6 +708,16 @@ export function ManageCoachingCalendarView() {
                                   getSessionMinAssignableWeek(firstSession),
                                 )
                               : 'W01',
+                            classJoinUrl: firstSession
+                              ? getClassJoinUrlByWeek(
+                                  firstSession.classSessions,
+                                  firstSession
+                                    ? weekKeyFromNumber(
+                                        getSessionMinAssignableWeek(firstSession),
+                                      )
+                                    : 'W01',
+                                )
+                              : '',
                           }
                         : prev,
                     )
@@ -738,6 +752,14 @@ export function ManageCoachingCalendarView() {
                                 getSessionMinAssignableWeek(selected),
                               )
                             : prev.weekKey,
+                          classJoinUrl: selected
+                            ? getClassJoinUrlByWeek(
+                                selected.classSessions,
+                                weekKeyFromNumber(
+                                  getSessionMinAssignableWeek(selected),
+                                ),
+                              )
+                            : prev.classJoinUrl,
                         }
                       : prev,
                   )
@@ -773,6 +795,12 @@ export function ManageCoachingCalendarView() {
                       ? {
                           ...prev,
                           weekKey: nextWeek,
+                          classJoinUrl: selectedManagedSession
+                            ? getClassJoinUrlByWeek(
+                                selectedManagedSession.classSessions,
+                                nextWeek,
+                              )
+                            : prev.classJoinUrl,
                         }
                       : prev,
                   )
@@ -827,6 +855,26 @@ export function ManageCoachingCalendarView() {
                       : prev,
                   )
                 }}
+              />
+            </div>
+
+            <div className='space-y-1.5'>
+              <Label htmlFor='assign-class-join-url'>Link clase en vivo (opcional)</Label>
+              <Input
+                id='assign-class-join-url'
+                value={assignDraft?.classJoinUrl || ''}
+                onChange={(event) => {
+                  const value = event.target.value
+                  setAssignDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          classJoinUrl: value,
+                        }
+                      : prev,
+                  )
+                }}
+                placeholder='Ej: https://meet.google.com/...'
               />
             </div>
           </div>
