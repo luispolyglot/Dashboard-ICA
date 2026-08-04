@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { es } from 'date-fns/locale'
 import {
   ArchiveIcon,
   ArrowRightIcon,
@@ -431,6 +432,14 @@ function SeekForward10Icon() {
       </span>
     </div>
   )
+}
+
+const CALENDAR_LOCALE_ES_MONDAY = {
+  ...es,
+  options: {
+    ...es.options,
+    weekStartsOn: 1 as const,
+  },
 }
 
 function MasterNoteCoachAudioPlayer({
@@ -1964,6 +1973,7 @@ export function ManageCoachingUserView({
                                     </DialogHeader>
                                     <Calendar
                                       mode='single'
+                                      locale={CALENDAR_LOCALE_ES_MONDAY}
                                       selected={
                                         schedulePickerDraft?.weekKey === weekKey
                                           ? schedulePickerDraft.scheduledDate

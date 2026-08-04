@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeftIcon, CalendarIcon, RefreshCwIcon } from 'lucide-react'
+import {
+  ArrowLeftIcon,
+  CalendarIcon,
+  PlusIcon,
+  RefreshCwIcon,
+} from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -13,11 +18,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   fetchCoachingAccess,
   fetchCoachingManagedUsers,
   type CoachingManagedUser,
+  upsertCoachingUser,
 } from '../services/coaching'
+import { toIsoFromDateAndTime } from './coachingClassResources'
 
 type CoachingCalendarEntry = {
   id: string
@@ -42,6 +51,14 @@ type CalendarCell = {
   inCurrentMonth: boolean
 }
 
+type AssignClassDraft = {
+  sessionId: string
+  coachUserId: string
+  weekKey: string
+  scheduledDate: string
+  scheduledTime: string
+}
+
 const WEEKDAY_LABELS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
 
 function toString(value: unknown): string {
@@ -61,6 +78,52 @@ function normalizeProgramWeekKey(value: string): string {
   }
 
   return 'W01'
+}
+
+function weekKeyFromNumber(week: number): string {
+  return `W${String(Math.min(12, Math.max(1, week))).padStart(2, '0')}`
+}
+
+function weekNumberFromKey(value: string): number {
+  const normalized = normalizeProgramWeekKey(value)
+  const parsed = Number(normalized.slice(1))
+  if (!Number.isFinite(parsed)) return 1
+  return Math.min(12, Math.max(1, parsed))
+}
+
+function getLocalDateKey(value: Date): string {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function getSessionMinAssignableWeek(row: CoachingManagedUser): number {
+  const activeWeek = row.weekActivation?.currentActiveWeek
+  if (activeWeek && activeWeek >= 1 && activeWeek <= 12) return activeWeek
+
+  const lastWeek = row.weekActivation?.lastActivatedWeek
+  if (lastWeek && lastWeek >= 1 && lastWeek <= 12) return lastWeek
+
+  if (row.activatedAt) return 1
+  return 1
+}
+
+function getClassSessionByWeek(
+  classSessions: unknown,
+  weekKey: string,
+): Record<string, unknown> | null {
+  if (!Array.isArray(classSessions)) return null
+  return (
+    classSessions.find((item) => {
+      if (!item || typeof item !== 'object') return false
+      const row = item as Record<string, unknown>
+      const key = normalizeProgramWeekKey(
+        toString(row.key ?? row.weekKey ?? row.week_key ?? row.week),
+      )
+      return key === weekKey
+    }) as Record<string, unknown> | undefined
+  ) || null
 }
 
 function buildCalendarCells(monthKey: string): CalendarCell[] {
@@ -170,15 +233,21 @@ export function ManageCoachingCalendarView() {
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<string | null>(null)
+  const [managedRows, setManagedRows] = useState<CoachingManagedUser[]>([])
   const [entries, setEntries] = useState<CoachingCalendarEntry[]>([])
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState('')
   const [selectedEntry, setSelectedEntry] =
     useState<CoachingCalendarEntry | null>(null)
+  const [assignModalOpen, setAssignModalOpen] = useState(false)
+  const [assignDraft, setAssignDraft] = useState<AssignClassDraft | null>(null)
+  const [savingClass, setSavingClass] = useState(false)
 
   const loadData = async () => {
     setLoading(true)
     setError(null)
+    setFeedback(null)
 
     try {
       const [access, rows] = await Promise.all([
@@ -192,6 +261,7 @@ export function ManageCoachingCalendarView() {
         ? rows
         : rows.filter((row) => row.coachUserId === user?.id)
 
+      setManagedRows(scopedRows)
       setEntries(mapClassSessions(scopedRows))
     } catch (err) {
       setError(
@@ -207,6 +277,174 @@ export function ManageCoachingCalendarView() {
   useEffect(() => {
     void loadData()
   }, [user?.id])
+
+  const todayDateKey = useMemo(() => getLocalDateKey(new Date()), [])
+  const coaches = useMemo(() => {
+    const byId = new Map<string, string>()
+    for (const row of managedRows) {
+      if (!row.coachUserId) continue
+      byId.set(row.coachUserId, row.coachDisplayName || row.coachUserId)
+    }
+    return Array.from(byId.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
+  }, [managedRows])
+
+  const studentsByCoach = useMemo(() => {
+    if (!isSuperAdmin) return managedRows
+    if (!assignDraft?.coachUserId) return []
+    return managedRows.filter((row) => row.coachUserId === assignDraft.coachUserId)
+  }, [assignDraft?.coachUserId, isSuperAdmin, managedRows])
+
+  const selectedManagedSession = useMemo(() => {
+    if (!assignDraft?.sessionId) return null
+    return managedRows.find((row) => row.id === assignDraft.sessionId) || null
+  }, [assignDraft?.sessionId, managedRows])
+
+  const minAssignableWeek = useMemo(() => {
+    if (!selectedManagedSession) return 1
+    return getSessionMinAssignableWeek(selectedManagedSession)
+  }, [selectedManagedSession])
+
+  const assignableWeeks = useMemo(() => {
+    const weeks: string[] = []
+    for (let week = minAssignableWeek; week <= 12; week += 1) {
+      weeks.push(weekKeyFromNumber(week))
+    }
+    return weeks
+  }, [minAssignableWeek])
+
+  useEffect(() => {
+    if (!assignDraft || !selectedManagedSession) return
+    if (weekNumberFromKey(assignDraft.weekKey) >= minAssignableWeek) return
+    setAssignDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            weekKey: weekKeyFromNumber(minAssignableWeek),
+          }
+        : prev,
+    )
+  }, [assignDraft, minAssignableWeek, selectedManagedSession])
+
+  const handleOpenAssignModal = (dateKey: string) => {
+    const initialSession = isSuperAdmin
+      ? null
+      : managedRows.find((row) => row.coachUserId === user?.id) || null
+    const initialWeek = initialSession
+      ? weekKeyFromNumber(getSessionMinAssignableWeek(initialSession))
+      : 'W01'
+
+    setAssignDraft({
+      sessionId: initialSession?.id || '',
+      coachUserId: isSuperAdmin ? '' : user?.id || '',
+      weekKey: initialWeek,
+      scheduledDate: dateKey,
+      scheduledTime: '',
+    })
+    setAssignModalOpen(true)
+  }
+
+  const handleConfirmAssignClass = async () => {
+    if (!assignDraft || !selectedManagedSession) {
+      setFeedback('Debes seleccionar alumno para asignar la clase.')
+      return
+    }
+
+    if (!assignDraft.scheduledDate || !assignDraft.scheduledTime) {
+      setFeedback('Completa fecha y horario de clase.')
+      return
+    }
+
+    if (weekNumberFromKey(assignDraft.weekKey) < minAssignableWeek) {
+      setFeedback(`Solo puedes asignar desde la semana W${String(minAssignableWeek).padStart(2, '0')} en adelante.`)
+      return
+    }
+
+    const nextScheduledAt = toIsoFromDateAndTime(
+      assignDraft.scheduledDate,
+      assignDraft.scheduledTime,
+    )
+    if (!nextScheduledAt) {
+      setFeedback('La fecha u hora no es valida.')
+      return
+    }
+
+    setSavingClass(true)
+    setFeedback(null)
+    try {
+      const existingWeekClass = getClassSessionByWeek(
+        selectedManagedSession.classSessions,
+        assignDraft.weekKey,
+      )
+
+      const baseSessions = Array.isArray(selectedManagedSession.classSessions)
+        ? selectedManagedSession.classSessions.filter((item) => {
+            if (!item || typeof item !== 'object') return false
+            const row = item as Record<string, unknown>
+            const key = normalizeProgramWeekKey(
+              toString(row.key ?? row.weekKey ?? row.week_key ?? row.week),
+            )
+            return key !== assignDraft.weekKey
+          })
+        : []
+
+      const nextWeekClass = {
+        id: toString(existingWeekClass?.id) || crypto.randomUUID(),
+        key: assignDraft.weekKey,
+        weekKey: assignDraft.weekKey,
+        title: 'Clase semanal',
+        loomUrl: toString(existingWeekClass?.loomUrl ?? existingWeekClass?.loom_url) || null,
+        report: toString(existingWeekClass?.report) || null,
+        reportImagePath:
+          toString(
+            existingWeekClass?.reportImagePath ??
+              existingWeekClass?.report_image_path,
+          ) || null,
+        reportImageUrl:
+          toString(
+            existingWeekClass?.reportImageUrl ??
+              existingWeekClass?.report_image_url,
+          ) || null,
+        classJoinUrl:
+          toString(
+            existingWeekClass?.classJoinUrl ??
+              existingWeekClass?.class_join_url,
+          ) || null,
+        scheduledAt: nextScheduledAt,
+        createdAt:
+          toString(existingWeekClass?.createdAt ?? existingWeekClass?.created_at) ||
+          new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+
+      const nextSessions = [nextWeekClass, ...baseSessions]
+
+      await upsertCoachingUser({
+        sessionId: selectedManagedSession.id,
+        userId: selectedManagedSession.userId,
+        targetLang: selectedManagedSession.targetLang,
+        nativeLang: selectedManagedSession.nativeLang,
+        level: selectedManagedSession.level,
+        coachUserId: selectedManagedSession.coachUserId,
+        feedbackNmUrl: selectedManagedSession.feedbackNmUrl,
+        feedbackNmNotes: selectedManagedSession.feedbackNmNotes,
+        notes: selectedManagedSession.notes,
+        classSessions: nextSessions,
+      })
+
+      setAssignModalOpen(false)
+      setAssignDraft(null)
+      setFeedback('Clase guardada correctamente en el calendario de coaching.')
+      await loadData()
+    } catch (err) {
+      setFeedback(
+        err instanceof Error ? err.message : 'No se pudo guardar la clase.',
+      )
+    } finally {
+      setSavingClass(false)
+    }
+  }
 
   const availableMonths = useMemo(() => {
     const months = new Set(entries.map((entry) => entry.dateKey.slice(0, 7)))
@@ -298,7 +536,13 @@ export function ManageCoachingCalendarView() {
         </div>
       )}
 
-      {error && <p className='mb-4 text-sm text-destructive'>{error}</p>}
+      {(error || feedback) && (
+        <p
+          className={`mb-4 text-sm ${error ? 'text-destructive' : 'text-muted-foreground'}`}
+        >
+          {error || feedback}
+        </p>
+      )}
 
       <Card>
         <CardHeader className='gap-4'>
@@ -345,6 +589,8 @@ export function ManageCoachingCalendarView() {
                     const dayEntries = entriesByDate.get(cell.dateKey) || []
                     const isOutOfMonth = !cell.inCurrentMonth
                     const isWeekend = index % 7 >= 5
+                    const isToday = cell.dateKey === todayDateKey
+                    const canAddClass = cell.inCurrentMonth && cell.dateKey >= todayDateKey
 
                     return (
                       <div
@@ -355,9 +601,30 @@ export function ManageCoachingCalendarView() {
                           isWeekend ? 'bg-muted/20' : '',
                         ].join(' ')}
                       >
-                        <p className='mb-2 text-sm font-semibold'>
-                          {Number(cell.dateKey.slice(-2))}
-                        </p>
+                        <div className='mb-2 flex items-center justify-between gap-1'>
+                          <p className='text-sm font-semibold'>
+                            {Number(cell.dateKey.slice(-2))}
+                          </p>
+                          <div className='flex items-center gap-1'>
+                            {isToday && (
+                              <Badge className='h-auto px-1.5 py-0 text-[10px]'>
+                                Hoy
+                              </Badge>
+                            )}
+                            {canAddClass && (
+                              <Button
+                                type='button'
+                                size='icon'
+                                variant='outline'
+                                className='h-6 w-6'
+                                aria-label='Asignar clase'
+                                onClick={() => handleOpenAssignModal(cell.dateKey)}
+                              >
+                                <PlusIcon className='h-3.5 w-3.5' />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
 
                         <div className='flex flex-col gap-1'>
                           {dayEntries.map((entry) => {
@@ -397,6 +664,200 @@ export function ManageCoachingCalendarView() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={assignModalOpen}
+        onOpenChange={(open) => {
+          setAssignModalOpen(open)
+          if (!open) setAssignDraft(null)
+        }}
+      >
+        <DialogContent className='sm:max-w-lg'>
+          <DialogHeader>
+            <DialogTitle>Asignar clase de coaching</DialogTitle>
+            <DialogDescription>
+              Selecciona alumno, semana y horario para agendar la clase.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className='space-y-3'>
+            {isSuperAdmin && (
+              <div className='space-y-1.5'>
+                <Label htmlFor='assign-coach-select'>Coacher</Label>
+                <select
+                  id='assign-coach-select'
+                  className='h-10 w-full rounded-md border bg-background px-3 text-sm'
+                  value={assignDraft?.coachUserId || ''}
+                  onChange={(event) => {
+                    const coachId = event.target.value
+                    const firstSession = managedRows.find(
+                      (row) => row.coachUserId === coachId,
+                    )
+                    setAssignDraft((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            coachUserId: coachId,
+                            sessionId: firstSession?.id || '',
+                            weekKey: firstSession
+                              ? weekKeyFromNumber(
+                                  getSessionMinAssignableWeek(firstSession),
+                                )
+                              : 'W01',
+                          }
+                        : prev,
+                    )
+                  }}
+                >
+                  <option value=''>Selecciona coacher</option>
+                  {coaches.map((coach) => (
+                    <option key={coach.id} value={coach.id}>
+                      {coach.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className='space-y-1.5'>
+              <Label htmlFor='assign-student-select'>Alumno</Label>
+              <select
+                id='assign-student-select'
+                className='h-10 w-full rounded-md border bg-background px-3 text-sm'
+                value={assignDraft?.sessionId || ''}
+                onChange={(event) => {
+                  const sessionId = event.target.value
+                  const selected = managedRows.find((row) => row.id === sessionId)
+                  setAssignDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          sessionId,
+                          weekKey: selected
+                            ? weekKeyFromNumber(
+                                getSessionMinAssignableWeek(selected),
+                              )
+                            : prev.weekKey,
+                        }
+                      : prev,
+                  )
+                }}
+                disabled={isSuperAdmin && !assignDraft?.coachUserId}
+              >
+                <option value=''>Selecciona alumno</option>
+                {studentsByCoach
+                  .slice()
+                  .sort((a, b) =>
+                    a.userDisplayName.localeCompare(b.userDisplayName, 'es', {
+                      sensitivity: 'base',
+                    }),
+                  )
+                  .map((row) => (
+                    <option key={row.id} value={row.id}>
+                      {row.userDisplayName} - {row.targetLang} ({row.level})
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className='space-y-1.5'>
+              <Label htmlFor='assign-week-select'>Semana (W0x)</Label>
+              <select
+                id='assign-week-select'
+                className='h-10 w-full rounded-md border bg-background px-3 text-sm'
+                value={assignDraft?.weekKey || ''}
+                onChange={(event) => {
+                  const nextWeek = event.target.value
+                  setAssignDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          weekKey: nextWeek,
+                        }
+                      : prev,
+                  )
+                }}
+                disabled={!selectedManagedSession}
+              >
+                {assignableWeeks.map((weekKey) => (
+                  <option key={weekKey} value={weekKey}>
+                    {weekKey}
+                  </option>
+                ))}
+              </select>
+              {selectedManagedSession && (
+                <p className='text-xs text-muted-foreground'>
+                  Puedes asignar desde {weekKeyFromNumber(minAssignableWeek)} en
+                  adelante.
+                </p>
+              )}
+            </div>
+
+            <div className='space-y-1.5'>
+              <Label>Fecha de la clase</Label>
+              <p className='rounded-md border bg-muted/30 px-3 py-2 text-sm'>
+                {assignDraft?.scheduledDate
+                  ? new Date(`${assignDraft.scheduledDate}T00:00:00`).toLocaleDateString(
+                      'es-ES',
+                      {
+                        weekday: 'long',
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                      },
+                    )
+                  : '-'}
+              </p>
+            </div>
+
+            <div className='space-y-1.5'>
+              <Label htmlFor='assign-time'>Horario</Label>
+              <Input
+                id='assign-time'
+                type='time'
+                value={assignDraft?.scheduledTime || ''}
+                onChange={(event) => {
+                  const nextTime = event.target.value
+                  setAssignDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          scheduledTime: nextTime,
+                        }
+                      : prev,
+                  )
+                }}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => {
+                setAssignModalOpen(false)
+                setAssignDraft(null)
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type='button'
+              onClick={() => void handleConfirmAssignClass()}
+              disabled={
+                savingClass ||
+                !assignDraft?.sessionId ||
+                !assignDraft?.weekKey ||
+                !assignDraft?.scheduledDate ||
+                !assignDraft?.scheduledTime
+              }
+            >
+              {savingClass ? 'Guardando...' : 'Guardar clase'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={Boolean(selectedEntry)}
