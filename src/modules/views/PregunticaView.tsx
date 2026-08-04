@@ -37,7 +37,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { CircleHelpIcon, EyeIcon, EyeOffIcon } from 'lucide-react'
+import { CircleHelpIcon, EyeIcon, EyeOffIcon, PlusIcon } from 'lucide-react'
+import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
 
 type PregunticaViewProps = {
   config: AppConfig
@@ -200,6 +201,8 @@ export function PregunticaView({
   const [suggestionModalOpen, setSuggestionModalOpen] = useState(false)
   const [selectedSuggestion, setSelectedSuggestion] = useState<PregunticaWordSuggestion | null>(null)
   const [addedSuggestionWords, setAddedSuggestionWords] = useState<string[]>([])
+  const [extractWordsModalOpen, setExtractWordsModalOpen] = useState(false)
+  const [extractWordsText, setExtractWordsText] = useState('')
   const [infoModalOpen, setInfoModalOpen] = useState(false)
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false)
 
@@ -798,10 +801,20 @@ export function PregunticaView({
     return existingCardWords.has(key) || addedSuggestionSet.has(key)
   }
 
+  function isExtractWordAdded(word: string): boolean {
+    return existingCardWords.has(normalizeComparableText(word))
+  }
+
   function handleOpenSuggestionModal(suggestion: PregunticaWordSuggestion) {
     if (isSuggestionAdded(suggestion.word)) return
     setSelectedSuggestion(suggestion)
     setSuggestionModalOpen(true)
+  }
+
+  function handleOpenExtractWordsModal(text: string) {
+    if (!text.trim() || isExtractWordAdded(text)) return
+    setExtractWordsText(text)
+    setExtractWordsModalOpen(true)
   }
 
   function handleStartMenuSelect(nextMode: string) {
@@ -1234,13 +1247,45 @@ export function PregunticaView({
                   {feedback.corrections.map((item, index) => (
                     <li key={`${item.original}-${index}`} className='rounded-lg border border-border bg-background/70 p-2'>
                       {isSameCorrection(item.original, item.suggestion) ? (
-                        <span className='font-semibold text-emerald-500'>✓ {item.suggestion}</span>
+                        <div className='flex items-start justify-between gap-2'>
+                          <span className='font-semibold text-emerald-500'>✓ {item.suggestion}</span>
+                          <button
+                            type='button'
+                            onClick={() => handleOpenExtractWordsModal(item.suggestion)}
+                            disabled={isExtractWordAdded(item.suggestion)}
+                            aria-label={`Extraer "${item.suggestion}" al baul`}
+                            className='inline-flex size-5 items-center justify-center rounded-full border border-emerald-300/70 bg-emerald-100/70 text-emerald-700 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200'
+                            title={
+                              isExtractWordAdded(item.suggestion)
+                                ? 'Ya existe en tu baul ICA'
+                                : 'Extraer al baul ICA'
+                            }
+                          >
+                            <PlusIcon className='size-3' />
+                          </button>
+                        </div>
                       ) : (
-                        <>
-                          <span className='font-semibold text-red-500 line-through'>{item.original}</span>
-                          {' '}→{' '}
-                          <span className='font-semibold text-emerald-500'>{item.suggestion}</span>
-                        </>
+                        <div className='flex items-start justify-between gap-2'>
+                          <div>
+                            <span className='font-semibold text-red-500 line-through'>{item.original}</span>
+                            {' '}→{' '}
+                            <span className='font-semibold text-emerald-500'>{item.suggestion}</span>
+                          </div>
+                          <button
+                            type='button'
+                            onClick={() => handleOpenExtractWordsModal(item.suggestion)}
+                            disabled={isExtractWordAdded(item.suggestion)}
+                            aria-label={`Extraer "${item.suggestion}" al baul`}
+                            className='inline-flex size-5 items-center justify-center rounded-full border border-emerald-300/70 bg-emerald-100/70 text-emerald-700 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200'
+                            title={
+                              isExtractWordAdded(item.suggestion)
+                                ? 'Ya existe en tu baul ICA'
+                                : 'Extraer al baul ICA'
+                            }
+                          >
+                            <PlusIcon className='size-3' />
+                          </button>
+                        </div>
                       )}
                       <div className='text-xs text-muted-foreground'>{item.reason}</div>
                     </li>
@@ -1429,6 +1474,22 @@ export function PregunticaView({
             return [...current, word]
           })
         }}
+      />
+
+      <ExtractWordsToVaultModal
+        open={extractWordsModalOpen}
+        onOpenChange={(open) => {
+          setExtractWordsModalOpen(open)
+          if (!open) setExtractWordsText('')
+        }}
+        text={extractWordsText}
+        seedWords={extractWordsText ? [extractWordsText] : []}
+        targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+        level={config.level || 'A2'}
+        cards={cards}
+        setCards={setCards}
+        onWordAdded={onWordAdded}
       />
     </section>
   )
