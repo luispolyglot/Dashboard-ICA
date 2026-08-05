@@ -666,7 +666,7 @@ export function PhraseView({
 
             <div>
               <Label className='mb-1 block text-xs text-muted-foreground'>
-                Ultimas 10 palabras ICA (guia)
+                Últimas 10 palabras ICA
               </Label>
               <div className='flex max-h-28 flex-wrap gap-1.5 overflow-y-auto rounded-md border border-border/70 bg-background/70 p-2'>
                 {manualPhraseGuidePool.map((word) => {
