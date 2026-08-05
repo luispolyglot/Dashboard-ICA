@@ -265,9 +265,6 @@ export function ManageView({
   }
 
   const openEditor = (card: Lexicard): void => {
-    const usageCount = wordUsageCounts[card.id] ?? card.activationCount ?? 0
-    if (usageCount > 0) return
-
     setEditingId(card.id)
     setDraftTarget(card.target)
     setDraftNative(card.native)
@@ -298,9 +295,11 @@ export function ManageView({
     let updatedCard: Lexicard | null = null
     const nextCards = cards.map((card) => {
       if (card.id !== id) return card
+      const isTargetProtected =
+        (wordUsageCounts[card.id] ?? card.activationCount ?? 0) > 0
       updatedCard = {
         ...card,
-        target: draftTarget.trim() || card.target,
+        target: isTargetProtected ? card.target : draftTarget.trim() || card.target,
         native: draftNative.trim() || card.native,
         examplePhrase: draftExamplePhrase.trim() || null,
         exampleTranslation: draftExampleTranslation.trim() || null,
@@ -485,7 +484,7 @@ export function ManageView({
           const usageCount =
             wordUsageCounts[card.id] ?? card.activationCount ?? 0
           const isDeletionProtected = usageCount > 0
-          const isEditionProtected = usageCount > 0
+          const isTargetProtected = usageCount > 0
           const usageLevel = usageCount >= 3 ? 2 : usageCount >= 1 ? 1 : 0
           const dateStr = card.createdAt
             ? new Date(card.createdAt).toLocaleDateString('es-ES', {
@@ -581,9 +580,8 @@ export function ManageView({
                         onClick={() => openEditor(card)}
                         variant='outline'
                         size='sm'
-                        disabled={isEditionProtected}
                       >
-                        {isEditionProtected ? 'Editar bloqueado' : 'Editar'}
+                        Editar
                       </Button>
                     </div>
                   )}
@@ -598,12 +596,20 @@ export function ManageView({
                           setDraftTarget(event.target.value)
                           setEditError(null)
                         }}
+                        disabled={isTargetProtected}
                       />
                       <Input
                         value={draftNative}
                         onChange={(event) => setDraftNative(event.target.value)}
                       />
                     </div>
+
+                    {isTargetProtected && (
+                      <p className='text-xs text-amber-600'>
+                        La palabra ICA nativa no se puede editar porque ya tiene
+                        activaciones asociadas.
+                      </p>
+                    )}
 
                     {(hasDuplicateEditTarget || editError) && (
                       <p className='text-xs text-red-600 dark:text-red-300'>

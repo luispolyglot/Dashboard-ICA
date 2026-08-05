@@ -17,8 +17,10 @@ type ReviewPlayStyleControlProps = {
   playStyle: ReviewPlayStyle
   pendingOnly: boolean
   pendingCount: number
+  confirmBeforeAnswer: boolean
   onPlayStyleChange: (style: ReviewPlayStyle) => void
   onPendingOnlyChange: (pendingOnly: boolean) => void
+  onConfirmBeforeAnswerChange: (confirmBeforeAnswer: boolean) => void
   className?: string
 }
 
@@ -26,8 +28,10 @@ export function ReviewPlayStyleControl({
   playStyle,
   pendingOnly,
   pendingCount,
+  confirmBeforeAnswer,
   onPlayStyleChange,
   onPendingOnlyChange,
+  onConfirmBeforeAnswerChange,
   className,
 }: ReviewPlayStyleControlProps) {
   const checked = playStyle === 'goal'
@@ -123,6 +127,50 @@ export function ReviewPlayStyleControl({
           {pendingOnlyLabel}
         </span>
       </label>
+
+      <div className='inline-flex items-center gap-2 p-1.5 text-[11px] font-medium text-muted-foreground'>
+        <input
+          id='review-confirm-answer'
+          type='checkbox'
+          checked={confirmBeforeAnswer}
+          onChange={(event) => onConfirmBeforeAnswerChange(event.target.checked)}
+          className='h-4 w-4 accent-primary'
+          aria-label='Confirmar antes de guardar respuesta de flashcard'
+        />
+        <label
+          htmlFor='review-confirm-answer'
+          className={cn('cursor-pointer', confirmBeforeAnswer && 'text-foreground')}
+        >
+          Confirmar respuesta de la flashcard
+        </label>
+
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button
+              type='button'
+              variant='ghost'
+              size='icon-sm'
+              aria-label='Información de confirmación de respuesta'
+            >
+              <InfoIcon className='size-4 text-muted-foreground' />
+            </Button>
+          </DialogTrigger>
+          <DialogContent className='sm:max-w-md'>
+            <DialogHeader>
+              <DialogTitle>Doble confirmación de respuesta</DialogTitle>
+              <DialogDescription>
+                Evita marcar una tarjeta por error cuando tocas muy rápido.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className='rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground'>
+              Al activar esta opción, al tocar <strong>La sabía</strong> o{' '}
+              <strong>No la sabía</strong> se abre una confirmación final antes
+              de guardar la respuesta.
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   )
 }

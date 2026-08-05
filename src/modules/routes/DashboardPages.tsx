@@ -19,6 +19,7 @@ import { LeaderboardView } from '../views/LeaderboardView'
 import { HomeView } from '../views/HomeView'
 import { GamesIcaView } from '../views/GamesIcaView'
 import { ManageCoachingView } from '../views/ManageCoachingView'
+import { ManageCoachingCalendarView } from '../views/ManageCoachingCalendarView'
 import { ManageCoachingUserView } from '../views/ManageCoachingUserView'
 import { ManageCoacherSessionsView } from '../views/ManageCoacherSessionsView'
 import { ManageCalendarIcademyView } from '../views/ManageCalendarIcademyView'
@@ -46,11 +47,15 @@ import { InstagramTrackPostsView } from '../views/InstagramTrackPostsView'
 import { PregunticaView } from '../views/PregunticaView'
 import { PregunticaHistoryView } from '../views/PregunticaHistoryView'
 import {
+  getReviewConfirmAnswerFromQuery,
   getReviewPendingOnlyFromQuery,
+  loadSavedReviewConfirmAnswer,
   loadSavedReviewPendingOnly,
   loadSavedReviewPlayStyle,
+  REVIEW_CONFIRM_ANSWER_QUERY_PARAM,
   REVIEW_PENDING_ONLY_QUERY_PARAM,
   REVIEW_PLAY_STYLE_QUERY_PARAM,
+  saveReviewConfirmAnswer,
   saveReviewPendingOnly,
   saveReviewPlayStyle,
   getReviewPlayStyleFromQuery,
@@ -141,6 +146,8 @@ export function FlashcardsPage() {
     loadSavedReviewPlayStyle(),
   )
   const [pendingOnly, setPendingOnly] = useState(loadSavedReviewPendingOnly())
+  const [confirmBeforeAnswer, setConfirmBeforeAnswer] =
+    useState(loadSavedReviewConfirmAnswer())
 
   useEffect(() => {
     saveReviewPlayStyle(playStyle)
@@ -150,6 +157,10 @@ export function FlashcardsPage() {
     saveReviewPendingOnly(pendingOnly)
   }, [pendingOnly])
 
+  useEffect(() => {
+    saveReviewConfirmAnswer(confirmBeforeAnswer)
+  }, [confirmBeforeAnswer])
+
   return (
     <PageLayout>
       <FlashcardsModeView
@@ -157,10 +168,19 @@ export function FlashcardsPage() {
         reviewCorrectToday={todayProgress.reviewCorrect}
         playStyle={playStyle}
         pendingOnly={pendingOnly}
+        confirmBeforeAnswer={confirmBeforeAnswer}
         onPlayStyleChange={setPlayStyle}
         onPendingOnlyChange={setPendingOnly}
+        onConfirmBeforeAnswerChange={setConfirmBeforeAnswer}
         onStartMode={(mode) =>
-          navigate(getFlashcardsPlayRoute(mode, playStyle, pendingOnly))
+          navigate(
+            getFlashcardsPlayRoute(
+              mode,
+              playStyle,
+              pendingOnly,
+              confirmBeforeAnswer,
+            ),
+          )
         }
       />
     </PageLayout>
@@ -190,8 +210,11 @@ export function GamesIcaPage() {
         if (!active || !status) return
 
         setPregunticaUnlocked(status.isUnlocked)
+        const displayActivationCount = status.completedAt
+          ? status.requiredActivationWords
+          : status.activationWordsCount
         setPregunticaProgress(
-          `${status.activationWordsCount}/${status.requiredActivationWords}`,
+          `${displayActivationCount}/${status.requiredActivationWords}`,
         )
         if (status.isUnlocked) {
           setPregunticaLabel('Lista para responder')
@@ -283,6 +306,11 @@ export function FlashcardsPlayPage() {
   const pendingOnly = getReviewPendingOnlyFromQuery(
     searchParams.get(REVIEW_PENDING_ONLY_QUERY_PARAM),
   )
+  const confirmBeforeAnswer = searchParams.has(REVIEW_CONFIRM_ANSWER_QUERY_PARAM)
+    ? getReviewConfirmAnswerFromQuery(
+        searchParams.get(REVIEW_CONFIRM_ANSWER_QUERY_PARAM),
+      )
+    : loadSavedReviewConfirmAnswer()
 
   const safeMode = useMemo<ReviewMode>(() => {
     const validModes: ReviewMode[] = [
@@ -304,7 +332,14 @@ export function FlashcardsPlayPage() {
   if (mode !== safeMode) {
     return (
       <Navigate
-        to={getFlashcardsPlayRoute(safeMode, playStyle, pendingOnly)}
+        to={
+          getFlashcardsPlayRoute(
+            safeMode,
+            playStyle,
+            pendingOnly,
+            confirmBeforeAnswer,
+          )
+        }
         replace
       />
     )
@@ -319,6 +354,7 @@ export function FlashcardsPlayPage() {
         mode={safeMode}
         playStyle={playStyle}
         pendingOnly={pendingOnly}
+        confirmBeforeAnswer={confirmBeforeAnswer}
         globalCorrectToday={todayProgress.reviewCorrect}
         completedDays={completedDays}
         setCompletedDays={setCompletedDays}
@@ -675,6 +711,14 @@ export function ManageCoachingPage() {
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.profile}>
       <ManageCoachingView />
+    </PageLayout>
+  )
+}
+
+export function ManageCoachingCalendarPage() {
+  return (
+    <PageLayout withBackButton={false}>
+      <ManageCoachingCalendarView />
     </PageLayout>
   )
 }

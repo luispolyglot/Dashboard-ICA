@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
+  ChevronDownIcon,
   DownloadIcon,
   EyeIcon,
   Loader2Icon,
@@ -16,6 +17,12 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { IcaDeletionWarningDialog } from '../components/IcaDeletionWarningDialog'
 import {
@@ -125,6 +132,9 @@ export function MasterNotesView({
     string | null
   >(null)
   const [deleteCandidate, setDeleteCandidate] = useState<MasterNote | null>(
+    null,
+  )
+  const [playAllStartNoteId, setPlayAllStartNoteId] = useState<string | null>(
     null,
   )
 
@@ -297,6 +307,34 @@ export function MasterNotesView({
       .map((note) => note.id)
   }, [canPlay, closedItems])
 
+  const defaultPlayAllStartNoteId = playableClosedNoteIds[0] || null
+
+  useEffect(() => {
+    if (!defaultPlayAllStartNoteId) {
+      setPlayAllStartNoteId(null)
+      return
+    }
+
+    if (
+      playAllStartNoteId &&
+      playableClosedNoteIds.includes(playAllStartNoteId)
+    ) {
+      return
+    }
+
+    setPlayAllStartNoteId(defaultPlayAllStartNoteId)
+  }, [
+    defaultPlayAllStartNoteId,
+    playAllStartNoteId,
+    playableClosedNoteIds,
+  ])
+
+  const selectedPlayAllStartNote = useMemo(() => {
+    const selectedId = playAllStartNoteId || defaultPlayAllStartNoteId
+    if (!selectedId) return null
+    return closedItems.find((note) => note.id === selectedId) || null
+  }, [closedItems, defaultPlayAllStartNoteId, playAllStartNoteId])
+
   const disableLoopPlayback = (stopCurrent = false): void => {
     stopLoop(stopCurrent)
     setActivePlayerPlaylistId(null)
@@ -379,20 +417,30 @@ export function MasterNotesView({
       })
   }
 
-  const handlePlayAllClosedLoop = async (): Promise<void> => {
-    if (loopingClosed && !activePlayerPlaylistId) {
-      disableLoopPlayback(true)
-      return
-    }
-
+  const handlePlayAllClosedLoopFrom = async (
+    startNoteId: string,
+  ): Promise<void> => {
     const ids = playableClosedNoteIds
     if (ids.length === 0) {
       setError('No hay notas maestras cerradas reproducibles para el bucle')
       return
     }
 
+    const startIndex = ids.indexOf(startNoteId)
+    if (startIndex === -1) {
+      setError('La nota seleccionada no tiene audio reproducible')
+      return
+    }
+
+    const idsFromStart = ids.slice(startIndex)
+    if (idsFromStart.length === 0) {
+      setError('No hay notas para reproducir desde esa selección')
+      return
+    }
+
+    setPlayAllStartNoteId(startNoteId)
     setPlaylistRepeatEnabled(false)
-    const started = await startLoop(ids)
+    const started = await startLoop(idsFromStart)
     if (!started) return
     setActivePlayerPlaylistId(null)
     setError(null)
@@ -553,26 +601,45 @@ export function MasterNotesView({
           )}
 
           {!loading && (
-            <Button
-              type='button'
-              variant={
-                loopingClosed && !activePlayerPlaylistId ? 'outline' : 'default'
-              }
-              onClick={() => void handlePlayAllClosedLoop()}
-              disabled={playableClosedNoteIds.length === 0}
-            >
-              {loopingClosed && !activePlayerPlaylistId ? (
-                <>
-                  <SquareIcon className='mr-1 size-4' />
-                  Detener reproducción total
-                </>
-              ) : (
-                <>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type='button'
+                  variant={
+                    loopingClosed && !activePlayerPlaylistId
+                      ? 'outline'
+                      : 'default'
+                  }
+                  disabled={playableClosedNoteIds.length === 0}
+                >
                   <PlayIcon className='mr-1 size-4' />
-                  Reproducir todas una vez
-                </>
-              )}
-            </Button>
+                  {`Reproducir todas una vez desde: ${selectedPlayAllStartNote?.name || '...'}`}
+                  <ChevronDownIcon className='ml-1 size-4' />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='start'>
+                {loopingClosed && !activePlayerPlaylistId && (
+                  <DropdownMenuItem onClick={handleClosePlaylistPlayer}>
+                    <SquareIcon className='mr-2 size-4' />
+                    Detener reproducción total
+                  </DropdownMenuItem>
+                )}
+                {closedItems.map((note) => {
+                  const playable = canPlay(note, note.total_duration_ms > 0 ? 1 : 0)
+                  return (
+                    <DropdownMenuItem
+                      key={note.id}
+                      disabled={!playable}
+                      onClick={() => {
+                        void handlePlayAllClosedLoopFrom(note.id)
+                      }}
+                    >
+                      {note.name}
+                    </DropdownMenuItem>
+                  )
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
 
           <div className='space-y-3'>

@@ -579,6 +579,8 @@ Deno.serve(async (req) => {
         `- CEFR ${payload.level} level. Description: ${levelDescription}`,
         `- ${sentenceLengthRule}`,
         '- Natural, native-sounding',
+        '- Include all required ICA words exactly as provided.',
+        '- You may add up to 10 extra words only if needed to keep the sentence coherent and natural.',
         previousPhrase
           ? `- Do NOT repeat this previous sentence (or tiny variations): ${JSON.stringify(previousPhrase)}`
           : '',

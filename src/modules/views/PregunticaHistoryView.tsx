@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { toast } from 'sonner'
+import { PlusIcon } from 'lucide-react'
 import {
   Accordion,
   AccordionContent,
@@ -14,6 +15,7 @@ import {
   type PregunticaHistoryWeek,
 } from '../services/preguntica'
 import { AddIcaSuggestionModal } from '../components/AddIcaSuggestionModal'
+import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
 import type { AppConfig, Lexicard } from '../types'
 
 type PregunticaHistoryViewProps = {
@@ -164,12 +166,16 @@ function AttemptContent({
   questionTranslation,
   onSuggestionClick,
   isSuggestionAdded,
+  onExtractWordClick,
+  isExtractWordAdded,
 }: {
   attempt: PregunticaHistoryAttempt
   questionText: string
   questionTranslation: string | null
   onSuggestionClick: (suggestion: PregunticaWordSuggestion) => void
   isSuggestionAdded: (word: string) => boolean
+  onExtractWordClick: (text: string) => void
+  isExtractWordAdded: (word: string) => boolean
 }) {
   const analysisAudios = [...attempt.audios].sort((a, b) => {
     const aTime = new Date(a.createdAt).getTime()
@@ -319,13 +325,45 @@ function AttemptContent({
                               {audio.feedback.corrections.map((item, corrIndex) => (
                                 <li key={`${audio.id}-${corrIndex}-correction`} className='rounded-lg border border-border bg-background/70 p-2'>
                                   {isSameCorrection(item.original, item.suggestion) ? (
-                                    <span className='font-semibold text-emerald-500'>✓ {item.suggestion}</span>
+                                    <div className='flex items-start justify-between gap-2'>
+                                      <span className='font-semibold text-emerald-500'>✓ {item.suggestion}</span>
+                                      <button
+                                        type='button'
+                                        onClick={() => onExtractWordClick(item.suggestion)}
+                                        disabled={isExtractWordAdded(item.suggestion)}
+                                        aria-label={`Extraer "${item.suggestion}" al baul`}
+                                        className='inline-flex size-5 items-center justify-center rounded-full border border-emerald-300/70 bg-emerald-100/70 text-emerald-700 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200'
+                                        title={
+                                          isExtractWordAdded(item.suggestion)
+                                            ? 'Ya existe en tu baul ICA'
+                                            : 'Extraer al baul ICA'
+                                        }
+                                      >
+                                        <PlusIcon className='size-3' />
+                                      </button>
+                                    </div>
                                   ) : (
-                                    <>
-                                      <span className='font-semibold text-red-500 line-through'>{item.original}</span>
-                                      {' '}→{' '}
-                                      <span className='font-semibold text-emerald-500'>{item.suggestion}</span>
-                                    </>
+                                    <div className='flex items-start justify-between gap-2'>
+                                      <div>
+                                        <span className='font-semibold text-red-500 line-through'>{item.original}</span>
+                                        {' '}→{' '}
+                                        <span className='font-semibold text-emerald-500'>{item.suggestion}</span>
+                                      </div>
+                                      <button
+                                        type='button'
+                                        onClick={() => onExtractWordClick(item.suggestion)}
+                                        disabled={isExtractWordAdded(item.suggestion)}
+                                        aria-label={`Extraer "${item.suggestion}" al baul`}
+                                        className='inline-flex size-5 items-center justify-center rounded-full border border-emerald-300/70 bg-emerald-100/70 text-emerald-700 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200'
+                                        title={
+                                          isExtractWordAdded(item.suggestion)
+                                            ? 'Ya existe en tu baul ICA'
+                                            : 'Extraer al baul ICA'
+                                        }
+                                      >
+                                        <PlusIcon className='size-3' />
+                                      </button>
+                                    </div>
                                   )}
                                   <div className='text-xs text-muted-foreground'>{item.reason}</div>
                                 </li>
@@ -395,6 +433,8 @@ export function PregunticaHistoryView({
   const [suggestionModalOpen, setSuggestionModalOpen] = useState(false)
   const [selectedSuggestion, setSelectedSuggestion] = useState<PregunticaWordSuggestion | null>(null)
   const [addedSuggestionWords, setAddedSuggestionWords] = useState<string[]>([])
+  const [extractWordsModalOpen, setExtractWordsModalOpen] = useState(false)
+  const [extractWordsText, setExtractWordsText] = useState('')
 
   useEffect(() => {
     let active = true
@@ -447,6 +487,16 @@ export function PregunticaHistoryView({
     if (isSuggestionAdded(suggestion.word)) return
     setSelectedSuggestion(suggestion)
     setSuggestionModalOpen(true)
+  }
+
+  function isExtractWordAdded(word: string): boolean {
+    return existingCardWords.has(normalizeComparableText(word))
+  }
+
+  function handleOpenExtractWordsModal(text: string) {
+    if (!text.trim() || isExtractWordAdded(text)) return
+    setExtractWordsText(text)
+    setExtractWordsModalOpen(true)
   }
 
   return (
@@ -503,6 +553,8 @@ export function PregunticaHistoryView({
                 questionTranslation={card.questionTranslation}
                 onSuggestionClick={handleOpenSuggestionModal}
                 isSuggestionAdded={isSuggestionAdded}
+                onExtractWordClick={handleOpenExtractWordsModal}
+                isExtractWordAdded={isExtractWordAdded}
               />
             </AccordionContent>
           </AccordionItem>
@@ -524,6 +576,22 @@ export function PregunticaHistoryView({
             return [...current, word]
           })
         }}
+      />
+
+      <ExtractWordsToVaultModal
+        open={extractWordsModalOpen}
+        onOpenChange={(open) => {
+          setExtractWordsModalOpen(open)
+          if (!open) setExtractWordsText('')
+        }}
+        text={extractWordsText}
+        seedWords={extractWordsText ? [extractWordsText] : []}
+        targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+        level={config.level || 'A2'}
+        cards={cards}
+        setCards={setCards}
+        onWordAdded={onWordAdded}
       />
     </section>
   )

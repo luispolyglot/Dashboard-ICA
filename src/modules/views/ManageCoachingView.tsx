@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArchiveIcon,
+  CalendarIcon,
   CheckCheckIcon,
   EyeIcon,
   MoreHorizontalIcon,
@@ -41,6 +42,7 @@ import {
 } from '../services/coaching'
 import { LANGUAGES } from '../constants'
 import {
+  DASHBOARD_ROUTES,
   getManageCoacherSessionsRoute,
   getManageCoachingUserRoute,
 } from '../routes/paths'
@@ -507,6 +509,14 @@ export function ManageCoachingView() {
               Crear Coacher
             </Button>
           )}
+          <Button
+            type='button'
+            variant='outline'
+            onClick={() => navigate(DASHBOARD_ROUTES.manageCoachingCalendar)}
+          >
+            <CalendarIcon className='h-4 w-4' />
+            Ver calendario coaching
+          </Button>
           <Button type='button' variant='ghost' onClick={() => void loadData()}>
             <RefreshCwIcon className='h-4 w-4' />
             Recargar

@@ -10,9 +10,9 @@ import {
 import {
   fetchSpellingSuggestion,
   fetchTranslation,
-  fetchWordExample,
 } from '../services/anthropic'
 import { recordWordAddedEvent } from '../services/gamification'
+import { kickLexicardExampleWorker } from '../services/lexicardExampleJobs'
 import { insertWord } from '../services/storage'
 import { generateId } from '../utils'
 import { RomanizationHint } from '../components/RomanizationHint'
@@ -218,6 +218,10 @@ export function AddView({
   }
 
   useEffect(() => {
+    void kickLexicardExampleWorker({ batchSize: 3 })
+  }, [])
+
+  useEffect(() => {
     const sharedTarget = initialSharedTargetRef.current
     const fromShareTarget = initialShareSourceRef.current
 
@@ -272,22 +276,14 @@ export function AddView({
       setSaving(false)
       return
     }
-    const example = await fetchWordExample(
-      trimmedTarget,
-      trimmedNative,
-      config.targetLang,
-      config.nativeLang,
-      config.level || 'A2',
-    )
-
     const newCard: Lexicard = {
       id: generateId(),
       target: trimmedTarget,
       native: trimmedNative,
       targetLang: config.targetLang,
       nativeLang: config.nativeLang,
-      examplePhrase: example?.phrase || null,
-      exampleTranslation: example?.translation || null,
+      examplePhrase: null,
+      exampleTranslation: null,
       importance,
       interval: 1,
       easeFactor: 2.5,
@@ -300,20 +296,24 @@ export function AddView({
     }
 
     try {
-      setCards((prev) => [...prev, newCard])
       await insertWord(newCard)
-      await onWordAdded()
-      try {
-        await recordWordAddedEvent()
-      } catch (error) {
+      setCards((prev) => [...prev, newCard])
+
+      void onWordAdded().catch((error) => {
         console.error(error)
-      }
+      })
+
+      void recordWordAddedEvent().catch((error) => {
+        console.error(error)
+      })
 
       setTarget('')
       setNative('')
       setImportance(null)
       setSaved(true)
       window.setTimeout(() => setSaved(false), 2000)
+    } catch (error) {
+      console.error(error)
     } finally {
       setSaving(false)
     }

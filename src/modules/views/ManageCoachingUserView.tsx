@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { es } from 'date-fns/locale'
 import {
   ArchiveIcon,
   ArrowRightIcon,
@@ -14,6 +15,10 @@ import {
   SquareIcon,
   Trash2Icon,
   DownloadIcon,
+  LinkIcon,
+  PencilIcon,
+  CheckIcon,
+  XIcon,
   UserIcon,
   Volume2Icon,
 } from 'lucide-react'
@@ -98,7 +103,6 @@ type ClassSessionItem = {
   reportImagePath: string | null
   reportImageUrl: string | null
   scheduledAt: string | null
-  classJoinUrl: string | null
 }
 
 type ObjectiveDraft = {
@@ -114,7 +118,6 @@ type ClassDraft = {
   report: string
   scheduledDate: string
   scheduledTime: string
-  classJoinUrl: string
   imageFile: File | null
   removeImage: boolean
 }
@@ -197,7 +200,6 @@ function normalizeClassSessions(value: unknown): ClassSessionItem[] {
         reportImageUrl:
           toString(row.reportImageUrl ?? row.report_image_url) || null,
         scheduledAt: toString(row.scheduledAt ?? row.scheduled_at) || null,
-        classJoinUrl: toString(row.classJoinUrl ?? row.class_join_url) || null,
       }
     })
 }
@@ -431,6 +433,14 @@ function SeekForward10Icon() {
       </span>
     </div>
   )
+}
+
+const CALENDAR_LOCALE_ES_MONDAY = {
+  ...es,
+  options: {
+    ...es.options,
+    weekStartsOn: 1 as const,
+  },
 }
 
 function MasterNoteCoachAudioPlayer({
@@ -790,6 +800,11 @@ export function ManageCoachingUserView({
     scheduledDate: string
     scheduledTime: string
   } | null>(null)
+  const [sessionClassJoinDraft, setSessionClassJoinDraft] = useState('')
+  const [isEditingSessionClassJoinUrl, setIsEditingSessionClassJoinUrl] =
+    useState(false)
+  const [savingSessionClassJoinUrl, setSavingSessionClassJoinUrl] =
+    useState(false)
 
   const selectedMembership = useMemo(
     () => memberships.find((row) => row.id === selectedSessionId) || null,
@@ -833,7 +848,6 @@ export function ManageCoachingUserView({
         report: currentClass?.report || '',
         scheduledDate: scheduledDraft.date,
         scheduledTime: scheduledDraft.time,
-        classJoinUrl: currentClass?.classJoinUrl || '',
         imageFile: null,
         removeImage: false,
       }
@@ -852,6 +866,12 @@ export function ManageCoachingUserView({
     classesByWeek,
     insights?.masterNotes,
   ])
+
+  useEffect(() => {
+    const nextLink = selectedMembership?.classJoinUrl || ''
+    setSessionClassJoinDraft(nextLink)
+    setIsEditingSessionClassJoinUrl(false)
+  }, [selectedMembership?.id, selectedMembership?.classJoinUrl])
 
   const loadAll = async () => {
     setLoading(true)
@@ -944,6 +964,35 @@ export function ManageCoachingUserView({
       )
     } finally {
       setSavingCoacherUserId(false)
+    }
+  }
+
+  const handleSaveSessionClassJoinUrl = async () => {
+    if (!selectedMembership) return
+
+    setSavingSessionClassJoinUrl(true)
+    setFeedback(null)
+    try {
+      await upsertCoachingUser({
+        sessionId: selectedMembership.id,
+        userId: selectedMembership.userId,
+        targetLang: selectedMembership.targetLang,
+        nativeLang: selectedMembership.nativeLang,
+        level: selectedMembership.level,
+        classJoinUrl: sessionClassJoinDraft.trim() || null,
+      })
+
+      setIsEditingSessionClassJoinUrl(false)
+      setFeedback('Link de clase en vivo actualizado correctamente.')
+      await loadAll()
+    } catch (err) {
+      setFeedback(
+        err instanceof Error
+          ? err.message
+          : 'No se pudo guardar el link de clase en vivo.',
+      )
+    } finally {
+      setSavingSessionClassJoinUrl(false)
     }
   }
 
@@ -1079,12 +1128,10 @@ export function ManageCoachingUserView({
         draft.scheduledDate,
         draft.scheduledTime,
       )
-      const nextClassJoinUrl = draft.classJoinUrl.trim() || null
 
       const previousLoomUrl = existingWeekClass?.loomUrl || null
       const previousReport = existingWeekClass?.report || null
       const previousScheduledAt = existingWeekClass?.scheduledAt || null
-      const previousClassJoinUrl = existingWeekClass?.classJoinUrl || null
 
       let nextImagePath = existingImagePath
       if (draft.imageFile) {
@@ -1101,8 +1148,7 @@ export function ManageCoachingUserView({
       const textChanged =
         nextLoomUrl !== previousLoomUrl ||
         nextReport !== previousReport ||
-        nextScheduledAt !== previousScheduledAt ||
-        nextClassJoinUrl !== previousClassJoinUrl
+        nextScheduledAt !== previousScheduledAt
       const imageChanged =
         Boolean(draft.imageFile) ||
         (draft.removeImage && Boolean(existingImagePath))
@@ -1123,8 +1169,7 @@ export function ManageCoachingUserView({
         nextLoomUrl ||
         nextReport ||
         nextImagePath ||
-        nextScheduledAt ||
-        nextClassJoinUrl
+        nextScheduledAt
           ? {
               id: existingWeekClass?.id || crypto.randomUUID(),
               key: weekKey,
@@ -1134,7 +1179,6 @@ export function ManageCoachingUserView({
               report: nextReport,
               reportImagePath: nextImagePath,
               scheduledAt: nextScheduledAt,
-              classJoinUrl: nextClassJoinUrl,
               reportImageUrl:
                 nextImagePath && nextImagePath === existingImagePath
                   ? existingWeekClass?.reportImageUrl || null
@@ -1174,7 +1218,6 @@ export function ManageCoachingUserView({
           report: nextReport || '',
           scheduledDate: savedScheduledDraft.date,
           scheduledTime: savedScheduledDraft.time,
-          classJoinUrl: nextClassJoinUrl || '',
           imageFile: null,
           removeImage: false,
         },
@@ -1481,6 +1524,7 @@ export function ManageCoachingUserView({
       durationWeeks: selectedMembership.durationWeeks,
       weekActivation: selectedMembership.weekActivation,
       weekTimeline: selectedMembership.weekTimeline,
+      classJoinUrl: selectedMembership.classJoinUrl,
       classSessions: selectedMembership.classSessions,
       weeklyObjectives: insights.weeklyObjectives,
       weekProgress: insights.weekProgress,
@@ -1566,8 +1610,83 @@ export function ManageCoachingUserView({
       )}
 
       <Card className='mb-4'>
-        <CardHeader>
-          <CardTitle>Sesión de coaching</CardTitle>
+        <CardHeader className='pb-2'>
+          <div className='flex flex-wrap items-center justify-between gap-2'>
+            <CardTitle>Sesión de coaching</CardTitle>
+
+            {selectedMembership && (
+              <div className='flex min-h-9 flex-wrap items-center justify-end gap-2 text-sm text-muted-foreground'>
+                <span className='inline-flex items-center gap-1'>
+                  <LinkIcon className='h-3.5 w-3.5' />
+                  Link clase en vivo:
+                </span>
+
+                {isEditingSessionClassJoinUrl ? (
+                  <>
+                    <Input
+                      value={sessionClassJoinDraft}
+                      onChange={(event) =>
+                        setSessionClassJoinDraft(event.target.value)
+                      }
+                      placeholder='Ej: https://meet.google.com/...'
+                      className='h-8 w-80 max-w-full'
+                    />
+                    <Button
+                      type='button'
+                      size='icon'
+                      className='h-8 w-8'
+                      onClick={() => void handleSaveSessionClassJoinUrl()}
+                      disabled={savingSessionClassJoinUrl}
+                      aria-label='Guardar link de clase'
+                    >
+                      <CheckIcon className='h-4 w-4' />
+                    </Button>
+                    <Button
+                      type='button'
+                      size='icon'
+                      variant='outline'
+                      className='h-8 w-8'
+                      onClick={() => {
+                        setSessionClassJoinDraft(
+                          selectedMembership.classJoinUrl || '',
+                        )
+                        setIsEditingSessionClassJoinUrl(false)
+                      }}
+                      disabled={savingSessionClassJoinUrl}
+                      aria-label='Cancelar edicion de link de clase'
+                    >
+                      <XIcon className='h-4 w-4' />
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {selectedMembership.classJoinUrl ? (
+                      <a
+                        href={selectedMembership.classJoinUrl}
+                        target='_blank'
+                        rel='noopener noreferrer'
+                        className='text-blue-600 underline underline-offset-2'
+                      >
+                        Abrir clase en vivo
+                      </a>
+                    ) : (
+                      <span>Sin link configurado</span>
+                    )}
+                    <Button
+                      type='button'
+                      size='icon'
+                      variant='outline'
+                      className='h-8 w-8'
+                      onClick={() => setIsEditingSessionClassJoinUrl(true)}
+                      aria-label='Editar link de clase'
+                    >
+                      <PencilIcon className='h-4 w-4' />
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent className='flex flex-wrap items-center gap-3'>
           <Select
@@ -1764,7 +1883,6 @@ export function ManageCoachingUserView({
                     report: weekClass?.report || '',
                     scheduledDate: defaultScheduledDraft.date,
                     scheduledTime: defaultScheduledDraft.time,
-                    classJoinUrl: weekClass?.classJoinUrl || '',
                     imageFile: null,
                     removeImage: false,
                   }
@@ -1778,7 +1896,6 @@ export function ManageCoachingUserView({
                       classDraft.scheduledDate,
                       classDraft.scheduledTime,
                     ) || ''
-                  const draftClassJoinUrl = classDraft.classJoinUrl.trim()
                   const scheduledClassSummary = draftScheduledAt
                     ? formatClassScheduleDateTime(draftScheduledAt)
                     : 'Sin fecha y horario configurados.'
@@ -1787,9 +1904,6 @@ export function ManageCoachingUserView({
                   const previousScheduledAt = (
                     weekClass?.scheduledAt || ''
                   ).trim()
-                  const previousClassJoinUrl = (
-                    weekClass?.classJoinUrl || ''
-                  ).trim()
                   const hasExistingImage = Boolean(
                     weekClass?.reportImagePath || weekClass?.reportImageUrl,
                   )
@@ -1797,7 +1911,6 @@ export function ManageCoachingUserView({
                     draftLoom !== previousLoom ||
                     draftReport !== previousReport ||
                     draftScheduledAt !== previousScheduledAt ||
-                    draftClassJoinUrl !== previousClassJoinUrl ||
                     Boolean(classDraft.imageFile) ||
                     (classDraft.removeImage && hasExistingImage)
                   const closedNotes = closedNotesByWeek.get(weekKey) || []
@@ -1888,7 +2001,6 @@ export function ManageCoachingUserView({
                                           report: '',
                                           scheduledDate: '',
                                           scheduledTime: '',
-                                          classJoinUrl: '',
                                           imageFile: null,
                                           removeImage: false,
                                         }),
@@ -1964,6 +2076,7 @@ export function ManageCoachingUserView({
                                     </DialogHeader>
                                     <Calendar
                                       mode='single'
+                                      locale={CALENDAR_LOCALE_ES_MONDAY}
                                       selected={
                                         schedulePickerDraft?.weekKey === weekKey
                                           ? schedulePickerDraft.scheduledDate
@@ -2073,7 +2186,6 @@ export function ManageCoachingUserView({
                                                 report: '',
                                                 scheduledDate: '',
                                                 scheduledTime: '',
-                                                classJoinUrl: '',
                                                 imageFile: null,
                                                 removeImage: false,
                                               }),
@@ -2095,41 +2207,6 @@ export function ManageCoachingUserView({
                               </div>
 
                               <div className='space-y-1.5'>
-                                <Label>Link clase en vivo (opcional)</Label>
-                                <Input
-                                  value={classDraft.classJoinUrl}
-                                  onChange={(event) =>
-                                    setClassDrafts((prev) => ({
-                                      ...prev,
-                                      [weekKey]: {
-                                        ...(prev[weekKey] || {
-                                          loomUrl: '',
-                                          report: '',
-                                          scheduledDate: '',
-                                          scheduledTime: '',
-                                          classJoinUrl: '',
-                                          imageFile: null,
-                                          removeImage: false,
-                                        }),
-                                        classJoinUrl: event.target.value,
-                                      },
-                                    }))
-                                  }
-                                  placeholder='Ej: https://meet.google.com/...'
-                                />
-                                {classDraft.classJoinUrl.trim() && (
-                                  <a
-                                    href={classDraft.classJoinUrl.trim()}
-                                    target='_blank'
-                                    rel='noopener noreferrer'
-                                    className='inline-flex text-sm text-blue-600 underline underline-offset-2'
-                                  >
-                                    Abrir link de clase en vivo
-                                  </a>
-                                )}
-                              </div>
-
-                              <div className='space-y-1.5'>
                                 <Label>Reporte clase (opcional)</Label>
                                 <Textarea
                                   value={classDraft.report}
@@ -2142,7 +2219,6 @@ export function ManageCoachingUserView({
                                           report: '',
                                           scheduledDate: '',
                                           scheduledTime: '',
-                                          classJoinUrl: '',
                                           imageFile: null,
                                           removeImage: false,
                                         }),
@@ -2169,7 +2245,6 @@ export function ManageCoachingUserView({
                                           report: '',
                                           scheduledDate: '',
                                           scheduledTime: '',
-                                          classJoinUrl: '',
                                           imageFile: null,
                                           removeImage: false,
                                         }),

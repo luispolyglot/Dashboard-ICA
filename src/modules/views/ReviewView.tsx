@@ -3,6 +3,14 @@ import type { Dispatch, SetStateAction } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   IMPORTANCE_ORDER,
   REVIEW_MODE_OPTIONS,
   getImportance,
@@ -21,7 +29,7 @@ import { recordReviewEvent } from '../services/reviewTracking'
 import { stopTTS } from '../services/tts'
 import { buildReviewRound, todayKey, updateCardAfterReview } from '../utils'
 import type { AppConfig, Lexicard, ReviewMode } from '../types'
-import { EyeIcon, EyeOffIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, EyeIcon, EyeOffIcon } from 'lucide-react'
 import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
 
 type ReviewViewProps = {
@@ -31,6 +39,7 @@ type ReviewViewProps = {
   mode: ReviewMode
   playStyle: ReviewPlayStyle
   pendingOnly: boolean
+  confirmBeforeAnswer: boolean
   globalCorrectToday: number
   completedDays: string[]
   setCompletedDays: Dispatch<SetStateAction<string[]>>
@@ -57,6 +66,7 @@ export function ReviewView({
   mode,
   playStyle,
   pendingOnly,
+  confirmBeforeAnswer,
   globalCorrectToday,
   completedDays,
   setCompletedDays,
@@ -78,6 +88,10 @@ export function ReviewView({
   const [busy, setBusy] = useState(false)
   const [finishing, setFinishing] = useState(false)
   const [completed, setCompleted] = useState(false)
+  const [answeredByIndex, setAnsweredByIndex] = useState<
+    Array<boolean | undefined>
+  >([])
+  const [pendingAnswer, setPendingAnswer] = useState<boolean | null>(null)
   const [showExample, setShowExample] = useState(false)
   const [showExampleTranslation, setShowExampleTranslation] = useState(false)
   const [extractWordsModalOpen, setExtractWordsModalOpen] = useState(false)
@@ -145,8 +159,10 @@ export function ReviewView({
     setCurrentIndex(0)
     setCorrect(0)
     setAnswerResults([])
+    setAnsweredByIndex([])
     setCompleted(false)
     setFlipped(false)
+    setPendingAnswer(null)
     setShowExample(false)
     setShowExampleTranslation(false)
     if (window.speechSynthesis) {
@@ -169,9 +185,25 @@ export function ReviewView({
     : Math.max(roundCards.length, 1)
   const importance = currentCard ? getImportance(currentCard.importance) : null
   const isFailed = currentCard ? (currentCard.streak || 0) === 0 : false
+  const isCurrentAnswered = answeredByIndex[currentIndex] !== undefined
+
+  const contiguousAnsweredCount = (() => {
+    let count = 0
+    while (count < roundCards.length && answeredByIndex[count] !== undefined) {
+      count += 1
+    }
+    return count
+  })()
+
+  const maxNavigableIndex = Math.min(
+    contiguousAnsweredCount,
+    Math.max(roundCards.length - 1, 0),
+  )
+  const canGoBack = currentIndex > 0
+  const canGoForward = currentIndex < maxNavigableIndex
 
   const handleAnswer = async (knew: boolean): Promise<void> => {
-    if (busy || !currentCard) return
+    if (busy || !currentCard || isCurrentAnswered) return
 
     const sourceCard =
       cards.find((card) => card.id === currentCard.id) || currentCard
@@ -187,12 +219,19 @@ export function ReviewView({
       card.id === updated.id ? updated : card,
     )
     const nextCorrect = knew ? correct + 1 : correct
+    const nextAnsweredByIndex = [...answeredByIndex]
+    nextAnsweredByIndex[currentIndex] = knew
     const nextAnswerResults: Array<'correct' | 'wrong'> = isGoalStyle
       ? answerResults
       : [...answerResults, knew ? 'correct' : 'wrong']
+    const answeredAllCards = roundCards.every(
+      (_, index) => nextAnsweredByIndex[index] !== undefined,
+    )
     const isLastCard = currentIndex >= roundCards.length - 1
     const reachedCorrectGoal = nextCorrect >= REVIEW_PLAY_STYLE_CORRECT_GOAL
-    const shouldComplete = isGoalStyle ? reachedCorrectGoal : isLastCard
+    const shouldComplete = isGoalStyle
+      ? reachedCorrectGoal || answeredAllCards
+      : isLastCard
 
     if (shouldComplete) {
       setFinishing(true)
@@ -202,13 +241,28 @@ export function ReviewView({
     if (!isGoalStyle) {
       setAnswerResults(nextAnswerResults)
     }
+    setAnsweredByIndex(nextAnsweredByIndex)
     setCards(nextCards)
 
     if (!shouldComplete) {
-      setCurrentIndex((prev) => {
-        if (isGoalStyle && isLastCard) return 0
-        return prev + 1
-      })
+      if (isGoalStyle) {
+        const nextUnansweredIndex = roundCards.findIndex(
+          (_, index) =>
+            index > currentIndex && nextAnsweredByIndex[index] === undefined,
+        )
+        if (nextUnansweredIndex >= 0) {
+          setCurrentIndex(nextUnansweredIndex)
+        } else {
+          const fallbackUnansweredIndex = roundCards.findIndex(
+            (_, index) => nextAnsweredByIndex[index] === undefined,
+          )
+          if (fallbackUnansweredIndex >= 0) {
+            setCurrentIndex(fallbackUnansweredIndex)
+          }
+        }
+      } else {
+        setCurrentIndex((prev) => prev + 1)
+      }
     }
 
     try {
@@ -294,9 +348,11 @@ export function ReviewView({
               )
               setCorrect(0)
               setAnswerResults([])
+              setAnsweredByIndex([])
               setCompleted(false)
               setCurrentIndex(0)
               setFlipped(false)
+              setPendingAnswer(null)
               setShowExample(false)
               setShowExampleTranslation(false)
               setRoundCards(nextRound)
@@ -346,6 +402,9 @@ export function ReviewView({
   const priorityNumber =
     (isFailed ? 0 : 5) + (IMPORTANCE_ORDER[currentCard.importance] ?? 4) + 1
   const playStyleLabel = isGoalStyle ? 'Modo objetivo' : 'Modo clásico'
+  const pendingAnswerLabel = pendingAnswer
+    ? '✓ ¡La sabía!'
+    : '✗ No la sabía'
 
   return (
     <section className='flex flex-1 flex-col items-center justify-center p-4 pb-24 lg:pb-4'>
@@ -482,54 +541,144 @@ export function ReviewView({
       </Card>
 
       {flipped && (
-        <div className='mt-5 grid w-full max-w-105 grid-cols-2 gap-3'>
-          <Button
-            type='button'
-            onClick={() => handleAnswer(false)}
-            variant='destructive'
-            className='h-11'
-            disabled={busy}
-          >
-            ✗ No la sabía
-          </Button>
-          <Button
-            type='button'
-            onClick={() => handleAnswer(true)}
-            variant='default'
-            className='h-11'
-            disabled={busy}
-          >
-            ✓ ¡La sabía!
-          </Button>
-        </div>
+        <>
+          {!isCurrentAnswered ? (
+            <div className='mt-5 grid w-full max-w-105 grid-cols-2 gap-3'>
+              <Button
+                type='button'
+                onClick={() => {
+                  if (confirmBeforeAnswer) {
+                    setPendingAnswer(false)
+                    return
+                  }
+                  void handleAnswer(false)
+                }}
+                variant='destructive'
+                className='h-11'
+                disabled={busy}
+              >
+                ✗ No la sabía
+              </Button>
+              <Button
+                type='button'
+                onClick={() => {
+                  if (confirmBeforeAnswer) {
+                    setPendingAnswer(true)
+                    return
+                  }
+                  void handleAnswer(true)
+                }}
+                variant='default'
+                className='h-11'
+                disabled={busy}
+              >
+                ✓ ¡La sabía!
+              </Button>
+            </div>
+          ) : (
+            <div className='mt-5 w-full max-w-105 rounded-xl border border-border bg-muted/30 px-3 py-2 text-center text-xs font-semibold text-muted-foreground'>
+              Respuesta registrada para esta tarjeta. Puedes revisarla, pero no
+              editarla en esta ronda.
+            </div>
+          )}
+        </>
       )}
 
       <div className='mt-6 w-full max-w-105'>
         <div className='mb-2 text-center text-[10px] uppercase tracking-wider text-muted-foreground'>
           {isGoalStyle ? 'Progreso hacia 10 correctas' : 'Progreso de la ronda'}
         </div>
-        <div className='flex flex-wrap justify-center gap-1'>
-          {roundCards.slice(0, 14).map((card, index) => {
-            const active = index === currentIndex
-            const answered = index < currentIndex
-            return (
-              <span
-                key={`${card.id}-${index}`}
-                className={`rounded-full ${
-                  active
-                    ? 'h-3.5 w-3.5 border-2 border-foreground'
-                    : 'h-2.5 w-2.5'
-                } ${IMPORTANCE_DOT[card.importance]} ${answered ? 'opacity-100' : 'opacity-45'}`}
-              />
-            )
-          })}
-          {roundCards.length > 14 && (
-            <span className='self-center text-[10px] text-muted-foreground'>
-              +{roundCards.length - 14}
-            </span>
-          )}
+        <div className='flex items-center justify-center gap-2'>
+          <Button
+            type='button'
+            size='icon-sm'
+            variant='outline'
+            onClick={() => {
+              setCurrentIndex((prev) => Math.max(prev - 1, 0))
+              setFlipped(false)
+            }}
+            aria-label='Ir a la tarjeta anterior'
+            disabled={!canGoBack}
+          >
+            <ChevronLeftIcon className='size-4' />
+          </Button>
+
+          <div className='flex flex-wrap justify-center gap-1'>
+            {roundCards.slice(0, 14).map((card, index) => {
+              const active = index === currentIndex
+              const answered = answeredByIndex[index] !== undefined
+              return (
+                <span
+                  key={`${card.id}-${index}`}
+                  className={`rounded-full ${
+                    active
+                      ? 'h-3.5 w-3.5 border-2 border-foreground'
+                      : 'h-2.5 w-2.5'
+                  } ${IMPORTANCE_DOT[card.importance]} ${answered ? 'opacity-100' : 'opacity-45'}`}
+                />
+              )
+            })}
+            {roundCards.length > 14 && (
+              <span className='self-center text-[10px] text-muted-foreground'>
+                +{roundCards.length - 14}
+              </span>
+            )}
+          </div>
+
+          <Button
+            type='button'
+            size='icon-sm'
+            variant='outline'
+            onClick={() => {
+              setCurrentIndex((prev) => Math.min(prev + 1, maxNavigableIndex))
+              setFlipped(false)
+            }}
+            aria-label='Ir a la siguiente tarjeta disponible'
+            disabled={!canGoForward}
+          >
+            <ChevronRightIcon className='size-4' />
+          </Button>
         </div>
       </div>
+
+      <Dialog
+        open={pendingAnswer !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingAnswer(null)
+        }}
+      >
+        <DialogContent className='sm:max-w-sm'>
+          <DialogHeader>
+            <DialogTitle>Confirmar respuesta</DialogTitle>
+            <DialogDescription>
+              Vas a registrar: <strong>{pendingAnswerLabel}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => setPendingAnswer(null)}
+              disabled={busy}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type='button'
+              variant={pendingAnswer ? 'default' : 'destructive'}
+              disabled={busy || pendingAnswer === null}
+              onClick={() => {
+                if (pendingAnswer === null) return
+                const value = pendingAnswer
+                setPendingAnswer(null)
+                void handleAnswer(value)
+              }}
+            >
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ExtractWordsToVaultModal
         open={extractWordsModalOpen}

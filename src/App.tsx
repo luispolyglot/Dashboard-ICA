@@ -24,6 +24,7 @@ import {
   LeaderboardPage,
   ManageWhitelistPage,
   ManageCoachingPage,
+  ManageCoachingCalendarPage,
   ManageCoacherSessionsPage,
   ManageCoachingUserPage,
   ManageNotificationsPage,
@@ -133,6 +134,10 @@ export function App() {
             </Route>
             <Route element={<CoachingAdminRoute />}>
               <Route path='manage-coaching' element={<ManageCoachingPage />} />
+              <Route
+                path='manage-coaching/calendar'
+                element={<ManageCoachingCalendarPage />}
+              />
               <Route path='manage-coaching/:userId' element={<ManageCoachingUserPage />} />
               <Route path='manage-coaching/coacher/:coachUserId' element={<ManageCoacherSessionsPage />} />
             </Route>

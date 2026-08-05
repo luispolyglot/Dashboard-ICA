@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
+  ChevronDownIcon,
   Loader2Icon,
   PauseIcon,
   PencilIcon,
@@ -13,6 +14,12 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Select,
   SelectContent,
@@ -73,6 +80,9 @@ export function OfflineSafeView() {
     Record<string, string[]>
   >({})
   const [selectedGroupKey, setSelectedGroupKey] = useState<string>('')
+  const [playAllStartNoteId, setPlayAllStartNoteId] = useState<string | null>(
+    null,
+  )
 
   const {
     playlists,
@@ -247,6 +257,38 @@ export function OfflineSafeView() {
     [visibleNotes],
   )
 
+  const playableOfflineNoteIds = useMemo(
+    () => playableOfflineNotes.map((note) => note.noteId),
+    [playableOfflineNotes],
+  )
+  const defaultPlayAllStartNoteId = playableOfflineNoteIds[0] || null
+
+  useEffect(() => {
+    if (!defaultPlayAllStartNoteId) {
+      setPlayAllStartNoteId(null)
+      return
+    }
+
+    if (
+      playAllStartNoteId &&
+      playableOfflineNoteIds.includes(playAllStartNoteId)
+    ) {
+      return
+    }
+
+    setPlayAllStartNoteId(defaultPlayAllStartNoteId)
+  }, [
+    defaultPlayAllStartNoteId,
+    playAllStartNoteId,
+    playableOfflineNoteIds,
+  ])
+
+  const selectedPlayAllStartNote = useMemo(() => {
+    const selectedId = playAllStartNoteId || defaultPlayAllStartNoteId
+    if (!selectedId) return null
+    return visibleNotes.find((note) => note.noteId === selectedId) || null
+  }, [defaultPlayAllStartNoteId, playAllStartNoteId, visibleNotes])
+
   const closedNoteOptions = useMemo<PlaylistEditorNoteOption[]>(() => {
     return visibleNotes
       .filter((note) => note.audioAvailable)
@@ -398,19 +440,27 @@ export function OfflineSafeView() {
     await play(toMasterNote(note))
   }
 
-  const handleClosedLoopToggle = async (): Promise<void> => {
-    if (loopingClosed) {
-      disableLoopPlayback(true)
-      return
-    }
-
+  const handleClosedLoopFrom = async (startNoteId: string): Promise<void> => {
     if (playableOfflineNotes.length === 0) {
       return
     }
 
     const ids = playableOfflineNotes.map((note) => note.noteId)
+    const startIndex = ids.indexOf(startNoteId)
+    if (startIndex === -1) {
+      return
+    }
+
+    const idsFromStart = ids.slice(startIndex)
+    if (idsFromStart.length === 0) {
+      return
+    }
+
+    setPlayAllStartNoteId(startNoteId)
     setPlaylistRepeatEnabled(false)
-    await startLoop(ids)
+    const started = await startLoop(idsFromStart)
+    if (!started) return
+    setActivePlayerPlaylistId(null)
   }
 
   const handlePlayPlaylist = async (playlistId: string): Promise<void> => {
@@ -565,23 +615,41 @@ export function OfflineSafeView() {
             )}
 
             {playableOfflineNotes.length > 0 && (
-              <Button
-                type='button'
-                variant={loopingClosed && !activePlayerPlaylistId ? 'outline' : 'default'}
-                onClick={() => void handleClosedLoopToggle()}
-              >
-                {loopingClosed && !activePlayerPlaylistId ? (
-                  <>
-                    <SquareIcon className='mr-1 size-4' />
-                    Detener reproducción total
-                  </>
-                ) : (
-                  <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type='button'
+                    variant={
+                      loopingClosed && !activePlayerPlaylistId
+                        ? 'outline'
+                        : 'default'
+                    }
+                  >
                     <PlayIcon className='mr-1 size-4' />
-                    Reproducir todas una vez
-                  </>
-                )}
-              </Button>
+                    {`Reproducir todas una vez desde: ${selectedPlayAllStartNote?.name || '...'}`}
+                    <ChevronDownIcon className='ml-1 size-4' />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='start'>
+                  {loopingClosed && !activePlayerPlaylistId && (
+                    <DropdownMenuItem onClick={() => disableLoopPlayback(true)}>
+                      <SquareIcon className='mr-2 size-4' />
+                      Detener reproducción total
+                    </DropdownMenuItem>
+                  )}
+                  {visibleNotes.map((note) => (
+                    <DropdownMenuItem
+                      key={note.noteId}
+                      disabled={!note.audioAvailable}
+                      onClick={() => {
+                        void handleClosedLoopFrom(note.noteId)
+                      }}
+                    >
+                      {note.name}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
 
             {loadingNotes && (

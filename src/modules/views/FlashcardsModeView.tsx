@@ -11,8 +11,10 @@ type FlashcardsModeViewProps = {
   reviewCorrectToday: number
   playStyle: ReviewPlayStyle
   pendingOnly: boolean
+  confirmBeforeAnswer: boolean
   onPlayStyleChange: (style: ReviewPlayStyle) => void
   onPendingOnlyChange: (pendingOnly: boolean) => void
+  onConfirmBeforeAnswerChange: (confirmBeforeAnswer: boolean) => void
   onStartMode: (mode: ReviewMode) => void
 }
 
@@ -21,8 +23,10 @@ export function FlashcardsModeView({
   reviewCorrectToday,
   playStyle,
   pendingOnly,
+  confirmBeforeAnswer,
   onPlayStyleChange,
   onPendingOnlyChange,
+  onConfirmBeforeAnswerChange,
   onStartMode,
 }: FlashcardsModeViewProps) {
   const isGoalStyle = playStyle === 'goal'
@@ -75,8 +79,10 @@ export function FlashcardsModeView({
               playStyle={playStyle}
               pendingOnly={pendingOnly}
               pendingCount={pendingCards.length}
+              confirmBeforeAnswer={confirmBeforeAnswer}
               onPlayStyleChange={onPlayStyleChange}
               onPendingOnlyChange={onPendingOnlyChange}
+              onConfirmBeforeAnswerChange={onConfirmBeforeAnswerChange}
             />
           </div>
         </div>

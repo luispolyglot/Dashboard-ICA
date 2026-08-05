@@ -34,6 +34,7 @@ type CoachingCenterPayload = {
   level?: string
   nativeLang?: string | null
   coachUserId?: string | null
+  classJoinUrl?: string | null
   classSessions?: unknown
   feedbackNmUrl?: string | null
   feedbackNmNotes?: string | null
@@ -52,6 +53,7 @@ type CoachingUserRow = {
   native_lang: string | null
   level: string
   class_sessions: unknown
+  class_join_url: string | null
   feedback_nm_url: string | null
   feedback_nm_notes: string | null
   weekly_objectives: unknown
@@ -99,7 +101,6 @@ type CoachingSessionClassRow = {
   report: string | null
   report_image_path: string | null
   scheduled_at: string | null
-  class_join_url: string | null
   created_at: string
   updated_at: string
 }
@@ -255,9 +256,6 @@ function safeClassSessions(value: unknown): unknown[] {
         reportImagePath:
           safeString(item.reportImagePath ?? item.report_image_path) || null,
         scheduledAt: normalizeIsoDateTime(item.scheduledAt ?? item.scheduled_at),
-        classJoinUrl: ensureUrlProtocol(
-          safeString(item.classJoinUrl ?? item.class_join_url),
-        ),
         createdAt,
         updatedAt: safeString(item.updatedAt ?? item.updated_at) || new Date().toISOString(),
       }
@@ -535,7 +533,6 @@ function serializeClassSessions(rows: CoachingSessionClassRow[]): unknown[] {
     report: row.report,
     reportImagePath: row.report_image_path,
     scheduledAt: row.scheduled_at,
-    classJoinUrl: row.class_join_url,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }))
@@ -600,7 +597,6 @@ function classRowsFromPayload(
   report: string | null
   report_image_path: string | null
   scheduled_at: string | null
-  class_join_url: string | null
   created_at: string
   updated_at: string
 }> {
@@ -619,9 +615,6 @@ function classRowsFromPayload(
       report: safeString(row.report),
       report_image_path: safeString(row.reportImagePath ?? row.report_image_path),
       scheduled_at: normalizeIsoDateTime(row.scheduledAt ?? row.scheduled_at),
-      class_join_url: ensureUrlProtocol(
-        safeString(row.classJoinUrl ?? row.class_join_url),
-      ),
       created_at: createdAt,
       updated_at: safeString(row.updatedAt) || new Date().toISOString(),
     }
@@ -704,7 +697,7 @@ async function fetchProgramDataBySessionIds(
     adminClient
       .from('coaching_session_classes')
       .select(
-        'id, session_id, week_number, title, loom_url, report, report_image_path, scheduled_at, class_join_url, created_at, updated_at',
+        'id, session_id, week_number, title, loom_url, report, report_image_path, scheduled_at, created_at, updated_at',
       )
       .in('session_id', sessionIds)
       .order('created_at', { ascending: false }),
@@ -1139,6 +1132,7 @@ Deno.serve(async (req) => {
           targetLang: row.target_lang,
           nativeLang: row.native_lang,
           level: row.level,
+          classJoinUrl: row.class_join_url,
           classSessions: await withSignedClassReportUrls(
             auth.adminClient as any,
             programData.classSessionsBySession.get(row.id) || [],
@@ -1406,6 +1400,7 @@ Deno.serve(async (req) => {
           targetLang: row.target_lang,
           nativeLang: row.native_lang,
           level: row.level,
+          classJoinUrl: row.class_join_url,
           classSessions: await withSignedClassReportUrls(
             admin.adminClient as any,
             programData.classSessionsBySession.get(row.id) || [],
@@ -1580,6 +1575,8 @@ Deno.serve(async (req) => {
     const targetLang = safeString(payload.targetLang)
     const level = safeString(payload.level) || 'A2'
     const hasClassSessions = typeof payload.classSessions !== 'undefined'
+    const hasClassJoinUrl = typeof payload.classJoinUrl !== 'undefined'
+    const classJoinUrl = ensureUrlProtocol(safeString(payload.classJoinUrl))
     const hasWeeklyObjectives = typeof payload.weeklyObjectives !== 'undefined'
     const classSessions = hasClassSessions
       ? safeClassSessions(payload.classSessions)
@@ -1592,7 +1589,7 @@ Deno.serve(async (req) => {
     if (sessionId) {
       const { data: existingRow, error: existingError } = await admin.adminClient
         .from('coaching_sessions')
-        .select('id, user_id, target_lang, level, status, coach_user_id')
+        .select('id, user_id, target_lang, level, status, coach_user_id, class_join_url')
         .eq('id', sessionId)
         .maybeSingle<{
           id: string
@@ -1601,6 +1598,7 @@ Deno.serve(async (req) => {
           level: string
           status: string
           coach_user_id: string | null
+          class_join_url: string | null
         }>()
 
       if (existingError) {
@@ -1620,12 +1618,15 @@ Deno.serve(async (req) => {
           : admin.userId
 
       let classScheduleEvent: ClassScheduleNotificationEvent | null = null
+      const nextClassJoinUrl = hasClassJoinUrl
+        ? classJoinUrl
+        : existingRow.class_join_url
       if (hasClassSessions && classSessions && existingRow.status === 'active') {
         const [existingClassesResult, activationRowsResult] = await Promise.all([
           admin.adminClient
             .from('coaching_session_classes')
             .select(
-              'week_number, loom_url, report, report_image_path, scheduled_at, class_join_url, created_at',
+              'week_number, loom_url, report, report_image_path, scheduled_at, created_at',
             )
             .eq('session_id', sessionId)
             .order('created_at', { ascending: false }),
@@ -1657,6 +1658,8 @@ Deno.serve(async (req) => {
             sessionId,
             classSessions,
           ) as ClassNotificationRow[],
+          previousClassJoinUrl: existingRow.class_join_url,
+          nextClassJoinUrl,
         })
       }
 
@@ -1671,6 +1674,7 @@ Deno.serve(async (req) => {
       }
 
       if (hasClassSessions) updatePayload.class_sessions = classSessions
+      if (hasClassJoinUrl) updatePayload.class_join_url = classJoinUrl
       if (hasWeeklyObjectives) updatePayload.weekly_objectives = weeklyObjectives
 
       const { data, error } = await admin.adminClient
@@ -1761,6 +1765,7 @@ Deno.serve(async (req) => {
         target_lang: targetLang,
         native_lang: safeString(payload.nativeLang),
         level,
+        ...(hasClassJoinUrl ? { class_join_url: classJoinUrl } : {}),
         ...(hasClassSessions ? { class_sessions: classSessions } : {}),
         feedback_nm_url: safeString(payload.feedbackNmUrl),
         feedback_nm_notes: safeString(payload.feedbackNmNotes),
@@ -2656,6 +2661,7 @@ Deno.serve(async (req) => {
         targetLang: row.target_lang,
         nativeLang: row.native_lang,
         level: row.level,
+        classJoinUrl: row.class_join_url,
         classSessions: await withSignedClassReportUrls(
           admin.adminClient as any,
           programData.classSessionsBySession.get(row.id) || [],

@@ -4,6 +4,7 @@ import {
   BookOpenIcon,
   CalendarIcon,
   CheckSquareIcon,
+  CopyIcon,
   DownloadIcon,
   GoalIcon,
   LanguagesIcon,
@@ -41,7 +42,6 @@ type ClassSession = {
   reportImagePath: string | null
   reportImageUrl: string | null
   scheduledAt: string | null
-  classJoinUrl: string | null
 }
 
 type ProgramPreviewMembership = {
@@ -68,6 +68,7 @@ type ProgramPreviewMembership = {
     activatedAt: string
     endedAt: string | null
   }>
+  classJoinUrl: string | null
   classSessions: unknown[]
   weeklyObjectives: Record<string, unknown>
   weekProgress?: Record<
@@ -181,7 +182,6 @@ function normalizeClassSessions(value: unknown[]): ClassSession[] {
       reportImagePath: toString(item.reportImagePath ?? item.report_image_path),
       reportImageUrl: toString(item.reportImageUrl ?? item.report_image_url),
       scheduledAt: toString(item.scheduledAt ?? item.scheduled_at),
-      classJoinUrl: toString(item.classJoinUrl ?? item.class_join_url),
     }))
 }
 
@@ -300,6 +300,7 @@ export function CoachingProgramPreview({
   onCompleteExercise,
 }: CoachingProgramPreviewProps) {
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
+  const [copiedSessionLink, setCopiedSessionLink] = useState(false)
 
   const classSessionsByWeek = useMemo(() => {
     const map = new Map<string, ClassSession[]>()
@@ -344,9 +345,52 @@ export function CoachingProgramPreview({
     return map
   }, [membership.weekTimeline])
 
+  const handleCopySessionClassLink = async () => {
+    const link = membership.classJoinUrl || ''
+    if (!link || !navigator?.clipboard) return
+    await navigator.clipboard.writeText(link)
+    setCopiedSessionLink(true)
+    setTimeout(() => setCopiedSessionLink(false), 1500)
+  }
+
   return (
     <div className='grid gap-4'>
       <Card className='border-primary/20 bg-linear-to-br from-primary/10 via-background to-muted'>
+        <CardHeader className='pb-2'>
+          <div className='flex flex-wrap items-center justify-between gap-2'>
+            <CardTitle>Sesion de coaching</CardTitle>
+            <div className='flex flex-wrap items-center gap-2 text-sm text-muted-foreground'>
+              <PlayCircleIcon className='h-4 w-4 text-primary' />
+              <span>Link clase en vivo:</span>
+              {membership.classJoinUrl ? (
+                <>
+                  <a
+                    href={membership.classJoinUrl}
+                    target='_blank'
+                    rel='noopener noreferrer'
+                    className='text-primary underline underline-offset-2'
+                  >
+                    Abrir enlace
+                  </a>
+                  <Button
+                    type='button'
+                    size='icon'
+                    variant='outline'
+                    className='h-7 w-7'
+                    onClick={() => void handleCopySessionClassLink()}
+                    aria-label='Copiar link de clase en vivo'
+                  >
+                    <CopyIcon className='h-3.5 w-3.5' />
+                  </Button>
+                  {copiedSessionLink && <span className='text-xs'>Copiado</span>}
+                </>
+              ) : (
+                <span>Sin enlace configurado</span>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+
         <CardContent className='grid gap-4 py-1 md:grid-cols-[1fr_auto] md:items-start'>
           <div className='flex flex-col justify-between gap-4 h-full'>
             <div className='flex flex-wrap items-center gap-2'>
@@ -658,7 +702,10 @@ export function CoachingProgramPreview({
                         <div className='rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground'>
                           Aún no hay clase cargada para esta semana.
                         </div>
-                      ) : shouldRenderUpcomingClassResources(latestClass) ? (
+                      ) : shouldRenderUpcomingClassResources({
+                          ...latestClass,
+                          classJoinUrl: membership.classJoinUrl,
+                        }) ? (
                         <div className='rounded-lg border bg-muted/20 p-3'>
                           <p className='mb-1 text-xs font-medium tracking-wide text-muted-foreground'>
                             Fecha y hora de la clase, y enlace de acceso
@@ -672,9 +719,9 @@ export function CoachingProgramPreview({
                                 )}
                               </p>
                             )}
-                            {latestClass.classJoinUrl && (
+                            {membership.classJoinUrl && (
                               <a
-                                href={latestClass.classJoinUrl}
+                                href={membership.classJoinUrl}
                                 target='_blank'
                                 rel='noopener noreferrer'
                                 className='inline-flex w-fit items-center gap-2 text-sm text-primary underline underline-offset-2'

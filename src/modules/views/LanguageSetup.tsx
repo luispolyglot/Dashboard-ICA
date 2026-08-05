@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -37,6 +37,16 @@ export function LanguageSetup({ onSave }: LanguageSetupProps) {
   const [targetLang, setTargetLang] = useState('Polaco')
   const [level, setLevel] = useState<CEFRLevel>('A2')
 
+  const availableTargetLanguages = useMemo(
+    () => LANGUAGES.filter((language) => language !== nativeLang),
+    [nativeLang],
+  )
+
+  useEffect(() => {
+    if (availableTargetLanguages.includes(targetLang)) return
+    setTargetLang(availableTargetLanguages[0] ?? '')
+  }, [availableTargetLanguages, targetLang])
+
   return (
     <section className='flex min-h-screen items-center justify-center p-4'>
       <Card className='w-full max-w-xl'>
@@ -72,13 +82,11 @@ export function LanguageSetup({ onSave }: LanguageSetupProps) {
                   <SelectValue placeholder='Selecciona idioma' />
                 </SelectTrigger>
                 <SelectContent>
-                  {LANGUAGES.filter((language) => language !== nativeLang).map(
-                    (language) => (
-                      <SelectItem key={language} value={language}>
-                        {language}
-                      </SelectItem>
-                    ),
-                  )}
+                  {availableTargetLanguages.map((language) => (
+                    <SelectItem key={language} value={language}>
+                      {language}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 

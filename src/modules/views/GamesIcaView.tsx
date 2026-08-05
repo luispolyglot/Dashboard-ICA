@@ -67,7 +67,6 @@ export function GamesIcaView({
         <button
           type='button'
           onClick={() => navigate(DASHBOARD_ROUTES.preguntica)}
-          disabled={!pregunticaUnlocked}
           className='group relative min-h-52 overflow-hidden rounded-[22px] border border-slate-800 bg-[linear-gradient(160deg,#ffffff,#eef3f9)] p-6 text-left transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-75 dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
         >
           <p className='text-3xl' aria-hidden='true'>🎙️</p>

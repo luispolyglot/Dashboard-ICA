@@ -22,6 +22,7 @@ export type CoachingMembership = {
   targetLang: string
   nativeLang: string | null
   level: string
+  classJoinUrl: string | null
   classSessions: unknown[]
   feedbackNmUrl: string | null
   feedbackNmNotes: string | null
@@ -84,6 +85,7 @@ export type CoachingManagedUser = {
   targetLang: string
   nativeLang: string | null
   level: string
+  classJoinUrl: string | null
   classSessions: unknown[]
   feedbackNmUrl: string | null
   feedbackNmNotes: string | null
@@ -192,6 +194,7 @@ export type CoachingUserMembership = {
   targetLang: string
   nativeLang: string | null
   level: string
+  classJoinUrl: string | null
   classSessions: unknown[]
   feedbackNmUrl: string | null
   feedbackNmNotes: string | null
@@ -346,6 +349,7 @@ export async function upsertCoachingUser(input: {
   level: string
   nativeLang?: string | null
   coachUserId?: string | null
+  classJoinUrl?: string | null
   classSessions?: unknown[]
   feedbackNmUrl?: string | null
   feedbackNmNotes?: string | null

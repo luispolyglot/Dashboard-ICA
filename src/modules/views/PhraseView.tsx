@@ -114,6 +114,7 @@ export function PhraseView({
   const allWords = cards.slice().reverse()
   const automaticPool = cards.slice(-8).reverse()
   const manualPool = cards.slice(-25).reverse()
+  const manualPhraseGuidePool = cards.slice(-10).reverse()
   const activationCountsByCardId = useMemo(() => {
     const map: Record<string, number> = {}
     cards.forEach((card) => {
@@ -662,6 +663,34 @@ export function PhraseView({
                 className='min-h-22 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
               />
             </div>
+
+            <div>
+              <Label className='mb-1 block text-xs text-muted-foreground'>
+                Últimas 10 palabras ICA
+              </Label>
+              <div className='flex max-h-28 flex-wrap gap-1.5 overflow-y-auto rounded-md border border-border/70 bg-background/70 p-2'>
+                {manualPhraseGuidePool.map((word) => {
+                  const importance = getImportance(word.importance)
+                  return (
+                    <div
+                      key={word.id}
+                      className={`inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2.5 py-1 text-xs ${getUsageAuraClass(word.id)}`}
+                    >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importance.key]}`}
+                      />
+                      <span className='font-semibold'>{word.target}</span>
+                      <span className='text-muted-foreground'>({word.native})</span>
+                    </div>
+                  )
+                })}
+                {manualPhraseGuidePool.length === 0 ? (
+                  <p className='text-xs text-muted-foreground'>
+                    Aun no hay palabras ICA para mostrar.
+                  </p>
+                ) : null}
+              </div>
+            </div>
           </div>
 
           <p className='mt-3 text-[11px] text-muted-foreground'>
@@ -749,7 +778,7 @@ export function PhraseView({
           </>
         ) : mode === 'manualPhrase' ? (
           manualPhraseApproved ? (
-            '🔄 Generar otra frase manual'
+            '🔄 No me convence, quiero crear otra frase manual'
           ) : (
             `✅ Guardar frase manual · ${selectedWords.length}/${minWordsRequired}`
           )
@@ -861,7 +890,7 @@ export function PhraseView({
             variant='outline'
             className='mt-2 w-full'
           >
-            🔄 Generar otra frase
+            🔄 No me convence, genera otra sin repetir esta
           </Button>
         )}
 

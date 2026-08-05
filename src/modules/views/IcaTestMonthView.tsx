@@ -321,10 +321,15 @@ export function IcaTestMonthView({
   const hasRunningOfficialAttempt =
     mode === "official" && attempt?.status === "running";
 
+  const expectedRunnerQuestions =
+    mode === "redo"
+      ? Math.max(1, storedTest?.totalQuestions || activeQuestions.length)
+      : ICA_TEST_TOTAL_QUESTIONS;
+
   const shouldStartRunner =
     !isLoadingStoredTest &&
     !loadError &&
-    activeQuestions.length === ICA_TEST_TOTAL_QUESTIONS &&
+    activeQuestions.length === expectedRunnerQuestions &&
     ((mode === "redo" && Boolean(storedTest)) || hasRunningOfficialAttempt);
 
   const runnerQuestions = useMemo(
