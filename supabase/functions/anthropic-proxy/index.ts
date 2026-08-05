@@ -291,6 +291,51 @@ function normalizeLooseText(value: string): string {
     .trim()
 }
 
+function tokenizeForSimilarity(value: string): string[] {
+  return normalizeLooseText(value)
+    .split(' ')
+    .map((token) => token.trim())
+    .filter(Boolean)
+}
+
+function jaccardSimilarity(a: string[], b: string[]): number {
+  if (!a.length || !b.length) return 0
+
+  const setA = new Set(a)
+  const setB = new Set(b)
+  let intersection = 0
+
+  setA.forEach((token) => {
+    if (setB.has(token)) intersection += 1
+  })
+
+  const union = new Set([...setA, ...setB]).size
+  if (!union) return 0
+  return intersection / union
+}
+
+function isTooSimilarToPreviousPhrase(nextPhrase: string, previousPhrase: string): boolean {
+  const nextNormalized = normalizeLooseText(nextPhrase)
+  const previousNormalized = normalizeLooseText(previousPhrase)
+  if (!nextNormalized || !previousNormalized) return false
+
+  if (nextNormalized === previousNormalized) return true
+
+  const nextTokens = tokenizeForSimilarity(nextPhrase)
+  const previousTokens = tokenizeForSimilarity(previousPhrase)
+  const similarity = jaccardSimilarity(nextTokens, previousTokens)
+
+  return similarity >= 0.8
+}
+
+function hasAllRequiredWords(phrase: string, requiredWords: string[]): boolean {
+  const normalizedPhrase = normalizeLooseText(phrase)
+  return requiredWords.every((word) => {
+    const normalizedWord = normalizeLooseText(word)
+    return includesRequiredWord(normalizedPhrase, normalizedWord)
+  })
+}
+
 function parseManualPhraseSuggestion(raw: string | null): ManualPhraseReviewResult | null {
   const parsed = parseLastJsonObject(raw)
   if (!parsed) return null
@@ -573,39 +618,58 @@ Deno.serve(async (req) => {
         ? payload.previousPhrase.trim()
         : ''
 
-      const prompt = [
-        `Generate one sentence in ${payload.targetLang} including ALL words: ${words.join(', ')}.`,
-        'Rules:',
-        `- CEFR ${payload.level} level. Description: ${levelDescription}`,
-        `- ${sentenceLengthRule}`,
-        '- Natural, native-sounding',
-        '- Include all required ICA words exactly as provided.',
-        '- You may add up to 10 extra words only if needed to keep the sentence coherent and natural.',
-        previousPhrase
-          ? `- Do NOT repeat this previous sentence (or tiny variations): ${JSON.stringify(previousPhrase)}`
-          : '',
-        previousPhrase
-          ? '- Generate a clearly different sentence while still using all required words.'
-          : '',
-        '- Respect the intended meanings from the learner; do not switch to another sense if a word is polysemous.',
-        intendedMeanings.length
-          ? `- Intended meanings (${payload.targetLang} -> ${payload.nativeLang}): ${intendedMeanings.join('; ')}`
-          : '',
-        `- Translate to ${payload.nativeLang}`,
-        'Reply ONLY:',
-        '{"phrase":"<sentence>","translation":"<translation>","words_used":["w1","w2"]}',
-      ]
-        .filter(Boolean)
-        .join('\n')
+      const buildActivationPrompt = (forbiddenPhrase?: string): string => {
+        return [
+          `Task: generate one original sentence in ${payload.targetLang} for a language learner using ALL required ICA words.`,
+          `Required ICA words: ${words.join(', ')}`,
+          'Rules (strict):',
+          `- CEFR ${payload.level} level. Description: ${levelDescription}`,
+          `- ${sentenceLengthRule}`,
+          '- Use all required ICA words in the sentence.',
+          '- Keep the intended meaning for each ICA word; do not switch sense.',
+          '- You may add up to 10 extra words only when needed for coherence and naturalness.',
+          '- Natural, native-sounding, practical wording.',
+          forbiddenPhrase
+            ? `- Forbidden previous sentence (do not reuse wording or structure): ${JSON.stringify(forbiddenPhrase)}`
+            : '',
+          forbiddenPhrase
+            ? '- Produce a clearly different sentence from the forbidden one (different opening and clause structure).'
+            : '',
+          intendedMeanings.length
+            ? `- Intended meanings (${payload.targetLang} -> ${payload.nativeLang}): ${intendedMeanings.join('; ')}`
+            : '',
+          `- Translate to ${payload.nativeLang}`,
+          'Reply ONLY:',
+          '{"phrase":"<sentence>","translation":"<translation>","words_used":["w1","w2"]}',
+        ]
+          .filter(Boolean)
+          .join('\n')
+      }
 
-      const raw = await callAnthropic(
-        'You generate natural sentences for language learners. Reply ONLY in JSON. No markdown, no backticks.',
-        prompt,
-      )
+      let result: { phrase: string; translation: string; words_used?: string[] } | null = null
+      const maxAttempts = previousPhrase ? 2 : 1
 
-      return jsonResponse(200, {
-        result: parseActivationPhrase(raw.text),
-      })
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const forbiddenPhrase = attempt === 0 ? previousPhrase : previousPhrase || result?.phrase || ''
+        const raw = await callAnthropic(
+          'You generate natural sentences for language learners. Follow strict constraints and reply ONLY in JSON. No markdown, no backticks.',
+          buildActivationPrompt(forbiddenPhrase || undefined),
+          {
+            maxTokens: 260,
+            temperature: attempt === 0 ? 0.2 : 0,
+          },
+        )
+
+        const parsed = parseActivationPhrase(raw.text)
+        if (!parsed) continue
+        if (!hasAllRequiredWords(parsed.phrase, words)) continue
+        if (previousPhrase && isTooSimilarToPreviousPhrase(parsed.phrase, previousPhrase)) continue
+
+        result = parsed
+        break
+      }
+
+      return jsonResponse(200, { result })
     }
 
     if (payload.action === 'word_example') {
