@@ -647,6 +647,7 @@ Deno.serve(async (req) => {
       }
 
       let result: { phrase: string; translation: string; words_used?: string[] } | null = null
+      let fallbackCandidate: { phrase: string; translation: string; words_used?: string[] } | null = null
       const maxAttempts = previousPhrase ? 2 : 1
 
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -662,6 +663,11 @@ Deno.serve(async (req) => {
 
         const parsed = parseActivationPhrase(raw.text)
         if (!parsed) continue
+
+        if (!fallbackCandidate) {
+          fallbackCandidate = parsed
+        }
+
         if (!hasAllRequiredWords(parsed.phrase, words)) continue
         if (previousPhrase && isTooSimilarToPreviousPhrase(parsed.phrase, previousPhrase)) continue
 
@@ -669,7 +675,7 @@ Deno.serve(async (req) => {
         break
       }
 
-      return jsonResponse(200, { result })
+      return jsonResponse(200, { result: result || fallbackCandidate })
     }
 
     if (payload.action === 'word_example') {
