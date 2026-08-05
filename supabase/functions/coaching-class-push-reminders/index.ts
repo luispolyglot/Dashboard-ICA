@@ -34,6 +34,7 @@ type SessionRow = {
   id: string
   user_id: string
   status: string
+  class_join_url: string | null
 }
 
 type PushSubscriptionRow = {
@@ -298,7 +299,7 @@ Deno.serve(async (req) => {
 
     const { data: sessionRow, error: sessionError } = await adminClient
       .from('coaching_sessions')
-      .select('id, user_id, status')
+      .select('id, user_id, status, class_join_url')
       .eq('id', row.session_id)
       .maybeSingle<SessionRow>()
 
@@ -349,7 +350,7 @@ Deno.serve(async (req) => {
     const { data: classRows, error: classRowsError } = await adminClient
       .from('coaching_session_classes')
       .select(
-        'week_number, loom_url, report, report_image_path, scheduled_at, class_join_url, created_at',
+        'week_number, loom_url, report, report_image_path, scheduled_at, created_at',
       )
       .eq('session_id', row.session_id)
       .eq('week_number', row.week_number)
@@ -389,7 +390,10 @@ Deno.serve(async (req) => {
       continue
     }
 
-    const currentSignature = buildClassScheduleSignature(currentClass)
+    const currentSignature = buildClassScheduleSignature(
+      currentClass,
+      sessionRow.class_join_url,
+    )
     if (currentSignature !== row.schedule_signature) {
       await updateNotificationStatus({
         adminClient,

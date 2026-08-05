@@ -57,7 +57,6 @@ type AssignClassDraft = {
   weekKey: string
   scheduledDate: string
   scheduledTime: string
-  classJoinUrl: string
 }
 
 const WEEKDAY_LABELS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
@@ -125,11 +124,6 @@ function getClassSessionByWeek(
       return key === weekKey
     }) as Record<string, unknown> | undefined
   ) || null
-}
-
-function getClassJoinUrlByWeek(classSessions: unknown, weekKey: string): string {
-  const row = getClassSessionByWeek(classSessions, weekKey)
-  return toString(row?.classJoinUrl ?? row?.class_join_url)
 }
 
 function buildCalendarCells(monthKey: string): CalendarCell[] {
@@ -218,7 +212,7 @@ function mapClassSessions(rows: CoachingManagedUser[]): CoachingCalendarEntry[] 
         level: row.level,
         coachUserId: row.coachUserId,
         coachDisplayName: row.coachDisplayName,
-        classJoinUrl: toString(item.classJoinUrl ?? item.class_join_url) || null,
+        classJoinUrl: row.classJoinUrl,
         loomUrl: toString(item.loomUrl ?? item.loom_url) || null,
         report: toString(item.report) || null,
       })
@@ -347,7 +341,6 @@ export function ManageCoachingCalendarView() {
       weekKey: initialWeek,
       scheduledDate: dateKey,
       scheduledTime: '',
-      classJoinUrl: getClassJoinUrlByWeek(initialSession?.classSessions, initialWeek),
     })
     setAssignModalOpen(true)
   }
@@ -413,8 +406,6 @@ export function ManageCoachingCalendarView() {
             existingWeekClass?.reportImageUrl ??
               existingWeekClass?.report_image_url,
           ) || null,
-        classJoinUrl:
-          assignDraft.classJoinUrl.trim() || null,
         scheduledAt: nextScheduledAt,
         createdAt:
           toString(existingWeekClass?.createdAt ?? existingWeekClass?.created_at) ||
@@ -431,6 +422,7 @@ export function ManageCoachingCalendarView() {
         nativeLang: selectedManagedSession.nativeLang,
         level: selectedManagedSession.level,
         coachUserId: selectedManagedSession.coachUserId,
+        classJoinUrl: selectedManagedSession.classJoinUrl,
         feedbackNmUrl: selectedManagedSession.feedbackNmUrl,
         feedbackNmNotes: selectedManagedSession.feedbackNmNotes,
         notes: selectedManagedSession.notes,
@@ -708,16 +700,6 @@ export function ManageCoachingCalendarView() {
                                   getSessionMinAssignableWeek(firstSession),
                                 )
                               : 'W01',
-                            classJoinUrl: firstSession
-                              ? getClassJoinUrlByWeek(
-                                  firstSession.classSessions,
-                                  firstSession
-                                    ? weekKeyFromNumber(
-                                        getSessionMinAssignableWeek(firstSession),
-                                      )
-                                    : 'W01',
-                                )
-                              : '',
                           }
                         : prev,
                     )
@@ -752,14 +734,6 @@ export function ManageCoachingCalendarView() {
                                 getSessionMinAssignableWeek(selected),
                               )
                             : prev.weekKey,
-                          classJoinUrl: selected
-                            ? getClassJoinUrlByWeek(
-                                selected.classSessions,
-                                weekKeyFromNumber(
-                                  getSessionMinAssignableWeek(selected),
-                                ),
-                              )
-                            : prev.classJoinUrl,
                         }
                       : prev,
                   )
@@ -795,12 +769,6 @@ export function ManageCoachingCalendarView() {
                       ? {
                           ...prev,
                           weekKey: nextWeek,
-                          classJoinUrl: selectedManagedSession
-                            ? getClassJoinUrlByWeek(
-                                selectedManagedSession.classSessions,
-                                nextWeek,
-                              )
-                            : prev.classJoinUrl,
                         }
                       : prev,
                   )
@@ -858,25 +826,6 @@ export function ManageCoachingCalendarView() {
               />
             </div>
 
-            <div className='space-y-1.5'>
-              <Label htmlFor='assign-class-join-url'>Link clase en vivo (opcional)</Label>
-              <Input
-                id='assign-class-join-url'
-                value={assignDraft?.classJoinUrl || ''}
-                onChange={(event) => {
-                  const value = event.target.value
-                  setAssignDraft((prev) =>
-                    prev
-                      ? {
-                          ...prev,
-                          classJoinUrl: value,
-                        }
-                      : prev,
-                  )
-                }}
-                placeholder='Ej: https://meet.google.com/...'
-              />
-            </div>
           </div>
 
           <DialogFooter>

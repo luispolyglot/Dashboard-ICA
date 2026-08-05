@@ -4,7 +4,6 @@ export type ClassNotificationRow = {
   report: string | null
   report_image_path: string | null
   scheduled_at: string | null
-  class_join_url: string | null
 }
 
 export type ClassScheduleNotificationEvent = {
@@ -46,27 +45,29 @@ export function hasPostClassResources(row: ClassNotificationRow | null): boolean
 }
 
 export function hasUpcomingClassResources(
-  row: Pick<ClassNotificationRow, 'scheduled_at' | 'class_join_url'> | null,
+  row: Pick<ClassNotificationRow, 'scheduled_at'> | null,
+  classJoinUrl: string | null,
 ): boolean {
   if (!row) return false
-  return Boolean(
-    toTrimmedOrNull(row.scheduled_at) || toTrimmedOrNull(row.class_join_url),
-  )
+  return Boolean(toTrimmedOrNull(row.scheduled_at) || toTrimmedOrNull(classJoinUrl))
 }
 
 export function buildClassScheduleSignature(
-  row: Pick<ClassNotificationRow, 'scheduled_at' | 'class_join_url'> | null,
+  row: Pick<ClassNotificationRow, 'scheduled_at'> | null,
+  classJoinUrl: string | null,
 ): string {
   if (!row) return ''
   const scheduledAt = toNormalizedIsoOrNull(row.scheduled_at) || ''
-  const classJoinUrl = toTrimmedOrNull(row.class_join_url) || ''
-  return `${scheduledAt}|${classJoinUrl}`
+  const nextClassJoinUrl = toTrimmedOrNull(classJoinUrl) || ''
+  return `${scheduledAt}|${nextClassJoinUrl}`
 }
 
 export function resolveClassScheduleNotificationEvent(input: {
   activeWeekNumber: number | null
   previousRows: ClassNotificationRow[]
   nextRows: ClassNotificationRow[]
+  previousClassJoinUrl: string | null
+  nextClassJoinUrl: string | null
 }): ClassScheduleNotificationEvent | null {
   const activeWeekNumber = normalizeWeekNumber(input.activeWeekNumber)
   if (!activeWeekNumber) return null
@@ -78,15 +79,18 @@ export function resolveClassScheduleNotificationEvent(input: {
 
   if (!nextRow) return null
   if (hasPostClassResources(nextRow)) return null
-  if (!hasUpcomingClassResources(nextRow)) return null
+  if (!hasUpcomingClassResources(nextRow, input.nextClassJoinUrl)) return null
 
-  const previousSignature = buildClassScheduleSignature(previousRow)
-  const nextSignature = buildClassScheduleSignature(nextRow)
+  const previousSignature = buildClassScheduleSignature(
+    previousRow,
+    input.previousClassJoinUrl,
+  )
+  const nextSignature = buildClassScheduleSignature(nextRow, input.nextClassJoinUrl)
   if (!nextSignature || nextSignature === previousSignature) return null
 
   const hadUpcomingBefore =
     Boolean(previousSignature) &&
-    hasUpcomingClassResources(previousRow) &&
+    hasUpcomingClassResources(previousRow, input.previousClassJoinUrl) &&
     !hasPostClassResources(previousRow)
 
   return {
@@ -94,7 +98,7 @@ export function resolveClassScheduleNotificationEvent(input: {
     type: hadUpcomingBefore ? 'rescheduled' : 'scheduled',
     scheduleSignature: nextSignature,
     scheduledAt: toTrimmedOrNull(nextRow.scheduled_at),
-    classJoinUrl: toTrimmedOrNull(nextRow.class_join_url),
+    classJoinUrl: toTrimmedOrNull(input.nextClassJoinUrl),
   }
 }
 
