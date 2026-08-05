@@ -210,8 +210,11 @@ export function GamesIcaPage() {
         if (!active || !status) return
 
         setPregunticaUnlocked(status.isUnlocked)
+        const displayActivationCount = status.completedAt
+          ? status.requiredActivationWords
+          : status.activationWordsCount
         setPregunticaProgress(
-          `${status.activationWordsCount}/${status.requiredActivationWords}`,
+          `${displayActivationCount}/${status.requiredActivationWords}`,
         )
         if (status.isUnlocked) {
           setPregunticaLabel('Lista para responder')

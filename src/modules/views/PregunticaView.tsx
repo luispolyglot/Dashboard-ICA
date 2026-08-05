@@ -413,13 +413,6 @@ export function PregunticaView({
     }
   }, [status])
 
-  useEffect(() => {
-    if (loading) return
-    if (!status) return
-    if (status.isUnlocked) return
-    navigate(DASHBOARD_ROUTES.gamesIca, { replace: true })
-  }, [loading, navigate, status])
-
   async function refreshStatus() {
     const [weekStatus, tokens] = await Promise.all([
       fetchPregunticaWeekStatus({
@@ -892,11 +885,18 @@ export function PregunticaView({
           Tu reto semanal de expresión
         </h1>
         <div className='mt-5 flex flex-wrap items-end justify-between gap-3'>
-          <p className='text-sm text-slate-500'>
-            {hasCompletedWeek
-              ? '✅ Reto completado. Tu intento quedó guardado en el historial.'
-              : `Cuenta atrás: ${countdownLabel}`}
-          </p>
+          <div>
+            <p className='text-sm text-slate-500'>
+              {hasCompletedWeek
+                ? '✅ Reto completado. Tu intento quedó guardado en el historial.'
+                : `Cuenta atrás: ${countdownLabel}`}
+            </p>
+            {!status?.isUnlocked && (
+              <p className='mt-1 text-xs font-medium text-slate-600 dark:text-slate-300'>
+                Progreso de desbloqueo: {status?.activationWordsCount || 0}/{status?.requiredActivationWords || 20} palabras activadas.
+              </p>
+            )}
+          </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button disabled={ctaDisabled} className='text-sm font-semibold'>
