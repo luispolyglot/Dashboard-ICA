@@ -26,7 +26,7 @@ import {
   type CoachingManagedUser,
   upsertCoachingUser,
 } from '../services/coaching'
-import { toIsoFromDateAndTime } from './coachingClassResources'
+import { toDateAndTimeFromIso, toIsoFromDateAndTime } from './coachingClassResources'
 
 type CoachingCalendarEntry = {
   id: string
@@ -54,6 +54,12 @@ type CalendarCell = {
 type AssignClassDraft = {
   sessionId: string
   coachUserId: string
+  weekKey: string
+  scheduledDate: string
+  scheduledTime: string
+}
+
+type EditClassDraft = {
   weekKey: string
   scheduledDate: string
   scheduledTime: string
@@ -243,6 +249,9 @@ export function ManageCoachingCalendarView() {
   const [assignModalOpen, setAssignModalOpen] = useState(false)
   const [assignDraft, setAssignDraft] = useState<AssignClassDraft | null>(null)
   const [savingClass, setSavingClass] = useState(false)
+  const [editingSelectedClass, setEditingSelectedClass] = useState(false)
+  const [editClassDraft, setEditClassDraft] = useState<EditClassDraft | null>(null)
+  const [deletingSelectedClass, setDeletingSelectedClass] = useState(false)
 
   const loadData = async () => {
     setLoading(true)
@@ -495,6 +504,178 @@ export function ManageCoachingCalendarView() {
 
   const currentUserId = user?.id || ''
 
+  useEffect(() => {
+    if (!selectedEntry) {
+      setEditingSelectedClass(false)
+      setEditClassDraft(null)
+      return
+    }
+
+    const scheduledDraft = toDateAndTimeFromIso(selectedEntry.scheduledAt)
+    setEditClassDraft({
+      weekKey: selectedEntry.sessionWeekKey,
+      scheduledDate: scheduledDraft.date,
+      scheduledTime: scheduledDraft.time,
+    })
+    setEditingSelectedClass(false)
+  }, [selectedEntry])
+
+  const handleSaveSelectedClass = async () => {
+    if (!selectedEntry || !editClassDraft) return
+
+    const selectedSession =
+      managedRows.find((row) => row.id === selectedEntry.sessionId) || null
+    if (!selectedSession) {
+      setFeedback('No se encontró la sesión para editar la clase.')
+      return
+    }
+
+    const nextScheduledAt = toIsoFromDateAndTime(
+      editClassDraft.scheduledDate,
+      editClassDraft.scheduledTime,
+    )
+    if (!nextScheduledAt) {
+      setFeedback('La fecha u hora no es valida.')
+      return
+    }
+
+    const existingCurrentWeekClass = getClassSessionByWeek(
+      selectedSession.classSessions,
+      selectedEntry.sessionWeekKey,
+    )
+    const existingTargetWeekClass = getClassSessionByWeek(
+      selectedSession.classSessions,
+      editClassDraft.weekKey,
+    )
+    const rowBase =
+      editClassDraft.weekKey === selectedEntry.sessionWeekKey
+        ? existingCurrentWeekClass
+        : existingTargetWeekClass
+
+    const baseSessions = Array.isArray(selectedSession.classSessions)
+      ? selectedSession.classSessions.filter((item) => {
+          if (!item || typeof item !== 'object') return false
+          const row = item as Record<string, unknown>
+          const key = normalizeProgramWeekKey(
+            toString(row.key ?? row.weekKey ?? row.week_key ?? row.week),
+          )
+          return (
+            key !== selectedEntry.sessionWeekKey && key !== editClassDraft.weekKey
+          )
+        })
+      : []
+
+    const nextWeekClass = {
+      id:
+        toString(rowBase?.id) ||
+        toString(existingCurrentWeekClass?.id) ||
+        selectedEntry.id ||
+        crypto.randomUUID(),
+      key: editClassDraft.weekKey,
+      weekKey: editClassDraft.weekKey,
+      title: 'Clase semanal',
+      loomUrl: toString(rowBase?.loomUrl ?? rowBase?.loom_url) || null,
+      report: toString(rowBase?.report) || null,
+      reportImagePath:
+        toString(rowBase?.reportImagePath ?? rowBase?.report_image_path) || null,
+      reportImageUrl:
+        toString(rowBase?.reportImageUrl ?? rowBase?.report_image_url) || null,
+      scheduledAt: nextScheduledAt,
+      createdAt:
+        toString(rowBase?.createdAt ?? rowBase?.created_at) ||
+        toString(existingCurrentWeekClass?.createdAt ?? existingCurrentWeekClass?.created_at) ||
+        new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+
+    const nextSessions = [nextWeekClass, ...baseSessions]
+
+    setSavingClass(true)
+    setFeedback(null)
+    try {
+      await upsertCoachingUser({
+        sessionId: selectedSession.id,
+        userId: selectedSession.userId,
+        targetLang: selectedSession.targetLang,
+        nativeLang: selectedSession.nativeLang,
+        level: selectedSession.level,
+        coachUserId: selectedSession.coachUserId,
+        classJoinUrl: selectedSession.classJoinUrl,
+        feedbackNmUrl: selectedSession.feedbackNmUrl,
+        feedbackNmNotes: selectedSession.feedbackNmNotes,
+        notes: selectedSession.notes,
+        classSessions: nextSessions,
+      })
+
+      setEditingSelectedClass(false)
+      setSelectedEntry(null)
+      setFeedback('Clase actualizada correctamente.')
+      await loadData()
+    } catch (err) {
+      setFeedback(
+        err instanceof Error ? err.message : 'No se pudo actualizar la clase.',
+      )
+    } finally {
+      setSavingClass(false)
+    }
+  }
+
+  const handleDeleteSelectedClass = async () => {
+    if (!selectedEntry) return
+
+    const selectedSession =
+      managedRows.find((row) => row.id === selectedEntry.sessionId) || null
+    if (!selectedSession) {
+      setFeedback('No se encontró la sesión para eliminar la clase.')
+      return
+    }
+
+    const nextSessions = Array.isArray(selectedSession.classSessions)
+      ? selectedSession.classSessions.filter((item) => {
+          if (!item || typeof item !== 'object') return false
+          const row = item as Record<string, unknown>
+          const itemId = toString(row.id)
+          if (itemId && itemId === selectedEntry.id) return false
+          const key = normalizeProgramWeekKey(
+            toString(row.key ?? row.weekKey ?? row.week_key ?? row.week),
+          )
+          const scheduledAt = toString(row.scheduledAt ?? row.scheduled_at)
+          return !(
+            key === selectedEntry.sessionWeekKey &&
+            scheduledAt === selectedEntry.scheduledAt
+          )
+        })
+      : []
+
+    setDeletingSelectedClass(true)
+    setFeedback(null)
+    try {
+      await upsertCoachingUser({
+        sessionId: selectedSession.id,
+        userId: selectedSession.userId,
+        targetLang: selectedSession.targetLang,
+        nativeLang: selectedSession.nativeLang,
+        level: selectedSession.level,
+        coachUserId: selectedSession.coachUserId,
+        classJoinUrl: selectedSession.classJoinUrl,
+        feedbackNmUrl: selectedSession.feedbackNmUrl,
+        feedbackNmNotes: selectedSession.feedbackNmNotes,
+        notes: selectedSession.notes,
+        classSessions: nextSessions,
+      })
+
+      setSelectedEntry(null)
+      setFeedback('Clase eliminada correctamente.')
+      await loadData()
+    } catch (err) {
+      setFeedback(
+        err instanceof Error ? err.message : 'No se pudo eliminar la clase.',
+      )
+    } finally {
+      setDeletingSelectedClass(false)
+    }
+  }
+
   return (
     <section className='mx-auto w-full max-w-7xl flex-1 overflow-y-auto px-5 py-8'>
       <div className='mb-6 flex flex-wrap items-start justify-between gap-3'>
@@ -523,11 +704,11 @@ export function ManageCoachingCalendarView() {
         <div className='mb-4 flex flex-wrap gap-3 text-xs text-muted-foreground'>
           <p className='inline-flex items-center gap-2'>
             <span className='inline-block h-2.5 w-2.5 rounded-full bg-emerald-500' />
-            Mis alumnos
+            Mis clases
           </p>
           <p className='inline-flex items-center gap-2'>
             <span className='inline-block h-2.5 w-2.5 rounded-full bg-sky-500' />
-            Alumnos de otros coachers
+            Clases de otros coachers
           </p>
         </div>
       )}
@@ -936,10 +1117,139 @@ export function ManageCoachingCalendarView() {
                 </p>
               )}
 
+              {editingSelectedClass && editClassDraft && (
+                <div className='space-y-3 rounded-md border bg-muted/20 p-3'>
+                  <p className='text-xs font-medium text-muted-foreground'>
+                    Editar clase
+                  </p>
+
+                  <div className='space-y-1.5'>
+                    <Label htmlFor='edit-week-select'>Semana</Label>
+                    <select
+                      id='edit-week-select'
+                      className='h-10 w-full rounded-md border bg-background px-3 text-sm'
+                      value={editClassDraft.weekKey}
+                      onChange={(event) =>
+                        setEditClassDraft((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                weekKey: normalizeProgramWeekKey(
+                                  event.target.value,
+                                ),
+                              }
+                            : prev,
+                        )
+                      }
+                    >
+                      {Array.from({ length: 12 }, (_, index) => {
+                        const weekKey = weekKeyFromNumber(index + 1)
+                        return (
+                          <option key={weekKey} value={weekKey}>
+                            {weekKey}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </div>
+
+                  <div className='space-y-1.5'>
+                    <Label htmlFor='edit-class-date'>Fecha</Label>
+                    <Input
+                      id='edit-class-date'
+                      type='date'
+                      value={editClassDraft.scheduledDate}
+                      onChange={(event) =>
+                        setEditClassDraft((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                scheduledDate: event.target.value,
+                              }
+                            : prev,
+                        )
+                      }
+                    />
+                  </div>
+
+                  <div className='space-y-1.5'>
+                    <Label htmlFor='edit-class-time'>Horario</Label>
+                    <Input
+                      id='edit-class-time'
+                      type='time'
+                      value={editClassDraft.scheduledTime}
+                      onChange={(event) =>
+                        setEditClassDraft((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                scheduledTime: event.target.value,
+                              }
+                            : prev,
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+
               <DialogFooter>
-                <Button type='button' onClick={() => setSelectedEntry(null)}>
-                  Aceptar
-                </Button>
+                {!editingSelectedClass ? (
+                  <>
+                    <Button
+                      type='button'
+                      variant='destructive'
+                      onClick={() => {
+                        const confirmed = window.confirm(
+                          '¿Seguro que quieres eliminar esta clase? Esta acción no se puede deshacer.',
+                        )
+                        if (!confirmed) return
+                        void handleDeleteSelectedClass()
+                      }}
+                      disabled={deletingSelectedClass || savingClass}
+                    >
+                      {deletingSelectedClass ? 'Eliminando...' : 'Eliminar'}
+                    </Button>
+                    <Button
+                      type='button'
+                      variant='outline'
+                      onClick={() => setEditingSelectedClass(true)}
+                      disabled={deletingSelectedClass || savingClass}
+                    >
+                      Editar
+                    </Button>
+                    <Button
+                      type='button'
+                      onClick={() => setSelectedEntry(null)}
+                      disabled={deletingSelectedClass || savingClass}
+                    >
+                      Cerrar
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      type='button'
+                      variant='outline'
+                      onClick={() => setEditingSelectedClass(false)}
+                      disabled={savingClass}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      type='button'
+                      onClick={() => void handleSaveSelectedClass()}
+                      disabled={
+                        savingClass ||
+                        !editClassDraft?.weekKey ||
+                        !editClassDraft?.scheduledDate ||
+                        !editClassDraft?.scheduledTime
+                      }
+                    >
+                      {savingClass ? 'Guardando...' : 'Guardar cambios'}
+                    </Button>
+                  </>
+                )}
               </DialogFooter>
             </div>
           )}
