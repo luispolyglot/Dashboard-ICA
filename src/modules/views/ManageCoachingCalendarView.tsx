@@ -66,6 +66,8 @@ type EditClassDraft = {
 }
 
 const WEEKDAY_LABELS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
+const OWNER_SUPPORT_COACH_USER_ID = '68890bd8-894d-422d-b865-08806acdb312'
+const OWNER_SUPPORT_COACH_LABEL = 'Luis'
 
 function toString(value: unknown): string {
   if (typeof value === 'number' && Number.isFinite(value)) return String(value)
@@ -216,8 +218,19 @@ function mapClassSessions(rows: CoachingManagedUser[]): CoachingCalendarEntry[] 
         studentName: row.userDisplayName,
         targetLang: row.targetLang,
         level: row.level,
-        coachUserId: row.coachUserId,
-        coachDisplayName: row.coachDisplayName,
+        coachUserId:
+          toString(
+            item.assignedByCoachUserId ?? item.assigned_by_coach_user_id,
+          ) || row.coachUserId,
+        coachDisplayName:
+          toString(
+            item.assignedByCoachDisplayName ?? item.assigned_by_coach_display_name,
+          ) ||
+          (toString(
+            item.assignedByCoachUserId ?? item.assigned_by_coach_user_id,
+          ) === OWNER_SUPPORT_COACH_USER_ID
+            ? OWNER_SUPPORT_COACH_LABEL
+            : row.coachDisplayName),
         classJoinUrl: row.classJoinUrl,
         loomUrl: toString(item.loomUrl ?? item.loom_url) || null,
         report: toString(item.report) || null,
@@ -297,6 +310,9 @@ export function ManageCoachingCalendarView() {
       if (!row.coachUserId) continue
       byId.set(row.coachUserId, row.coachDisplayName || row.coachUserId)
     }
+    if (managedRows.some((row) => row.supportCoachUserId === OWNER_SUPPORT_COACH_USER_ID)) {
+      byId.set(OWNER_SUPPORT_COACH_USER_ID, OWNER_SUPPORT_COACH_LABEL)
+    }
     return Array.from(byId.entries())
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
@@ -305,6 +321,7 @@ export function ManageCoachingCalendarView() {
   const studentsByCoach = useMemo(() => {
     if (!isSuperAdmin) return managedRows
     if (!assignDraft?.coachUserId) return []
+    if (assignDraft.coachUserId === OWNER_SUPPORT_COACH_USER_ID) return managedRows
     return managedRows.filter((row) => row.coachUserId === assignDraft.coachUserId)
   }, [assignDraft?.coachUserId, isSuperAdmin, managedRows])
 
@@ -421,6 +438,7 @@ export function ManageCoachingCalendarView() {
             existingWeekClass?.reportImageUrl ??
               existingWeekClass?.report_image_url,
           ) || null,
+        assignedByCoachUserId: user?.id || null,
         scheduledAt: nextScheduledAt,
         createdAt:
           toString(existingWeekClass?.createdAt ?? existingWeekClass?.created_at) ||
@@ -586,6 +604,10 @@ export function ManageCoachingCalendarView() {
         toString(rowBase?.reportImagePath ?? rowBase?.report_image_path) || null,
       reportImageUrl:
         toString(rowBase?.reportImageUrl ?? rowBase?.report_image_url) || null,
+      assignedByCoachUserId:
+        toString(
+          rowBase?.assignedByCoachUserId ?? rowBase?.assigned_by_coach_user_id,
+        ) || null,
       scheduledAt: nextScheduledAt,
       createdAt:
         toString(rowBase?.createdAt ?? rowBase?.created_at) ||

@@ -104,6 +104,7 @@ type CoachingSessionClassRow = {
   report: string | null
   report_image_path: string | null
   scheduled_at: string | null
+  assigned_by_coach_user_id: string | null
   created_at: string
   updated_at: string
 }
@@ -259,6 +260,10 @@ function safeClassSessions(value: unknown): unknown[] {
         reportImagePath:
           safeString(item.reportImagePath ?? item.report_image_path) || null,
         scheduledAt: normalizeIsoDateTime(item.scheduledAt ?? item.scheduled_at),
+        assignedByCoachUserId:
+          safeString(
+            item.assignedByCoachUserId ?? item.assigned_by_coach_user_id,
+          ) || null,
         createdAt,
         updatedAt: safeString(item.updatedAt ?? item.updated_at) || new Date().toISOString(),
       }
@@ -536,6 +541,7 @@ function serializeClassSessions(rows: CoachingSessionClassRow[]): unknown[] {
     report: row.report,
     reportImagePath: row.report_image_path,
     scheduledAt: row.scheduled_at,
+    assignedByCoachUserId: row.assigned_by_coach_user_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }))
@@ -600,6 +606,7 @@ function classRowsFromPayload(
   report: string | null
   report_image_path: string | null
   scheduled_at: string | null
+  assigned_by_coach_user_id: string | null
   created_at: string
   updated_at: string
 }> {
@@ -618,6 +625,9 @@ function classRowsFromPayload(
       report: safeString(row.report),
       report_image_path: safeString(row.reportImagePath ?? row.report_image_path),
       scheduled_at: normalizeIsoDateTime(row.scheduledAt ?? row.scheduled_at),
+      assigned_by_coach_user_id:
+        safeString(row.assignedByCoachUserId ?? row.assigned_by_coach_user_id) ||
+        null,
       created_at: createdAt,
       updated_at: safeString(row.updatedAt) || new Date().toISOString(),
     }
@@ -700,7 +710,7 @@ async function fetchProgramDataBySessionIds(
     adminClient
       .from('coaching_session_classes')
       .select(
-        'id, session_id, week_number, title, loom_url, report, report_image_path, scheduled_at, created_at, updated_at',
+        'id, session_id, week_number, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, created_at, updated_at',
       )
       .in('session_id', sessionIds)
       .order('created_at', { ascending: false }),
