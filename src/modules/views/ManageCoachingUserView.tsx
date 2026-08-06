@@ -103,6 +103,7 @@ type ClassSessionItem = {
   reportImagePath: string | null
   reportImageUrl: string | null
   scheduledAt: string | null
+  assignedByCoachUserId: string | null
 }
 
 type ObjectiveDraft = {
@@ -200,6 +201,10 @@ function normalizeClassSessions(value: unknown): ClassSessionItem[] {
         reportImageUrl:
           toString(row.reportImageUrl ?? row.report_image_url) || null,
         scheduledAt: toString(row.scheduledAt ?? row.scheduled_at) || null,
+        assignedByCoachUserId:
+          toString(
+            row.assignedByCoachUserId ?? row.assigned_by_coach_user_id,
+          ) || null,
       }
     })
 }
@@ -1179,6 +1184,8 @@ export function ManageCoachingUserView({
               report: nextReport,
               reportImagePath: nextImagePath,
               scheduledAt: nextScheduledAt,
+              assignedByCoachUserId:
+                existingWeekClass?.assignedByCoachUserId || null,
               reportImageUrl:
                 nextImagePath && nextImagePath === existingImagePath
                   ? existingWeekClass?.reportImageUrl || null
