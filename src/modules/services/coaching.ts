@@ -18,6 +18,7 @@ export type CoachingMembership = {
   userId: string
   createdAt: string
   coachUserId: string | null
+  supportCoachUserId: string | null
   coachDisplayName: string | null
   targetLang: string
   nativeLang: string | null
@@ -81,6 +82,7 @@ export type CoachingManagedUser = {
   userId: string
   userDisplayName: string
   coachUserId: string | null
+  supportCoachUserId: string | null
   coachDisplayName: string | null
   targetLang: string
   nativeLang: string | null
@@ -189,6 +191,7 @@ export type CoachingUserMembership = {
   userId: string
   userDisplayName: string
   coachUserId: string | null
+  supportCoachUserId: string | null
   coachDisplayName: string | null
   createdAt: string
   targetLang: string
