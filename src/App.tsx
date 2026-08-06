@@ -11,6 +11,8 @@ import {
   CalendarIcademyManagePage,
   CalendarIcademyPage,
   CalendarIcademyTeachersPage,
+  IcaChallengesPage,
+  IcaChallengePlayPage,
   CoachingPersonalizedPage,
   FlashcardsPage,
   FlashcardsPlayPage,
@@ -99,6 +101,8 @@ export function App() {
             <Route path='new-ica-words' element={<NewIcaWordsPage />} />
             <Route path='my-ica-words' element={<MyIcaWordsPage />} />
             <Route path='games-ica' element={<GamesIcaPage />} />
+            <Route path='desafios-ica' element={<IcaChallengesPage />} />
+            <Route path='desafios-ica/:challengeId' element={<IcaChallengePlayPage />} />
             <Route path='flashcards' element={<FlashcardsPage />} />
             <Route path='flashcards/play/:mode' element={<FlashcardsPlayPage />} />
             <Route path='preguntica' element={<PregunticaPage />} />

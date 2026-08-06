@@ -11,6 +11,7 @@ export const DASHBOARD_ROUTES = {
   newIcaWords: '/new-ica-words',
   myIcaWords: '/my-ica-words',
   gamesIca: '/games-ica',
+  challengesIca: '/desafios-ica',
   flashcards: '/flashcards',
   flashcardsPlay: '/flashcards/play',
   preguntica: '/preguntica',
@@ -46,6 +47,7 @@ export const DASHBOARD_LABELS: Record<string, string> = {
   '/new-ica-words': 'Añadir palabras ICA',
   '/my-ica-words': 'Mi baúl ICA',
   '/games-ica': 'Juegos ICA',
+  '/desafios-ica': 'Desafíos ICA',
   '/flashcards': 'Flashcards',
   '/flashcards/play': 'Práctica Flashcards',
   '/preguntica': 'PreguntICA',
@@ -120,4 +122,8 @@ export function getManageCoacherSessionsRoute(coachUserId: string): string {
 export function getIcaTestMonthRoute(monthCode: string, redo = false): string {
   const base = `${DASHBOARD_ROUTES.testsIca}/${monthCode}`
   return redo ? `${base}/redo` : base
+}
+
+export function getIcaChallengePlayRoute(challengeId: string): string {
+  return `${DASHBOARD_ROUTES.challengesIca}/${challengeId}`
 }
