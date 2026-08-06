@@ -268,7 +268,10 @@ export function ManageCoachingCalendarView() {
 
       const scopedRows = superAdmin
         ? rows
-        : rows.filter((row) => row.coachUserId === user?.id)
+        : rows.filter(
+            (row) =>
+              row.coachUserId === user?.id || row.supportCoachUserId === user?.id,
+          )
 
       setManagedRows(scopedRows)
       setEntries(mapClassSessions(scopedRows))
@@ -339,7 +342,10 @@ export function ManageCoachingCalendarView() {
   const handleOpenAssignModal = (dateKey: string) => {
     const initialSession = isSuperAdmin
       ? null
-      : managedRows.find((row) => row.coachUserId === user?.id) || null
+      : managedRows.find(
+          (row) =>
+            row.coachUserId === user?.id || row.supportCoachUserId === user?.id,
+        ) || null
     const initialWeek = initialSession
       ? weekKeyFromNumber(getSessionMinAssignableWeek(initialSession))
       : 'W01'
