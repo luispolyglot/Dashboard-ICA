@@ -26,6 +26,7 @@ import { ManageCalendarIcademyView } from '../views/ManageCalendarIcademyView'
 import { ManageIcademyTeachersView } from '../views/ManageIcademyTeachersView'
 import { ManageNotificationsView } from '../views/ManageNotificationsView'
 import { ManagePregunticaQuestionsView } from '../views/ManagePregunticaQuestionsView'
+import { ManagePregunticaTokensView } from '../views/ManagePregunticaTokensView'
 import { ManageWhitelistView } from '../views/ManageWhitelistView'
 import { ManageView } from '../views/ManageView'
 import { MasterNoteActivatePhraseView } from '../views/MasterNoteActivatePhraseView'
@@ -685,6 +686,14 @@ export function ManagePregunticaQuestionsPage() {
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.profile}>
       <ManagePregunticaQuestionsView />
+    </PageLayout>
+  )
+}
+
+export function ManagePregunticaTokensPage() {
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+      <ManagePregunticaTokensView />
     </PageLayout>
   )
 }
