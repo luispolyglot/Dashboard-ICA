@@ -29,6 +29,7 @@ import {
   ManageCoachingUserPage,
   ManageNotificationsPage,
   ManagePregunticaQuestionsPage,
+  ManagePregunticaTokensPage,
   MasterNoteActivatePhrasePage,
   MasterNoteDetailPage,
   MasterNotesPage,
@@ -154,6 +155,10 @@ export function App() {
               <Route
                 path='manage-preguntica-questions'
                 element={<ManagePregunticaQuestionsPage />}
+              />
+              <Route
+                path='manage-preguntica-tokens'
+                element={<ManagePregunticaTokensPage />}
               />
               <Route path='historic-leaderboard' element={<HistoricLeaderboardPage />} />
             </Route>

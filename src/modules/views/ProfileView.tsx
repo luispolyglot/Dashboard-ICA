@@ -7,6 +7,7 @@ import {
   CameraIcon,
   CheckIcon,
   ClipboardCheckIcon,
+  CoinsIcon,
   GraduationCapIcon,
   LanguagesIcon,
   LineChartIcon,
@@ -749,6 +750,28 @@ export function ProfileView({
             </Button>
           </CardContent>
         </Card>
+
+        {canManageWhitelist && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CoinsIcon className="h-4 w-4" />
+                Gestión Fichas PreguntICA
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Revisa por usuario las fichas del cálculo mensual y ajusta
+                manualmente las fichas extra.
+              </p>
+              <Button type="button" variant="outline" asChild>
+                <Link to={DASHBOARD_ROUTES.managePregunticaTokens}>
+                  Gestión Fichas PreguntICA
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         <Dialog
           open={isPasswordModalOpen}
