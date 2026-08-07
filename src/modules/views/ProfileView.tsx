@@ -756,7 +756,7 @@ export function ProfileView({
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <CoinsIcon className="h-4 w-4" />
-                Gestion Fichas PreguntICA
+                Gestión Fichas PreguntICA
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -766,7 +766,7 @@ export function ProfileView({
               </p>
               <Button type="button" variant="outline" asChild>
                 <Link to={DASHBOARD_ROUTES.managePregunticaTokens}>
-                  Gestion Fichas PreguntICA
+                  Gestión Fichas PreguntICA
                 </Link>
               </Button>
             </CardContent>

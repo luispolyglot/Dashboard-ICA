@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { RefreshCwIcon, SaveIcon } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -21,7 +22,6 @@ const PAGE_SIZE_OPTIONS = [10, 50, 100] as const
 export function ManagePregunticaTokensView() {
   const [rows, setRows] = useState<PregunticaTokensAdminUser[]>([])
   const [loading, setLoading] = useState(true)
-  const [feedback, setFeedback] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [pageSize, setPageSize] = useState<number>(10)
   const [currentPage, setCurrentPage] = useState(1)
@@ -32,12 +32,11 @@ export function ManagePregunticaTokensView() {
 
   const load = async () => {
     setLoading(true)
-    setFeedback(null)
     try {
       const data = await fetchPregunticaTokensAdminOverview()
       setRows(data)
     } catch (error) {
-      setFeedback(
+      toast.error(
         error instanceof Error
           ? error.message
           : 'No se pudieron cargar las fichas de PreguntICA.',
@@ -74,23 +73,22 @@ export function ManagePregunticaTokensView() {
   const handleSaveManualTokens = async (row: PregunticaTokensAdminUser) => {
     const draft = (manualDraftByUserId[row.userId] ?? String(row.manualTokens)).trim()
     if (!/^\d+$/u.test(draft)) {
-      setFeedback('Las fichas manuales deben ser un entero positivo o cero.')
+      toast.error('Las fichas manuales deben ser un entero no negativo.')
       return
     }
 
     const nextValue = Number(draft)
     if (!Number.isInteger(nextValue) || nextValue < 0) {
-      setFeedback('Las fichas manuales deben ser un entero positivo o cero.')
+      toast.error('Las fichas manuales deben ser un entero no negativo.')
       return
     }
 
     if (nextValue === row.manualTokens) {
-      setFeedback('No hubo cambios para guardar en esa fila.')
+      toast('No hubo cambios para guardar en esa fila.')
       return
     }
 
     setSavingUserId(row.userId)
-    setFeedback(null)
     try {
       const updated = await updatePregunticaManualTokensForUser(
         row.userId,
@@ -108,9 +106,9 @@ export function ManagePregunticaTokensView() {
         ...prev,
         [row.userId]: String(updated.manualTokens),
       }))
-      setFeedback('Fichas manuales actualizadas correctamente.')
+      toast.success('Fichas manuales actualizadas correctamente.')
     } catch (error) {
-      setFeedback(
+      toast.error(
         error instanceof Error
           ? error.message
           : 'No se pudieron actualizar las fichas manuales.',
@@ -123,7 +121,7 @@ export function ManagePregunticaTokensView() {
   return (
     <section className='mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-5 py-8'>
       <div className='mb-6'>
-        <h2 className='mb-1 font-serif text-3xl font-bold'>Gestion Fichas PreguntICA</h2>
+        <h2 className='mb-1 font-serif text-3xl font-bold'>Gestión Fichas PreguntICA</h2>
         <p className='text-sm text-muted-foreground'>
           Panel de SUPER ADMIN para consultar fichas mensuales y editar fichas
           manuales por usuario.
@@ -172,12 +170,6 @@ export function ManagePregunticaTokensView() {
               </Button>
             </div>
           </div>
-
-          {feedback && (
-            <p className='rounded-md border border-border bg-muted/40 px-3 py-2 text-sm'>
-              {feedback}
-            </p>
-          )}
         </CardHeader>
 
         <CardContent>
@@ -193,7 +185,7 @@ export function ManagePregunticaTokensView() {
                     <tr className='border-b text-muted-foreground'>
                       <th className='w-[24%] pb-2 font-medium'>Username</th>
                       <th className='w-[34%] pb-2 font-medium'>ID</th>
-                      <th className='w-[14%] pb-2 font-medium'>Fichas mensual</th>
+                      <th className='w-[14%] pb-2 font-medium'>Fichas mensuales</th>
                       <th className='w-[28%] pb-2 font-medium'>Fichas manuales</th>
                     </tr>
                   </thead>

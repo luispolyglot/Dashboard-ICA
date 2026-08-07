@@ -70,7 +70,7 @@ export const DASHBOARD_LABELS: Record<string, string> = {
   '/analytics': 'Analíticas Admin',
   '/manage-whitelist': 'Gestionar whitelist',
   '/manage-preguntica-questions': 'Preguntas PreguntICA',
-  '/manage-preguntica-tokens': 'Gestion fichas PreguntICA',
+  '/manage-preguntica-tokens': 'Gestión fichas PreguntICA',
   '/historic-leaderboard': 'Histórico leaderboard',
   '/coaching-personalized': 'Coaching Personalizado',
   '/manage-coaching': 'Administrar Coaching',

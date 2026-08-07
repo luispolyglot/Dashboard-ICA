@@ -85,7 +85,7 @@ export async function updatePregunticaManualTokensForUser(
   }
 
   if (!Number.isInteger(manualTokens) || manualTokens < 0) {
-    throw new PregunticaTokensAdminError('Las fichas manuales deben ser un entero positivo o cero.')
+    throw new PregunticaTokensAdminError('Las fichas manuales deben ser un entero no negativo.')
   }
 
   const { data, error } = await supabase.rpc('set_preguntica_manual_tokens', {
