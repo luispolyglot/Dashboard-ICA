@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase'
 import { notifyActivationMetricsChanged } from './creationMetricsSync'
+import { fetchAllPages } from './lexicardsPagination'
 import type { MetaTrackerProfile, MetaTrackerStartLevel } from '../types'
 
 type SaveMetaTrackerInput = {
@@ -83,17 +84,20 @@ export async function saveMetaTrackerProfile(
 
   let initialActivationWords = Number(existing?.activation_words_total || 0)
   if (!existing) {
-    const { data: activationRows, error: activationError } = await supabase
-      .from('lexicards')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('target_lang', targetLang)
-      .eq('native_lang', nativeLang)
-      .gt('activation_count', 0)
+    const activationRows = await fetchAllPages<{ id: string }>(async (from, to) => {
+      return supabase
+        .from('lexicards')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('target_lang', targetLang)
+        .eq('native_lang', nativeLang)
+        .gt('activation_count', 0)
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to)
+    })
 
-    if (activationError) throw activationError
-
-    initialActivationWords = (activationRows || []).length
+    initialActivationWords = activationRows.length
   }
 
   const payload = {
@@ -176,34 +180,48 @@ export async function registerWordActivations(
       new Set(sourceWords.map((word) => normalizeActivationToken(word)).filter(Boolean)),
     )
 
-    const { data: scopedRows, error: scopedRowsError } = await supabase
-      .from('lexicards')
-      .select('id, target')
-      .eq('user_id', userId)
-      .eq('target_lang', targetLang)
-      .eq('native_lang', nativeLang)
+    let scopedRows: Array<{ id: string; target: string }> = []
 
-    if (scopedRowsError) {
-      console.error('Could not resolve lexicard ids by words', scopedRowsError)
+    try {
+      scopedRows = await fetchAllPages<{ id: string; target: string }>(
+        async (from, to) => {
+          return supabase
+            .from('lexicards')
+            .select('id, target')
+            .eq('user_id', userId)
+            .eq('target_lang', targetLang)
+            .eq('native_lang', nativeLang)
+            .order('created_at', { ascending: true })
+            .order('id', { ascending: true })
+            .range(from, to)
+        },
+      )
+    } catch (error) {
+      console.error('Could not resolve lexicard ids by words', error)
       return null
     }
 
-    let rows = scopedRows || []
+    let rows = scopedRows
 
     if (rows.length === 0) {
-      const { data: legacyRows, error: legacyRowsError } = await supabase
-        .from('lexicards')
-        .select('id, target')
-        .eq('user_id', userId)
-        .is('target_lang', null)
-        .is('native_lang', null)
-
-      if (legacyRowsError) {
-        console.error('Could not resolve legacy lexicard ids by words', legacyRowsError)
+      try {
+        rows = await fetchAllPages<{ id: string; target: string }>(
+          async (from, to) => {
+            return supabase
+              .from('lexicards')
+              .select('id, target')
+              .eq('user_id', userId)
+              .is('target_lang', null)
+              .is('native_lang', null)
+              .order('created_at', { ascending: true })
+              .order('id', { ascending: true })
+              .range(from, to)
+          },
+        )
+      } catch (error) {
+        console.error('Could not resolve legacy lexicard ids by words', error)
         return null
       }
-
-      rows = legacyRows || []
     }
 
     const byTarget = new Map<string, string>()

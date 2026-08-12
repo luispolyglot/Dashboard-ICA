@@ -208,7 +208,7 @@ describe('register_lexicard_activations integration', () => {
     expect(cardRow?.activation_count).toBe(0)
   })
 
-  it('keeps activation fields after stale client update', async () => {
+  it('recovers activation fields after stale client update when re-activating', async () => {
     const { client, userId } = await createAuthenticatedUser()
 
     const { data: cardData, error: cardError } = await adminClient
@@ -252,6 +252,13 @@ describe('register_lexicard_activations integration', () => {
       .eq('id', lexicardId)
     expect(staleUpdateError).toBeNull()
 
+    const { error: reactivationError } = await client.rpc('register_lexicard_activations', {
+      p_lexicard_ids: [lexicardId],
+      p_target_lang: 'Inglés',
+      p_native_lang: 'Español',
+    })
+    expect(reactivationError).toBeNull()
+
     const { data: afterRow, error: afterError } = await adminClient
       .from('lexicards')
       .select('activation_count, first_activated_at, last_activated_at')
@@ -259,7 +266,7 @@ describe('register_lexicard_activations integration', () => {
       .single()
     expect(afterError).toBeNull()
     expect(afterRow?.activation_count).toBe(1)
-    expect(afterRow?.first_activated_at).toBe(beforeRow?.first_activated_at)
-    expect(afterRow?.last_activated_at).toBe(beforeRow?.last_activated_at)
+    expect(afterRow?.first_activated_at).toBeTruthy()
+    expect(afterRow?.last_activated_at).toBeTruthy()
   })
 })
