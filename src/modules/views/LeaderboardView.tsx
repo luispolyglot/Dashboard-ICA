@@ -711,7 +711,7 @@ export function LeaderboardView() {
                       </th>
                     )}
                     <th className="hidden md:table-cell w-[18%] pb-2 font-medium">
-                      % mensual
+                      % de eficacia
                     </th>
                     <th className="w-[16%] pb-2 font-medium">
                       Puntuación total
