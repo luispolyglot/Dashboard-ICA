@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { fetchAllPages } from '../../src/modules/services/lexicardsPagination'
 
@@ -21,6 +21,7 @@ if (!supabaseAnonKey || !supabaseServiceRoleKey) {
 }
 
 const createdUserIds: string[] = []
+const createdWhitelistEmails: string[] = []
 
 let adminClient: SupabaseClient
 
@@ -43,6 +44,7 @@ async function createAuthenticatedUser(): Promise<AuthedUser> {
     source: 'integration_test',
   })
   if (whitelistError) throw whitelistError
+  createdWhitelistEmails.push(email)
 
   const { data: created, error: createError } = await adminClient.auth.admin.createUser({
     email,
@@ -68,6 +70,30 @@ async function createAuthenticatedUser(): Promise<AuthedUser> {
   return { userId: created.user.id }
 }
 
+async function cleanupCreatedIntegrationData(): Promise<void> {
+  const userIds = createdUserIds.splice(0)
+  for (const userId of userIds) {
+    const { error: hardDeleteError } = await adminClient.auth.admin.deleteUser(userId)
+    if (!hardDeleteError) continue
+    if (hardDeleteError.message.toLowerCase().includes('not found')) continue
+
+    const { error: softDeleteError } = await adminClient.auth.admin.deleteUser(userId, true)
+    if (softDeleteError && !softDeleteError.message.toLowerCase().includes('not found')) {
+      throw softDeleteError
+    }
+  }
+
+  const whitelistEmails = [...new Set(createdWhitelistEmails.splice(0))]
+  if (whitelistEmails.length === 0) return
+
+  const { error } = await adminClient
+    .from('auth_whitelist')
+    .delete()
+    .in('email', whitelistEmails)
+
+  if (error) throw error
+}
+
 beforeAll(() => {
   adminClient = createClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: {
@@ -78,10 +104,12 @@ beforeAll(() => {
   })
 })
 
+afterEach(async () => {
+  await cleanupCreatedIntegrationData()
+})
+
 afterAll(async () => {
-  for (const userId of createdUserIds) {
-    await adminClient.auth.admin.deleteUser(userId)
-  }
+  await cleanupCreatedIntegrationData()
 })
 
 describe('lexicards pagination', () => {
