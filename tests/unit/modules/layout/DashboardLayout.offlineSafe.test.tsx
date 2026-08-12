@@ -77,7 +77,7 @@ describe('DashboardLayout offline-safe redirect', () => {
     window.sessionStorage.removeItem(OFFLINE_SAFE_LAST_PATH_STORAGE_KEY)
 
     useDashboardContextMock.mockReturnValue({
-      config: { targetLang: 'Inglés', nativeLang: 'Español', level: 'A2' },
+      config: { targetLang: 'Inglés', nativeLang: 'Español' },
       cards: [],
       loading: false,
       showLangModal: false,

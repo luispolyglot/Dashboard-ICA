@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import type { AppConfig, Lexicard } from '../types'
+import type { AppConfig, Lexicard, StudyLevel } from '../types'
 import {
   completePregunticaAttempt,
   fetchLatestPregunticaAttempt,
@@ -42,6 +42,7 @@ import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal
 
 type PregunticaViewProps = {
   config: AppConfig
+  studyLevel: StudyLevel
   cards: Lexicard[]
   setCards: Dispatch<SetStateAction<Lexicard[]>>
   onWordAdded: () => Promise<unknown>
@@ -88,12 +89,16 @@ const LIVE_BARS_COUNT = 36
 const MAX_ANALYSIS_ATTEMPTS = 3
 
 function getMinCharactersByLevel(level: string | undefined): number {
-  const normalized = (level || 'A2').trim().toUpperCase()
+  const normalized = (level || 'A2').trim().toUpperCase().replace(/\s+/g, '')
   if (['0', 'A0', 'LEVEL0', 'PRE-A1', 'PREA1'].includes(normalized)) return 30
   if (normalized === 'A1') return 40
+  if (normalized === 'A1+' || normalized === 'A1PLUS') return 48
   if (normalized === 'A2') return 55
+  if (normalized === 'A2+' || normalized === 'A2PLUS') return 62
   if (normalized === 'B1') return 70
+  if (normalized === 'B1+' || normalized === 'B1PLUS') return 78
   if (normalized === 'B2') return 85
+  if (normalized === 'B2+' || normalized === 'B2PLUS') return 92
   return 100
 }
 
@@ -164,6 +169,7 @@ function isSameCorrection(original: string, suggestion: string): boolean {
 
 export function PregunticaView({
   config,
+  studyLevel,
   cards,
   setCards,
   onWordAdded,
@@ -430,7 +436,7 @@ export function PregunticaView({
       wordMode: selectedMode,
       targetLang: config.targetLang,
       nativeLang: config.nativeLang,
-      level: config.level || 'A2',
+      level: studyLevel,
       excludeQuestionId: attempt?.questionId || null,
     })
 
@@ -599,7 +605,7 @@ export function PregunticaView({
         audioId: audio.id,
         targetLang: config.targetLang,
         nativeLang: config.nativeLang,
-        level: config.level || 'A2',
+        level: studyLevel,
         icaWords,
       })
 
@@ -666,7 +672,7 @@ export function PregunticaView({
         attemptId: attempt.id,
         targetLang: config.targetLang,
         nativeLang: config.nativeLang,
-        level: config.level || 'A2',
+        level: studyLevel,
         icaWords,
         currentSuggestions: suggestions.map((item) => item.word),
       })
@@ -739,7 +745,7 @@ export function PregunticaView({
   const step4Completed = Boolean(feedback)
   const isPlusAttempt = activeAttempt?.attemptKind === 'token_unlock'
   const analysisAttemptsLeft = Math.max(0, MAX_ANALYSIS_ATTEMPTS - analysisAttemptsUsed)
-  const minCharactersRequired = getMinCharactersByLevel(config.level)
+  const minCharactersRequired = getMinCharactersByLevel(studyLevel)
   const canAnalyzeCurrentAudio =
     analysisReady && analysisAttemptsLeft > 0 && !working
   const questionRevealReady = step2Enabled && questionWasPlayed && !questionVisible
@@ -1125,7 +1131,7 @@ export function PregunticaView({
                   Cuando termines de grabar, pasa al paso 3 para analizar tu respuesta.
                 </p>
                 <p className='text-xs font-medium text-sky-700 dark:text-sky-300'>
-                  Mínimo requerido según tu nivel ({config.level || 'A2'}): {minCharactersRequired} caracteres.
+                  Mínimo requerido según tu nivel ({studyLevel}): {minCharactersRequired} caracteres.
                 </p>
               </div>
             </div>
@@ -1417,7 +1423,7 @@ export function PregunticaView({
             </p>
             <p>
               3) ✍️ Tu audio debe tener al menos <strong>{minCharactersRequired} caracteres</strong> para
-              analizarse en tu nivel ({config.level || 'A2'}).
+              analizarse en tu nivel ({studyLevel}).
             </p>
             <p>
               4) 🔁 Tienes <strong>3 intentos de análisis</strong> por PreguntICA. Si quieres reanalizar,
@@ -1486,7 +1492,6 @@ export function PregunticaView({
         seedWords={extractWordsText ? [extractWordsText] : []}
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
-        level={config.level || 'A2'}
         cards={cards}
         setCards={setCards}
         onWordAdded={onWordAdded}

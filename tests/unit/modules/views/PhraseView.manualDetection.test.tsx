@@ -88,7 +88,6 @@ describe('PhraseView manual phrase detection', () => {
     const config: AppConfig = {
       targetLang: 'Francés',
       nativeLang: 'Español',
-      level: 'A2',
     }
 
     const cards: Lexicard[] = [

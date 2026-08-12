@@ -19,7 +19,6 @@ import { useWordExtractionCandidates } from '../hooks/useWordExtractionCandidate
 import { fetchTranslation } from '../services/anthropic'
 import { insertWord } from '../services/storage'
 import type {
-  CEFRLevel,
   ImportanceKey,
   Lexicard,
 } from '../types'
@@ -34,7 +33,6 @@ type ExtractWordsToVaultModalProps = {
   seedWords?: string[]
   targetLang: string
   nativeLang: string
-  level: CEFRLevel
   cards: Lexicard[]
   setCards: Dispatch<SetStateAction<Lexicard[]>>
   onWordAdded?: () => Promise<unknown>
@@ -80,14 +78,11 @@ export function ExtractWordsToVaultModal({
   seedWords,
   targetLang,
   nativeLang,
-  level,
   cards,
   setCards,
   onWordAdded,
   updateCardsLocally = true,
 }: ExtractWordsToVaultModalProps) {
-  void level
-
   const { candidates, lowConfidence } = useWordExtractionCandidates({
     text,
     targetLang,

@@ -20,7 +20,6 @@ import {
 import { insertWord } from '../services/storage'
 import { speakNatural, stopTTS } from '../services/tts'
 import type {
-  CEFRLevel,
   ImportanceKey,
   Lexicard,
   PhraseTokenInsightResult,
@@ -97,7 +96,6 @@ type ExplorePhraseTokenModalProps = {
   phraseTranslation?: string | null
   targetLang: string
   nativeLang: string
-  level: CEFRLevel
   cards: Lexicard[]
   setCards: Dispatch<SetStateAction<Lexicard[]>>
   onWordAdded?: () => Promise<unknown>
@@ -126,13 +124,10 @@ export function ExplorePhraseTokenModal({
   phraseTranslation,
   targetLang,
   nativeLang,
-  level,
   cards,
   setCards,
   onWordAdded,
 }: ExplorePhraseTokenModalProps) {
-  void level
-
   const [insight, setInsight] = useState<PhraseTokenInsightResult | null>(null)
   const [insightLoading, setInsightLoading] = useState(false)
   const [insightError, setInsightError] = useState<string | null>(null)

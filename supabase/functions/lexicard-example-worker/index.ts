@@ -1,4 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import {
+  DEFAULT_LEVEL_FAMILY,
+  LANG_TO_FAMILY,
+  LEVEL_KEYS,
+  LEVEL_THRESHOLDS_BY_FAMILY,
+  type LevelKey,
+} from '../../../src/shared/ica-leveling.ts'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -8,12 +15,97 @@ const CORS_HEADERS = {
 
 const LEVEL_DESCRIPTIONS: Record<string, string> = {
   '0': 'Very basic words and chunks. Keep it concrete and short.',
+  'Pre-A1': 'Very basic words and chunks. Keep it concrete and short.',
   A1: 'Simple present tense, high-frequency words, clear sentence structure.',
+  'A1+': 'Simple present with slightly richer detail and basic connectors.',
   A2: 'Everyday situations with basic connectors. Keep grammar straightforward.',
+  'A2+': 'Everyday situations with more variety and clearer sentence links.',
   B1: 'Practical vocabulary and mixed tenses. Natural but still learner-friendly.',
+  'B1+': 'Comfortable practical communication with broader vocabulary and tense control.',
   B2: 'More nuanced wording and varied sentence structure.',
+  'B2+': 'Nuanced wording with flexible structures and greater precision.',
   C1: 'Advanced fluency with rich vocabulary and idiomatic choices.',
-  C2: 'Near-native sophistication, precise and idiomatic expression.',
+}
+
+function normalizeLevelKey(value: string): string {
+  const normalized = value.trim().toUpperCase().replace(/\s+/g, '')
+  if (normalized === 'PREA1' || normalized === 'PRE-A1' || normalized === '0' || normalized === 'A0' || normalized === 'LEVEL0') {
+    return 'Pre-A1'
+  }
+  if (normalized === 'A1PLUS') return 'A1+'
+  if (normalized === 'A2PLUS') return 'A2+'
+  if (normalized === 'B1PLUS') return 'B1+'
+  if (normalized === 'B2PLUS') return 'B2+'
+  if (normalized === 'C2') return 'C1'
+  return normalized || 'A2'
+}
+
+function getLevelDescription(level: string): string {
+  const key = normalizeLevelKey(level)
+  return LEVEL_DESCRIPTIONS[key] || LEVEL_DESCRIPTIONS.A2
+}
+
+function getLevelThresholds(language: string): Record<LevelKey, number> {
+  const family = LANG_TO_FAMILY[language] || DEFAULT_LEVEL_FAMILY
+  return LEVEL_THRESHOLDS_BY_FAMILY[family]
+}
+
+function getCurrentLevelKey(totalWords: number, thresholds: Record<LevelKey, number>): string {
+  const stops = [0, ...LEVEL_KEYS.map((key) => thresholds[key])]
+  const max = stops[stops.length - 1]
+  const safeTotal = Math.max(0, totalWords)
+  const clamped = Math.max(0, Math.min(safeTotal, max))
+
+  if (safeTotal >= max) return 'C1'
+
+  let idx = 0
+  for (let i = 0; i < stops.length - 1; i += 1) {
+    if (clamped >= stops[i] && clamped < stops[i + 1]) {
+      idx = i
+      break
+    }
+    if (clamped >= stops[stops.length - 1]) idx = stops.length - 2
+  }
+
+  return idx === 0 ? 'Pre-A1' : LEVEL_KEYS[idx - 1]
+}
+
+async function resolveEffectiveLevel(
+  client: ReturnType<typeof createClient>,
+  userId: string,
+  job: JobRow,
+): Promise<string> {
+  const fallbackLevel = normalizeLevelKey(job.cefr_level)
+
+  try {
+    const { data, error } = await client
+      .from('user_meta_tracker')
+      .select('start_level, prior_ica_words, activation_words_total, confirmed_at')
+      .eq('user_id', userId)
+      .eq('target_lang', job.target_lang)
+      .eq('native_lang', job.native_lang)
+      .maybeSingle<MetaTrackerLevelRow>()
+
+    if (error || !data || !data.confirmed_at) return fallbackLevel
+
+    const thresholds = getLevelThresholds(job.target_lang)
+    const startLevelRaw = (data.start_level || '0').trim()
+    const startLevel = LEVEL_KEYS.includes(startLevelRaw as LevelKey)
+      ? (startLevelRaw as LevelKey)
+      : null
+    const baseWords = startLevel ? (thresholds[startLevel] || 0) : 0
+    const priorWords = Number.isFinite(Number(data.prior_ica_words))
+      ? Number(data.prior_ica_words)
+      : 0
+    const activationWords = Number.isFinite(Number(data.activation_words_total))
+      ? Number(data.activation_words_total)
+      : 0
+    const totalWords = baseWords + priorWords + activationWords
+
+    return normalizeLevelKey(getCurrentLevelKey(totalWords, thresholds))
+  } catch {
+    return fallbackLevel
+  }
 }
 
 type JobRow = {
@@ -31,6 +123,13 @@ type JobRow = {
 type WordExampleResult = {
   phrase: string
   translation: string
+}
+
+type MetaTrackerLevelRow = {
+  start_level: string | null
+  prior_ica_words: number | null
+  activation_words_total: number | null
+  confirmed_at: string | null
 }
 
 type WorkerRequest = {
@@ -174,7 +273,10 @@ async function requireUser(req: Request): Promise<{ ok: true } | { ok: false; re
   return { ok: true }
 }
 
-async function callAnthropicForWordExample(job: JobRow): Promise<WordExampleResult | null> {
+async function callAnthropicForWordExample(
+  job: JobRow,
+  effectiveLevel: string,
+): Promise<WordExampleResult | null> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
   const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6'
   const baseUrl =
@@ -184,12 +286,13 @@ async function callAnthropicForWordExample(job: JobRow): Promise<WordExampleResu
     throw new Error('Missing ANTHROPIC_API_KEY secret')
   }
 
-  const levelDescription = LEVEL_DESCRIPTIONS[job.cefr_level] || LEVEL_DESCRIPTIONS.A2
+  const normalizedLevel = normalizeLevelKey(effectiveLevel)
+  const levelDescription = getLevelDescription(effectiveLevel)
   const prompt = [
     `Create one short natural example sentence in ${job.target_lang} using this exact word: ${job.target_word}.`,
     `The word must keep this intended meaning in ${job.native_lang}: ${job.native_meaning}.`,
     'Rules:',
-    `- CEFR ${job.cefr_level}. Description: ${levelDescription}`,
+    `- CEFR ${normalizedLevel}. Description: ${levelDescription}`,
     '- 8-14 words',
     '- Keep wording practical and learner-friendly',
     `- Provide translation in ${job.native_lang}`,
@@ -312,7 +415,8 @@ Deno.serve(async (req) => {
 
   for (const job of claimedJobs) {
     try {
-      const result = await callAnthropicForWordExample(job)
+      const effectiveLevel = await resolveEffectiveLevel(client, user.id, job)
+      const result = await callAnthropicForWordExample(job, effectiveLevel)
       if (!result) {
         throw new Error('Empty or invalid word example result')
       }

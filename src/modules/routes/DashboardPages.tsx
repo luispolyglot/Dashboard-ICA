@@ -69,6 +69,7 @@ import {
   SHARE_TARGET_SOURCE_QUERY_PARAM,
 } from '../shareTarget'
 import type { ReviewMode } from '../types'
+import { getEffectiveStudyLevel } from '../utils/studyLevel'
 import { DASHBOARD_ROUTES, getFlashcardsPlayRoute } from './paths'
 
 export function HomePage() {
@@ -123,9 +124,10 @@ export function ShareTargetPage() {
 }
 
 export function MyIcaWordsPage() {
-  const { cards, setCards, config, dailyProgress } = useDashboardContext()
+  const { cards, setCards, config, dailyProgress, metaTrackerProfile } = useDashboardContext()
   if (!config) return null
   const todayProgress = getTodayProgress(dailyProgress)
+  const studyLevel = getEffectiveStudyLevel(config.targetLang, metaTrackerProfile)
 
   return (
     <PageLayout>
@@ -133,6 +135,7 @@ export function MyIcaWordsPage() {
         cards={cards}
         setCards={setCards}
         config={config}
+        studyLevel={studyLevel}
         todayWordsAdded={todayProgress.wordsAdded}
       />
     </PageLayout>
@@ -254,13 +257,15 @@ export function GamesIcaPage() {
 }
 
 export function PregunticaPage() {
-  const { config, cards, setCards, handleWordAdded } = useDashboardContext()
+  const { config, cards, setCards, handleWordAdded, metaTrackerProfile } = useDashboardContext()
   if (!config) return null
+  const studyLevel = getEffectiveStudyLevel(config.targetLang, metaTrackerProfile)
 
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.gamesIca}>
       <PregunticaView
         config={config}
+        studyLevel={studyLevel}
         cards={cards}
         setCards={setCards}
         onWordAdded={handleWordAdded}
@@ -407,7 +412,6 @@ export function PhraseHistoryPage() {
       <PhraseHistoryView
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
-        level={config.level || 'A1'}
         cards={cards}
         setCards={setCards}
         onWordAdded={handleWordAdded}

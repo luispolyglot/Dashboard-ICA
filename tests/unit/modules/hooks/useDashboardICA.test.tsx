@@ -31,7 +31,7 @@ describe('useDashboardICA', () => {
 
     loadDataMock.mockImplementation(async (key: string, fallback: unknown) => {
       if (key === 'dashboard-ICA-words') return []
-      if (key === 'dashboard-ICA-config') return { nativeLang: 'es', targetLang: 'en', level: 'A2' }
+      if (key === 'dashboard-ICA-config') return { nativeLang: 'es', targetLang: 'en' }
       if (key === 'dashboard-ICA-completed') return []
       if (key === 'dashboard-ICA-creation-days') return ['2026-05-20']
       if (key === 'dashboard-ICA-daily-progress') {
@@ -110,7 +110,7 @@ describe('useDashboardICA', () => {
   })
 
   it('rehydrates config after focus when bootstrap returned null', async () => {
-    const loadedConfig = { nativeLang: 'es', targetLang: 'en', level: 'A2' }
+    const loadedConfig = { nativeLang: 'es', targetLang: 'en' }
     let allowConfigHydration = false
 
     loadDataMock.mockImplementation(async (key: string, fallback: unknown) => {
@@ -150,7 +150,7 @@ describe('useDashboardICA', () => {
 
     loadDataMock.mockImplementation(async (key: string, fallback: unknown) => {
       if (key === 'dashboard-ICA-words') return []
-      if (key === 'dashboard-ICA-config') return { nativeLang: 'es', targetLang: 'en', level: 'A2' }
+      if (key === 'dashboard-ICA-config') return { nativeLang: 'es', targetLang: 'en' }
       if (key === 'dashboard-ICA-completed') {
         return hasFreshStreakData ? ['2026-05-21'] : []
       }

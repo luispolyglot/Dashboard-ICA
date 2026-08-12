@@ -442,7 +442,7 @@ async function loadConfig(userId: string): Promise<AppConfig | null> {
   if (!supabase) return null
   const { data, error } = await supabase
     .from('user_settings')
-    .select('native_lang, target_lang, cefr_level')
+    .select('native_lang, target_lang')
     .eq('user_id', userId)
     .maybeSingle()
 
@@ -452,7 +452,6 @@ async function loadConfig(userId: string): Promise<AppConfig | null> {
   return {
     nativeLang: data.native_lang,
     targetLang: data.target_lang,
-    level: data.cefr_level,
   }
 }
 
@@ -462,7 +461,6 @@ async function saveConfig(userId: string, config: AppConfig): Promise<void> {
     user_id: userId,
     native_lang: config.nativeLang,
     target_lang: config.targetLang,
-    cefr_level: config.level,
   })
   if (error) throw error
 }

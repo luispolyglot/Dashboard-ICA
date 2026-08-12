@@ -28,7 +28,6 @@ import {
 } from '../services/phraseHistory'
 import { stopTTS } from '../services/tts'
 import type {
-  CEFRLevel,
   DailyProgressEntry,
   Lexicard,
   PhraseGenerationEntry,
@@ -38,7 +37,6 @@ import type {
 type PhraseHistoryViewProps = {
   targetLang: string
   nativeLang: string
-  level: CEFRLevel
   cards: Lexicard[]
   setCards: Dispatch<SetStateAction<Lexicard[]>>
   onWordAdded: () => Promise<DailyProgressEntry>
@@ -89,7 +87,6 @@ function toDayKey(value: string): string | null {
 export function PhraseHistoryView({
   targetLang,
   nativeLang,
-  level,
   cards,
   setCards,
   onWordAdded,
@@ -566,7 +563,6 @@ export function PhraseHistoryView({
         seedWords={extractPhrase?.source_words || []}
         targetLang={targetLang}
         nativeLang={nativeLang}
-        level={level}
         cards={cards}
         setCards={setCards}
         onWordAdded={onWordAdded}
@@ -580,7 +576,6 @@ export function PhraseHistoryView({
         phraseTranslation={exploreTranslation}
         targetLang={targetLang}
         nativeLang={nativeLang}
-        level={level}
         cards={cards}
         setCards={setCards}
         onWordAdded={onWordAdded}

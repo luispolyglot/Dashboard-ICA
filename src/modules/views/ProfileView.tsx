@@ -502,7 +502,7 @@ export function ProfileView({
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
               {config
-                ? `${config.nativeLang} -> ${config.targetLang} (${config.level || "A2"})`
+                ? `${config.nativeLang} -> ${config.targetLang}`
                 : "No hay configuración de idiomas"}
             </p>
             {visibleRecentLanguagePairs.length > 0 && (

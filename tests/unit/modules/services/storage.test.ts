@@ -132,7 +132,7 @@ describe('storage service', () => {
   })
 
   it('returns config snapshot when remote config load fails', async () => {
-    const configSnapshot = { nativeLang: 'es', targetLang: 'en', level: 'A2' }
+    const configSnapshot = { nativeLang: 'es', targetLang: 'en' }
     localStorageMock.getItem.mockImplementation((key: string) => {
       if (key === 'dashboard-ICA-config-snapshot') {
         return JSON.stringify(configSnapshot)

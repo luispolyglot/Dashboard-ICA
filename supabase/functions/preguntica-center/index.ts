@@ -1,5 +1,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { CORS_HEADERS, jsonResponse } from '../_shared/http.ts'
+import {
+  DEFAULT_LEVEL_FAMILY,
+  LANG_TO_FAMILY,
+  LEVEL_KEYS,
+  LEVEL_THRESHOLDS_BY_FAMILY,
+  type LevelKey,
+} from '../../../src/shared/ica-leveling.ts'
 
 type ProcessAttemptPayload = {
   action: 'process_attempt_audio'
@@ -129,6 +136,13 @@ type FeedbackPayload = {
   suggestedIcaWords: SuggestionWord[]
 }
 
+type MetaTrackerRow = {
+  start_level: string | null
+  prior_ica_words: number | null
+  activation_words_total: number | null
+  confirmed_at: string | null
+}
+
 function parseWords(raw: unknown): string[] {
   if (!Array.isArray(raw)) return []
   return raw
@@ -158,21 +172,106 @@ function normalizeWordMode(value: string | undefined): string {
   return 'mixed'
 }
 
+function normalizeStudyLevel(value: string | null | undefined): string {
+  const normalized = (value || '').trim().toUpperCase().replace(/\s+/g, '')
+  if (!normalized) return 'A2'
+  if (normalized === 'PREA1' || normalized === 'PRE-A1') return 'Pre-A1'
+  if (normalized === 'LEVEL0' || normalized === 'A0' || normalized === '0') return 'Pre-A1'
+  if (normalized === 'A1PLUS') return 'A1+'
+  if (normalized === 'A2PLUS') return 'A2+'
+  if (normalized === 'B1PLUS') return 'B1+'
+  if (normalized === 'B2PLUS') return 'B2+'
+  if (normalized === 'A1' || normalized === 'A1+' || normalized === 'A2' || normalized === 'A2+' || normalized === 'B1' || normalized === 'B1+' || normalized === 'B2' || normalized === 'B2+' || normalized === 'C1') {
+    return normalized
+  }
+  if (normalized === 'C2') return 'C1'
+  return 'A2'
+}
+
+function getLevelThresholds(language: string): Record<LevelKey, number> {
+  const family = LANG_TO_FAMILY[language] || DEFAULT_LEVEL_FAMILY
+  return LEVEL_THRESHOLDS_BY_FAMILY[family]
+}
+
+function getCurrentLevelKey(totalWords: number, thresholds: Record<LevelKey, number>): string {
+  const stops = [0, ...LEVEL_KEYS.map((key) => thresholds[key])]
+  const max = stops[stops.length - 1]
+  const safeTotal = Math.max(0, totalWords)
+  const clamped = Math.max(0, Math.min(safeTotal, max))
+
+  if (safeTotal >= max) return 'C1'
+
+  let idx = 0
+  for (let i = 0; i < stops.length - 1; i += 1) {
+    if (clamped >= stops[i] && clamped < stops[i + 1]) {
+      idx = i
+      break
+    }
+    if (clamped >= stops[stops.length - 1]) idx = stops.length - 2
+  }
+
+  return idx === 0 ? 'Pre-A1' : LEVEL_KEYS[idx - 1]
+}
+
+async function resolveStudyLevelForPair(
+  adminClient: any,
+  userId: string,
+  targetLang: string,
+  nativeLang: string,
+  fallbackLevel: string,
+): Promise<string> {
+  const normalizedFallback = normalizeStudyLevel(fallbackLevel)
+  if (!targetLang || !nativeLang) return normalizedFallback
+
+  try {
+    const { data, error } = await adminClient
+      .from('user_meta_tracker')
+      .select('start_level, prior_ica_words, activation_words_total, confirmed_at')
+      .eq('user_id', userId)
+      .eq('target_lang', targetLang)
+      .eq('native_lang', nativeLang)
+      .maybeSingle<MetaTrackerRow>()
+
+    if (error || !data || !data.confirmed_at) {
+      return normalizedFallback
+    }
+
+    const thresholds = getLevelThresholds(targetLang)
+    const startLevelRaw = typeof data.start_level === 'string' ? data.start_level.trim() : '0'
+    const startLevel = LEVEL_KEYS.includes(startLevelRaw as LevelKey)
+      ? (startLevelRaw as LevelKey)
+      : null
+    const baseWords = startLevel ? (thresholds[startLevel] || 0) : 0
+    const priorWords = Number.isFinite(Number(data.prior_ica_words)) ? Number(data.prior_ica_words) : 0
+    const activationWords = Number.isFinite(Number(data.activation_words_total))
+      ? Number(data.activation_words_total)
+      : 0
+    const totalWords = baseWords + priorWords + activationWords
+    return normalizeStudyLevel(getCurrentLevelKey(totalWords, thresholds))
+  } catch {
+    return normalizedFallback
+  }
+}
+
 function wordsAllowedByLevel(level: string | undefined): number {
-  const normalized = (level || 'A2').trim().toUpperCase().replace(/\s+/g, '')
-  if (['0', 'A0', 'LEVEL0', 'PRE-A1', 'PREA1', 'A1', 'A2'].includes(normalized)) return 1
-  if (['B1', 'B2'].includes(normalized)) return 2
-  if (['B2+', 'B2PLUS', 'C1', 'C2'].includes(normalized)) return 3
+  const normalized = normalizeStudyLevel(level)
+  if (['Pre-A1', 'A1', 'A1+', 'A2', 'A2+'].includes(normalized)) return 1
+  if (['B1', 'B1+', 'B2'].includes(normalized)) return 2
+  if (['B2+', 'C1'].includes(normalized)) return 3
   return 1
 }
 
 function minCharsByLevel(level: string | undefined): number {
-  const normalized = (level || 'A2').trim().toUpperCase()
-  if (['0', 'A0', 'LEVEL0', 'PRE-A1', 'PREA1'].includes(normalized)) return 30
+  const normalized = normalizeStudyLevel(level)
+  if (normalized === 'Pre-A1') return 30
   if (normalized === 'A1') return 40
+  if (normalized === 'A1+') return 48
   if (normalized === 'A2') return 55
+  if (normalized === 'A2+') return 62
   if (normalized === 'B1') return 70
+  if (normalized === 'B1+') return 78
   if (normalized === 'B2') return 85
+  if (normalized === 'B2+') return 92
   return 100
 }
 
@@ -769,7 +868,13 @@ async function prepareAttempt(
   const wordMode = normalizeWordMode(payload.wordMode)
   const targetLang = (payload.targetLang || 'English').trim() || 'English'
   const nativeLang = (payload.nativeLang || 'Español').trim() || 'Español'
-  const level = (payload.level || 'A2').trim() || 'A2'
+  const level = await resolveStudyLevelForPair(
+    adminClient,
+    userId,
+    targetLang,
+    nativeLang,
+    payload.level || 'A2',
+  )
 
   const lexicardRows = await fetchLexicardWords(adminClient, userId, targetLang, nativeLang)
   const pickedWords = pickWordsForAttempt(lexicardRows, wordMode, level)
@@ -876,7 +981,15 @@ async function processAttemptAudio(
   const whisper = await callWhisper(audioBlob, audio.mime_type)
   const transcript = (whisper.text || '').trim()
   const charCount = transcript.length
-  const level = (payload.level || attempt.level || 'A2').trim()
+  const targetLang = (payload.targetLang || attempt.target_lang || 'English').trim()
+  const nativeLang = (payload.nativeLang || attempt.native_lang || 'Español').trim()
+  const level = await resolveStudyLevelForPair(
+    adminClient,
+    userId,
+    targetLang,
+    nativeLang,
+    payload.level || attempt.level || 'A2',
+  )
   const minRequired = minCharsByLevel(level)
   const maxAllowed = 1200
   const isLengthValid = charCount >= minRequired && charCount <= maxAllowed
@@ -896,6 +1009,7 @@ async function processAttemptAudio(
       transcript_text: transcript || null,
       response_text: transcript || null,
       response_char_count: transcript ? charCount : null,
+      level,
       transcript_provider: 'openai',
       transcript_model: Deno.env.get('OPENAI_WHISPER_MODEL') || 'whisper-1',
       status: isLengthValid ? 'analyzing' : 'failed',
@@ -926,8 +1040,6 @@ async function processAttemptAudio(
     })
   }
 
-  const targetLang = (payload.targetLang || attempt.target_lang || 'English').trim()
-  const nativeLang = (payload.nativeLang || attempt.native_lang || 'Español').trim()
   const icaWords = payload.icaWords && payload.icaWords.length
     ? payload.icaWords
     : parseWords(attempt.ica_words)
@@ -1025,7 +1137,13 @@ async function refreshSuggestions(
 
   const targetLang = (payload.targetLang || attempt.target_lang || 'English').trim()
   const nativeLang = (payload.nativeLang || attempt.native_lang || 'Español').trim()
-  const level = (payload.level || attempt.level || 'A2').trim()
+  const level = await resolveStudyLevelForPair(
+    adminClient,
+    userId,
+    targetLang,
+    nativeLang,
+    payload.level || attempt.level || 'A2',
+  )
   const icaWords = payload.icaWords && payload.icaWords.length
     ? payload.icaWords
     : parseWords(attempt.ica_words)

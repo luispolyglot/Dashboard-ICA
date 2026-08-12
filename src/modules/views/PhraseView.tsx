@@ -38,11 +38,12 @@ import { fetchWordActivationCounts } from '../services/metaTracker'
 import type {
   ActivationPhraseResult,
   AppConfig,
-  CEFRLevel,
   DailyProgressEntry,
   Lexicard,
   MetaTrackerProfile,
+  StudyLevel,
 } from '../types'
+import { getEffectiveStudyLevel } from '../utils/studyLevel'
 
 type PhraseViewProps = {
   cards: Lexicard[]
@@ -52,7 +53,7 @@ type PhraseViewProps = {
   onPhraseGenerated: () => Promise<DailyProgressEntry>
   metaTrackerProfile: MetaTrackerProfile | null
   onActivationWordsTotalChange: (activationWordsTotal: number) => void
-  LevelBadge: ComponentType<{ level: CEFRLevel; size?: 'normal' | 'small' }>
+  LevelBadge: ComponentType<{ level: StudyLevel; size?: 'normal' | 'small' }>
 }
 
 const IMPORTANCE_DOT = {
@@ -107,7 +108,7 @@ export function PhraseView({
   const [levelUpCelebration, setLevelUpCelebration] =
     useState<MetaTrackerLevelUpCelebration | null>(null)
 
-  const level = config.level || 'A1'
+  const level = getEffectiveStudyLevel(config.targetLang, metaTrackerProfile)
   const trackerSnapshot = metaTrackerProfile?.confirmedAt
     ? getMetaTrackerSnapshot(metaTrackerProfile, config.targetLang)
     : null
@@ -905,7 +906,6 @@ export function PhraseView({
         seedWords={result?.words_used || []}
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
-        level={level}
         cards={cards}
         setCards={setCards}
         onWordAdded={onWordAdded}
@@ -919,7 +919,6 @@ export function PhraseView({
         phraseTranslation={result?.translation || ''}
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
-        level={level}
         cards={cards}
         setCards={setCards}
         onWordAdded={onWordAdded}

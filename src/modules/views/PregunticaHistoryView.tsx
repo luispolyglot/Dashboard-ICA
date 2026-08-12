@@ -588,7 +588,6 @@ export function PregunticaHistoryView({
         seedWords={extractWordsText ? [extractWordsText] : []}
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
-        level={config.level || 'A2'}
         cards={cards}
         setCards={setCards}
         onWordAdded={onWordAdded}

@@ -20,6 +20,13 @@ import {
   type ClassNotificationRow,
   type ClassScheduleNotificationEvent,
 } from './class-notification.ts'
+import {
+  DEFAULT_LEVEL_FAMILY,
+  LANG_TO_FAMILY,
+  LEVEL_KEYS,
+  LEVEL_THRESHOLDS_BY_FAMILY,
+  type LevelKey,
+} from '../../../src/shared/ica-leveling.ts'
 
 const OWNER_SUPPORT_COACH_USER_ID = '68890bd8-894d-422d-b865-08806acdb312'
 
@@ -139,10 +146,83 @@ type PushSubscriptionRow = {
   is_active: boolean
 }
 
+type MetaTrackerLevelRow = {
+  user_id: string
+  target_lang: string
+  native_lang: string
+  start_level: string | null
+  prior_ica_words: number | null
+  activation_words_total: number | null
+  confirmed_at: string | null
+}
+
 function safeString(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const normalized = value.trim()
   return normalized.length > 0 ? normalized : null
+}
+
+function normalizeStudyLevel(value: string | null | undefined): string {
+  const normalized = (value || '').trim().toUpperCase().replace(/\s+/g, '')
+  if (!normalized) return 'A2'
+  if (normalized === 'PREA1' || normalized === 'PRE-A1' || normalized === '0' || normalized === 'A0' || normalized === 'LEVEL0') {
+    return 'Pre-A1'
+  }
+  if (normalized === 'A1PLUS') return 'A1+'
+  if (normalized === 'A2PLUS') return 'A2+'
+  if (normalized === 'B1PLUS') return 'B1+'
+  if (normalized === 'B2PLUS') return 'B2+'
+  if (normalized === 'C2') return 'C1'
+  return normalized
+}
+
+function getLevelThresholds(language: string): Record<LevelKey, number> {
+  const family = LANG_TO_FAMILY[language] || DEFAULT_LEVEL_FAMILY
+  return LEVEL_THRESHOLDS_BY_FAMILY[family]
+}
+
+function getCurrentLevelKey(totalWords: number, thresholds: Record<LevelKey, number>): string {
+  const stops = [0, ...LEVEL_KEYS.map((key) => thresholds[key])]
+  const max = stops[stops.length - 1]
+  const safeTotal = Math.max(0, totalWords)
+  const clamped = Math.max(0, Math.min(safeTotal, max))
+
+  if (safeTotal >= max) return 'C1'
+
+  let idx = 0
+  for (let i = 0; i < stops.length - 1; i += 1) {
+    if (clamped >= stops[i] && clamped < stops[i + 1]) {
+      idx = i
+      break
+    }
+    if (clamped >= stops[stops.length - 1]) idx = stops.length - 2
+  }
+
+  return idx === 0 ? 'Pre-A1' : LEVEL_KEYS[idx - 1]
+}
+
+function getTrackerCurrentLevel(targetLang: string, tracker: MetaTrackerLevelRow): string | null {
+  if (!safeString(tracker.confirmed_at)) return null
+
+  const thresholds = getLevelThresholds(targetLang)
+  const startLevelRaw = safeString(tracker.start_level) || '0'
+  const startLevel = LEVEL_KEYS.includes(startLevelRaw as LevelKey)
+    ? (startLevelRaw as LevelKey)
+    : null
+  const baseWords = startLevel ? (thresholds[startLevel] || 0) : 0
+  const priorWords = Number.isFinite(Number(tracker.prior_ica_words))
+    ? Number(tracker.prior_ica_words)
+    : 0
+  const activationWords = Number.isFinite(Number(tracker.activation_words_total))
+    ? Number(tracker.activation_words_total)
+    : 0
+  const totalWords = baseWords + priorWords + activationWords
+
+  return normalizeStudyLevel(getCurrentLevelKey(totalWords, thresholds))
+}
+
+function getLanguageScopeKey(userId: string, targetLang: string, nativeLang: string): string {
+  return `${userId}::${targetLang.trim().toLowerCase()}::${nativeLang.trim().toLowerCase()}`
 }
 
 function safeInteger(value: unknown): number | null {
@@ -1293,7 +1373,7 @@ Deno.serve(async (req) => {
     )
 
     const settingsUserIds = Array.from(new Set(visibleRows.map((row) => row.user_id)))
-    const [profilesResult, settingsResult] = await Promise.all([
+    const [profilesResult, settingsResult, trackersResult] = await Promise.all([
       profileIds.length > 0
         ? admin.adminClient
             .from('profiles')
@@ -1303,13 +1383,24 @@ Deno.serve(async (req) => {
       settingsUserIds.length > 0
         ? admin.adminClient
             .from('user_settings')
-            .select('user_id, target_lang, native_lang, cefr_level')
+            .select('user_id, target_lang, native_lang')
+            .in('user_id', settingsUserIds)
+        : Promise.resolve({ data: [], error: null }),
+      settingsUserIds.length > 0
+        ? admin.adminClient
+            .from('user_meta_tracker')
+            .select('user_id, target_lang, native_lang, start_level, prior_ica_words, activation_words_total, confirmed_at')
             .in('user_id', settingsUserIds)
         : Promise.resolve({ data: [], error: null }),
     ])
 
-    if (profilesResult.error || settingsResult.error) {
-      return jsonResponse(500, { error: profilesResult.error?.message || settingsResult.error?.message })
+    if (profilesResult.error || settingsResult.error || trackersResult.error) {
+      return jsonResponse(500, {
+        error:
+          profilesResult.error?.message ||
+          settingsResult.error?.message ||
+          trackersResult.error?.message,
+      })
     }
 
     const profilesById = new Map(
@@ -1327,6 +1418,19 @@ Deno.serve(async (req) => {
     const settingsByUserId = new Map(
       (settingsResult.data || []).map((row) => [String(row.user_id), row]),
     )
+    const trackerLevelByScope = new Map<string, string>()
+    for (const tracker of (trackersResult.data || []) as MetaTrackerLevelRow[]) {
+      const userId = String(tracker.user_id)
+      const targetLang = safeString(tracker.target_lang)
+      const nativeLang = safeString(tracker.native_lang)
+      if (!targetLang || !nativeLang) continue
+      const level = getTrackerCurrentLevel(targetLang, tracker)
+      if (!level) continue
+      trackerLevelByScope.set(
+        getLanguageScopeKey(userId, targetLang, nativeLang),
+        level,
+      )
+    }
 
     const sessionIds = visibleRows.map((row) => row.id)
     const userIds = Array.from(new Set(visibleRows.map((row) => row.user_id)))
@@ -1433,7 +1537,16 @@ Deno.serve(async (req) => {
           updatedAt: row.updated_at,
           activeTargetLang: activeSettings?.target_lang || null,
           activeNativeLang: activeSettings?.native_lang || null,
-          activeLevel: activeSettings?.cefr_level || null,
+          activeLevel:
+            activeSettings?.target_lang && activeSettings?.native_lang
+              ? trackerLevelByScope.get(
+                  getLanguageScopeKey(
+                    row.user_id,
+                    String(activeSettings.target_lang),
+                    String(activeSettings.native_lang),
+                  ),
+                ) || null
+              : null,
           hasPendingMasterNotesReview: pendingReviewCount > 0,
           pendingMasterNotesReviewCount: pendingReviewCount,
         }
@@ -1456,10 +1569,10 @@ Deno.serve(async (req) => {
         .limit(1200),
       admin.adminClient
         .from('user_settings')
-        .select('user_id, target_lang, native_lang, cefr_level'),
+        .select('user_id, target_lang, native_lang'),
       admin.adminClient
         .from('user_meta_tracker')
-        .select('user_id, target_lang, native_lang'),
+        .select('user_id, target_lang, native_lang, start_level, prior_ica_words, activation_words_total, confirmed_at'),
       admin.adminClient
         .from('lexicards')
         .select('user_id, target_lang, native_lang')
@@ -1489,7 +1602,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    const settingsByUserId = new Map<string, { targetLang: string; nativeLang: string; level: string }>()
+    const settingsByUserId = new Map<string, { targetLang: string; nativeLang: string }>()
     for (const row of settingsResult.data || []) {
       const userId = String(row.user_id)
       const targetLang = String(row.target_lang || '').trim()
@@ -1498,7 +1611,6 @@ Deno.serve(async (req) => {
       settingsByUserId.set(userId, {
         targetLang,
         nativeLang: String(row.native_lang || ''),
-        level: String(row.cefr_level || 'A2'),
       })
     }
 
@@ -1508,7 +1620,6 @@ Deno.serve(async (req) => {
       userId: string,
       targetLangRaw: unknown,
       nativeLangRaw: unknown,
-      levelRaw?: unknown,
     ) => {
       const targetLang = String(targetLangRaw || '').trim()
       if (!targetLang) return
@@ -1532,18 +1643,13 @@ Deno.serve(async (req) => {
           typeof nativeLangRaw === 'string' && nativeLangRaw.trim().length > 0
             ? nativeLangRaw.trim()
             : fallbackSetting?.nativeLang || '',
-        level:
-          typeof levelRaw === 'string' && levelRaw.trim().length > 0
-            ? levelRaw.trim()
-            : targetLang.toLowerCase() === fallbackSetting?.targetLang.toLowerCase()
-              ? fallbackSetting.level
-              : 'A2',
+        level: 'A2',
       })
       languagesByUserId.set(userId, perUser)
     }
 
     for (const row of settingsResult.data || []) {
-      ensureLanguage(String(row.user_id), row.target_lang, row.native_lang, row.cefr_level)
+      ensureLanguage(String(row.user_id), row.target_lang, row.native_lang)
     }
 
     for (const row of trackersResult.data || []) {
@@ -1552,6 +1658,21 @@ Deno.serve(async (req) => {
 
     for (const row of cardsResult.data || []) {
       ensureLanguage(String(row.user_id), row.target_lang, row.native_lang)
+    }
+
+    const trackerLevelByScope = new Map<string, string>()
+    for (const row of trackersResult.data || []) {
+      const tracker = row as MetaTrackerLevelRow
+      const userId = String(tracker.user_id)
+      const targetLang = safeString(tracker.target_lang)
+      const nativeLang = safeString(tracker.native_lang)
+      if (!targetLang || !nativeLang) continue
+      const level = getTrackerCurrentLevel(targetLang, tracker)
+      if (!level) continue
+      trackerLevelByScope.set(
+        getLanguageScopeKey(userId, targetLang, nativeLang),
+        level,
+      )
     }
 
     const coachedPairs = new Set(
@@ -1576,7 +1697,10 @@ Deno.serve(async (req) => {
           userDisplayName: displayName,
           targetLang: language.targetLang,
           nativeLang: language.nativeLang,
-          activeLevel: language.level,
+          activeLevel:
+            trackerLevelByScope.get(
+              getLanguageScopeKey(userId, language.targetLang, language.nativeLang),
+            ) || language.level || 'A2',
           alreadyInCoaching: coachedPairs.has(`${userId}::${language.targetLang.toLowerCase()}`),
         }))
     })
