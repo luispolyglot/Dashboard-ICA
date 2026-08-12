@@ -18,7 +18,7 @@ export async function fetchWeeklyLeaderboard(limit = 12): Promise<LeaderboardEnt
 export async function fetchMonthlyStreakLeaderboard(limit = 12): Promise<LeaderboardEntry[]> {
   if (!supabase) return []
 
-  const { data, error } = await supabase.rpc('get_monthly_streak_leaderboard', {
+  const { data, error } = await supabase.rpc('get_monthly_streak_leaderboard_clean', {
     limit_count: limit,
   })
 
@@ -35,7 +35,7 @@ export async function fetchMonthlySnapshotLeaderboard(
 ): Promise<LeaderboardEntry[]> {
   if (!supabase) return []
 
-  const { data, error } = await supabase.rpc('get_monthly_snapshot_leaderboard', {
+  const { data, error } = await supabase.rpc('get_monthly_snapshot_leaderboard_clean', {
     p_period_start: periodStart,
     limit_count: limit,
   })
@@ -50,7 +50,7 @@ export async function fetchMonthlySnapshotLeaderboard(
 export async function fetchTotalIcademers(): Promise<number> {
   if (!supabase) return 0
 
-  const { data, error } = await supabase.rpc('get_total_icademers')
+  const { data, error } = await supabase.rpc('get_total_icademers_clean')
 
   if (error) {
     throw error
