@@ -19,6 +19,7 @@ import {
   fetchMyMonthlyAnalytics,
   type MonthlyAnalyticsKpis,
 } from '../services/myAnalytics'
+import { LISTENING_METRICS_CHANGED_EVENT } from '../services/creationMetricsSync'
 import { useDashboardContext } from '../context/DashboardContext'
 
 const MONTH_LABELS = [
@@ -94,6 +95,7 @@ export function MyAnalyticsView() {
   const [previousKpis, setPreviousKpis] = useState<MonthlyAnalyticsKpis | null>(
     null,
   )
+  const [refreshTick, setRefreshTick] = useState(0)
 
   const createdAt = useMemo(
     () => parseSafeDate(user?.created_at),
@@ -164,6 +166,25 @@ export function MyAnalyticsView() {
   )
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onListeningMetricsChanged = () => {
+      setRefreshTick((value) => value + 1)
+    }
+
+    window.addEventListener(
+      LISTENING_METRICS_CHANGED_EVENT,
+      onListeningMetricsChanged,
+    )
+
+    return () => {
+      window.removeEventListener(
+        LISTENING_METRICS_CHANGED_EVENT,
+        onListeningMetricsChanged,
+      )
+    }
+  }, [])
+
+  useEffect(() => {
     if (!user?.id || !config) return
 
     let active = true
@@ -217,6 +238,7 @@ export function MyAnalyticsView() {
     config,
     hasPreviousPeriod,
     previousMonthCode,
+    refreshTick,
     selectedMonthCode,
     user?.id,
   ])

@@ -26,6 +26,7 @@ import {
   fetchMonthlySnapshotLeaderboard,
   fetchMonthlyStreakLeaderboard,
 } from "../services/leaderboard";
+import { LISTENING_METRICS_CHANGED_EVENT } from "../services/creationMetricsSync";
 import { getIcaTestWindowStartDay } from "../services/icaTests";
 
 const HISTORY_START_MONTH = "2026-05-01";
@@ -276,10 +277,31 @@ function getInstagramPoints(row: LeaderboardEntry): number {
   return toSafeNumber(row.instagram_points);
 }
 
-function getPregunticaMaxPoints(scoringDayCap: number): number {
-  const elapsedWeeks = Math.ceil(scoringDayCap / 7);
-  const maxPointsByWeek = elapsedWeeks * 2;
-  return Math.min(Math.max(maxPointsByWeek, 2), MAX_PREGUNTICA_POINTS);
+function getPregunticaMaxPoints(
+  selectedMonth: string,
+  scoringDayCap: number,
+  currentPoints: number,
+): number {
+  const monthStart = parseIsoDate(selectedMonth);
+  const daysInMonth = new Date(
+    Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  const cappedDay = Math.min(Math.max(scoringDayCap, 1), daysInMonth);
+
+  let fridayCount = 0;
+  for (let day = 1; day <= cappedDay; day += 1) {
+    const weekday = new Date(
+      Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), day),
+    ).getUTCDay();
+    if (weekday === 5) fridayCount += 1;
+  }
+
+  const fridayBasedMax = Math.min(fridayCount * 2, MAX_PREGUNTICA_POINTS);
+  const ensuredForCurrentPoints = Math.min(
+    MAX_PREGUNTICA_POINTS,
+    Math.max(fridayBasedMax, currentPoints),
+  );
+  return ensuredForCurrentPoints;
 }
 
 function getDisplayedTotalPoints(
@@ -318,6 +340,7 @@ function buildScoreBreakdown(
   row: LeaderboardEntry,
   includeIcaTest: boolean,
   isCurrentUser: boolean,
+  selectedMonth: string,
   scoringDayCap: number,
 ): ScoreBreakdown {
   const monthlyPoints = getMonthlyPercentPoints(row);
@@ -326,7 +349,11 @@ function buildScoreBreakdown(
   const pregunticaPoints = getPregunticaPoints(row);
   const instagramPoints = getInstagramPoints(row);
   const listeningMaxPoints = scoringDayCap * MAX_LISTENING_POINTS_PER_DAY;
-  const pregunticaMaxPoints = getPregunticaMaxPoints(scoringDayCap);
+  const pregunticaMaxPoints = getPregunticaMaxPoints(
+    selectedMonth,
+    scoringDayCap,
+    pregunticaPoints,
+  );
   const instagramMaxPoints = scoringDayCap * MAX_INSTAGRAM_POINTS_PER_DAY;
   const totalPoints = getDisplayedTotalPoints(row, includeIcaTest);
   const totalMaxPoints =
@@ -421,6 +448,7 @@ export function LeaderboardView() {
   const [openedFromMyScore, setOpenedFromMyScore] = useState(false);
   const [selectedScoreBreakdown, setSelectedScoreBreakdown] =
     useState<ScoreBreakdown | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [selectedPrizeRank, setSelectedPrizeRank] =
     useState<LeaderboardPrizeRank | null>(null);
 
@@ -437,6 +465,25 @@ export function LeaderboardView() {
   useEffect(() => {
     const intervalId = window.setInterval(() => setNowMs(Date.now()), 30000);
     return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onListeningMetricsChanged = () => {
+      setRefreshTick((value) => value + 1);
+    };
+
+    window.addEventListener(
+      LISTENING_METRICS_CHANGED_EVENT,
+      onListeningMetricsChanged,
+    );
+
+    return () => {
+      window.removeEventListener(
+        LISTENING_METRICS_CHANGED_EVENT,
+        onListeningMetricsChanged,
+      );
+    };
   }, []);
 
   useEffect(() => {
@@ -471,7 +518,7 @@ export function LeaderboardView() {
     return () => {
       active = false;
     };
-  }, [isCurrentMonth, selectedMonth]);
+  }, [isCurrentMonth, refreshTick, selectedMonth]);
 
   const visibleRows = useMemo(
     () => pickVisibleRows(rows, user?.id),
@@ -538,10 +585,32 @@ export function LeaderboardView() {
         row,
         includeIcaTestInScoreExplanation,
         row.user_id === user?.id,
+        selectedMonth,
         scoringDayCap,
       ),
     );
   };
+
+  useEffect(() => {
+    if (!selectedScoreBreakdown?.isCurrentUser) return;
+    if (!currentUserRow) return;
+
+    setSelectedScoreBreakdown(
+      buildScoreBreakdown(
+        currentUserRow,
+        includeIcaTestInScoreExplanation,
+        true,
+        selectedMonth,
+        scoringDayCap,
+      ),
+    );
+  }, [
+    currentUserRow,
+    includeIcaTestInScoreExplanation,
+    scoringDayCap,
+    selectedMonth,
+    selectedScoreBreakdown?.isCurrentUser,
+  ]);
 
   return (
     <section className="mx-auto w-full max-w-5xl flex-1 overflow-y-auto px-5 py-8">
