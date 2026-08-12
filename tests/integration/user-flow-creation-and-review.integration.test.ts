@@ -75,13 +75,27 @@ async function createAuthenticatedUser(): Promise<AuthedUser> {
 async function cleanupCreatedIntegrationData(): Promise<void> {
   const userIds = createdUserIds.splice(0)
   for (const userId of userIds) {
-    const { error: hardDeleteError } = await adminClient.auth.admin.deleteUser(userId)
-    if (!hardDeleteError) continue
-    if (hardDeleteError.message.toLowerCase().includes('not found')) continue
+    const { error: voiceDeleteError } = await adminClient
+      .from('phrase_voice_activations')
+      .delete()
+      .eq('user_id', userId)
+    if (voiceDeleteError) throw voiceDeleteError
 
-    const { error: softDeleteError } = await adminClient.auth.admin.deleteUser(userId, true)
-    if (softDeleteError && !softDeleteError.message.toLowerCase().includes('not found')) {
-      throw softDeleteError
+    const { error: phraseDeleteError } = await adminClient
+      .from('phrase_generations')
+      .delete()
+      .eq('user_id', userId)
+    if (phraseDeleteError) throw phraseDeleteError
+
+    const { error: lexicardsDeleteError } = await adminClient
+      .from('lexicards')
+      .delete()
+      .eq('user_id', userId)
+    if (lexicardsDeleteError) throw lexicardsDeleteError
+
+    const { error: hardDeleteError } = await adminClient.auth.admin.deleteUser(userId)
+    if (hardDeleteError && !hardDeleteError.message.toLowerCase().includes('not found')) {
+      throw hardDeleteError
     }
   }
 
