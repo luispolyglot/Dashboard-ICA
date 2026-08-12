@@ -801,7 +801,7 @@ export function ManageCoachingCalendarView() {
                       <div
                         key={`${cell.dateKey}-${index}`}
                         className={[
-                          'min-h-36 border-r border-b p-2 last:border-r-0',
+                          'min-h-40 border-r border-b p-2 last:border-r-0',
                           isOutOfMonth ? 'bg-muted/40' : '',
                           isWeekend ? 'bg-muted/20' : '',
                         ].join(' ')}
@@ -831,7 +831,7 @@ export function ManageCoachingCalendarView() {
                           </div>
                         </div>
 
-                        <div className='flex flex-col gap-1'>
+                        <div className='flex max-h-28 flex-col gap-1 overflow-y-auto pr-0.5'>
                           {dayEntries.map((entry) => {
                             const isMine = entry.coachUserId === currentUserId
                             const toneClass = isSuperAdmin
@@ -844,18 +844,26 @@ export function ManageCoachingCalendarView() {
                               <button
                                 key={entry.id}
                                 type='button'
-                                className={`w-full rounded-sm border border-l-4 px-1.5 py-1 text-left text-[11px] leading-tight transition-colors hover:bg-accent/35 ${toneClass}`}
+                                className={`w-full rounded-sm border border-l-4 px-1.5 py-1.5 text-left text-[11px] leading-tight transition-colors hover:bg-accent/35 ${toneClass}`}
                                 onClick={() => setSelectedEntry(entry)}
                               >
                                 <p className='truncate font-semibold'>
                                   {entry.timeLabel} - {entry.studentName}
                                 </p>
-                                <p className='truncate text-muted-foreground'>
-                                  {entry.targetLang}
-                                  {isSuperAdmin
-                                    ? ` - ${entry.coachDisplayName || entry.coachUserId || 'Sin coach'}`
-                                    : ''}
-                                </p>
+                                <div className='mt-0.5 flex items-end justify-between gap-1'>
+                                  <p className='truncate text-muted-foreground'>
+                                    {entry.targetLang}
+                                    {isSuperAdmin
+                                      ? ` - ${entry.coachDisplayName || entry.coachUserId || 'Sin coach'}`
+                                      : ''}
+                                  </p>
+                                  <Badge
+                                    variant='default'
+                                    className='h-auto bg-amber-500 px-1 py-0 text-[9px] font-semibold text-black'
+                                  >
+                                    {entry.sessionWeekKey}
+                                  </Badge>
+                                </div>
                               </button>
                             )
                           })}
