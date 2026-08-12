@@ -24,7 +24,7 @@ import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchPhraseVoiceActivations } from '../services/phraseVoiceActivations'
 import {
   deletePhraseHistoryEntry,
-  fetchPhraseHistory,
+  fetchPhraseHistoryPage,
 } from '../services/phraseHistory'
 import { stopTTS } from '../services/tts'
 import type {
@@ -94,6 +94,7 @@ export function PhraseHistoryView({
   setCards,
   onWordAdded,
 }: PhraseHistoryViewProps) {
+  const PAGE_SIZE = 80
   const navigate = useNavigate()
   const [items, setItems] = useState<PhraseGenerationEntry[]>([])
   const [activationsByPhrase, setActivationsByPhrase] = useState<
@@ -101,6 +102,8 @@ export function PhraseHistoryView({
   >({})
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deleteCandidate, setDeleteCandidate] = useState<{
@@ -128,16 +131,39 @@ export function PhraseHistoryView({
     }, 0)
   }, [items, todayKey])
 
+  const mergeItemsById = (
+    previous: PhraseGenerationEntry[],
+    next: PhraseGenerationEntry[],
+  ): PhraseGenerationEntry[] => {
+    const map = new Map<string, PhraseGenerationEntry>()
+    for (const row of previous) {
+      map.set(row.id, row)
+    }
+    for (const row of next) {
+      map.set(row.id, row)
+    }
+
+    return Array.from(map.values()).sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    )
+  }
+
   useEffect(() => {
     const load = async (): Promise<void> => {
       setLoading(true)
       try {
-        const rows = await fetchPhraseHistory(40, targetLang)
-        setItems(rows)
+        const page = await fetchPhraseHistoryPage({
+          limit: PAGE_SIZE,
+          offset: 0,
+          targetLang,
+        })
+        setItems(page.items)
         const activations = await fetchPhraseVoiceActivations(
-          rows.map((r) => r.id),
+          page.items.map((row) => row.id),
         )
         setActivationsByPhrase(activations)
+        setHasMore(page.hasMore)
         setError(null)
       } catch (err) {
         console.error(err)
@@ -153,6 +179,33 @@ export function PhraseHistoryView({
       stopTTS()
     }
   }, [targetLang])
+
+  const handleLoadMore = async (): Promise<void> => {
+    if (loading || loadingMore || !hasMore) return
+
+    setLoadingMore(true)
+    try {
+      const page = await fetchPhraseHistoryPage({
+        limit: PAGE_SIZE,
+        offset: items.length,
+        targetLang,
+      })
+
+      setItems((prev) => mergeItemsById(prev, page.items))
+
+      const activations = await fetchPhraseVoiceActivations(
+        page.items.map((row) => row.id),
+      )
+      setActivationsByPhrase((prev) => ({ ...prev, ...activations }))
+      setHasMore(page.hasMore)
+      setError(null)
+    } catch (err) {
+      console.error(err)
+      setError('No se pudo cargar más frases')
+    } finally {
+      setLoadingMore(false)
+    }
+  }
 
   const handleDelete = async (id: string): Promise<void> => {
     if (deletingId) return
@@ -414,6 +467,19 @@ export function PhraseHistoryView({
             )
           })}
         </div>
+
+        {!loading && hasMore && (
+          <div className='mt-4 flex justify-center'>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => void handleLoadMore()}
+              disabled={loadingMore}
+            >
+              {loadingMore ? 'Cargando...' : 'Cargar más frases'}
+            </Button>
+          </div>
+        )}
       </div>
 
       <Dialog
