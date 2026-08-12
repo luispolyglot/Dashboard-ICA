@@ -137,50 +137,37 @@ export function PhraseView({
   const minWordsRequired = 5
 
   const normalizeText = (value: string): string =>
-    value
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^\p{L}\p{N}\s'-]/gu, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
+    value.normalize('NFKC').toLowerCase().trim()
 
   const escapeRegex = (value: string): string =>
     value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
   const includesAsWholeWord = (phrase: string, value: string): boolean => {
     if (!value) return false
-    const regex = new RegExp(`(^|\\s)${escapeRegex(value)}(?=\\s|$)`, 'u')
+    const regex = new RegExp(
+      `(^|[^\\p{L}\\p{N}'-])${escapeRegex(value)}(?=$|[^\\p{L}\\p{N}'-])`,
+      'u',
+    )
     return regex.test(phrase)
   }
 
   const manualDetectedWords = useMemo(() => {
-    if (!manualPhraseTarget.trim() && !manualPhraseNative.trim()) return []
+    if (!manualPhraseTarget.trim()) return []
 
     const normalizedTargetPhrase = normalizeText(manualPhraseTarget)
-    const normalizedNativePhrase = normalizeText(manualPhraseNative)
 
     return allWords.filter((word) => {
       const targetToken = normalizeText(word.target)
-      const nativeToken = normalizeText(word.native)
 
-      if (!targetToken && !nativeToken) return false
+      if (!targetToken) return false
 
       const matchesTarget = targetToken
-        ? targetToken.length > 1
-          ? includesAsWholeWord(normalizedTargetPhrase, targetToken)
-          : normalizedTargetPhrase.includes(targetToken)
+        ? includesAsWholeWord(normalizedTargetPhrase, targetToken)
         : false
 
-      const matchesNative = nativeToken
-        ? nativeToken.length > 1
-          ? includesAsWholeWord(normalizedNativePhrase, nativeToken)
-          : normalizedNativePhrase.includes(nativeToken)
-        : false
-
-      return matchesTarget || matchesNative
+      return matchesTarget
     })
-  }, [allWords, manualPhraseNative, manualPhraseTarget])
+  }, [allWords, manualPhraseTarget])
 
   const selectedWords =
     mode === 'manualPhrase'
