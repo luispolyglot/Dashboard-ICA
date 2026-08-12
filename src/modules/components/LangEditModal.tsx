@@ -16,8 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { LANGUAGES, LEVELS } from '../constants'
-import type { AppConfig, CEFRLevel } from '../types'
+import { LANGUAGES } from '../constants'
+import type { AppConfig } from '../types'
 
 type LangEditModalProps = {
   config: AppConfig
@@ -48,7 +48,7 @@ export function LangEditModal({
         <DialogHeader>
           <DialogTitle>Cambiar idiomas</DialogTitle>
           <DialogDescription>
-            Actualiza tu idioma materno, objetivo y nivel.
+            Actualiza tu idioma materno y objetivo.
           </DialogDescription>
         </DialogHeader>
 
@@ -75,44 +75,24 @@ export function LangEditModal({
           </div>
 
           <div className='space-y-1.5'>
-            <Label>Idioma objetivo + nivel</Label>
-            <div className='flex gap-2'>
-              <Select
-                value={config.targetLang}
-                onValueChange={(targetLang) =>
-                  setConfig({ ...config, targetLang })
-                }
-              >
-                <SelectTrigger className='w-full'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableTargetLanguages.map((language) => (
-                    <SelectItem key={language} value={language}>
-                      {language}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select
-                value={config.level || 'A2'}
-                onValueChange={(value) =>
-                  setConfig({ ...config, level: value as CEFRLevel })
-                }
-              >
-                <SelectTrigger className='w-24'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {LEVELS.map((currentLevel) => (
-                    <SelectItem key={currentLevel} value={currentLevel}>
-                      {currentLevel === '0' ? 'Nivel 0' : currentLevel}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <Label>Idioma objetivo</Label>
+            <Select
+              value={config.targetLang}
+              onValueChange={(targetLang) =>
+                setConfig({ ...config, targetLang })
+              }
+            >
+              <SelectTrigger className='w-full'>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {availableTargetLanguages.map((language) => (
+                  <SelectItem key={language} value={language}>
+                    {language}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 

@@ -16,12 +16,10 @@ import { IMPORTANCE_LEVELS } from '../constants'
 import { normalizeComparableText } from '../wordExtraction'
 import {
   fetchPhraseTokenInsight,
-  fetchWordExample,
 } from '../services/anthropic'
 import { insertWord } from '../services/storage'
 import { speakNatural, stopTTS } from '../services/tts'
 import type {
-  CEFRLevel,
   ImportanceKey,
   Lexicard,
   PhraseTokenInsightResult,
@@ -98,7 +96,6 @@ type ExplorePhraseTokenModalProps = {
   phraseTranslation?: string | null
   targetLang: string
   nativeLang: string
-  level: CEFRLevel
   cards: Lexicard[]
   setCards: Dispatch<SetStateAction<Lexicard[]>>
   onWordAdded?: () => Promise<unknown>
@@ -127,7 +124,6 @@ export function ExplorePhraseTokenModal({
   phraseTranslation,
   targetLang,
   nativeLang,
-  level,
   cards,
   setCards,
   onWordAdded,
@@ -249,26 +245,8 @@ export function ExplorePhraseTokenModal({
     setSaving(true)
     setSaveError(null)
 
-    let examplePhrase = phrase || null
-    let exampleTranslation = phraseTranslation || null
-
-    try {
-      const example = await fetchWordExample(
-        trimmedToken,
-        nativeMeaning.trim(),
-        targetLang,
-        nativeLang,
-        level,
-      )
-      if (example?.phrase) {
-        examplePhrase = example.phrase
-      }
-      if (example?.translation) {
-        exampleTranslation = example.translation
-      }
-    } catch {
-      // Best effort only.
-    }
+    const examplePhrase = phrase || null
+    const exampleTranslation = phraseTranslation || null
 
     const newCard: Lexicard = {
       id: generateId(),
@@ -293,7 +271,9 @@ export function ExplorePhraseTokenModal({
       setCards((prev) => [...prev, newCard])
       await insertWord(newCard)
       if (onWordAdded) {
-        await onWordAdded()
+        void onWordAdded().catch((error) => {
+          console.error(error)
+        })
       }
       setRecentlyAddedScopedTargets((prev) => {
         const next = new Set(prev)

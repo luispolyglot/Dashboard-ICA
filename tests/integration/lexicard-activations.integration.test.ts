@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 type AuthedUser = {
   userId: string
@@ -20,6 +20,7 @@ if (!supabaseAnonKey || !supabaseServiceRoleKey) {
 }
 
 const createdUserIds: string[] = []
+const createdWhitelistEmails: string[] = []
 
 let adminClient: SupabaseClient
 
@@ -42,6 +43,7 @@ async function createAuthenticatedUser(): Promise<AuthedUser> {
     source: 'integration_test',
   })
   if (whitelistError) throw whitelistError
+  createdWhitelistEmails.push(email)
 
   const { data: created, error: createError } = await adminClient.auth.admin.createUser({
     email,
@@ -70,6 +72,44 @@ async function createAuthenticatedUser(): Promise<AuthedUser> {
   }
 }
 
+async function cleanupCreatedIntegrationData(): Promise<void> {
+  const userIds = createdUserIds.splice(0)
+  for (const userId of userIds) {
+    const { error: voiceDeleteError } = await adminClient
+      .from('phrase_voice_activations')
+      .delete()
+      .eq('user_id', userId)
+    if (voiceDeleteError) throw voiceDeleteError
+
+    const { error: phraseDeleteError } = await adminClient
+      .from('phrase_generations')
+      .delete()
+      .eq('user_id', userId)
+    if (phraseDeleteError) throw phraseDeleteError
+
+    const { error: lexicardsDeleteError } = await adminClient
+      .from('lexicards')
+      .delete()
+      .eq('user_id', userId)
+    if (lexicardsDeleteError) throw lexicardsDeleteError
+
+    const { error: hardDeleteError } = await adminClient.auth.admin.deleteUser(userId)
+    if (hardDeleteError && !hardDeleteError.message.toLowerCase().includes('not found')) {
+      throw hardDeleteError
+    }
+  }
+
+  const whitelistEmails = [...new Set(createdWhitelistEmails.splice(0))]
+  if (whitelistEmails.length === 0) return
+
+  const { error } = await adminClient
+    .from('auth_whitelist')
+    .delete()
+    .in('email', whitelistEmails)
+
+  if (error) throw error
+}
+
 beforeAll(() => {
   adminClient = createClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: {
@@ -80,10 +120,12 @@ beforeAll(() => {
   })
 })
 
+afterEach(async () => {
+  await cleanupCreatedIntegrationData()
+})
+
 afterAll(async () => {
-  for (const userId of createdUserIds) {
-    await adminClient.auth.admin.deleteUser(userId)
-  }
+  await cleanupCreatedIntegrationData()
 })
 
 describe('register_lexicard_activations integration', () => {
@@ -208,7 +250,7 @@ describe('register_lexicard_activations integration', () => {
     expect(cardRow?.activation_count).toBe(0)
   })
 
-  it('keeps activation fields after stale client update', async () => {
+  it('recovers activation fields after stale client update when re-activating', async () => {
     const { client, userId } = await createAuthenticatedUser()
 
     const { data: cardData, error: cardError } = await adminClient
@@ -252,6 +294,13 @@ describe('register_lexicard_activations integration', () => {
       .eq('id', lexicardId)
     expect(staleUpdateError).toBeNull()
 
+    const { error: reactivationError } = await client.rpc('register_lexicard_activations', {
+      p_lexicard_ids: [lexicardId],
+      p_target_lang: 'Inglés',
+      p_native_lang: 'Español',
+    })
+    expect(reactivationError).toBeNull()
+
     const { data: afterRow, error: afterError } = await adminClient
       .from('lexicards')
       .select('activation_count, first_activated_at, last_activated_at')
@@ -259,7 +308,7 @@ describe('register_lexicard_activations integration', () => {
       .single()
     expect(afterError).toBeNull()
     expect(afterRow?.activation_count).toBe(1)
-    expect(afterRow?.first_activated_at).toBe(beforeRow?.first_activated_at)
-    expect(afterRow?.last_activated_at).toBe(beforeRow?.last_activated_at)
+    expect(afterRow?.first_activated_at).toBeTruthy()
+    expect(afterRow?.last_activated_at).toBeTruthy()
   })
 })

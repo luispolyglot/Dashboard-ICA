@@ -26,6 +26,7 @@ import {
   fetchMonthlySnapshotLeaderboard,
   fetchMonthlyStreakLeaderboard,
 } from "../services/leaderboard";
+import { LISTENING_METRICS_CHANGED_EVENT } from "../services/creationMetricsSync";
 import { getIcaTestWindowStartDay } from "../services/icaTests";
 
 const HISTORY_START_MONTH = "2026-05-01";
@@ -276,10 +277,31 @@ function getInstagramPoints(row: LeaderboardEntry): number {
   return toSafeNumber(row.instagram_points);
 }
 
-function getPregunticaMaxPoints(scoringDayCap: number): number {
-  const elapsedWeeks = Math.ceil(scoringDayCap / 7);
-  const maxPointsByWeek = elapsedWeeks * 2;
-  return Math.min(Math.max(maxPointsByWeek, 2), MAX_PREGUNTICA_POINTS);
+function getPregunticaMaxPoints(
+  selectedMonth: string,
+  scoringDayCap: number,
+  currentPoints: number,
+): number {
+  const monthStart = parseIsoDate(selectedMonth);
+  const daysInMonth = new Date(
+    Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  const cappedDay = Math.min(Math.max(scoringDayCap, 1), daysInMonth);
+
+  let fridayCount = 0;
+  for (let day = 1; day <= cappedDay; day += 1) {
+    const weekday = new Date(
+      Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), day),
+    ).getUTCDay();
+    if (weekday === 5) fridayCount += 1;
+  }
+
+  const fridayBasedMax = Math.min(fridayCount * 2, MAX_PREGUNTICA_POINTS);
+  const ensuredForCurrentPoints = Math.min(
+    MAX_PREGUNTICA_POINTS,
+    Math.max(fridayBasedMax, currentPoints),
+  );
+  return ensuredForCurrentPoints;
 }
 
 function getDisplayedTotalPoints(
@@ -318,6 +340,7 @@ function buildScoreBreakdown(
   row: LeaderboardEntry,
   includeIcaTest: boolean,
   isCurrentUser: boolean,
+  selectedMonth: string,
   scoringDayCap: number,
 ): ScoreBreakdown {
   const monthlyPoints = getMonthlyPercentPoints(row);
@@ -326,7 +349,11 @@ function buildScoreBreakdown(
   const pregunticaPoints = getPregunticaPoints(row);
   const instagramPoints = getInstagramPoints(row);
   const listeningMaxPoints = scoringDayCap * MAX_LISTENING_POINTS_PER_DAY;
-  const pregunticaMaxPoints = getPregunticaMaxPoints(scoringDayCap);
+  const pregunticaMaxPoints = getPregunticaMaxPoints(
+    selectedMonth,
+    scoringDayCap,
+    pregunticaPoints,
+  );
   const instagramMaxPoints = scoringDayCap * MAX_INSTAGRAM_POINTS_PER_DAY;
   const totalPoints = getDisplayedTotalPoints(row, includeIcaTest);
   const totalMaxPoints =
@@ -418,9 +445,9 @@ export function LeaderboardView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isBreakdownInfoOpen, setIsBreakdownInfoOpen] = useState(false);
-  const [openedFromMyScore, setOpenedFromMyScore] = useState(false);
   const [selectedScoreBreakdown, setSelectedScoreBreakdown] =
     useState<ScoreBreakdown | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [selectedPrizeRank, setSelectedPrizeRank] =
     useState<LeaderboardPrizeRank | null>(null);
 
@@ -437,6 +464,25 @@ export function LeaderboardView() {
   useEffect(() => {
     const intervalId = window.setInterval(() => setNowMs(Date.now()), 30000);
     return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onListeningMetricsChanged = () => {
+      setRefreshTick((value) => value + 1);
+    };
+
+    window.addEventListener(
+      LISTENING_METRICS_CHANGED_EVENT,
+      onListeningMetricsChanged,
+    );
+
+    return () => {
+      window.removeEventListener(
+        LISTENING_METRICS_CHANGED_EVENT,
+        onListeningMetricsChanged,
+      );
+    };
   }, []);
 
   useEffect(() => {
@@ -471,7 +517,7 @@ export function LeaderboardView() {
     return () => {
       active = false;
     };
-  }, [isCurrentMonth, selectedMonth]);
+  }, [isCurrentMonth, refreshTick, selectedMonth]);
 
   const visibleRows = useMemo(
     () => pickVisibleRows(rows, user?.id),
@@ -527,21 +573,39 @@ export function LeaderboardView() {
     [rows, user?.id],
   );
 
-  const openScoreBreakdown = (
-    row: LeaderboardEntry,
-    source: "my-button" | "table",
-  ) => {
+  const openScoreBreakdown = (row: LeaderboardEntry) => {
     setIsBreakdownInfoOpen(false);
-    setOpenedFromMyScore(source === "my-button");
     setSelectedScoreBreakdown(
       buildScoreBreakdown(
         row,
         includeIcaTestInScoreExplanation,
         row.user_id === user?.id,
+        selectedMonth,
         scoringDayCap,
       ),
     );
   };
+
+  useEffect(() => {
+    if (!selectedScoreBreakdown?.isCurrentUser) return;
+    if (!currentUserRow) return;
+
+    setSelectedScoreBreakdown(
+      buildScoreBreakdown(
+        currentUserRow,
+        includeIcaTestInScoreExplanation,
+        true,
+        selectedMonth,
+        scoringDayCap,
+      ),
+    );
+  }, [
+    currentUserRow,
+    includeIcaTestInScoreExplanation,
+    scoringDayCap,
+    selectedMonth,
+    selectedScoreBreakdown?.isCurrentUser,
+  ]);
 
   return (
     <section className="mx-auto w-full max-w-5xl flex-1 overflow-y-auto px-5 py-8">
@@ -602,7 +666,7 @@ export function LeaderboardView() {
               size="sm"
               onClick={() => {
                 if (!currentUserRow) return;
-                openScoreBreakdown(currentUserRow, "my-button");
+                openScoreBreakdown(currentUserRow);
               }}
               disabled={!currentUserRow || loading || Boolean(error)}
             >
@@ -642,7 +706,7 @@ export function LeaderboardView() {
                       </th>
                     )}
                     <th className="hidden md:table-cell w-[18%] pb-2 font-medium">
-                      % mensual
+                      % de eficacia
                     </th>
                     <th className="w-[16%] pb-2 font-medium">
                       Puntuación total
@@ -708,7 +772,7 @@ export function LeaderboardView() {
                             type="button"
                             variant="ghost"
                             className="h-auto p-0 text-sm font-bold md:font-medium"
-                            onClick={() => openScoreBreakdown(row, "table")}
+                            onClick={() => openScoreBreakdown(row)}
                             aria-label="Ver cómo se calculó esta puntuación total"
                           >
                             {getDisplayedTotalPoints(
@@ -811,7 +875,7 @@ export function LeaderboardView() {
                           type="button"
                           variant="ghost"
                           className="h-auto p-0 text-sm font-bold md:font-medium"
-                          onClick={() => openScoreBreakdown(row, "table")}
+                          onClick={() => openScoreBreakdown(row)}
                           aria-label="Ver cómo se calculó esta puntuación total"
                         >
                           {getDisplayedTotalPoints(
@@ -835,7 +899,6 @@ export function LeaderboardView() {
           if (!open) {
             setSelectedScoreBreakdown(null);
             setIsBreakdownInfoOpen(false);
-            setOpenedFromMyScore(false);
           }
         }}
       >
@@ -872,11 +935,11 @@ export function LeaderboardView() {
                   selectedScoreBreakdown.monthlyMaxPoints,
                 )}{" "}
                 / {formatPoints(selectedScoreBreakdown.monthlyMaxPoints)}
-                {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
+                {selectedScoreBreakdown.isCurrentUser
                   ? ` - ${formatAppliedPercent(selectedScoreBreakdown.monthlyPoints, selectedScoreBreakdown.monthlyMaxPoints)} de acción aplicada`
                   : ""}
               </p>
-              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
+              {isBreakdownInfoOpen && (
                 <p className="text-xs text-yellow-700 dark:text-yellow-300 -mt-2">
                   Promedio mensual de rachas ICA y flashcards, del día 1 al día
                   28. (Máximo 10 puntos)
@@ -890,11 +953,11 @@ export function LeaderboardView() {
                   selectedScoreBreakdown.listeningMaxPoints,
                 )}{" "}
                 / {formatPoints(selectedScoreBreakdown.listeningMaxPoints)}
-                {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
+                {selectedScoreBreakdown.isCurrentUser
                   ? ` - ${formatAppliedPercent(selectedScoreBreakdown.listeningPoints, selectedScoreBreakdown.listeningMaxPoints)} de acción aplicada`
                   : ""}
               </p>
-              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
+              {isBreakdownInfoOpen && (
                 <p className="text-xs text-yellow-700 dark:text-yellow-300 -mt-2">
                   Solo suma 0,1 puntos cuando llegas a 10 minutos escuchados en
                   el día. (Máximo 2,8 puntos)
@@ -908,11 +971,11 @@ export function LeaderboardView() {
                   selectedScoreBreakdown.instagramMaxPoints,
                 )}{" "}
                 / {formatPoints(selectedScoreBreakdown.instagramMaxPoints)}
-                {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
+                {selectedScoreBreakdown.isCurrentUser
                   ? ` - ${formatAppliedPercent(selectedScoreBreakdown.instagramPoints, selectedScoreBreakdown.instagramMaxPoints)} de acción aplicada`
                   : ""}
               </p>
-              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
+              {isBreakdownInfoOpen && (
                 <p className="text-xs text-yellow-700 dark:text-yellow-300 -mt-2">
                   Instagram Track suma 0,5 por cada día cumplido del 1 al 28.
                   (Máximo 14 puntos)
@@ -926,11 +989,11 @@ export function LeaderboardView() {
                   selectedScoreBreakdown.pregunticaMaxPoints,
                 )}{" "}
                 / {formatPoints(selectedScoreBreakdown.pregunticaMaxPoints)}
-                {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
+                {selectedScoreBreakdown.isCurrentUser
                   ? ` - ${formatAppliedPercent(selectedScoreBreakdown.pregunticaPoints, selectedScoreBreakdown.pregunticaMaxPoints)} de acción aplicada`
                   : ""}
               </p>
-              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
+              {isBreakdownInfoOpen && (
                 <p className="text-xs text-yellow-700 dark:text-yellow-300 -mt-2">
                   PreguntICA semanal completada suma 2 puntos por semana.
                   (Máximo 8 puntos)
@@ -954,12 +1017,11 @@ export function LeaderboardView() {
                   </>
                 )}
                 {selectedScoreBreakdown.isCurrentUser &&
-                openedFromMyScore &&
                 selectedScoreBreakdown.includeIcaTest
                   ? ` - ${formatAppliedPercent(selectedScoreBreakdown.icaTestPoints, selectedScoreBreakdown.icaTestMaxPoints)} de acción aplicada`
                   : ""}
               </p>
-              {selectedScoreBreakdown.isCurrentUser && isBreakdownInfoOpen && (
+              {isBreakdownInfoOpen && (
                 <p className="text-xs text-yellow-700 dark:text-yellow-300 -mt-2">
                   {selectedScoreBreakdown.includeIcaTest
                     ? `Cada respuesta correcta del ICA Test suma 0,1 puntos. Del día ${icaTestWindowStartDay} al 28 del mes. (Máximo 1,2 puntos)`
@@ -976,27 +1038,25 @@ export function LeaderboardView() {
                     selectedScoreBreakdown.totalPoints,
                     selectedScoreBreakdown.totalMaxPoints,
                   )}
-                  {selectedScoreBreakdown.isCurrentUser && openedFromMyScore
+                  {selectedScoreBreakdown.isCurrentUser
                     ? ` - ${formatAppliedPercent(selectedScoreBreakdown.totalPoints, selectedScoreBreakdown.totalMaxPoints)} de eficacia aplicada`
                     : ""}
                 </p>
 
-                {selectedScoreBreakdown.isCurrentUser && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className={
-                      isBreakdownInfoOpen
-                        ? "border-yellow-500 bg-yellow-100 text-yellow-700 ring-1 ring-yellow-500 dark:border-yellow-400 dark:bg-yellow-500/15 dark:text-yellow-300 dark:ring-yellow-400"
-                        : "border-yellow-500/60 text-yellow-700 hover:bg-yellow-100 hover:text-yellow-700 dark:border-yellow-400/70 dark:text-yellow-300 dark:hover:bg-yellow-500/10 dark:hover:text-yellow-200"
-                    }
-                    aria-pressed={isBreakdownInfoOpen}
-                    onClick={() => setIsBreakdownInfoOpen((prev) => !prev)}
-                  >
-                    <InfoIcon className="size-4" />
-                  </Button>
-                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className={
+                    isBreakdownInfoOpen
+                      ? "border-yellow-500 bg-yellow-100 text-yellow-700 ring-1 ring-yellow-500 dark:border-yellow-400 dark:bg-yellow-500/15 dark:text-yellow-300 dark:ring-yellow-400"
+                      : "border-yellow-500/60 text-yellow-700 hover:bg-yellow-100 hover:text-yellow-700 dark:border-yellow-400/70 dark:text-yellow-300 dark:hover:bg-yellow-500/10 dark:hover:text-yellow-200"
+                  }
+                  aria-pressed={isBreakdownInfoOpen}
+                  onClick={() => setIsBreakdownInfoOpen((prev) => !prev)}
+                >
+                  <InfoIcon className="size-4" />
+                </Button>
               </div>
             </div>
           ) : null}

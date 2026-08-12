@@ -688,7 +688,6 @@ export function ReviewView({
         seedWords={[currentCard.target]}
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
-        level={config.level || 'A1'}
         cards={cards}
         setCards={setCards}
         onWordAdded={onWordAdded}

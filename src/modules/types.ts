@@ -7,6 +7,18 @@ export type ImportanceKey =
 
 export type CEFRLevel = '0' | 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2'
 
+export type StudyLevel =
+  | 'Pre-A1'
+  | 'A1'
+  | 'A1+'
+  | 'A2'
+  | 'A2+'
+  | 'B1'
+  | 'B1+'
+  | 'B2'
+  | 'B2+'
+  | 'C1'
+
 export type AppView = 'home' | 'add' | 'review' | 'manage' | 'phrase' | 'phrases'
 
 export type ReviewMode =
@@ -374,7 +386,6 @@ export type DailyProgressMap = Record<string, DailyProgressEntry>
 export interface AppConfig {
   nativeLang: string
   targetLang: string
-  level: CEFRLevel
 }
 
 export interface ActivationPhraseResult {

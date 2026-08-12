@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 type AuthedUser = {
   userId: string
@@ -20,6 +20,7 @@ if (!supabaseAnonKey || !supabaseServiceRoleKey) {
 }
 
 const createdUserIds: string[] = []
+const createdWhitelistEmails: string[] = []
 
 let adminClient: SupabaseClient
 
@@ -42,6 +43,7 @@ async function createAuthenticatedUser(): Promise<AuthedUser> {
     source: 'integration_test',
   })
   if (whitelistError) throw whitelistError
+  createdWhitelistEmails.push(email)
 
   const { data: created, error: createError } = await adminClient.auth.admin.createUser({
     email,
@@ -70,6 +72,44 @@ async function createAuthenticatedUser(): Promise<AuthedUser> {
   }
 }
 
+async function cleanupCreatedIntegrationData(): Promise<void> {
+  const userIds = createdUserIds.splice(0)
+  for (const userId of userIds) {
+    const { error: voiceDeleteError } = await adminClient
+      .from('phrase_voice_activations')
+      .delete()
+      .eq('user_id', userId)
+    if (voiceDeleteError) throw voiceDeleteError
+
+    const { error: phraseDeleteError } = await adminClient
+      .from('phrase_generations')
+      .delete()
+      .eq('user_id', userId)
+    if (phraseDeleteError) throw phraseDeleteError
+
+    const { error: lexicardsDeleteError } = await adminClient
+      .from('lexicards')
+      .delete()
+      .eq('user_id', userId)
+    if (lexicardsDeleteError) throw lexicardsDeleteError
+
+    const { error: hardDeleteError } = await adminClient.auth.admin.deleteUser(userId)
+    if (hardDeleteError && !hardDeleteError.message.toLowerCase().includes('not found')) {
+      throw hardDeleteError
+    }
+  }
+
+  const whitelistEmails = [...new Set(createdWhitelistEmails.splice(0))]
+  if (whitelistEmails.length === 0) return
+
+  const { error } = await adminClient
+    .from('auth_whitelist')
+    .delete()
+    .in('email', whitelistEmails)
+
+  if (error) throw error
+}
+
 beforeAll(() => {
   adminClient = createClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: {
@@ -80,10 +120,12 @@ beforeAll(() => {
   })
 })
 
+afterEach(async () => {
+  await cleanupCreatedIntegrationData()
+})
+
 afterAll(async () => {
-  for (const userId of createdUserIds) {
-    await adminClient.auth.admin.deleteUser(userId)
-  }
+  await cleanupCreatedIntegrationData()
 })
 
 describe('daily metrics DB integration', () => {

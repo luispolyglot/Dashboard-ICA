@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { notifyListeningMetricsChanged } from './creationMetricsSync'
 
 type PendingListeningDeltaEvent = {
   id: string
@@ -152,6 +153,7 @@ export async function flushPendingMasterNoteListeningDeltas(userId: string): Pro
 
     const queue = events.filter((event) => event.userId === normalizedUserId)
     if (queue.length === 0) return
+    let flushedCount = 0
 
     for (const event of queue) {
       const { error } = await supabase.rpc('bump_master_note_listening_metrics', {
@@ -168,6 +170,11 @@ export async function flushPendingMasterNoteListeningDeltas(userId: string): Pro
 
       events = events.filter((row) => row.id !== event.id)
       writePendingEvents(events)
+      flushedCount += 1
+    }
+
+    if (flushedCount > 0) {
+      notifyListeningMetricsChanged()
     }
   })()
 

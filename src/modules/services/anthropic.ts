@@ -1,9 +1,9 @@
 import { supabase } from '../../lib/supabase'
 import type {
   ActivationPhraseResult,
-  CEFRLevel,
   Lexicard,
   PhraseTokenInsightResult,
+  StudyLevel,
 } from '../types'
 
 type TranslateResponse = {
@@ -147,7 +147,7 @@ export async function fetchWordExample(
   nativeMeaning: string,
   targetLang: string,
   nativeLang: string,
-  level: CEFRLevel,
+  level: StudyLevel,
 ): Promise<ActivationPhraseResult | null> {
   if (!supabase) return null
 
@@ -179,7 +179,7 @@ export async function fetchActivationPhrase(
   words: Lexicard[],
   targetLang: string,
   nativeLang: string,
-  level: CEFRLevel,
+  level: StudyLevel,
   previousPhrase?: string,
 ): Promise<ActivationPhraseResult | null> {
   if (!supabase) return null

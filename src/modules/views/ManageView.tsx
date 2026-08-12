@@ -31,13 +31,14 @@ import {
   downloadWordsAsPdf,
 } from '../services/wordExport'
 import { sortChronological } from '../utils'
-import type { AppConfig, ImportanceKey, Lexicard } from '../types'
+import type { AppConfig, ImportanceKey, Lexicard, StudyLevel } from '../types'
 import useBreakpoints from '../hooks/useBreakpoints'
 
 type ManageViewProps = {
   cards: Lexicard[]
   setCards: Dispatch<SetStateAction<Lexicard[]>>
   config: AppConfig
+  studyLevel: StudyLevel
   todayWordsAdded: number
 }
 
@@ -82,6 +83,7 @@ export function ManageView({
   cards,
   setCards,
   config,
+  studyLevel,
   todayWordsAdded,
 }: ManageViewProps) {
   const { user } = useAuth()
@@ -325,7 +327,7 @@ export function ManageView({
         card.native,
         config.targetLang,
         config.nativeLang,
-        config.level || 'A2',
+        studyLevel,
       )
 
       if (!example?.phrase || !example.translation) {

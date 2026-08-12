@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   BarChart3Icon,
@@ -55,7 +55,20 @@ type ProfileViewProps = {
   config: AppConfig | null;
   cards: Lexicard[];
   onEditLanguages: () => void;
+  onApplyRecentLanguages: (languages: {
+    nativeLang: string;
+    targetLang: string;
+  }) => void;
 };
+
+type RecentLanguagePair = {
+  nativeLang: string;
+  targetLang: string;
+  updatedAt: number;
+};
+
+const RECENT_LANGUAGE_PAIRS_STORAGE_KEY = "dashboard-ICA-recent-language-pairs";
+const MAX_RECENT_LANGUAGE_PAIRS = 2;
 
 function formatDate(value?: string): string {
   if (!value) return "No disponible";
@@ -64,10 +77,70 @@ function formatDate(value?: string): string {
   return date.toLocaleString();
 }
 
+function isSameLanguagePair(
+  first: Pick<RecentLanguagePair, "nativeLang" | "targetLang">,
+  second: Pick<RecentLanguagePair, "nativeLang" | "targetLang">,
+): boolean {
+  return (
+    first.nativeLang === second.nativeLang && first.targetLang === second.targetLang
+  );
+}
+
+function normalizeRecentLanguagePairs(
+  value: unknown,
+  activePair?: Pick<RecentLanguagePair, "nativeLang" | "targetLang"> | null,
+): RecentLanguagePair[] {
+  if (!Array.isArray(value)) return [];
+
+  const normalized = value
+    .filter((item): item is RecentLanguagePair => {
+      if (!item || typeof item !== "object") return false;
+      const maybePair = item as Partial<RecentLanguagePair>;
+      return (
+        typeof maybePair.nativeLang === "string" &&
+        maybePair.nativeLang.trim() !== "" &&
+        typeof maybePair.targetLang === "string" &&
+        maybePair.targetLang.trim() !== "" &&
+        maybePair.nativeLang !== maybePair.targetLang &&
+        typeof maybePair.updatedAt === "number" &&
+        Number.isFinite(maybePair.updatedAt)
+      );
+    })
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+
+  const deduped: RecentLanguagePair[] = [];
+  for (const pair of normalized) {
+    if (activePair && isSameLanguagePair(pair, activePair)) continue;
+    if (deduped.some((item) => isSameLanguagePair(item, pair))) continue;
+    deduped.push(pair);
+    if (deduped.length === MAX_RECENT_LANGUAGE_PAIRS) break;
+  }
+
+  return deduped;
+}
+
+function persistRecentLanguagePairs(
+  pairs: RecentLanguagePair[],
+  activePair?: Pick<RecentLanguagePair, "nativeLang" | "targetLang"> | null,
+): RecentLanguagePair[] {
+  const normalized = normalizeRecentLanguagePairs(pairs, activePair);
+  if (typeof window === "undefined") return normalized;
+
+  try {
+    window.localStorage.setItem(
+      RECENT_LANGUAGE_PAIRS_STORAGE_KEY,
+      JSON.stringify(normalized),
+    );
+  } catch {}
+
+  return normalized;
+}
+
 export function ProfileView({
   config,
   cards,
   onEditLanguages,
+  onApplyRecentLanguages,
 }: ProfileViewProps) {
   const { user, signOut, changePassword, updateDisplayName } = useAuth();
   const { theme, resolvedTheme, setTheme } = useTheme();
@@ -95,6 +168,10 @@ export function ProfileView({
   const [nameError, setNameError] = useState<string | null>(null);
   const [nameSuccess, setNameSuccess] = useState<string | null>(null);
   const [isSavingName, setIsSavingName] = useState(false);
+  const [recentLanguagePairs, setRecentLanguagePairs] = useState<
+    RecentLanguagePair[]
+  >([]);
+  const previousConfigRef = useRef<AppConfig | null>(null);
 
   const {
     currentMonthCode,
@@ -119,12 +196,68 @@ export function ProfileView({
   const cleanNameDraft = nameDraft.trim();
   const isNameChanged = cleanNameDraft !== cleanCurrentDisplayName;
   const canSaveName = cleanNameDraft.length >= 3 && isNameChanged;
+  const visibleRecentLanguagePairs = useMemo(() => {
+    if (!config) return recentLanguagePairs;
+    return recentLanguagePairs.filter((pair) => !isSameLanguagePair(pair, config));
+  }, [config, recentLanguagePairs]);
 
   useEffect(() => {
     if (!isEditingName) {
       setNameDraft(displayName);
     }
   }, [displayName, isEditingName]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const raw = window.localStorage.getItem(RECENT_LANGUAGE_PAIRS_STORAGE_KEY);
+      if (!raw) {
+        setRecentLanguagePairs([]);
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as unknown;
+      const normalized = normalizeRecentLanguagePairs(parsed);
+      setRecentLanguagePairs(normalized);
+      window.localStorage.setItem(
+        RECENT_LANGUAGE_PAIRS_STORAGE_KEY,
+        JSON.stringify(normalized),
+      );
+    } catch {
+      setRecentLanguagePairs([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!config) {
+      previousConfigRef.current = null;
+      return;
+    }
+
+    const previousConfig = previousConfigRef.current;
+    if (previousConfig && !isSameLanguagePair(previousConfig, config)) {
+      setRecentLanguagePairs((currentPairs) =>
+        persistRecentLanguagePairs(
+          [
+            {
+              nativeLang: previousConfig.nativeLang,
+              targetLang: previousConfig.targetLang,
+              updatedAt: Date.now(),
+            },
+            ...currentPairs,
+          ],
+          config,
+        ),
+      );
+    } else {
+      setRecentLanguagePairs((currentPairs) =>
+        persistRecentLanguagePairs(currentPairs, config),
+      );
+    }
+
+    previousConfigRef.current = config;
+  }, [config]);
 
   useEffect(() => {
     let isMounted = true;
@@ -369,9 +502,29 @@ export function ProfileView({
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
               {config
-                ? `${config.nativeLang} -> ${config.targetLang} (${config.level || "A2"})`
+                ? `${config.nativeLang} -> ${config.targetLang}`
                 : "No hay configuración de idiomas"}
             </p>
+            {visibleRecentLanguagePairs.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Ultimos usados
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {visibleRecentLanguagePairs.map((pair) => (
+                    <Button
+                      key={`${pair.nativeLang}-${pair.targetLang}`}
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => onApplyRecentLanguages(pair)}
+                    >
+                      {pair.nativeLang} -&gt; {pair.targetLang}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
             <Button type="button" variant="outline" onClick={onEditLanguages}>
               <LanguagesIcon />
               Cambiar idiomas

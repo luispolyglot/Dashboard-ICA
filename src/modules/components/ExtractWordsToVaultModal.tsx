@@ -16,11 +16,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { IMPORTANCE_LEVELS } from '../constants'
 import { useWordExtractionCandidates } from '../hooks/useWordExtractionCandidates'
-import { fetchTranslation, fetchWordExample } from '../services/anthropic'
+import { fetchTranslation } from '../services/anthropic'
 import { insertWord } from '../services/storage'
 import type {
-  ActivationPhraseResult,
-  CEFRLevel,
   ImportanceKey,
   Lexicard,
 } from '../types'
@@ -35,7 +33,6 @@ type ExtractWordsToVaultModalProps = {
   seedWords?: string[]
   targetLang: string
   nativeLang: string
-  level: CEFRLevel
   cards: Lexicard[]
   setCards: Dispatch<SetStateAction<Lexicard[]>>
   onWordAdded?: () => Promise<unknown>
@@ -81,7 +78,6 @@ export function ExtractWordsToVaultModal({
   seedWords,
   targetLang,
   nativeLang,
-  level,
   cards,
   setCards,
   onWordAdded,
@@ -207,19 +203,6 @@ export function ExtractWordsToVaultModal({
 
     setSaving(true)
     setSaveError(null)
-    let example: ActivationPhraseResult | null = null
-
-    try {
-      example = await fetchWordExample(
-        trimmedTarget,
-        trimmedNative,
-        targetLang,
-        nativeLang,
-        level,
-      )
-    } catch {
-      example = null
-    }
 
     const newCard: Lexicard = {
       id: generateId(),
@@ -227,8 +210,8 @@ export function ExtractWordsToVaultModal({
       native: trimmedNative,
       targetLang,
       nativeLang,
-      examplePhrase: example?.phrase || text || null,
-      exampleTranslation: example?.translation || translation || null,
+      examplePhrase: text || null,
+      exampleTranslation: translation || null,
       importance,
       interval: 1,
       easeFactor: 2.5,
@@ -251,7 +234,9 @@ export function ExtractWordsToVaultModal({
         return next
       })
       if (onWordAdded) {
-        await onWordAdded()
+        void onWordAdded().catch((error) => {
+          console.error(error)
+        })
       }
       toast.success('Palabra agregada correctamente al baúl ICA.')
       setSaved(true)

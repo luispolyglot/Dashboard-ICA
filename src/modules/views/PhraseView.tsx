@@ -38,11 +38,12 @@ import { fetchWordActivationCounts } from '../services/metaTracker'
 import type {
   ActivationPhraseResult,
   AppConfig,
-  CEFRLevel,
   DailyProgressEntry,
   Lexicard,
   MetaTrackerProfile,
+  StudyLevel,
 } from '../types'
+import { getEffectiveStudyLevel } from '../utils/studyLevel'
 
 type PhraseViewProps = {
   cards: Lexicard[]
@@ -52,7 +53,7 @@ type PhraseViewProps = {
   onPhraseGenerated: () => Promise<DailyProgressEntry>
   metaTrackerProfile: MetaTrackerProfile | null
   onActivationWordsTotalChange: (activationWordsTotal: number) => void
-  LevelBadge: ComponentType<{ level: CEFRLevel; size?: 'normal' | 'small' }>
+  LevelBadge: ComponentType<{ level: StudyLevel; size?: 'normal' | 'small' }>
 }
 
 const IMPORTANCE_DOT = {
@@ -107,7 +108,7 @@ export function PhraseView({
   const [levelUpCelebration, setLevelUpCelebration] =
     useState<MetaTrackerLevelUpCelebration | null>(null)
 
-  const level = config.level || 'A1'
+  const level = getEffectiveStudyLevel(config.targetLang, metaTrackerProfile)
   const trackerSnapshot = metaTrackerProfile?.confirmedAt
     ? getMetaTrackerSnapshot(metaTrackerProfile, config.targetLang)
     : null
@@ -137,50 +138,37 @@ export function PhraseView({
   const minWordsRequired = 5
 
   const normalizeText = (value: string): string =>
-    value
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^\p{L}\p{N}\s'-]/gu, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
+    value.normalize('NFKC').toLowerCase().trim()
 
   const escapeRegex = (value: string): string =>
     value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
   const includesAsWholeWord = (phrase: string, value: string): boolean => {
     if (!value) return false
-    const regex = new RegExp(`(^|\\s)${escapeRegex(value)}(?=\\s|$)`, 'u')
+    const regex = new RegExp(
+      `(^|[^\\p{L}\\p{N}'-])${escapeRegex(value)}(?=$|[^\\p{L}\\p{N}'-])`,
+      'u',
+    )
     return regex.test(phrase)
   }
 
   const manualDetectedWords = useMemo(() => {
-    if (!manualPhraseTarget.trim() && !manualPhraseNative.trim()) return []
+    if (!manualPhraseTarget.trim()) return []
 
     const normalizedTargetPhrase = normalizeText(manualPhraseTarget)
-    const normalizedNativePhrase = normalizeText(manualPhraseNative)
 
     return allWords.filter((word) => {
       const targetToken = normalizeText(word.target)
-      const nativeToken = normalizeText(word.native)
 
-      if (!targetToken && !nativeToken) return false
+      if (!targetToken) return false
 
       const matchesTarget = targetToken
-        ? targetToken.length > 1
-          ? includesAsWholeWord(normalizedTargetPhrase, targetToken)
-          : normalizedTargetPhrase.includes(targetToken)
+        ? includesAsWholeWord(normalizedTargetPhrase, targetToken)
         : false
 
-      const matchesNative = nativeToken
-        ? nativeToken.length > 1
-          ? includesAsWholeWord(normalizedNativePhrase, nativeToken)
-          : normalizedNativePhrase.includes(nativeToken)
-        : false
-
-      return matchesTarget || matchesNative
+      return matchesTarget
     })
-  }, [allWords, manualPhraseNative, manualPhraseTarget])
+  }, [allWords, manualPhraseTarget])
 
   const selectedWords =
     mode === 'manualPhrase'
@@ -918,7 +906,6 @@ export function PhraseView({
         seedWords={result?.words_used || []}
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
-        level={level}
         cards={cards}
         setCards={setCards}
         onWordAdded={onWordAdded}
@@ -932,7 +919,6 @@ export function PhraseView({
         phraseTranslation={result?.translation || ''}
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
-        level={level}
         cards={cards}
         setCards={setCards}
         onWordAdded={onWordAdded}

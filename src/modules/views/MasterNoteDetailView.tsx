@@ -24,7 +24,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { IcaDeletionWarningDialog } from '../components/IcaDeletionWarningDialog'
 import { DASHBOARD_ROUTES } from '../routes/paths'
-import { fetchPhraseHistory } from '../services/phraseHistory'
+import {
+  fetchPhraseHistoryByIds,
+  fetchPhraseHistoryPage,
+} from '../services/phraseHistory'
 import {
   closeMasterNote,
   deleteMasterNote,
@@ -137,7 +140,7 @@ export function MasterNoteDetailView({
       try {
         const [foundNote, phraseRows, chunkRows] = await Promise.all([
           fetchMasterNoteById(noteId, targetLang),
-          fetchPhraseHistory(80, targetLang),
+          fetchPhraseHistoryPage({ limit: 80, offset: 0, targetLang }),
           fetchMasterNoteChunks(noteId),
         ])
 
@@ -149,8 +152,32 @@ export function MasterNoteDetailView({
           return
         }
 
-        const phraseIds = phraseRows.map((item) => item.id)
-        const activationMap = await fetchPhraseVoiceActivations(phraseIds)
+        const latestPhraseRows = phraseRows.items
+        const latestPhraseIds = new Set(latestPhraseRows.map((item) => item.id))
+        const missingChunkPhraseIds = Array.from(
+          new Set(
+            chunkRows
+              .map((chunk) => chunk.phrase_generation_id)
+              .filter((id) => !latestPhraseIds.has(id)),
+          ),
+        )
+
+        const missingPhrases = await fetchPhraseHistoryByIds(missingChunkPhraseIds)
+        const phraseById = new Map<string, PhraseGenerationEntry>()
+        for (const row of latestPhraseRows) {
+          phraseById.set(row.id, row)
+        }
+        for (const row of missingPhrases) {
+          if (!phraseById.has(row.id)) {
+            phraseById.set(row.id, row)
+          }
+        }
+
+        const mergedPhrases = Array.from(phraseById.values())
+
+        const activationMap = await fetchPhraseVoiceActivations(
+          mergedPhrases.map((item) => item.id),
+        )
 
         const totalDuration = chunkRows.reduce(
           (sum, chunk) => sum + chunk.duration_ms,
@@ -158,7 +185,7 @@ export function MasterNoteDetailView({
         )
 
         setNote({ ...foundNote, total_duration_ms: totalDuration })
-        setPhrases(phraseRows)
+        setPhrases(mergedPhrases)
         setChunks(chunkRows)
         setActivationsByPhrase(
           activationMap as Record<string, { id: string }[]>,

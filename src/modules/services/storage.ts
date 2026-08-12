@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase'
 import { getSessionSafe } from '../../lib/supabaseAuthSafe'
 import { notifyCreationMetricsChanged } from './creationMetricsSync'
 import { kickLexicardExampleWorker } from './lexicardExampleJobs'
+import { fetchAllPages } from './lexicardsPagination'
 import { recordBootstrapDiagnostic } from '../utils/bootstrapDiagnostics'
 import type { AppConfig, DailyProgressMap, Lexicard } from '../types'
 
@@ -83,6 +84,7 @@ function toMillisFromIso(value: string | null): number | null {
 
 async function loadWords(userId: string): Promise<Lexicard[]> {
   if (!supabase) return []
+  const client = supabase
 
   const { data: settings } = await supabase
     .from('user_settings')
@@ -134,40 +136,54 @@ async function loadWords(userId: string): Promise<Lexicard[]> {
     'last_activated_at',
   ].join(', ')
 
+  const fetchLexicardRows = async (
+    selection: string,
+    scope: 'active' | 'legacy' | 'all',
+  ): Promise<Array<Record<string, unknown>>> => {
+    const data = await fetchAllPages<Record<string, unknown>>(async (from, to) => {
+      let query = client
+        .from('lexicards')
+        .select(selection)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to)
+
+      if (scope === 'active' && activeNative && activeTarget) {
+        query = query
+          .eq('native_lang', activeNative)
+          .eq('target_lang', activeTarget)
+      }
+
+      if (scope === 'legacy') {
+        query = query
+          .is('native_lang', null)
+          .is('target_lang', null)
+      }
+
+      const result = await query
+      return {
+        data: (result.data || []) as unknown as Record<string, unknown>[],
+        error: result.error,
+      }
+    })
+
+    return data
+  }
+
   try {
-    let query = supabase
-      .from('lexicards')
-      .select(baseSelection)
-      .eq('user_id', userId)
-      .order('created_at', { ascending: true })
-
-    if (activeNative && activeTarget) {
-      query = query
-        .eq('native_lang', activeNative)
-        .eq('target_lang', activeTarget)
-    }
-
-    const { data, error } = await query
-    if (error) throw error
-
-    const mapped = mapRows((data || []) as unknown as Array<Record<string, unknown>>)
+    const scopedRows = await fetchLexicardRows(
+      baseSelection,
+      activeNative && activeTarget ? 'active' : 'all',
+    )
+    const mapped = mapRows(scopedRows)
     if (mapped.length > 0 || !activeNative || !activeTarget) {
       return mapped
     }
 
-    const { data: legacyRows, error: legacyError } = await supabase
-      .from('lexicards')
-      .select(baseSelection)
-      .eq('user_id', userId)
-      .is('native_lang', null)
-      .is('target_lang', null)
-      .order('created_at', { ascending: true })
+    const legacyRows = await fetchLexicardRows(baseSelection, 'legacy')
 
-    if (legacyError) {
-      return mapped
-    }
-
-    return mapRows((legacyRows || []) as unknown as Array<Record<string, unknown>>).map((card) => ({
+    return mapRows(legacyRows).map((card) => ({
       ...card,
       nativeLang: activeNative,
       targetLang: activeTarget,
@@ -187,35 +203,24 @@ async function loadWords(userId: string): Promise<Lexicard[]> {
       'native_lang',
     ].join(', ')
 
-    let legacyScopedQuery = supabase
-      .from('lexicards')
-      .select(legacySelectionWithLang)
-      .eq('user_id', userId)
-      .order('created_at', { ascending: true })
+    try {
+      const legacyScopedRows = await fetchLexicardRows(
+        legacySelectionWithLang,
+        activeNative && activeTarget ? 'active' : 'all',
+      )
+      return mapRows(legacyScopedRows)
+    } catch {
+      if (activeNative && activeTarget) {
+        return []
+      }
 
-    if (activeNative && activeTarget) {
-      legacyScopedQuery = legacyScopedQuery
-        .eq('native_lang', activeNative)
-        .eq('target_lang', activeTarget)
+      const fallbackRows = await fetchLexicardRows(
+        'id, target, native, importance, interval, ease_factor, streak, last_reviewed_at, created_at',
+        'all',
+      )
+
+      return mapRows(fallbackRows)
     }
-
-    const legacyScoped = await legacyScopedQuery
-    if (!legacyScoped.error) {
-      return mapRows((legacyScoped.data || []) as unknown as Array<Record<string, unknown>>)
-    }
-
-    if (activeNative && activeTarget) {
-      return []
-    }
-
-    const { data, error } = await supabase
-      .from('lexicards')
-      .select('id, target, native, importance, interval, ease_factor, streak, last_reviewed_at, created_at')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: true })
-
-    if (error) throw error
-    return mapRows((data || []) as unknown as Array<Record<string, unknown>>)
   }
 }
 
@@ -437,7 +442,7 @@ async function loadConfig(userId: string): Promise<AppConfig | null> {
   if (!supabase) return null
   const { data, error } = await supabase
     .from('user_settings')
-    .select('native_lang, target_lang, cefr_level')
+    .select('native_lang, target_lang')
     .eq('user_id', userId)
     .maybeSingle()
 
@@ -447,7 +452,6 @@ async function loadConfig(userId: string): Promise<AppConfig | null> {
   return {
     nativeLang: data.native_lang,
     targetLang: data.target_lang,
-    level: data.cefr_level,
   }
 }
 
@@ -457,7 +461,6 @@ async function saveConfig(userId: string, config: AppConfig): Promise<void> {
     user_id: userId,
     native_lang: config.nativeLang,
     target_lang: config.targetLang,
-    cefr_level: config.level,
   })
   if (error) throw error
 }

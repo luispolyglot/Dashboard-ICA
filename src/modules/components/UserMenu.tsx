@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import type { ReactNode } from 'react'
+import { useState } from "react";
+import type { ReactNode } from "react";
 import {
   LanguagesIcon,
   LogOutIcon,
@@ -7,16 +7,16 @@ import {
   SunIcon,
   TrophyIcon,
   UserIcon,
-} from 'lucide-react'
-import { useAuth } from '@/auth/AuthContext'
-import { Button } from '@/components/ui/button'
+} from "lucide-react";
+import { useAuth } from "@/auth/AuthContext";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,34 +26,34 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { useTheme } from '@/theme/ThemeContext'
-import type { AppConfig, LeaderboardEntry } from '../types'
+} from "@/components/ui/tooltip";
+import { useTheme } from "@/theme/ThemeContext";
+import type { AppConfig, LeaderboardEntry } from "../types";
 
 type UserMenuProps = {
-  onLogout: () => Promise<void>
-  config: AppConfig | null
-  onEditLanguages: () => void
-  showTooltip?: boolean
-  customTrigger?: ReactNode
-  includeMobileLeaderboard?: boolean
+  onLogout: () => Promise<void>;
+  config: AppConfig | null;
+  onEditLanguages: () => void;
+  showTooltip?: boolean;
+  customTrigger?: ReactNode;
+  includeMobileLeaderboard?: boolean;
   mobileLeaderboard?: {
-    rows: LeaderboardEntry[]
-    loading: boolean
-    error: string | null
-  }
-}
+    rows: LeaderboardEntry[];
+    loading: boolean;
+    error: string | null;
+  };
+};
 
 function rankBadge(rank: number): string {
-  if (rank === 1) return '🥇'
-  if (rank === 2) return '🥈'
-  if (rank === 3) return '🥉'
-  return `#${rank}`
+  if (rank === 1) return "🥇";
+  if (rank === 2) return "🥈";
+  if (rank === 3) return "🥉";
+  return `#${rank}`;
 }
 
 export function UserMenu({
@@ -65,35 +65,35 @@ export function UserMenu({
   includeMobileLeaderboard = false,
   mobileLeaderboard,
 }: UserMenuProps) {
-  const { user } = useAuth()
-  const { theme, resolvedTheme, setTheme } = useTheme()
-  const [isLoggingOut, setIsLoggingOut] = useState(false)
-  const [isLeaderboardModalOpen, setIsLeaderboardModalOpen] = useState(false)
+  const { user } = useAuth();
+  const { theme, resolvedTheme, setTheme } = useTheme();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isLeaderboardModalOpen, setIsLeaderboardModalOpen] = useState(false);
 
   const handleLogout = async () => {
-    if (isLoggingOut) return
+    if (isLoggingOut) return;
 
     try {
-      setIsLoggingOut(true)
-      await onLogout()
+      setIsLoggingOut(true);
+      await onLogout();
     } finally {
-      setIsLoggingOut(false)
+      setIsLoggingOut(false);
     }
-  }
+  };
 
   const trigger = (
     <DropdownMenuTrigger asChild>
       {customTrigger ?? (
         <Button
-          variant='outline'
-          size='icon'
-          aria-label='Abrir menu de usuario'
+          variant="outline"
+          size="icon"
+          aria-label="Abrir menu de usuario"
         >
           <UserIcon />
         </Button>
       )}
     </DropdownMenuTrigger>
-  )
+  );
 
   return (
     <>
@@ -109,28 +109,28 @@ export function UserMenu({
 
         <DropdownMenuContent
           onCloseAutoFocus={(e) => e.preventDefault()}
-          align='end'
-          className='w-80'
+          align="end"
+          className="w-80"
         >
-          <DropdownMenuLabel className='space-y-1'>
-            <div className='text-xs font-medium text-muted-foreground'>
+          <DropdownMenuLabel className="space-y-1">
+            <div className="text-xs font-medium text-muted-foreground">
               Sesión
             </div>
-            <div className='truncate text-sm font-semibold'>
-              {user?.email || 'Sin email'}
+            <div className="truncate text-sm font-semibold">
+              {user?.email || "Sin email"}
             </div>
           </DropdownMenuLabel>
 
           <DropdownMenuSeparator />
-          <DropdownMenuLabel className='pt-0 text-xs font-normal text-muted-foreground'>
+          <DropdownMenuLabel className="pt-0 text-xs font-normal text-muted-foreground">
             {config
-              ? `${config.nativeLang} -> ${config.targetLang} (${config.level || 'A2'})`
-              : 'Configura idiomas'}
+              ? `${config.nativeLang} -> ${config.targetLang}`
+              : "Configura idiomas"}
           </DropdownMenuLabel>
           <DropdownMenuItem
             onSelect={(event) => {
-              event.preventDefault()
-              onEditLanguages()
+              event.preventDefault();
+              onEditLanguages();
             }}
           >
             <LanguagesIcon />
@@ -139,18 +139,18 @@ export function UserMenu({
 
           <DropdownMenuSeparator />
 
-          <DropdownMenuLabel className='text-xs font-medium text-muted-foreground'>
-            Tema ({resolvedTheme === 'dark' ? 'Oscuro' : 'Claro'})
+          <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
+            Tema ({resolvedTheme === "dark" ? "Oscuro" : "Claro"})
           </DropdownMenuLabel>
           <DropdownMenuRadioGroup
             value={theme}
-            onValueChange={(value) => setTheme(value as 'light' | 'dark')}
+            onValueChange={(value) => setTheme(value as "light" | "dark")}
           >
-            <DropdownMenuRadioItem value='light'>
+            <DropdownMenuRadioItem value="light">
               <SunIcon />
               Claro
             </DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value='dark'>
+            <DropdownMenuRadioItem value="dark">
               <MoonIcon />
               Oscuro
             </DropdownMenuRadioItem>
@@ -173,14 +173,14 @@ export function UserMenu({
 
           <DropdownMenuItem
             onSelect={(event) => {
-              event.preventDefault()
-              void handleLogout()
+              event.preventDefault();
+              void handleLogout();
             }}
             disabled={isLoggingOut}
-            className='text-destructive focus:text-destructive'
+            className="text-destructive focus:text-destructive"
           >
             <LogOutIcon />
-            {isLoggingOut ? 'Cerrando sesión...' : 'Cerrar sesión'}
+            {isLoggingOut ? "Cerrando sesión..." : "Cerrar sesión"}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -190,7 +190,7 @@ export function UserMenu({
           open={isLeaderboardModalOpen}
           onOpenChange={setIsLeaderboardModalOpen}
         >
-          <DialogContent className='max-w-md'>
+          <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Leaderboard</DialogTitle>
               <DialogDescription>
@@ -199,17 +199,17 @@ export function UserMenu({
             </DialogHeader>
 
             {mobileLeaderboard.loading && (
-              <p className='text-sm text-muted-foreground'>Cargando...</p>
+              <p className="text-sm text-muted-foreground">Cargando...</p>
             )}
             {!mobileLeaderboard.loading && mobileLeaderboard.error && (
-              <p className='text-sm text-destructive'>
+              <p className="text-sm text-destructive">
                 {mobileLeaderboard.error}
               </p>
             )}
             {!mobileLeaderboard.loading &&
               !mobileLeaderboard.error &&
               mobileLeaderboard.rows.length === 0 && (
-                <p className='text-sm text-muted-foreground'>
+                <p className="text-sm text-muted-foreground">
                   Todavía no hay datos suficientes este mes.
                 </p>
               )}
@@ -217,28 +217,28 @@ export function UserMenu({
             {!mobileLeaderboard.loading &&
               !mobileLeaderboard.error &&
               mobileLeaderboard.rows.length > 0 && (
-                <div className='max-h-[60dvh] space-y-1 overflow-y-auto pr-1'>
-                  <div className='flex items-center justify-end px-2 text-[11px] font-medium text-muted-foreground'>
-                    <span>Racha ICA · % mensual</span>
+                <div className="max-h-[60dvh] space-y-1 overflow-y-auto pr-1">
+                  <div className="flex items-center justify-end px-2 text-[11px] font-medium text-muted-foreground">
+                    <span>Racha ICA · % de eficacia</span>
                   </div>
                   {mobileLeaderboard.rows.map((row) => (
                     <div
                       key={`${row.user_id}-${row.rank}`}
                       className={`flex items-center justify-between rounded-md border px-2 py-1.5 ${
                         row.user_id === user?.id
-                          ? 'border-emerald-500/50 bg-emerald-500/10'
-                          : ''
+                          ? "border-emerald-500/50 bg-emerald-500/10"
+                          : ""
                       }`}
                     >
-                      <div className='flex min-w-0 items-center gap-2'>
-                        <span className='w-4 shrink-0 text-[11px] text-muted-foreground'>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="w-4 shrink-0 text-[11px] text-muted-foreground">
                           {rankBadge(row.rank)}
                         </span>
-                        <span className='truncate text-xs max-w-36'>
-                          {row.display_name || row.username || 'Usuario'}
+                        <span className="truncate text-xs max-w-36">
+                          {row.display_name || row.username || "Usuario"}
                         </span>
                       </div>
-                      <span className='text-xs font-semibold'>
+                      <span className="text-xs font-semibold">
                         {row.ica_streak_days && row.ica_streak_days > 0
                           ? `🔥 ${row.ica_streak_days} · ${Math.round(row.avg_percent || 0)}%`
                           : `${Math.round(row.avg_percent || 0)}%`}
@@ -251,5 +251,5 @@ export function UserMenu({
         </Dialog>
       )}
     </>
-  )
+  );
 }

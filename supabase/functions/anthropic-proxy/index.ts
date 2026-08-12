@@ -8,12 +8,34 @@ const CORS_HEADERS = {
 
 const LEVEL_DESCRIPTIONS: Record<string, string> = {
   '0': 'Very basic words and chunks. Keep it concrete and short.',
+  'Pre-A1': 'Very basic words and chunks. Keep it concrete and short.',
   A1: 'Simple present tense, high-frequency words, clear sentence structure.',
+  'A1+': 'Simple present with slightly richer detail and basic connectors.',
   A2: 'Everyday situations with basic connectors. Keep grammar straightforward.',
+  'A2+': 'Everyday situations with more variety and clearer sentence links.',
   B1: 'Practical vocabulary and mixed tenses. Natural but still learner-friendly.',
+  'B1+': 'Comfortable practical communication with broader vocabulary and tense control.',
   B2: 'More nuanced wording and varied sentence structure.',
+  'B2+': 'Nuanced wording with flexible structures and greater precision.',
   C1: 'Advanced fluency with rich vocabulary and idiomatic choices.',
-  C2: 'Near-native sophistication, precise and idiomatic expression.',
+}
+
+function normalizeLevelKey(value: string): string {
+  const normalized = value.trim().toUpperCase().replace(/\s+/g, '')
+  if (normalized === 'PREA1' || normalized === 'PRE-A1' || normalized === '0' || normalized === 'A0' || normalized === 'LEVEL0') {
+    return 'Pre-A1'
+  }
+  if (normalized === 'A1PLUS') return 'A1+'
+  if (normalized === 'A2PLUS') return 'A2+'
+  if (normalized === 'B1PLUS') return 'B1+'
+  if (normalized === 'B2PLUS') return 'B2+'
+  if (normalized === 'C2') return 'C1'
+  return normalized || 'A2'
+}
+
+function getLevelDescription(level: string): string {
+  const key = normalizeLevelKey(level)
+  return LEVEL_DESCRIPTIONS[key] || LEVEL_DESCRIPTIONS.A2
 }
 
 type AnthropicTextBlock = {
@@ -610,7 +632,8 @@ Deno.serve(async (req) => {
       const sentenceLengthRule =
         sentenceLengthByWordCount[words.length] || '20-28 words long'
 
-      const levelDescription = LEVEL_DESCRIPTIONS[payload.level] || LEVEL_DESCRIPTIONS.A2
+      const normalizedLevel = normalizeLevelKey(payload.level)
+      const levelDescription = getLevelDescription(payload.level)
       const intendedMeanings = normalizedWords
         .filter((word) => word.native)
         .map((word) => `${word.target} = ${word.native}`)
@@ -623,7 +646,7 @@ Deno.serve(async (req) => {
           `Task: generate one original sentence in ${payload.targetLang} for a language learner using ALL required ICA words.`,
           `Required ICA words: ${words.join(', ')}`,
           'Rules (strict):',
-          `- CEFR ${payload.level} level. Description: ${levelDescription}`,
+          `- CEFR ${normalizedLevel} level. Description: ${levelDescription}`,
           `- ${sentenceLengthRule}`,
           '- Use all required ICA words in the sentence.',
           '- Keep the intended meaning for each ICA word; do not switch sense.',
@@ -685,12 +708,13 @@ Deno.serve(async (req) => {
         return jsonResponse(400, { error: 'targetWord and nativeMeaning are required' })
       }
 
-      const levelDescription = LEVEL_DESCRIPTIONS[payload.level] || LEVEL_DESCRIPTIONS.A2
+      const normalizedLevel = normalizeLevelKey(payload.level)
+      const levelDescription = getLevelDescription(payload.level)
       const prompt = [
         `Create one short natural example sentence in ${payload.targetLang} using this exact word: ${targetWord}.`,
         `The word must keep this intended meaning in ${payload.nativeLang}: ${nativeMeaning}.`,
         'Rules:',
-        `- CEFR ${payload.level}. Description: ${levelDescription}`,
+        `- CEFR ${normalizedLevel}. Description: ${levelDescription}`,
         '- 8-14 words',
         '- Keep wording practical and learner-friendly',
         `- Provide translation in ${payload.nativeLang}`,

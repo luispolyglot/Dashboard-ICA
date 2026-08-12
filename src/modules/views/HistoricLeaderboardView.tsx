@@ -1,173 +1,180 @@
-import { useEffect, useMemo, useState } from 'react'
-import { CalendarDaysIcon, TrophyIcon } from 'lucide-react'
+import { useEffect, useMemo, useState } from "react";
+import { CalendarDaysIcon, TrophyIcon } from "lucide-react";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+} from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   fetchHistoricLeaderboardByMonth,
   fetchHistoricLeaderboardMonths,
   type HistoricLeaderboardEntry,
   type HistoricLeaderboardMonth,
-} from '../services/historicLeaderboard'
+} from "../services/historicLeaderboard";
 
 type HistoricLeaderboardRowWithRankLabel = {
-  row: HistoricLeaderboardEntry
-  rankLabel: string
-}
+  row: HistoricLeaderboardEntry;
+  rankLabel: string;
+};
 
 function monthLabel(periodStart: string): string {
-  const date = new Date(`${periodStart}T00:00:00`)
-  if (Number.isNaN(date.getTime())) return periodStart
+  const date = new Date(`${periodStart}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return periodStart;
 
-  const label = date.toLocaleDateString('es-ES', {
-    month: 'long',
-    year: 'numeric',
-  })
+  const label = date.toLocaleDateString("es-ES", {
+    month: "long",
+    year: "numeric",
+  });
 
-  return label.slice(0, 1).toUpperCase() + label.slice(1)
+  return label.slice(0, 1).toUpperCase() + label.slice(1);
 }
 
 function rankBadge(rank: number): string {
-  if (rank === 1) return '🥇'
-  if (rank === 2) return '🥈'
-  if (rank === 3) return '🥉'
-  return `#${rank}`
+  if (rank === 1) return "🥇";
+  if (rank === 2) return "🥈";
+  if (rank === 3) return "🥉";
+  return `#${rank}`;
 }
 
 function buildRowsWithSharedRank(
   rows: HistoricLeaderboardEntry[],
 ): HistoricLeaderboardRowWithRankLabel[] {
-  const result: HistoricLeaderboardRowWithRankLabel[] = []
-  let sharedRank = 0
-  let prevStreak: number | null = null
-  let prevPercent: number | null = null
+  const result: HistoricLeaderboardRowWithRankLabel[] = [];
+  let sharedRank = 0;
+  let prevStreak: number | null = null;
+  let prevPercent: number | null = null;
 
   rows.forEach((row, index) => {
-    const currentStreak = row.icaStreakDays || 0
-    const currentPercent = Math.round(row.avgPercent || 0)
+    const currentStreak = row.icaStreakDays || 0;
+    const currentPercent = Math.round(row.avgPercent || 0);
     const sameAsPrevious =
-      index > 0 && currentStreak === prevStreak && currentPercent === prevPercent
+      index > 0 &&
+      currentStreak === prevStreak &&
+      currentPercent === prevPercent;
 
     if (!sameAsPrevious) {
-      sharedRank = index + 1
+      sharedRank = index + 1;
     }
 
     result.push({
       row,
       rankLabel: rankBadge(sharedRank),
-    })
+    });
 
-    prevStreak = currentStreak
-    prevPercent = currentPercent
-  })
+    prevStreak = currentStreak;
+    prevPercent = currentPercent;
+  });
 
-  return result
+  return result;
 }
 
 export function HistoricLeaderboardView() {
-  const [months, setMonths] = useState<HistoricLeaderboardMonth[]>([])
-  const [selectedMonth, setSelectedMonth] = useState<string>('')
-  const [rows, setRows] = useState<HistoricLeaderboardEntry[]>([])
-  const [loadingMonths, setLoadingMonths] = useState(true)
-  const [loadingRows, setLoadingRows] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [months, setMonths] = useState<HistoricLeaderboardMonth[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const [rows, setRows] = useState<HistoricLeaderboardEntry[]>([]);
+  const [loadingMonths, setLoadingMonths] = useState(true);
+  const [loadingRows, setLoadingRows] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let active = true
+    let active = true;
 
     const run = async () => {
-      setLoadingMonths(true)
-      setError(null)
+      setLoadingMonths(true);
+      setError(null);
 
       try {
-        const data = await fetchHistoricLeaderboardMonths(48)
-        if (!active) return
-        setMonths(data)
-        setSelectedMonth(data[0]?.periodStart || '')
+        const data = await fetchHistoricLeaderboardMonths(48);
+        if (!active) return;
+        setMonths(data);
+        setSelectedMonth(data[0]?.periodStart || "");
       } catch (err) {
-        if (!active) return
+        if (!active) return;
         setError(
           err instanceof Error
             ? err.message
-            : 'No se pudo cargar el histórico del leaderboard.',
-        )
+            : "No se pudo cargar el histórico del leaderboard.",
+        );
       } finally {
-        if (!active) return
-        setLoadingMonths(false)
+        if (!active) return;
+        setLoadingMonths(false);
       }
-    }
+    };
 
-    void run()
+    void run();
 
     return () => {
-      active = false
-    }
-  }, [])
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedMonth) {
-      setRows([])
-      return
+      setRows([]);
+      return;
     }
 
-    let active = true
+    let active = true;
 
     const run = async () => {
-      setLoadingRows(true)
-      setError(null)
+      setLoadingRows(true);
+      setError(null);
 
       try {
-        const data = await fetchHistoricLeaderboardByMonth(selectedMonth, 500)
-        if (!active) return
-        setRows(data)
+        const data = await fetchHistoricLeaderboardByMonth(selectedMonth, 500);
+        if (!active) return;
+        setRows(data);
       } catch (err) {
-        if (!active) return
+        if (!active) return;
         setError(
           err instanceof Error
             ? err.message
-            : 'No se pudo cargar el mes seleccionado.',
-        )
+            : "No se pudo cargar el mes seleccionado.",
+        );
       } finally {
-        if (!active) return
-        setLoadingRows(false)
+        if (!active) return;
+        setLoadingRows(false);
       }
-    }
+    };
 
-    void run()
+    void run();
 
     return () => {
-      active = false
-    }
-  }, [selectedMonth])
+      active = false;
+    };
+  }, [selectedMonth]);
 
   const selectedPeriod = useMemo(() => {
-    return months.find((month) => month.periodStart === selectedMonth) || null
-  }, [months, selectedMonth])
-  const rowsWithSharedRank = useMemo(() => buildRowsWithSharedRank(rows), [rows])
+    return months.find((month) => month.periodStart === selectedMonth) || null;
+  }, [months, selectedMonth]);
+  const rowsWithSharedRank = useMemo(
+    () => buildRowsWithSharedRank(rows),
+    [rows],
+  );
 
   return (
-    <section className='mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-5 py-8'>
-      <div className='mb-6'>
-        <h2 className='mb-1 font-serif text-3xl font-bold'>Histórico leaderboard</h2>
-        <p className='text-sm text-muted-foreground'>
+    <section className="mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-5 py-8">
+      <div className="mb-6">
+        <h2 className="mb-1 font-serif text-3xl font-bold">
+          Histórico leaderboard
+        </h2>
+        <p className="text-sm text-muted-foreground">
           Ranking mensual cerrado para análisis de super admin.
         </p>
       </div>
 
       <Card>
-        <CardHeader className='gap-4'>
-          <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
-            <CardTitle className='flex items-center gap-2'>
-              <TrophyIcon className='h-4 w-4' />
+        <CardHeader className="gap-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <TrophyIcon className="h-4 w-4" />
               Leaderboard histórico
             </CardTitle>
 
-            <div className='w-full max-w-72'>
+            <div className="w-full max-w-72">
               <Select
                 value={selectedMonth}
                 onValueChange={(value) => setSelectedMonth(value)}
@@ -176,13 +183,16 @@ export function HistoricLeaderboardView() {
                 <SelectTrigger>
                   <SelectValue
                     placeholder={
-                      loadingMonths ? 'Cargando meses...' : 'Selecciona un mes'
+                      loadingMonths ? "Cargando meses..." : "Selecciona un mes"
                     }
                   />
                 </SelectTrigger>
                 <SelectContent>
                   {months.map((month) => (
-                    <SelectItem key={month.periodStart} value={month.periodStart}>
+                    <SelectItem
+                      key={month.periodStart}
+                      value={month.periodStart}
+                    >
                       {monthLabel(month.periodStart)}
                     </SelectItem>
                   ))}
@@ -192,66 +202,68 @@ export function HistoricLeaderboardView() {
           </div>
 
           {selectedPeriod && (
-            <p className='flex items-center gap-2 text-sm text-muted-foreground'>
-              <CalendarDaysIcon className='h-4 w-4' />
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <CalendarDaysIcon className="h-4 w-4" />
               Periodo: {selectedPeriod.periodStart} - {selectedPeriod.periodEnd}
             </p>
           )}
 
-          {error && <p className='text-sm text-destructive'>{error}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
         </CardHeader>
 
         <CardContent>
           {loadingMonths || loadingRows ? (
-            <p className='text-sm text-muted-foreground'>Cargando leaderboard...</p>
+            <p className="text-sm text-muted-foreground">
+              Cargando leaderboard...
+            </p>
           ) : months.length === 0 ? (
-            <p className='text-sm text-muted-foreground'>
+            <p className="text-sm text-muted-foreground">
               Aún no hay snapshots mensuales disponibles.
             </p>
           ) : rows.length === 0 ? (
-            <p className='text-sm text-muted-foreground'>
+            <p className="text-sm text-muted-foreground">
               No hay filas para el mes seleccionado.
             </p>
           ) : (
-            <div className='overflow-x-auto'>
-              <table className='w-full min-w-180 table-fixed text-left text-sm'>
-                <thead className='table w-full table-fixed'>
-                  <tr className='border-b text-muted-foreground'>
-                    <th className='w-[8%] pb-2 font-medium'>Rank</th>
-                    <th className='w-[27%] pb-2 font-medium'>Usuario</th>
-                    <th className='w-[12%] pb-2 font-medium'>Racha ICA</th>
-                    <th className='w-[13%] pb-2 font-medium'>% mensual</th>
-                    <th className='w-[13%] pb-2 font-medium'>% review</th>
-                    <th className='w-[13%] pb-2 font-medium'>% creación</th>
-                    <th className='w-[14%] pb-2 font-medium'>Score</th>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-180 table-fixed text-left text-sm">
+                <thead className="table w-full table-fixed">
+                  <tr className="border-b text-muted-foreground">
+                    <th className="w-[8%] pb-2 font-medium">Rank</th>
+                    <th className="w-[27%] pb-2 font-medium">Usuario</th>
+                    <th className="w-[12%] pb-2 font-medium">Racha ICA</th>
+                    <th className="w-[13%] pb-2 font-medium">% de eficacia</th>
+                    <th className="w-[13%] pb-2 font-medium">% review</th>
+                    <th className="w-[13%] pb-2 font-medium">% creación</th>
+                    <th className="w-[14%] pb-2 font-medium">Score</th>
                   </tr>
                 </thead>
-                <tbody className='block max-h-[58dvh] overflow-y-auto'>
+                <tbody className="block max-h-[58dvh] overflow-y-auto">
                   {rowsWithSharedRank.map(({ row, rankLabel }) => (
                     <tr
                       key={`${row.periodStart}-${row.userId}`}
-                      className='table w-full table-fixed border-b align-middle last:border-b-0'
+                      className="table w-full table-fixed border-b align-middle last:border-b-0"
                     >
-                      <td className='w-[8%] py-2'>{rankLabel}</td>
-                      <td className='w-[27%] py-2'>
-                        <p className='truncate font-medium'>
-                          {row.displayName || row.username || 'Usuario'}
+                      <td className="w-[8%] py-2">{rankLabel}</td>
+                      <td className="w-[27%] py-2">
+                        <p className="truncate font-medium">
+                          {row.displayName || row.username || "Usuario"}
                         </p>
-                        <p className='truncate text-xs text-muted-foreground'>
+                        <p className="truncate text-xs text-muted-foreground">
                           {row.username}
                         </p>
                       </td>
-                      <td className='w-[12%] py-2'>{row.icaStreakDays}</td>
-                      <td className='w-[13%] py-2'>
+                      <td className="w-[12%] py-2">{row.icaStreakDays}</td>
+                      <td className="w-[13%] py-2">
                         {Math.round(row.avgPercent)}%
                       </td>
-                      <td className='w-[13%] py-2'>
+                      <td className="w-[13%] py-2">
                         {Math.round(row.reviewPercent)}%
                       </td>
-                      <td className='w-[13%] py-2'>
+                      <td className="w-[13%] py-2">
                         {Math.round(row.creationPercent)}%
                       </td>
-                      <td className='w-[14%] py-2'>{row.score}</td>
+                      <td className="w-[14%] py-2">{row.score}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -261,5 +273,5 @@ export function HistoricLeaderboardView() {
         </CardContent>
       </Card>
     </section>
-  )
+  );
 }
