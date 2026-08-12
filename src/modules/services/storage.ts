@@ -84,6 +84,7 @@ function toMillisFromIso(value: string | null): number | null {
 
 async function loadWords(userId: string): Promise<Lexicard[]> {
   if (!supabase) return []
+  const client = supabase
 
   const { data: settings } = await supabase
     .from('user_settings')
@@ -140,7 +141,7 @@ async function loadWords(userId: string): Promise<Lexicard[]> {
     scope: 'active' | 'legacy' | 'all',
   ): Promise<Array<Record<string, unknown>>> => {
     const data = await fetchAllPages<Record<string, unknown>>(async (from, to) => {
-      let query = supabase
+      let query = client
         .from('lexicards')
         .select(selection)
         .eq('user_id', userId)
@@ -160,7 +161,11 @@ async function loadWords(userId: string): Promise<Lexicard[]> {
           .is('target_lang', null)
       }
 
-      return query
+      const result = await query
+      return {
+        data: (result.data || []) as unknown as Record<string, unknown>[],
+        error: result.error,
+      }
     })
 
     return data
