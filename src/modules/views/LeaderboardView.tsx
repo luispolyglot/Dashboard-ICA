@@ -20,6 +20,10 @@ import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/auth/AuthContext";
 import useBreakpoints from "@/modules/hooks/useBreakpoints";
+import {
+  getPregunticaMaxPoints,
+  useLeaderboardScoringWindow,
+} from "@/modules/hooks/useLeaderboardScoringWindow";
 import type { LeaderboardEntry } from "../types";
 import {
   fetchTotalIcademers,
@@ -69,11 +73,9 @@ type ScoreBreakdown = {
   isCurrentUser: boolean;
 };
 
-const LEADERBOARD_CUTOFF_DAY = 28;
 const MAX_MONTHLY_POINTS = 10;
 const MAX_LISTENING_POINTS_PER_DAY = 0.1;
 const MAX_ICA_TEST_POINTS = 1.2;
-const MAX_PREGUNTICA_POINTS = 8;
 const MAX_INSTAGRAM_POINTS_PER_DAY = 0.5;
 const REFERENCE_MAX_POINTS = 36;
 
@@ -277,33 +279,6 @@ function getInstagramPoints(row: LeaderboardEntry): number {
   return toSafeNumber(row.instagram_points);
 }
 
-function getPregunticaMaxPoints(
-  selectedMonth: string,
-  scoringDayCap: number,
-  currentPoints: number,
-): number {
-  const monthStart = parseIsoDate(selectedMonth);
-  const daysInMonth = new Date(
-    Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0),
-  ).getUTCDate();
-  const cappedDay = Math.min(Math.max(scoringDayCap, 1), daysInMonth);
-
-  let fridayCount = 0;
-  for (let day = 1; day <= cappedDay; day += 1) {
-    const weekday = new Date(
-      Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), day),
-    ).getUTCDay();
-    if (weekday === 5) fridayCount += 1;
-  }
-
-  const fridayBasedMax = Math.min(fridayCount * 2, MAX_PREGUNTICA_POINTS);
-  const ensuredForCurrentPoints = Math.min(
-    MAX_PREGUNTICA_POINTS,
-    Math.max(fridayBasedMax, currentPoints),
-  );
-  return ensuredForCurrentPoints;
-}
-
 function getDisplayedTotalPoints(
   row: LeaderboardEntry,
   includeIcaTest: boolean,
@@ -340,7 +315,6 @@ function buildScoreBreakdown(
   row: LeaderboardEntry,
   includeIcaTest: boolean,
   isCurrentUser: boolean,
-  selectedMonth: string,
   scoringDayCap: number,
 ): ScoreBreakdown {
   const monthlyPoints = getMonthlyPercentPoints(row);
@@ -349,11 +323,7 @@ function buildScoreBreakdown(
   const pregunticaPoints = getPregunticaPoints(row);
   const instagramPoints = getInstagramPoints(row);
   const listeningMaxPoints = scoringDayCap * MAX_LISTENING_POINTS_PER_DAY;
-  const pregunticaMaxPoints = getPregunticaMaxPoints(
-    selectedMonth,
-    scoringDayCap,
-    pregunticaPoints,
-  );
+  const pregunticaMaxPoints = getPregunticaMaxPoints(scoringDayCap, pregunticaPoints);
   const instagramMaxPoints = scoringDayCap * MAX_INSTAGRAM_POINTS_PER_DAY;
   const totalPoints = getDisplayedTotalPoints(row, includeIcaTest);
   const totalMaxPoints =
@@ -380,17 +350,6 @@ function buildScoreBreakdown(
     totalMaxPoints,
     isCurrentUser,
   };
-}
-
-function getScoringDayCap(
-  selectedMonth: string,
-  currentMonthStart: string,
-  currentDay: number,
-): number {
-  if (selectedMonth === currentMonthStart) {
-    return Math.min(Math.max(currentDay, 1), LEADERBOARD_CUTOFF_DAY);
-  }
-  return LEADERBOARD_CUTOFF_DAY;
 }
 
 const pointsFormatter = new Intl.NumberFormat("es-ES", {
@@ -459,7 +418,11 @@ export function LeaderboardView() {
   const remainingMs = closeAt.getTime() - nowMs;
   const leaderboardClosed = remainingMs <= 0;
   const icaTestWindowStartDay = getIcaTestWindowStartDay();
-  const currentDay = new Date(nowMs).getDate();
+  const { currentDay, scoringDayCap } = useLeaderboardScoringWindow({
+    selectedMonth,
+    currentMonthStart,
+    nowMs,
+  });
 
   useEffect(() => {
     const intervalId = window.setInterval(() => setNowMs(Date.now()), 30000);
@@ -563,11 +526,6 @@ export function LeaderboardView() {
   const includeIcaTestInScoreExplanation =
     (isCurrentMonth && currentDay >= icaTestWindowStartDay) ||
     (!isCurrentMonth && hasSnapshotIcaPoints);
-  const scoringDayCap = getScoringDayCap(
-    selectedMonth,
-    currentMonthStart,
-    currentDay,
-  );
   const currentUserRow = useMemo(
     () => rows.find((row) => row.user_id === user?.id),
     [rows, user?.id],
@@ -580,7 +538,6 @@ export function LeaderboardView() {
         row,
         includeIcaTestInScoreExplanation,
         row.user_id === user?.id,
-        selectedMonth,
         scoringDayCap,
       ),
     );
@@ -595,7 +552,6 @@ export function LeaderboardView() {
         currentUserRow,
         includeIcaTestInScoreExplanation,
         true,
-        selectedMonth,
         scoringDayCap,
       ),
     );
