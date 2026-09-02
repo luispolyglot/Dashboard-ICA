@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { FullscreenLoading } from '@/components/ui/fullscreen-loading'
 import { Header } from '../components/Header'
 import { IcaTestsAvailableModal } from '../components/IcaTestsAvailableModal'
+import { PregunticaMonthlyTokensModal } from '../components/PregunticaMonthlyTokensModal'
 import { getCalendarIcademyCatalogEntry } from '../constants/calendarIcademyCatalog'
 import { useIcaTestsOverview } from '../hooks/useIcaTestsOverview'
 import { LangEditModal } from '../components/LangEditModal'
@@ -328,6 +329,7 @@ export function DashboardLayout() {
         )}
 
         <IcaTestsAvailableModal config={config} cards={cards} />
+        <PregunticaMonthlyTokensModal />
 
         <main className='flex flex-1 overflow-y-auto pb-20 md:pb-0'>
           <Outlet />
