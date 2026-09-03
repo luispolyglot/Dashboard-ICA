@@ -304,6 +304,7 @@ export function ManageCoachingCalendarView() {
   }, [user?.id])
 
   const todayDateKey = useMemo(() => getLocalDateKey(new Date()), [])
+  const currentMonthKey = useMemo(() => todayDateKey.slice(0, 7), [todayDateKey])
   const coaches = useMemo(() => {
     const byId = new Map<string, string>()
     for (const row of managedRows) {
@@ -477,26 +478,25 @@ export function ManageCoachingCalendarView() {
 
   const availableMonths = useMemo(() => {
     const months = new Set(entries.map((entry) => entry.dateKey.slice(0, 7)))
+    months.add(currentMonthKey)
     return Array.from(months).sort((a, b) => a.localeCompare(b))
-  }, [entries])
+  }, [currentMonthKey, entries])
 
   useEffect(() => {
-    const now = new Date()
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
     if (availableMonths.length === 0) {
-      setSelectedMonth(currentMonth)
+      setSelectedMonth(currentMonthKey)
       return
     }
 
     const fallback =
-      availableMonths.find((month) => month === currentMonth) ||
+      availableMonths.find((month) => month === currentMonthKey) ||
       availableMonths[availableMonths.length - 1]
 
     setSelectedMonth((previous) => {
       if (previous && availableMonths.includes(previous)) return previous
       return fallback
     })
-  }, [availableMonths])
+  }, [availableMonths, currentMonthKey])
 
   const calendarCells = useMemo(() => {
     if (!selectedMonth) return []
