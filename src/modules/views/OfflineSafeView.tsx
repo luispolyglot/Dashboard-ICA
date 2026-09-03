@@ -624,9 +624,12 @@ export function OfflineSafeView() {
                         ? 'outline'
                         : 'default'
                     }
+                    className='h-auto max-w-full whitespace-normal py-2 text-left'
                   >
                     <PlayIcon className='mr-1 size-4' />
-                    {`Reproducir todas una vez desde: ${selectedPlayAllStartNote?.name || '...'}`}
+                    <span className='min-w-0 break-words'>
+                      {`Reproducir todas una vez desde: ${selectedPlayAllStartNote?.name || '...'}`}
+                    </span>
                     <ChevronDownIcon className='ml-1 size-4' />
                   </Button>
                 </DropdownMenuTrigger>
