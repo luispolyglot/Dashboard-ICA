@@ -344,6 +344,89 @@ export interface CoachingNotificationPreferenceInput {
   classScheduleReminderMinutes: 10 | 30 | 60
 }
 
+export type IcaChallengeStatus =
+  | 'created'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled'
+  | 'expired'
+  | 'not_accepted'
+
+export type IcaChallengeScope = 'global' | 'language'
+
+export type IcaChallengeResultType =
+  | 'pending'
+  | 'challenger_win'
+  | 'challenged_win'
+  | 'draw'
+  | 'cancelled'
+  | 'expired'
+  | 'not_accepted'
+
+export type IcaChallengeCompetitorInvitationStatus =
+  | 'pending'
+  | 'accepted'
+  | 'rejected'
+
+export interface IcaChallengeCompetitor {
+  challengeId: string
+  userId: string
+  competitorOrder: number
+  invitationStatus: IcaChallengeCompetitorInvitationStatus
+  score: number | null
+  payload: Record<string, unknown>
+  acceptedAt: string | null
+  rejectedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface IcaChallengeRecord {
+  id: string
+  challengeSlug: string
+  status: IcaChallengeStatus
+  resultType: IcaChallengeResultType
+  scope: IcaChallengeScope
+  targetLang: string | null
+  nativeLang: string | null
+  challengerUserId: string
+  challengedUserId: string
+  winnerUserId: string | null
+  durationSeconds: number | null
+  expiresAt: string | null
+  startedAt: string | null
+  finalizedAt: string | null
+  gameMetadata: Record<string, unknown>
+  phases: Record<string, unknown>[]
+  competitors: IcaChallengeCompetitor[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface IcaChallengeAvailableUser {
+  userId: string
+  displayName: string
+  username: string | null
+  activeChallengesCount: number
+  canChallenge: boolean
+  blockedReason: string | null
+}
+
+export interface IcaChallengeEnrollment {
+  id: string | null
+  userId: string | null
+  targetLang: string
+  nativeLang: string
+  isActive: boolean
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface IcaOwnWordsChallengeConfig {
+  rounds: 3 | 5 | 10
+  responseSeconds: number
+}
+
 export interface IcaTestQuestion {
   promptNative: string
   correctTarget: string

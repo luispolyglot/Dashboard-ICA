@@ -213,9 +213,36 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           })}
         </div>
 
-        <div className='mt-5 hidden justify-center md:flex'>
+        <div className='mt-5 hidden grid-cols-2 gap-4 md:grid'>
+          <button
+            type='button'
+            onClick={() => navigate(DASHBOARD_ROUTES.challengesIca)}
+            className={cn(
+              cardBaseClass,
+              cardSurfaceClass,
+              cardHoverClass,
+              'min-h-40',
+            )}
+          >
+            <div className='relative z-1 my-auto'>
+              <div className='mb-1.25 flex items-center gap-2'>
+                <div className='text-3xl'>⚔️</div>
+                  <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
+                    DESAFÍOS ICA
+                  </h2>
+              </div>
+              <p className='m-0 text-xs leading-normal text-slate-500'>
+                Retos 1 vs 1 con turnos offline y respuesta por notificaciones.
+              </p>
+              <div className='mt-2.5 inline-flex items-center gap-1.5 text-xs text-slate-400'>
+                <span aria-hidden='true'>🕒</span>
+                <span>Nuevo: modalidad global y por idioma</span>
+              </div>
+            </div>
+          </button>
+
           {flashDone ? (
-            <div className='relative w-full max-w-80 overflow-hidden rounded-[22px] shadow-[0_0_12px_#eab30850,0_0_60px_#eab30828]'>
+            <div className='relative w-full overflow-hidden rounded-[22px] shadow-[0_0_12px_#eab30850,0_0_60px_#eab30828]'>
               <div className='pointer-events-none absolute inset-[-120%] z-0 animate-[rotateCW_8s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0deg,transparent_255deg,#eab30818_265deg,#eab30860_280deg,#eab308cc_305deg,#fde68a_322deg,#ffffffff_328deg,#fde68a_334deg,#eab308cc_350deg,#eab30860_368deg,#eab30818_378deg,transparent_390deg)]' />
               <button
                 type='button'
@@ -261,7 +288,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
                 cardBaseClass,
                 cardSurfaceClass,
                 cardHoverClass,
-                'w-full max-w-80 min-h-40',
+                'min-h-40',
                 cardCount === 0 && disabledCardClass,
               )}
             >

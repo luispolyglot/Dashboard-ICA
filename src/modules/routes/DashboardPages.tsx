@@ -18,6 +18,8 @@ import { HistoricLeaderboardView } from '../views/HistoricLeaderboardView'
 import { LeaderboardView } from '../views/LeaderboardView'
 import { HomeView } from '../views/HomeView'
 import { GamesIcaView } from '../views/GamesIcaView'
+import { IcaChallengesView } from '../views/IcaChallengesView'
+import { IcaChallengePlayView } from '../views/IcaChallengePlayView'
 import { ManageCoachingView } from '../views/ManageCoachingView'
 import { ManageCoachingCalendarView } from '../views/ManageCoachingCalendarView'
 import { ManageCoachingUserView } from '../views/ManageCoachingUserView'
@@ -251,6 +253,37 @@ export function GamesIcaPage() {
         pregunticaUnlocked={pregunticaUnlocked}
         pregunticaLabel={pregunticaLabel}
         pregunticaProgress={pregunticaProgress}
+      />
+    </PageLayout>
+  )
+}
+
+export function IcaChallengesPage() {
+  const { config } = useDashboardContext()
+  if (!config) return null
+
+  return (
+    <PageLayout>
+      <IcaChallengesView
+        targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+      />
+    </PageLayout>
+  )
+}
+
+export function IcaChallengePlayPage() {
+  const { config, cards } = useDashboardContext()
+  const { challengeId } = useParams<{ challengeId: string }>()
+  if (!config || !challengeId) return null
+
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.challengesIca}>
+      <IcaChallengePlayView
+        challengeId={challengeId}
+        targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+        cards={cards}
       />
     </PageLayout>
   )
