@@ -240,6 +240,7 @@ export function ManageCoachingView() {
         level: createUserLevel.trim() || selected.row.activeLevel,
         coachUserId: createUserCoachUserId,
         isActive: true,
+        programVersion: 'v2',
       })
       setIsCreateUserModalOpen(false)
       setCreateUserSelection('')

@@ -8,6 +8,7 @@ import {
   type CoachingMembership,
 } from '../services/coaching'
 import { CoachingProgramPreview } from './CoachingProgramPreview'
+import { CoachingV2SessionBoard } from './CoachingV2SessionBoard'
 
 type CoachingPersonalizedViewProps = {
   targetLang?: string
@@ -155,12 +156,22 @@ export function CoachingPersonalizedView({
           </CardContent>
         </Card>
       ) : (
-        <CoachingProgramPreview
-          membership={selectedMembership}
-          allowExerciseCompletion
-          completingExerciseWeek={completingExerciseWeek}
-          onCompleteExercise={handleCompleteExercise}
-        />
+        selectedMembership.programVersion === 'v2' ? (
+          <CoachingV2SessionBoard
+            sessionId={selectedMembership.id}
+            mode='student'
+            targetLang={selectedMembership.targetLang}
+            userId={selectedMembership.userId}
+            coachDisplayName={selectedMembership.coachDisplayName}
+          />
+        ) : (
+          <CoachingProgramPreview
+            membership={selectedMembership}
+            allowExerciseCompletion
+            completingExerciseWeek={completingExerciseWeek}
+            onCompleteExercise={handleCompleteExercise}
+          />
+        )
       )}
     </section>
   )

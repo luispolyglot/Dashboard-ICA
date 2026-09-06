@@ -32,6 +32,8 @@ export type CoachingMembership = {
   status: 'draft' | 'active' | 'completed' | 'cancelled'
   activatedAt: string | null
   durationWeeks: number
+  programVersion?: 'v1' | 'v2'
+  durationPeriods?: number
   weekActivation?: WeekActivationState
   weekTimeline?: WeekTimelineItem[]
   weekProgress?: Record<
@@ -97,6 +99,8 @@ export type CoachingManagedUser = {
   status: 'draft' | 'active' | 'completed' | 'cancelled'
   activatedAt: string | null
   durationWeeks: number
+  programVersion?: 'v1' | 'v2'
+  durationPeriods?: number
   weekActivation?: WeekActivationState
   weekTimeline?: WeekTimelineItem[]
   updatedAt: string
@@ -207,6 +211,8 @@ export type CoachingUserMembership = {
   status: 'draft' | 'active' | 'completed' | 'cancelled'
   activatedAt: string | null
   durationWeeks: number
+  programVersion?: 'v1' | 'v2'
+  durationPeriods?: number
   weekActivation?: WeekActivationState
   weekTimeline?: WeekTimelineItem[]
   updatedAt: string
@@ -222,6 +228,73 @@ export type CoachingAdminRow = {
   createdByDisplayName: string | null
   createdAt: string
   updatedAt: string
+}
+
+export type CoachingV2Focus = {
+  id: string
+  periodNumber: number
+  focusTitle: string
+  focusComment: string | null
+  phaseExplained: boolean
+  phaseTrained: boolean
+  phaseUnderstoodExplained: boolean
+  phaseUsed: boolean
+  completedAt: string | null
+  archivedAt: string | null
+}
+
+export type CoachingV2ClassSlot = {
+  id: string
+  periodNumber: number
+  classIndex: 1 | 2
+  title: string
+  loomUrl: string | null
+  report: string | null
+  reportImagePath: string | null
+  reportImageUrl: string | null
+  scheduledAt: string | null
+  assignedByCoachUserId: string | null
+  coachGuideline1: string | null
+  coachGuideline2: string | null
+  coachGuideline3: string | null
+  studentCompletedAt: string | null
+  studentReportText: string | null
+  studentReportImagePath: string | null
+  studentReportImageUrl: string | null
+  studentGuidelineResponse1?: string | null
+  studentGuidelineResponse2?: string | null
+  studentGuidelineResponse3?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type CoachingV2SessionBoard = {
+  session: {
+    id: string
+    userId: string
+    targetLang: string
+    level: string
+    status: 'draft' | 'active' | 'completed' | 'cancelled'
+    classJoinUrl: string | null
+    programVersion: 'v1' | 'v2'
+    durationPeriods: number
+  }
+  periodNumber: number
+  periodActivations: Array<{
+    periodNumber: number
+    activatedAt: string
+    endedAt: string | null
+  }>
+  periodState: {
+    lastActivatedPeriod: number
+    currentActivePeriod: number | null
+    nextPeriodEligible: number | null
+  }
+  focuses: CoachingV2Focus[]
+  canCreateFocus: boolean
+  classes: CoachingV2ClassSlot[]
+  snapshot: unknown[] | null
+  previousSnapshot: unknown[] | null
 }
 
 export class CoachingRequestError extends Error {
@@ -359,12 +432,14 @@ export async function upsertCoachingUser(input: {
   weeklyObjectives?: Record<string, unknown>
   notes?: string | null
   isActive?: boolean
+  programVersion?: 'v1' | 'v2'
 }): Promise<void> {
   await invokeCoachingFunction<{ ok?: boolean }>(
     'coaching-center',
     {
       action: 'upsert-user',
       ...input,
+      ...(input.programVersion ? { programVersion: input.programVersion } : {}),
     },
     'No se pudo guardar el usuario en coaching.',
   )
@@ -590,4 +665,167 @@ export async function uploadCoachingClassReportImage(input: {
 export async function deleteCoachingClassReportImage(path: string): Promise<void> {
   if (!supabase || !path) return
   await supabase.storage.from(COACHING_CLASS_REPORTS_BUCKET).remove([path])
+}
+
+export async function fetchCoachingV2SessionBoard(input: {
+  sessionId: string
+  periodNumber?: number
+}): Promise<CoachingV2SessionBoard> {
+  return invokeCoachingFunction<CoachingV2SessionBoard>(
+    'coaching-center',
+    {
+      action: 'v2-get-session-board',
+      sessionId: input.sessionId,
+      ...(typeof input.periodNumber === 'number'
+        ? { periodNumber: input.periodNumber }
+        : {}),
+    },
+    'No se pudo cargar el tablero v2 de coaching.',
+  )
+}
+
+export async function upsertCoachingV2Focus(input: {
+  sessionId: string
+  periodNumber: number
+  focusId?: string
+  focusTitle: string
+  focusComment?: string | null
+}): Promise<CoachingV2Focus | null> {
+  const data = await invokeCoachingFunction<{ ok?: boolean; focus?: CoachingV2Focus | null }>(
+    'coaching-center',
+    {
+      action: 'v2-upsert-focus',
+      sessionId: input.sessionId,
+      periodNumber: input.periodNumber,
+      ...(input.focusId ? { focusId: input.focusId } : {}),
+      focusTitle: input.focusTitle,
+      focusComment: typeof input.focusComment === 'string' ? input.focusComment : null,
+    },
+    'No se pudo guardar el foco v2.',
+  )
+
+  return data.focus || null
+}
+
+export async function toggleCoachingV2FocusPhase(input: {
+  sessionId: string
+  focusId: string
+  phase:
+    | 'phaseExplained'
+    | 'phaseTrained'
+    | 'phaseUnderstoodExplained'
+    | 'phaseUsed'
+  checked: boolean
+}): Promise<CoachingV2Focus | null> {
+  const data = await invokeCoachingFunction<{ ok?: boolean; focus?: CoachingV2Focus | null }>(
+    'coaching-center',
+    {
+      action: 'v2-toggle-focus-phase',
+      sessionId: input.sessionId,
+      focusId: input.focusId,
+      phase: input.phase,
+      checked: input.checked,
+    },
+    'No se pudo actualizar la fase del foco v2.',
+  )
+
+  return data.focus || null
+}
+
+export async function closeCoachingV2Period(input: {
+  sessionId: string
+  periodNumber?: number
+}): Promise<{ periodNumber: number; closedAt: string; periodState?: { lastActivatedPeriod: number; currentActivePeriod: number | null; nextPeriodEligible: number | null } }> {
+  return invokeCoachingFunction<{
+    periodNumber: number
+    closedAt: string
+    periodState?: { lastActivatedPeriod: number; currentActivePeriod: number | null; nextPeriodEligible: number | null }
+  }>(
+    'coaching-center',
+    {
+      action: 'v2-close-period',
+      sessionId: input.sessionId,
+      ...(typeof input.periodNumber === 'number' ? { periodNumber: input.periodNumber } : {}),
+    },
+    'No se pudo cerrar el periodo v2.',
+  )
+}
+
+export async function activateCoachingV2Period(input: {
+  sessionId: string
+  periodNumber?: number
+}): Promise<{ activatedPeriod: number; activatedAt: string; periodState?: { lastActivatedPeriod: number; currentActivePeriod: number | null; nextPeriodEligible: number | null } }> {
+  return invokeCoachingFunction<{
+    activatedPeriod: number
+    activatedAt: string
+    periodState?: { lastActivatedPeriod: number; currentActivePeriod: number | null; nextPeriodEligible: number | null }
+  }>(
+    'coaching-center',
+    {
+      action: 'v2-activate-period',
+      sessionId: input.sessionId,
+      ...(typeof input.periodNumber === 'number' ? { periodNumber: input.periodNumber } : {}),
+    },
+    'No se pudo activar el periodo.',
+  )
+}
+
+export async function upsertCoachingV2ClassCoachGuidelines(input: {
+  sessionId: string
+  periodNumber: number
+  classIndex: 1 | 2
+  title?: string | null
+  loomUrl?: string | null
+  report?: string | null
+  reportImagePath?: string | null
+  scheduledAt?: string | null
+  coachGuideline1: string | null
+  coachGuideline2: string | null
+  coachGuideline3: string | null
+}): Promise<CoachingV2ClassSlot | null> {
+  const data = await invokeCoachingFunction<{ ok?: boolean; class?: CoachingV2ClassSlot | null }>(
+    'coaching-center',
+    {
+      action: 'v2-upsert-class-coach-guidelines',
+      sessionId: input.sessionId,
+      periodNumber: input.periodNumber,
+      classIndex: input.classIndex,
+      title: input.title || null,
+      loomUrl: input.loomUrl || null,
+      report: input.report || null,
+      reportImagePath: input.reportImagePath || null,
+      scheduledAt: input.scheduledAt || null,
+      coachGuideline1: input.coachGuideline1,
+      coachGuideline2: input.coachGuideline2,
+      coachGuideline3: input.coachGuideline3,
+    },
+    'No se pudo guardar las directrices de clase v2.',
+  )
+
+  return data.class || null
+}
+
+export async function submitCoachingV2StudentClassReport(input: {
+  sessionId: string
+  periodNumber: number
+  classIndex: 1 | 2
+  guidelineResponse1: string | null
+  guidelineResponse2: string | null
+  guidelineResponse3: string | null
+}): Promise<CoachingV2ClassSlot | null> {
+  const data = await invokeCoachingFunction<{ ok?: boolean; class?: CoachingV2ClassSlot | null }>(
+    'coaching-center',
+    {
+      action: 'v2-submit-class-student-report',
+      sessionId: input.sessionId,
+      periodNumber: input.periodNumber,
+      classIndex: input.classIndex,
+      guidelineResponse1: input.guidelineResponse1,
+      guidelineResponse2: input.guidelineResponse2,
+      guidelineResponse3: input.guidelineResponse3,
+    },
+    'No se pudo guardar las respuestas del alumno.',
+  )
+
+  return data.class || null
 }

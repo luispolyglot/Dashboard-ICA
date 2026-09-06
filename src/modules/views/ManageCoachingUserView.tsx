@@ -83,6 +83,7 @@ import {
   closeCoachingWeek,
 } from '../services/coaching'
 import { CoachingProgramPreview } from './CoachingProgramPreview'
+import { CoachingV2SessionBoard } from './CoachingV2SessionBoard'
 import { PendingReviewDot } from '../components/PendingReviewDot'
 import { formatDateTime } from '../utils'
 import {
@@ -1807,7 +1808,15 @@ export function ManageCoachingUserView({
         </p>
       ) : (
         <div className='grid gap-4'>
-          {viewMode === 'user-preview' && previewMembership ? (
+          {selectedMembership.programVersion === 'v2' ? (
+            <CoachingV2SessionBoard
+              sessionId={selectedMembership.id}
+              mode={viewMode === 'coach' ? 'coach' : 'student'}
+              targetLang={selectedMembership.targetLang}
+              userId={selectedMembership.userId}
+              coachDisplayName={selectedMembership.coachDisplayName}
+            />
+          ) : viewMode === 'user-preview' && previewMembership ? (
             <CoachingProgramPreview membership={previewMembership} />
           ) : (
             <>
