@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { MetaTrackerSection } from '../components/MetaTracker/MetaTrackerSection'
 import { CREATION_WORDS_GOAL, getTodayProgress } from '../constants'
+import { useFeatureFlagsStore } from '../stores/featureFlagsStore'
 import type { DailyProgressMap } from '../types'
 import type { AppConfig } from '../types'
 
@@ -32,6 +33,10 @@ function pluralize(value: number, singular: string, plural: string): string {
 export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   const navigate = useNavigate()
   const [showPregunticaPulse, setShowPregunticaPulse] = useState(false)
+  const loadFlags = useFeatureFlagsStore((state) => state.loadFlags)
+  const icaChallengesEnabled = useFeatureFlagsStore(
+    (state) => state.flags['ica-challenges'],
+  )
   const todayProgress = getTodayProgress(dailyProgress)
   const cardBaseClass =
     'relative flex min-h-[220px] w-full flex-col px-[25px] py-8 text-left font-sans transition-[transform,border-color,box-shadow,background] duration-250 ease-[cubic-bezier(0.2,0.8,0.2,1)]'
@@ -54,6 +59,10 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   )
   const flashDone = todayProgress.reviewCorrect >= 10
   const phraseDone = todayProgress.phraseGenerated
+
+  useEffect(() => {
+    void loadFlags()
+  }, [loadFlags])
 
   useEffect(() => {
     let active = true
@@ -213,33 +222,40 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           })}
         </div>
 
-        <div className='mt-5 hidden grid-cols-2 gap-4 md:grid'>
-          <button
-            type='button'
-            onClick={() => navigate(DASHBOARD_ROUTES.challengesIca)}
-            className={cn(
-              cardBaseClass,
-              cardSurfaceClass,
-              cardHoverClass,
-              'min-h-40',
-            )}
-          >
-            <div className='relative z-1 my-auto'>
-              <div className='mb-1.25 flex items-center gap-2'>
-                <div className='text-3xl'>⚔️</div>
-                  <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
-                    DESAFÍOS ICA
-                  </h2>
+        <div
+          className={cn(
+            'mt-5 hidden gap-4 md:grid',
+            icaChallengesEnabled ? 'md:grid-cols-2' : 'md:grid-cols-1',
+          )}
+        >
+          {icaChallengesEnabled && (
+            <button
+              type='button'
+              onClick={() => navigate(DASHBOARD_ROUTES.challengesIca)}
+              className={cn(
+                cardBaseClass,
+                cardSurfaceClass,
+                cardHoverClass,
+                'min-h-40',
+              )}
+            >
+              <div className='relative z-1 my-auto'>
+                <div className='mb-1.25 flex items-center gap-2'>
+                  <div className='text-3xl'>⚔️</div>
+                    <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
+                      DESAFÍOS ICA
+                    </h2>
+                </div>
+                <p className='m-0 text-xs leading-normal text-slate-500'>
+                  Retos 1 vs 1 con turnos offline y respuesta por notificaciones.
+                </p>
+                <div className='mt-2.5 inline-flex items-center gap-1.5 text-xs text-slate-400'>
+                  <span aria-hidden='true'>🕒</span>
+                  <span>Nuevo: modalidad global y por idioma</span>
+                </div>
               </div>
-              <p className='m-0 text-xs leading-normal text-slate-500'>
-                Retos 1 vs 1 con turnos offline y respuesta por notificaciones.
-              </p>
-              <div className='mt-2.5 inline-flex items-center gap-1.5 text-xs text-slate-400'>
-                <span aria-hidden='true'>🕒</span>
-                <span>Nuevo: modalidad global y por idioma</span>
-              </div>
-            </div>
-          </button>
+            </button>
+          )}
 
           {flashDone ? (
             <div className='relative w-full overflow-hidden rounded-[22px] shadow-[0_0_12px_#eab30850,0_0_60px_#eab30828]'>
