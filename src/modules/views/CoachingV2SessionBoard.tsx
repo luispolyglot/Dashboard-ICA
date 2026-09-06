@@ -638,7 +638,7 @@ export function CoachingV2SessionBoard({
               <AccordionItem
                 key={period}
                 value={String(period)}
-                className={`px-2 sm:px-4 ${accordionBgClass}`}
+                className={`px-2 first:rounded-t-xl sm:px-4 ${accordionBgClass}`}
               >
                 <AccordionTrigger
                   disabled={isNotActivated}
@@ -884,7 +884,7 @@ export function CoachingV2SessionBoard({
                       <CardHeader>
                         <CardTitle>Clases del periodo</CardTitle>
                       </CardHeader>
-                      <CardContent className="grid gap-3 md:grid-cols-2">
+                      <CardContent className="grid gap-2 md:grid-cols-2">
                         {[1, 2].map((index) => {
                           const classIndex = index as 1 | 2;
                           const classSlot =
@@ -1052,12 +1052,12 @@ export function CoachingV2SessionBoard({
                                       {selectedFileLabel}
                                     </span>
                                   </div>
-                                  <Input
+                                  <input
                                     id={fileInputId}
                                     aria-label="Reporte imagen de clase"
                                     type="file"
                                     accept="image/*"
-                                    className="sr-only"
+                                    className="sr-only h-px w-px max-w-px"
                                     onChange={(event) =>
                                       setClassDrafts((prev) => ({
                                         ...prev,
