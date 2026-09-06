@@ -293,19 +293,30 @@ function isSpanishLanguage(value: string): boolean {
   return normalized === 'español' || normalized === 'espanol' || normalized === 'spanish' || normalized === 'es'
 }
 
-function parseTranslationCandidate(raw: string | null): { translation: string; confidence: number } | null {
-  const parsed = parseLastJsonObject(raw)
-  if (!parsed) return null
+function sanitizeTranslation(value: string): string | null {
+  let cleaned = value.trim()
+  if (!cleaned || cleaned === '—') return null
+  if (/\n|\r/.test(cleaned)) return null
 
-  const translationRaw = typeof parsed.translation === 'string' ? parsed.translation.trim() : ''
-  const translation = translationRaw
-    .split(/\s*[\/|]\s*/)[0]
-    ?.replace(/\([^)]*\)/g, '')
-    .trim() || ''
-  const confidenceRaw = Number(parsed.confidence)
-  const confidence = Number.isFinite(confidenceRaw) ? clamp(confidenceRaw, 0, 1) : 0
-  if (!translation || translation === '—') return null
-  return { translation, confidence }
+  cleaned = cleaned.split(/\s*[\/|]\s*/)[0]?.trim() || ''
+  cleaned = cleaned.replace(/\([^)]*\)/g, '').trim()
+  cleaned = cleaned.replace(/^['"`]+|['"`]+$/g, '').trim()
+
+  if (!cleaned || cleaned === '—') return null
+  if (cleaned.length > 120) return null
+  return cleaned
+}
+
+function parseTranslationCandidate(raw: string | null): string | null {
+  if (!raw) return null
+
+  const parsed = parseLastJsonObject(raw)
+  if (parsed) {
+    const translationRaw = typeof parsed.translation === 'string' ? parsed.translation : ''
+    return sanitizeTranslation(translationRaw)
+  }
+
+  return sanitizeTranslation(raw)
 }
 
 function filterSuggestedWords(
@@ -835,28 +846,20 @@ async function pickQuestionForAttempt(
 async function translateQuestion(questionEs: string, targetLang: string): Promise<string | null> {
   const raw = await callAnthropic(
     [
-      'You are a bilingual dictionary assistant.',
-      `Translate from Español to ${targetLang}.`,
+      'Eres un motor de traduccion para una app educativa.',
+      `Traduce del espanol a ${targetLang}.`,
       '',
-      'Rules for "translation":',
-      `- Return ONLY the translation, written ONLY in ${targetLang}.`,
-      '- NEVER include the original input text.',
-      '- NEVER include alternatives, slashes, parentheses, or explanations.',
-      '- If multiple valid translations exist, return only the single most common one.',
-      '- If misspelled, unknown, or too ambiguous, return "—" with confidence 0.',
-      '',
-      'Output format (CRITICAL):',
-      '- Return exactly one JSON object on one line: {"translation":"...","confidence":0.0}',
-      '- confidence must be a number between 0 and 1.',
-      '- No markdown. No text before or after JSON.',
+      'Reglas:',
+      `- Devuelve SOLO la traduccion final, escrita SOLO en ${targetLang}.`,
+      '- Nunca incluyas el texto original.',
+      '- No anadas explicaciones, alternativas, barras ni parentesis.',
+      '- Si hay varios sentidos validos, elige el mas frecuente en uso general.',
+      '- Si detectas errores ortograficos, corrige primero y traduce despues.',
     ].join('\n'),
     questionEs,
   )
 
-  const parsed = parseTranslationCandidate(raw)
-  if (!parsed) return null
-  if (parsed.confidence < 0.72) return null
-  return parsed.translation
+  return parseTranslationCandidate(raw)
 }
 
 async function prepareAttempt(
