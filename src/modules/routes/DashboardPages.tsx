@@ -12,6 +12,7 @@ import { PageLayout } from '../layout/PageLayout'
 import { AddView } from '../views/AddView'
 import { AdminAnalyticsView } from '../views/AdminAnalyticsView'
 import { CoachingPersonalizedView } from '../views/CoachingPersonalizedView'
+import { CoachingV2ExerciseView } from '../views/CoachingV2ExerciseView'
 import { CalendarIcademyView } from '../views/CalendarIcademyView'
 import { FlashcardsModeView } from '../views/FlashcardsModeView'
 import { HistoricLeaderboardView } from '../views/HistoricLeaderboardView'
@@ -757,6 +758,31 @@ export function CoachingPersonalizedPage() {
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.profile}>
       <CoachingPersonalizedView targetLang={config?.targetLang} />
+    </PageLayout>
+  )
+}
+
+export function CoachingV2ExercisePage() {
+  const { config } = useDashboardContext()
+  const { sessionId, periodNumber, focusId } = useParams<{
+    sessionId: string
+    periodNumber: string
+    focusId: string
+  }>()
+
+  if (!sessionId || !periodNumber || !focusId) return null
+
+  const parsedPeriod = Number(periodNumber)
+  if (!Number.isFinite(parsedPeriod) || parsedPeriod < 1) return null
+
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.coachingPersonalized}>
+      <CoachingV2ExerciseView
+        sessionId={sessionId}
+        periodNumber={Math.trunc(parsedPeriod)}
+        focusId={focusId}
+        targetLang={config?.targetLang}
+      />
     </PageLayout>
   )
 }

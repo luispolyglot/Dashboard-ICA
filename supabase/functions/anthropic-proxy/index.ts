@@ -136,6 +136,18 @@ type ManualPhraseSuggestionPayload = {
   nativeLang: string
 }
 
+type CoachingFocusExercisePayload = {
+  action: 'coaching_focus_exercise'
+  targetLang: string
+  nativeLang: string
+  level: string
+  focusTitle: string
+  errorReal: string
+  studentContext?: string
+  focusSlot?: string
+  phase?: string
+}
+
 type ManualPhraseReviewResult = {
   status: 'suggested' | 'perfect' | 'invalid'
   suggestion: string | null
@@ -153,6 +165,11 @@ type RequestPayload =
   | WordExamplePayload
   | PhraseTokenInsightPayload
   | ManualPhraseSuggestionPayload
+  | CoachingFocusExercisePayload
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -609,6 +626,186 @@ function parsePhraseTokenInsight(raw: string | null): {
     grammarTip,
     examples,
   }
+}
+
+function parseCoachingFocusExercise(raw: string | null): Record<string, unknown> | null {
+  const parsed = parseLastJsonObject(raw)
+  if (!parsed) return null
+  if (!isRecord(parsed.etiquetas)) return null
+  if (!Array.isArray(parsed.bloques) || parsed.bloques.length !== 3) return null
+
+  const bloqueIds = parsed.bloques
+    .filter((item): item is Record<string, unknown> => isRecord(item))
+    .map((item) => (typeof item.id === 'string' ? item.id : ''))
+
+  if (
+    bloqueIds[0] !== 'reconocer' ||
+    bloqueIds[1] !== 'construir' ||
+    bloqueIds[2] !== 'conversacion'
+  ) {
+    return null
+  }
+
+  return parsed
+}
+
+function buildCoachingFocusExercisePrompt(input: {
+  targetLang: string
+  focusTitle: string
+  level: string
+  errorReal: string
+  studentContext: string
+  focusSlot: string
+  phase: string
+  nativeLang: string
+}): string {
+  return [
+    'Eres el generador de ejercicios del programa Coaching ICA, un programa de coaching linguistico 1:1.',
+    'Vas a crear el contenido de un ejercicio de foco gramatical para un alumno concreto.',
+    '',
+    'DATOS DEL ENCARGO',
+    `- Idioma objetivo: ${input.targetLang}`,
+    `- Foco gramatical: ${input.focusTitle}`,
+    `- Nivel del alumno: ${input.level}`,
+    `- Error real que cometio el alumno en clase: "${input.errorReal}"`,
+    `- Contexto del alumno: ${input.studentContext || 'Sin contexto adicional'}`,
+    `- Slot: ${input.focusSlot} · Fase: ${input.phase}`,
+    '',
+    'QUE DEVUELVES',
+    'Unicamente un objeto JSON valido con la estructura del ESQUEMA.',
+    'Sin texto alrededor, sin explicaciones, sin markdown.',
+    '',
+    'ESTRUCTURA FIJA',
+    'Tres bloques, en este orden:',
+    '1. reconocer    - 4 preguntas de opcion multiple.',
+    '2. construir    - 4 situaciones para escritura libre.',
+    '3. conversacion - dialogo corto con 5 huecos.',
+    '',
+    'REGLAS GENERALES',
+    '- Todas las frases del idioma objetivo deben salir del contexto del alumno.',
+    '- El vocabulario no puede pasar del nivel indicado.',
+    '- Lo evaluado es gramatica, no vocabulario raro.',
+    `- Explicaciones SIEMPRE en ${input.nativeLang}, en segunda persona, maximo dos frases.`,
+    '- En explicaciones evita usar las palabras "correcto" o "incorrecto".',
+    '',
+    'BLOQUE 1 - reconocer',
+    '- La PRIMERA pregunta debe usar el ERROR_REAL literal como una opcion.',
+    '- Si ERROR_REAL llega como [SIN_ERROR_REAL], sintetiza UNA frase erronea plausible del foco y usala como literal.',
+    '- Si ERROR_REAL trae comentario + frase mezclados, extrae solo la frase del alumno (sin metatexto) y usa esa literal.',
+    '- Cada pregunta tiene 3 opciones y exactamente 1 con ok=true.',
+    '- Distractores plausibles de hispanohablante del nivel indicado.',
+    '- Cada opcion debe traer why.',
+    '',
+    'BLOQUE 2 - construir',
+    '- El alumno escribe libremente; NO generes lista de frases aceptadas completas.',
+    '- En cada item, el campo verbos define lo evaluable.',
+    '- Cada entrada de verbos incluye: nombre, formas, mal, tags, nota.',
+    '- formas: solo nucleo verbal, minusculas, sin acentos, sin apostrofes, sin sujeto.',
+    '- Debe haber de 5 a 7 unidades verbales totales entre los 4 items.',
+    '- Al menos un item debe tener dos verbos en contraste.',
+    '- ejemplo es una frase modelo posterior, no la unica respuesta valida.',
+    '',
+    'BLOQUE 3 - conversacion',
+    '- Dialogo natural de 4 o 5 lineas con cinco huecos.',
+    '- Huecos marcados con {0}..{4} y su indice coincide con items.',
+    '- El alumno ve solo el infinitivo (campo verbo).',
+    '- formas contiene solo lo que va dentro del hueco.',
+    '',
+    'ETIQUETAS',
+    '- Define entre 2 y 4 etiquetas en etiquetas.',
+    '- Cada unidad puntuable lleva tags (1 o 2 claves existentes).',
+    '- Cada etiqueta debe aparecer al menos 3 veces y en mas de un bloque.',
+    '',
+    'UMBRAL',
+    '- umbral es un numero de aciertos, no porcentaje.',
+    '- Debe permitir fallar dos unidades.',
+    '',
+    'EQUIVALENCIAS',
+    '- Rellena equivalencias con cifra->palabra del idioma objetivo cuando aplique.',
+    '',
+    'ESQUEMA (respeta nombres de campo y tipos):',
+    '{',
+    '  "idioma": "string",',
+    '  "nivel": "string",',
+    '  "foco": "string",',
+    '  "foco_subtitulo": "string en espanol",',
+    '  "foco_slot": "string",',
+    '  "fase": "string",',
+    '  "umbral": 13,',
+    '  "equivalencias": { "7": "sept" },',
+    '  "etiquetas": { "clave": "Nombre legible en espanol" },',
+    '  "bloques": [',
+    '    {',
+    '      "id": "reconocer",',
+    '      "titulo": "Reconocer",',
+    '      "instruccion": "string en espanol",',
+    '      "tipo": "opcion",',
+    '      "items": [',
+    '        {',
+    '          "lead": "string",',
+    '          "tags": ["clave"],',
+    '          "options": [',
+    '            { "t": "frase en idioma objetivo", "ok": false, "why": "explicacion en espanol" }',
+    '          ]',
+    '        }',
+    '      ]',
+    '    },',
+    '    {',
+    '      "id": "construir",',
+    '      "titulo": "Construir",',
+    '      "instruccion": "string en espanol",',
+    '      "tipo": "escritura",',
+    '      "items": [',
+    '        {',
+    '          "situacion": "string en espanol",',
+    '          "ejemplo": "frase modelo completa",',
+    '          "verbos": [',
+    '            {',
+    '              "nombre": "string",',
+    '              "formas": ["nucleo verbal normalizado"],',
+    '              "mal": ["error previsible"],',
+    '              "tags": ["clave"],',
+    '              "nota": "explicacion en espanol"',
+    '            }',
+    '          ]',
+    '        }',
+    '      ]',
+    '    },',
+    '    {',
+    '      "id": "conversacion",',
+    '      "titulo": "En conversacion",',
+    '      "instruccion": "string en espanol",',
+    '      "tipo": "dialogo",',
+    '      "lineas": [',
+    '        { "quien": "string", "texto": "texto con {0}" }',
+    '      ],',
+    '      "items": [',
+    '        {',
+    '          "verbo": "infinitivo",',
+    '          "formas": ["valor de hueco"],',
+    '          "show": "forma canonica",',
+    '          "tags": ["clave"],',
+    '          "why": "explicacion en espanol"',
+    '        }',
+    '      ]',
+    '    }',
+    '  ]',
+    '}',
+    '',
+    'COMPROBACIONES ANTES DE RESPONDER',
+    '1) Hay 4 items en reconocer, 4 en construir y 5 huecos en conversacion.',
+    '2) ERROR_REAL aparece literal en la primera multiple choice.',
+    '3) Cada pregunta multiple choice tiene exactamente un ok=true.',
+    '4) formas de construir son solo nucleos verbales.',
+    '5) formas de construir estan normalizadas (minusculas, sin acentos, sin apostrofes).',
+    '6) Hay algun item de construir con dos verbos en contraste.',
+    '7) Huecos {n} del dialogo alineados con items[n].',
+    '8) Todos los tags existen en etiquetas.',
+    '9) umbral deja margen para fallar dos.',
+    '10) Explicaciones en espanol y frases en idioma objetivo.',
+    '',
+    'Responde solo con JSON.',
+  ].join('\n')
 }
 
 Deno.serve(async (req) => {
@@ -1086,6 +1283,56 @@ Deno.serve(async (req) => {
           },
         },
       })
+    }
+
+    if (payload.action === 'coaching_focus_exercise') {
+      const targetLang = payload.targetLang.trim()
+      const nativeLang = payload.nativeLang.trim()
+      const focusTitle = payload.focusTitle.trim()
+      const errorReal = payload.errorReal.trim()
+      const level = normalizeLevelKey(payload.level)
+      const studentContext = typeof payload.studentContext === 'string'
+        ? payload.studentContext.trim()
+        : ''
+      const focusSlot = typeof payload.focusSlot === 'string' && payload.focusSlot.trim()
+        ? payload.focusSlot.trim()
+        : 'Foco 1'
+      const phase = typeof payload.phase === 'string' && payload.phase.trim()
+        ? payload.phase.trim()
+        : 'Entrenado'
+
+      if (!targetLang || !nativeLang || !focusTitle || !errorReal) {
+        return jsonResponse(400, {
+          error: 'targetLang, nativeLang, focusTitle and errorReal are required',
+        })
+      }
+
+      const prompt = buildCoachingFocusExercisePrompt({
+        targetLang,
+        focusTitle,
+        level,
+        errorReal,
+        studentContext,
+        focusSlot,
+        phase,
+        nativeLang,
+      })
+
+      const raw = await callAnthropic(
+        'Generas contenido didactico estructurado para un ejercicio de foco gramatical. Responde solo JSON valido.',
+        prompt,
+        {
+          maxTokens: 3200,
+          temperature: 0.2,
+        },
+      )
+
+      const exercise = parseCoachingFocusExercise(raw.text)
+      if (!exercise) {
+        return jsonResponse(200, { exercise: null, error: 'invalid_schema' })
+      }
+
+      return jsonResponse(200, { exercise })
     }
 
     return jsonResponse(400, { error: 'Unsupported action' })

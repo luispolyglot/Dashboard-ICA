@@ -37,6 +37,7 @@ export const DASHBOARD_ROUTES = {
   managePregunticaTokens: '/manage-preguntica-tokens',
   historicLeaderboard: '/historic-leaderboard',
   coachingPersonalized: '/coaching-personalized',
+  coachingV2Exercise: '/coaching-personalized/ejercicio',
   manageCoaching: '/manage-coaching',
   manageCoachingCalendar: '/manage-coaching/calendar',
   offlineSafe: '/offline-safe',
@@ -75,6 +76,7 @@ export const DASHBOARD_LABELS: Record<string, string> = {
   '/manage-preguntica-tokens': 'Gestión fichas PreguntICA',
   '/historic-leaderboard': 'Histórico leaderboard',
   '/coaching-personalized': 'Coaching Personalizado',
+  '/coaching-personalized/ejercicio': 'Ejercicio de foco',
   '/manage-coaching': 'Administrar Coaching',
   '/manage-coaching/calendar': 'Calendario Coaching',
   '/offline-safe': 'Modo sin conexión',
@@ -126,4 +128,12 @@ export function getIcaTestMonthRoute(monthCode: string, redo = false): string {
 
 export function getIcaChallengePlayRoute(challengeId: string): string {
   return `${DASHBOARD_ROUTES.challengesIca}/${challengeId}`
+}
+
+export function getCoachingV2ExerciseRoute(
+  sessionId: string,
+  periodNumber: number,
+  focusId: string,
+): string {
+  return `${DASHBOARD_ROUTES.coachingV2Exercise}/${sessionId}/${periodNumber}/${focusId}`
 }

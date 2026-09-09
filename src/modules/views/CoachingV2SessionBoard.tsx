@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
   BookOpenIcon,
   CircleHelpIcon,
   CheckIcon,
   CopyIcon,
+  EyeIcon,
   LanguagesIcon,
   LockIcon,
   LockOpenIcon,
@@ -32,11 +34,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   activateCoachingV2Period,
   closeCoachingV2Period,
   deleteCoachingV2Focus,
   fetchCoachingV2SessionBoard,
+  fetchMyCoachingV2SessionBoard,
   submitCoachingV2StudentClassReport,
   toggleCoachingV2FocusPhase,
   upsertCoachingV2ClassCoachGuidelines,
@@ -44,6 +48,7 @@ import {
   uploadCoachingClassReportImage,
   deleteCoachingClassReportImage,
   type CoachingV2ClassSlot,
+  type CoachingV2FocusExerciseAttempt,
   type CoachingV2Focus,
   type CoachingV2SessionBoard,
 } from "../services/coaching";
@@ -54,6 +59,7 @@ import {
   toDateAndTimeFromIso,
   toIsoFromDateAndTime,
 } from "./coachingClassResources";
+import { getCoachingV2ExerciseRoute } from "../routes/paths";
 
 type CoachingV2SessionBoardProps = {
   sessionId: string;
@@ -61,6 +67,7 @@ type CoachingV2SessionBoardProps = {
   targetLang: string;
   userId: string;
   coachDisplayName?: string | null;
+  fetchAsStudent?: boolean;
 };
 
 type ClassDraft = {
@@ -125,6 +132,62 @@ function getEmbeddableVideoUrl(value: string | null): string | null {
   return null;
 }
 
+type AttemptFailure = {
+  block: string;
+  question: string;
+  mine: string;
+  expected: string;
+  why: string;
+};
+
+type AttemptBlockScore = { id: string; title: string; got: number; max: number };
+type AttemptTagScore = { tag: string; ok: number; total: number };
+
+function parseAttemptFailures(value: unknown): AttemptFailure[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => Boolean(item) && typeof item === "object")
+    .map((item) => {
+      const row = item as Record<string, unknown>;
+      return {
+        block: typeof row.block === "string" ? row.block : "Bloque",
+        question: typeof row.question === "string" ? row.question : "",
+        mine: typeof row.mine === "string" ? row.mine : "—",
+        expected: typeof row.expected === "string" ? row.expected : "—",
+        why: typeof row.why === "string" ? row.why : "",
+      };
+    });
+}
+
+function parseAttemptBlockScores(value: unknown): AttemptBlockScore[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => Boolean(item) && typeof item === "object")
+    .map((item) => {
+      const row = item as Record<string, unknown>;
+      return {
+        id: typeof row.id === "string" ? row.id : crypto.randomUUID(),
+        title: typeof row.title === "string" ? row.title : "Bloque",
+        got: typeof row.got === "number" ? row.got : 0,
+        max: typeof row.max === "number" ? row.max : 0,
+      };
+    });
+}
+
+function parseAttemptTagScores(value: unknown): AttemptTagScore[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => Boolean(item) && typeof item === "object")
+    .map((item) => {
+      const row = item as Record<string, unknown>;
+      return {
+        tag: typeof row.tag === "string" ? row.tag : "tag",
+        ok: typeof row.ok === "number" ? row.ok : 0,
+        total: typeof row.total === "number" ? row.total : 0,
+      };
+    });
+}
+
 function statusLabel(
   status: CoachingV2SessionBoard["session"]["status"],
 ): string {
@@ -148,7 +211,9 @@ export function CoachingV2SessionBoard({
   targetLang,
   userId,
   coachDisplayName,
+  fetchAsStudent,
 }: CoachingV2SessionBoardProps) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -173,6 +238,7 @@ export function CoachingV2SessionBoard({
     {},
   );
   const [copiedSessionLink, setCopiedSessionLink] = useState(false);
+  const [openReviewFocusId, setOpenReviewFocusId] = useState<string | null>(null);
 
   const handleCopySessionClassLink = async () => {
     const link = board?.session.classJoinUrl || "";
@@ -182,7 +248,7 @@ export function CoachingV2SessionBoard({
     setTimeout(() => setCopiedSessionLink(false), 1500);
   };
 
-  const loadBoard = async (
+  const loadBoard = useCallback(async (
     period?: number,
     options?: { silent?: boolean; keepOpenValue?: boolean },
   ) => {
@@ -190,10 +256,17 @@ export function CoachingV2SessionBoard({
     if (!silent) setLoading(true);
     setError(null);
     try {
-      const data = await fetchCoachingV2SessionBoard({
-        sessionId,
-        ...(typeof period === "number" ? { periodNumber: period } : {}),
-      });
+      const useMemberBoard = mode === "student" && (fetchAsStudent ?? true);
+      const data =
+        useMemberBoard
+          ? await fetchMyCoachingV2SessionBoard({
+              sessionId,
+              ...(typeof period === "number" ? { periodNumber: period } : {}),
+            })
+          : await fetchCoachingV2SessionBoard({
+              sessionId,
+              ...(typeof period === "number" ? { periodNumber: period } : {}),
+            });
       setBoard(data);
       setSelectedPeriod(data.periodNumber);
       if (!options?.keepOpenValue) {
@@ -219,11 +292,29 @@ export function CoachingV2SessionBoard({
     } finally {
       if (!silent) setLoading(false);
     }
-  };
+  }, [fetchAsStudent, mode, sessionId]);
 
   useEffect(() => {
     void loadBoard();
-  }, [sessionId]);
+  }, [loadBoard]);
+
+  useEffect(() => {
+    if (!board?.focusExercises?.length) return;
+    const hasPending = board.focusExercises.some(
+      (row) =>
+        row.periodNumber === selectedPeriod &&
+        (row.status === "pending" || row.status === "generating"),
+    );
+    if (!hasPending) return;
+
+    const id = window.setInterval(() => {
+      void loadBoard(selectedPeriod, { silent: true, keepOpenValue: true });
+    }, 8000);
+
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [board?.focusExercises, loadBoard, selectedPeriod]);
 
   useEffect(() => {
     const nextDrafts: Record<string, ClassDraft> = {};
@@ -338,6 +429,9 @@ export function CoachingV2SessionBoard({
         return {
           ...prev,
           focuses: prev.focuses.filter((focus) => focus.id !== focusId),
+          focusExercises: prev.focusExercises.filter(
+            (row) => row.focusId !== focusId,
+          ),
         };
       });
       setFocusDeleteCandidateId(null);
@@ -366,7 +460,27 @@ export function CoachingV2SessionBoard({
       if (created) {
         setBoard((prev) => {
           if (!prev) return prev;
-          return { ...prev, focuses: [...prev.focuses, created] };
+          const hasExercise = prev.focusExercises.some(
+            (item) => item.focusId === created.id,
+          );
+          return {
+            ...prev,
+            focuses: [...prev.focuses, created],
+            focusExercises: hasExercise
+              ? prev.focusExercises
+              : [
+                  ...prev.focusExercises,
+                  {
+                    focusId: created.id,
+                    periodNumber: created.periodNumber,
+                    status: "pending",
+                    exercise: null,
+                    error: null,
+                    generatedAt: null,
+                    updatedAt: new Date().toISOString(),
+                  },
+                ],
+          };
         });
       }
       toast.success("Foco creado.");
@@ -523,6 +637,23 @@ export function CoachingV2SessionBoard({
   const focusDeleteCandidate =
     selectedPeriodFocuses.find((focus) => focus.id === focusDeleteCandidateId) ||
     null;
+  const selectedPeriodExercises = (board.focusExercises || []).filter(
+    (row) => row.periodNumber === selectedPeriod,
+  );
+  const selectedPeriodAttempts = (board.focusExerciseAttempts || []).filter(
+    (row) => row.periodNumber === selectedPeriod,
+  );
+  const exerciseByFocusId = new Map(
+    selectedPeriodExercises.map((row) => [row.focusId, row]),
+  );
+  const attemptByFocusId = new Map<string, CoachingV2FocusExerciseAttempt>(
+    selectedPeriodAttempts.map((row) => [row.focusId, row]),
+  );
+  const openReviewAttempt =
+    openReviewFocusId ? attemptByFocusId.get(openReviewFocusId) || null : null;
+  const openReviewFailures = parseAttemptFailures(openReviewAttempt?.failures);
+  const openReviewBlockScores = parseAttemptBlockScores(openReviewAttempt?.blockScores);
+  const openReviewTagScores = parseAttemptTagScores(openReviewAttempt?.tagScores);
 
   return (
     <div className="grid gap-4">
@@ -888,41 +1019,43 @@ export function CoachingV2SessionBoard({
                                     const checked = phaseValues[phaseIndex];
                                     const isNext =
                                       phaseIndex === phaseValues.filter(Boolean).length;
+                                    const isTrainedPhase = phase.key === "phaseTrained";
+                                    const focusExercise = exerciseByFocusId.get(focus.id) || null;
+                                    const focusAttempt = attemptByFocusId.get(focus.id) || null;
                                     const clickable =
                                       mode === "coach" &&
                                       (checked
                                         ? !phaseValues.slice(phaseIndex + 1).some(Boolean)
                                         : isNext);
+                                    const canToggle = clickable && !saving;
 
                                     return (
                                       <td key={`${focus.id}-${phase.key}`} className="p-2">
-                                        <button
-                                          type="button"
-                                          disabled={!clickable || saving}
-                                          className="flex w-full items-center gap-2 text-left disabled:cursor-default disabled:opacity-70"
-                                          onClick={() =>
-                                            void handleTogglePhase(
-                                              focus,
-                                              phase.key as
-                                                | "phaseExplained"
-                                                | "phaseTrained"
-                                                | "phaseUnderstoodExplained"
-                                                | "phaseUsed",
-                                              !checked,
-                                            )
-                                          }
-                                        >
-                                          <span
+                                        <div className="flex w-full items-center gap-2 text-left">
+                                          <button
+                                            type="button"
+                                            disabled={!canToggle}
+                                            onClick={() =>
+                                              void handleTogglePhase(
+                                                focus,
+                                                phase.key as
+                                                  | "phaseExplained"
+                                                  | "phaseTrained"
+                                                  | "phaseUnderstoodExplained"
+                                                  | "phaseUsed",
+                                                !checked,
+                                              )
+                                            }
                                             className={`inline-flex size-4 items-center justify-center rounded-full border text-[10px] ${
                                               checked
                                                 ? "border-primary bg-primary text-primary-foreground"
                                                 : isNext
                                                   ? "border-foreground"
                                                   : "border-muted-foreground"
-                                            }`}
+                                            } disabled:opacity-60`}
                                           >
                                             {checked ? <CheckIcon className="size-3" /> : null}
-                                          </span>
+                                          </button>
                                           <span className="text-xs text-muted-foreground">
                                             {checked
                                               ? "Hecho"
@@ -932,7 +1065,52 @@ export function CoachingV2SessionBoard({
                                                   : "Por hacer"
                                                 : ""}
                                           </span>
-                                        </button>
+                                          {mode === "student" && isTrainedPhase && (
+                                            focusExercise?.status === "ready" ? (
+                                              <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                className="ml-auto h-7 px-2 text-xs"
+                                                onClick={(event) => {
+                                                  event.preventDefault();
+                                                  event.stopPropagation();
+                                                  navigate(
+                                                    getCoachingV2ExerciseRoute(
+                                                      sessionId,
+                                                      selectedPeriod,
+                                                      focus.id,
+                                                    ),
+                                                  );
+                                                }}
+                                              >
+                                                {focusAttempt ? "💪 Repetir" : "💪 Entrenar"}
+                                              </Button>
+                                            ) : focusExercise?.status === "generating" ||
+                                              focusExercise?.status === "pending" ? (
+                                              <span className="ml-auto text-[11px] text-muted-foreground">
+                                                Preparando...
+                                              </span>
+                                            ) : null
+                                          )}
+                                          {mode === "coach" && isTrainedPhase && focusAttempt && (
+                                            <Button
+                                              type="button"
+                                              size="sm"
+                                              variant="outline"
+                                              className="ml-auto h-7 px-2 text-xs"
+                                              onClick={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                setOpenReviewFocusId((prev) =>
+                                                  prev === focus.id ? null : focus.id,
+                                                );
+                                              }}
+                                            >
+                                              <EyeIcon className="size-3" /> Revisar
+                                            </Button>
+                                          )}
+                                        </div>
                                       </td>
                                     );
                                   })}
@@ -1468,6 +1646,94 @@ export function CoachingV2SessionBoard({
             >
               <Trash2Icon className="size-4" />
               Borrar foco
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(openReviewFocusId)}
+        onOpenChange={(open) => {
+          if (!open) setOpenReviewFocusId(null);
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Revision de intento</DialogTitle>
+            <DialogDescription>
+              {openReviewAttempt
+                ? `${openReviewAttempt.passed ? "Superado" : "No superado"} · ${openReviewAttempt.scoreCorrect}/${openReviewAttempt.scoreTotal} · ${new Date(openReviewAttempt.submittedAt).toLocaleString("es-AR")}`
+                : "Sin intento seleccionado."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {openReviewAttempt && (
+            <Tabs defaultValue="reconocer" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="reconocer">Reconocer</TabsTrigger>
+                <TabsTrigger value="construir">Construir</TabsTrigger>
+                <TabsTrigger value="conversacion">Conversacion</TabsTrigger>
+              </TabsList>
+
+              {(["Reconocer", "Construir", "En conversacion"] as const).map((name, idx) => {
+                const value = idx === 0 ? "reconocer" : idx === 1 ? "construir" : "conversacion";
+                const normalize = (text: string) =>
+                  text
+                    .toLowerCase()
+                    .normalize("NFD")
+                    .replace(/[\u0300-\u036f]/g, "");
+                const failures = openReviewFailures.filter(
+                  (item) => normalize(item.block).includes(normalize(name)),
+                );
+                return (
+                  <TabsContent key={`review-tab-${value}`} value={value} className="mt-3 space-y-2">
+                    {failures.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Sin fallos registrados en esta seccion.</p>
+                    ) : (
+                      failures.map((item, itemIdx) => (
+                        <div key={`failure-${value}-${itemIdx}`} className="rounded-md border p-3 text-sm">
+                          <p className="font-medium">{item.question}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">Respondio: {item.mine}</p>
+                          <p className="text-xs text-emerald-700">Esperado: {item.expected}</p>
+                          {item.why && <p className="mt-1 text-xs text-muted-foreground">{item.why}</p>}
+                        </div>
+                      ))
+                    )}
+                  </TabsContent>
+                );
+              })}
+            </Tabs>
+          )}
+
+          {openReviewAttempt && (
+            <div className="space-y-2 rounded-md border bg-muted/20 p-3 text-xs">
+              <p className="font-medium">Resumen</p>
+              <p>
+                Total: {openReviewAttempt.scoreCorrect}/{openReviewAttempt.scoreTotal} · Umbral {openReviewAttempt.scoreThreshold}
+              </p>
+              <p>Resultado: {openReviewAttempt.passed ? "Superado" : "No superado"}</p>
+              {openReviewBlockScores.length > 0 && (
+                <div>
+                  <p className="font-medium">Por bloque</p>
+                  {openReviewBlockScores.map((row) => (
+                    <p key={`block-score-${row.id}`}>{row.title}: {row.got}/{row.max}</p>
+                  ))}
+                </div>
+              )}
+              {openReviewTagScores.length > 0 && (
+                <div>
+                  <p className="font-medium">Por etiqueta</p>
+                  {openReviewTagScores.map((row) => (
+                    <p key={`tag-score-${row.tag}`}>{row.tag}: {row.ok}/{row.total}</p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpenReviewFocusId(null)}>
+              Cerrar
             </Button>
           </DialogFooter>
         </DialogContent>

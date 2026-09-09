@@ -1812,6 +1812,7 @@ export function ManageCoachingUserView({
             <CoachingV2SessionBoard
               sessionId={selectedMembership.id}
               mode={viewMode === 'coach' ? 'coach' : 'student'}
+              fetchAsStudent={false}
               targetLang={selectedMembership.targetLang}
               userId={selectedMembership.userId}
               coachDisplayName={selectedMembership.coachDisplayName}

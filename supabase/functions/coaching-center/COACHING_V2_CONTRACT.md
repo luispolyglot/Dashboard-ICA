@@ -9,6 +9,8 @@
 ## Focus board model
 
 - Up to `3` active focuses per period.
+- Each focus can have one async Entrenado exercise payload in `coaching_v2_focus_exercises`.
+- Student attempts are persisted in `coaching_v2_focus_exercise_attempts` (latest attempt is surfaced in board payloads).
 - Focus phases:
   - `phaseExplained`
   - `phaseTrained`
@@ -37,10 +39,14 @@
 
 - `v2-get-session-board`
   - Input: `sessionId`
-  - Output: current period, classes, active focuses, last snapshot
+  - Output: current period, classes, active focuses, exercise status/payloads, last snapshot
+- `v2-get-session-board-member`
+  - Input: `sessionId`
+  - Output: same as `v2-get-session-board`, but scoped to the session owner (student view).
 - `v2-upsert-focus`
   - Input: `sessionId`, `periodNumber`, `focusId?`, `focusTitle`, `focusComment?`
   - Rules: block if active focuses already `3` and creating new
+  - Side effect: when creating a new focus, enqueue/generate Entrenado exercise asynchronously.
 - `v2-toggle-focus-phase`
   - Input: `sessionId`, `focusId`, `phase`, `checked`
   - Rules: update completion state atomically
@@ -52,3 +58,6 @@
 - `v2-submit-class-student-report`
   - Input: `sessionId`, `periodNumber`, `classIndex`, `guidelineResponse1`, `guidelineResponse2`, `guidelineResponse3`
   - Rules: only enabled after coach has filled 3 guideline fields; unlock teacher report when all responses are completed
+- `v2-submit-focus-exercise-attempt`
+  - Input: `sessionId`, `periodNumber`, `focusId`, score summary + block/tag/failure breakdown
+  - Rules: student-only; stores attempt and can auto-mark `phaseTrained` when passed (if `phaseExplained` is already true)

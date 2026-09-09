@@ -268,6 +268,31 @@ export type CoachingV2ClassSlot = {
   updatedAt: string
 }
 
+export type CoachingV2FocusExercise = {
+  focusId: string
+  periodNumber: number
+  status: 'pending' | 'generating' | 'ready' | 'error'
+  exercise: Record<string, unknown> | null
+  error: string | null
+  generatedAt: string | null
+  updatedAt: string
+}
+
+export type CoachingV2FocusExerciseAttempt = {
+  id: string
+  focusId: string
+  periodNumber: number
+  studentUserId: string
+  scoreCorrect: number
+  scoreTotal: number
+  scoreThreshold: number
+  passed: boolean
+  blockScores: unknown
+  tagScores: unknown
+  failures: unknown
+  submittedAt: string
+}
+
 export type CoachingV2SessionBoard = {
   session: {
     id: string
@@ -291,6 +316,8 @@ export type CoachingV2SessionBoard = {
     nextPeriodEligible: number | null
   }
   focuses: CoachingV2Focus[]
+  focusExercises: CoachingV2FocusExercise[]
+  focusExerciseAttempts: CoachingV2FocusExerciseAttempt[]
   canCreateFocus: boolean
   classes: CoachingV2ClassSlot[]
   snapshot: unknown[] | null
@@ -682,6 +709,59 @@ export async function fetchCoachingV2SessionBoard(input: {
     },
     'No se pudo cargar el tablero v2 de coaching.',
   )
+}
+
+export async function fetchMyCoachingV2SessionBoard(input: {
+  sessionId: string
+  periodNumber?: number
+}): Promise<CoachingV2SessionBoard> {
+  return invokeCoachingFunction<CoachingV2SessionBoard>(
+    'coaching-center',
+    {
+      action: 'v2-get-session-board-member',
+      sessionId: input.sessionId,
+      ...(typeof input.periodNumber === 'number'
+        ? { periodNumber: input.periodNumber }
+        : {}),
+    },
+    'No se pudo cargar el tablero v2 de coaching.',
+  )
+}
+
+export async function submitCoachingV2FocusExerciseAttempt(input: {
+  sessionId: string
+  periodNumber: number
+  focusId: string
+  scoreCorrect: number
+  scoreTotal: number
+  scoreThreshold: number
+  passed: boolean
+  blockScores: unknown[]
+  tagScores: unknown[]
+  failures: unknown[]
+}): Promise<{ phaseTrainedUpdated: boolean }> {
+  const data = await invokeCoachingFunction<{
+    ok?: boolean
+    phaseTrainedUpdated?: boolean
+  }>(
+    'coaching-center',
+    {
+      action: 'v2-submit-focus-exercise-attempt',
+      sessionId: input.sessionId,
+      periodNumber: input.periodNumber,
+      focusId: input.focusId,
+      scoreCorrect: input.scoreCorrect,
+      scoreTotal: input.scoreTotal,
+      scoreThreshold: input.scoreThreshold,
+      passed: input.passed,
+      blockScores: input.blockScores,
+      tagScores: input.tagScores,
+      failures: input.failures,
+    },
+    'No se pudo guardar el resultado del ejercicio.',
+  )
+
+  return { phaseTrainedUpdated: Boolean(data.phaseTrainedUpdated) }
 }
 
 export async function upsertCoachingV2Focus(input: {
