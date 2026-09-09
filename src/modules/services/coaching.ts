@@ -732,6 +732,21 @@ export async function toggleCoachingV2FocusPhase(input: {
   return data.focus || null
 }
 
+export async function deleteCoachingV2Focus(input: {
+  sessionId: string
+  focusId: string
+}): Promise<void> {
+  await invokeCoachingFunction<{ ok?: boolean }>(
+    'coaching-center',
+    {
+      action: 'v2-delete-focus',
+      sessionId: input.sessionId,
+      focusId: input.focusId,
+    },
+    'No se pudo borrar el foco v2.',
+  )
+}
+
 export async function closeCoachingV2Period(input: {
   sessionId: string
   periodNumber?: number

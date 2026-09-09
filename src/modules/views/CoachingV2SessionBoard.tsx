@@ -2,9 +2,14 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   BookOpenIcon,
+  CircleHelpIcon,
+  CheckIcon,
   CopyIcon,
   LanguagesIcon,
+  LockIcon,
+  LockOpenIcon,
   PlayCircleIcon,
+  Trash2Icon,
   UploadIcon,
   UserIcon,
 } from "lucide-react";
@@ -20,8 +25,17 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   activateCoachingV2Period,
   closeCoachingV2Period,
+  deleteCoachingV2Focus,
   fetchCoachingV2SessionBoard,
   submitCoachingV2StudentClassReport,
   toggleCoachingV2FocusPhase,
@@ -35,7 +49,6 @@ import {
 } from "../services/coaching";
 import {
   areCoachGuidelinesComplete,
-  getVisibleFocusColumns,
 } from "./coachingV2Matrix";
 import {
   toDateAndTimeFromIso,
@@ -66,11 +79,33 @@ type ClassDraft = {
   guidelineResponse3: string;
 };
 
-const PHASES: Array<{ key: keyof CoachingV2Focus; label: string }> = [
-  { key: "phaseExplained", label: "Explicado" },
-  { key: "phaseTrained", label: "Entrenado" },
-  { key: "phaseUnderstoodExplained", label: "Entendido/Explicado" },
-  { key: "phaseUsed", label: "Usado" },
+const PHASES: Array<{
+  key: keyof CoachingV2Focus;
+  label: string;
+  info: string;
+}> = [
+  {
+    key: "phaseExplained",
+    label: "Explicado",
+    info: "Tu coach te ha explicado esta estructura en clase.",
+  },
+  {
+    key: "phaseTrained",
+    label: "Entrenado",
+    info: "Has hecho el ejercicio de esta estructura.",
+  },
+  {
+    key: "phaseUnderstoodExplained",
+    label: "Entendido",
+    info:
+      "Se la has explicado tu a tu coach, en voz alta y con tus palabras. Explicar algo es la prueba de que lo entiendes.",
+  },
+  {
+    key: "phaseUsed",
+    label: "Dominado",
+    info:
+      "Te ha salido sola. Tu coach te lanza una pregunta en clase que obliga a usar esta estructura sin avisarte de que es una prueba, y sale bien.",
+  },
 ];
 
 function isFocusCompleted(focus: CoachingV2Focus): boolean {
@@ -122,7 +157,18 @@ export function CoachingV2SessionBoard({
   const [openPeriodValue, setOpenPeriodValue] = useState<string>("1");
   const [newFocusTitle, setNewFocusTitle] = useState("");
   const [newFocusComment, setNewFocusComment] = useState("");
-  const [showAllFocuses, setShowAllFocuses] = useState(false);
+  const [openFocusCommentId, setOpenFocusCommentId] = useState<string | null>(
+    null,
+  );
+  const [focusDeleteCandidateId, setFocusDeleteCandidateId] = useState<
+    string | null
+  >(null);
+  const [openPhaseInfoKey, setOpenPhaseInfoKey] = useState<string | null>(
+    null,
+  );
+  const [justCompletedFocusId, setJustCompletedFocusId] = useState<
+    string | null
+  >(null);
   const [classDrafts, setClassDrafts] = useState<Record<string, ClassDraft>>(
     {},
   );
@@ -159,7 +205,9 @@ export function CoachingV2SessionBoard({
         );
       }
       if (!silent) {
-        setShowAllFocuses(false);
+        setOpenFocusCommentId(null);
+        setFocusDeleteCandidateId(null);
+        setOpenPhaseInfoKey(null);
       }
     } catch (err) {
       setError(
@@ -229,7 +277,7 @@ export function CoachingV2SessionBoard({
   };
 
   const handleTogglePhase = async (
-    focusId: string,
+    focus: CoachingV2Focus,
     phase:
       | "phaseExplained"
       | "phaseTrained"
@@ -237,11 +285,19 @@ export function CoachingV2SessionBoard({
       | "phaseUsed",
     checked: boolean,
   ) => {
+    const phaseIndex = PHASES.findIndex((row) => row.key === phase);
+    if (phaseIndex < 0) return;
+    const phaseValues = PHASES.map((row) => Boolean(focus[row.key]));
+    const allPreviousDone = phaseValues.slice(0, phaseIndex).every(Boolean);
+    const anyNextDone = phaseValues.slice(phaseIndex + 1).some(Boolean);
+    if (checked && !allPreviousDone) return;
+    if (!checked && anyNextDone) return;
+
     setSaving(true);
     try {
       const updated = await toggleCoachingV2FocusPhase({
         sessionId,
-        focusId,
+        focusId: focus.id,
         phase,
         checked,
       });
@@ -255,11 +311,40 @@ export function CoachingV2SessionBoard({
             ),
           };
         });
+
+        if (checked && phase === "phaseUsed") {
+          setJustCompletedFocusId(updated.id);
+          window.setTimeout(() => {
+            setJustCompletedFocusId((prev) => (prev === updated.id ? null : prev));
+          }, 1500);
+        }
       }
       toast.success("Fase actualizada.");
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "No se pudo actualizar fase.";
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteFocus = async (focusId: string) => {
+    setSaving(true);
+    try {
+      await deleteCoachingV2Focus({ sessionId, focusId });
+      setBoard((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          focuses: prev.focuses.filter((focus) => focus.id !== focusId),
+        };
+      });
+      setFocusDeleteCandidateId(null);
+      setOpenFocusCommentId((prev) => (prev === focusId ? null : prev));
+      toast.success("Foco borrado.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "No se pudo borrar foco.";
       toast.error(message);
     } finally {
       setSaving(false);
@@ -421,16 +506,23 @@ export function CoachingV2SessionBoard({
   const unlockedProgressPct = Math.round(
     (unlockedPeriods / durationPeriods) * 100,
   );
-  const selectedVisibleFocuses = getVisibleFocusColumns(
-    selectedPeriodFocuses,
-    showAllFocuses,
+  const activeFocusesInSelectedPeriod = selectedPeriodFocuses.filter(
+    (focus) => !focus.archivedAt && !isFocusCompleted(focus),
   );
-  const selectedHiddenFocusColumns =
-    selectedPeriodFocuses.length - selectedVisibleFocuses.length;
+  const completedFocusesInSelectedPeriod = selectedPeriodFocuses.filter(
+    (focus) => !focus.archivedAt && isFocusCompleted(focus),
+  );
+  const focusColumns: Array<CoachingV2Focus | null> = [
+    ...activeFocusesInSelectedPeriod.slice(0, 3),
+    ...Array(Math.max(0, 3 - activeFocusesInSelectedPeriod.length)).fill(null),
+  ];
   const canCreateFocusInSelectedPeriod =
     selectedPeriodFocuses.filter(
       (focus) => !focus.archivedAt && !isFocusCompleted(focus),
     ).length < 3;
+  const focusDeleteCandidate =
+    selectedPeriodFocuses.find((focus) => focus.id === focusDeleteCandidateId) ||
+    null;
 
   return (
     <div className="grid gap-4">
@@ -589,7 +681,6 @@ export function CoachingV2SessionBoard({
           if (!isPeriodActivated) return;
 
           setOpenPeriodValue(value);
-          setShowAllFocuses(false);
 
           if (period === selectedPeriod) return;
 
@@ -601,17 +692,6 @@ export function CoachingV2SessionBoard({
           { length: board.session.durationPeriods || 10 },
           (_, idx) => {
             const period = idx + 1;
-            const periodFocuses = board.focuses.filter(
-              (focus) => focus.periodNumber === period,
-            );
-            const visibleFocuses =
-              period === selectedPeriod
-                ? selectedVisibleFocuses
-                : getVisibleFocusColumns(periodFocuses, false);
-            const hiddenFocusColumns =
-              period === selectedPeriod
-                ? selectedHiddenFocusColumns
-                : periodFocuses.length - visibleFocuses.length;
             const periodClassesByIndex = new Map<number, CoachingV2ClassSlot>();
             for (const classSlot of board.classes) {
               if (classSlot.periodNumber !== period) continue;
@@ -716,167 +796,182 @@ export function CoachingV2SessionBoard({
                           </div>
                         )}
 
-                        {periodFocuses.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">
-                            Sin focos para este periodo.
-                          </p>
-                        ) : (
-                          <>
-                            <div className="flex flex-wrap items-center gap-2">
-                              {!showAllFocuses && hiddenFocusColumns > 0 && (
-                                <p className="text-xs text-muted-foreground">
-                                  Mostrando ultimos {visibleFocuses.length}{" "}
-                                  focos. Hay {hiddenFocusColumns} ocultos.
-                                </p>
-                              )}
-                              {periodFocuses.length > 5 && (
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() =>
-                                    setShowAllFocuses((current) => !current)
-                                  }
-                                >
-                                  {showAllFocuses
-                                    ? "Ver solo ultimos 5"
-                                    : "Mostrar todo (expandir tabla)"}
-                                </Button>
-                              )}
-                            </div>
-
-                            <div className="hidden md:block">
-                              <div className="overflow-x-auto rounded-md border">
-                                <table className="min-w-[760px] w-full text-sm">
-                                  <thead>
-                                    <tr className="border-b bg-muted/30">
-                                      <th className="w-44 p-2 text-left font-medium">
-                                        Fase / Foco
-                                      </th>
-                                      {visibleFocuses.map((focus) => (
-                                        <th
-                                          key={focus.id}
-                                          className="min-w-36 p-2 text-left align-top"
-                                        >
-                                          <div className="space-y-1">
-                                            <p className="font-medium">
-                                              {focus.focusTitle}
-                                            </p>
+                        <div className="overflow-x-auto rounded-md border">
+                          <table className="min-w-[760px] w-full text-sm">
+                            <thead>
+                              <tr className="border-b bg-muted/30">
+                                <th className="w-44 p-2 text-left font-medium">Fase</th>
+                                {focusColumns.map((focus, idx) => (
+                                  <th
+                                    key={focus?.id || `ghost-${idx}`}
+                                    className="min-w-44 p-2 text-left align-top"
+                                  >
+                                    {focus ? (
+                                      <div className={justCompletedFocusId === focus.id ? "animate-pulse" : ""}>
+                                        <div className="flex items-center gap-2">
+                                          <p className="!mb-0 font-medium">{focus.focusTitle}</p>
+                                          <div className="flex items-center gap-1">
                                             {focus.focusComment && (
-                                              <p className="text-xs text-muted-foreground">
-                                                {focus.focusComment}
-                                              </p>
-                                            )}
-                                            {focus.completedAt && (
-                                              <Badge className="text-[10px]">
-                                                Cumplido
-                                              </Badge>
-                                            )}
-                                          </div>
-                                        </th>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {PHASES.map((phase) => (
-                                      <tr
-                                        key={phase.key}
-                                        className="border-b last:border-b-0"
-                                      >
-                                        <td className="p-2 font-medium">
-                                          {phase.label}
-                                        </td>
-                                        {visibleFocuses.map((focus) => (
-                                          <td
-                                            key={`${focus.id}-${phase.key}`}
-                                            className="p-2"
-                                          >
-                                            <label className="inline-flex items-center gap-2">
-                                              <input
-                                                type="checkbox"
-                                                checked={Boolean(
-                                                  focus[phase.key],
-                                                )}
-                                                disabled={
-                                                  mode !== "coach" || saving
-                                                }
-                                                onChange={(event) =>
-                                                  void handleTogglePhase(
-                                                    focus.id,
-                                                    phase.key as
-                                                      | "phaseExplained"
-                                                      | "phaseTrained"
-                                                      | "phaseUnderstoodExplained"
-                                                      | "phaseUsed",
-                                                    event.target.checked,
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="icon"
+                                                className="size-5"
+                                                onClick={() =>
+                                                  setOpenFocusCommentId((prev) =>
+                                                    prev === focus.id ? null : focus.id,
                                                   )
                                                 }
-                                              />
-                                              <span className="text-xs text-muted-foreground">
-                                                OK
-                                              </span>
-                                            </label>
-                                          </td>
-                                        ))}
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-
-                            <div className="grid gap-2 md:hidden">
-                              {visibleFocuses.map((focus) => (
-                                <div
-                                  key={focus.id}
-                                  className="rounded-md border p-3"
-                                >
-                                  <div className="mb-2 flex items-center gap-2">
-                                    <p className="font-medium">
-                                      {focus.focusTitle}
-                                    </p>
-                                    {focus.completedAt && (
-                                      <Badge className="text-[10px]">
-                                        Cumplido
-                                      </Badge>
+                                              >
+                                                <CircleHelpIcon className="size-3" />
+                                              </Button>
+                                            )}
+                                            {mode === "coach" && (
+                                              <Button
+                                                type="button"
+                                                variant="destructive"
+                                                size="icon"
+                                                className="size-5"
+                                                onClick={() =>
+                                                  setFocusDeleteCandidateId(focus.id)
+                                                }
+                                              >
+                                                <Trash2Icon className="size-3" />
+                                              </Button>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <p className="text-xs text-muted-foreground">
+                                        {mode === "coach"
+                                          ? "Hueco libre"
+                                          : "Aqui ira tu proximo foco"}
+                                      </p>
                                     )}
-                                  </div>
-                                  {focus.focusComment && (
-                                    <p className="mb-2 text-xs text-muted-foreground">
-                                      {focus.focusComment}
-                                    </p>
-                                  )}
-                                  <div className="grid gap-2">
-                                    {PHASES.map((phase) => (
-                                      <label
-                                        key={`${focus.id}-mobile-${phase.key}`}
-                                        className="flex items-center justify-between gap-2 text-sm"
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {PHASES.map((phase) => (
+                                <tr key={phase.key} className="border-b last:border-b-0">
+                                  <td className="p-2 font-medium">
+                                    <div className="flex items-center gap-2">
+                                      <span>{phase.label}</span>
+                                      <button
+                                        type="button"
+                                        className="inline-flex items-center justify-center rounded-full border p-0.5"
+                                        onClick={() =>
+                                          setOpenPhaseInfoKey((prev) =>
+                                            prev === phase.key ? null : String(phase.key),
+                                          )
+                                        }
                                       >
-                                        <span>{phase.label}</span>
-                                        <input
-                                          type="checkbox"
-                                          checked={Boolean(focus[phase.key])}
-                                          disabled={mode !== "coach" || saving}
-                                          onChange={(event) =>
+                                        <CircleHelpIcon className="size-3" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                  {focusColumns.map((focus, idx) => {
+                                    if (!focus) {
+                                      return (
+                                        <td key={`ghost-cell-${phase.key}-${idx}`} className="bg-muted/20 p-2" />
+                                      );
+                                    }
+
+                                    const phaseIndex = PHASES.findIndex(
+                                      (row) => row.key === phase.key,
+                                    );
+                                    const phaseValues = PHASES.map((row) =>
+                                      Boolean(focus[row.key]),
+                                    );
+                                    const checked = phaseValues[phaseIndex];
+                                    const isNext =
+                                      phaseIndex === phaseValues.filter(Boolean).length;
+                                    const clickable =
+                                      mode === "coach" &&
+                                      (checked
+                                        ? !phaseValues.slice(phaseIndex + 1).some(Boolean)
+                                        : isNext);
+
+                                    return (
+                                      <td key={`${focus.id}-${phase.key}`} className="p-2">
+                                        <button
+                                          type="button"
+                                          disabled={!clickable || saving}
+                                          className="flex w-full items-center gap-2 text-left disabled:cursor-default disabled:opacity-70"
+                                          onClick={() =>
                                             void handleTogglePhase(
-                                              focus.id,
+                                              focus,
                                               phase.key as
                                                 | "phaseExplained"
                                                 | "phaseTrained"
                                                 | "phaseUnderstoodExplained"
                                                 | "phaseUsed",
-                                              event.target.checked,
+                                              !checked,
                                             )
                                           }
-                                        />
-                                      </label>
-                                    ))}
-                                  </div>
-                                </div>
+                                        >
+                                          <span
+                                            className={`inline-flex size-4 items-center justify-center rounded-full border text-[10px] ${
+                                              checked
+                                                ? "border-primary bg-primary text-primary-foreground"
+                                                : isNext
+                                                  ? "border-foreground"
+                                                  : "border-muted-foreground"
+                                            }`}
+                                          >
+                                            {checked ? <CheckIcon className="size-3" /> : null}
+                                          </span>
+                                          <span className="text-xs text-muted-foreground">
+                                            {checked
+                                              ? "Hecho"
+                                              : isNext
+                                                ? mode === "coach"
+                                                  ? "Marcar"
+                                                  : "Por hacer"
+                                                : ""}
+                                          </span>
+                                        </button>
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
                               ))}
-                            </div>
-                          </>
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {openPhaseInfoKey && (
+                          <p className="rounded-md border-l-2 border-primary bg-muted/30 p-2 text-sm text-muted-foreground">
+                            {
+                              PHASES.find((phase) => phase.key === openPhaseInfoKey)
+                                ?.info
+                            }
+                          </p>
                         )}
+
+                        {openFocusCommentId && (
+                          <p className="rounded-md border-l-2 border-primary bg-muted/30 p-2 text-sm text-muted-foreground">
+                            {
+                              selectedPeriodFocuses.find(
+                                (focus) => focus.id === openFocusCommentId,
+                              )?.focusComment || ""
+                            }
+                          </p>
+                        )}
+
+                        {completedFocusesInSelectedPeriod.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Dominados</p>
+                            {completedFocusesInSelectedPeriod.map((focus) => (
+                              <div key={`completed-${focus.id}`} className="text-sm">
+                                - {focus.focusTitle}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
                       </CardContent>
                     </Card>
 
@@ -931,6 +1026,12 @@ export function CoachingV2SessionBoard({
                               classSlot?.studentGuidelineResponse3?.trim(),
                             ),
                           ];
+                          const completedTasksCount = responseStatus.filter(
+                            Boolean,
+                          ).length;
+                          const tasksProgressPct =
+                            (Math.min(3, Math.max(0, completedTasksCount)) / 3) *
+                            100;
                           const classVideoEmbedUrl = getEmbeddableVideoUrl(
                             classSlot?.loomUrl || null,
                           );
@@ -1254,14 +1355,47 @@ export function CoachingV2SessionBoard({
                                     </div>
                                   )}
 
-                                  {!hasStudentResponses &&
-                                    teacherTasks.length > 0 && (
-                                      <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                                        Completa las 3 tareas del profesor para
-                                        desbloquear el reporte de texto y la
-                                        imagen.
+                                  {teacherTasks.length > 0 && (
+                                    <div className="w-full rounded-md border border-cyan-300/60 bg-cyan-500/10 p-2">
+                                      <div className="mb-1 flex items-center gap-2">
+                                        <span className="text-xs text-cyan-100">
+                                          {completedTasksCount}/3 tareas
+                                        </span>
+                                        <span className="ml-auto text-cyan-200">
+                                          {hasStudentResponses ? (
+                                            <LockOpenIcon className="size-4" />
+                                          ) : (
+                                            <LockIcon className="size-4" />
+                                          )}
+                                        </span>
+                                      </div>
+                                      <div className="relative h-3">
+                                        <div className="absolute top-1/2 left-0 right-0 h-1 -translate-y-1/2 rounded-full bg-cyan-200/30" />
+                                        <div
+                                          className="absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full bg-cyan-400 transition-all"
+                                          style={{ width: `${tasksProgressPct}%` }}
+                                        />
+                                        <div className="relative z-10 flex items-center justify-between">
+                                          {[0, 1, 2].map((index) => {
+                                            const done = index < completedTasksCount;
+                                            return (
+                                              <span
+                                                key={`${classIndex}-task-progress-${index}`}
+                                                className={`inline-flex size-3 rounded-full border ${
+                                                  done
+                                                    ? "border-cyan-400 bg-cyan-400"
+                                                    : "border-cyan-300 bg-slate-900"
+                                                }`}
+                                              />
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                      <p className="mt-1 text-xs text-cyan-100/90">
+                                        Completa tareas para desbloquear reporte.
                                       </p>
-                                    )}
+                                    </div>
+                                  )}
 
                                   {hasStudentResponses && (
                                     <div className="space-y-2 rounded-md border bg-muted/20 p-2 text-sm">
@@ -1297,6 +1431,47 @@ export function CoachingV2SessionBoard({
           },
         )}
       </Accordion>
+
+      <Dialog
+        open={Boolean(focusDeleteCandidateId)}
+        onOpenChange={(open) => {
+          if (!open) setFocusDeleteCandidateId(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Borrar foco</DialogTitle>
+            <DialogDescription>
+              {focusDeleteCandidate
+                ? `Se borrara "${focusDeleteCandidate.focusTitle}".`
+                : "Se borrara este foco."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setFocusDeleteCandidateId(null)}
+              disabled={saving}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() =>
+                focusDeleteCandidateId
+                  ? void handleDeleteFocus(focusDeleteCandidateId)
+                  : undefined
+              }
+              disabled={saving || !focusDeleteCandidateId}
+            >
+              <Trash2Icon className="size-4" />
+              Borrar foco
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -2104,8 +2104,35 @@ Deno.serve(async (req) => {
       return jsonResponse(404, { error: 'Focus not found' })
     }
 
+    const currentState = toV2FocusState(focusRow)
+    const phaseOrder: CoachingV2FocusPhaseKey[] = [
+      'phaseExplained',
+      'phaseTrained',
+      'phaseUnderstoodExplained',
+      'phaseUsed',
+    ]
+    const phaseIndex = phaseOrder.indexOf(phase)
+    if (phaseIndex < 0) {
+      return jsonResponse(400, { error: 'Invalid phase' })
+    }
+
+    const allPreviousDone = phaseOrder
+      .slice(0, phaseIndex)
+      .every((key) => Boolean(currentState[key]))
+    const hasNextDone = phaseOrder
+      .slice(phaseIndex + 1)
+      .some((key) => Boolean(currentState[key]))
+
+    if (checked && !allPreviousDone) {
+      return jsonResponse(400, { error: 'Previous phases must be completed first' })
+    }
+
+    if (!checked && hasNextDone) {
+      return jsonResponse(400, { error: 'Cannot uncheck while next phases are completed' })
+    }
+
     const nextState = applyFocusPhaseToggle({
-      focus: toV2FocusState(focusRow),
+      focus: currentState,
       phase,
       checked,
       nowIso: new Date().toISOString(),
@@ -2135,6 +2162,54 @@ Deno.serve(async (req) => {
       ok: true,
       focus: updated ? toV2FocusState(updated) : null,
     })
+  }
+
+  if (action === 'v2-delete-focus') {
+    const sessionId = safeString(payload.sessionId)
+    const focusId = safeString(payload.focusId)
+    if (!sessionId || !focusId) {
+      return jsonResponse(400, { error: 'sessionId and focusId are required' })
+    }
+
+    const { row: sessionRow, error: sessionError } = await fetchCoachingV2Session(
+      admin.adminClient,
+      sessionId,
+    )
+    if (sessionError) return jsonResponse(500, { error: sessionError })
+    if (!sessionRow) {
+      return jsonResponse(404, { error: 'Coaching session not found' })
+    }
+    if (!canManageSession(admin, sessionRow.coach_user_id, sessionRow.support_coach_user_id)) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    if (sessionRow.program_version !== 'v2') {
+      return jsonResponse(400, { error: 'Session is not v2' })
+    }
+
+    const { data: existing, error: existingError } = await admin.adminClient
+      .from('coaching_v2_focuses')
+      .select('id, session_id')
+      .eq('id', focusId)
+      .maybeSingle<{ id: string; session_id: string }>()
+
+    if (existingError) {
+      return jsonResponse(500, { error: existingError.message })
+    }
+
+    if (!existing || existing.session_id !== sessionId) {
+      return jsonResponse(404, { error: 'Focus not found' })
+    }
+
+    const { error: deleteError } = await admin.adminClient
+      .from('coaching_v2_focuses')
+      .delete()
+      .eq('id', focusId)
+
+    if (deleteError) {
+      return jsonResponse(500, { error: deleteError.message })
+    }
+
+    return jsonResponse(200, { ok: true })
   }
 
   if (action === 'v2-close-period') {
