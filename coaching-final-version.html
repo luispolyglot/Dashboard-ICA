@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coaching ICA · vista del alumno</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --tinta:#04121b;
+  --casco:#0a2130;
+  --casco-alto:#0e2c3e;
+  --linea:#17405473;
+  --linea-viva:#1f5670;
+  --texto:#eaf6fa;
+  --tenue:#7fa2b5;
+  --cian:#2fd4ec;
+  --cian-hondo:#0d6f85;
+  --oro:#e9b65c;
+  --oro-hondo:#6d5122;
+  --display:'Bricolage Grotesque','Trebuchet MS',system-ui,sans-serif;
+  --ui:'Instrument Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --r:14px;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:
+    radial-gradient(1100px 620px at 78% -10%, #0b3346 0%, transparent 62%),
+    radial-gradient(760px 460px at 4% 8%, #08283a 0%, transparent 58%),
+    var(--tinta);
+  background-attachment:fixed;
+  color:var(--texto);
+  font-family:var(--ui);
+  font-size:15px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+:focus-visible{outline:2px solid var(--cian);outline-offset:3px;border-radius:6px}
+textarea{font:inherit}
+
+.marco{max-width:1080px;margin:0 auto;padding:36px 22px 72px}
+
+/* ————————————————— cabecera ————————————————— */
+.cabecera{display:flex;flex-wrap:wrap;gap:26px;align-items:flex-end;justify-content:space-between}
+.marca{font-size:12.5px;letter-spacing:.02em;color:var(--tenue)}
+.idioma{
+  font-family:var(--display);
+  font-size:clamp(38px,7vw,60px);
+  font-weight:800;
+  letter-spacing:-.035em;
+  line-height:.92;
+  margin:6px 0 0;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+}
+.nivel{
+  font-family:var(--ui);font-size:13px;font-weight:600;letter-spacing:.01em;
+  color:var(--cian);border:1px solid #1c6b81;border-radius:999px;
+  padding:5px 11px;background:#0a2c3a;translate:0 -6px;
+}
+.cabecera-sub{color:var(--tenue);font-size:14px;margin-top:10px;max-width:44ch}
+.cabecera-der{display:flex;flex-direction:column;align-items:flex-start;gap:12px}
+.equipo{display:flex;align-items:center;gap:9px;color:var(--tenue);font-size:13px}
+.cara{
+  width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
+  font-family:var(--display);font-size:13px;font-weight:700;color:#04121b;
+  border:2px solid var(--tinta);
+}
+.cara+.cara{margin-left:-12px}
+.cara.a{background:linear-gradient(150deg,#5fe2f5,#1a9fbb)}
+.cara.b{background:linear-gradient(150deg,#f3cd85,#c78f2e)}
+.envivo{
+  display:inline-flex;align-items:center;gap:9px;
+  border:1px solid var(--linea-viva);border-radius:999px;
+  padding:9px 16px 9px 13px;font-size:13.5px;font-weight:500;
+  background:#0a2534;transition:border-color .18s, background .18s;
+}
+.envivo:hover{border-color:var(--cian);background:#0d3143}
+.punto{width:7px;height:7px;border-radius:50%;background:#3f6376}
+.envivo[data-vivo="si"] .punto{background:var(--cian);box-shadow:0 0 0 4px #2fd4ec2e}
+
+/* ————————————————— recorrido de 10 semanas ————————————————— */
+.recorrido{margin-top:38px;border-top:1px solid var(--linea);padding-top:20px}
+.recorrido-cab{display:flex;justify-content:space-between;align-items:baseline;gap:16px;margin-bottom:14px}
+.recorrido-cab h2{font-family:var(--ui);font-size:13px;font-weight:600;color:var(--tenue)}
+.recorrido-cab span{font-size:13px;color:var(--tenue)}
+.semanas{display:flex;gap:5px;align-items:flex-end}
+.sem{flex:1;text-align:center}
+.sem i{
+  display:block;height:7px;border-radius:3px;background:#123044;
+  transition:background .3s, box-shadow .3s, height .3s;
+}
+.sem b{
+  display:block;font-family:var(--display);font-size:12px;font-weight:600;
+  color:#3f6376;margin-top:8px;letter-spacing:.01em;
+}
+.sem.pasada i{background:linear-gradient(90deg,#a4772c,#e9b65c)}
+.sem.pasada b{color:var(--oro)}
+.sem.ahora i{height:13px;background:var(--cian);box-shadow:0 0 0 4px #2fd4ec24,0 6px 18px #2fd4ec33}
+.sem.ahora b{color:var(--texto);font-size:13px}
+
+/* ————————————————— bloques ————————————————— */
+.bloque{margin-top:44px}
+.bloque-cab{display:flex;align-items:baseline;justify-content:space-between;gap:18px;margin-bottom:16px;flex-wrap:wrap}
+.bloque-cab h2{font-family:var(--display);font-size:24px;font-weight:700;letter-spacing:-.02em}
+.bloque-cab p{font-size:13.5px;color:var(--tenue);max-width:52ch}
+
+/* ————————————————— la espina de la semana ————————————————— */
+.espina{
+  background:linear-gradient(180deg,#0b2635,#081e2b);
+  border:1px solid var(--linea);border-radius:20px;padding:26px 28px 22px;
+  position:relative;overflow:hidden;
+}
+.espina-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-bottom:30px}
+.espina-cab h3{font-family:var(--display);font-size:19px;font-weight:700;letter-spacing:-.02em}
+.espina-cab p{font-size:13.5px;color:var(--tenue);margin-top:4px}
+.contador{font-family:var(--display);font-size:15px;color:var(--tenue);white-space:nowrap}
+.contador b{font-size:34px;font-weight:800;color:var(--texto);letter-spacing:-.03em}
+.contador.lleno b{color:var(--oro)}
+
+.rail{position:relative;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:8px 0 4px}
+.rail-pista{position:absolute;left:22px;right:30px;top:29px;height:3px;background:#12354a;border-radius:3px}
+.bolo svg{width:19px;height:19px}
+.chapa svg{width:13px;height:13px}
+.espina-pie svg{width:15px;height:15px;flex:none;translate:0 3px}
+.rail-avance{height:100%;width:0;border-radius:3px;background:linear-gradient(90deg,#0d6f85,#2fd4ec);transition:width .5s cubic-bezier(.4,1.3,.5,1)}
+.rail-avance.completo{background:linear-gradient(90deg,#2fd4ec 0%,#7ad9c8 55%,#e9b65c 100%)}
+
+.nodo{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:9px;width:44px}
+.nodo .bolo{
+  width:44px;height:44px;border-radius:50%;display:grid;place-items:center;
+  background:#0b2839;border:2px solid #1d4a61;
+  font-family:var(--display);font-size:16px;font-weight:700;color:#5d8497;
+  transition:transform .28s cubic-bezier(.2,1.6,.4,1), background .28s, border-color .28s, color .28s;
+}
+.nodo small{font-size:11px;color:#4d738a;text-align:center;line-height:1.3;white-space:nowrap}
+.nodo:hover .bolo{border-color:#2b6d87}
+.nodo.hecha .bolo{background:var(--cian);border-color:var(--cian);color:#04121b;box-shadow:0 5px 16px #2fd4ec36}
+.nodo.hecha small{color:var(--tenue)}
+.nodo.recien .bolo{animation:pop .45s cubic-bezier(.2,1.7,.4,1)}
+@keyframes pop{0%{transform:scale(.7)}55%{transform:scale(1.22)}100%{transform:scale(1)}}
+
+.premio{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;gap:9px;width:60px}
+.sello{
+  width:58px;height:58px;border-radius:50%;display:grid;place-items:center;
+  border:2px dashed #2a5163;background:#0a2231;color:#5d8497;
+  transition:all .4s cubic-bezier(.3,1.4,.4,1);
+}
+.sello svg{width:22px;height:22px}
+.premio small{font-size:11px;color:#4d738a;white-space:nowrap}
+.premio.abierto .sello{
+  border:2px solid var(--oro);border-style:solid;color:#04121b;
+  background:linear-gradient(150deg,#f6d795,#dda43f);
+  box-shadow:0 0 0 6px #e9b65c1f,0 10px 26px #e9b65c33;
+  animation:girar .7s cubic-bezier(.3,1.4,.4,1);
+}
+.premio.abierto small{color:var(--oro)}
+@keyframes girar{0%{transform:rotate(-25deg) scale(.6)}60%{transform:rotate(6deg) scale(1.12)}100%{transform:rotate(0) scale(1)}}
+
+.espina-pie{
+  margin-top:26px;padding-top:18px;border-top:1px solid var(--linea);
+  font-size:13.5px;color:var(--tenue);display:flex;gap:10px;align-items:flex-start;
+}
+.espina-pie b{color:var(--texto);font-weight:600}
+
+/* ————————————————— focos ————————————————— */
+.focos{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.foco{
+  background:var(--casco);border:1px solid var(--linea);border-radius:var(--r);
+  padding:20px 20px 18px;display:flex;flex-direction:column;gap:16px;
+}
+.foco-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.foco-top span{font-size:12px;color:var(--tenue)}
+.foco-top em{font-family:var(--display);font-style:normal;font-size:13px;font-weight:600;color:var(--cian)}
+.foco h4{font-family:var(--display);font-size:17.5px;font-weight:700;letter-spacing:-.015em;line-height:1.2}
+
+.escalera{display:flex;gap:4px}
+.peldano{flex:1;display:flex;flex-direction:column;gap:7px;align-items:stretch;text-align:left;padding:0;border-radius:4px}
+.peldano i{height:6px;border-radius:3px;background:#123044;transition:background .3s}
+.peldano span{font-size:10.5px;color:#4d738a;letter-spacing:.005em;transition:color .3s}
+.peldano.lograda i{background:var(--cian)}
+.peldano.lograda span{color:var(--tenue)}
+.peldano.foco-actual i{background:var(--cian);box-shadow:0 0 0 3px #2fd4ec26}
+.peldano.foco-actual span{color:var(--texto);font-weight:600}
+.peldano.elegida span{color:var(--cian);font-weight:600}
+
+.foco-def{font-size:13px;color:var(--tenue);min-height:56px;line-height:1.45}
+.foco-def b{color:var(--texto);font-weight:600}
+
+.foco.libre{border-style:dashed;border-color:#1b4258;background:#071e2b;justify-content:center;text-align:center;gap:10px}
+.foco.libre h4{color:#456c81;font-weight:600;font-size:16px}
+.foco.libre p{font-size:12.5px;color:#3f6376;line-height:1.45}
+
+.dominados{display:flex;flex-wrap:wrap;gap:9px;margin-top:16px;align-items:center}
+.dominados>span{font-size:12.5px;color:var(--tenue)}
+.medalla{
+  display:inline-flex;align-items:center;gap:8px;font-size:12.5px;
+  border:1px solid #4d3a15;background:#1d1707;color:var(--oro);
+  border-radius:999px;padding:6px 13px 6px 9px;
+}
+.medalla svg{width:13px;height:13px;flex:none}
+.medalla i{font-style:normal;color:#8d7031}
+
+/* ————————————————— clases ————————————————— */
+.clases{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.clase{background:var(--casco);border:1px solid var(--linea);border-radius:var(--r);overflow:hidden}
+.clase-cab{padding:18px 20px 16px;display:flex;justify-content:space-between;gap:14px;align-items:flex-start}
+.clase-cab h3{font-family:var(--display);font-size:18px;font-weight:700;letter-spacing:-.02em}
+.clase-cab p{font-size:12.5px;color:var(--tenue);margin-top:3px}
+.quien{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--tenue);white-space:nowrap}
+
+.video{position:relative;aspect-ratio:16/9;background:linear-gradient(145deg,#123243,#081d29);display:grid;place-items:center;border-block:1px solid var(--linea)}
+.video::before{
+  content:"";position:absolute;inset:0;
+  background:radial-gradient(420px 220px at 30% 35%, #1c4d64 0%, transparent 60%);
+}
+.play{
+  position:relative;width:54px;height:54px;border-radius:50%;background:#eaf6fa;display:grid;place-items:center;
+  box-shadow:0 8px 26px #00000059;transition:transform .2s;
+}
+.play:hover{transform:scale(1.07)}
+.play svg{width:19px;height:19px;margin-left:3px;fill:#04121b}
+.veloz{
+  position:absolute;right:12px;bottom:12px;display:flex;align-items:center;gap:8px;
+  background:#04121bd9;border:1px solid #ffffff1f;border-radius:9px;padding:6px 10px;font-size:12px;
+}
+.veloz s{color:#6b8d9e}
+.veloz b{color:var(--cian);font-weight:600}
+
+.tareas{padding:8px 14px 16px}
+.tarea{border-radius:11px;padding:12px 12px 12px 12px;transition:background .25s}
+.tarea+.tarea{margin-top:2px}
+.tarea-cab{display:flex;gap:11px;align-items:flex-start;width:100%;text-align:left;padding:0}
+.chapa{
+  flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;
+  font-family:var(--display);font-size:12.5px;font-weight:700;
+  background:#0d2f42;border:1px solid #23566d;color:#6d94a7;transition:all .3s;
+}
+.tarea-txt{flex:1;min-width:0}
+.tarea-txt b{display:block;font-size:14.5px;font-weight:600;letter-spacing:-.005em}
+.tarea-txt small{display:block;font-size:12.5px;color:var(--tenue);margin-top:2px;line-height:1.4}
+.flecha{flex:none;color:#456c81;transition:transform .25s;margin-top:3px}
+.flecha svg{width:14px;height:14px}
+.tarea.abierta .flecha{transform:rotate(180deg)}
+.tarea.hecha .chapa{background:var(--cian);border-color:var(--cian);color:#04121b}
+.tarea.hecha .tarea-txt b{color:var(--tenue)}
+
+.tarea-cuerpo{display:none;padding:12px 0 2px 37px}
+.tarea.abierta .tarea-cuerpo{display:block}
+.tarea textarea{
+  width:100%;min-height:78px;resize:vertical;background:#061a26;color:var(--texto);
+  border:1px solid var(--linea-viva);border-radius:10px;padding:11px 13px;font-size:13.5px;line-height:1.5;
+}
+.tarea textarea::placeholder{color:#41647a}
+.tarea textarea:focus{outline:none;border-color:var(--cian);box-shadow:0 0 0 3px #2fd4ec1f}
+.tarea-acciones{display:flex;align-items:center;gap:12px;margin-top:11px}
+.guardar{
+  background:var(--cian);color:#04121b;font-weight:600;font-size:13.5px;
+  border-radius:9px;padding:9px 18px;transition:transform .15s, filter .15s;
+}
+.guardar:hover{filter:brightness(1.08)}
+.guardar:active{transform:translateY(1px)}
+.guardar[disabled]{background:#123044;color:#4d738a;cursor:default}
+.hecho-tag{display:none;align-items:center;gap:7px;font-size:12.5px;color:var(--cian)}
+.tarea.hecha .hecho-tag{display:flex}
+.hecho-tag svg{width:14px;height:14px}
+
+/* ————————————————— reporte ————————————————— */
+.reporte{
+  margin-top:16px;border-radius:18px;padding:26px 28px;
+  border:1px dashed #2a5163;background:#07202d;
+  display:flex;gap:24px;align-items:center;flex-wrap:wrap;
+  transition:border-color .45s, background .45s;
+}
+.reporte-icono{
+  flex:none;width:66px;height:66px;border-radius:16px;display:grid;place-items:center;
+  background:#0c2b3b;border:1px solid #23566d;color:#5d8497;transition:all .45s;
+}
+.reporte-icono svg{width:26px;height:26px}
+.reporte-txt{flex:1;min-width:240px}
+.reporte-txt h3{font-family:var(--display);font-size:20px;font-weight:700;letter-spacing:-.02em}
+.reporte-txt p{font-size:13.5px;color:var(--tenue);margin-top:5px;max-width:56ch}
+.reporte-txt p b{color:var(--texto);font-weight:600}
+.abrir{
+  display:none;background:linear-gradient(150deg,#f6d795,#dda43f);color:#04121b;font-weight:600;font-size:14px;
+  border-radius:10px;padding:12px 22px;white-space:nowrap;transition:filter .15s, transform .15s;
+}
+.abrir:hover{filter:brightness(1.06)}
+.abrir:active{transform:translateY(1px)}
+
+.reporte.abierto{border:1px solid #6d5122;background:linear-gradient(120deg,#1b1608,#0a2230 62%)}
+.reporte.abierto .reporte-icono{
+  background:linear-gradient(150deg,#f6d795,#dda43f);border-color:transparent;color:#04121b;
+  box-shadow:0 10px 30px #e9b65c26;
+}
+.reporte.abierto .abrir{display:block}
+
+/* ————————————————— notas ————————————————— */
+.notas{margin-top:56px;border-top:1px solid var(--linea);padding-top:22px}
+.notas summary{font-size:13.5px;color:var(--tenue);cursor:pointer;list-style:none}
+.notas summary::-webkit-details-marker{display:none}
+.notas summary::before{content:"▸ ";color:#456c81}
+.notas[open] summary::before{content:"▾ "}
+.notas-cuerpo{margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:26px;font-size:13.5px;color:var(--tenue);line-height:1.6}
+.notas h4{font-family:var(--display);font-size:15px;color:var(--texto);margin-bottom:8px;font-weight:700}
+.notas ul{padding-left:18px}
+.notas li{margin-bottom:6px}
+.notas code{background:#0d2c3d;border:1px solid var(--linea);border-radius:5px;padding:1px 6px;font-size:12px;color:#a9d8e6}
+
+@media (max-width:860px){
+  .marco{padding:26px 16px 60px}
+  .focos,.clases,.notas-cuerpo{grid-template-columns:1fr}
+  .sem b{font-size:11px}
+  .rail{flex-direction:column;align-items:flex-start;gap:16px}
+  .rail-pista{left:21px;right:auto;top:30px;bottom:38px;width:3px;height:auto}
+  .rail-avance{width:100%;height:0;transition:height .5s cubic-bezier(.4,1.3,.5,1)}
+  .nodo,.premio{flex-direction:row;width:100%;gap:14px}
+  .nodo small,.premio small{white-space:normal;text-align:left}
+  .sello{width:44px;height:44px}
+  .premio{padding-left:7px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+<main class="marco">
+
+  <header class="cabecera">
+    <div>
+      <p class="marca">Coaching ICA</p>
+      <h1 class="idioma">Polaco <span class="nivel">B2+</span></h1>
+      <p class="cabecera-sub" id="cabSub"></p>
+    </div>
+    <div class="cabecera-der">
+      <div class="equipo">
+        <span class="cara a">L</span><span class="cara b">E</span>
+        <span>Luis y Eve</span>
+      </div>
+      <button class="envivo" data-vivo="no">
+        <span class="punto"></span> Sin clase en vivo ahora
+      </button>
+    </div>
+  </header>
+
+  <section class="recorrido">
+    <div class="recorrido-cab">
+      <h2>Tu recorrido</h2>
+      <span id="recorridoMeta"></span>
+    </div>
+    <div class="semanas" id="semanas"></div>
+  </section>
+
+  <section class="bloque">
+    <div class="bloque-cab">
+      <h2>Los tres focos</h2>
+      <p>Un foco solo libera su hueco cuando llega a dominado. Tu coach abre el siguiente.</p>
+    </div>
+    <div class="focos" id="focos"></div>
+    <div class="dominados" id="dominados"></div>
+  </section>
+
+  <section class="bloque">
+    <div class="bloque-cab">
+      <h2>Esta semana</h2>
+      <p>Seis tareas entre las dos clases. Al completarlas se abre tu reporte.</p>
+    </div>
+
+    <div class="espina">
+      <div class="espina-cab">
+        <div>
+          <h3 id="espinaTitulo"></h3>
+          <p id="espinaSub"></p>
+        </div>
+        <p class="contador" id="contador"></p>
+      </div>
+
+      <div class="rail" id="rail">
+        <div class="rail-pista"><div class="rail-avance" id="avance"></div></div>
+      </div>
+
+      <p class="espina-pie" id="espinaPie"></p>
+    </div>
+  </section>
+
+  <section class="bloque">
+    <div class="bloque-cab">
+      <h2>Tus clases</h2>
+      <p>Las grabaciones se quedan contigo para siempre.</p>
+    </div>
+    <div class="clases" id="clases"></div>
+
+    <div class="reporte" id="reporte">
+      <div class="reporte-icono" id="reporteIcono"></div>
+      <div class="reporte-txt">
+        <h3 id="reporteTitulo"></h3>
+        <p id="reporteTexto"></p>
+      </div>
+      <button class="abrir">Abrir reporte</button>
+    </div>
+  </section>
+
+  <details class="notas">
+    <summary>Notas de implementación para Nahuel</summary>
+    <div class="notas-cuerpo">
+      <div>
+        <h4>Dos cambios de estructura</h4>
+        <ul>
+          <li><b>Un solo reporte por semana</b>, a nivel de periodo. Hoy hay uno por clase; no debería.</li>
+          <li><b>Una sola barra de tareas, de 1 a 6</b>, no dos barras de 3. Las tareas 1–3 salen de la clase de Luis y las 4–6 de la clase de la profesora nativa, pero la cuenta y el desbloqueo son únicos.</li>
+          <li>El reporte tiene tres estados, no dos: <code>bloqueado</code> (faltan tareas) → <code>en preparación</code> (6/6 pero el coach aún no lo ha subido) → <code>disponible</code>.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Tokens de color</h4>
+        <ul>
+          <li><code>--cian #2fd4ec</code> — lo de esta semana: tareas, clases, foco en curso.</li>
+          <li><code>--oro #e9b65c</code> — lo conseguido y ya cerrado: semanas pasadas, focos dominados, reporte abierto.</li>
+          <li>El oro nunca se usa para algo pendiente. Es la señal de recompensa y pierde fuerza si se reparte.</li>
+          <li>Tipografías: Bricolage Grotesque (títulos y números) e Instrument Sans (interfaz).</li>
+        </ul>
+      </div>
+    </div>
+  </details>
+
+</main>
+
+<script>
+/* ——— datos de ejemplo ——— */
+const SEMANA_ACTUAL = 3, TOTAL_SEMANAS = 10;
+
+const FASES = [
+  {n:'Explicado', d:'Tu coach te lo ha explicado en clase. Sabes qué es y para qué sirve.'},
+  {n:'Entrenado', d:'Lo has practicado en un ejercicio dirigido. Todavía piensas antes de usarlo.'},
+  {n:'Entendido', d:'Te sale bien cuando te concentras, pero necesitas un segundo para construirlo.'},
+  {n:'Dominado',  d:'Te sale sola. Tu coach te lanza una pregunta en clase que obliga a usar esta estructura sin avisarte de que es una prueba, y sale bien.'}
+];
+
+const FOCOS = [
+  {titulo:'Aspecto perfectivo e imperfectivo', fase:3, abierto:'Luis', desde:2},
+  {titulo:'Genitivo después de negación',      fase:2, abierto:'Eve',  desde:3},
+  null
+];
+
+const DOMINADOS = [
+  {titulo:'Pasado de los verbos frecuentes', semana:2},
+  {titulo:'Preposición "do" + genitivo', semana:1}
+];
+
+const CLASES = [
+  {n:1, con:'Luis', inicial:'L', tipo:'a', rol:'Sesión de control', dia:'Lunes', min:50, original:60},
+  {n:2, con:'Eve',  inicial:'E', tipo:'b', rol:'Sesión de gramática', dia:'Jueves', min:44, original:53}
+];
+
+const TAREAS = [
+  {n:1, clase:1, titulo:'Tres palabras que te llevas', pista:'Con su traducción y dónde salieron.', ph:'zdążyć — llegar a tiempo…', hecha:true,
+   valor:'zdążyć — llegar a tiempo\nna wszelki wypadek — por si acaso\nwkurzać się — cabrearse'},
+  {n:2, clase:1, titulo:'El corte', pista:'Minuto exacto de tu peor momento y qué dijiste.', ph:'23:14 — "wczoraj ja idę…"', hecha:true,
+   valor:'23:14 — "wczoraj ja idę do pracy i…"'},
+  {n:3, clase:1, titulo:'Una frase con el foco abierto', pista:'Aspecto perfectivo, sobre algo real de tu semana.', ph:'Escribe tu frase…', hecha:true,
+   valor:'W sobotę przeczytałem cały raport przed spotkaniem.'},
+  {n:4, clase:2, titulo:'Tres palabras que te llevas', pista:'Ahora de la clase de Eve.', ph:'Tus tres palabras…', hecha:false, valor:''},
+  {n:5, clase:2, titulo:'Las dos frases que corrigió Eve', pista:'Reescríbelas bien, sin mirar el chat.', ph:'Frase 1…', hecha:false, valor:''},
+  {n:6, clase:2, titulo:'Algo que entendiste al ver la grabación', pista:'Una frase que se te escapó en directo.', ph:'Se me escapó…', hecha:false, valor:''}
+];
+
+const svgCheck = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+const svgCandado = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="10" width="16" height="11" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>';
+const svgSobre = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5 12 13l9-5.5"/><rect x="3" y="5" width="18" height="14" rx="2.5"/></svg>';
+const svgMedalla = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="14" r="6"/><path d="M8.5 8.5 6 2h12l-2.5 6.5"/></svg>';
+const svgChevron = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+const svgPlay = '<svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z"/></svg>';
+
+/* ——— cabecera y recorrido ——— */
+document.getElementById('cabSub').textContent =
+  'Semana ' + SEMANA_ACTUAL + ' de ' + TOTAL_SEMANAS + '. Del 23 al 29 de septiembre.';
+document.getElementById('recorridoMeta').textContent =
+  'Quedan ' + (TOTAL_SEMANAS - SEMANA_ACTUAL) + ' semanas';
+
+const semanas = document.getElementById('semanas');
+for (let i = 1; i <= TOTAL_SEMANAS; i++) {
+  const el = document.createElement('div');
+  el.className = 'sem' + (i < SEMANA_ACTUAL ? ' pasada' : i === SEMANA_ACTUAL ? ' ahora' : '');
+  el.innerHTML = '<i></i><b>' + i + '</b>';
+  el.title = i < SEMANA_ACTUAL ? 'Semana ' + i + ', cerrada' : i === SEMANA_ACTUAL ? 'Estás aquí' : 'Semana ' + i;
+  semanas.appendChild(el);
+}
+
+/* ——— focos ——— */
+const focosEl = document.getElementById('focos');
+FOCOS.forEach((f, idx) => {
+  const card = document.createElement('article');
+  if (!f) {
+    card.className = 'foco libre';
+    card.innerHTML = '<h4>Hueco libre</h4><p>Se abre un foco nuevo cuando uno de los otros llegue a dominado.</p>';
+    focosEl.appendChild(card);
+    return;
+  }
+  card.className = 'foco';
+  const escalera = FASES.map((fase, i) => {
+    const clase = i < f.fase ? 'lograda' : '';
+    const actual = i === f.fase - 1 ? ' foco-actual' : '';
+    return '<button class="peldano ' + clase + actual + '" data-foco="' + idx + '" data-fase="' + i + '">' +
+             '<i></i><span>' + fase.n + '</span></button>';
+  }).join('');
+  card.innerHTML =
+    '<div class="foco-top"><span>Abierto por ' + f.abierto + ' en la semana ' + f.desde + '</span>' +
+      '<em>' + f.fase + '/4</em></div>' +
+    '<h4>' + f.titulo + '</h4>' +
+    '<div class="escalera">' + escalera + '</div>' +
+    '<p class="foco-def" data-def="' + idx + '"><b>' + FASES[f.fase - 1].n + '.</b> ' + FASES[f.fase - 1].d + '</p>';
+  focosEl.appendChild(card);
+});
+
+focosEl.addEventListener('click', e => {
+  const b = e.target.closest('.peldano');
+  if (!b) return;
+  const idx = b.dataset.foco, fase = +b.dataset.fase;
+  const card = b.closest('.foco');
+  card.querySelectorAll('.peldano').forEach(p => p.classList.remove('elegida'));
+  b.classList.add('elegida');
+  card.querySelector('[data-def="' + idx + '"]').innerHTML =
+    '<b>' + FASES[fase].n + '.</b> ' + FASES[fase].d;
+});
+
+const domEl = document.getElementById('dominados');
+domEl.innerHTML = '<span>Ya dominados:</span>' + DOMINADOS.map(d =>
+  '<span class="medalla">' + svgMedalla + d.titulo + ' <i>semana ' + d.semana + '</i></span>').join('');
+
+/* ——— espina de la semana ——— */
+const rail = document.getElementById('rail');
+const avance = document.getElementById('avance');
+const contador = document.getElementById('contador');
+const reporte = document.getElementById('reporte');
+
+document.getElementById('espinaTitulo').textContent = 'Semana ' + SEMANA_ACTUAL;
+document.getElementById('espinaSub').textContent = 'Tres tareas por clase. Una sola cuenta.';
+
+TAREAS.forEach(t => {
+  const nodo = document.createElement('a');
+  nodo.href = '#tarea-' + t.n;
+  nodo.className = 'nodo' + (t.hecha ? ' hecha' : '');
+  nodo.id = 'nodo-' + t.n;
+  nodo.innerHTML = '<span class="bolo">' + (t.hecha ? svgCheck : t.n) + '</span><small>Clase ' + t.clase + '</small>';
+  nodo.style.textDecoration = 'none';
+  rail.appendChild(nodo);
+});
+const premio = document.createElement('div');
+premio.className = 'premio';
+premio.id = 'premio';
+premio.innerHTML = '<span class="sello">' + svgCandado + '</span><small>Reporte</small>';
+rail.appendChild(premio);
+
+/* ——— clases y tareas ——— */
+const clasesEl = document.getElementById('clases');
+CLASES.forEach(c => {
+  const mias = TAREAS.filter(t => t.clase === c.n);
+  const art = document.createElement('article');
+  art.className = 'clase';
+  art.innerHTML =
+    '<div class="clase-cab"><div><h3>Clase ' + c.n + '</h3><p>' + c.rol + ' · ' + c.dia + '</p></div>' +
+      '<span class="quien"><span class="cara ' + c.tipo + '">' + c.inicial + '</span>' + c.con + '</span></div>' +
+    '<div class="video"><button class="play" aria-label="Ver la grabación">' + svgPlay + '</button>' +
+      '<span class="veloz"><s>' + c.original + ' min</s><b>' + c.min + ' min a 1,2×</b></span></div>' +
+    '<div class="tareas">' + mias.map(t =>
+      '<div class="tarea' + (t.hecha ? ' hecha' : '') + '" id="tarea-' + t.n + '" data-n="' + t.n + '">' +
+        '<button class="tarea-cab">' +
+          '<span class="chapa">' + (t.hecha ? svgCheck : t.n) + '</span>' +
+          '<span class="tarea-txt"><b>' + t.titulo + '</b><small>' + t.pista + '</small></span>' +
+          '<span class="flecha">' + svgChevron + '</span>' +
+        '</button>' +
+        '<div class="tarea-cuerpo">' +
+          '<textarea placeholder="' + t.ph + '">' + t.valor + '</textarea>' +
+          '<div class="tarea-acciones">' +
+            '<button class="guardar"' + (t.hecha ? ' disabled' : '') + '>' + (t.hecha ? 'Guardada' : 'Guardar') + '</button>' +
+            '<span class="hecho-tag">' + svgCheck + ' Hecha</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>').join('') +
+    '</div>';
+  clasesEl.appendChild(art);
+});
+
+clasesEl.addEventListener('click', e => {
+  const cab = e.target.closest('.tarea-cab');
+  if (cab) { cab.parentElement.classList.toggle('abierta'); return; }
+
+  const btn = e.target.closest('.guardar');
+  if (!btn || btn.disabled) return;
+  const tarea = btn.closest('.tarea');
+  const n = +tarea.dataset.n;
+  if (!tarea.querySelector('textarea').value.trim()) {
+    tarea.querySelector('textarea').focus();
+    return;
+  }
+  TAREAS.find(t => t.n === n).hecha = true;
+  tarea.classList.add('hecha');
+  tarea.querySelector('.chapa').innerHTML = svgCheck;
+  btn.disabled = true;
+  btn.textContent = 'Guardada';
+  const nodo = document.getElementById('nodo-' + n);
+  nodo.classList.add('hecha', 'recien');
+  nodo.querySelector('.bolo').innerHTML = svgCheck;
+  setTimeout(() => nodo.classList.remove('recien'), 500);
+  pintarProgreso();
+});
+
+/* ——— progreso y desbloqueo ——— */
+function pintarProgreso() {
+  const hechas = TAREAS.filter(t => t.hecha).length;
+  const total = TAREAS.length;
+  const pct = (hechas / total) * 100;
+  if (window.matchMedia('(max-width:860px)').matches) {
+    avance.style.height = pct + '%'; avance.style.width = '100%';
+  } else {
+    avance.style.width = pct + '%'; avance.style.height = '100%';
+  }
+  avance.classList.toggle('completo', hechas === total);
+
+  contador.innerHTML = '<b>' + hechas + '</b> de ' + total + ' tareas';
+  contador.classList.toggle('lleno', hechas === total);
+
+  const premio = document.getElementById('premio');
+  const pendientes = TAREAS.filter(t => !t.hecha);
+
+  if (hechas === total) {
+    premio.classList.add('abierto');
+    premio.querySelector('.sello').innerHTML = svgSobre;
+    reporte.classList.add('abierto');
+    document.getElementById('reporteIcono').innerHTML = svgSobre;
+    document.getElementById('reporteTitulo').textContent = 'Reporte de la semana ' + SEMANA_ACTUAL;
+    document.getElementById('reporteTexto').innerHTML =
+      'Correcciones de las dos clases, vocabulario recomendado y tu ejercicio de esta semana. ' +
+      '<b>Se queda guardado para siempre en tu perfil.</b>';
+    document.getElementById('espinaPie').innerHTML =
+      '<span>' + svgCheck + '</span><span>Semana completa. Tu reporte está abierto ahí abajo.</span>';
+  } else {
+    premio.classList.remove('abierto');
+    premio.querySelector('.sello').innerHTML = svgCandado;
+    reporte.classList.remove('abierto');
+    document.getElementById('reporteIcono').innerHTML = svgCandado;
+    document.getElementById('reporteTitulo').textContent = 'Tu reporte se abre con las seis tareas';
+    document.getElementById('reporteTexto').innerHTML =
+      'Te faltan <b>' + pendientes.length + '</b>: ' +
+      pendientes.map(t => t.titulo.toLowerCase()).join(', ') + '.';
+    document.getElementById('espinaPie').innerHTML =
+      '<span>' + svgCandado + '</span><span>Siguiente: <b>' + pendientes[0].titulo + '</b>, de la clase ' + pendientes[0].clase + '.</span>';
+  }
+}
+pintarProgreso();
+window.addEventListener('resize', pintarProgreso);
+</script>
+</body>
+</html>

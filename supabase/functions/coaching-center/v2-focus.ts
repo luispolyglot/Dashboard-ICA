@@ -98,6 +98,7 @@ export function buildCarryOverFocusesFromSnapshot(input: {
     CoachingV2FocusState,
     'id' | 'periodNumber' | 'completedAt' | 'archivedAt'
   > & {
+    sourceFocusId: string
     completedAt: string | null
   }
 > {
@@ -105,6 +106,7 @@ export function buildCarryOverFocusesFromSnapshot(input: {
     .filter((item) => !isCompletedFocus(item))
     .slice(0, COACHING_V2_MAX_ACTIVE_FOCUSES)
     .map((item) => ({
+      sourceFocusId: item.id,
       focusTitle: item.focusTitle,
       focusComment: item.focusComment,
       phaseExplained: item.phaseExplained,

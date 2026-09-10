@@ -268,6 +268,24 @@ export type CoachingV2ClassSlot = {
   updatedAt: string
 }
 
+export type CoachingV2PeriodReport = {
+  id: string
+  periodNumber: number
+  reportText: string | null
+  reportImagePath: string | null
+  reportImageUrl: string | null
+  createdBy: string | null
+  updatedBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type CoachingV2Coachers = {
+  primaryCoachDisplayName: string
+  selectedCoachDisplayName: string | null
+  classAssignedCoachDisplayNameByClassIndex: Record<string, string>
+}
+
 export type CoachingV2FocusExercise = {
   focusId: string
   periodNumber: number
@@ -297,6 +315,8 @@ export type CoachingV2SessionBoard = {
   session: {
     id: string
     userId: string
+    coachUserId: string | null
+    supportCoachUserId: string | null
     targetLang: string
     level: string
     status: 'draft' | 'active' | 'completed' | 'cancelled'
@@ -320,6 +340,8 @@ export type CoachingV2SessionBoard = {
   focusExerciseAttempts: CoachingV2FocusExerciseAttempt[]
   canCreateFocus: boolean
   classes: CoachingV2ClassSlot[]
+  periodReport: CoachingV2PeriodReport | null
+  coachers: CoachingV2Coachers
   snapshot: unknown[] | null
   previousSnapshot: unknown[] | null
 }
@@ -812,6 +834,21 @@ export async function toggleCoachingV2FocusPhase(input: {
   return data.focus || null
 }
 
+export async function regenerateCoachingV2FocusExercise(input: {
+  sessionId: string
+  focusId: string
+}): Promise<void> {
+  await invokeCoachingFunction<{ ok?: boolean }>(
+    'coaching-center',
+    {
+      action: 'v2-regenerate-focus-exercise',
+      sessionId: input.sessionId,
+      focusId: input.focusId,
+    },
+    'No se pudo regenerar el entrenamiento del foco.',
+  )
+}
+
 export async function deleteCoachingV2Focus(input: {
   sessionId: string
   focusId: string
@@ -870,6 +907,7 @@ export async function upsertCoachingV2ClassCoachGuidelines(input: {
   periodNumber: number
   classIndex: 1 | 2
   title?: string | null
+  assignedByCoachUserId?: string | null
   loomUrl?: string | null
   report?: string | null
   reportImagePath?: string | null
@@ -886,6 +924,7 @@ export async function upsertCoachingV2ClassCoachGuidelines(input: {
       periodNumber: input.periodNumber,
       classIndex: input.classIndex,
       title: input.title || null,
+      assignedByCoachUserId: input.assignedByCoachUserId || null,
       loomUrl: input.loomUrl || null,
       report: input.report || null,
       reportImagePath: input.reportImagePath || null,
@@ -894,10 +933,31 @@ export async function upsertCoachingV2ClassCoachGuidelines(input: {
       coachGuideline2: input.coachGuideline2,
       coachGuideline3: input.coachGuideline3,
     },
-    'No se pudo guardar las directrices de clase v2.',
+    'No se pudieron guardar las directrices de clase v2.',
   )
 
   return data.class || null
+}
+
+export async function upsertCoachingV2PeriodReport(input: {
+  sessionId: string
+  periodNumber: number
+  periodReportText?: string | null
+  periodReportImagePath?: string | null
+}): Promise<CoachingV2PeriodReport | null> {
+  const data = await invokeCoachingFunction<{ ok?: boolean; periodReport?: CoachingV2PeriodReport | null }>(
+    'coaching-center',
+    {
+      action: 'v2-upsert-period-report',
+      sessionId: input.sessionId,
+      periodNumber: input.periodNumber,
+      periodReportText: typeof input.periodReportText === 'string' ? input.periodReportText : null,
+      periodReportImagePath: typeof input.periodReportImagePath === 'string' ? input.periodReportImagePath : null,
+    },
+    'No se pudo guardar el reporte del periodo.',
+  )
+
+  return data.periodReport || null
 }
 
 export async function submitCoachingV2StudentClassReport(input: {
@@ -919,7 +979,7 @@ export async function submitCoachingV2StudentClassReport(input: {
       guidelineResponse2: input.guidelineResponse2,
       guidelineResponse3: input.guidelineResponse3,
     },
-    'No se pudo guardar las respuestas del alumno.',
+    'No se pudieron guardar las respuestas del alumno.',
   )
 
   return data.class || null

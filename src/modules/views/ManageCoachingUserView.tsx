@@ -83,7 +83,7 @@ import {
   closeCoachingWeek,
 } from '../services/coaching'
 import { CoachingProgramPreview } from './CoachingProgramPreview'
-import { CoachingV2SessionBoard } from './CoachingV2SessionBoard'
+import { CoachingV3SessionBoard } from './CoachingV3SessionBoard'
 import { PendingReviewDot } from '../components/PendingReviewDot'
 import { formatDateTime } from '../utils'
 import {
@@ -126,6 +126,16 @@ type ClassDraft = {
 
 type SessionActionType = 'archive' | 'close' | 'hard-delete'
 type CoachingViewMode = 'coach' | 'user-preview'
+
+function viewModeStorageKey(userId: string): string {
+  return `manage-coaching-view-mode:${userId}`
+}
+
+function readPersistedViewMode(userId: string): CoachingViewMode {
+  if (typeof window === 'undefined') return 'coach'
+  const value = window.localStorage.getItem(viewModeStorageKey(userId))
+  return value === 'user-preview' ? 'user-preview' : 'coach'
+}
 
 type ActivatedMasterNotePhrase = {
   chunkId: string
@@ -792,7 +802,9 @@ export function ManageCoachingUserView({
     useState<SessionActionType | null>(null)
   const [sessionActionReason, setSessionActionReason] = useState('')
   const [isApplyingSessionAction, setIsApplyingSessionAction] = useState(false)
-  const [viewMode, setViewMode] = useState<CoachingViewMode>('coach')
+  const [viewMode, setViewMode] = useState<CoachingViewMode>(() =>
+    readPersistedViewMode(userId),
+  )
   const [activatingWeekKey, setActivatingWeekKey] = useState<string | null>(
     null,
   )
@@ -811,6 +823,7 @@ export function ManageCoachingUserView({
     useState(false)
   const [savingSessionClassJoinUrl, setSavingSessionClassJoinUrl] =
     useState(false)
+  const [v3CoachCurrentPeriod, setV3CoachCurrentPeriod] = useState(1)
 
   const selectedMembership = useMemo(
     () => memberships.find((row) => row.id === selectedSessionId) || null,
@@ -1005,6 +1018,15 @@ export function ManageCoachingUserView({
   useEffect(() => {
     void loadAll()
   }, [userId])
+
+  useEffect(() => {
+    setViewMode(readPersistedViewMode(userId))
+  }, [userId])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(viewModeStorageKey(userId), viewMode)
+  }, [userId, viewMode])
 
   useEffect(() => {
     if (!selectedSessionId || !selectedMembership) return
@@ -1497,6 +1519,10 @@ export function ManageCoachingUserView({
   const activeWeekNumber =
     selectedMembership?.weekActivation?.currentActiveWeek || null
 
+  const v3CoachNotesPeriodClamped = Math.min(4, Math.max(1, v3CoachCurrentPeriod))
+  const v3CoachNotesWeekKey = weekKeyFromNumber(v3CoachNotesPeriodClamped)
+  const v3CoachNotes = closedNotesByWeek.get(v3CoachNotesWeekKey) || []
+
   const previewMembership = useMemo(() => {
     if (!selectedMembership || !insights) return null
 
@@ -1809,14 +1835,102 @@ export function ManageCoachingUserView({
       ) : (
         <div className='grid gap-4'>
           {selectedMembership.programVersion === 'v2' ? (
-            <CoachingV2SessionBoard
-              sessionId={selectedMembership.id}
-              mode={viewMode === 'coach' ? 'coach' : 'student'}
-              fetchAsStudent={false}
-              targetLang={selectedMembership.targetLang}
-              userId={selectedMembership.userId}
-              coachDisplayName={selectedMembership.coachDisplayName}
-            />
+            viewMode === 'coach' ? (
+              <>
+                <CoachingV3SessionBoard
+                  sessionId={selectedMembership.id}
+                  mode='coach'
+                  fetchAsStudent={false}
+                  targetLang={selectedMembership.targetLang}
+                  userId={selectedMembership.userId}
+                  coachDisplayName={selectedMembership.coachDisplayName}
+                  onSelectedPeriodChange={setV3CoachCurrentPeriod}
+                  coachExtraContent={
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Notas maestras cerradas de esta semana</CardTitle>
+                      </CardHeader>
+                      <CardContent className='space-y-3'>
+                        {v3CoachNotes.length === 0 ? (
+                          <p className='text-sm text-muted-foreground'>
+                            No hay notas maestras cerradas para la semana{' '}
+                            {v3CoachNotesPeriodClamped}.
+                          </p>
+                        ) : (
+                          <div className='space-y-3 text-sm'>
+                            {v3CoachNotes.map((note) => (
+                              <div
+                                key={`v3-note-${note.id}`}
+                                className='space-y-2 rounded-md border p-3'
+                              >
+                                <p>
+                                  {note.name} · {formatDateTime(note.closedAt)}
+                                </p>
+
+                                <MasterNoteCoachAudioPlayer
+                                  noteId={note.id}
+                                  audioUrl={note.audioUrl}
+                                  audioChunks={note.audioChunks}
+                                  totalDurationMs={note.totalDurationMs}
+                                />
+
+                                <div className='space-y-1.5'>
+                                  <Label>Video feedback (Loom)</Label>
+                                  <Input
+                                    value={feedbackLoomDraftByNoteId[note.id] || ''}
+                                    onChange={(event) =>
+                                      setFeedbackLoomDraftByNoteId((prev) => ({
+                                        ...prev,
+                                        [note.id]: event.target.value,
+                                      }))
+                                    }
+                                    placeholder='Ej: https://www.loom.com/share/...'
+                                  />
+                                </div>
+
+                                <div className='space-y-1.5'>
+                                  <Label>Notas del coach</Label>
+                                  <Textarea
+                                    value={feedbackNotesDraftByNoteId[note.id] || ''}
+                                    onChange={(event) =>
+                                      setFeedbackNotesDraftByNoteId((prev) => ({
+                                        ...prev,
+                                        [note.id]: event.target.value,
+                                      }))
+                                    }
+                                    rows={5}
+                                  />
+                                </div>
+
+                                <Button
+                                  type='button'
+                                  onClick={() => void handleSaveFeedback(note.id)}
+                                  disabled={savingFeedbackNoteId === note.id}
+                                >
+                                  {savingFeedbackNoteId === note.id
+                                    ? 'Guardando...'
+                                    : 'Guardar feedback'}
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  }
+                />
+              </>
+            ) : (
+              <CoachingV3SessionBoard
+                sessionId={selectedMembership.id}
+                mode='student'
+                fetchAsStudent={false}
+                targetLang={selectedMembership.targetLang}
+                userId={selectedMembership.userId}
+                coachDisplayName={selectedMembership.coachDisplayName}
+                onSelectedPeriodChange={setV3CoachCurrentPeriod}
+              />
+            )
           ) : viewMode === 'user-preview' && previewMembership ? (
             <CoachingProgramPreview membership={previewMembership} />
           ) : (
@@ -2346,7 +2460,7 @@ export function ManageCoachingUserView({
                                 {classDraft.removeImage && (
                                   <div className='flex flex-wrap items-center gap-2 text-sm'>
                                     <p className='text-muted-foreground'>
-                                      La imagen actual se eliminara al guardar.
+                                      La imagen actual se eliminará al guardar.
                                     </p>
                                     <Button
                                       type='button'

@@ -35,11 +35,21 @@
   - `student_guideline_response_2`
   - `student_guideline_response_3`
 
+## Period report model
+
+- `coaching_v2_period_reports`
+  - one report per (`session_id`, `period_number`)
+  - fields:
+    - `report_text`
+    - `report_image_path`
+    - `created_by`
+    - `updated_by`
+
 ## Suggested API actions (coaching-center)
 
 - `v2-get-session-board`
   - Input: `sessionId`
-  - Output: current period, classes, active focuses, exercise status/payloads, last snapshot
+  - Output: current period, classes, active focuses, exercise status/payloads, last snapshot, selected period report, coachers metadata
 - `v2-get-session-board-member`
   - Input: `sessionId`
   - Output: same as `v2-get-session-board`, but scoped to the session owner (student view).
@@ -55,6 +65,9 @@
   - Rules: snapshot current focuses + close period activation row
 - `v2-upsert-class-coach-guidelines`
   - Input: `sessionId`, `periodNumber`, `classIndex`, guideline fields
+- `v2-upsert-period-report`
+  - Input: `sessionId`, `periodNumber`, `periodReportText?`, `periodReportImagePath?`
+  - Rules: coach-only; empty text+image removes the report row for the period
 - `v2-submit-class-student-report`
   - Input: `sessionId`, `periodNumber`, `classIndex`, `guidelineResponse1`, `guidelineResponse2`, `guidelineResponse3`
   - Rules: only enabled after coach has filled 3 guideline fields; unlock teacher report when all responses are completed
