@@ -1,10 +1,11 @@
-import { type ReactNode, useCallback, useEffect, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   CheckIcon,
   CirclePlusIcon,
   EyeIcon,
   LockIcon,
+  LockOpenIcon,
   MessageCircleIcon,
   PlayCircleIcon,
   SparklesIcon,
@@ -182,6 +183,7 @@ export function CoachingV3SessionBoard({
   const [openReviewFocusId, setOpenReviewFocusId] = useState<string | null>(null)
   const [selectedFocusPhase, setSelectedFocusPhase] = useState<Record<string, number>>({})
   const [regeneratingFocusId, setRegeneratingFocusId] = useState<string | null>(null)
+  const reportSectionRef = useRef<HTMLDivElement | null>(null)
 
   function getEmbeddableVideoUrl(value: string | null): string | null {
     if (!value) return null
@@ -333,6 +335,7 @@ export function CoachingV3SessionBoard({
       : board?.periodReport
         ? 'available'
         : 'preparing'
+  const reportUnlocked = completedTasks >= 6
 
   const selectedExercises = (board?.focusExercises || []).filter(
     (row) => row.periodNumber === selectedPeriod,
@@ -730,6 +733,10 @@ export function CoachingV3SessionBoard({
     } finally {
       setRegeneratingFocusId(null)
     }
+  }
+
+  const handleScrollToReport = () => {
+    reportSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   if (loading) {
@@ -1149,14 +1156,14 @@ export function CoachingV3SessionBoard({
                 className='absolute top-6 h-1 rounded-full'
                 style={{
                   left: '7.14%',
-                  right: '7.14%',
+                  right: '21.43%',
                   background: 'color-mix(in oklab, var(--v3-line) 85%, black 15%)',
                 }}
               />
               <div
                 className='absolute left-[7.14%] top-6 h-1 rounded-full transition-all'
                 style={{
-                  width: `${Math.min(85.72, Math.max(0, (completedTasks / 6) * 85.72))}%`,
+                  width: `${Math.min(71.43, Math.max(0, (completedTasks / 6) * 71.43))}%`,
                   background: 'var(--v3-cyan)',
                 }}
               />
@@ -1186,23 +1193,26 @@ export function CoachingV3SessionBoard({
                 })}
 
                 <div className='flex flex-col items-center gap-2 text-xs'>
-                  <span
-                    className='inline-flex size-12 items-center justify-center rounded-full border border-dashed'
+                  <button
+                    type='button'
+                    onClick={handleScrollToReport}
+                    disabled={!reportUnlocked}
+                    className='inline-flex size-12 items-center justify-center rounded-full border border-dashed transition disabled:cursor-not-allowed'
                     style={{
                       borderColor:
-                        reportStatus === 'available'
+                        reportUnlocked
                           ? 'var(--v3-gold)'
                           : 'color-mix(in oklab, var(--v3-line) 72%, black 28%)',
                       background:
-                        reportStatus === 'available'
+                        reportUnlocked
                           ? 'color-mix(in oklab, var(--v3-gold) 15%, transparent 85%)'
                           : 'color-mix(in oklab, var(--v3-card) 90%, black 10%)',
                       color:
-                        reportStatus === 'available' ? 'var(--v3-gold)' : 'var(--v3-muted)',
+                        reportUnlocked ? 'var(--v3-gold)' : 'var(--v3-muted)',
                     }}
                   >
-                    <LockIcon className='size-5' />
-                  </span>
+                    {reportUnlocked ? <LockOpenIcon className='size-5' /> : <LockIcon className='size-5' />}
+                  </button>
                   <span style={{ color: 'var(--v3-muted)' }}>Reporte</span>
                 </div>
               </div>
@@ -1551,6 +1561,7 @@ export function CoachingV3SessionBoard({
             })}
           </div>
 
+          <div ref={reportSectionRef}>
           <Card
             className='mt-4 rounded-2xl border p-5'
             style={{
@@ -1561,8 +1572,10 @@ export function CoachingV3SessionBoard({
               borderStyle: reportStatus === 'blocked' ? 'dashed' : 'solid',
               background:
                 reportStatus === 'available'
-                  ? 'linear-gradient(120deg, color-mix(in oklab, var(--v3-gold) 12%, var(--v3-card) 88%), var(--v3-card))'
-                  : 'var(--v3-card)',
+                  ? 'linear-gradient(120deg, color-mix(in oklab, var(--v3-gold) 14%, var(--v3-card) 86%), color-mix(in oklab, var(--v3-cyan) 8%, var(--v3-card) 92%))'
+                  : reportStatus === 'preparing'
+                    ? 'linear-gradient(120deg, color-mix(in oklab, var(--v3-cyan) 12%, var(--v3-card) 88%), var(--v3-card))'
+                    : 'linear-gradient(120deg, color-mix(in oklab, var(--v3-line) 20%, var(--v3-card) 80%), var(--v3-card))',
             }}
           >
             {reportStatus === 'blocked' ? (
@@ -1602,7 +1615,7 @@ export function CoachingV3SessionBoard({
                   <p className='mt-2 text-sm' style={{ color: 'var(--v3-muted)' }}>
                     {mode === 'coach'
                       ? 'Semana completa. El reporte de la semana aún está en preparación.'
-                      : 'Semana completa. Tu coach está preparando el reporte.'}
+                      : 'Aún no está disponible. Tu profe lo subirá pronto.'}
                   </p>
                 )}
 
@@ -1611,16 +1624,14 @@ export function CoachingV3SessionBoard({
                     {board.periodReport?.reportText && (
                       <p className='text-sm'>{board.periodReport.reportText}</p>
                     )}
-                    {board.periodReport?.reportImageUrl && (
-                      <a
-                        href={board.periodReport.reportImageUrl}
-                        target='_blank'
-                        rel='noreferrer'
-                        className='text-sm'
-                      >
-                        Ver imagen del reporte
-                      </a>
-                    )}
+                    {board.periodReport?.reportImageUrl ? (
+                      <img
+                        src={board.periodReport.reportImageUrl}
+                        alt={`Reporte semana ${selectedPeriod}`}
+                        className='max-h-72 w-full rounded-lg border object-cover'
+                        style={{ borderColor: 'var(--v3-line)' }}
+                      />
+                    ) : null}
                   </div>
                 )}
               </>
@@ -1638,15 +1649,39 @@ export function CoachingV3SessionBoard({
                 />
 
                 <div className='space-y-2'>
-                  <Input
-                    type='file'
-                    accept='image/*'
-                    onChange={(event) => {
-                      setReportDraftImageFile(event.target.files?.[0] || null)
-                      setRemoveReportImage(false)
-                    }}
-                    disabled={!canEditSelectedPeriod}
-                  />
+                  <div className='flex items-center gap-2'>
+                    <Input
+                      id={`period-report-image-${selectedPeriod}`}
+                      type='file'
+                      accept='image/*'
+                      className='sr-only'
+                      onChange={(event) => {
+                        setReportDraftImageFile(event.target.files?.[0] || null)
+                        setRemoveReportImage(false)
+                      }}
+                      disabled={!canEditSelectedPeriod}
+                    />
+                    <Button
+                      asChild
+                      type='button'
+                      variant={reportDraftImageFile || (board.periodReport?.reportImageUrl && !removeReportImage) ? 'outline' : 'default'}
+                      size='sm'
+                      disabled={!canEditSelectedPeriod}
+                    >
+                      <label htmlFor={`period-report-image-${selectedPeriod}`}>
+                        {reportDraftImageFile || (board.periodReport?.reportImageUrl && !removeReportImage)
+                          ? 'Cambiar fichero'
+                          : 'Subir fichero'}
+                      </label>
+                    </Button>
+                    <span className='max-w-[240px] truncate text-xs text-muted-foreground'>
+                      {reportDraftImageFile
+                        ? reportDraftImageFile.name
+                        : board.periodReport?.reportImageUrl && !removeReportImage
+                          ? 'Imagen actual cargada'
+                          : 'Sin fichero'}
+                    </span>
+                  </div>
                   {reportDraftImageFile && (
                     <p className='text-xs text-muted-foreground'>Nueva imagen: {reportDraftImageFile.name}</p>
                   )}
@@ -1688,6 +1723,7 @@ export function CoachingV3SessionBoard({
               </div>
             )}
           </Card>
+          </div>
         </section>
 
         {mode === 'coach' && coachExtraContent ? (

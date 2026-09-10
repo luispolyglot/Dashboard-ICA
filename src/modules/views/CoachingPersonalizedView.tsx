@@ -134,7 +134,7 @@ export function CoachingPersonalizedView({
             Coaching Personalizado
           </h2>
           <p className='text-sm text-muted-foreground'>
-            Programa de 12 semanas con tus clases, objetivos y feedback.
+            Programa de 10 semanas con tus clases, objetivos y feedback.
           </p>
         </div>
 
