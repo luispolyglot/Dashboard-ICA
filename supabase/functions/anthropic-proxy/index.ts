@@ -646,6 +646,25 @@ function parseCoachingFocusExercise(raw: string | null): Record<string, unknown>
     return null
   }
 
+  const recoBlock = parsed.bloques[0]
+  if (isRecord(recoBlock) && Array.isArray(recoBlock.items) && recoBlock.items.length > 0) {
+    const firstItem = recoBlock.items[0]
+    if (isRecord(firstItem) && Array.isArray(firstItem.options)) {
+      const options = firstItem.options.filter(isRecord)
+      for (const option of options) {
+        const text = typeof option.t === 'string' ? option.t : ''
+        if (!text.includes('[SIN_ERROR_REAL]')) continue
+        const replacement = options.find((candidate) => {
+          const candidateText = typeof candidate.t === 'string' ? candidate.t.trim() : ''
+          return candidateText.length > 0 && !candidateText.includes('[SIN_ERROR_REAL]')
+        })
+        option.t = replacement && typeof replacement.t === 'string'
+          ? replacement.t
+          : 'Frase con error típico del foco'
+      }
+    }
+  }
+
   return parsed
 }
 
@@ -803,6 +822,7 @@ function buildCoachingFocusExercisePrompt(input: {
     '8) Todos los tags existen en etiquetas.',
     '9) umbral deja margen para fallar dos.',
     '10) Explicaciones en espanol y frases en idioma objetivo.',
+    '11) La cadena [SIN_ERROR_REAL] no aparece en ninguna parte del JSON final.',
     '',
     'Responde solo con JSON.',
   ].join('\n')

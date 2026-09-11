@@ -43,6 +43,17 @@ import {
 
 const OWNER_SUPPORT_COACH_USER_ID = '68890bd8-894d-422d-b865-08806acdb312'
 
+const DEFAULT_CLASS_GUIDELINES = [
+  '3 palabras nuevas aprendidas que usarás en tu próxima clase',
+  'Frase que no entendiste hasta ver la grabación',
+  'Transcribe la 1ª frase del min 30 sin usar los subtítulos',
+] as const
+
+function withDefaultClassGuideline(value: string | null, index: 0 | 1 | 2): string {
+  const normalized = safeString(value)
+  return normalized || DEFAULT_CLASS_GUIDELINES[index]
+}
+
 type CoachingCenterPayload = {
   action?: string
   sessionId?: string
@@ -879,9 +890,9 @@ function serializeClassSessions(rows: CoachingSessionClassRow[]): unknown[] {
     reportImagePath: row.report_image_path,
     scheduledAt: row.scheduled_at,
     assignedByCoachUserId: row.assigned_by_coach_user_id,
-    coachGuideline1: row.coach_guideline_1,
-    coachGuideline2: row.coach_guideline_2,
-    coachGuideline3: row.coach_guideline_3,
+    coachGuideline1: withDefaultClassGuideline(row.coach_guideline_1, 0),
+    coachGuideline2: withDefaultClassGuideline(row.coach_guideline_2, 1),
+    coachGuideline3: withDefaultClassGuideline(row.coach_guideline_3, 2),
     studentCompletedAt: row.student_completed_at,
     studentReportText: row.student_report_text,
     studentReportImagePath: row.student_report_image_path,
@@ -985,12 +996,18 @@ function classRowsFromPayload(
       assigned_by_coach_user_id:
         safeString(row.assignedByCoachUserId ?? row.assigned_by_coach_user_id) ||
         null,
-      coach_guideline_1:
+      coach_guideline_1: withDefaultClassGuideline(
         safeString(row.coachGuideline1 ?? row.coach_guideline_1) || null,
-      coach_guideline_2:
+        0,
+      ),
+      coach_guideline_2: withDefaultClassGuideline(
         safeString(row.coachGuideline2 ?? row.coach_guideline_2) || null,
-      coach_guideline_3:
+        1,
+      ),
+      coach_guideline_3: withDefaultClassGuideline(
         safeString(row.coachGuideline3 ?? row.coach_guideline_3) || null,
+        2,
+      ),
       student_completed_at: normalizeIsoDateTime(
         row.studentCompletedAt ?? row.student_completed_at,
       ),
@@ -2101,9 +2118,9 @@ Deno.serve(async (req) => {
     }
 
     const hasGuidelines = hasCoachGuidelinesCompleted({
-      guideline1: safeString(classRow.coach_guideline_1),
-      guideline2: safeString(classRow.coach_guideline_2),
-      guideline3: safeString(classRow.coach_guideline_3),
+      guideline1: withDefaultClassGuideline(classRow.coach_guideline_1, 0),
+      guideline2: withDefaultClassGuideline(classRow.coach_guideline_2, 1),
+      guideline3: withDefaultClassGuideline(classRow.coach_guideline_3, 2),
     })
 
     if (!hasGuidelines) {
@@ -3048,7 +3065,6 @@ Deno.serve(async (req) => {
     }
 
     const canRegenerate =
-      sessionRow.user_id === auth.userId ||
       sessionRow.coach_user_id === auth.userId ||
       sessionRow.support_coach_user_id === auth.userId
     if (!canRegenerate) {
@@ -3480,9 +3496,9 @@ Deno.serve(async (req) => {
           report_image_path: safeString(payload.reportImagePath),
           scheduled_at: normalizeIsoDateTime(payload.scheduledAt),
           assigned_by_coach_user_id: assignedByCoachUserId,
-          coach_guideline_1: safeString(payload.coachGuideline1),
-          coach_guideline_2: safeString(payload.coachGuideline2),
-          coach_guideline_3: safeString(payload.coachGuideline3),
+          coach_guideline_1: withDefaultClassGuideline(safeString(payload.coachGuideline1), 0),
+          coach_guideline_2: withDefaultClassGuideline(safeString(payload.coachGuideline2), 1),
+          coach_guideline_3: withDefaultClassGuideline(safeString(payload.coachGuideline3), 2),
           updated_at: nowIso,
           created_at: nowIso,
         },
