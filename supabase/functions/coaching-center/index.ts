@@ -1714,57 +1714,92 @@ async function requestFocusExerciseGeneration(input: {
   studentContext: string | null
   focusSlot: string
 }): Promise<{ exercise: Record<string, unknown> | null; error: string | null }> {
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')
-  if (!supabaseUrl) {
-    return { exercise: null, error: 'SUPABASE_URL is not configured' }
-  }
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    if (!supabaseUrl) {
+      return { exercise: null, error: 'SUPABASE_URL is not configured' }
+    }
 
-  const response = await fetch(`${supabaseUrl}/functions/v1/anthropic-proxy`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: input.authHeader,
-    },
-    body: JSON.stringify({
-      action: 'coaching_focus_exercise',
-      targetLang: input.targetLang,
-      nativeLang: input.nativeLang || 'es',
-      level: input.level,
-      focusTitle: input.focusTitle,
-      errorReal: input.errorReal,
-      studentContext: input.studentContext || '',
-      focusSlot: input.focusSlot,
-      phase: 'Entrenado',
-    }),
-  })
+    const response = await fetch(`${supabaseUrl}/functions/v1/anthropic-proxy`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: input.authHeader,
+      },
+      body: JSON.stringify({
+        action: 'coaching_focus_exercise',
+        targetLang: input.targetLang,
+        nativeLang: input.nativeLang || 'es',
+        level: input.level,
+        focusTitle: input.focusTitle,
+        errorReal: input.errorReal,
+        studentContext: input.studentContext || '',
+        focusSlot: input.focusSlot,
+        phase: 'Entrenado',
+      }),
+    })
 
-  const responseData = await response.json().catch(() => ({})) as {
-    exercise?: unknown
-    error?: string
-  }
+    const responseData = await response.json().catch(() => ({})) as {
+      exercise?: unknown
+      error?: string
+    }
 
-  if (!response.ok) {
+    if (!response.ok) {
+      return {
+        exercise: null,
+        error: responseData.error || `anthropic_proxy_error_${response.status}`,
+      }
+    }
+
+    const exercise =
+      responseData.exercise &&
+      typeof responseData.exercise === 'object' &&
+      !Array.isArray(responseData.exercise)
+        ? (responseData.exercise as Record<string, unknown>)
+        : null
+
+    if (!exercise) {
+      return {
+        exercise: null,
+        error: responseData.error || 'invalid_exercise_payload',
+      }
+    }
+
+    return { exercise, error: null }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown_request_error'
     return {
       exercise: null,
-      error: responseData.error || `anthropic_proxy_error_${response.status}`,
+      error: `anthropic_proxy_request_failed:${message}`,
     }
   }
+}
 
-  const exercise =
-    responseData.exercise &&
-    typeof responseData.exercise === 'object' &&
-    !Array.isArray(responseData.exercise)
-      ? (responseData.exercise as Record<string, unknown>)
-      : null
-
-  if (!exercise) {
-    return {
-      exercise: null,
-      error: responseData.error || 'invalid_exercise_payload',
-    }
-  }
-
-  return { exercise, error: null }
+async function appendFocusExerciseGenerationLog(input: {
+  adminClient: any
+  sessionId: string
+  focusId: string
+  periodNumber: number
+  triggerSource: 'create_focus' | 'regenerate' | 'carry_over' | 'unknown'
+  stage: string
+  status: 'info' | 'success' | 'error'
+  message?: string | null
+  payload?: Record<string, unknown> | null
+  requestedBy?: string | null
+}): Promise<void> {
+  await input.adminClient
+    .from('coaching_v2_focus_exercise_generation_logs')
+    .insert({
+      session_id: input.sessionId,
+      focus_id: input.focusId,
+      period_number: input.periodNumber,
+      trigger_source: input.triggerSource,
+      stage: input.stage,
+      status: input.status,
+      message: input.message || null,
+      payload: input.payload || null,
+      requested_by: input.requestedBy || null,
+    })
 }
 
 async function runFocusExerciseGeneration(input: {
@@ -1780,19 +1815,55 @@ async function runFocusExerciseGeneration(input: {
   level: string
   studentContext: string | null
   focusSlot: string
+  triggerSource?: 'create_focus' | 'regenerate' | 'carry_over' | 'unknown'
+  requestedBy?: string | null
 }): Promise<void> {
+  const triggerSource = input.triggerSource || 'unknown'
+  const startedAt = Date.now()
   const errorReal = resolveErrorRealFromFocusComment({
     focusComment: input.focusComment,
     focusTitle: input.focusTitle,
   })
 
-  await input.adminClient
+  await appendFocusExerciseGenerationLog({
+    adminClient: input.adminClient,
+    sessionId: input.sessionId,
+    focusId: input.focusId,
+    periodNumber: input.periodNumber,
+    triggerSource,
+    stage: 'generation_started',
+    status: 'info',
+    message: 'Starting exercise generation.',
+    payload: {
+      focusTitle: input.focusTitle,
+      focusSlot: input.focusSlot,
+      hasStudentContext: Boolean(input.studentContext),
+      errorReal,
+    },
+    requestedBy: input.requestedBy,
+  })
+
+  const setGeneratingResult = await input.adminClient
     .from('coaching_v2_focus_exercises')
     .update({
       status: 'generating',
       error_message: null,
     })
     .eq('focus_id', input.focusId)
+  if (setGeneratingResult.error) {
+    await appendFocusExerciseGenerationLog({
+      adminClient: input.adminClient,
+      sessionId: input.sessionId,
+      focusId: input.focusId,
+      periodNumber: input.periodNumber,
+      triggerSource,
+      stage: 'set_generating_failed',
+      status: 'error',
+      message: setGeneratingResult.error.message,
+      requestedBy: input.requestedBy,
+    })
+    return
+  }
 
   const generated = await requestFocusExerciseGeneration({
     authHeader: input.authHeader,
@@ -1806,12 +1877,29 @@ async function runFocusExerciseGeneration(input: {
   })
 
   if (generated.error || !generated.exercise) {
+    const errorMessage =
+      generated.error || 'No se pudo generar el ejercicio automáticamente.'
+
+    await appendFocusExerciseGenerationLog({
+      adminClient: input.adminClient,
+      sessionId: input.sessionId,
+      focusId: input.focusId,
+      periodNumber: input.periodNumber,
+      triggerSource,
+      stage: 'generation_failed',
+      status: 'error',
+      message: errorMessage,
+      payload: {
+        tookMs: Date.now() - startedAt,
+      },
+      requestedBy: input.requestedBy,
+    })
+
     await input.adminClient
       .from('coaching_v2_focus_exercises')
       .update({
         status: 'error',
-        error_message:
-          generated.error || 'No se pudo generar el ejercicio automáticamente.',
+        error_message: errorMessage,
         generated_at: null,
       })
       .eq('focus_id', input.focusId)
@@ -1827,6 +1915,21 @@ async function runFocusExerciseGeneration(input: {
       generated_at: new Date().toISOString(),
     })
     .eq('focus_id', input.focusId)
+
+  await appendFocusExerciseGenerationLog({
+    adminClient: input.adminClient,
+    sessionId: input.sessionId,
+    focusId: input.focusId,
+    periodNumber: input.periodNumber,
+    triggerSource,
+    stage: 'generation_succeeded',
+    status: 'success',
+    message: 'Exercise generated successfully.',
+    payload: {
+      tookMs: Date.now() - startedAt,
+    },
+    requestedBy: input.requestedBy,
+  })
 }
 
 Deno.serve(async (req) => {
@@ -2874,6 +2977,18 @@ Deno.serve(async (req) => {
           return jsonResponse(500, { error: exerciseUpsertError.message })
         }
 
+        await appendFocusExerciseGenerationLog({
+          adminClient: admin.adminClient,
+          sessionId,
+          focusId: created.id,
+          periodNumber,
+          triggerSource: 'create_focus',
+          stage: 'queued',
+          status: 'info',
+          message: 'Exercise generation queued from focus creation.',
+          requestedBy: admin.userId,
+        })
+
         const generationTask = runFocusExerciseGeneration({
           adminClient: admin.adminClient,
           authHeader,
@@ -2887,6 +3002,8 @@ Deno.serve(async (req) => {
           level: sessionRow.level,
           studentContext: sessionRow.notes || null,
           focusSlot,
+          triggerSource: 'create_focus',
+          requestedBy: admin.userId,
         })
 
         const edgeRuntime = (globalThis as unknown as {
@@ -3112,6 +3229,18 @@ Deno.serve(async (req) => {
       return jsonResponse(500, { error: exerciseUpsertError.message })
     }
 
+    await appendFocusExerciseGenerationLog({
+      adminClient: auth.adminClient,
+      sessionId,
+      focusId,
+      periodNumber: focusRow.period_number,
+      triggerSource: 'regenerate',
+      stage: 'queued',
+      status: 'info',
+      message: 'Exercise regeneration queued manually.',
+      requestedBy: auth.userId,
+    })
+
     const generationTask = runFocusExerciseGeneration({
       adminClient: auth.adminClient,
       authHeader,
@@ -3125,6 +3254,8 @@ Deno.serve(async (req) => {
       level: sessionRow.level,
       studentContext: sessionRow.notes || null,
       focusSlot,
+      triggerSource: 'regenerate',
+      requestedBy: auth.userId,
     })
 
     const edgeRuntime = (globalThis as unknown as {
@@ -3417,6 +3548,8 @@ Deno.serve(async (req) => {
                   level: sessionRow.level,
                   studentContext: sessionRow.notes || null,
                   focusSlot: item.focusSlot,
+                  triggerSource: 'carry_over',
+                  requestedBy: admin.userId,
                 }),
               ),
             ).then(() => undefined)
