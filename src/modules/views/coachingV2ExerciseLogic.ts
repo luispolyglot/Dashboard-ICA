@@ -74,18 +74,33 @@ export function normalizeExercisePayload(payload: unknown): ExerciseData | null 
 
   const recoItems = (Array.isArray(reconocer.items) ? reconocer.items : [])
     .filter(isRecord)
-    .map((item) => ({
-      lead: asString(item.lead),
-      tags: asStringArray(item.tags),
-      options: (Array.isArray(item.options) ? item.options : [])
+    .map((item) => {
+      const options = (Array.isArray(item.options) ? item.options : [])
         .filter(isRecord)
         .map((option) => ({
           t: asString(option.t),
           ok: Boolean(option.ok),
           why: asString(option.why),
         }))
-        .filter((option) => option.t.length > 0),
-    }))
+        .filter((option) => option.t.length > 0)
+
+      const fallbackText =
+        options.find((option) => !option.t.includes('[SIN_ERROR_REAL]'))?.t ||
+        'Frase con error típico del foco'
+
+      return {
+        lead: asString(item.lead),
+        tags: asStringArray(item.tags),
+        options: options.map((option) =>
+          option.t.includes('[SIN_ERROR_REAL]')
+            ? {
+                ...option,
+                t: fallbackText,
+              }
+            : option,
+        ),
+      }
+    })
     .filter((item) => item.options.length > 0)
 
   const buildItems = (Array.isArray(construir.items) ? construir.items : [])

@@ -9,12 +9,14 @@ import { useNavigate } from "react-router-dom";
 import {
   CheckIcon,
   CirclePlusIcon,
+  DownloadIcon,
   EyeIcon,
   LockIcon,
   LockOpenIcon,
   MessageCircleIcon,
   PlayCircleIcon,
   SparklesIcon,
+  UploadIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -181,7 +183,6 @@ export function CoachingV3SessionBoard({
   const [selectedPeriod, setSelectedPeriod] = useState(1);
   const [openFocusComment, setOpenFocusComment] = useState<string | null>(null);
   const [savingReport, setSavingReport] = useState(false);
-  const [reportDraftText, setReportDraftText] = useState("");
   const [reportDraftImageFile, setReportDraftImageFile] = useState<File | null>(
     null,
   );
@@ -266,7 +267,6 @@ export function CoachingV3SessionBoard({
 
   useEffect(() => {
     if (!board) return;
-    setReportDraftText(board.periodReport?.reportText || "");
     setReportDraftImageFile(null);
     setRemoveReportImage(false);
   }, [board?.periodReport?.id, board?.periodReport?.updatedAt, selectedPeriod]);
@@ -486,7 +486,7 @@ export function CoachingV3SessionBoard({
       const saved = await upsertCoachingV2PeriodReport({
         sessionId,
         periodNumber: selectedPeriod,
-        periodReportText: reportDraftText,
+        periodReportText: null,
         periodReportImagePath: nextImagePath,
       });
 
@@ -1977,25 +1977,37 @@ export function CoachingV3SessionBoard({
                   {reportStatus === "available" && (
                     <div className="mt-3 space-y-3">
                       {board.periodReport?.reportImageUrl ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setReportImagePreviewUrl(
-                              board.periodReport?.reportImageUrl || null,
-                            )
-                          }
-                          className="group relative block w-full cursor-zoom-in overflow-hidden rounded-lg border text-left"
-                          style={{ borderColor: "var(--v3-line)" }}
-                        >
-                          <img
-                            src={board.periodReport.reportImageUrl}
-                            alt={`Imagen del reporte de la semana ${selectedPeriod}`}
-                            className="max-h-56 w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
-                          />
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100">
-                            <EyeIcon className="size-5 text-white" />
-                          </div>
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setReportImagePreviewUrl(
+                                board.periodReport?.reportImageUrl || null,
+                              )
+                            }
+                            className="group relative block w-full cursor-zoom-in overflow-hidden rounded-lg border text-left"
+                            style={{ borderColor: "var(--v3-line)" }}
+                          >
+                            <img
+                              src={board.periodReport.reportImageUrl}
+                              alt={`Imagen del reporte de la semana ${selectedPeriod}`}
+                              className="max-h-56 w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100">
+                              <EyeIcon className="size-5 text-white" />
+                            </div>
+                          </button>
+                          <a
+                            href={board.periodReport.reportImageUrl}
+                            download
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-sm text-primary underline underline-offset-2"
+                          >
+                            <DownloadIcon className="size-3.5" />
+                            Descargar imagen
+                          </a>
+                        </>
                       ) : (
                         <p
                           className="text-sm"
@@ -2005,33 +2017,6 @@ export function CoachingV3SessionBoard({
                         </p>
                       )}
 
-                      {board.periodReport?.reportText ? (
-                        <div
-                          className="rounded-lg border p-3"
-                          style={{
-                            borderColor: "var(--v3-line)",
-                            background:
-                              "color-mix(in oklab, var(--v3-card) 92%, white 8%)",
-                          }}
-                        >
-                          <p
-                            className="mb-1 text-xs font-medium uppercase tracking-wide"
-                            style={{ color: "var(--v3-muted)" }}
-                          >
-                            Comentario
-                          </p>
-                          <p className="text-sm">
-                            {board.periodReport.reportText}
-                          </p>
-                        </div>
-                      ) : (
-                        <p
-                          className="text-sm"
-                          style={{ color: "var(--v3-muted)" }}
-                        >
-                          Aún no hay texto de reporte para esta semana.
-                        </p>
-                      )}
                     </div>
                   )}
                 </>
@@ -2045,14 +2030,6 @@ export function CoachingV3SessionBoard({
                   <p className="text-sm font-medium">
                     Editar reporte de la semana
                   </p>
-                  <Textarea
-                    value={reportDraftText}
-                    onChange={(event) => setReportDraftText(event.target.value)}
-                    rows={5}
-                    placeholder="Escribe aquí el reporte consolidado de la semana..."
-                    disabled={!canEditSelectedPeriod}
-                  />
-
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <Input
@@ -2084,6 +2061,7 @@ export function CoachingV3SessionBoard({
                         <label
                           htmlFor={`period-report-image-${selectedPeriod}`}
                         >
+                          <UploadIcon className="mr-1 inline size-3.5" />
                           {reportDraftImageFile ||
                           (board.periodReport?.reportImageUrl &&
                             !removeReportImage)
