@@ -542,7 +542,7 @@ export function StreaksPage() {
 }
 
 export function ProfilePage() {
-  const { config, cards, handleConfigChange, setShowLangModal } = useDashboardContext()
+  const { config, cards, setShowLangModal } = useDashboardContext()
 
   return (
     <PageLayout>
@@ -550,14 +550,6 @@ export function ProfilePage() {
         config={config}
         cards={cards}
         onEditLanguages={() => setShowLangModal(true)}
-        onApplyRecentLanguages={({ nativeLang, targetLang }) => {
-          if (!config) return
-          handleConfigChange({
-            ...config,
-            nativeLang,
-            targetLang,
-          })
-        }}
       />
     </PageLayout>
   )
