@@ -641,21 +641,24 @@ function parseCoachingFocusExerciseObject(parsed: Record<string, unknown>): {
   errorReason: string | null
 } {
   if (!isRecord(parsed.etiquetas)) return { exercise: null, errorReason: 'missing_etiquetas' }
-  if (!Array.isArray(parsed.bloques) || parsed.bloques.length !== 3) {
+
+  if (!Array.isArray(parsed.bloques)) {
     return { exercise: null, errorReason: 'invalid_bloques_count' }
   }
 
-  const bloqueIds = parsed.bloques
-    .filter((item): item is Record<string, unknown> => isRecord(item))
-    .map((item) => (typeof item.id === 'string' ? item.id : ''))
+  const bloques = parsed.bloques.filter((item): item is Record<string, unknown> => isRecord(item))
 
-  if (
-    bloqueIds[0] !== 'reconocer' ||
-    bloqueIds[1] !== 'construir' ||
-    bloqueIds[2] !== 'conversacion'
-  ) {
-    return { exercise: null, errorReason: 'invalid_bloques_order' }
+  const orderedBlocks: Record<string, unknown>[] = []
+  const requiredIds: Array<'reconocer' | 'construir' | 'conversacion'> = ['reconocer', 'construir', 'conversacion']
+  for (const id of requiredIds) {
+    const block = bloques.find((item) => item.id === id)
+    if (!block) {
+      return { exercise: null, errorReason: 'invalid_bloques_count' }
+    }
+    orderedBlocks.push(block)
   }
+
+  parsed.bloques = orderedBlocks
 
   const recoBlock = parsed.bloques[0]
   if (isRecord(recoBlock) && Array.isArray(recoBlock.items) && recoBlock.items.length > 0) {
@@ -703,6 +706,8 @@ function buildCoachingFocusExerciseTool(): AnthropicToolDefinition {
         },
         bloques: {
           type: 'array',
+          minItems: 3,
+          maxItems: 3,
           items: {
             type: 'object',
             properties: {
