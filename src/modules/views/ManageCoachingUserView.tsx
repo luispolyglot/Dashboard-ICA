@@ -830,6 +830,18 @@ export function ManageCoachingUserView({
     [memberships, selectedSessionId],
   )
 
+  const isClosedV1Session = Boolean(
+    selectedMembership &&
+      selectedMembership.programVersion !== 'v2' &&
+      selectedMembership.status !== 'active',
+  )
+
+  const assertV1SessionEditable = () => {
+    if (!isClosedV1Session) return true
+    setFeedback('La sesión v1 está cerrada. Solo se permite lectura.')
+    return false
+  }
+
   const weekObjectives = useMemo(
     () => normalizeWeeklyObjectiveMap(insights?.weeklyObjectives),
     [insights?.weeklyObjectives],
@@ -988,6 +1000,7 @@ export function ManageCoachingUserView({
 
   const handleSaveSessionClassJoinUrl = async () => {
     if (!selectedMembership) return
+    if (!assertV1SessionEditable()) return
 
     setSavingSessionClassJoinUrl(true)
     setFeedback(null)
@@ -1063,6 +1076,7 @@ export function ManageCoachingUserView({
 
   const handleSaveObjective = async (weekKey: string) => {
     if (!selectedMembership || !insights) return
+    if (!assertV1SessionEditable()) return
     const draft = objectiveDrafts[weekKey]
     if (!draft) return
 
@@ -1140,6 +1154,7 @@ export function ManageCoachingUserView({
 
   const handleSaveClass = async (weekKey: string) => {
     if (!selectedMembership) return
+    if (!assertV1SessionEditable()) return
     const draft = classDrafts[weekKey]
     if (!draft) return
 
@@ -1275,6 +1290,7 @@ export function ManageCoachingUserView({
 
   const handleActivateWeek = async () => {
     if (!selectedMembership || !nextWeekEligibleKey) return
+    if (!assertV1SessionEditable()) return
     const nextWeekNumber = weekNumberFromKey(nextWeekEligibleKey)
 
     setActivatingWeekKey(nextWeekEligibleKey)
@@ -1297,6 +1313,7 @@ export function ManageCoachingUserView({
 
   const handleCloseCurrentWeek = async () => {
     if (!selectedMembership || !activeWeekNumber) return
+    if (!assertV1SessionEditable()) return
 
     setIsClosingWeek(true)
     setFeedback(null)
@@ -1318,6 +1335,7 @@ export function ManageCoachingUserView({
 
   const handleSaveFeedback = async (masterNoteId: string) => {
     if (!selectedMembership) return
+    if (!assertV1SessionEditable()) return
     setSavingFeedbackNoteId(masterNoteId)
     setFeedback(null)
 
@@ -1664,13 +1682,14 @@ export function ManageCoachingUserView({
                       }
                       placeholder='Ej: https://meet.google.com/...'
                       className='h-8 w-80 max-w-full'
+                      disabled={isClosedV1Session}
                     />
                     <Button
                       type='button'
                       size='icon'
                       className='h-8 w-8'
                       onClick={() => void handleSaveSessionClassJoinUrl()}
-                      disabled={savingSessionClassJoinUrl}
+                      disabled={savingSessionClassJoinUrl || isClosedV1Session}
                       aria-label='Guardar link de clase'
                     >
                       <CheckIcon className='h-4 w-4' />
@@ -1686,8 +1705,8 @@ export function ManageCoachingUserView({
                         )
                         setIsEditingSessionClassJoinUrl(false)
                       }}
-                      disabled={savingSessionClassJoinUrl}
-                      aria-label='Cancelar edicion de link de clase'
+                      disabled={savingSessionClassJoinUrl || isClosedV1Session}
+                      aria-label='Cancelar edición de link de clase'
                     >
                       <XIcon className='h-4 w-4' />
                     </Button>
@@ -1712,6 +1731,7 @@ export function ManageCoachingUserView({
                       variant='outline'
                       className='h-8 w-8'
                       onClick={() => setIsEditingSessionClassJoinUrl(true)}
+                      disabled={isClosedV1Session}
                       aria-label='Editar link de clase'
                     >
                       <PencilIcon className='h-4 w-4' />
@@ -1940,6 +1960,11 @@ export function ManageCoachingUserView({
                   <CardTitle>Activación semanal</CardTitle>
                 </CardHeader>
                 <CardContent className='flex flex-wrap items-center gap-3'>
+                  {isClosedV1Session && (
+                    <p className='w-full text-sm text-muted-foreground'>
+                      Esta sesión v1 está cerrada. Edición deshabilitada.
+                    </p>
+                  )}
                   <p className='text-sm text-muted-foreground'>
                     Última semana activada:{' '}
                     <span className='font-medium text-foreground'>
@@ -1956,7 +1981,8 @@ export function ManageCoachingUserView({
                       !nextWeekEligibleKey ||
                       Boolean(nextWeekBlockedReason) ||
                       activatingWeekKey === nextWeekEligibleKey ||
-                      selectedMembership.status !== 'active'
+                      selectedMembership.status !== 'active' ||
+                      isClosedV1Session
                     }
                   >
                     {Boolean(nextWeekEligibleKey) &&
@@ -1977,6 +2003,7 @@ export function ManageCoachingUserView({
                     disabled={
                       !activeWeekNumber ||
                       selectedMembership.status !== 'active' ||
+                      isClosedV1Session ||
                       isClosingWeek
                     }
                   >
@@ -2140,6 +2167,7 @@ export function ManageCoachingUserView({
                                     }))
                                   }
                                   placeholder='Ej: https://www.loom.com/share/...'
+                                  disabled={isClosedV1Session}
                                 />
                                 {draftLoom && (
                                   <a
@@ -2172,8 +2200,9 @@ export function ManageCoachingUserView({
                                             classDraft.scheduledDate,
                                           scheduledTime:
                                             classDraft.scheduledTime,
-                                        })
-                                      }}
+                                          })
+                                        }}
+                                      disabled={isClosedV1Session}
                                     >
                                       {draftScheduledAt
                                         ? 'Editar horario'
@@ -2276,6 +2305,7 @@ export function ManageCoachingUserView({
                                               )
                                             }}
                                             className='appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none'
+                                            disabled={isClosedV1Session}
                                           />
                                           <InputGroupAddon>
                                             <Clock2Icon className='text-muted-foreground' />
@@ -2291,6 +2321,7 @@ export function ManageCoachingUserView({
                                           setSchedulePickerWeekKey(null)
                                           setSchedulePickerDraft(null)
                                         }}
+                                        disabled={isClosedV1Session}
                                       >
                                         Cancelar
                                       </Button>
@@ -2329,6 +2360,7 @@ export function ManageCoachingUserView({
                                           setSchedulePickerWeekKey(null)
                                           setSchedulePickerDraft(null)
                                         }}
+                                        disabled={isClosedV1Session}
                                       >
                                         Aceptar
                                       </Button>
@@ -2357,8 +2389,9 @@ export function ManageCoachingUserView({
                                       },
                                     }))
                                   }
-                                  placeholder='Ej: Practico speaking y corrigio errores clave'
+                                  placeholder='Ej: Practicó speaking y corrigió errores clave'
                                   rows={4}
+                                  disabled={isClosedV1Session}
                                 />
                               </div>
 
@@ -2385,6 +2418,7 @@ export function ManageCoachingUserView({
                                       },
                                     }))
                                   }
+                                  disabled={isClosedV1Session}
                                 />
 
                                 {classDraft.imageFile && (
@@ -2405,6 +2439,7 @@ export function ManageCoachingUserView({
                                           },
                                         }))
                                       }
+                                      disabled={isClosedV1Session}
                                     >
                                       Quitar seleccion
                                     </Button>
@@ -2450,6 +2485,7 @@ export function ManageCoachingUserView({
                                             },
                                           }))
                                         }
+                                        disabled={isClosedV1Session}
                                       >
                                         <Trash2Icon className='h-3.5 w-3.5' />
                                         Quitar imagen
@@ -2471,10 +2507,11 @@ export function ManageCoachingUserView({
                                           ...prev,
                                           [weekKey]: {
                                             ...(prev[weekKey] || classDraft),
-                                            removeImage: false,
-                                          },
-                                        }))
-                                      }
+                                              removeImage: false,
+                                            },
+                                          }))
+                                        }
+                                        disabled={isClosedV1Session}
                                     >
                                       Deshacer
                                     </Button>
@@ -2482,13 +2519,14 @@ export function ManageCoachingUserView({
                                 )}
                               </div>
 
-                              <Button
-                                type='button'
-                                onClick={() => void handleSaveClass(weekKey)}
-                                disabled={
-                                  savingClassWeek === weekKey ||
-                                  !hasClassChanges
-                                }
+                                <Button
+                                  type='button'
+                                  onClick={() => void handleSaveClass(weekKey)}
+                                  disabled={
+                                    isClosedV1Session ||
+                                    savingClassWeek === weekKey ||
+                                    !hasClassChanges
+                                  }
                               >
                                 {savingClassWeek === weekKey
                                   ? 'Guardando...'
@@ -2521,6 +2559,7 @@ export function ManageCoachingUserView({
                                     }))
                                   }
                                   placeholder='Ej: 40'
+                                  disabled={isClosedV1Session}
                                 />
                               </div>
                               <div className='space-y-1.5'>
@@ -2540,6 +2579,7 @@ export function ManageCoachingUserView({
                                     }))
                                   }
                                   placeholder='Ej: 2'
+                                  disabled={isClosedV1Session}
                                 />
                               </div>
                               <div className='space-y-1.5'>
@@ -2561,6 +2601,7 @@ export function ManageCoachingUserView({
                                     }))
                                   }
                                   placeholder='Ej: 70'
+                                  disabled={isClosedV1Session}
                                 />
                               </div>
                               <div className='space-y-1.5'>
@@ -2584,6 +2625,7 @@ export function ManageCoachingUserView({
                                     }))
                                   }
                                   placeholder='Ej: 55'
+                                  disabled={isClosedV1Session}
                                 />
                               </div>
 
@@ -2601,6 +2643,7 @@ export function ManageCoachingUserView({
                                     }))
                                   }
                                   placeholder='Ej: https://claude.ai/artifact/...'
+                                  disabled={isClosedV1Session}
                                 />
                               </div>
 
@@ -2610,7 +2653,10 @@ export function ManageCoachingUserView({
                                   onClick={() =>
                                     void handleSaveObjective(weekKey)
                                   }
-                                  disabled={savingObjectiveWeek === weekKey}
+                                  disabled={
+                                    isClosedV1Session ||
+                                    savingObjectiveWeek === weekKey
+                                  }
                                 >
                                   {savingObjectiveWeek === weekKey
                                     ? 'Actualizando...'
@@ -2674,6 +2720,7 @@ export function ManageCoachingUserView({
                                                 )
                                               }
                                               placeholder='Ej: https://www.loom.com/share/...'
+                                              disabled={isClosedV1Session}
                                             />
                                           </div>
                                           {note.feedbackLoomUrl && (
@@ -2749,6 +2796,7 @@ export function ManageCoachingUserView({
                                             }
                                             placeholder='Escribe observaciones mientras escuchas el audio...'
                                             rows={8}
+                                            disabled={isClosedV1Session}
                                           />
                                           <Button
                                             type='button'
@@ -2756,6 +2804,7 @@ export function ManageCoachingUserView({
                                               void handleSaveFeedback(note.id)
                                             }
                                             disabled={
+                                              isClosedV1Session ||
                                               savingFeedbackNoteId === note.id
                                             }
                                           >
@@ -2821,7 +2870,7 @@ export function ManageCoachingUserView({
               type='button'
               variant='outline'
               onClick={() => setCloseWeekModalOpen(false)}
-              disabled={isClosingWeek}
+              disabled={isClosingWeek || isClosedV1Session}
             >
               Cancelar
             </Button>
@@ -2829,7 +2878,7 @@ export function ManageCoachingUserView({
               type='button'
               variant='destructive'
               onClick={() => void handleCloseCurrentWeek()}
-              disabled={!activeWeekNumber || isClosingWeek}
+              disabled={!activeWeekNumber || isClosingWeek || isClosedV1Session}
             >
               {isClosingWeek ? 'Cerrando...' : 'Confirmar cierre manual'}
             </Button>

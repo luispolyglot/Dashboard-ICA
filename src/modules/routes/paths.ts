@@ -137,3 +137,7 @@ export function getCoachingV2ExerciseRoute(
 ): string {
   return `${DASHBOARD_ROUTES.coachingV2Exercise}/${sessionId}/${periodNumber}/${focusId}`
 }
+
+export function getCoachingPersonalizedSessionRoute(sessionId: string): string {
+  return `${DASHBOARD_ROUTES.coachingPersonalized}/${sessionId}`
+}

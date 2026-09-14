@@ -14,6 +14,7 @@ import {
   IcaChallengesPage,
   IcaChallengePlayPage,
   CoachingPersonalizedPage,
+  CoachingPersonalizedSessionPage,
   CoachingV2ExercisePage,
   FlashcardsPage,
   FlashcardsPlayPage,
@@ -137,6 +138,10 @@ export function App() {
             </Route>
             <Route element={<CoachingMemberRoute />}>
               <Route path='coaching-personalized' element={<CoachingPersonalizedPage />} />
+              <Route
+                path='coaching-personalized/:sessionId'
+                element={<CoachingPersonalizedSessionPage />}
+              />
               <Route
                 path='coaching-personalized/ejercicio/:sessionId/:periodNumber/:focusId'
                 element={<CoachingV2ExercisePage />}

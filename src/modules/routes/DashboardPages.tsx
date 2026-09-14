@@ -11,7 +11,10 @@ import { useDashboardContext } from '../context/DashboardContext'
 import { PageLayout } from '../layout/PageLayout'
 import { AddView } from '../views/AddView'
 import { AdminAnalyticsView } from '../views/AdminAnalyticsView'
-import { CoachingPersonalizedView } from '../views/CoachingPersonalizedView'
+import {
+  CoachingPersonalizedSessionView,
+  CoachingPersonalizedView,
+} from '../views/CoachingPersonalizedView'
 import { CoachingV2ExerciseView } from '../views/CoachingV2ExerciseView'
 import { CalendarIcademyView } from '../views/CalendarIcademyView'
 import { FlashcardsModeView } from '../views/FlashcardsModeView'
@@ -750,6 +753,17 @@ export function CoachingPersonalizedPage() {
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.profile}>
       <CoachingPersonalizedView targetLang={config?.targetLang} />
+    </PageLayout>
+  )
+}
+
+export function CoachingPersonalizedSessionPage() {
+  const { sessionId } = useParams<{ sessionId: string }>()
+  if (!sessionId) return null
+
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.coachingPersonalized}>
+      <CoachingPersonalizedSessionView sessionId={sessionId} />
     </PageLayout>
   )
 }
