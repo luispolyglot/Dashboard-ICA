@@ -1664,11 +1664,11 @@ async function requestFocusExerciseGeneration(input: {
   focusTitle: string
   studentContext: string | null
   focusSlot: string
-}): Promise<{ exercise: Record<string, unknown> | null; error: string | null }> {
+}): Promise<{ exercise: Record<string, unknown> | null; error: string | null; invalidJsonSnippet: string | null }> {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     if (!supabaseUrl) {
-      return { exercise: null, error: 'SUPABASE_URL is not configured' }
+      return { exercise: null, error: 'SUPABASE_URL is not configured', invalidJsonSnippet: null }
     }
 
     const response = await fetch(`${supabaseUrl}/functions/v1/anthropic-proxy`, {
@@ -1692,12 +1692,18 @@ async function requestFocusExerciseGeneration(input: {
     const responseData = await response.json().catch(() => ({})) as {
       exercise?: unknown
       error?: string
+      invalidJsonSnippet?: unknown
     }
+
+    const invalidJsonSnippet = typeof responseData.invalidJsonSnippet === 'string'
+      ? responseData.invalidJsonSnippet.trim().slice(0, 800)
+      : null
 
     if (!response.ok) {
       return {
         exercise: null,
         error: responseData.error || `anthropic_proxy_error_${response.status}`,
+        invalidJsonSnippet,
       }
     }
 
@@ -1712,15 +1718,17 @@ async function requestFocusExerciseGeneration(input: {
       return {
         exercise: null,
         error: responseData.error || 'invalid_exercise_payload',
+        invalidJsonSnippet,
       }
     }
 
-    return { exercise, error: null }
+    return { exercise, error: null, invalidJsonSnippet: null }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown_request_error'
     return {
       exercise: null,
       error: `anthropic_proxy_request_failed:${message}`,
+      invalidJsonSnippet: null,
     }
   }
 }
@@ -1834,6 +1842,10 @@ async function runFocusExerciseGeneration(input: {
       message: errorMessage,
       payload: {
         tookMs: Date.now() - startedAt,
+        invalidJsonSnippet:
+          errorMessage.includes('invalid_schema:invalid_json') && generated.invalidJsonSnippet
+            ? generated.invalidJsonSnippet
+            : null,
       },
       requestedBy: input.requestedBy,
     })
