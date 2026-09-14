@@ -1656,61 +1656,12 @@ function getFocusSlotLabel(periodRows: CoachingV2FocusRow[], focusId: string): s
   return `Foco ${slot}`
 }
 
-function resolveErrorRealFromFocusComment(input: {
-  focusComment: string | null
-  focusTitle: string
-}): string {
-  const raw = safeString(input.focusComment)
-  if (!raw) {
-    return '[SIN_ERROR_REAL]'
-  }
-
-  const normalized = raw.replace(/\s+/g, ' ').trim()
-  if (!normalized) return '[SIN_ERROR_REAL]'
-
-  const quoted = normalized.match(/["“”']([^"“”']{8,220})["“”']/)
-  if (quoted && quoted[1]) {
-    return quoted[1].trim()
-  }
-
-  const lowered = normalized.toLowerCase()
-  const likelyMetaComment = [
-    'usuario',
-    'alumno',
-    'estudiante',
-    'le cuesta',
-    'no lo sabe',
-    'no entiende',
-    'confunde',
-    'foco',
-    'gramatica',
-    'gramática',
-    'error',
-  ].some((token) => lowered.includes(token))
-  if (likelyMetaComment) {
-    return '[SIN_ERROR_REAL]'
-  }
-
-  const sentenceCandidates = normalized
-    .split(/[.!?]+/)
-    .map((part) => part.trim())
-    .filter((part) => part.length >= 8)
-
-  const likelyUtterance =
-    sentenceCandidates.find((part) => /\b(i|you|he|she|we|they|je|tu|il|elle|nous|vous|ils|ellas?)\b/i.test(part)) ||
-    sentenceCandidates.find((part) => part.split(' ').length >= 4) ||
-    normalized
-
-  return likelyUtterance.slice(0, 240)
-}
-
 async function requestFocusExerciseGeneration(input: {
   authHeader: string
   targetLang: string
   nativeLang: string | null
   level: string
   focusTitle: string
-  errorReal: string
   studentContext: string | null
   focusSlot: string
 }): Promise<{ exercise: Record<string, unknown> | null; error: string | null }> {
@@ -1732,7 +1683,6 @@ async function requestFocusExerciseGeneration(input: {
         nativeLang: input.nativeLang || 'es',
         level: input.level,
         focusTitle: input.focusTitle,
-        errorReal: input.errorReal,
         studentContext: input.studentContext || '',
         focusSlot: input.focusSlot,
         phase: 'Entrenado',
@@ -1809,7 +1759,6 @@ async function runFocusExerciseGeneration(input: {
   periodNumber: number
   focusId: string
   focusTitle: string
-  focusComment: string | null
   targetLang: string
   nativeLang: string | null
   level: string
@@ -1820,10 +1769,6 @@ async function runFocusExerciseGeneration(input: {
 }): Promise<void> {
   const triggerSource = input.triggerSource || 'unknown'
   const startedAt = Date.now()
-  const errorReal = resolveErrorRealFromFocusComment({
-    focusComment: input.focusComment,
-    focusTitle: input.focusTitle,
-  })
 
   await appendFocusExerciseGenerationLog({
     adminClient: input.adminClient,
@@ -1838,7 +1783,6 @@ async function runFocusExerciseGeneration(input: {
       focusTitle: input.focusTitle,
       focusSlot: input.focusSlot,
       hasStudentContext: Boolean(input.studentContext),
-      errorReal,
     },
     requestedBy: input.requestedBy,
   })
@@ -1871,7 +1815,6 @@ async function runFocusExerciseGeneration(input: {
     nativeLang: input.nativeLang,
     level: input.level,
     focusTitle: input.focusTitle,
-    errorReal,
     studentContext: input.studentContext,
     focusSlot: input.focusSlot,
   })
@@ -2996,7 +2939,6 @@ Deno.serve(async (req) => {
           periodNumber,
           focusId: created.id,
           focusTitle: created.focus_title,
-          focusComment: created.focus_comment,
           targetLang: sessionRow.target_lang,
           nativeLang: sessionRow.native_lang,
           level: sessionRow.level,
@@ -3248,7 +3190,6 @@ Deno.serve(async (req) => {
       periodNumber: focusRow.period_number,
       focusId: focusRow.id,
       focusTitle: focusRow.focus_title,
-      focusComment: focusRow.focus_comment,
       targetLang: sessionRow.target_lang,
       nativeLang: sessionRow.native_lang,
       level: sessionRow.level,
@@ -3472,7 +3413,6 @@ Deno.serve(async (req) => {
           const generationQueue: Array<{
             focusId: string
             focusTitle: string
-            focusComment: string | null
             focusSlot: string
           }> = []
 
@@ -3517,7 +3457,6 @@ Deno.serve(async (req) => {
               generationQueue.push({
                 focusId: inserted.id,
                 focusTitle: inserted.focus_title,
-                focusComment: inserted.focus_comment,
                 focusSlot: `Foco ${idx + 1}`,
               })
             }
@@ -3542,7 +3481,6 @@ Deno.serve(async (req) => {
                   periodNumber: nextPeriodNumber,
                   focusId: item.focusId,
                   focusTitle: item.focusTitle,
-                  focusComment: item.focusComment,
                   targetLang: sessionRow.target_lang,
                   nativeLang: sessionRow.native_lang,
                   level: sessionRow.level,

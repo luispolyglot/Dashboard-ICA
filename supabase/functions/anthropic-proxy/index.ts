@@ -142,7 +142,6 @@ type CoachingFocusExercisePayload = {
   nativeLang: string
   level: string
   focusTitle: string
-  errorReal: string
   studentContext?: string
   focusSlot?: string
   phase?: string
@@ -628,11 +627,16 @@ function parsePhraseTokenInsight(raw: string | null): {
   }
 }
 
-function parseCoachingFocusExercise(raw: string | null): Record<string, unknown> | null {
+function parseCoachingFocusExercise(raw: string | null): {
+  exercise: Record<string, unknown> | null
+  errorReason: string | null
+} {
   const parsed = parseLastJsonObject(raw)
-  if (!parsed) return null
-  if (!isRecord(parsed.etiquetas)) return null
-  if (!Array.isArray(parsed.bloques) || parsed.bloques.length !== 3) return null
+  if (!parsed) return { exercise: null, errorReason: 'invalid_json' }
+  if (!isRecord(parsed.etiquetas)) return { exercise: null, errorReason: 'missing_etiquetas' }
+  if (!Array.isArray(parsed.bloques) || parsed.bloques.length !== 3) {
+    return { exercise: null, errorReason: 'invalid_bloques_count' }
+  }
 
   const bloqueIds = parsed.bloques
     .filter((item): item is Record<string, unknown> => isRecord(item))
@@ -643,7 +647,7 @@ function parseCoachingFocusExercise(raw: string | null): Record<string, unknown>
     bloqueIds[1] !== 'construir' ||
     bloqueIds[2] !== 'conversacion'
   ) {
-    return null
+    return { exercise: null, errorReason: 'invalid_bloques_order' }
   }
 
   const recoBlock = parsed.bloques[0]
@@ -665,14 +669,13 @@ function parseCoachingFocusExercise(raw: string | null): Record<string, unknown>
     }
   }
 
-  return parsed
+  return { exercise: parsed, errorReason: null }
 }
 
 function buildCoachingFocusExercisePrompt(input: {
   targetLang: string
   focusTitle: string
   level: string
-  errorReal: string
   studentContext: string
   focusSlot: string
   phase: string
@@ -686,7 +689,6 @@ function buildCoachingFocusExercisePrompt(input: {
     `- Idioma objetivo: ${input.targetLang}`,
     `- Foco gramatical: ${input.focusTitle}`,
     `- Nivel del alumno: ${input.level}`,
-    `- Error real que cometio el alumno en clase: "${input.errorReal}"`,
     `- Contexto del alumno: ${input.studentContext || 'Sin contexto adicional'}`,
     `- Slot: ${input.focusSlot} · Fase: ${input.phase}`,
     '',
@@ -708,9 +710,7 @@ function buildCoachingFocusExercisePrompt(input: {
     '- En explicaciones evita usar las palabras "correcto" o "incorrecto".',
     '',
     'BLOQUE 1 - reconocer',
-    '- La PRIMERA pregunta debe usar el ERROR_REAL literal como una opcion.',
-    '- Si ERROR_REAL llega como [SIN_ERROR_REAL], sintetiza UNA frase erronea plausible del foco y usala como literal.',
-    '- Si ERROR_REAL trae comentario + frase mezclados, extrae solo la frase del alumno (sin metatexto) y usa esa literal.',
+    '- La PRIMERA pregunta debe ser un error plausible tipico del foco para hispanohablante del nivel indicado.',
     '- Cada pregunta tiene 3 opciones y exactamente 1 con ok=true.',
     '- Distractores plausibles de hispanohablante del nivel indicado.',
     '- Cada opcion debe traer why.',
@@ -813,16 +813,14 @@ function buildCoachingFocusExercisePrompt(input: {
     '',
     'COMPROBACIONES ANTES DE RESPONDER',
     '1) Hay 4 items en reconocer, 4 en construir y 5 huecos en conversacion.',
-    '2) ERROR_REAL aparece literal en la primera multiple choice.',
-    '3) Cada pregunta multiple choice tiene exactamente un ok=true.',
-    '4) formas de construir son solo nucleos verbales.',
-    '5) formas de construir estan normalizadas (minusculas, sin acentos, sin apostrofes).',
-    '6) Hay algun item de construir con dos verbos en contraste.',
-    '7) Huecos {n} del dialogo alineados con items[n].',
-    '8) Todos los tags existen en etiquetas.',
-    '9) umbral deja margen para fallar dos.',
-    '10) Explicaciones en espanol y frases en idioma objetivo.',
-    '11) La cadena [SIN_ERROR_REAL] no aparece en ninguna parte del JSON final.',
+    '2) Cada pregunta multiple choice tiene exactamente un ok=true.',
+    '3) formas de construir son solo nucleos verbales.',
+    '4) formas de construir estan normalizadas (minusculas, sin acentos, sin apostrofes).',
+    '5) Hay algun item de construir con dos verbos en contraste.',
+    '6) Huecos {n} del dialogo alineados con items[n].',
+    '7) Todos los tags existen en etiquetas.',
+    '8) umbral deja margen para fallar dos.',
+    '9) Explicaciones en espanol y frases en idioma objetivo.',
     '',
     'Responde solo con JSON.',
   ].join('\n')
@@ -1309,7 +1307,6 @@ Deno.serve(async (req) => {
       const targetLang = payload.targetLang.trim()
       const nativeLang = payload.nativeLang.trim()
       const focusTitle = payload.focusTitle.trim()
-      const errorReal = payload.errorReal.trim()
       const level = normalizeLevelKey(payload.level)
       const studentContext = typeof payload.studentContext === 'string'
         ? payload.studentContext.trim()
@@ -1321,9 +1318,9 @@ Deno.serve(async (req) => {
         ? payload.phase.trim()
         : 'Entrenado'
 
-      if (!targetLang || !nativeLang || !focusTitle || !errorReal) {
+      if (!targetLang || !nativeLang || !focusTitle) {
         return jsonResponse(400, {
-          error: 'targetLang, nativeLang, focusTitle and errorReal are required',
+          error: 'targetLang, nativeLang and focusTitle are required',
         })
       }
 
@@ -1331,7 +1328,6 @@ Deno.serve(async (req) => {
         targetLang,
         focusTitle,
         level,
-        errorReal,
         studentContext,
         focusSlot,
         phase,
@@ -1347,12 +1343,15 @@ Deno.serve(async (req) => {
         },
       )
 
-      const exercise = parseCoachingFocusExercise(raw.text)
-      if (!exercise) {
-        return jsonResponse(200, { exercise: null, error: 'invalid_schema' })
+      const parsed = parseCoachingFocusExercise(raw.text)
+      if (!parsed.exercise) {
+        return jsonResponse(200, {
+          exercise: null,
+          error: `invalid_schema:${parsed.errorReason || 'unknown'}`,
+        })
       }
 
-      return jsonResponse(200, { exercise })
+      return jsonResponse(200, { exercise: parsed.exercise })
     }
 
     return jsonResponse(400, { error: 'Unsupported action' })
