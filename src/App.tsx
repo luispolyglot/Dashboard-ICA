@@ -11,7 +11,10 @@ import {
   CalendarIcademyManagePage,
   CalendarIcademyPage,
   CalendarIcademyTeachersPage,
+  IcaChallengesPage,
+  IcaChallengePlayPage,
   CoachingPersonalizedPage,
+  CoachingV2ExercisePage,
   FlashcardsPage,
   FlashcardsPlayPage,
   GamesIcaPage,
@@ -99,6 +102,8 @@ export function App() {
             <Route path='new-ica-words' element={<NewIcaWordsPage />} />
             <Route path='my-ica-words' element={<MyIcaWordsPage />} />
             <Route path='games-ica' element={<GamesIcaPage />} />
+            <Route path='desafios-ica' element={<IcaChallengesPage />} />
+            <Route path='desafios-ica/:challengeId' element={<IcaChallengePlayPage />} />
             <Route path='flashcards' element={<FlashcardsPage />} />
             <Route path='flashcards/play/:mode' element={<FlashcardsPlayPage />} />
             <Route path='preguntica' element={<PregunticaPage />} />
@@ -132,6 +137,10 @@ export function App() {
             </Route>
             <Route element={<CoachingMemberRoute />}>
               <Route path='coaching-personalized' element={<CoachingPersonalizedPage />} />
+              <Route
+                path='coaching-personalized/ejercicio/:sessionId/:periodNumber/:focusId'
+                element={<CoachingV2ExercisePage />}
+              />
             </Route>
             <Route element={<CoachingAdminRoute />}>
               <Route path='manage-coaching' element={<ManageCoachingPage />} />

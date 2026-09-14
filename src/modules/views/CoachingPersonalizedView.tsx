@@ -8,6 +8,7 @@ import {
   type CoachingMembership,
 } from '../services/coaching'
 import { CoachingProgramPreview } from './CoachingProgramPreview'
+import { CoachingV3SessionBoard } from './CoachingV3SessionBoard'
 
 type CoachingPersonalizedViewProps = {
   targetLang?: string
@@ -133,7 +134,7 @@ export function CoachingPersonalizedView({
             Coaching Personalizado
           </h2>
           <p className='text-sm text-muted-foreground'>
-            Programa de 12 semanas con tus clases, objetivos y feedback.
+            Programa de 10 semanas con tus clases, objetivos y feedback.
           </p>
         </div>
 
@@ -155,12 +156,22 @@ export function CoachingPersonalizedView({
           </CardContent>
         </Card>
       ) : (
-        <CoachingProgramPreview
-          membership={selectedMembership}
-          allowExerciseCompletion
-          completingExerciseWeek={completingExerciseWeek}
-          onCompleteExercise={handleCompleteExercise}
-        />
+        selectedMembership.programVersion === 'v2' ? (
+          <CoachingV3SessionBoard
+            sessionId={selectedMembership.id}
+            mode='student'
+            targetLang={selectedMembership.targetLang}
+            userId={selectedMembership.userId}
+            coachDisplayName={selectedMembership.coachDisplayName}
+          />
+        ) : (
+          <CoachingProgramPreview
+            membership={selectedMembership}
+            allowExerciseCompletion
+            completingExerciseWeek={completingExerciseWeek}
+            onCompleteExercise={handleCompleteExercise}
+          />
+        )
       )}
     </section>
   )

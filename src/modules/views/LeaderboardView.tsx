@@ -86,7 +86,7 @@ const LEADERBOARD_PRIZES: Record<LeaderboardPrizeRank, LeaderboardPrize> = {
       "👨🏻‍🏫 Clase 1 a 1 de 1 hora con Luis",
       "💲 1 mes gratis en ICADEMY",
       "🎖️ Insignia oficial de ICAwards",
-      "🛩️ 1 ticket bombo ganador viajero",
+      "🎯 1 ticket coaching privado con Luis",
     ],
   },
   2: {
@@ -94,7 +94,7 @@ const LEADERBOARD_PRIZES: Record<LeaderboardPrizeRank, LeaderboardPrize> = {
     rewards: [
       "👨🏻‍🏫 Clase 1 a 1 de 30 minutos con Luis",
       "💲 50% de reembolso en membresía mensual",
-      "🛩️ 1 ticket bombo ganador viajero",
+      "🎯 1 ticket coaching privado con Luis",
     ],
   },
   3: {
@@ -323,7 +323,10 @@ function buildScoreBreakdown(
   const pregunticaPoints = getPregunticaPoints(row);
   const instagramPoints = getInstagramPoints(row);
   const listeningMaxPoints = scoringDayCap * MAX_LISTENING_POINTS_PER_DAY;
-  const pregunticaMaxPoints = getPregunticaMaxPoints(scoringDayCap, pregunticaPoints);
+  const pregunticaMaxPoints = getPregunticaMaxPoints(
+    scoringDayCap,
+    pregunticaPoints,
+  );
   const instagramMaxPoints = scoringDayCap * MAX_INSTAGRAM_POINTS_PER_DAY;
   const totalPoints = getDisplayedTotalPoints(row, includeIcaTest);
   const totalMaxPoints =

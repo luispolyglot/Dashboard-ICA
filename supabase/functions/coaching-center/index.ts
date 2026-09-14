@@ -27,8 +27,32 @@ import {
   LEVEL_THRESHOLDS_BY_FAMILY,
   type LevelKey,
 } from '../../../src/shared/ica-leveling.ts'
+import {
+  applyFocusPhaseToggle,
+  buildCarryOverFocusesFromSnapshot,
+  buildFocusSnapshot,
+  canCreateFocus,
+  normalizePeriodNumber,
+  type CoachingV2FocusPhaseKey,
+  type CoachingV2FocusState,
+} from './v2-focus.ts'
+import {
+  hasAllStudentGuidelineResponses,
+  hasCoachGuidelinesCompleted,
+} from './v2-class.ts'
 
 const OWNER_SUPPORT_COACH_USER_ID = '68890bd8-894d-422d-b865-08806acdb312'
+
+const DEFAULT_CLASS_GUIDELINES = [
+  '3 palabras nuevas aprendidas que usarás en tu próxima clase',
+  'Frase que no entendiste hasta ver la grabación',
+  'Transcribe la 1ª frase del min 30 sin usar los subtítulos',
+] as const
+
+function withDefaultClassGuideline(value: string | null, index: 0 | 1 | 2): string {
+  const normalized = safeString(value)
+  return normalized || DEFAULT_CLASS_GUIDELINES[index]
+}
 
 type CoachingCenterPayload = {
   action?: string
@@ -52,6 +76,36 @@ type CoachingCenterPayload = {
   isActive?: boolean
   role?: 'coach_admin' | 'super_admin'
   scopes?: unknown
+  programVersion?: 'v1' | 'v2'
+  periodNumber?: unknown
+  focusId?: string
+  focusTitle?: string
+  focusComment?: string | null
+  phase?: string
+  checked?: unknown
+  classIndex?: unknown
+  title?: string | null
+  coachGuideline1?: string | null
+  coachGuideline2?: string | null
+  coachGuideline3?: string | null
+  loomUrl?: string | null
+  report?: string | null
+  reportImagePath?: string | null
+  periodReportText?: string | null
+  periodReportImagePath?: string | null
+  scheduledAt?: string | null
+  studentReportText?: string | null
+  studentReportImagePath?: string | null
+  guidelineResponse1?: string | null
+  guidelineResponse2?: string | null
+  guidelineResponse3?: string | null
+  scoreCorrect?: unknown
+  scoreTotal?: unknown
+  scoreThreshold?: unknown
+  passed?: unknown
+  blockScores?: unknown
+  tagScores?: unknown
+  failures?: unknown
 }
 
 type CoachingUserRow = {
@@ -72,6 +126,8 @@ type CoachingUserRow = {
   status: 'draft' | 'active' | 'completed' | 'cancelled'
   activated_at: string | null
   duration_weeks: number
+  program_version: 'v1' | 'v2'
+  duration_periods: number
   created_at: string
   updated_at: string
 }
@@ -106,14 +162,161 @@ type CoachingSessionClassRow = {
   id: string
   session_id: string
   week_number: number
+  class_index: number
   title: string
   loom_url: string | null
   report: string | null
   report_image_path: string | null
   scheduled_at: string | null
   assigned_by_coach_user_id: string | null
+  coach_guideline_1: string | null
+  coach_guideline_2: string | null
+  coach_guideline_3: string | null
+  student_completed_at: string | null
+  student_report_text: string | null
+  student_report_image_path: string | null
+  student_guideline_response_1: string | null
+  student_guideline_response_2: string | null
+  student_guideline_response_3: string | null
   created_at: string
   updated_at: string
+}
+
+type CoachingV2SessionRow = {
+  id: string
+  user_id: string
+  target_lang: string
+  native_lang: string | null
+  level: string
+  status: 'draft' | 'active' | 'completed' | 'cancelled'
+  coach_user_id: string | null
+  support_coach_user_id: string | null
+  class_join_url: string | null
+  notes: string | null
+  program_version: 'v1' | 'v2'
+  duration_periods: number
+}
+
+type CoachingV2PeriodActivationRow = {
+  session_id: string
+  period_number: number
+  activated_at: string
+  ended_at: string | null
+}
+
+type CoachingV2FocusRow = {
+  id: string
+  session_id: string
+  period_number: number
+  focus_title: string
+  focus_comment: string | null
+  phase_explained: boolean
+  phase_trained: boolean
+  phase_understood_explained: boolean
+  phase_used: boolean
+  completed_at: string | null
+  archived_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+type CoachingV2FocusSnapshotRow = {
+  session_id: string
+  period_number: number
+  snapshot: unknown
+  created_at: string
+}
+
+type CoachingV2FocusExerciseRow = {
+  id: string
+  session_id: string
+  period_number: number
+  focus_id: string
+  status: 'pending' | 'generating' | 'ready' | 'error'
+  payload: unknown
+  error_message: string | null
+  generated_at: string | null
+  updated_at: string
+}
+
+type CoachingV2PeriodReportRow = {
+  id: string
+  session_id: string
+  period_number: number
+  report_text: string | null
+  report_image_path: string | null
+  created_by: string | null
+  updated_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+type CoachingV2PeriodState = {
+  lastActivatedPeriod: number
+  currentActivePeriod: number | null
+  nextPeriodEligible: number | null
+}
+
+type CoachingV2FocusExerciseStatus = 'pending' | 'generating' | 'ready' | 'error'
+
+type CoachingV2FocusExercise = {
+  focusId: string
+  periodNumber: number
+  status: CoachingV2FocusExerciseStatus
+  exercise: Record<string, unknown> | null
+  error: string | null
+  generatedAt: string | null
+  updatedAt: string
+}
+
+type CoachingV2PeriodReport = {
+  id: string
+  periodNumber: number
+  reportText: string | null
+  reportImagePath: string | null
+  reportImageUrl: string | null
+  createdBy: string | null
+  updatedBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+type CoachingV2Coachers = {
+  primaryCoachDisplayName: string
+  selectedCoachDisplayName: string | null
+  classAssignedCoachDisplayNameByClassIndex: Record<string, string>
+}
+
+type CoachingV2FocusExerciseAttemptRow = {
+  id: string
+  session_id: string
+  period_number: number
+  focus_id: string
+  student_user_id: string
+  score_correct: number
+  score_total: number
+  score_threshold: number
+  passed: boolean
+  block_scores: unknown
+  tag_scores: unknown
+  failures: unknown
+  submitted_at: string
+  created_at: string
+}
+
+type CoachingV2FocusExerciseAttempt = {
+  id: string
+  focusId: string
+  periodNumber: number
+  studentUserId: string
+  scoreCorrect: number
+  scoreTotal: number
+  scoreThreshold: number
+  passed: boolean
+  blockScores: unknown
+  tagScores: unknown
+  failures: unknown
+  submittedAt: string
 }
 
 type WeekProgressItem = {
@@ -160,6 +363,11 @@ function safeString(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const normalized = value.trim()
   return normalized.length > 0 ? normalized : null
+}
+
+function safeBoolean(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value
+  return null
 }
 
 function normalizeStudyLevel(value: string | null | undefined): string {
@@ -314,6 +522,12 @@ function normalizeProgramWeekKey(value: string | null): string | null {
   return null
 }
 
+function normalizeClassIndex(value: unknown): number {
+  const parsed = safeInteger(value)
+  if (!parsed) return 1
+  return parsed === 2 ? 2 : 1
+}
+
 function safeClassSessions(value: unknown): unknown[] {
   if (!Array.isArray(value)) return []
   return value
@@ -335,6 +549,7 @@ function safeClassSessions(value: unknown): unknown[] {
         key: weekKey,
         weekKey,
         title: safeString(item.title) || 'Clase semanal',
+        classIndex: normalizeClassIndex(item.classIndex ?? item.class_index),
         loomUrl: normalizeUrl(safeString(item.loomUrl ?? item.loom_url)),
         report: safeString(item.report),
         reportImagePath:
@@ -343,6 +558,33 @@ function safeClassSessions(value: unknown): unknown[] {
         assignedByCoachUserId:
           safeString(
             item.assignedByCoachUserId ?? item.assigned_by_coach_user_id,
+          ) || null,
+        coachGuideline1:
+          safeString(item.coachGuideline1 ?? item.coach_guideline_1) || null,
+        coachGuideline2:
+          safeString(item.coachGuideline2 ?? item.coach_guideline_2) || null,
+        coachGuideline3:
+          safeString(item.coachGuideline3 ?? item.coach_guideline_3) || null,
+        studentCompletedAt: normalizeIsoDateTime(
+          item.studentCompletedAt ?? item.student_completed_at,
+        ),
+        studentReportText:
+          safeString(item.studentReportText ?? item.student_report_text) || null,
+        studentReportImagePath:
+          safeString(
+            item.studentReportImagePath ?? item.student_report_image_path,
+          ) || null,
+        studentGuidelineResponse1:
+          safeString(
+            item.studentGuidelineResponse1 ?? item.student_guideline_response_1,
+          ) || null,
+        studentGuidelineResponse2:
+          safeString(
+            item.studentGuidelineResponse2 ?? item.student_guideline_response_2,
+          ) || null,
+        studentGuidelineResponse3:
+          safeString(
+            item.studentGuidelineResponse3 ?? item.student_guideline_response_3,
           ) || null,
         createdAt,
         updatedAt: safeString(item.updatedAt ?? item.updated_at) || new Date().toISOString(),
@@ -419,6 +661,30 @@ function weekNumberFromKey(value: string | null, fallback = 1): number {
 function weekKeyFromNumber(value: number): string {
   const week = Math.min(12, Math.max(1, Number.isFinite(value) ? value : 1))
   return `W${String(week).padStart(2, '0')}`
+}
+
+function toV2FocusState(row: CoachingV2FocusRow): CoachingV2FocusState {
+  return {
+    id: row.id,
+    periodNumber: row.period_number,
+    focusTitle: row.focus_title,
+    focusComment: row.focus_comment,
+    phaseExplained: row.phase_explained,
+    phaseTrained: row.phase_trained,
+    phaseUnderstoodExplained: row.phase_understood_explained,
+    phaseUsed: row.phase_used,
+    completedAt: row.completed_at,
+    archivedAt: row.archived_at,
+  }
+}
+
+function normalizeV2Phase(value: unknown): CoachingV2FocusPhaseKey | null {
+  if (typeof value !== 'string') return null
+  if (value === 'phaseExplained') return value
+  if (value === 'phaseTrained') return value
+  if (value === 'phaseUnderstoodExplained') return value
+  if (value === 'phaseUsed') return value
+  return null
 }
 
 function toUtcDate(value: string): Date | null {
@@ -571,7 +837,7 @@ async function fetchClosedNotesByWeekForSession(
       name:
         typeof row.name === 'string' && row.name.trim().length > 0
           ? row.name
-          : 'Nota Maestra: Sin titulo',
+          : 'Nota Maestra: Sin título',
       createdAt:
         typeof row.created_at === 'string' && row.created_at.length > 0
           ? row.created_at
@@ -614,14 +880,25 @@ function serializeWeeklyObjectives(
 function serializeClassSessions(rows: CoachingSessionClassRow[]): unknown[] {
   return rows.map((row) => ({
     id: row.id,
+    periodNumber: row.week_number,
     key: weekKeyFromNumber(row.week_number),
     weekKey: weekKeyFromNumber(row.week_number),
+    classIndex: normalizeClassIndex(row.class_index),
     title: row.title,
     loomUrl: normalizeUrl(row.loom_url),
     report: row.report,
     reportImagePath: row.report_image_path,
     scheduledAt: row.scheduled_at,
     assignedByCoachUserId: row.assigned_by_coach_user_id,
+    coachGuideline1: withDefaultClassGuideline(row.coach_guideline_1, 0),
+    coachGuideline2: withDefaultClassGuideline(row.coach_guideline_2, 1),
+    coachGuideline3: withDefaultClassGuideline(row.coach_guideline_3, 2),
+    studentCompletedAt: row.student_completed_at,
+    studentReportText: row.student_report_text,
+    studentReportImagePath: row.student_report_image_path,
+    studentGuidelineResponse1: row.student_guideline_response_1,
+    studentGuidelineResponse2: row.student_guideline_response_2,
+    studentGuidelineResponse3: row.student_guideline_response_3,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }))
@@ -685,8 +962,18 @@ function classRowsFromPayload(
   loom_url: string | null
   report: string | null
   report_image_path: string | null
+  class_index: number
   scheduled_at: string | null
   assigned_by_coach_user_id: string | null
+  coach_guideline_1: string | null
+  coach_guideline_2: string | null
+  coach_guideline_3: string | null
+  student_completed_at: string | null
+  student_report_text: string | null
+  student_report_image_path: string | null
+  student_guideline_response_1: string | null
+  student_guideline_response_2: string | null
+  student_guideline_response_3: string | null
   created_at: string
   updated_at: string
 }> {
@@ -701,6 +988,7 @@ function classRowsFromPayload(
           buildWeekKeyFromIso(createdAt),
       ),
       title: safeString(row.title) || 'Clase semanal',
+      class_index: normalizeClassIndex(row.classIndex ?? row.class_index),
       loom_url: normalizeUrl(safeString(row.loomUrl ?? row.loom_url)),
       report: safeString(row.report),
       report_image_path: safeString(row.reportImagePath ?? row.report_image_path),
@@ -708,6 +996,39 @@ function classRowsFromPayload(
       assigned_by_coach_user_id:
         safeString(row.assignedByCoachUserId ?? row.assigned_by_coach_user_id) ||
         null,
+      coach_guideline_1: withDefaultClassGuideline(
+        safeString(row.coachGuideline1 ?? row.coach_guideline_1) || null,
+        0,
+      ),
+      coach_guideline_2: withDefaultClassGuideline(
+        safeString(row.coachGuideline2 ?? row.coach_guideline_2) || null,
+        1,
+      ),
+      coach_guideline_3: withDefaultClassGuideline(
+        safeString(row.coachGuideline3 ?? row.coach_guideline_3) || null,
+        2,
+      ),
+      student_completed_at: normalizeIsoDateTime(
+        row.studentCompletedAt ?? row.student_completed_at,
+      ),
+      student_report_text:
+        safeString(row.studentReportText ?? row.student_report_text) || null,
+      student_report_image_path:
+        safeString(
+          row.studentReportImagePath ?? row.student_report_image_path,
+        ) || null,
+      student_guideline_response_1:
+        safeString(
+          row.studentGuidelineResponse1 ?? row.student_guideline_response_1,
+        ) || null,
+      student_guideline_response_2:
+        safeString(
+          row.studentGuidelineResponse2 ?? row.student_guideline_response_2,
+        ) || null,
+      student_guideline_response_3:
+        safeString(
+          row.studentGuidelineResponse3 ?? row.student_guideline_response_3,
+        ) || null,
       created_at: createdAt,
       updated_at: safeString(row.updatedAt) || new Date().toISOString(),
     }
@@ -790,7 +1111,7 @@ async function fetchProgramDataBySessionIds(
     adminClient
       .from('coaching_session_classes')
       .select(
-        'id, session_id, week_number, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, created_at, updated_at',
+        'id, session_id, week_number, class_index, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, coach_guideline_1, coach_guideline_2, coach_guideline_3, student_completed_at, student_report_text, student_report_image_path, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, created_at, updated_at',
       )
       .in('session_id', sessionIds)
       .order('created_at', { ascending: false }),
@@ -1110,6 +1431,450 @@ async function enqueueCoachingClassReminderNotification(input: {
   if (isDuplicate) return
 }
 
+async function fetchCoachingV2Session(
+  adminClient: any,
+  sessionId: string,
+): Promise<{ row: CoachingV2SessionRow | null; error: string | null }> {
+  const { data, error } = await adminClient
+    .from('coaching_sessions')
+    .select(
+      'id, user_id, target_lang, native_lang, level, status, coach_user_id, support_coach_user_id, class_join_url, notes, program_version, duration_periods',
+    )
+    .eq('id', sessionId)
+    .maybeSingle<CoachingV2SessionRow>()
+
+  if (error) return { row: null, error: error.message }
+  return { row: data || null, error: null }
+}
+
+async function fetchV2PeriodActivations(
+  adminClient: any,
+  sessionId: string,
+): Promise<{ rows: CoachingV2PeriodActivationRow[]; error: string | null }> {
+  const { data, error } = await adminClient
+    .from('coaching_v2_period_activations')
+    .select('session_id, period_number, activated_at, ended_at')
+    .eq('session_id', sessionId)
+    .order('period_number', { ascending: true })
+
+  if (error) return { rows: [], error: error.message }
+  return { rows: (data || []) as CoachingV2PeriodActivationRow[], error: null }
+}
+
+async function fetchV2FocusesByPeriod(input: {
+  adminClient: any
+  sessionId: string
+  periodNumber: number
+}): Promise<{ rows: CoachingV2FocusRow[]; error: string | null }> {
+  const { data, error } = await input.adminClient
+    .from('coaching_v2_focuses')
+    .select(
+      'id, session_id, period_number, focus_title, focus_comment, phase_explained, phase_trained, phase_understood_explained, phase_used, completed_at, archived_at, created_at, updated_at',
+    )
+    .eq('session_id', input.sessionId)
+    .eq('period_number', input.periodNumber)
+    .order('created_at', { ascending: true })
+
+  if (error) return { rows: [], error: error.message }
+  return { rows: (data || []) as CoachingV2FocusRow[], error: null }
+}
+
+async function fetchV2Snapshot(input: {
+  adminClient: any
+  sessionId: string
+  periodNumber: number
+}): Promise<{ row: CoachingV2FocusSnapshotRow | null; error: string | null }> {
+  const { data, error } = await input.adminClient
+    .from('coaching_v2_focus_snapshots')
+    .select('session_id, period_number, snapshot, created_at')
+    .eq('session_id', input.sessionId)
+    .eq('period_number', input.periodNumber)
+    .maybeSingle<CoachingV2FocusSnapshotRow>()
+
+  if (error) return { row: null, error: error.message }
+  return { row: data || null, error: null }
+}
+
+async function fetchV2PeriodReport(input: {
+  adminClient: any
+  sessionId: string
+  periodNumber: number
+}): Promise<{ row: CoachingV2PeriodReportRow | null; error: string | null }> {
+  const { data, error } = await input.adminClient
+    .from('coaching_v2_period_reports')
+    .select(
+      'id, session_id, period_number, report_text, report_image_path, created_by, updated_by, created_at, updated_at',
+    )
+    .eq('session_id', input.sessionId)
+    .eq('period_number', input.periodNumber)
+    .maybeSingle<CoachingV2PeriodReportRow>()
+
+  if (error) return { row: null, error: error.message }
+  return { row: data || null, error: null }
+}
+
+async function fetchProfileDisplayNamesByIds(
+  adminClient: any,
+  profileIds: string[],
+): Promise<{ rows: Array<{ id: string; displayName: string }>; error: string | null }> {
+  const uniqueIds = Array.from(new Set(profileIds.filter(Boolean)))
+  if (uniqueIds.length === 0) return { rows: [], error: null }
+
+  const { data, error } = await adminClient
+    .from('profiles')
+    .select('id, display_name, username')
+    .in('id', uniqueIds)
+
+  if (error) return { rows: [], error: error.message }
+
+  const rows = (data || []).map((row: { id: string; display_name: string | null; username: string | null }) => {
+    const displayName =
+      (typeof row.display_name === 'string' && row.display_name.trim()) ||
+      (typeof row.username === 'string' && row.username.trim()) ||
+      'Coach'
+
+    return {
+      id: String(row.id),
+      displayName,
+    }
+  })
+
+  return { rows, error: null }
+}
+
+function toV2PeriodReport(input: {
+  row: CoachingV2PeriodReportRow
+  reportImageUrl: string | null
+}): CoachingV2PeriodReport {
+  return {
+    id: input.row.id,
+    periodNumber: input.row.period_number,
+    reportText: input.row.report_text,
+    reportImagePath: safeString(input.row.report_image_path),
+    reportImageUrl: input.reportImageUrl,
+    createdBy: input.row.created_by,
+    updatedBy: input.row.updated_by,
+    createdAt: input.row.created_at,
+    updatedAt: input.row.updated_at,
+  }
+}
+
+function buildV2CoachersMetadata(input: {
+  sessionRow: CoachingV2SessionRow
+  namesById: Map<string, string>
+  classes: Array<{ classIndex: number; assignedByCoachUserId: string | null }>
+}): CoachingV2Coachers {
+  const selectedCoachDisplayName = input.sessionRow.coach_user_id
+    ? input.namesById.get(input.sessionRow.coach_user_id) || 'Coach'
+    : null
+
+  const classAssignedCoachDisplayNameByClassIndex: Record<string, string> = {}
+  for (const classRow of input.classes) {
+    if (!classRow.assignedByCoachUserId) continue
+    classAssignedCoachDisplayNameByClassIndex[String(classRow.classIndex)] =
+      input.namesById.get(classRow.assignedByCoachUserId) || 'Coach'
+  }
+
+  return {
+    primaryCoachDisplayName: 'Luis',
+    selectedCoachDisplayName,
+    classAssignedCoachDisplayNameByClassIndex,
+  }
+}
+
+function buildV2PeriodState(
+  activations: CoachingV2PeriodActivationRow[],
+): CoachingV2PeriodState {
+  const sorted = [...activations].sort((a, b) => a.period_number - b.period_number)
+  const lastActivatedPeriod = sorted[sorted.length - 1]?.period_number || 0
+  const currentActive = [...sorted].reverse().find((row) => !row.ended_at) || null
+  const currentActivePeriod = currentActive ? currentActive.period_number : null
+
+  if (currentActivePeriod) {
+    return {
+      lastActivatedPeriod,
+      currentActivePeriod,
+      nextPeriodEligible: null,
+    }
+  }
+
+  const next = lastActivatedPeriod + 1
+  return {
+    lastActivatedPeriod,
+    currentActivePeriod: null,
+    nextPeriodEligible: next <= 10 ? next : null,
+  }
+}
+
+function toV2FocusExercise(row: CoachingV2FocusExerciseRow): CoachingV2FocusExercise {
+  const payload =
+    row.payload && typeof row.payload === 'object' && !Array.isArray(row.payload)
+      ? (row.payload as Record<string, unknown>)
+      : null
+
+  return {
+    focusId: row.focus_id,
+    periodNumber: row.period_number,
+    status: row.status,
+    exercise: row.status === 'ready' ? payload : null,
+    error: row.error_message,
+    generatedAt: row.generated_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+function toV2FocusExerciseAttempt(
+  row: CoachingV2FocusExerciseAttemptRow,
+): CoachingV2FocusExerciseAttempt {
+  return {
+    id: row.id,
+    focusId: row.focus_id,
+    periodNumber: row.period_number,
+    studentUserId: row.student_user_id,
+    scoreCorrect: Math.max(0, Number(row.score_correct) || 0),
+    scoreTotal: Math.max(0, Number(row.score_total) || 0),
+    scoreThreshold: Math.max(0, Number(row.score_threshold) || 0),
+    passed: Boolean(row.passed),
+    blockScores: row.block_scores,
+    tagScores: row.tag_scores,
+    failures: row.failures,
+    submittedAt: row.submitted_at,
+  }
+}
+
+function getFocusSlotLabel(periodRows: CoachingV2FocusRow[], focusId: string): string {
+  const activeRows = periodRows
+    .filter((row) => !row.archived_at)
+    .sort((a, b) => {
+      const left = new Date(a.created_at).getTime()
+      const right = new Date(b.created_at).getTime()
+      return left - right
+    })
+
+  const idx = activeRows.findIndex((row) => row.id === focusId)
+  const slot = idx >= 0 ? idx + 1 : 1
+  return `Foco ${slot}`
+}
+
+async function requestFocusExerciseGeneration(input: {
+  authHeader: string
+  targetLang: string
+  nativeLang: string | null
+  level: string
+  focusTitle: string
+  studentContext: string | null
+  focusSlot: string
+}): Promise<{ exercise: Record<string, unknown> | null; error: string | null }> {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    if (!supabaseUrl) {
+      return { exercise: null, error: 'SUPABASE_URL is not configured' }
+    }
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/anthropic-proxy`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: input.authHeader,
+      },
+      body: JSON.stringify({
+        action: 'coaching_focus_exercise',
+        targetLang: input.targetLang,
+        nativeLang: input.nativeLang || 'es',
+        level: input.level,
+        focusTitle: input.focusTitle,
+        studentContext: input.studentContext || '',
+        focusSlot: input.focusSlot,
+        phase: 'Entrenado',
+      }),
+    })
+
+    const responseData = await response.json().catch(() => ({})) as {
+      exercise?: unknown
+      error?: string
+    }
+
+    if (!response.ok) {
+      return {
+        exercise: null,
+        error: responseData.error || `anthropic_proxy_error_${response.status}`,
+      }
+    }
+
+    const exercise =
+      responseData.exercise &&
+      typeof responseData.exercise === 'object' &&
+      !Array.isArray(responseData.exercise)
+        ? (responseData.exercise as Record<string, unknown>)
+        : null
+
+    if (!exercise) {
+      return {
+        exercise: null,
+        error: responseData.error || 'invalid_exercise_payload',
+      }
+    }
+
+    return { exercise, error: null }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown_request_error'
+    return {
+      exercise: null,
+      error: `anthropic_proxy_request_failed:${message}`,
+    }
+  }
+}
+
+async function appendFocusExerciseGenerationLog(input: {
+  adminClient: any
+  sessionId: string
+  focusId: string
+  periodNumber: number
+  triggerSource: 'create_focus' | 'regenerate' | 'carry_over' | 'unknown'
+  stage: string
+  status: 'info' | 'success' | 'error'
+  message?: string | null
+  payload?: Record<string, unknown> | null
+  requestedBy?: string | null
+}): Promise<void> {
+  await input.adminClient
+    .from('coaching_v2_focus_exercise_generation_logs')
+    .insert({
+      session_id: input.sessionId,
+      focus_id: input.focusId,
+      period_number: input.periodNumber,
+      trigger_source: input.triggerSource,
+      stage: input.stage,
+      status: input.status,
+      message: input.message || null,
+      payload: input.payload || null,
+      requested_by: input.requestedBy || null,
+    })
+}
+
+async function runFocusExerciseGeneration(input: {
+  adminClient: any
+  authHeader: string
+  sessionId: string
+  periodNumber: number
+  focusId: string
+  focusTitle: string
+  targetLang: string
+  nativeLang: string | null
+  level: string
+  studentContext: string | null
+  focusSlot: string
+  triggerSource?: 'create_focus' | 'regenerate' | 'carry_over' | 'unknown'
+  requestedBy?: string | null
+}): Promise<void> {
+  const triggerSource = input.triggerSource || 'unknown'
+  const startedAt = Date.now()
+
+  await appendFocusExerciseGenerationLog({
+    adminClient: input.adminClient,
+    sessionId: input.sessionId,
+    focusId: input.focusId,
+    periodNumber: input.periodNumber,
+    triggerSource,
+    stage: 'generation_started',
+    status: 'info',
+    message: 'Starting exercise generation.',
+    payload: {
+      focusTitle: input.focusTitle,
+      focusSlot: input.focusSlot,
+      hasStudentContext: Boolean(input.studentContext),
+    },
+    requestedBy: input.requestedBy,
+  })
+
+  const setGeneratingResult = await input.adminClient
+    .from('coaching_v2_focus_exercises')
+    .update({
+      status: 'generating',
+      error_message: null,
+    })
+    .eq('focus_id', input.focusId)
+  if (setGeneratingResult.error) {
+    await appendFocusExerciseGenerationLog({
+      adminClient: input.adminClient,
+      sessionId: input.sessionId,
+      focusId: input.focusId,
+      periodNumber: input.periodNumber,
+      triggerSource,
+      stage: 'set_generating_failed',
+      status: 'error',
+      message: setGeneratingResult.error.message,
+      requestedBy: input.requestedBy,
+    })
+    return
+  }
+
+  const generated = await requestFocusExerciseGeneration({
+    authHeader: input.authHeader,
+    targetLang: input.targetLang,
+    nativeLang: input.nativeLang,
+    level: input.level,
+    focusTitle: input.focusTitle,
+    studentContext: input.studentContext,
+    focusSlot: input.focusSlot,
+  })
+
+  if (generated.error || !generated.exercise) {
+    const errorMessage =
+      generated.error || 'No se pudo generar el ejercicio automáticamente.'
+
+    await appendFocusExerciseGenerationLog({
+      adminClient: input.adminClient,
+      sessionId: input.sessionId,
+      focusId: input.focusId,
+      periodNumber: input.periodNumber,
+      triggerSource,
+      stage: 'generation_failed',
+      status: 'error',
+      message: errorMessage,
+      payload: {
+        tookMs: Date.now() - startedAt,
+      },
+      requestedBy: input.requestedBy,
+    })
+
+    await input.adminClient
+      .from('coaching_v2_focus_exercises')
+      .update({
+        status: 'error',
+        error_message: errorMessage,
+        generated_at: null,
+      })
+      .eq('focus_id', input.focusId)
+    return
+  }
+
+  await input.adminClient
+    .from('coaching_v2_focus_exercises')
+    .update({
+      status: 'ready',
+      payload: generated.exercise,
+      error_message: null,
+      generated_at: new Date().toISOString(),
+    })
+    .eq('focus_id', input.focusId)
+
+  await appendFocusExerciseGenerationLog({
+    adminClient: input.adminClient,
+    sessionId: input.sessionId,
+    focusId: input.focusId,
+    periodNumber: input.periodNumber,
+    triggerSource,
+    stage: 'generation_succeeded',
+    status: 'success',
+    message: 'Exercise generated successfully.',
+    payload: {
+      tookMs: Date.now() - startedAt,
+    },
+    requestedBy: input.requestedBy,
+  })
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
@@ -1121,6 +1886,7 @@ Deno.serve(async (req) => {
 
   const auth = await ensureAuthenticated(req)
   if (!auth.ok) return auth.response
+  const authHeader = req.headers.get('Authorization') || ''
 
   let payload: CoachingCenterPayload
   try {
@@ -1238,6 +2004,8 @@ Deno.serve(async (req) => {
           status: row.status,
           activatedAt: row.activated_at,
           durationWeeks: row.duration_weeks,
+          programVersion: row.program_version || 'v1',
+          durationPeriods: row.duration_periods || 10,
           weekActivation,
           weekTimeline,
           weekProgress,
@@ -1347,8 +2115,1579 @@ Deno.serve(async (req) => {
     return jsonResponse(200, { ok: true })
   }
 
+  if (action === 'v2-submit-class-student-report') {
+    const sessionId = safeString(payload.sessionId)
+    const periodNumber = normalizePeriodNumber(payload.periodNumber)
+    const classIndex = normalizeClassIndex(payload.classIndex)
+    const guidelineResponse1 = safeString(payload.guidelineResponse1)
+    const guidelineResponse2 = safeString(payload.guidelineResponse2)
+    const guidelineResponse3 = safeString(payload.guidelineResponse3)
+
+    if (!sessionId || !periodNumber) {
+      return jsonResponse(400, {
+        error: 'sessionId and periodNumber are required',
+      })
+    }
+
+    const { row: sessionRow, error: sessionError } = await fetchCoachingV2Session(
+      auth.adminClient,
+      sessionId,
+    )
+    if (sessionError) return jsonResponse(500, { error: sessionError })
+    if (!sessionRow || sessionRow.user_id !== auth.userId) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    if (sessionRow.program_version !== 'v2') {
+      return jsonResponse(400, { error: 'Session is not v2' })
+    }
+
+    const { data: classRow, error: classError } = await auth.adminClient
+      .from('coaching_session_classes')
+      .select(
+        'id, coach_guideline_1, coach_guideline_2, coach_guideline_3',
+      )
+      .eq('session_id', sessionId)
+      .eq('week_number', periodNumber)
+      .eq('class_index', classIndex)
+      .maybeSingle<{
+        id: string
+        coach_guideline_1: string | null
+        coach_guideline_2: string | null
+        coach_guideline_3: string | null
+      }>()
+
+    if (classError) {
+      return jsonResponse(500, { error: classError.message })
+    }
+    if (!classRow) {
+      return jsonResponse(404, { error: 'Class slot not found' })
+    }
+
+    const hasGuidelines = hasCoachGuidelinesCompleted({
+      guideline1: withDefaultClassGuideline(classRow.coach_guideline_1, 0),
+      guideline2: withDefaultClassGuideline(classRow.coach_guideline_2, 1),
+      guideline3: withDefaultClassGuideline(classRow.coach_guideline_3, 2),
+    })
+
+    if (!hasGuidelines) {
+      return jsonResponse(400, {
+        error: 'Coach guidelines must be completed first',
+      })
+    }
+
+    const allAnswered = hasAllStudentGuidelineResponses({
+      response1: guidelineResponse1,
+      response2: guidelineResponse2,
+      response3: guidelineResponse3,
+    })
+
+    const { error: updateError } = await auth.adminClient
+      .from('coaching_session_classes')
+      .update({
+        student_completed_at: allAnswered ? new Date().toISOString() : null,
+        student_guideline_response_1: guidelineResponse1,
+        student_guideline_response_2: guidelineResponse2,
+        student_guideline_response_3: guidelineResponse3,
+      })
+      .eq('id', classRow.id)
+
+    if (updateError) {
+      return jsonResponse(500, { error: updateError.message })
+    }
+
+    const { data: updatedClassRow, error: updatedClassError } = await auth.adminClient
+      .from('coaching_session_classes')
+      .select(
+        'id, session_id, week_number, class_index, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, coach_guideline_1, coach_guideline_2, coach_guideline_3, student_completed_at, student_report_text, student_report_image_path, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, created_at, updated_at',
+      )
+      .eq('id', classRow.id)
+      .maybeSingle<CoachingSessionClassRow>()
+
+    if (updatedClassError) {
+      return jsonResponse(500, { error: updatedClassError.message })
+    }
+
+    return jsonResponse(200, {
+      ok: true,
+      class: updatedClassRow ? serializeClassSessions([updatedClassRow])[0] : null,
+    })
+  }
+
+  if (action === 'v2-submit-focus-exercise-attempt') {
+    const sessionId = safeString(payload.sessionId)
+    const periodNumber = normalizePeriodNumber(payload.periodNumber)
+    const focusId = safeString(payload.focusId)
+    const scoreCorrect = Math.max(0, safeInteger(payload.scoreCorrect) || 0)
+    const scoreTotal = Math.max(0, safeInteger(payload.scoreTotal) || 0)
+    const scoreThreshold = Math.max(0, safeInteger(payload.scoreThreshold) || 0)
+    const passed = Boolean(payload.passed)
+    const blockScores = Array.isArray(payload.blockScores) ? payload.blockScores : []
+    const tagScores = Array.isArray(payload.tagScores) ? payload.tagScores : []
+    const failures = Array.isArray(payload.failures) ? payload.failures : []
+
+    if (!sessionId || !periodNumber || !focusId) {
+      return jsonResponse(400, {
+        error: 'sessionId, periodNumber and focusId are required',
+      })
+    }
+
+    const { row: sessionRow, error: sessionError } = await fetchCoachingV2Session(
+      auth.adminClient,
+      sessionId,
+    )
+    if (sessionError) return jsonResponse(500, { error: sessionError })
+    if (!sessionRow || sessionRow.user_id !== auth.userId) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    if (sessionRow.program_version !== 'v2') {
+      return jsonResponse(400, { error: 'Session is not v2' })
+    }
+
+    const { data: focusRow, error: focusError } = await auth.adminClient
+      .from('coaching_v2_focuses')
+      .select(
+        'id, session_id, period_number, phase_explained, phase_trained, phase_understood_explained, phase_used, completed_at',
+      )
+      .eq('id', focusId)
+      .eq('session_id', sessionId)
+      .eq('period_number', periodNumber)
+      .maybeSingle<{
+        id: string
+        session_id: string
+        period_number: number
+        phase_explained: boolean
+        phase_trained: boolean
+        phase_understood_explained: boolean
+        phase_used: boolean
+        completed_at: string | null
+      }>()
+
+    if (focusError) return jsonResponse(500, { error: focusError.message })
+    if (!focusRow) return jsonResponse(404, { error: 'Focus not found' })
+
+    const submittedAt = new Date().toISOString()
+    const { data: attemptRow, error: attemptError } = await auth.adminClient
+      .from('coaching_v2_focus_exercise_attempts')
+      .insert({
+        session_id: sessionId,
+        period_number: periodNumber,
+        focus_id: focusId,
+        student_user_id: auth.userId,
+        score_correct: scoreCorrect,
+        score_total: scoreTotal,
+        score_threshold: scoreThreshold,
+        passed,
+        block_scores: blockScores,
+        tag_scores: tagScores,
+        failures,
+        submitted_at: submittedAt,
+      })
+      .select(
+        'id, session_id, period_number, focus_id, student_user_id, score_correct, score_total, score_threshold, passed, block_scores, tag_scores, failures, submitted_at, created_at',
+      )
+      .maybeSingle<CoachingV2FocusExerciseAttemptRow>()
+
+    if (attemptError) return jsonResponse(500, { error: attemptError.message })
+
+    let phaseTrainedUpdated = false
+    if (passed && focusRow.phase_explained && !focusRow.phase_trained) {
+      const { error: updateFocusError } = await auth.adminClient
+        .from('coaching_v2_focuses')
+        .update({
+          phase_trained: true,
+          updated_by: auth.userId,
+        })
+        .eq('id', focusId)
+
+      if (!updateFocusError) {
+        phaseTrainedUpdated = true
+      }
+    }
+
+    return jsonResponse(200, {
+      ok: true,
+      attempt: attemptRow ? toV2FocusExerciseAttempt(attemptRow) : null,
+      phaseTrainedUpdated,
+    })
+  }
+
+  if (action === 'v2-get-session-board-member') {
+    const sessionId = safeString(payload.sessionId)
+    if (!sessionId) {
+      return jsonResponse(400, { error: 'sessionId is required' })
+    }
+
+    const { row: sessionRow, error: sessionError } = await fetchCoachingV2Session(
+      auth.adminClient,
+      sessionId,
+    )
+    if (sessionError) return jsonResponse(500, { error: sessionError })
+    if (!sessionRow) {
+      return jsonResponse(404, { error: 'Coaching session not found' })
+    }
+    if (sessionRow.user_id !== auth.userId) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    if (sessionRow.program_version !== 'v2') {
+      return jsonResponse(400, { error: 'Session is not v2' })
+    }
+
+    const { rows: activations, error: activationsError } = await fetchV2PeriodActivations(
+      auth.adminClient,
+      sessionId,
+    )
+    if (activationsError) return jsonResponse(500, { error: activationsError })
+
+    const periodState = buildV2PeriodState(activations)
+
+    const fallbackPeriod =
+      periodState.currentActivePeriod ||
+      periodState.lastActivatedPeriod ||
+      periodState.nextPeriodEligible ||
+      1
+    const periodNumber = normalizePeriodNumber(payload.periodNumber) || fallbackPeriod
+
+    const [allFocusesResult, snapshotResult, previousSnapshotResult, classesResult, exercisesResult, attemptsResult, periodReportResult] = await Promise.all([
+      auth.adminClient
+        .from('coaching_v2_focuses')
+        .select(
+          'id, session_id, period_number, focus_title, focus_comment, phase_explained, phase_trained, phase_understood_explained, phase_used, completed_at, archived_at, created_at, updated_at',
+        )
+        .eq('session_id', sessionId)
+        .order('period_number', { ascending: true })
+        .order('created_at', { ascending: true }),
+      fetchV2Snapshot({ adminClient: auth.adminClient, sessionId, periodNumber }),
+      fetchV2Snapshot({
+        adminClient: auth.adminClient,
+        sessionId,
+        periodNumber: Math.max(1, periodNumber - 1),
+      }),
+      auth.adminClient
+        .from('coaching_session_classes')
+        .select(
+          'id, session_id, week_number, class_index, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, coach_guideline_1, coach_guideline_2, coach_guideline_3, student_completed_at, student_report_text, student_report_image_path, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, created_at, updated_at',
+        )
+        .eq('session_id', sessionId)
+        .order('week_number', { ascending: true })
+        .order('class_index', { ascending: true }),
+      auth.adminClient
+        .from('coaching_v2_focus_exercises')
+        .select(
+          'id, session_id, period_number, focus_id, status, payload, error_message, generated_at, updated_at',
+        )
+        .eq('session_id', sessionId),
+      auth.adminClient
+        .from('coaching_v2_focus_exercise_attempts')
+        .select(
+          'id, session_id, period_number, focus_id, student_user_id, score_correct, score_total, score_threshold, passed, block_scores, tag_scores, failures, submitted_at, created_at',
+        )
+        .eq('session_id', sessionId)
+        .eq('student_user_id', auth.userId)
+        .order('submitted_at', { ascending: false }),
+      fetchV2PeriodReport({
+        adminClient: auth.adminClient,
+        sessionId,
+        periodNumber,
+      }),
+    ])
+
+    if (
+      allFocusesResult.error ||
+      snapshotResult.error ||
+      previousSnapshotResult.error ||
+      classesResult.error ||
+      exercisesResult.error ||
+      attemptsResult.error ||
+      periodReportResult.error
+    ) {
+      return jsonResponse(500, {
+        error:
+          allFocusesResult.error?.message ||
+          snapshotResult.error ||
+          previousSnapshotResult.error ||
+          classesResult.error?.message ||
+          exercisesResult.error?.message ||
+          attemptsResult.error?.message ||
+          periodReportResult.error ||
+          'Unable to fetch v2 board data',
+      })
+    }
+
+    const classes = await Promise.all(
+      ((classesResult.data || []) as CoachingSessionClassRow[]).map(async (row) => {
+        const reportImagePath = safeString(row.report_image_path)
+        const studentReportImagePath = safeString(row.student_report_image_path)
+
+        const [reportImageSigned, studentImageSigned] = await Promise.all([
+          reportImagePath
+            ? auth.adminClient.storage
+                .from('coaching-class-reports')
+                .createSignedUrl(reportImagePath, 60 * 60)
+            : Promise.resolve({ data: null, error: null }),
+          studentReportImagePath
+            ? auth.adminClient.storage
+                .from('coaching-class-reports')
+                .createSignedUrl(studentReportImagePath, 60 * 60)
+            : Promise.resolve({ data: null, error: null }),
+        ])
+
+        return {
+          id: row.id,
+          periodNumber: row.week_number,
+          classIndex: normalizeClassIndex(row.class_index),
+          title: row.title,
+          loomUrl: normalizeUrl(row.loom_url),
+          report: row.report,
+          reportImagePath,
+          reportImageUrl: reportImageSigned.data?.signedUrl || null,
+          scheduledAt: row.scheduled_at,
+          assignedByCoachUserId: row.assigned_by_coach_user_id,
+          coachGuideline1: row.coach_guideline_1,
+          coachGuideline2: row.coach_guideline_2,
+          coachGuideline3: row.coach_guideline_3,
+          studentCompletedAt: row.student_completed_at,
+          studentReportText: row.student_report_text,
+          studentReportImagePath,
+          studentReportImageUrl: studentImageSigned.data?.signedUrl || null,
+          studentGuidelineResponse1: row.student_guideline_response_1,
+          studentGuidelineResponse2: row.student_guideline_response_2,
+          studentGuidelineResponse3: row.student_guideline_response_3,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        }
+      }),
+    )
+
+    const periodReportRow = periodReportResult.row
+    const periodReportImagePath = safeString(periodReportRow?.report_image_path)
+    const periodReportImageSigned = periodReportImagePath
+      ? await auth.adminClient.storage
+          .from('coaching-class-reports')
+          .createSignedUrl(periodReportImagePath, 60 * 60)
+      : { data: null, error: null }
+
+    const periodClasses = classes.filter((row) => row.periodNumber === periodNumber)
+    const coachProfileIds = [
+      sessionRow.coach_user_id || '',
+      sessionRow.support_coach_user_id || '',
+      ...periodClasses
+        .map((row) => row.assignedByCoachUserId || '')
+        .filter(Boolean),
+    ].filter(Boolean)
+    const coachNamesResult = await fetchProfileDisplayNamesByIds(
+      auth.adminClient,
+      coachProfileIds,
+    )
+    if (coachNamesResult.error) {
+      return jsonResponse(500, { error: coachNamesResult.error })
+    }
+    const coachNamesById = new Map(
+      coachNamesResult.rows.map((row) => [row.id, row.displayName]),
+    )
+
+    const focuses = ((allFocusesResult.data || []) as CoachingV2FocusRow[]).map(toV2FocusState)
+    const focusExercises = ((exercisesResult.data || []) as CoachingV2FocusExerciseRow[])
+      .map(toV2FocusExercise)
+    const latestAttemptByFocus = new Map<string, CoachingV2FocusExerciseAttempt>()
+    for (const row of ((attemptsResult.data || []) as CoachingV2FocusExerciseAttemptRow[])) {
+      if (latestAttemptByFocus.has(row.focus_id)) continue
+      latestAttemptByFocus.set(row.focus_id, toV2FocusExerciseAttempt(row))
+    }
+    const focusExerciseAttempts = Array.from(latestAttemptByFocus.values())
+    const periodFocuses = focuses.filter((row) => row.periodNumber === periodNumber)
+    return jsonResponse(200, {
+      session: {
+        id: sessionRow.id,
+        userId: sessionRow.user_id,
+        coachUserId: sessionRow.coach_user_id,
+        supportCoachUserId: sessionRow.support_coach_user_id,
+        targetLang: sessionRow.target_lang,
+        level: sessionRow.level,
+        status: sessionRow.status,
+        classJoinUrl: sessionRow.class_join_url,
+        programVersion: sessionRow.program_version,
+        durationPeriods: sessionRow.duration_periods,
+      },
+      periodNumber,
+      periodActivations: activations.map((row) => ({
+        periodNumber: row.period_number,
+        activatedAt: row.activated_at,
+        endedAt: row.ended_at,
+      })),
+      periodState,
+      focuses,
+      focusExercises,
+      focusExerciseAttempts,
+      canCreateFocus: canCreateFocus(periodFocuses),
+      classes,
+      periodReport:
+        periodReportRow
+          ? toV2PeriodReport({
+              row: periodReportRow,
+              reportImageUrl: periodReportImageSigned.data?.signedUrl || null,
+            })
+          : null,
+      coachers: buildV2CoachersMetadata({
+        sessionRow,
+        namesById: coachNamesById,
+        classes: periodClasses,
+      }),
+      snapshot: snapshotResult.row?.snapshot || null,
+      previousSnapshot:
+        periodNumber > 1 ? previousSnapshotResult.row?.snapshot || null : null,
+    })
+  }
+
   const admin = await ensureCoachingAdmin(req)
   if (!admin.ok) return admin.response
+
+  if (action === 'v2-activate-period') {
+    const sessionId = safeString(payload.sessionId)
+    const requestedPeriod = normalizePeriodNumber(payload.periodNumber)
+    if (!sessionId) {
+      return jsonResponse(400, { error: 'sessionId is required' })
+    }
+
+    const { row: sessionRow, error: sessionError } = await fetchCoachingV2Session(
+      admin.adminClient,
+      sessionId,
+    )
+    if (sessionError) return jsonResponse(500, { error: sessionError })
+    if (!sessionRow) return jsonResponse(404, { error: 'Coaching session not found' })
+    if (!canManageSession(admin, sessionRow.coach_user_id, sessionRow.support_coach_user_id)) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    if (sessionRow.program_version !== 'v2') {
+      return jsonResponse(400, { error: 'Session is not v2' })
+    }
+    if (sessionRow.status !== 'active') {
+      return jsonResponse(400, { error: 'Session is not active' })
+    }
+
+    const activationsResult = await fetchV2PeriodActivations(admin.adminClient, sessionId)
+    if (activationsResult.error) return jsonResponse(500, { error: activationsResult.error })
+    const state = buildV2PeriodState(activationsResult.rows)
+
+    if (state.currentActivePeriod) {
+      return jsonResponse(400, { error: 'Current period must be closed first' })
+    }
+
+    const nextEligible = state.nextPeriodEligible
+    if (!nextEligible) {
+      return jsonResponse(400, { error: 'No pending periods to activate' })
+    }
+
+    if (requestedPeriod && requestedPeriod !== nextEligible) {
+      return jsonResponse(400, { error: 'Only next eligible period can be activated' })
+    }
+
+    const nowIso = new Date().toISOString()
+    const { error: insertError } = await admin.adminClient
+      .from('coaching_v2_period_activations')
+      .insert({
+        session_id: sessionId,
+        period_number: nextEligible,
+        activated_at: nowIso,
+        activated_by: admin.userId,
+      })
+
+    if (insertError) return jsonResponse(500, { error: insertError.message })
+
+    const latest = await fetchV2PeriodActivations(admin.adminClient, sessionId)
+    if (latest.error) return jsonResponse(500, { error: latest.error })
+
+    return jsonResponse(200, {
+      ok: true,
+      activatedPeriod: nextEligible,
+      activatedAt: nowIso,
+      periodState: buildV2PeriodState(latest.rows),
+    })
+  }
+
+  if (action === 'v2-get-session-board') {
+    const sessionId = safeString(payload.sessionId)
+    if (!sessionId) {
+      return jsonResponse(400, { error: 'sessionId is required' })
+    }
+
+    const { row: sessionRow, error: sessionError } = await fetchCoachingV2Session(
+      admin.adminClient,
+      sessionId,
+    )
+    if (sessionError) return jsonResponse(500, { error: sessionError })
+    if (!sessionRow) {
+      return jsonResponse(404, { error: 'Coaching session not found' })
+    }
+    if (!canManageSession(admin, sessionRow.coach_user_id, sessionRow.support_coach_user_id)) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    if (sessionRow.program_version !== 'v2') {
+      return jsonResponse(400, { error: 'Session is not v2' })
+    }
+
+    const { rows: activations, error: activationsError } = await fetchV2PeriodActivations(
+      admin.adminClient,
+      sessionId,
+    )
+    if (activationsError) return jsonResponse(500, { error: activationsError })
+
+    const periodState = buildV2PeriodState(activations)
+
+    const fallbackPeriod =
+      periodState.currentActivePeriod ||
+      periodState.lastActivatedPeriod ||
+      periodState.nextPeriodEligible ||
+      1
+    const periodNumber = normalizePeriodNumber(payload.periodNumber) || fallbackPeriod
+
+    const [allFocusesResult, snapshotResult, previousSnapshotResult, classesResult, exercisesResult, attemptsResult, periodReportResult] = await Promise.all([
+      admin.adminClient
+        .from('coaching_v2_focuses')
+        .select(
+          'id, session_id, period_number, focus_title, focus_comment, phase_explained, phase_trained, phase_understood_explained, phase_used, completed_at, archived_at, created_at, updated_at',
+        )
+        .eq('session_id', sessionId)
+        .order('period_number', { ascending: true })
+        .order('created_at', { ascending: true }),
+      fetchV2Snapshot({ adminClient: admin.adminClient, sessionId, periodNumber }),
+      fetchV2Snapshot({
+        adminClient: admin.adminClient,
+        sessionId,
+        periodNumber: Math.max(1, periodNumber - 1),
+      }),
+      admin.adminClient
+        .from('coaching_session_classes')
+        .select(
+          'id, session_id, week_number, class_index, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, coach_guideline_1, coach_guideline_2, coach_guideline_3, student_completed_at, student_report_text, student_report_image_path, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, created_at, updated_at',
+        )
+        .eq('session_id', sessionId)
+        .order('week_number', { ascending: true })
+        .order('class_index', { ascending: true }),
+      admin.adminClient
+        .from('coaching_v2_focus_exercises')
+        .select(
+          'id, session_id, period_number, focus_id, status, payload, error_message, generated_at, updated_at',
+        )
+        .eq('session_id', sessionId),
+      admin.adminClient
+        .from('coaching_v2_focus_exercise_attempts')
+        .select(
+          'id, session_id, period_number, focus_id, student_user_id, score_correct, score_total, score_threshold, passed, block_scores, tag_scores, failures, submitted_at, created_at',
+        )
+        .eq('session_id', sessionId)
+        .order('submitted_at', { ascending: false }),
+      fetchV2PeriodReport({
+        adminClient: admin.adminClient,
+        sessionId,
+        periodNumber,
+      }),
+    ])
+
+    if (
+      allFocusesResult.error ||
+      snapshotResult.error ||
+      previousSnapshotResult.error ||
+      classesResult.error ||
+      exercisesResult.error ||
+      attemptsResult.error ||
+      periodReportResult.error
+    ) {
+      return jsonResponse(500, {
+        error:
+          allFocusesResult.error?.message ||
+          snapshotResult.error ||
+          previousSnapshotResult.error ||
+          classesResult.error?.message ||
+          exercisesResult.error?.message ||
+          attemptsResult.error?.message ||
+          periodReportResult.error ||
+          'Unable to fetch v2 board data',
+      })
+    }
+
+    const classes = await Promise.all(
+      ((classesResult.data || []) as CoachingSessionClassRow[]).map(async (row) => {
+        const reportImagePath = safeString(row.report_image_path)
+        const studentReportImagePath = safeString(row.student_report_image_path)
+
+        const [reportImageSigned, studentImageSigned] = await Promise.all([
+          reportImagePath
+            ? admin.adminClient.storage
+                .from('coaching-class-reports')
+                .createSignedUrl(reportImagePath, 60 * 60)
+            : Promise.resolve({ data: null, error: null }),
+          studentReportImagePath
+            ? admin.adminClient.storage
+                .from('coaching-class-reports')
+                .createSignedUrl(studentReportImagePath, 60 * 60)
+            : Promise.resolve({ data: null, error: null }),
+        ])
+
+        return {
+          id: row.id,
+          periodNumber: row.week_number,
+          classIndex: normalizeClassIndex(row.class_index),
+          title: row.title,
+          loomUrl: normalizeUrl(row.loom_url),
+          report: row.report,
+          reportImagePath,
+          reportImageUrl: reportImageSigned.data?.signedUrl || null,
+          scheduledAt: row.scheduled_at,
+          assignedByCoachUserId: row.assigned_by_coach_user_id,
+          coachGuideline1: row.coach_guideline_1,
+          coachGuideline2: row.coach_guideline_2,
+          coachGuideline3: row.coach_guideline_3,
+          studentCompletedAt: row.student_completed_at,
+          studentReportText: row.student_report_text,
+          studentReportImagePath,
+          studentReportImageUrl: studentImageSigned.data?.signedUrl || null,
+          studentGuidelineResponse1: row.student_guideline_response_1,
+          studentGuidelineResponse2: row.student_guideline_response_2,
+          studentGuidelineResponse3: row.student_guideline_response_3,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        }
+      }),
+    )
+
+    const periodReportRow = periodReportResult.row
+    const periodReportImagePath = safeString(periodReportRow?.report_image_path)
+    const periodReportImageSigned = periodReportImagePath
+      ? await admin.adminClient.storage
+          .from('coaching-class-reports')
+          .createSignedUrl(periodReportImagePath, 60 * 60)
+      : { data: null, error: null }
+
+    const periodClasses = classes.filter((row) => row.periodNumber === periodNumber)
+    const coachProfileIds = [
+      sessionRow.coach_user_id || '',
+      sessionRow.support_coach_user_id || '',
+      ...periodClasses
+        .map((row) => row.assignedByCoachUserId || '')
+        .filter(Boolean),
+    ].filter(Boolean)
+    const coachNamesResult = await fetchProfileDisplayNamesByIds(
+      admin.adminClient,
+      coachProfileIds,
+    )
+    if (coachNamesResult.error) {
+      return jsonResponse(500, { error: coachNamesResult.error })
+    }
+    const coachNamesById = new Map(
+      coachNamesResult.rows.map((row) => [row.id, row.displayName]),
+    )
+
+    const focuses = ((allFocusesResult.data || []) as CoachingV2FocusRow[]).map(toV2FocusState)
+    const focusExercises = ((exercisesResult.data || []) as CoachingV2FocusExerciseRow[])
+      .map(toV2FocusExercise)
+    const latestAttemptByFocus = new Map<string, CoachingV2FocusExerciseAttempt>()
+    for (const row of ((attemptsResult.data || []) as CoachingV2FocusExerciseAttemptRow[])) {
+      if (latestAttemptByFocus.has(row.focus_id)) continue
+      latestAttemptByFocus.set(row.focus_id, toV2FocusExerciseAttempt(row))
+    }
+    const focusExerciseAttempts = Array.from(latestAttemptByFocus.values())
+    const periodFocuses = focuses.filter((row) => row.periodNumber === periodNumber)
+    return jsonResponse(200, {
+      session: {
+        id: sessionRow.id,
+        userId: sessionRow.user_id,
+        coachUserId: sessionRow.coach_user_id,
+        supportCoachUserId: sessionRow.support_coach_user_id,
+        targetLang: sessionRow.target_lang,
+        level: sessionRow.level,
+        status: sessionRow.status,
+        classJoinUrl: sessionRow.class_join_url,
+        programVersion: sessionRow.program_version,
+        durationPeriods: sessionRow.duration_periods,
+      },
+      periodNumber,
+      periodActivations: activations.map((row) => ({
+        periodNumber: row.period_number,
+        activatedAt: row.activated_at,
+        endedAt: row.ended_at,
+      })),
+      periodState,
+      focuses,
+      focusExercises,
+      focusExerciseAttempts,
+      canCreateFocus: canCreateFocus(periodFocuses),
+      classes,
+      periodReport:
+        periodReportRow
+          ? toV2PeriodReport({
+              row: periodReportRow,
+              reportImageUrl: periodReportImageSigned.data?.signedUrl || null,
+            })
+          : null,
+      coachers: buildV2CoachersMetadata({
+        sessionRow,
+        namesById: coachNamesById,
+        classes: periodClasses,
+      }),
+      snapshot: snapshotResult.row?.snapshot || null,
+      previousSnapshot:
+        periodNumber > 1 ? previousSnapshotResult.row?.snapshot || null : null,
+    })
+  }
+
+  if (action === 'v2-upsert-focus') {
+    const sessionId = safeString(payload.sessionId)
+    const periodNumber = normalizePeriodNumber(payload.periodNumber)
+    const focusId = safeString(payload.focusId)
+    const focusTitle = safeString(payload.focusTitle)
+    const focusComment = safeString(payload.focusComment)
+
+    if (!sessionId || !periodNumber || !focusTitle) {
+      return jsonResponse(400, {
+        error: 'sessionId, periodNumber and focusTitle are required',
+      })
+    }
+
+    const { row: sessionRow, error: sessionError } = await fetchCoachingV2Session(
+      admin.adminClient,
+      sessionId,
+    )
+    if (sessionError) return jsonResponse(500, { error: sessionError })
+    if (!sessionRow) {
+      return jsonResponse(404, { error: 'Coaching session not found' })
+    }
+    if (!canManageSession(admin, sessionRow.coach_user_id, sessionRow.support_coach_user_id)) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    if (sessionRow.program_version !== 'v2') {
+      return jsonResponse(400, { error: 'Session is not v2' })
+    }
+
+    if (!focusId) {
+      const { rows: periodRows, error: focusCountError } = await fetchV2FocusesByPeriod({
+        adminClient: admin.adminClient,
+        sessionId,
+        periodNumber,
+      })
+      if (focusCountError) return jsonResponse(500, { error: focusCountError })
+      if (!canCreateFocus(periodRows.map(toV2FocusState))) {
+        return jsonResponse(400, {
+          error: 'Maximum active focuses reached (3)',
+        })
+      }
+
+      const { data: created, error: createError } = await admin.adminClient
+        .from('coaching_v2_focuses')
+        .insert({
+          session_id: sessionId,
+          period_number: periodNumber,
+          focus_title: focusTitle,
+          focus_comment: focusComment,
+          created_by: admin.userId,
+          updated_by: admin.userId,
+        })
+        .select(
+          'id, session_id, period_number, focus_title, focus_comment, phase_explained, phase_trained, phase_understood_explained, phase_used, completed_at, archived_at, created_at, updated_at',
+        )
+        .maybeSingle<CoachingV2FocusRow>()
+
+      if (createError) {
+        return jsonResponse(500, { error: createError.message })
+      }
+
+      if (created) {
+        const { rows: periodRows, error: periodRowsError } = await fetchV2FocusesByPeriod({
+          adminClient: admin.adminClient,
+          sessionId,
+          periodNumber,
+        })
+        if (periodRowsError) return jsonResponse(500, { error: periodRowsError })
+
+        const focusSlot = getFocusSlotLabel(periodRows, created.id)
+
+        const { error: exerciseUpsertError } = await admin.adminClient
+          .from('coaching_v2_focus_exercises')
+          .upsert(
+            {
+              session_id: sessionId,
+              period_number: periodNumber,
+              focus_id: created.id,
+              status: 'pending',
+              payload: null,
+              error_message: null,
+              generated_at: null,
+              requested_by: admin.userId,
+            },
+            { onConflict: 'focus_id' },
+          )
+
+        if (exerciseUpsertError) {
+          return jsonResponse(500, { error: exerciseUpsertError.message })
+        }
+
+        await appendFocusExerciseGenerationLog({
+          adminClient: admin.adminClient,
+          sessionId,
+          focusId: created.id,
+          periodNumber,
+          triggerSource: 'create_focus',
+          stage: 'queued',
+          status: 'info',
+          message: 'Exercise generation queued from focus creation.',
+          requestedBy: admin.userId,
+        })
+
+        const generationTask = runFocusExerciseGeneration({
+          adminClient: admin.adminClient,
+          authHeader,
+          sessionId,
+          periodNumber,
+          focusId: created.id,
+          focusTitle: created.focus_title,
+          targetLang: sessionRow.target_lang,
+          nativeLang: sessionRow.native_lang,
+          level: sessionRow.level,
+          studentContext: sessionRow.notes || null,
+          focusSlot,
+          triggerSource: 'create_focus',
+          requestedBy: admin.userId,
+        })
+
+        const edgeRuntime = (globalThis as unknown as {
+          EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void }
+        }).EdgeRuntime
+
+        if (edgeRuntime?.waitUntil) {
+          edgeRuntime.waitUntil(generationTask)
+        } else {
+          void generationTask
+        }
+      }
+
+      return jsonResponse(200, {
+        ok: true,
+        focus: created ? toV2FocusState(created) : null,
+      })
+    }
+
+    const { data: existing, error: existingError } = await admin.adminClient
+      .from('coaching_v2_focuses')
+      .select('id, session_id, period_number')
+      .eq('id', focusId)
+      .maybeSingle<{ id: string; session_id: string; period_number: number }>()
+
+    if (existingError) {
+      return jsonResponse(500, { error: existingError.message })
+    }
+    if (!existing || existing.session_id !== sessionId) {
+      return jsonResponse(404, { error: 'Focus not found' })
+    }
+
+    const { data: updated, error: updateError } = await admin.adminClient
+      .from('coaching_v2_focuses')
+      .update({
+        focus_title: focusTitle,
+        focus_comment: focusComment,
+        updated_by: admin.userId,
+      })
+      .eq('id', focusId)
+      .select(
+        'id, session_id, period_number, focus_title, focus_comment, phase_explained, phase_trained, phase_understood_explained, phase_used, completed_at, archived_at, created_at, updated_at',
+      )
+      .maybeSingle<CoachingV2FocusRow>()
+
+    if (updateError) {
+      return jsonResponse(500, { error: updateError.message })
+    }
+
+    return jsonResponse(200, {
+      ok: true,
+      focus: updated ? toV2FocusState(updated) : null,
+    })
+  }
+
+  if (action === 'v2-toggle-focus-phase') {
+    const sessionId = safeString(payload.sessionId)
+    const focusId = safeString(payload.focusId)
+    const phase = normalizeV2Phase(payload.phase)
+    const checked = safeBoolean(payload.checked)
+
+    if (!sessionId || !focusId || !phase || checked === null) {
+      return jsonResponse(400, {
+        error: 'sessionId, focusId, phase and checked are required',
+      })
+    }
+
+    const { row: sessionRow, error: sessionError } = await fetchCoachingV2Session(
+      admin.adminClient,
+      sessionId,
+    )
+    if (sessionError) return jsonResponse(500, { error: sessionError })
+    if (!sessionRow) {
+      return jsonResponse(404, { error: 'Coaching session not found' })
+    }
+    if (!canManageSession(admin, sessionRow.coach_user_id, sessionRow.support_coach_user_id)) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    if (sessionRow.program_version !== 'v2') {
+      return jsonResponse(400, { error: 'Session is not v2' })
+    }
+
+    const { data: focusRow, error: focusError } = await admin.adminClient
+      .from('coaching_v2_focuses')
+      .select(
+        'id, session_id, period_number, focus_title, focus_comment, phase_explained, phase_trained, phase_understood_explained, phase_used, completed_at, archived_at, created_at, updated_at',
+      )
+      .eq('id', focusId)
+      .eq('session_id', sessionId)
+      .maybeSingle<CoachingV2FocusRow>()
+
+    if (focusError) {
+      return jsonResponse(500, { error: focusError.message })
+    }
+    if (!focusRow) {
+      return jsonResponse(404, { error: 'Focus not found' })
+    }
+
+    const currentState = toV2FocusState(focusRow)
+    const phaseOrder: CoachingV2FocusPhaseKey[] = [
+      'phaseExplained',
+      'phaseTrained',
+      'phaseUnderstoodExplained',
+      'phaseUsed',
+    ]
+    const phaseIndex = phaseOrder.indexOf(phase)
+    if (phaseIndex < 0) {
+      return jsonResponse(400, { error: 'Invalid phase' })
+    }
+
+    const allPreviousDone = phaseOrder
+      .slice(0, phaseIndex)
+      .every((key) => Boolean(currentState[key]))
+    const hasNextDone = phaseOrder
+      .slice(phaseIndex + 1)
+      .some((key) => Boolean(currentState[key]))
+
+    if (checked && !allPreviousDone) {
+      return jsonResponse(400, { error: 'Previous phases must be completed first' })
+    }
+
+    if (!checked && hasNextDone) {
+      return jsonResponse(400, { error: 'Cannot uncheck while next phases are completed' })
+    }
+
+    const nextState = applyFocusPhaseToggle({
+      focus: currentState,
+      phase,
+      checked,
+      nowIso: new Date().toISOString(),
+    })
+
+    const { data: updated, error: updateError } = await admin.adminClient
+      .from('coaching_v2_focuses')
+      .update({
+        phase_explained: nextState.phaseExplained,
+        phase_trained: nextState.phaseTrained,
+        phase_understood_explained: nextState.phaseUnderstoodExplained,
+        phase_used: nextState.phaseUsed,
+        completed_at: nextState.completedAt,
+        updated_by: admin.userId,
+      })
+      .eq('id', focusId)
+      .select(
+        'id, session_id, period_number, focus_title, focus_comment, phase_explained, phase_trained, phase_understood_explained, phase_used, completed_at, archived_at, created_at, updated_at',
+      )
+      .maybeSingle<CoachingV2FocusRow>()
+
+    if (updateError) {
+      return jsonResponse(500, { error: updateError.message })
+    }
+
+    return jsonResponse(200, {
+      ok: true,
+      focus: updated ? toV2FocusState(updated) : null,
+    })
+  }
+
+  if (action === 'v2-regenerate-focus-exercise') {
+    const sessionId = safeString(payload.sessionId)
+    const focusId = safeString(payload.focusId)
+    if (!sessionId || !focusId) {
+      return jsonResponse(400, { error: 'sessionId and focusId are required' })
+    }
+
+    const { row: sessionRow, error: sessionError } = await fetchCoachingV2Session(
+      auth.adminClient,
+      sessionId,
+    )
+    if (sessionError) return jsonResponse(500, { error: sessionError })
+    if (!sessionRow) {
+      return jsonResponse(404, { error: 'Coaching session not found' })
+    }
+    if (sessionRow.program_version !== 'v2') {
+      return jsonResponse(400, { error: 'Session is not v2' })
+    }
+
+    const canRegenerate =
+      sessionRow.coach_user_id === auth.userId ||
+      sessionRow.support_coach_user_id === auth.userId
+    if (!canRegenerate) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+
+    const { data: focusRow, error: focusError } = await auth.adminClient
+      .from('coaching_v2_focuses')
+      .select(
+        'id, session_id, period_number, focus_title, focus_comment, phase_explained, phase_trained, phase_understood_explained, phase_used, completed_at, archived_at, created_at, updated_at',
+      )
+      .eq('id', focusId)
+      .eq('session_id', sessionId)
+      .maybeSingle<CoachingV2FocusRow>()
+
+    if (focusError) return jsonResponse(500, { error: focusError.message })
+    if (!focusRow) return jsonResponse(404, { error: 'Focus not found' })
+
+    const { rows: periodRows, error: periodRowsError } = await fetchV2FocusesByPeriod({
+      adminClient: auth.adminClient,
+      sessionId,
+      periodNumber: focusRow.period_number,
+    })
+    if (periodRowsError) return jsonResponse(500, { error: periodRowsError })
+
+    const focusSlot = getFocusSlotLabel(periodRows, focusRow.id)
+
+    const { error: exerciseUpsertError } = await auth.adminClient
+      .from('coaching_v2_focus_exercises')
+      .upsert(
+        {
+          session_id: sessionId,
+          period_number: focusRow.period_number,
+          focus_id: focusId,
+          status: 'pending',
+          payload: null,
+          error_message: null,
+          generated_at: null,
+          requested_by: auth.userId,
+        },
+        { onConflict: 'focus_id' },
+      )
+
+    if (exerciseUpsertError) {
+      return jsonResponse(500, { error: exerciseUpsertError.message })
+    }
+
+    await appendFocusExerciseGenerationLog({
+      adminClient: auth.adminClient,
+      sessionId,
+      focusId,
+      periodNumber: focusRow.period_number,
+      triggerSource: 'regenerate',
+      stage: 'queued',
+      status: 'info',
+      message: 'Exercise regeneration queued manually.',
+      requestedBy: auth.userId,
+    })
+
+    const generationTask = runFocusExerciseGeneration({
+      adminClient: auth.adminClient,
+      authHeader,
+      sessionId,
+      periodNumber: focusRow.period_number,
+      focusId: focusRow.id,
+      focusTitle: focusRow.focus_title,
+      targetLang: sessionRow.target_lang,
+      nativeLang: sessionRow.native_lang,
+      level: sessionRow.level,
+      studentContext: sessionRow.notes || null,
+      focusSlot,
+      triggerSource: 'regenerate',
+      requestedBy: auth.userId,
+    })
+
+    const edgeRuntime = (globalThis as unknown as {
+      EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void }
+    }).EdgeRuntime
+
+    if (edgeRuntime?.waitUntil) {
+      edgeRuntime.waitUntil(generationTask)
+    } else {
+      void generationTask
+    }
+
+    return jsonResponse(200, { ok: true })
+  }
+
+  if (action === 'v2-delete-focus') {
+    const sessionId = safeString(payload.sessionId)
+    const focusId = safeString(payload.focusId)
+    if (!sessionId || !focusId) {
+      return jsonResponse(400, { error: 'sessionId and focusId are required' })
+    }
+
+    const { row: sessionRow, error: sessionError } = await fetchCoachingV2Session(
+      admin.adminClient,
+      sessionId,
+    )
+    if (sessionError) return jsonResponse(500, { error: sessionError })
+    if (!sessionRow) {
+      return jsonResponse(404, { error: 'Coaching session not found' })
+    }
+    if (!canManageSession(admin, sessionRow.coach_user_id, sessionRow.support_coach_user_id)) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    if (sessionRow.program_version !== 'v2') {
+      return jsonResponse(400, { error: 'Session is not v2' })
+    }
+
+    const { data: existing, error: existingError } = await admin.adminClient
+      .from('coaching_v2_focuses')
+      .select('id, session_id')
+      .eq('id', focusId)
+      .maybeSingle<{ id: string; session_id: string }>()
+
+    if (existingError) {
+      return jsonResponse(500, { error: existingError.message })
+    }
+
+    if (!existing || existing.session_id !== sessionId) {
+      return jsonResponse(404, { error: 'Focus not found' })
+    }
+
+    const { error: deleteError } = await admin.adminClient
+      .from('coaching_v2_focuses')
+      .delete()
+      .eq('id', focusId)
+
+    if (deleteError) {
+      return jsonResponse(500, { error: deleteError.message })
+    }
+
+    return jsonResponse(200, { ok: true })
+  }
+
+  if (action === 'v2-close-period') {
+    const sessionId = safeString(payload.sessionId)
+    if (!sessionId) {
+      return jsonResponse(400, { error: 'sessionId is required' })
+    }
+
+    const { row: sessionRow, error: sessionError } = await fetchCoachingV2Session(
+      admin.adminClient,
+      sessionId,
+    )
+    if (sessionError) return jsonResponse(500, { error: sessionError })
+    if (!sessionRow) {
+      return jsonResponse(404, { error: 'Coaching session not found' })
+    }
+    if (!canManageSession(admin, sessionRow.coach_user_id, sessionRow.support_coach_user_id)) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    if (sessionRow.program_version !== 'v2') {
+      return jsonResponse(400, { error: 'Session is not v2' })
+    }
+
+    const activationsResult = await fetchV2PeriodActivations(admin.adminClient, sessionId)
+    if (activationsResult.error) return jsonResponse(500, { error: activationsResult.error })
+
+    const currentActive = [...activationsResult.rows]
+      .reverse()
+      .find((row) => !row.ended_at) || null
+    if (!currentActive) {
+      return jsonResponse(400, { error: 'No active period to close' })
+    }
+
+    const requestedPeriod = normalizePeriodNumber(payload.periodNumber)
+    if (requestedPeriod && requestedPeriod !== currentActive.period_number) {
+      return jsonResponse(400, { error: 'Only current active period can be closed' })
+    }
+
+    const periodNumber = currentActive.period_number
+
+    const { rows: focusRows, error: focusError } = await fetchV2FocusesByPeriod({
+      adminClient: admin.adminClient,
+      sessionId,
+      periodNumber,
+    })
+    if (focusError) return jsonResponse(500, { error: focusError })
+
+    const snapshot = buildFocusSnapshot(focusRows.map(toV2FocusState))
+    const nowIso = new Date().toISOString()
+
+    const { error: snapshotError } = await admin.adminClient
+      .from('coaching_v2_focus_snapshots')
+      .upsert(
+        {
+          session_id: sessionId,
+          period_number: periodNumber,
+          snapshot,
+          created_by: admin.userId,
+        },
+        { onConflict: 'session_id,period_number' },
+      )
+
+    if (snapshotError) {
+      return jsonResponse(500, { error: snapshotError.message })
+    }
+
+    const { error: closeActivationError } = await admin.adminClient
+      .from('coaching_v2_period_activations')
+      .update({ ended_at: nowIso })
+      .eq('session_id', sessionId)
+      .eq('period_number', periodNumber)
+      .is('ended_at', null)
+
+    if (closeActivationError) {
+      return jsonResponse(500, { error: closeActivationError.message })
+    }
+
+    let carriedOver = 0
+    if (periodNumber < 10) {
+      const nextPeriodNumber = periodNumber + 1
+      const nextFocusRows = await fetchV2FocusesByPeriod({
+        adminClient: admin.adminClient,
+        sessionId,
+        periodNumber: nextPeriodNumber,
+      })
+      if (nextFocusRows.error) {
+        return jsonResponse(500, { error: nextFocusRows.error })
+      }
+
+      const canSeedNext = nextFocusRows.rows.length === 0
+      if (canSeedNext) {
+        const carryOverRows = buildCarryOverFocusesFromSnapshot({ snapshot })
+        carriedOver = carryOverRows.length
+
+        if (carryOverRows.length > 0) {
+          const { data: insertedCarryRows, error: carryError } = await admin.adminClient
+            .from('coaching_v2_focuses')
+            .insert(
+              carryOverRows.map((item) => ({
+                session_id: sessionId,
+                period_number: nextPeriodNumber,
+                focus_title: item.focusTitle,
+                focus_comment: item.focusComment,
+                phase_explained: item.phaseExplained,
+                phase_trained: item.phaseTrained,
+                phase_understood_explained: item.phaseUnderstoodExplained,
+                phase_used: item.phaseUsed,
+                completed_at: item.completedAt,
+                created_by: admin.userId,
+                updated_by: admin.userId,
+              })),
+            )
+            .select(
+              'id, session_id, period_number, focus_title, focus_comment, phase_explained, phase_trained, phase_understood_explained, phase_used, completed_at, archived_at, created_at, updated_at',
+            )
+
+          if (carryError) {
+            return jsonResponse(500, { error: carryError.message })
+          }
+
+          const sourceFocusIds = carryOverRows.map((row) => row.sourceFocusId)
+          const { data: sourceExercises, error: sourceExercisesError } = await admin.adminClient
+            .from('coaching_v2_focus_exercises')
+            .select(
+              'id, session_id, period_number, focus_id, status, payload, error_message, generated_at, updated_at',
+            )
+            .eq('session_id', sessionId)
+            .in('focus_id', sourceFocusIds)
+
+          if (sourceExercisesError) {
+            return jsonResponse(500, { error: sourceExercisesError.message })
+          }
+
+          const sourceExerciseByFocusId = new Map(
+            ((sourceExercises || []) as CoachingV2FocusExerciseRow[]).map((row) => [
+              row.focus_id,
+              row,
+            ]),
+          )
+
+          const nowIsoGeneration = new Date().toISOString()
+          const nextExerciseRows: Array<{
+            session_id: string
+            period_number: number
+            focus_id: string
+            status: 'pending' | 'ready'
+            payload: Record<string, unknown> | null
+            error_message: string | null
+            generated_at: string | null
+            requested_by: string
+          }> = []
+
+          const generationQueue: Array<{
+            focusId: string
+            focusTitle: string
+            focusSlot: string
+          }> = []
+
+          for (let idx = 0; idx < (insertedCarryRows || []).length; idx += 1) {
+            const inserted = (insertedCarryRows || [])[idx] as CoachingV2FocusRow
+            const source = carryOverRows[idx]
+            const sourceExercise = source
+              ? sourceExerciseByFocusId.get(source.sourceFocusId)
+              : null
+
+            const payloadReady =
+              sourceExercise?.status === 'ready' &&
+              sourceExercise.payload &&
+              typeof sourceExercise.payload === 'object' &&
+              !Array.isArray(sourceExercise.payload)
+
+            if (payloadReady) {
+              nextExerciseRows.push({
+                session_id: sessionId,
+                period_number: nextPeriodNumber,
+                focus_id: inserted.id,
+                status: 'ready',
+                payload: sourceExercise.payload as Record<string, unknown>,
+                error_message: null,
+                generated_at: sourceExercise.generated_at || nowIsoGeneration,
+                requested_by: admin.userId,
+              })
+              continue
+            }
+
+            if (inserted.phase_explained) {
+              nextExerciseRows.push({
+                session_id: sessionId,
+                period_number: nextPeriodNumber,
+                focus_id: inserted.id,
+                status: 'pending',
+                payload: null,
+                error_message: null,
+                generated_at: null,
+                requested_by: admin.userId,
+              })
+              generationQueue.push({
+                focusId: inserted.id,
+                focusTitle: inserted.focus_title,
+                focusSlot: `Foco ${idx + 1}`,
+              })
+            }
+          }
+
+          if (nextExerciseRows.length > 0) {
+            const { error: nextExercisesError } = await admin.adminClient
+              .from('coaching_v2_focus_exercises')
+              .upsert(nextExerciseRows, { onConflict: 'focus_id' })
+            if (nextExercisesError) {
+              return jsonResponse(500, { error: nextExercisesError.message })
+            }
+          }
+
+          if (generationQueue.length > 0) {
+            const generationTask = Promise.all(
+              generationQueue.map((item) =>
+                runFocusExerciseGeneration({
+                  adminClient: admin.adminClient,
+                  authHeader,
+                  sessionId,
+                  periodNumber: nextPeriodNumber,
+                  focusId: item.focusId,
+                  focusTitle: item.focusTitle,
+                  targetLang: sessionRow.target_lang,
+                  nativeLang: sessionRow.native_lang,
+                  level: sessionRow.level,
+                  studentContext: sessionRow.notes || null,
+                  focusSlot: item.focusSlot,
+                  triggerSource: 'carry_over',
+                  requestedBy: admin.userId,
+                }),
+              ),
+            ).then(() => undefined)
+
+            const edgeRuntime = (globalThis as unknown as {
+              EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void }
+            }).EdgeRuntime
+
+            if (edgeRuntime?.waitUntil) {
+              edgeRuntime.waitUntil(generationTask)
+            } else {
+              void generationTask
+            }
+          }
+        }
+      }
+    }
+
+    const latest = await fetchV2PeriodActivations(admin.adminClient, sessionId)
+    if (latest.error) return jsonResponse(500, { error: latest.error })
+
+    return jsonResponse(200, {
+      ok: true,
+      periodNumber,
+      periodState: buildV2PeriodState(latest.rows),
+      closedAt: nowIso,
+    })
+  }
+
+  if (action === 'v2-upsert-class-coach-guidelines') {
+    const sessionId = safeString(payload.sessionId)
+    const periodNumber = normalizePeriodNumber(payload.periodNumber)
+    const classIndex = normalizeClassIndex(payload.classIndex)
+    if (!sessionId || !periodNumber) {
+      return jsonResponse(400, {
+        error: 'sessionId and periodNumber are required',
+      })
+    }
+
+    const { row: sessionRow, error: sessionError } = await fetchCoachingV2Session(
+      admin.adminClient,
+      sessionId,
+    )
+    if (sessionError) return jsonResponse(500, { error: sessionError })
+    if (!sessionRow) {
+      return jsonResponse(404, { error: 'Coaching session not found' })
+    }
+    if (!canManageSession(admin, sessionRow.coach_user_id, sessionRow.support_coach_user_id)) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    if (sessionRow.program_version !== 'v2') {
+      return jsonResponse(400, { error: 'Session is not v2' })
+    }
+
+    const nowIso = new Date().toISOString()
+    const requestedAssignedCoachUserId = safeString(payload.assignedByCoachUserId)
+    const allowedCoachUserIds = [
+      sessionRow.coach_user_id,
+      sessionRow.support_coach_user_id,
+    ].filter((value): value is string => Boolean(value))
+    const assignedByCoachUserId = requestedAssignedCoachUserId
+      ? allowedCoachUserIds.includes(requestedAssignedCoachUserId)
+        ? requestedAssignedCoachUserId
+        : null
+      : null
+
+    const { error: upsertError } = await admin.adminClient
+      .from('coaching_session_classes')
+      .upsert(
+        {
+          session_id: sessionId,
+          week_number: periodNumber,
+          class_index: classIndex,
+          title: safeString(payload.title) || `Clase ${classIndex}`,
+          loom_url: normalizeUrl(safeString(payload.loomUrl)),
+          report: safeString(payload.report),
+          report_image_path: safeString(payload.reportImagePath),
+          scheduled_at: normalizeIsoDateTime(payload.scheduledAt),
+          assigned_by_coach_user_id: assignedByCoachUserId,
+          coach_guideline_1: withDefaultClassGuideline(safeString(payload.coachGuideline1), 0),
+          coach_guideline_2: withDefaultClassGuideline(safeString(payload.coachGuideline2), 1),
+          coach_guideline_3: withDefaultClassGuideline(safeString(payload.coachGuideline3), 2),
+          updated_at: nowIso,
+          created_at: nowIso,
+        },
+        { onConflict: 'session_id,week_number,class_index' },
+      )
+
+    if (upsertError) {
+      return jsonResponse(500, { error: upsertError.message })
+    }
+
+    const { data: updatedClassRow, error: updatedClassError } = await admin.adminClient
+      .from('coaching_session_classes')
+      .select(
+        'id, session_id, week_number, class_index, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, coach_guideline_1, coach_guideline_2, coach_guideline_3, student_completed_at, student_report_text, student_report_image_path, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, created_at, updated_at',
+      )
+      .eq('session_id', sessionId)
+      .eq('week_number', periodNumber)
+      .eq('class_index', classIndex)
+      .maybeSingle<CoachingSessionClassRow>()
+
+    if (updatedClassError) {
+      return jsonResponse(500, { error: updatedClassError.message })
+    }
+
+    return jsonResponse(200, {
+      ok: true,
+      class: updatedClassRow ? serializeClassSessions([updatedClassRow])[0] : null,
+    })
+  }
+
+  if (action === 'v2-upsert-period-report') {
+    const sessionId = safeString(payload.sessionId)
+    const periodNumber = normalizePeriodNumber(payload.periodNumber)
+    if (!sessionId || !periodNumber) {
+      return jsonResponse(400, {
+        error: 'sessionId and periodNumber are required',
+      })
+    }
+
+    const { row: sessionRow, error: sessionError } = await fetchCoachingV2Session(
+      admin.adminClient,
+      sessionId,
+    )
+    if (sessionError) return jsonResponse(500, { error: sessionError })
+    if (!sessionRow) {
+      return jsonResponse(404, { error: 'Coaching session not found' })
+    }
+    if (!canManageSession(admin, sessionRow.coach_user_id, sessionRow.support_coach_user_id)) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    if (sessionRow.program_version !== 'v2') {
+      return jsonResponse(400, { error: 'Session is not v2' })
+    }
+
+    const reportText = safeString(payload.periodReportText)
+    const reportImagePath = safeString(payload.periodReportImagePath)
+
+    if (!reportText && !reportImagePath) {
+      const { error: deleteError } = await admin.adminClient
+        .from('coaching_v2_period_reports')
+        .delete()
+        .eq('session_id', sessionId)
+        .eq('period_number', periodNumber)
+
+      if (deleteError) return jsonResponse(500, { error: deleteError.message })
+      return jsonResponse(200, { ok: true, periodReport: null })
+    }
+
+    const nowIso = new Date().toISOString()
+    const { error: upsertError } = await admin.adminClient
+      .from('coaching_v2_period_reports')
+      .upsert(
+        {
+          session_id: sessionId,
+          period_number: periodNumber,
+          report_text: reportText,
+          report_image_path: reportImagePath,
+          created_by: admin.userId,
+          updated_by: admin.userId,
+          created_at: nowIso,
+          updated_at: nowIso,
+        },
+        { onConflict: 'session_id,period_number' },
+      )
+
+    if (upsertError) {
+      return jsonResponse(500, { error: upsertError.message })
+    }
+
+    const periodReportResult = await fetchV2PeriodReport({
+      adminClient: admin.adminClient,
+      sessionId,
+      periodNumber,
+    })
+    if (periodReportResult.error) {
+      return jsonResponse(500, { error: periodReportResult.error })
+    }
+
+    const periodReportRow = periodReportResult.row
+    if (!periodReportRow) {
+      return jsonResponse(200, { ok: true, periodReport: null })
+    }
+
+    const imagePath = safeString(periodReportRow.report_image_path)
+    const imageSigned = imagePath
+      ? await admin.adminClient.storage
+          .from('coaching-class-reports')
+          .createSignedUrl(imagePath, 60 * 60)
+      : { data: null, error: null }
+
+    return jsonResponse(200, {
+      ok: true,
+      periodReport: toV2PeriodReport({
+        row: periodReportRow,
+        reportImageUrl: imageSigned.data?.signedUrl || null,
+      }),
+    })
+  }
 
   if (action === 'list-users') {
     const { data, error } = await admin.adminClient
@@ -1532,6 +3871,8 @@ Deno.serve(async (req) => {
           status: row.status,
           activatedAt: row.activated_at,
           durationWeeks: row.duration_weeks,
+          programVersion: row.program_version || 'v1',
+          durationPeriods: row.duration_periods || 10,
           weekActivation,
           weekTimeline,
           updatedAt: row.updated_at,
@@ -1724,6 +4065,8 @@ Deno.serve(async (req) => {
       ? normalizeWeeklyObjectives(payload.weeklyObjectives)
       : undefined
     const requestedCoachUserId = safeString(payload.coachUserId)
+    const requestedProgramVersion =
+      payload.programVersion === 'v2' ? 'v2' : payload.programVersion === 'v1' ? 'v1' : null
 
     if (sessionId) {
       const { data: existingRow, error: existingError } = await admin.adminClient
@@ -1822,6 +4165,9 @@ Deno.serve(async (req) => {
       if (hasClassSessions) updatePayload.class_sessions = classSessions
       if (hasClassJoinUrl) updatePayload.class_join_url = classJoinUrl
       if (hasWeeklyObjectives) updatePayload.weekly_objectives = weeklyObjectives
+      if (requestedProgramVersion && admin.adminRole === 'super_admin') {
+        updatePayload.program_version = requestedProgramVersion
+      }
 
       const { data, error } = await admin.adminClient
         .from('coaching_sessions')
@@ -1922,6 +4268,8 @@ Deno.serve(async (req) => {
         status: 'draft',
         activated_at: null,
         duration_weeks: 12,
+        program_version: requestedProgramVersion || 'v1',
+        duration_periods: 10,
       })
       .select('id')
       .maybeSingle<{ id: string }>()
@@ -2832,6 +5180,8 @@ Deno.serve(async (req) => {
         status: row.status,
         activatedAt: row.activated_at,
         durationWeeks: row.duration_weeks,
+        programVersion: row.program_version || 'v1',
+        durationPeriods: row.duration_periods || 10,
         updatedAt: row.updated_at,
       })),
     )

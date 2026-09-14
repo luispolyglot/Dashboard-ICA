@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { type ComponentProps, useEffect, useMemo, useState } from 'react'
 import { Loader2Icon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -118,6 +118,54 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
     [],
   )
 
+  const getDayRowViewModel = (dayIndex: number) => {
+    const current = rowsByDay[dayIndex]
+    const draftValue = draftsByDay[dayIndex] ?? current?.postUrl ?? ''
+    const windowState = getDayUnlockWindow(selectedMonth, dayIndex)
+    const dayDate = buildTrackPostDayDate(selectedMonth, dayIndex)
+    const isWindowClosed = windowState.isUnlocked && !windowState.isEditable
+    const isFutureLocked = !windowState.isUnlocked
+    const hasExistingContent = Boolean(current?.postUrl && current.postUrl.trim().length > 0)
+    const baseLabel = hasExistingContent ? 'Editar' : 'Guardar'
+    const buttonLabel = isWindowClosed ? 'Ventana cerrada' : baseLabel
+    const buttonVariant: ComponentProps<typeof Button>['variant'] = isWindowClosed
+      ? 'ghost'
+      : isFutureLocked
+        ? 'outline'
+        : 'default'
+    const isRowSaving = savingDay === dayIndex
+
+    const stateText = !windowState.isUnlocked
+      ? `Se desbloquea ${formatDate(windowState.unlockAt)}`
+      : windowState.isEditable
+        ? `Editable hasta ${formatDate(windowState.closeAt)}`
+        : 'Ventana cerrada'
+
+    const stateBadgeLabel = !windowState.isUnlocked
+      ? 'Bloqueado'
+      : windowState.isEditable
+        ? 'Editable'
+        : 'Cerrado'
+
+    const stateBadgeClass = !windowState.isUnlocked
+      ? 'bg-muted text-muted-foreground'
+      : windowState.isEditable
+        ? 'bg-emerald-100 text-emerald-700'
+        : 'bg-amber-100 text-amber-700'
+
+    return {
+      draftValue,
+      dayDate,
+      buttonLabel,
+      buttonVariant,
+      isRowSaving,
+      isEditable: windowState.isEditable,
+      stateText,
+      stateBadgeLabel,
+      stateBadgeClass,
+    }
+  }
+
   const handleSave = async (dayIndex: number) => {
     if (!selectedMonth) return
     if (savingDay) return
@@ -205,76 +253,118 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className='overflow-x-auto'>
-              <table className='w-full min-w-[720px] border-separate border-spacing-y-2'>
-                <thead>
-                  <tr className='text-left text-sm text-muted-foreground'>
-                    <th className='px-3'>Día</th>
-                    <th className='px-3'>Fecha (UTC)</th>
-                    <th className='px-3'>Link de Instagram</th>
-                    <th className='px-3'>Estado</th>
-                    <th className='px-3 text-right'>Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dayRows.map((dayIndex) => {
-                    const current = rowsByDay[dayIndex]
-                    const draftValue = draftsByDay[dayIndex] ?? current?.postUrl ?? ''
-                    const windowState = getDayUnlockWindow(selectedMonth, dayIndex)
-                    const dayDate = buildTrackPostDayDate(selectedMonth, dayIndex)
-                    const isWindowClosed = windowState.isUnlocked && !windowState.isEditable
-                    const isFutureLocked = !windowState.isUnlocked
-                    const hasExistingContent = Boolean(current?.postUrl && current.postUrl.trim().length > 0)
-                    const baseLabel = hasExistingContent ? 'Editar' : 'Guardar'
-                    const buttonLabel = isWindowClosed ? 'Ventana cerrada' : baseLabel
-                    const buttonVariant = isWindowClosed ? 'ghost' : isFutureLocked ? 'outline' : 'default'
-                    const isRowSaving = savingDay === dayIndex
+            <div className='hidden md:block'>
+              <div className='overflow-x-auto'>
+                <table className='w-full min-w-[720px] border-separate border-spacing-y-2'>
+                  <thead>
+                    <tr className='text-left text-sm text-muted-foreground'>
+                      <th className='px-3'>Día</th>
+                      <th className='px-3'>Fecha (UTC)</th>
+                      <th className='px-3'>Link de Instagram</th>
+                      <th className='px-3'>Estado</th>
+                      <th className='px-3 text-right'>Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dayRows.map((dayIndex) => {
+                      const rowViewModel = getDayRowViewModel(dayIndex)
 
-                    const stateText = !windowState.isUnlocked
-                      ? `Se desbloquea ${formatDate(windowState.unlockAt)}`
-                      : windowState.isEditable
-                        ? `Editable hasta ${formatDate(windowState.closeAt)}`
-                        : 'Ventana cerrada'
+                      return (
+                        <tr key={dayIndex} className='rounded-lg border bg-card'>
+                          <td className='px-3 py-2 font-medium'>{dayIndex}</td>
+                          <td className='px-3 py-2 text-sm text-muted-foreground'>{rowViewModel.dayDate}</td>
+                          <td className='px-3 py-2'>
+                            <Input
+                              value={rowViewModel.draftValue}
+                              placeholder='https://www.instagram.com/...'
+                              disabled={!rowViewModel.isEditable || savingDay !== null}
+                              onChange={(event) => {
+                                const value = event.target.value
+                                setDraftsByDay((prev) => ({ ...prev, [dayIndex]: value }))
+                              }}
+                            />
+                          </td>
+                          <td className='px-3 py-2 text-xs text-muted-foreground'>{rowViewModel.stateText}</td>
+                          <td className='px-3 py-2 text-right'>
+                            <Button
+                              type='button'
+                              size='sm'
+                              variant={rowViewModel.buttonVariant}
+                              onClick={() => void handleSave(dayIndex)}
+                              disabled={!rowViewModel.isEditable || savingDay !== null}
+                            >
+                              {rowViewModel.isRowSaving ? (
+                                <>
+                                  <Loader2Icon className='animate-spin' data-icon='inline-start' />
+                                  Guardando...
+                                </>
+                              ) : (
+                                rowViewModel.buttonLabel
+                              )}
+                            </Button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
 
-                    return (
-                      <tr key={dayIndex} className='rounded-lg border bg-card'>
-                        <td className='px-3 py-2 font-medium'>{dayIndex}</td>
-                        <td className='px-3 py-2 text-sm text-muted-foreground'>{dayDate}</td>
-                        <td className='px-3 py-2'>
-                          <Input
-                            value={draftValue}
-                            placeholder='https://www.instagram.com/...'
-                            disabled={!windowState.isEditable || savingDay !== null}
-                            onChange={(event) => {
-                              const value = event.target.value
-                              setDraftsByDay((prev) => ({ ...prev, [dayIndex]: value }))
-                            }}
-                          />
-                        </td>
-                        <td className='px-3 py-2 text-xs text-muted-foreground'>{stateText}</td>
-                        <td className='px-3 py-2 text-right'>
-                          <Button
-                            type='button'
-                            size='sm'
-                            variant={buttonVariant}
-                            onClick={() => void handleSave(dayIndex)}
-                            disabled={!windowState.isEditable || savingDay !== null}
-                          >
-                            {isRowSaving ? (
-                              <>
-                                <Loader2Icon className='animate-spin' data-icon='inline-start' />
-                                Guardando...
-                              </>
-                            ) : (
-                              buttonLabel
-                            )}
-                          </Button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+            <div className='grid gap-3 md:hidden'>
+              <p className='text-xs text-muted-foreground'>
+                En mobile, cada día se muestra en tarjeta para que puedas ver estado, pegar link y guardar sin scroll
+                horizontal.
+              </p>
+              {dayRows.map((dayIndex) => {
+                const rowViewModel = getDayRowViewModel(dayIndex)
+
+                return (
+                  <div key={dayIndex} className='rounded-xl border bg-card p-3'>
+                    <div className='mb-3 flex items-start justify-between gap-3'>
+                      <div>
+                        <p className='text-sm font-semibold'>Día {dayIndex}</p>
+                        <p className='text-xs text-muted-foreground'>{rowViewModel.dayDate}</p>
+                      </div>
+                      <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${rowViewModel.stateBadgeClass}`}>
+                        {rowViewModel.stateBadgeLabel}
+                      </span>
+                    </div>
+
+                    <p className='mb-2 text-xs text-muted-foreground'>{rowViewModel.stateText}</p>
+
+                    <div className='space-y-2'>
+                      <Input
+                        value={rowViewModel.draftValue}
+                        placeholder='https://www.instagram.com/...'
+                        disabled={!rowViewModel.isEditable || savingDay !== null}
+                        onChange={(event) => {
+                          const value = event.target.value
+                          setDraftsByDay((prev) => ({ ...prev, [dayIndex]: value }))
+                        }}
+                      />
+
+                      <Button
+                        type='button'
+                        size='sm'
+                        variant={rowViewModel.buttonVariant}
+                        className='w-full'
+                        onClick={() => void handleSave(dayIndex)}
+                        disabled={!rowViewModel.isEditable || savingDay !== null}
+                      >
+                        {rowViewModel.isRowSaving ? (
+                          <>
+                            <Loader2Icon className='animate-spin' data-icon='inline-start' />
+                            Guardando...
+                          </>
+                        ) : (
+                          rowViewModel.buttonLabel
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </CardContent>
         </Card>

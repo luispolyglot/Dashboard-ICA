@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   BarChart3Icon,
@@ -15,17 +15,18 @@ import {
   LogOutIcon,
   MoonIcon,
   PencilIcon,
+  ShieldIcon,
   SunIcon,
   TrophyIcon,
   UserIcon,
   UsersIcon,
   XIcon,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PendingReviewDot } from "../components/PendingReviewDot";
+import { ProfileFeatureCard } from "../components/ProfileFeatureCard";
 import {
   Dialog,
   DialogContent,
@@ -46,7 +47,6 @@ import {
 } from "../services/coaching";
 import { DASHBOARD_ROUTES } from "../routes/paths";
 import {
-  ICA_TEST_MAX_WORDS_PER_ITEM,
   ICA_TEST_REQUIRED_WORDS,
 } from "../services/icaTests";
 import type { AppConfig, Lexicard } from "../types";
@@ -55,93 +55,14 @@ type ProfileViewProps = {
   config: AppConfig | null;
   cards: Lexicard[];
   onEditLanguages: () => void;
-  onApplyRecentLanguages: (languages: {
-    nativeLang: string;
-    targetLang: string;
-  }) => void;
 };
-
-type RecentLanguagePair = {
-  nativeLang: string;
-  targetLang: string;
-  updatedAt: number;
-};
-
-const RECENT_LANGUAGE_PAIRS_STORAGE_KEY = "dashboard-ICA-recent-language-pairs";
-const MAX_RECENT_LANGUAGE_PAIRS = 2;
-
-function formatDate(value?: string): string {
-  if (!value) return "No disponible";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "No disponible";
-  return date.toLocaleString();
-}
-
-function isSameLanguagePair(
-  first: Pick<RecentLanguagePair, "nativeLang" | "targetLang">,
-  second: Pick<RecentLanguagePair, "nativeLang" | "targetLang">,
-): boolean {
-  return (
-    first.nativeLang === second.nativeLang && first.targetLang === second.targetLang
-  );
-}
-
-function normalizeRecentLanguagePairs(
-  value: unknown,
-  activePair?: Pick<RecentLanguagePair, "nativeLang" | "targetLang"> | null,
-): RecentLanguagePair[] {
-  if (!Array.isArray(value)) return [];
-
-  const normalized = value
-    .filter((item): item is RecentLanguagePair => {
-      if (!item || typeof item !== "object") return false;
-      const maybePair = item as Partial<RecentLanguagePair>;
-      return (
-        typeof maybePair.nativeLang === "string" &&
-        maybePair.nativeLang.trim() !== "" &&
-        typeof maybePair.targetLang === "string" &&
-        maybePair.targetLang.trim() !== "" &&
-        maybePair.nativeLang !== maybePair.targetLang &&
-        typeof maybePair.updatedAt === "number" &&
-        Number.isFinite(maybePair.updatedAt)
-      );
-    })
-    .sort((a, b) => b.updatedAt - a.updatedAt);
-
-  const deduped: RecentLanguagePair[] = [];
-  for (const pair of normalized) {
-    if (activePair && isSameLanguagePair(pair, activePair)) continue;
-    if (deduped.some((item) => isSameLanguagePair(item, pair))) continue;
-    deduped.push(pair);
-    if (deduped.length === MAX_RECENT_LANGUAGE_PAIRS) break;
-  }
-
-  return deduped;
-}
-
-function persistRecentLanguagePairs(
-  pairs: RecentLanguagePair[],
-  activePair?: Pick<RecentLanguagePair, "nativeLang" | "targetLang"> | null,
-): RecentLanguagePair[] {
-  const normalized = normalizeRecentLanguagePairs(pairs, activePair);
-  if (typeof window === "undefined") return normalized;
-
-  try {
-    window.localStorage.setItem(
-      RECENT_LANGUAGE_PAIRS_STORAGE_KEY,
-      JSON.stringify(normalized),
-    );
-  } catch {}
-
-  return normalized;
-}
 
 export function ProfileView({
   config,
   cards,
   onEditLanguages,
-  onApplyRecentLanguages,
 }: ProfileViewProps) {
+  const navigate = useNavigate();
   const { user, signOut, changePassword, updateDisplayName } = useAuth();
   const { theme, resolvedTheme, setTheme } = useTheme();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -168,10 +89,6 @@ export function ProfileView({
   const [nameError, setNameError] = useState<string | null>(null);
   const [nameSuccess, setNameSuccess] = useState<string | null>(null);
   const [isSavingName, setIsSavingName] = useState(false);
-  const [recentLanguagePairs, setRecentLanguagePairs] = useState<
-    RecentLanguagePair[]
-  >([]);
-  const previousConfigRef = useRef<AppConfig | null>(null);
 
   const {
     currentMonthCode,
@@ -196,68 +113,12 @@ export function ProfileView({
   const cleanNameDraft = nameDraft.trim();
   const isNameChanged = cleanNameDraft !== cleanCurrentDisplayName;
   const canSaveName = cleanNameDraft.length >= 3 && isNameChanged;
-  const visibleRecentLanguagePairs = useMemo(() => {
-    if (!config) return recentLanguagePairs;
-    return recentLanguagePairs.filter((pair) => !isSameLanguagePair(pair, config));
-  }, [config, recentLanguagePairs]);
 
   useEffect(() => {
     if (!isEditingName) {
       setNameDraft(displayName);
     }
   }, [displayName, isEditingName]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    try {
-      const raw = window.localStorage.getItem(RECENT_LANGUAGE_PAIRS_STORAGE_KEY);
-      if (!raw) {
-        setRecentLanguagePairs([]);
-        return;
-      }
-
-      const parsed = JSON.parse(raw) as unknown;
-      const normalized = normalizeRecentLanguagePairs(parsed);
-      setRecentLanguagePairs(normalized);
-      window.localStorage.setItem(
-        RECENT_LANGUAGE_PAIRS_STORAGE_KEY,
-        JSON.stringify(normalized),
-      );
-    } catch {
-      setRecentLanguagePairs([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!config) {
-      previousConfigRef.current = null;
-      return;
-    }
-
-    const previousConfig = previousConfigRef.current;
-    if (previousConfig && !isSameLanguagePair(previousConfig, config)) {
-      setRecentLanguagePairs((currentPairs) =>
-        persistRecentLanguagePairs(
-          [
-            {
-              nativeLang: previousConfig.nativeLang,
-              targetLang: previousConfig.targetLang,
-              updatedAt: Date.now(),
-            },
-            ...currentPairs,
-          ],
-          config,
-        ),
-      );
-    } else {
-      setRecentLanguagePairs((currentPairs) =>
-        persistRecentLanguagePairs(currentPairs, config),
-      );
-    }
-
-    previousConfigRef.current = config;
-  }, [config]);
 
   useEffect(() => {
     let isMounted = true;
@@ -393,29 +254,42 @@ export function ProfileView({
   };
 
   return (
-    <section className="mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-5 py-8">
+    <section className="mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-4 py-8 sm:px-6">
       <h2 className="mb-1 font-serif text-3xl font-bold">👤 Perfil</h2>
-      <p className="mb-6 text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         Gestiona tu cuenta, idioma y apariencia desde un solo lugar.
       </p>
+      <p className="mb-6 text-xs text-muted-foreground/90">
+        {user?.email || "No disponible"}
+      </p>
 
-      <div className="grid gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserIcon className="h-4 w-4" />
-              Información de usuario
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="space-y-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-muted-foreground">Nombre:</span>
-                {!isEditingName && <span>{displayName}</span>}
-
-                {isEditingName ? (
+      <div className="space-y-8 pb-2">
+        <section className="space-y-3">
+          <div>
+            <h3 className="text-lg font-semibold">Cuenta y preferencias</h3>
+            <p className="text-sm text-muted-foreground">
+              Datos personales, idioma, tema, seguridad y notificaciones.
+            </p>
+          </div>
+          <div className="mx-auto flex w-full max-w-5xl flex-wrap gap-4">
+            <ProfileFeatureCard
+              title="Nombre"
+              icon={UserIcon}
+              description={
+                <div className="space-y-1 text-xs sm:text-sm">
+                  <p className="font-medium">{displayName}</p>
+                  {nameError && (
+                    <p className="text-xs text-destructive">{nameError}</p>
+                  )}
+                  {nameSuccess && (
+                    <p className="text-xs text-emerald-600">{nameSuccess}</p>
+                  )}
+                </div>
+              }
+              actions={
+                isEditingName ? (
                   <form
-                    className="flex min-w-0 flex-1 items-center gap-1.5"
+                    className="flex w-full items-center gap-1"
                     onSubmit={(event) => {
                       event.preventDefault();
                       void handleSaveName();
@@ -432,7 +306,7 @@ export function ProfileView({
                       minLength={3}
                       required
                       autoFocus
-                      className="h-8 max-w-56"
+                      className="h-8"
                       aria-label="Editar nombre"
                     />
                     <Button
@@ -460,437 +334,66 @@ export function ProfileView({
                 ) : (
                   <Button
                     type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7"
-                    aria-label="Editar nombre"
+                    size="sm"
+                    variant="outline"
                     onClick={handleStartNameEdit}
                   >
                     <PencilIcon className="h-4 w-4" />
+                    Editar nombre
                   </Button>
-                )}
-              </div>
-              {nameError && (
-                <p className="text-sm text-destructive">{nameError}</p>
-              )}
-              {nameSuccess && (
-                <p className="text-sm text-emerald-500">{nameSuccess}</p>
-              )}
-            </div>
-            <p>
-              <span className="text-muted-foreground">Email:</span>{" "}
-              {user?.email || "No disponible"}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Creado:</span>{" "}
-              {formatDate(user?.created_at)}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Último acceso:</span>{" "}
-              {formatDate(user?.last_sign_in_at)}
-            </p>
-          </CardContent>
-        </Card>
+                )
+              }
+              className="md:w-[15.5rem]"
+            />
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <LanguagesIcon className="h-4 w-4" />
-              Configurar idioma de estudio
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              {config
-                ? `${config.nativeLang} -> ${config.targetLang}`
-                : "No hay configuración de idiomas"}
-            </p>
-            {visibleRecentLanguagePairs.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Ultimos usados
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {visibleRecentLanguagePairs.map((pair) => (
-                    <Button
-                      key={`${pair.nativeLang}-${pair.targetLang}`}
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => onApplyRecentLanguages(pair)}
-                    >
-                      {pair.nativeLang} -&gt; {pair.targetLang}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
-            <Button type="button" variant="outline" onClick={onEditLanguages}>
-              <LanguagesIcon />
-              Cambiar idiomas
-            </Button>
-          </CardContent>
-        </Card>
+            <ProfileFeatureCard
+              title="Idiomas"
+              icon={LanguagesIcon}
+              onMainAction={onEditLanguages}
+              description={
+                config
+                  ? `${config.nativeLang} -> ${config.targetLang}`
+                  : "No hay configuración de idiomas"
+              }
+            />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              Tema ({resolvedTheme === "dark" ? "Oscuro" : "Claro"})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant={theme === "light" ? "default" : "outline"}
-              onClick={() => setTheme("light")}
-            >
-              <SunIcon />
-              Claro
-            </Button>
-            <Button
-              type="button"
-              variant={theme === "dark" ? "default" : "outline"}
-              onClick={() => setTheme("dark")}
-            >
-              <MoonIcon />
-              Oscuro
-            </Button>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BellIcon className="h-4 w-4" />
-              Notificaciones
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Configura recordatorios de rachas y avisos de habito por push.
-            </p>
-            <Button type="button" variant="outline" asChild>
-              <Link to={DASHBOARD_ROUTES.manageNotifications}>
-                Gestionar notificaciones
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <LineChartIcon className="h-4 w-4" />
-              Trackers de mejora
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Carga y revisa tus trackers mensuales de pronunciación, fluidez e
-              improvisación.
-            </p>
-            <Button type="button" variant="outline" asChild>
-              <Link to={DASHBOARD_ROUTES.trackers}>
-                Abrir Trackers de mejora
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CameraIcon className="h-4 w-4" />
-              Track post Instagram
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Carga el link diario de Instagram en una tabla mensual de 28 días.
-              Cada fila se edita solo durante 48 horas desde su desbloqueo.
-            </p>
-            <Button type="button" variant="outline" asChild>
-              <Link to={DASHBOARD_ROUTES.instagramTrackPosts}>
-                Abrir Track post Instagram
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CalendarDaysIcon className="h-4 w-4" />
-              Calendario ICADEMY
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Consulta los horarios de clases por idioma y filtra las sesiones
-              que quieres seguir.
-            </p>
-            <Button type="button" variant="outline" asChild>
-              <Link to={DASHBOARD_ROUTES.calendarIcademy}>
-                Abrir calendario de clases
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3Icon className="h-4 w-4" />
-              Mis estadísticas mensuales
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Revisa tu actividad mensual: palabras, frases, notas maestras y
-              flashcards correctas.
-            </p>
-            <Button type="button" variant="outline" asChild>
-              <Link to={DASHBOARD_ROUTES.myAnalytics}>
-                Abrir mis estadísticas
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
+            <ProfileFeatureCard
+              title={`Tema (${resolvedTheme === "dark" ? "Oscuro" : "Claro"})`}
+              icon={resolvedTheme === "dark" ? MoonIcon : SunIcon}
+              description="Elige el tema visual de la app."
+              actions={
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={theme === "light" ? "default" : "outline"}
+                    onClick={() => setTheme("light")}
+                  >
+                    Claro
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={theme === "dark" ? "default" : "outline"}
+                    onClick={() => setTheme("dark")}
+                  >
+                    Oscuro
+                  </Button>
+                </>
+              }
+            />
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ClipboardCheckIcon className="h-4 w-4" />
-              Tests ICA
-              {canHighlightCurrentMonth && !hasCurrentMonthTest && (
-                <div className="ml-4 relative size-4">
-                  <div className="absolute top-0 size-4 rounded-full animate-pulse bg-amber-300 delay-300"></div>
-                  <div className="absolute top-0 size-4 rounded-full animate-ping bg-primary"></div>
-                </div>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Evalúa tu vocabulario mensual con 15 equivalencias (6 segundos por
-              pregunta).
-            </p>
+            <ProfileFeatureCard
+              title="Notificaciones"
+              icon={BellIcon}
+              onMainAction={() => navigate(DASHBOARD_ROUTES.manageNotifications)}
+              description="Configura recordatorios de rachas y hábitos por push."
+            />
 
-            {!featureAvailable && (
-              <p className="text-sm text-muted-foreground">
-                Disponible desde mayo de 2026.
-              </p>
-            )}
-
-            {featureAvailable && hasCurrentMonthTest && (
-              <p className="text-sm text-emerald-600">
-                Ya completaste el test del mes actual.
-              </p>
-            )}
-
-            {featureAvailable && !hasCurrentMonthTest && !wordPool.eligible && (
-              <p className="text-sm text-amber-600">
-                Necesitas {ICA_TEST_REQUIRED_WORDS} palabras ICA. Priorizamos
-                frases de hasta {ICA_TEST_MAX_WORDS_PER_ITEM} palabras y, si no
-                alcanza, ampliamos el filtro. Tienes {wordPool.availableWords}.
-              </p>
-            )}
-
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" asChild>
-                <Link to={DASHBOARD_ROUTES.testsIca}>Abrir Tests ICA</Link>
-              </Button>
-              {canTakeCurrentMonth && (
-                <Button type="button" asChild>
-                  <Link to={`${DASHBOARD_ROUTES.testsIca}/${currentMonthCode}`}>
-                    Hacer test del mes
-                  </Link>
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {canSeeCoachingPersonalized && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <GraduationCapIcon className="h-4 w-4" />
-                Coaching Personalizado
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Accede a tus clases semanales, feedback de Notas Maestras y
-                objetivos ICA.
-              </p>
-              <Button type="button" variant="outline" asChild>
-                <Link to={DASHBOARD_ROUTES.coachingPersonalized}>
-                  Abrir Coaching Personalizado
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {canManageCoaching && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <UsersIcon className="h-4 w-4" />
-                Administrar Coaching
-                {pendingCoachingSessions > 0 && (
-                  <PendingReviewDot
-                    title={`Tienes ${pendingCoachingNotes} notas pendientes de revision en ${pendingCoachingSessions} sesiones.`}
-                    useIconSpeaker
-                  />
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Gestiona usuarios por idioma/nivel, feedback y objetivos
-                personalizados.
-              </p>
-              {pendingCoachingSessions > 0 && (
-                <p className="text-sm text-amber-600">
-                  Pendientes: {pendingCoachingNotes} nota
-                  {pendingCoachingNotes === 1 ? "" : "s"} en{" "}
-                  {pendingCoachingSessions} sesion
-                  {pendingCoachingSessions === 1 ? "" : "es"}.
-                </p>
-              )}
-              <Button type="button" variant="outline" asChild>
-                <Link to={DASHBOARD_ROUTES.manageCoaching}>
-                  Abrir panel de Coaching
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {canSeeAdminAnalytics && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3Icon className="h-4 w-4" />
-                Analíticas Admin
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Accede al panel de métricas globales. Esta sección exige
-                permisos administrativos.
-              </p>
-              <Button type="button" variant="outline" asChild>
-                <Link to={DASHBOARD_ROUTES.analytics}>Analíticas Admin</Link>
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {canManageWhitelist && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ListChecksIcon className="h-4 w-4" />
-                Gestionar whitelist
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Administra qué emails pueden registrarse o iniciar sesión, y
-                sincroniza el CSV oficial.
-              </p>
-              <Button type="button" variant="outline" asChild>
-                <Link to={DASHBOARD_ROUTES.manageWhitelist}>
-                  Gestionar whitelist
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {canManageWhitelist && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ClipboardCheckIcon className="h-4 w-4" />
-                Gestionar preguntas PreguntICA
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Administra el banco de preguntas en español y su cache de
-                traducciones para idioma objetivo.
-              </p>
-              <Button type="button" variant="outline" asChild>
-                <Link to={DASHBOARD_ROUTES.managePregunticaQuestions}>
-                  Gestionar preguntas PreguntICA
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {canManageCalendarIcademy && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CalendarDaysIcon className="h-4 w-4" />
-                Gestionar calendario ICADEMY
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Administra las clases y los profesores del calendario visible
-                para todos los alumnos.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" asChild>
-                  <Link to={DASHBOARD_ROUTES.calendarIcademyManage}>
-                    Gestionar calendario
-                  </Link>
-                </Button>
-                <Button type="button" variant="outline" asChild>
-                  <Link to={DASHBOARD_ROUTES.calendarIcademyTeachers}>
-                    Gestionar profesores
-                  </Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {canSeeHistoricLeaderboard && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrophyIcon className="h-4 w-4" />
-                Histórico leaderboard
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Consulta los rankings mensuales cerrados por mes y año.
-              </p>
-              <Button type="button" variant="outline" asChild>
-                <Link to={DASHBOARD_ROUTES.historicLeaderboard}>
-                  Ver histórico leaderboard
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Seguridad</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Puedes actualizar tu contraseña validando primero tu contraseña
-              actual.
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
+            <ProfileFeatureCard
+              title="Cambiar contraseña"
+              icon={ShieldIcon}
+              onMainAction={() => {
                 setPasswordError(null);
                 setPasswordSuccess(null);
                 setCurrentPassword("");
@@ -898,32 +401,213 @@ export function ProfileView({
                 setConfirmNextPassword("");
                 setIsPasswordModalOpen(true);
               }}
-            >
-              Cambiar contraseña
-            </Button>
-          </CardContent>
-        </Card>
+              description="Actualiza tu contraseña con validación de seguridad."
+            />
 
-        {canManageWhitelist && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CoinsIcon className="h-4 w-4" />
-                Gestión Fichas PreguntICA
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
+            <ProfileFeatureCard
+              title={isLoggingOut ? "Cerrando sesión..." : "Cerrar sesión"}
+              icon={LogOutIcon}
+              onMainAction={() => void handleLogout()}
+              description="Finaliza tu sesión actual en el dispositivo."
+              className="border-destructive/45 text-destructive hover:border-destructive hover:bg-destructive/5 dark:text-rose-300"
+            />
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <div>
+            <h3 className="text-lg font-semibold">Estudio y progreso</h3>
+            <p className="text-sm text-muted-foreground">
+              Herramientas de seguimiento, contenido y resultados mensuales.
+            </p>
+          </div>
+          <div className="mx-auto flex w-full max-w-5xl flex-wrap gap-4">
+            <ProfileFeatureCard
+              title="Trackers"
+              icon={LineChartIcon}
+              onMainAction={() => navigate(DASHBOARD_ROUTES.trackers)}
+              description="Pronunciación, fluidez e improvisación mensual."
+            />
+            <ProfileFeatureCard
+              title="Track Instagram"
+              icon={CameraIcon}
+              onMainAction={() => navigate(DASHBOARD_ROUTES.instagramTrackPosts)}
+              description="Registro diario de publicaciones con edición limitada."
+            />
+            <ProfileFeatureCard
+              title="Calendario"
+              icon={CalendarDaysIcon}
+              onMainAction={() => navigate(DASHBOARD_ROUTES.calendarIcademy)}
+              description="Consulta horarios por idioma y sesiones activas."
+            />
+            <ProfileFeatureCard
+              title="Estadísticas"
+              icon={BarChart3Icon}
+              onMainAction={() => navigate(DASHBOARD_ROUTES.myAnalytics)}
+              description="Palabras, frases, notas maestras y flashcards."
+            />
+            <ProfileFeatureCard
+              title="Tests ICA"
+              icon={ClipboardCheckIcon}
+              onMainAction={() => navigate(DASHBOARD_ROUTES.testsIca)}
+              headerRight={
+                canHighlightCurrentMonth && !hasCurrentMonthTest ? (
+                  <div className="relative mt-0.5 size-3.5">
+                    <div className="absolute top-0 size-3.5 rounded-full animate-pulse bg-amber-300 delay-300"></div>
+                    <div className="absolute top-0 size-3.5 rounded-full animate-ping bg-primary"></div>
+                  </div>
+                ) : null
+              }
+              description={
+                !featureAvailable
+                  ? "Disponible desde mayo de 2026."
+                  : hasCurrentMonthTest
+                    ? "Ya completaste el test del mes actual."
+                    : wordPool.eligible
+                      ? "Tienes vocabulario suficiente para hacer el test del mes."
+                      : `Necesitas ${ICA_TEST_REQUIRED_WORDS} palabras ICA. Tienes ${wordPool.availableWords}.`
+              }
+              actions={
+                canTakeCurrentMonth ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() =>
+                      navigate(`${DASHBOARD_ROUTES.testsIca}/${currentMonthCode}`)
+                    }
+                  >
+                    Hacer test
+                  </Button>
+                ) : undefined
+              }
+            />
+          </div>
+        </section>
+
+        {(canSeeCoachingPersonalized || canManageCoaching) && (
+          <section className="space-y-3">
+            <div>
+              <h3 className="text-lg font-semibold">Coaching</h3>
               <p className="text-sm text-muted-foreground">
-                Revisa por usuario las fichas del cálculo mensual y ajusta
-                manualmente las fichas extra.
+                Accesos de clases personalizadas y gestión de seguimiento.
               </p>
-              <Button type="button" variant="outline" asChild>
-                <Link to={DASHBOARD_ROUTES.managePregunticaTokens}>
-                  Gestión Fichas PreguntICA
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
+            </div>
+            <div className="mx-auto flex w-full max-w-5xl flex-wrap gap-4">
+              {canSeeCoachingPersonalized && (
+                <ProfileFeatureCard
+                  title="Coaching personalizado"
+                  icon={GraduationCapIcon}
+                  onMainAction={() => navigate(DASHBOARD_ROUTES.coachingPersonalized)}
+                  tone="coaching"
+                  description="Clases semanales, feedback y objetivos ICA."
+                />
+              )}
+
+              {canManageCoaching && (
+                <ProfileFeatureCard
+                  title="Administrar coaching"
+                  icon={UsersIcon}
+                  onMainAction={() => navigate(DASHBOARD_ROUTES.manageCoaching)}
+                  tone="coaching"
+                  headerRight={
+                    pendingCoachingSessions > 0 ? (
+                      <PendingReviewDot
+                        title={`Tienes ${pendingCoachingNotes} notas pendientes de revision en ${pendingCoachingSessions} sesiones.`}
+                        useIconSpeaker
+                      />
+                    ) : null
+                  }
+                  description={
+                    pendingCoachingSessions > 0
+                      ? `Pendientes: ${pendingCoachingNotes} nota${pendingCoachingNotes === 1 ? "" : "s"} en ${pendingCoachingSessions} sesión${pendingCoachingSessions === 1 ? "" : "es"}.`
+                      : "Gestiona usuarios, feedback y objetivos personalizados."
+                  }
+                />
+              )}
+            </div>
+          </section>
+        )}
+
+        {(canSeeAdminAnalytics ||
+          canManageWhitelist ||
+          canManageCalendarIcademy ||
+          canSeeHistoricLeaderboard) && (
+          <section className="space-y-3">
+            <div>
+              <h3 className="text-lg font-semibold">Administración</h3>
+              <p className="text-sm text-muted-foreground">
+                Paneles para admins y super admins con acciones avanzadas.
+              </p>
+            </div>
+            <div className="mx-auto flex w-full max-w-5xl flex-wrap gap-4">
+              {canSeeAdminAnalytics && (
+                <ProfileFeatureCard
+                  title="Analíticas admin"
+                  icon={BarChart3Icon}
+                  onMainAction={() => navigate(DASHBOARD_ROUTES.analytics)}
+                  tone="admin"
+                  description="Métricas globales de la plataforma."
+                />
+              )}
+
+              {canManageWhitelist && (
+                <>
+                  <ProfileFeatureCard
+                    title="Whitelist"
+                    icon={ListChecksIcon}
+                    onMainAction={() => navigate(DASHBOARD_ROUTES.manageWhitelist)}
+                    tone="superAdmin"
+                    description="Administra accesos y sincroniza el CSV oficial."
+                  />
+
+                  <ProfileFeatureCard
+                    title="PreguntICA"
+                    icon={ClipboardCheckIcon}
+                    onMainAction={() => navigate(DASHBOARD_ROUTES.managePregunticaQuestions)}
+                    tone="superAdmin"
+                    description="Banco de preguntas y cache de traducciones."
+                  />
+
+                  <ProfileFeatureCard
+                    title="Fichas PreguntICA"
+                    icon={CoinsIcon}
+                    onMainAction={() => navigate(DASHBOARD_ROUTES.managePregunticaTokens)}
+                    tone="superAdmin"
+                    description="Ajustes manuales de fichas extra por usuario."
+                  />
+                </>
+              )}
+
+              {canManageCalendarIcademy && (
+                <>
+                  <ProfileFeatureCard
+                    title="Calendario ICADEMY"
+                    icon={CalendarDaysIcon}
+                    onMainAction={() => navigate(DASHBOARD_ROUTES.calendarIcademyManage)}
+                    tone="superAdmin"
+                    description="Gestiona clases y su visibilidad para alumnos."
+                  />
+                  <ProfileFeatureCard
+                    title="Profesores ICADEMY"
+                    icon={UsersIcon}
+                    onMainAction={() => navigate(DASHBOARD_ROUTES.calendarIcademyTeachers)}
+                    tone="superAdmin"
+                    description="Administra docentes y su configuración de agenda."
+                  />
+                </>
+              )}
+
+              {canSeeHistoricLeaderboard && (
+                <ProfileFeatureCard
+                  title="Histórico leaderboard"
+                  icon={TrophyIcon}
+                  onMainAction={() => navigate(DASHBOARD_ROUTES.historicLeaderboard)}
+                  tone="superAdmin"
+                  description="Rankings mensuales cerrados por mes y año."
+                />
+              )}
+            </div>
+          </section>
         )}
 
         <Dialog
@@ -1012,18 +696,6 @@ export function ProfileView({
             </DialogFooter>
           </DialogContent>
         </Dialog>
-
-        <div>
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={() => void handleLogout()}
-            disabled={isLoggingOut}
-          >
-            <LogOutIcon />
-            {isLoggingOut ? "Cerrando sesión..." : "Cerrar sesión"}
-          </Button>
-        </div>
       </div>
     </section>
   );

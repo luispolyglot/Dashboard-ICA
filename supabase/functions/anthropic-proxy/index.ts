@@ -67,9 +67,25 @@ type CallAnthropicOptions = {
   tool?: AnthropicToolDefinition
 }
 
+type TranslationStatus = 'ok' | 'corrected' | 'ambiguous' | 'not_a_word'
+
 type TranslationCandidate = {
+  detectedLang: string
+  inputCorrected: string
+  hadCorrection: boolean
   translation: string | null
-  confidence: number
+  translationFallback: string | null
+  alternatives: string[]
+  status: TranslationStatus
+}
+
+type SpellcheckKind = 'diacritic' | 'typo' | 'spacing' | 'none'
+
+type SpellcheckCandidate = {
+  detectedLang: string
+  hasCorrection: boolean
+  corrected: string
+  kind: SpellcheckKind
 }
 
 type TranslatePayload = {
@@ -120,6 +136,17 @@ type ManualPhraseSuggestionPayload = {
   nativeLang: string
 }
 
+type CoachingFocusExercisePayload = {
+  action: 'coaching_focus_exercise'
+  targetLang: string
+  nativeLang: string
+  level: string
+  focusTitle: string
+  studentContext?: string
+  focusSlot?: string
+  phase?: string
+}
+
 type ManualPhraseReviewResult = {
   status: 'suggested' | 'perfect' | 'invalid'
   suggestion: string | null
@@ -137,6 +164,11 @@ type RequestPayload =
   | WordExamplePayload
   | PhraseTokenInsightPayload
   | ManualPhraseSuggestionPayload
+  | CoachingFocusExercisePayload
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -260,9 +292,9 @@ function sanitizeTranslation(value: string): string | null {
 
 function sanitizeSpellingSuggestion(value: string): string | null {
   const cleaned = value.trim()
-  if (!cleaned || cleaned === '—') return null
-  if (cleaned.length > 50) return null
-  if (/\s/.test(cleaned)) return null
+  if (!cleaned) return null
+  if (/\n|\r/.test(cleaned)) return null
+  if (cleaned.length > 120) return null
   return cleaned
 }
 
@@ -463,17 +495,56 @@ async function callAnthropic(
   }
 }
 
-function parseTranslationCandidate(raw: string | null): TranslationCandidate {
-  const parsed = parseLastJsonObject(raw)
-  if (!parsed) return { translation: null, confidence: 0 }
+function normalizeTranslationStatus(value: unknown): TranslationStatus {
+  if (typeof value !== 'string') return 'not_a_word'
+  const normalized = value.trim().toLowerCase()
+  if (normalized === 'ok') return 'ok'
+  if (normalized === 'corrected') return 'corrected'
+  if (normalized === 'ambiguous') return 'ambiguous'
+  if (normalized === 'not_a_word') return 'not_a_word'
+  return 'not_a_word'
+}
+
+function parseTranslationCandidate(
+  toolInput: Record<string, unknown> | null,
+  fallbackRaw: string | null,
+): TranslationCandidate {
+  const parsed: Record<string, unknown> = toolInput || parseLastJsonObject(fallbackRaw) || {}
+
+  const detectedLang = typeof parsed.detected_lang === 'string'
+    ? parsed.detected_lang.trim() || 'unknown'
+    : 'unknown'
+  const inputCorrected = typeof parsed.input_corrected === 'string'
+    ? parsed.input_corrected.trim()
+    : ''
+  const hadCorrection = typeof parsed.had_correction === 'boolean'
+    ? parsed.had_correction
+    : false
 
   const translationRaw = typeof parsed.translation === 'string' ? parsed.translation : ''
+  const translationFallback = translationRaw.trim() && !/[\n\r]/.test(translationRaw)
+    ? translationRaw.trim().slice(0, 120)
+    : null
   const translation = sanitizeTranslation(translationRaw)
-  const confidence = typeof parsed.confidence === 'number'
-    ? Math.min(1, Math.max(0, parsed.confidence))
-    : 0
+  const alternatives = Array.isArray(parsed.alternatives)
+    ? parsed.alternatives
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => sanitizeTranslation(item) || '')
+      .filter(Boolean)
+      .slice(0, 2)
+    : []
 
-  return { translation, confidence }
+  const status = normalizeTranslationStatus(parsed.status)
+
+  return {
+    detectedLang,
+    inputCorrected,
+    hadCorrection,
+    translation,
+    translationFallback,
+    alternatives,
+    status,
+  }
 }
 
 function parseActivationPhrase(raw: string | null): { phrase: string; translation: string; words_used?: string[] } | null {
@@ -493,12 +564,37 @@ function parseActivationPhrase(raw: string | null): { phrase: string; translatio
   }
 }
 
-function parseSpellcheckSuggestion(raw: string | null): string | null {
-  const parsed = parseLastJsonObject(raw)
-  if (!parsed) return null
+function normalizeSpellcheckKind(value: unknown): SpellcheckKind {
+  if (typeof value !== 'string') return 'none'
+  const normalized = value.trim().toLowerCase()
+  if (normalized === 'diacritic') return 'diacritic'
+  if (normalized === 'typo') return 'typo'
+  if (normalized === 'spacing') return 'spacing'
+  if (normalized === 'none') return 'none'
+  return 'none'
+}
 
-  const suggestion = typeof parsed.suggestion === 'string' ? parsed.suggestion : ''
-  return sanitizeSpellingSuggestion(suggestion)
+function parseSpellcheckCandidate(
+  toolInput: Record<string, unknown> | null,
+  fallbackRaw: string | null,
+): SpellcheckCandidate {
+  const parsed: Record<string, unknown> = toolInput || parseLastJsonObject(fallbackRaw) || {}
+  const detectedLang = typeof parsed.detected_lang === 'string'
+    ? parsed.detected_lang.trim() || 'unknown'
+    : 'unknown'
+  const hasCorrection = typeof parsed.has_correction === 'boolean'
+    ? parsed.has_correction
+    : false
+  const correctedRaw = typeof parsed.corrected === 'string' ? parsed.corrected : ''
+  const corrected = sanitizeSpellingSuggestion(correctedRaw) || ''
+  const kind = normalizeSpellcheckKind(parsed.kind)
+
+  return {
+    detectedLang,
+    hasCorrection,
+    corrected,
+    kind,
+  }
 }
 
 function parsePhraseTokenInsight(raw: string | null): {
@@ -531,6 +627,205 @@ function parsePhraseTokenInsight(raw: string | null): {
   }
 }
 
+function parseCoachingFocusExercise(raw: string | null): {
+  exercise: Record<string, unknown> | null
+  errorReason: string | null
+} {
+  const parsed = parseLastJsonObject(raw)
+  if (!parsed) return { exercise: null, errorReason: 'invalid_json' }
+  if (!isRecord(parsed.etiquetas)) return { exercise: null, errorReason: 'missing_etiquetas' }
+  if (!Array.isArray(parsed.bloques) || parsed.bloques.length !== 3) {
+    return { exercise: null, errorReason: 'invalid_bloques_count' }
+  }
+
+  const bloqueIds = parsed.bloques
+    .filter((item): item is Record<string, unknown> => isRecord(item))
+    .map((item) => (typeof item.id === 'string' ? item.id : ''))
+
+  if (
+    bloqueIds[0] !== 'reconocer' ||
+    bloqueIds[1] !== 'construir' ||
+    bloqueIds[2] !== 'conversacion'
+  ) {
+    return { exercise: null, errorReason: 'invalid_bloques_order' }
+  }
+
+  const recoBlock = parsed.bloques[0]
+  if (isRecord(recoBlock) && Array.isArray(recoBlock.items) && recoBlock.items.length > 0) {
+    const firstItem = recoBlock.items[0]
+    if (isRecord(firstItem) && Array.isArray(firstItem.options)) {
+      const options = firstItem.options.filter(isRecord)
+      for (const option of options) {
+        const text = typeof option.t === 'string' ? option.t : ''
+        if (!text.includes('[SIN_ERROR_REAL]')) continue
+        const replacement = options.find((candidate) => {
+          const candidateText = typeof candidate.t === 'string' ? candidate.t.trim() : ''
+          return candidateText.length > 0 && !candidateText.includes('[SIN_ERROR_REAL]')
+        })
+        option.t = replacement && typeof replacement.t === 'string'
+          ? replacement.t
+          : 'Frase con error típico del foco'
+      }
+    }
+  }
+
+  return { exercise: parsed, errorReason: null }
+}
+
+function buildCoachingFocusExercisePrompt(input: {
+  targetLang: string
+  focusTitle: string
+  level: string
+  studentContext: string
+  focusSlot: string
+  phase: string
+  nativeLang: string
+}): string {
+  return [
+    'Eres el generador de ejercicios del programa Coaching ICA, un programa de coaching linguistico 1:1.',
+    'Vas a crear el contenido de un ejercicio de foco gramatical para un alumno concreto.',
+    '',
+    'DATOS DEL ENCARGO',
+    `- Idioma objetivo: ${input.targetLang}`,
+    `- Foco gramatical: ${input.focusTitle}`,
+    `- Nivel del alumno: ${input.level}`,
+    `- Contexto del alumno: ${input.studentContext || 'Sin contexto adicional'}`,
+    `- Slot: ${input.focusSlot} · Fase: ${input.phase}`,
+    '',
+    'QUE DEVUELVES',
+    'Unicamente un objeto JSON valido con la estructura del ESQUEMA.',
+    'Sin texto alrededor, sin explicaciones, sin markdown.',
+    '',
+    'ESTRUCTURA FIJA',
+    'Tres bloques, en este orden:',
+    '1. reconocer    - 4 preguntas de opcion multiple.',
+    '2. construir    - 4 situaciones para escritura libre.',
+    '3. conversacion - dialogo corto con 5 huecos.',
+    '',
+    'REGLAS GENERALES',
+    '- Todas las frases del idioma objetivo deben salir del contexto del alumno.',
+    '- El vocabulario no puede pasar del nivel indicado.',
+    '- Lo evaluado es gramatica, no vocabulario raro.',
+    `- Explicaciones SIEMPRE en ${input.nativeLang}, en segunda persona, maximo dos frases.`,
+    '- En explicaciones evita usar las palabras "correcto" o "incorrecto".',
+    '',
+    'BLOQUE 1 - reconocer',
+    '- La PRIMERA pregunta debe ser un error plausible tipico del foco para hispanohablante del nivel indicado.',
+    '- Cada pregunta tiene 3 opciones y exactamente 1 con ok=true.',
+    '- Distractores plausibles de hispanohablante del nivel indicado.',
+    '- Cada opcion debe traer why.',
+    '',
+    'BLOQUE 2 - construir',
+    '- El alumno escribe libremente; NO generes lista de frases aceptadas completas.',
+    '- En cada item, el campo verbos define lo evaluable.',
+    '- Cada entrada de verbos incluye: nombre, formas, mal, tags, nota.',
+    '- formas: solo nucleo verbal, minusculas, sin acentos, sin apostrofes, sin sujeto.',
+    '- Debe haber de 5 a 7 unidades verbales totales entre los 4 items.',
+    '- Al menos un item debe tener dos verbos en contraste.',
+    '- ejemplo es una frase modelo posterior, no la unica respuesta valida.',
+    '',
+    'BLOQUE 3 - conversacion',
+    '- Dialogo natural de 4 o 5 lineas con cinco huecos.',
+    '- Huecos marcados con {0}..{4} y su indice coincide con items.',
+    '- El alumno ve solo el infinitivo (campo verbo).',
+    '- formas contiene solo lo que va dentro del hueco.',
+    '',
+    'ETIQUETAS',
+    '- Define entre 2 y 4 etiquetas en etiquetas.',
+    '- Cada unidad puntuable lleva tags (1 o 2 claves existentes).',
+    '- Cada etiqueta debe aparecer al menos 3 veces y en mas de un bloque.',
+    '',
+    'UMBRAL',
+    '- umbral es un numero de aciertos, no porcentaje.',
+    '- Debe permitir fallar dos unidades.',
+    '',
+    'EQUIVALENCIAS',
+    '- Rellena equivalencias con cifra->palabra del idioma objetivo cuando aplique.',
+    '',
+    'ESQUEMA (respeta nombres de campo y tipos):',
+    '{',
+    '  "idioma": "string",',
+    '  "nivel": "string",',
+    '  "foco": "string",',
+    '  "foco_subtitulo": "string en espanol",',
+    '  "foco_slot": "string",',
+    '  "fase": "string",',
+    '  "umbral": 13,',
+    '  "equivalencias": { "7": "sept" },',
+    '  "etiquetas": { "clave": "Nombre legible en espanol" },',
+    '  "bloques": [',
+    '    {',
+    '      "id": "reconocer",',
+    '      "titulo": "Reconocer",',
+    '      "instruccion": "string en espanol",',
+    '      "tipo": "opcion",',
+    '      "items": [',
+    '        {',
+    '          "lead": "string",',
+    '          "tags": ["clave"],',
+    '          "options": [',
+    '            { "t": "frase en idioma objetivo", "ok": false, "why": "explicacion en espanol" }',
+    '          ]',
+    '        }',
+    '      ]',
+    '    },',
+    '    {',
+    '      "id": "construir",',
+    '      "titulo": "Construir",',
+    '      "instruccion": "string en espanol",',
+    '      "tipo": "escritura",',
+    '      "items": [',
+    '        {',
+    '          "situacion": "string en espanol",',
+    '          "ejemplo": "frase modelo completa",',
+    '          "verbos": [',
+    '            {',
+    '              "nombre": "string",',
+    '              "formas": ["nucleo verbal normalizado"],',
+    '              "mal": ["error previsible"],',
+    '              "tags": ["clave"],',
+    '              "nota": "explicacion en espanol"',
+    '            }',
+    '          ]',
+    '        }',
+    '      ]',
+    '    },',
+    '    {',
+    '      "id": "conversacion",',
+    '      "titulo": "En conversacion",',
+    '      "instruccion": "string en espanol",',
+    '      "tipo": "dialogo",',
+    '      "lineas": [',
+    '        { "quien": "string", "texto": "texto con {0}" }',
+    '      ],',
+    '      "items": [',
+    '        {',
+    '          "verbo": "infinitivo",',
+    '          "formas": ["valor de hueco"],',
+    '          "show": "forma canonica",',
+    '          "tags": ["clave"],',
+    '          "why": "explicacion en espanol"',
+    '        }',
+    '      ]',
+    '    }',
+    '  ]',
+    '}',
+    '',
+    'COMPROBACIONES ANTES DE RESPONDER',
+    '1) Hay 4 items en reconocer, 4 en construir y 5 huecos en conversacion.',
+    '2) Cada pregunta multiple choice tiene exactamente un ok=true.',
+    '3) formas de construir son solo nucleos verbales.',
+    '4) formas de construir estan normalizadas (minusculas, sin acentos, sin apostrofes).',
+    '5) Hay algun item de construir con dos verbos en contraste.',
+    '6) Huecos {n} del dialogo alineados con items[n].',
+    '7) Todos los tags existen en etiquetas.',
+    '8) umbral deja margen para fallar dos.',
+    '9) Explicaciones en espanol y frases en idioma objetivo.',
+    '',
+    'Responde solo con JSON.',
+  ].join('\n')
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
@@ -554,51 +849,88 @@ Deno.serve(async (req) => {
     if (payload.action === 'translate') {
       const translated = await callAnthropic(
         [
-          'You are a bilingual dictionary assistant.',
-          `Translate from ${payload.fromLang} to ${payload.toLang}.`,
+          'Eres el motor de traduccion de una app para estudiantes de idiomas.',
+          'Recibes lo que un alumno acaba de escribir: una palabra o una frase corta.',
+          'Los alumnos escriben con errores constantemente. Es normal y esperado.',
           '',
-          'Rules for "translation":',
-          `- Return ONLY the translation, written ONLY in ${payload.toLang}.`,
-          '- NEVER include the original input text.',
-          '- NEVER include alternatives, slashes, parentheses, or explanations.',
-          '- If multiple valid translations exist, return only the single most common one.',
-          '- If misspelled, unknown, or too ambiguous, return "—" with confidence 0.',
+          `Par de idiomas de la interfaz: ${payload.fromLang} <-> ${payload.toLang}.`,
+          'Es una PISTA, no una certeza. Detecta en que idioma esta escrito el texto',
+          'realmente y traducelo al otro idioma del par.',
           '',
-          'Output format (CRITICAL):',
-          '- Return exactly one JSON object on one line: {"translation":"...","confidence":0.0}',
-          '- confidence must be a number between 0 and 1.',
-          '- No markdown. No text before or after JSON.',
+          'PROCESO, en este orden:',
+          '1. Detecta el idioma real del texto.',
+          '2. Corrige ortografia y diacriticos que falten (e a c n o u a e l z s...).',
+          '   Si al quitar los diacriticos coincide con una forma valida del idioma,',
+          '   asume que el alumno los olvido y restauralos.',
+          '3. Traduce el texto YA CORREGIDO.',
           '',
-          `Example: Input "Wasser" -> {"translation":"agua","confidence":1}`,
-          `Example: Input "xkrtz" -> {"translation":"—","confidence":0}`,
+          'REGLA ABSOLUTA:',
+          'SIEMPRE devuelves una traduccion. Un error ortografico NUNCA la bloquea:',
+          'corriges primero, traduces despues. Si hay varios sentidos posibles, eliges',
+          'el mas frecuente y pones los demas en alternatives.',
+          'Nunca devuelves vacio, ni un guion, ni te niegas por ambiguedad.',
+          '',
+          'FORMATO DE LA TRADUCCION:',
+          '- Solo la traduccion, en el idioma destino.',
+          '- Sin el texto original, sin barras, sin parentesis, sin explicaciones.',
+          '- Manten el registro y el tiempo verbal del original.',
+          '',
+          'EJEMPLOS (par fr <-> es):',
+          'Input: "on decidira demain"',
+          '-> detected_lang: fr | input_corrected: "on décidera demain" | had_correction: true | translation: "decidiremos mañana" | alternatives: [] | status: "corrected"',
+          'Input: "la cancion"',
+          '-> detected_lang: es | input_corrected: "la canción" | had_correction: true | translation: "la chanson" | alternatives: [] | status: "corrected"',
+          'Input: "le banc"',
+          '-> detected_lang: fr | input_corrected: "le banc" | had_correction: false | translation: "el banco" | alternatives: ["el asiento"] | status: "ambiguous"',
         ].join('\n'),
         payload.text,
         {
-          maxTokens: 120,
+          maxTokens: 400,
           temperature: 0,
           tool: {
             name: 'report_translation',
-            description: 'Return the translation result',
+            description: 'Devuelve idioma detectado, correccion y traduccion',
             input_schema: {
               type: 'object',
               properties: {
+                detected_lang: { type: 'string' },
+                input_corrected: { type: 'string' },
+                had_correction: { type: 'boolean' },
                 translation: { type: 'string' },
-                confidence: { type: 'number' },
+                alternatives: {
+                  type: 'array',
+                  items: { type: 'string' },
+                },
+                status: {
+                  type: 'string',
+                  enum: ['ok', 'corrected', 'ambiguous', 'not_a_word'],
+                },
               },
-              required: ['translation', 'confidence'],
+              required: [
+                'detected_lang',
+                'input_corrected',
+                'had_correction',
+                'translation',
+                'alternatives',
+                'status',
+              ],
             },
           },
         },
       )
 
-      const parsedFromTool = translated.toolInput
-        ? parseTranslationCandidate(JSON.stringify(translated.toolInput))
-        : null
-      const parsed = parsedFromTool || parseTranslationCandidate(translated.text)
-      const accepted = parsed.translation && parsed.confidence >= 0.72
+      const parsed = parseTranslationCandidate(translated.toolInput, translated.text)
+      const finalTranslation = parsed.status === 'not_a_word'
+        ? null
+        : (parsed.translation || parsed.translationFallback)
 
       return jsonResponse(200, {
-        translation: accepted ? parsed.translation : null,
+        translation: finalTranslation,
+        detectedLang: parsed.detectedLang,
+        inputCorrected: parsed.inputCorrected,
+        hadCorrection: parsed.hadCorrection,
+        alternatives: parsed.alternatives,
+        status: parsed.status,
       })
     }
 
@@ -741,44 +1073,70 @@ Deno.serve(async (req) => {
 
       const result = await callAnthropic(
         [
-          'You are a spelling checker for single words.',
-          `Language of the word: ${payload.lang}.`,
+          'Eres un corrector ortografico para una app de aprendizaje de idiomas.',
+          'Recibes lo que el alumno acaba de escribir: una palabra o una frase corta.',
           '',
-          'Rules:',
-          '- Check spelling only. Never translate. Never explain.',
-          '- If the word is correct, return "—".',
-          '- If there is a likely typo, return only the corrected word in the same language.',
-          '- If unsure, treat as correct and return "—".',
+          `Idioma declarado por la interfaz: ${payload.lang}.`,
+          'Ese dato es una pista, no una certeza: el alumno puede haberse equivocado de campo.',
+          'Si el texto esta claramente en otro idioma, corrigelo en el idioma real.',
           '',
-          'Output format (CRITICAL):',
-          '- Return exactly one JSON object on one line: {"suggestion":"..."}',
-          '- No markdown. No text before or after JSON.',
-          '- Never return more than one JSON object.',
+          'QUE CORREGIR:',
+          '- Diacriticos que faltan o sobran (e e a c n o u ss a e l z s o). Es el caso mas frecuente.',
+          '- Letras cambiadas, dobles, omitidas o transpuestas.',
+          '- Espaciado y apostrofos (l\'ami, dell\'acqua).',
+          '',
+          'REGLA CLAVE SOBRE DIACRITICOS:',
+          'Si al quitar los diacriticos del texto obtienes algo que coincide con una forma valida',
+          'del idioma, asume que el alumno olvido el diacritico y devuelve la forma acentuada.',
+          'NO lo trates como correcto. Ante la duda en diacriticos, corrige.',
+          '',
+          'QUE NO HACER:',
+          '- Nunca traduzcas.',
+          '- No reformules, no cambies el tiempo verbal, no toques el estilo.',
+          '- No corrijas nombres propios, marcas ni siglas.',
+          '- No toques mayusculas salvo que sean obligatorias (sustantivos en aleman).',
+          '',
+          'Devuelve SIEMPRE el texto completo corregido, no solo la palabra que cambio.',
+          '',
+          'EJEMPLOS:',
+          'on decidira demain -> fr | true | "on décidera demain" | diacritic',
+          'dziekuje bardzo -> pl | true | "dziękuję bardzo" | diacritic',
+          'la cancion -> es | true | "la canción" | diacritic',
+          'Entshuldigung -> de | true | "Entschuldigung" | typo',
+          'la maison -> fr | false | "la maison" | none',
         ].join('\n'),
         text,
         {
-          maxTokens: 60,
+          maxTokens: 200,
           temperature: 0,
           tool: {
             name: 'report_spelling',
-            description: 'Return spelling suggestion result',
+            description: 'Devuelve el resultado de la correccion ortografica',
             input_schema: {
               type: 'object',
               properties: {
-                suggestion: { type: 'string' },
+                detected_lang: { type: 'string' },
+                has_correction: { type: 'boolean' },
+                corrected: { type: 'string' },
+                kind: {
+                  type: 'string',
+                  enum: ['diacritic', 'typo', 'spacing', 'none'],
+                },
               },
-              required: ['suggestion'],
+              required: ['detected_lang', 'has_correction', 'corrected', 'kind'],
             },
           },
         },
       )
 
-      const suggestionFromTool = result.toolInput
-        ? parseSpellcheckSuggestion(JSON.stringify(result.toolInput))
-        : null
+      const parsed = parseSpellcheckCandidate(result.toolInput, result.text)
+      const cleanedCorrected = sanitizeSpellingSuggestion(parsed.corrected)
+      const suggestion = parsed.hasCorrection && cleanedCorrected ? cleanedCorrected : null
 
       return jsonResponse(200, {
-        suggestion: suggestionFromTool ?? parseSpellcheckSuggestion(result.text),
+        suggestion,
+        detectedLang: parsed.detectedLang,
+        kind: parsed.kind,
       })
     }
 
@@ -943,6 +1301,57 @@ Deno.serve(async (req) => {
           },
         },
       })
+    }
+
+    if (payload.action === 'coaching_focus_exercise') {
+      const targetLang = payload.targetLang.trim()
+      const nativeLang = payload.nativeLang.trim()
+      const focusTitle = payload.focusTitle.trim()
+      const level = normalizeLevelKey(payload.level)
+      const studentContext = typeof payload.studentContext === 'string'
+        ? payload.studentContext.trim()
+        : ''
+      const focusSlot = typeof payload.focusSlot === 'string' && payload.focusSlot.trim()
+        ? payload.focusSlot.trim()
+        : 'Foco 1'
+      const phase = typeof payload.phase === 'string' && payload.phase.trim()
+        ? payload.phase.trim()
+        : 'Entrenado'
+
+      if (!targetLang || !nativeLang || !focusTitle) {
+        return jsonResponse(400, {
+          error: 'targetLang, nativeLang and focusTitle are required',
+        })
+      }
+
+      const prompt = buildCoachingFocusExercisePrompt({
+        targetLang,
+        focusTitle,
+        level,
+        studentContext,
+        focusSlot,
+        phase,
+        nativeLang,
+      })
+
+      const raw = await callAnthropic(
+        'Generas contenido didactico estructurado para un ejercicio de foco gramatical. Responde solo JSON valido.',
+        prompt,
+        {
+          maxTokens: 3200,
+          temperature: 0.2,
+        },
+      )
+
+      const parsed = parseCoachingFocusExercise(raw.text)
+      if (!parsed.exercise) {
+        return jsonResponse(200, {
+          exercise: null,
+          error: `invalid_schema:${parsed.errorReason || 'unknown'}`,
+        })
+      }
+
+      return jsonResponse(200, { exercise: parsed.exercise })
     }
 
     return jsonResponse(400, { error: 'Unsupported action' })

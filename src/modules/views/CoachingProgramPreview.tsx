@@ -443,7 +443,7 @@ export function CoachingProgramPreview({
             </div>
             <p className='mt-2 text-xs text-muted-foreground'>
               {unlockedWeeks > 0
-                ? `${unlockedProgressPct}% del programa habilitado`
+                ? `${unlockedProgressPct}% del programa completado`
                 : 'Esperando activación del coach'}
             </p>
           </div>

@@ -12,12 +12,15 @@ import { PageLayout } from '../layout/PageLayout'
 import { AddView } from '../views/AddView'
 import { AdminAnalyticsView } from '../views/AdminAnalyticsView'
 import { CoachingPersonalizedView } from '../views/CoachingPersonalizedView'
+import { CoachingV2ExerciseView } from '../views/CoachingV2ExerciseView'
 import { CalendarIcademyView } from '../views/CalendarIcademyView'
 import { FlashcardsModeView } from '../views/FlashcardsModeView'
 import { HistoricLeaderboardView } from '../views/HistoricLeaderboardView'
 import { LeaderboardView } from '../views/LeaderboardView'
 import { HomeView } from '../views/HomeView'
 import { GamesIcaView } from '../views/GamesIcaView'
+import { IcaChallengesView } from '../views/IcaChallengesView'
+import { IcaChallengePlayView } from '../views/IcaChallengePlayView'
 import { ManageCoachingView } from '../views/ManageCoachingView'
 import { ManageCoachingCalendarView } from '../views/ManageCoachingCalendarView'
 import { ManageCoachingUserView } from '../views/ManageCoachingUserView'
@@ -251,6 +254,37 @@ export function GamesIcaPage() {
         pregunticaUnlocked={pregunticaUnlocked}
         pregunticaLabel={pregunticaLabel}
         pregunticaProgress={pregunticaProgress}
+      />
+    </PageLayout>
+  )
+}
+
+export function IcaChallengesPage() {
+  const { config } = useDashboardContext()
+  if (!config) return null
+
+  return (
+    <PageLayout>
+      <IcaChallengesView
+        targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+      />
+    </PageLayout>
+  )
+}
+
+export function IcaChallengePlayPage() {
+  const { config, cards } = useDashboardContext()
+  const { challengeId } = useParams<{ challengeId: string }>()
+  if (!config || !challengeId) return null
+
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.challengesIca}>
+      <IcaChallengePlayView
+        challengeId={challengeId}
+        targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+        cards={cards}
       />
     </PageLayout>
   )
@@ -508,7 +542,7 @@ export function StreaksPage() {
 }
 
 export function ProfilePage() {
-  const { config, cards, handleConfigChange, setShowLangModal } = useDashboardContext()
+  const { config, cards, setShowLangModal } = useDashboardContext()
 
   return (
     <PageLayout>
@@ -516,14 +550,6 @@ export function ProfilePage() {
         config={config}
         cards={cards}
         onEditLanguages={() => setShowLangModal(true)}
-        onApplyRecentLanguages={({ nativeLang, targetLang }) => {
-          if (!config) return
-          handleConfigChange({
-            ...config,
-            nativeLang,
-            targetLang,
-          })
-        }}
       />
     </PageLayout>
   )
@@ -724,6 +750,31 @@ export function CoachingPersonalizedPage() {
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.profile}>
       <CoachingPersonalizedView targetLang={config?.targetLang} />
+    </PageLayout>
+  )
+}
+
+export function CoachingV2ExercisePage() {
+  const { config } = useDashboardContext()
+  const { sessionId, periodNumber, focusId } = useParams<{
+    sessionId: string
+    periodNumber: string
+    focusId: string
+  }>()
+
+  if (!sessionId || !periodNumber || !focusId) return null
+
+  const parsedPeriod = Number(periodNumber)
+  if (!Number.isFinite(parsedPeriod) || parsedPeriod < 1) return null
+
+  return (
+    <PageLayout backTo={DASHBOARD_ROUTES.coachingPersonalized}>
+      <CoachingV2ExerciseView
+        sessionId={sessionId}
+        periodNumber={Math.trunc(parsedPeriod)}
+        focusId={focusId}
+        targetLang={config?.targetLang}
+      />
     </PageLayout>
   )
 }
