@@ -633,6 +633,13 @@ function parseCoachingFocusExercise(raw: string | null): {
 } {
   const parsed = parseLastJsonObject(raw)
   if (!parsed) return { exercise: null, errorReason: 'invalid_json' }
+  return parseCoachingFocusExerciseObject(parsed)
+}
+
+function parseCoachingFocusExerciseObject(parsed: Record<string, unknown>): {
+  exercise: Record<string, unknown> | null
+  errorReason: string | null
+} {
   if (!isRecord(parsed.etiquetas)) return { exercise: null, errorReason: 'missing_etiquetas' }
   if (!Array.isArray(parsed.bloques) || parsed.bloques.length !== 3) {
     return { exercise: null, errorReason: 'invalid_bloques_count' }
@@ -670,6 +677,66 @@ function parseCoachingFocusExercise(raw: string | null): {
   }
 
   return { exercise: parsed, errorReason: null }
+}
+
+function buildCoachingFocusExerciseTool(): AnthropicToolDefinition {
+  return {
+    name: 'report_coaching_focus_exercise',
+    description: 'Devuelve el ejercicio de foco de coaching en formato JSON estricto',
+    input_schema: {
+      type: 'object',
+      properties: {
+        idioma: { type: 'string' },
+        nivel: { type: 'string' },
+        foco: { type: 'string' },
+        foco_subtitulo: { type: 'string' },
+        foco_slot: { type: 'string' },
+        fase: { type: 'string' },
+        umbral: { type: 'number' },
+        equivalencias: {
+          type: 'object',
+          additionalProperties: { type: 'string' },
+        },
+        etiquetas: {
+          type: 'object',
+          additionalProperties: { type: 'string' },
+        },
+        bloques: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+                enum: ['reconocer', 'construir', 'conversacion'],
+              },
+              titulo: { type: 'string' },
+              instruccion: { type: 'string' },
+              items: {
+                type: 'array',
+                items: { type: 'object' },
+              },
+              lineas: {
+                type: 'array',
+                items: { type: 'object' },
+              },
+            },
+            required: ['id', 'titulo', 'instruccion', 'items'],
+          },
+        },
+      },
+      required: ['idioma', 'nivel', 'foco', 'foco_slot', 'fase', 'etiquetas', 'bloques'],
+    },
+  }
+}
+
+function buildInvalidJsonSnippet(raw: string | null): string | null {
+  if (!raw) return null
+
+  const normalized = raw.replace(/\s+/g, ' ').trim()
+  if (!normalized) return null
+
+  return normalized.slice(0, 800)
 }
 
 function buildCoachingFocusExercisePrompt(input: {
@@ -1338,16 +1405,24 @@ Deno.serve(async (req) => {
         'Generas contenido didactico estructurado para un ejercicio de foco gramatical. Responde solo JSON valido.',
         prompt,
         {
-          maxTokens: 3200,
-          temperature: 0.2,
+          maxTokens: 2800,
+          temperature: 0.1,
+          tool: buildCoachingFocusExerciseTool(),
         },
       )
 
-      const parsed = parseCoachingFocusExercise(raw.text)
+      const parsed = raw.toolInput
+        ? parseCoachingFocusExerciseObject(raw.toolInput)
+        : parseCoachingFocusExercise(raw.text)
       if (!parsed.exercise) {
+        const invalidJsonSnippet = parsed.errorReason === 'invalid_json'
+          ? buildInvalidJsonSnippet(raw.text)
+          : null
+
         return jsonResponse(200, {
           exercise: null,
           error: `invalid_schema:${parsed.errorReason || 'unknown'}`,
+          invalidJsonSnippet,
         })
       }
 

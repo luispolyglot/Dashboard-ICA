@@ -1664,11 +1664,11 @@ async function requestFocusExerciseGeneration(input: {
   focusTitle: string
   studentContext: string | null
   focusSlot: string
-}): Promise<{ exercise: Record<string, unknown> | null; error: string | null }> {
+}): Promise<{ exercise: Record<string, unknown> | null; error: string | null; invalidJsonSnippet: string | null }> {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     if (!supabaseUrl) {
-      return { exercise: null, error: 'SUPABASE_URL is not configured' }
+      return { exercise: null, error: 'SUPABASE_URL is not configured', invalidJsonSnippet: null }
     }
 
     const response = await fetch(`${supabaseUrl}/functions/v1/anthropic-proxy`, {
@@ -1692,12 +1692,18 @@ async function requestFocusExerciseGeneration(input: {
     const responseData = await response.json().catch(() => ({})) as {
       exercise?: unknown
       error?: string
+      invalidJsonSnippet?: unknown
     }
+
+    const invalidJsonSnippet = typeof responseData.invalidJsonSnippet === 'string'
+      ? responseData.invalidJsonSnippet.trim().slice(0, 800)
+      : null
 
     if (!response.ok) {
       return {
         exercise: null,
         error: responseData.error || `anthropic_proxy_error_${response.status}`,
+        invalidJsonSnippet,
       }
     }
 
@@ -1712,15 +1718,17 @@ async function requestFocusExerciseGeneration(input: {
       return {
         exercise: null,
         error: responseData.error || 'invalid_exercise_payload',
+        invalidJsonSnippet,
       }
     }
 
-    return { exercise, error: null }
+    return { exercise, error: null, invalidJsonSnippet: null }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown_request_error'
     return {
       exercise: null,
       error: `anthropic_proxy_request_failed:${message}`,
+      invalidJsonSnippet: null,
     }
   }
 }
@@ -1834,6 +1842,10 @@ async function runFocusExerciseGeneration(input: {
       message: errorMessage,
       payload: {
         tookMs: Date.now() - startedAt,
+        invalidJsonSnippet:
+          errorMessage.includes('invalid_schema:invalid_json') && generated.invalidJsonSnippet
+            ? generated.invalidJsonSnippet
+            : null,
       },
       requestedBy: input.requestedBy,
     })
@@ -1905,8 +1917,7 @@ Deno.serve(async (req) => {
       .from('coaching_sessions')
       .select('*')
       .eq('user_id', auth.userId)
-      .eq('is_active', true)
-      .eq('status', 'active')
+      .in('status', ['active', 'completed', 'cancelled'])
       .not('activated_at', 'is', null)
       .order('updated_at', { ascending: false })
 
@@ -4071,7 +4082,7 @@ Deno.serve(async (req) => {
     if (sessionId) {
       const { data: existingRow, error: existingError } = await admin.adminClient
         .from('coaching_sessions')
-        .select('id, user_id, target_lang, level, status, coach_user_id, support_coach_user_id, class_join_url')
+        .select('id, user_id, target_lang, level, status, program_version, coach_user_id, support_coach_user_id, class_join_url')
         .eq('id', sessionId)
         .maybeSingle<{
           id: string
@@ -4079,6 +4090,7 @@ Deno.serve(async (req) => {
           target_lang: string
           level: string
           status: string
+          program_version: string | null
           coach_user_id: string | null
           support_coach_user_id: string | null
           class_join_url: string | null
@@ -4099,6 +4111,15 @@ Deno.serve(async (req) => {
         )
       ) {
         return jsonResponse(403, { error: 'Forbidden for selected session' })
+      }
+
+      const isClosedV1Session =
+        (existingRow.program_version || 'v1') !== 'v2' &&
+        existingRow.status !== 'active'
+      if (isClosedV1Session) {
+        return jsonResponse(400, {
+          error: 'Closed v1 sessions are read-only and cannot be updated',
+        })
       }
 
       const coachUserId =
@@ -4751,9 +4772,9 @@ Deno.serve(async (req) => {
 
     const { data: sessionRow, error: sessionError } = await admin.adminClient
       .from('coaching_sessions')
-      .select('id, user_id, target_lang, level, coach_user_id, support_coach_user_id')
+      .select('id, user_id, target_lang, level, status, program_version, coach_user_id, support_coach_user_id')
       .eq('id', sessionId)
-      .maybeSingle<{ id: string; user_id: string; target_lang: string; level: string; coach_user_id: string | null; support_coach_user_id: string | null }>()
+      .maybeSingle<{ id: string; user_id: string; target_lang: string; level: string; status: string; program_version: string | null; coach_user_id: string | null; support_coach_user_id: string | null }>()
 
     if (sessionError) {
       return jsonResponse(500, { error: sessionError.message })
@@ -4763,6 +4784,11 @@ Deno.serve(async (req) => {
     }
     if (!canManageSession(admin, sessionRow.coach_user_id, sessionRow.support_coach_user_id)) {
       return jsonResponse(403, { error: 'Forbidden' })
+    }
+    if ((sessionRow.program_version || 'v1') !== 'v2' && sessionRow.status !== 'active') {
+      return jsonResponse(400, {
+        error: 'Closed v1 sessions are read-only and cannot be updated',
+      })
     }
 
     const { data: noteRow, error: noteError } = await admin.adminClient
@@ -4842,7 +4868,6 @@ Deno.serve(async (req) => {
     let coachingQuery = admin.adminClient
       .from('coaching_sessions')
       .select('id, target_lang, level, activated_at, duration_weeks, coach_user_id, support_coach_user_id')
-      .eq('is_active', true)
       .order('updated_at', { ascending: false })
       .limit(1)
 
@@ -5094,7 +5119,6 @@ Deno.serve(async (req) => {
       .from('coaching_sessions')
       .select('*')
       .eq('user_id', userId)
-      .eq('is_active', true)
       .order('updated_at', { ascending: false })
 
     if (error) {

@@ -146,7 +146,7 @@ export function SuperAdminRoute() {
 
 export function CoachingMemberRoute() {
   const { user, loading, hasSupabaseConfig } = useAuth()
-  const { config, loading: dashboardLoading } = useDashboardContext()
+  const { loading: dashboardLoading } = useDashboardContext()
   const [checking, setChecking] = useState(true)
   const [hasAccess, setHasAccess] = useState(false)
   const location = useLocation()
@@ -168,7 +168,7 @@ export function CoachingMemberRoute() {
       }
 
       setChecking(true)
-      const memberships = await fetchMyCoachingDashboard(config?.targetLang)
+      const memberships = await fetchMyCoachingDashboard()
       const allowed = memberships.length > 0
       if (isMounted) {
         setHasAccess(allowed)
@@ -183,7 +183,7 @@ export function CoachingMemberRoute() {
     return () => {
       isMounted = false
     }
-  }, [loading, dashboardLoading, user?.id, config?.targetLang])
+  }, [loading, dashboardLoading, user?.id])
 
   if (!hasSupabaseConfig) {
     return (
