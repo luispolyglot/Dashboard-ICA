@@ -1842,10 +1842,7 @@ async function runFocusExerciseGeneration(input: {
       message: errorMessage,
       payload: {
         tookMs: Date.now() - startedAt,
-        invalidJsonSnippet:
-          errorMessage.includes('invalid_schema:invalid_json') && generated.invalidJsonSnippet
-            ? generated.invalidJsonSnippet
-            : null,
+        invalidJsonSnippet: generated.invalidJsonSnippet,
       },
       requestedBy: input.requestedBy,
     })
