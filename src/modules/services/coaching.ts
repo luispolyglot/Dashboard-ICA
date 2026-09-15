@@ -293,6 +293,7 @@ export type CoachingV2FocusExercise = {
   exercise: Record<string, unknown> | null
   error: string | null
   generatedAt: string | null
+  externalTrainingUrl: string | null
   updatedAt: string
 }
 
@@ -847,6 +848,30 @@ export async function regenerateCoachingV2FocusExercise(input: {
     },
     'No se pudo regenerar el entrenamiento del foco.',
   )
+}
+
+export async function upsertCoachingV2FocusExerciseExternalUrl(input: {
+  sessionId: string
+  focusId: string
+  externalTrainingUrl?: string | null
+}): Promise<CoachingV2FocusExercise | null> {
+  const data = await invokeCoachingFunction<{
+    ok?: boolean
+    focusExercise?: CoachingV2FocusExercise | null
+  }>(
+    'coaching-center',
+    {
+      action: 'v2-upsert-focus-exercise-external-url',
+      sessionId: input.sessionId,
+      focusId: input.focusId,
+      externalTrainingUrl: typeof input.externalTrainingUrl === 'string'
+        ? input.externalTrainingUrl
+        : null,
+    },
+    'No se pudo guardar el enlace externo del entrenamiento.',
+  )
+
+  return data.focusExercise || null
 }
 
 export async function deleteCoachingV2Focus(input: {

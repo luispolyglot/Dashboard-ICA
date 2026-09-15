@@ -45,6 +45,7 @@ import {
   fetchCoachingV2SessionBoard,
   fetchMyCoachingV2SessionBoard,
   regenerateCoachingV2FocusExercise,
+  upsertCoachingV2FocusExerciseExternalUrl,
   submitCoachingV2StudentClassReport,
   toggleCoachingV2FocusPhase,
   upsertCoachingV2Focus,
@@ -223,6 +224,10 @@ export function CoachingV3SessionBoard({
   const [regeneratingFocusId, setRegeneratingFocusId] = useState<string | null>(
     null,
   );
+  const [savingExternalTrainingUrlFocusId, setSavingExternalTrainingUrlFocusId] =
+    useState<string | null>(null);
+  const [externalTrainingUrlDraftByFocusId, setExternalTrainingUrlDraftByFocusId] =
+    useState<Record<string, string>>({});
   const reportSectionRef = useRef<HTMLDivElement | null>(null);
 
   function getEmbeddableVideoUrl(value: string | null): string | null {
@@ -787,6 +792,8 @@ export function CoachingV3SessionBoard({
             exercise: null,
             error: null,
             generatedAt: null,
+            externalTrainingUrl:
+              externalTrainingUrlDraftByFocusId[focus.id]?.trim() || null,
             updatedAt: new Date().toISOString(),
           });
         }
@@ -805,6 +812,65 @@ export function CoachingV3SessionBoard({
       );
     } finally {
       setRegeneratingFocusId(null);
+    }
+  };
+
+  const handleSaveExternalTrainingUrl = async (focus: CoachingV2Focus) => {
+    if (isSelectedPeriodClosed) {
+      toast.error("La semana está cerrada. Ya no se puede editar.");
+      return;
+    }
+
+    const draftValue =
+      externalTrainingUrlDraftByFocusId[focus.id] ||
+      exerciseByFocusId.get(focus.id)?.externalTrainingUrl ||
+      "";
+
+    setSavingExternalTrainingUrlFocusId(focus.id);
+    try {
+      const saved = await upsertCoachingV2FocusExerciseExternalUrl({
+        sessionId,
+        focusId: focus.id,
+        externalTrainingUrl: draftValue.trim() || null,
+      });
+
+      setBoard((prev) => {
+        if (!prev) return prev;
+        if (!saved) return prev;
+        const nextExercises = [...prev.focusExercises];
+        const idx = nextExercises.findIndex((row) => row.focusId === focus.id);
+        if (idx >= 0) {
+          nextExercises[idx] = {
+            ...nextExercises[idx],
+            ...saved,
+          };
+        } else {
+          nextExercises.push(saved);
+        }
+        return {
+          ...prev,
+          focusExercises: nextExercises,
+        };
+      });
+
+      setExternalTrainingUrlDraftByFocusId((prev) => ({
+        ...prev,
+        [focus.id]: saved?.externalTrainingUrl || "",
+      }));
+
+      toast.success(
+        draftValue.trim()
+          ? "Link externo guardado."
+          : "Link externo eliminado.",
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "No se pudo guardar el link externo.",
+      );
+    } finally {
+      setSavingExternalTrainingUrlFocusId(null);
     }
   };
 
@@ -1118,6 +1184,12 @@ export function CoachingV3SessionBoard({
               const trainPreparing =
                 focusExercise?.status === "pending" ||
                 focusExercise?.status === "generating";
+              const externalTrainingUrl =
+                focusExercise?.externalTrainingUrl?.trim() || "";
+              const hasExternalTraining = Boolean(externalTrainingUrl);
+              const canTrainNow = trainReady || hasExternalTraining;
+              const externalDraftValue =
+                externalTrainingUrlDraftByFocusId[focus.id] ?? externalTrainingUrl;
 
               return (
                 <Card
@@ -1244,7 +1316,7 @@ export function CoachingV3SessionBoard({
 
                   {mode === "student" && canUseTrainedActions && (
                     <>
-                      {trainReady ? (
+                      {canTrainNow ? (
                         <Button
                           size="sm"
                           variant={focusAttempt ? "outline" : "default"}
@@ -1252,13 +1324,24 @@ export function CoachingV3SessionBoard({
                           disabled={!canEditSelectedPeriod}
                           onClick={() => {
                             if (!canEditSelectedPeriod) return;
-                            navigate(
-                              getCoachingV2ExerciseRoute(
-                                sessionId,
-                                selectedPeriod,
-                                focus.id,
-                              ),
-                            );
+                            if (trainReady) {
+                              navigate(
+                                getCoachingV2ExerciseRoute(
+                                  sessionId,
+                                  selectedPeriod,
+                                  focus.id,
+                                ),
+                              );
+                              return;
+                            }
+
+                            if (externalTrainingUrl) {
+                              window.open(
+                                externalTrainingUrl,
+                                "_blank",
+                                "noopener,noreferrer",
+                              );
+                            }
                           }}
                         >
                           {trainButtonLabel}
@@ -1309,6 +1392,37 @@ export function CoachingV3SessionBoard({
                           : "Entrenamiento pendiente."}
                       </p>
                     )}
+
+                  {mode === "coach" && canUseTrainedActions && (
+                    <div className="mt-3 space-y-2">
+                      <Input
+                        value={externalDraftValue}
+                        onChange={(event) =>
+                          setExternalTrainingUrlDraftByFocusId((prev) => ({
+                            ...prev,
+                            [focus.id]: event.target.value,
+                          }))
+                        }
+                        disabled={!canEditSelectedPeriod}
+                        placeholder="https://tu-artefacto-externo"
+                        className="h-8"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full"
+                        disabled={
+                          !canEditSelectedPeriod ||
+                          savingExternalTrainingUrlFocusId === focus.id
+                        }
+                        onClick={() => void handleSaveExternalTrainingUrl(focus)}
+                      >
+                        {savingExternalTrainingUrlFocusId === focus.id
+                          ? "Guardando link..."
+                          : "Guardar link externo"}
+                      </Button>
+                    </div>
+                  )}
 
                   {mode === "coach" && canUseTrainedActions && focusAttempt && (
                     <Button
