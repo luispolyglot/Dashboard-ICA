@@ -477,6 +477,7 @@ export function CoachingV2SessionBoard({
                     exercise: null,
                     error: null,
                     generatedAt: null,
+                    externalTrainingUrl: null,
                     updatedAt: new Date().toISOString(),
                   },
                 ],

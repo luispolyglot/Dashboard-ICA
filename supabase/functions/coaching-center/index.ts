@@ -106,6 +106,7 @@ type CoachingCenterPayload = {
   blockScores?: unknown
   tagScores?: unknown
   failures?: unknown
+  externalTrainingUrl?: string | null
 }
 
 type CoachingUserRow = {
@@ -236,6 +237,7 @@ type CoachingV2FocusExerciseRow = {
   payload: unknown
   error_message: string | null
   generated_at: string | null
+  external_training_url: string | null
   updated_at: string
 }
 
@@ -266,6 +268,7 @@ type CoachingV2FocusExercise = {
   exercise: Record<string, unknown> | null
   error: string | null
   generatedAt: string | null
+  externalTrainingUrl: string | null
   updatedAt: string
 }
 
@@ -1619,6 +1622,7 @@ function toV2FocusExercise(row: CoachingV2FocusExerciseRow): CoachingV2FocusExer
     exercise: row.status === 'ready' ? payload : null,
     error: row.error_message,
     generatedAt: row.generated_at,
+    externalTrainingUrl: ensureUrlProtocol(safeString(row.external_training_url)),
     updatedAt: row.updated_at,
   }
 }
@@ -1842,10 +1846,7 @@ async function runFocusExerciseGeneration(input: {
       message: errorMessage,
       payload: {
         tookMs: Date.now() - startedAt,
-        invalidJsonSnippet:
-          errorMessage.includes('invalid_schema:invalid_json') && generated.invalidJsonSnippet
-            ? generated.invalidJsonSnippet
-            : null,
+        invalidJsonSnippet: generated.invalidJsonSnippet,
       },
       requestedBy: input.requestedBy,
     })
@@ -2384,7 +2385,7 @@ Deno.serve(async (req) => {
       auth.adminClient
         .from('coaching_v2_focus_exercises')
         .select(
-          'id, session_id, period_number, focus_id, status, payload, error_message, generated_at, updated_at',
+          'id, session_id, period_number, focus_id, status, payload, error_message, generated_at, external_training_url, updated_at',
         )
         .eq('session_id', sessionId),
       auth.adminClient
@@ -2677,7 +2678,7 @@ Deno.serve(async (req) => {
       admin.adminClient
         .from('coaching_v2_focus_exercises')
         .select(
-          'id, session_id, period_number, focus_id, status, payload, error_message, generated_at, updated_at',
+          'id, session_id, period_number, focus_id, status, payload, error_message, generated_at, external_training_url, updated_at',
         )
         .eq('session_id', sessionId),
       admin.adminClient
@@ -3223,6 +3224,93 @@ Deno.serve(async (req) => {
     return jsonResponse(200, { ok: true })
   }
 
+  if (action === 'v2-upsert-focus-exercise-external-url') {
+    const sessionId = safeString(payload.sessionId)
+    const focusId = safeString(payload.focusId)
+    if (!sessionId || !focusId) {
+      return jsonResponse(400, { error: 'sessionId and focusId are required' })
+    }
+
+    const { row: sessionRow, error: sessionError } = await fetchCoachingV2Session(
+      auth.adminClient,
+      sessionId,
+    )
+    if (sessionError) return jsonResponse(500, { error: sessionError })
+    if (!sessionRow) {
+      return jsonResponse(404, { error: 'Coaching session not found' })
+    }
+    if (sessionRow.program_version !== 'v2') {
+      return jsonResponse(400, { error: 'Session is not v2' })
+    }
+
+    const canManage =
+      sessionRow.coach_user_id === auth.userId ||
+      sessionRow.support_coach_user_id === auth.userId
+    if (!canManage) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+
+    const { data: focusRow, error: focusError } = await auth.adminClient
+      .from('coaching_v2_focuses')
+      .select('id, session_id, period_number')
+      .eq('id', focusId)
+      .eq('session_id', sessionId)
+      .maybeSingle<{ id: string; session_id: string; period_number: number }>()
+    if (focusError) return jsonResponse(500, { error: focusError.message })
+    if (!focusRow) return jsonResponse(404, { error: 'Focus not found' })
+
+    const activations = await fetchV2PeriodActivations(auth.adminClient, sessionId)
+    if (activations.error) {
+      return jsonResponse(500, { error: activations.error })
+    }
+    const periodActivation = activations.rows.find((row) => row.period_number === focusRow.period_number)
+    if (periodActivation?.ended_at) {
+      return jsonResponse(400, { error: 'La semana está cerrada. Ya no se puede editar.' })
+    }
+
+    const externalTrainingUrl = ensureUrlProtocol(safeString(payload.externalTrainingUrl))
+
+    const exerciseSelect =
+      'id, session_id, period_number, focus_id, status, payload, error_message, generated_at, external_training_url, updated_at'
+
+    const { data: updatedExercise, error: updateError } = await auth.adminClient
+      .from('coaching_v2_focus_exercises')
+      .update({
+        external_training_url: externalTrainingUrl,
+        requested_by: auth.userId,
+      })
+      .eq('focus_id', focusId)
+      .select(exerciseSelect)
+      .maybeSingle<CoachingV2FocusExerciseRow>()
+    if (updateError) return jsonResponse(500, { error: updateError.message })
+
+    let row = updatedExercise || null
+    if (!row) {
+      const { data: insertedExercise, error: insertError } = await auth.adminClient
+        .from('coaching_v2_focus_exercises')
+        .insert({
+          session_id: sessionId,
+          period_number: focusRow.period_number,
+          focus_id: focusId,
+          status: 'pending',
+          payload: null,
+          error_message: null,
+          generated_at: null,
+          external_training_url: externalTrainingUrl,
+          requested_by: auth.userId,
+        })
+        .select(exerciseSelect)
+        .maybeSingle<CoachingV2FocusExerciseRow>()
+      if (insertError) return jsonResponse(500, { error: insertError.message })
+      row = insertedExercise || null
+    }
+
+    return jsonResponse(200, {
+      ok: true,
+      focusExercise: row ? toV2FocusExercise(row) : null,
+    })
+  }
+
   if (action === 'v2-delete-focus') {
     const sessionId = safeString(payload.sessionId)
     const focusId = safeString(payload.focusId)
@@ -3393,7 +3481,7 @@ Deno.serve(async (req) => {
           const { data: sourceExercises, error: sourceExercisesError } = await admin.adminClient
             .from('coaching_v2_focus_exercises')
             .select(
-              'id, session_id, period_number, focus_id, status, payload, error_message, generated_at, updated_at',
+              'id, session_id, period_number, focus_id, status, payload, error_message, generated_at, external_training_url, updated_at',
             )
             .eq('session_id', sessionId)
             .in('focus_id', sourceFocusIds)
@@ -3418,6 +3506,7 @@ Deno.serve(async (req) => {
             payload: Record<string, unknown> | null
             error_message: string | null
             generated_at: string | null
+            external_training_url: string | null
             requested_by: string
           }> = []
 
@@ -3449,6 +3538,7 @@ Deno.serve(async (req) => {
                 payload: sourceExercise.payload as Record<string, unknown>,
                 error_message: null,
                 generated_at: sourceExercise.generated_at || nowIsoGeneration,
+                external_training_url: sourceExercise.external_training_url || null,
                 requested_by: admin.userId,
               })
               continue
@@ -3463,6 +3553,7 @@ Deno.serve(async (req) => {
                 payload: null,
                 error_message: null,
                 generated_at: null,
+                external_training_url: null,
                 requested_by: admin.userId,
               })
               generationQueue.push({
