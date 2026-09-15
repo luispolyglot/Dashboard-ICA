@@ -94,7 +94,13 @@ export function CoachingPersonalizedView({
           />
         </div>
         <p className='text-sm text-muted-foreground'>
-          Coach: {membership.coachDisplayName || 'Sin coach asignado'}
+          Coach:{' '}
+          {(() => {
+            const mainCoach = (membership.coachDisplayName || '').trim()
+            if (!mainCoach) return 'Luis'
+            if (mainCoach.toLowerCase() === 'luis') return 'Luis'
+            return `Luis y ${mainCoach}`
+          })()}
         </p>
       </button>
     ))

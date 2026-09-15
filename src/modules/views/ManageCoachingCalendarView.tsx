@@ -24,6 +24,7 @@ import {
   fetchCoachingAccess,
   fetchCoachingManagedUsers,
   type CoachingManagedUser,
+  upsertCoachingV2ClassCoachGuidelines,
   upsertCoachingUser,
 } from '../services/coaching'
 import { toDateAndTimeFromIso, toIsoFromDateAndTime } from './coachingClassResources'
@@ -44,6 +45,8 @@ type CoachingCalendarEntry = {
   classJoinUrl: string | null
   loomUrl: string | null
   report: string | null
+  classIndex: 1 | 2
+  programVersion: 'v1' | 'v2'
 }
 
 type CalendarCell = {
@@ -75,12 +78,12 @@ function toString(value: unknown): string {
   return ''
 }
 
-function normalizeProgramWeekKey(value: string): string {
+function normalizeProgramWeekKey(value: string, maxWeeks = 12): string {
   const normalized = value.trim().toUpperCase()
   const direct = normalized.match(/^W(\d{1,2})$/)
   if (direct) {
     const week = Number(direct[1])
-    if (Number.isFinite(week) && week >= 1 && week <= 12) {
+    if (Number.isFinite(week) && week >= 1 && week <= maxWeeks) {
       return `W${String(week).padStart(2, '0')}`
     }
   }
@@ -88,15 +91,52 @@ function normalizeProgramWeekKey(value: string): string {
   return 'W01'
 }
 
-function weekKeyFromNumber(week: number): string {
-  return `W${String(Math.min(12, Math.max(1, week))).padStart(2, '0')}`
+function weekKeyFromNumber(week: number, maxWeeks = 12): string {
+  return `W${String(Math.min(maxWeeks, Math.max(1, week))).padStart(2, '0')}`
 }
 
-function weekNumberFromKey(value: string): number {
-  const normalized = normalizeProgramWeekKey(value)
+function weekNumberFromKey(value: string, maxWeeks = 12): number {
+  const normalized = normalizeProgramWeekKey(value, maxWeeks)
   const parsed = Number(normalized.slice(1))
   if (!Number.isFinite(parsed)) return 1
-  return Math.min(12, Math.max(1, parsed))
+  return Math.min(maxWeeks, Math.max(1, parsed))
+}
+
+function normalizeClassIndex(value: unknown): 1 | 2 {
+  const num = Number(value)
+  return num === 2 ? 2 : 1
+}
+
+function getSessionMaxWeeks(row: CoachingManagedUser): number {
+  return row.programVersion === 'v2' ? 10 : 12
+}
+
+function buildSessionClassKey(weekKey: string, classIndex: 1 | 2, programVersion?: 'v1' | 'v2'): string {
+  if (programVersion === 'v2') {
+    return `${weekKey}_${classIndex}`
+  }
+  return weekKey
+}
+
+function parseSessionClassKey(
+  value: string,
+  programVersion?: 'v1' | 'v2',
+  maxWeeks = 12,
+): { weekKey: string; classIndex: 1 | 2 } {
+  const normalized = value.trim().toUpperCase()
+  if (programVersion === 'v2') {
+    const match = normalized.match(/^W(\d{1,2})_([12])$/)
+    if (match) {
+      const weekKey = normalizeProgramWeekKey(`W${match[1]}`, maxWeeks)
+      const classIndex = normalizeClassIndex(match[2])
+      return { weekKey, classIndex }
+    }
+  }
+
+  return {
+    weekKey: normalizeProgramWeekKey(normalized, maxWeeks),
+    classIndex: 1,
+  }
 }
 
 function getLocalDateKey(value: Date): string {
@@ -107,11 +147,12 @@ function getLocalDateKey(value: Date): string {
 }
 
 function getSessionMinAssignableWeek(row: CoachingManagedUser): number {
+  const maxWeeks = getSessionMaxWeeks(row)
   const activeWeek = row.weekActivation?.currentActiveWeek
-  if (activeWeek && activeWeek >= 1 && activeWeek <= 12) return activeWeek
+  if (activeWeek && activeWeek >= 1 && activeWeek <= maxWeeks) return activeWeek
 
   const lastWeek = row.weekActivation?.lastActivatedWeek
-  if (lastWeek && lastWeek >= 1 && lastWeek <= 12) return lastWeek
+  if (lastWeek && lastWeek >= 1 && lastWeek <= maxWeeks) return lastWeek
 
   if (row.activatedAt) return 1
   return 1
@@ -119,17 +160,25 @@ function getSessionMinAssignableWeek(row: CoachingManagedUser): number {
 
 function getClassSessionByWeek(
   classSessions: unknown,
-  weekKey: string,
+  sessionClassKey: string,
+  programVersion?: 'v1' | 'v2',
 ): Record<string, unknown> | null {
   if (!Array.isArray(classSessions)) return null
+  const maxWeeks = programVersion === 'v2' ? 10 : 12
+  const target = parseSessionClassKey(sessionClassKey, programVersion, maxWeeks)
+
   return (
     classSessions.find((item) => {
       if (!item || typeof item !== 'object') return false
       const row = item as Record<string, unknown>
-      const key = normalizeProgramWeekKey(
+      const weekKey = normalizeProgramWeekKey(
         toString(row.key ?? row.weekKey ?? row.week_key ?? row.week),
+        maxWeeks,
       )
-      return key === weekKey
+      const classIndex = normalizeClassIndex(row.classIndex ?? row.class_index)
+      if (weekKey !== target.weekKey) return false
+      if (programVersion === 'v2') return classIndex === target.classIndex
+      return true
     }) as Record<string, unknown> | undefined
   ) || null
 }
@@ -187,6 +236,8 @@ function mapClassSessions(rows: CoachingManagedUser[]): CoachingCalendarEntry[] 
 
   for (const row of rows) {
     if (!Array.isArray(row.classSessions)) continue
+    const maxWeeks = getSessionMaxWeeks(row)
+    const programVersion: 'v1' | 'v2' = row.programVersion === 'v2' ? 'v2' : 'v1'
 
     row.classSessions.forEach((rawSession, index) => {
       if (!rawSession || typeof rawSession !== 'object') return
@@ -204,8 +255,13 @@ function mapClassSessions(rows: CoachingManagedUser[]): CoachingCalendarEntry[] 
       output.push({
         id: toString(item.id) || `${row.id}-class-${index + 1}`,
         sessionId: row.id,
-        sessionWeekKey: normalizeProgramWeekKey(
-          toString(item.key ?? item.weekKey ?? item.week_key ?? item.week),
+        sessionWeekKey: buildSessionClassKey(
+          normalizeProgramWeekKey(
+            toString(item.key ?? item.weekKey ?? item.week_key ?? item.week),
+            maxWeeks,
+          ),
+          normalizeClassIndex(item.classIndex ?? item.class_index),
+          programVersion,
         ),
         scheduledAt,
         dateKey: `${year}-${month}-${day}`,
@@ -234,6 +290,8 @@ function mapClassSessions(rows: CoachingManagedUser[]): CoachingCalendarEntry[] 
         classJoinUrl: row.classJoinUrl,
         loomUrl: toString(item.loomUrl ?? item.loom_url) || null,
         report: toString(item.report) || null,
+        classIndex: normalizeClassIndex(item.classIndex ?? item.class_index),
+        programVersion,
       })
     })
   }
@@ -336,26 +394,54 @@ export function ManageCoachingCalendarView() {
     return getSessionMinAssignableWeek(selectedManagedSession)
   }, [selectedManagedSession])
 
+  const selectedSessionMaxWeeks = useMemo(() => {
+    if (!selectedManagedSession) return 12
+    return getSessionMaxWeeks(selectedManagedSession)
+  }, [selectedManagedSession])
+
+  const selectedSessionProgramVersion: 'v1' | 'v2' =
+    selectedManagedSession?.programVersion === 'v2' ? 'v2' : 'v1'
+
   const assignableWeeks = useMemo(() => {
     const weeks: string[] = []
-    for (let week = minAssignableWeek; week <= 12; week += 1) {
-      weeks.push(weekKeyFromNumber(week))
+    for (let week = minAssignableWeek; week <= selectedSessionMaxWeeks; week += 1) {
+      const weekKey = weekKeyFromNumber(week, selectedSessionMaxWeeks)
+      if (selectedSessionProgramVersion === 'v2') {
+        weeks.push(buildSessionClassKey(weekKey, 1, 'v2'))
+        weeks.push(buildSessionClassKey(weekKey, 2, 'v2'))
+      } else {
+        weeks.push(weekKey)
+      }
     }
     return weeks
-  }, [minAssignableWeek])
+  }, [minAssignableWeek, selectedSessionMaxWeeks, selectedSessionProgramVersion])
 
   useEffect(() => {
     if (!assignDraft || !selectedManagedSession) return
-    if (weekNumberFromKey(assignDraft.weekKey) >= minAssignableWeek) return
+    const parsed = parseSessionClassKey(
+      assignDraft.weekKey,
+      selectedSessionProgramVersion,
+      selectedSessionMaxWeeks,
+    )
+    if (parsed.weekKey && weekNumberFromKey(parsed.weekKey, selectedSessionMaxWeeks) >= minAssignableWeek) {
+      if (assignableWeeks.includes(assignDraft.weekKey)) return
+    }
     setAssignDraft((prev) =>
       prev
         ? {
             ...prev,
-            weekKey: weekKeyFromNumber(minAssignableWeek),
+            weekKey: assignableWeeks[0] || weekKeyFromNumber(minAssignableWeek, selectedSessionMaxWeeks),
           }
         : prev,
     )
-  }, [assignDraft, minAssignableWeek, selectedManagedSession])
+  }, [
+    assignDraft,
+    minAssignableWeek,
+    selectedManagedSession,
+    selectedSessionProgramVersion,
+    selectedSessionMaxWeeks,
+    assignableWeeks,
+  ])
 
   const handleOpenAssignModal = (dateKey: string) => {
     const initialSession = isSuperAdmin
@@ -365,7 +451,14 @@ export function ManageCoachingCalendarView() {
             row.coachUserId === user?.id || row.supportCoachUserId === user?.id,
         ) || null
     const initialWeek = initialSession
-      ? weekKeyFromNumber(getSessionMinAssignableWeek(initialSession))
+      ? buildSessionClassKey(
+          weekKeyFromNumber(
+            getSessionMinAssignableWeek(initialSession),
+            getSessionMaxWeeks(initialSession),
+          ),
+          1,
+          initialSession.programVersion === 'v2' ? 'v2' : 'v1',
+        )
       : 'W01'
 
     setAssignDraft({
@@ -389,7 +482,16 @@ export function ManageCoachingCalendarView() {
       return
     }
 
-    if (weekNumberFromKey(assignDraft.weekKey) < minAssignableWeek) {
+    const maxWeeks = getSessionMaxWeeks(selectedManagedSession)
+    const programVersion: 'v1' | 'v2' =
+      selectedManagedSession.programVersion === 'v2' ? 'v2' : 'v1'
+    const parsedSessionClassKey = parseSessionClassKey(
+      assignDraft.weekKey,
+      programVersion,
+      maxWeeks,
+    )
+
+    if (weekNumberFromKey(parsedSessionClassKey.weekKey, maxWeeks) < minAssignableWeek) {
       setFeedback(`Solo puedes asignar desde la semana W${String(minAssignableWeek).padStart(2, '0')} en adelante.`)
       return
     }
@@ -406,9 +508,62 @@ export function ManageCoachingCalendarView() {
     setSavingClass(true)
     setFeedback(null)
     try {
+      if (programVersion === 'v2') {
+        const existingWeekClass = getClassSessionByWeek(
+          selectedManagedSession.classSessions,
+          assignDraft.weekKey,
+          'v2',
+        )
+
+        await upsertCoachingV2ClassCoachGuidelines({
+          sessionId: selectedManagedSession.id,
+          periodNumber: weekNumberFromKey(parsedSessionClassKey.weekKey, maxWeeks),
+          classIndex: parsedSessionClassKey.classIndex,
+          title:
+            toString(existingWeekClass?.title) ||
+            `Clase ${parsedSessionClassKey.classIndex}`,
+          assignedByCoachUserId: user?.id || null,
+          loomUrl:
+            toString(existingWeekClass?.loomUrl ?? existingWeekClass?.loom_url) ||
+            null,
+          report: toString(existingWeekClass?.report) || null,
+          reportImagePath:
+            toString(
+              existingWeekClass?.reportImagePath ??
+                existingWeekClass?.report_image_path,
+            ) || null,
+          scheduledAt: nextScheduledAt,
+          coachGuideline1:
+            toString(
+              existingWeekClass?.coachGuideline1 ??
+                existingWeekClass?.coach_guideline_1,
+            ) ||
+            null,
+          coachGuideline2:
+            toString(
+              existingWeekClass?.coachGuideline2 ??
+                existingWeekClass?.coach_guideline_2,
+            ) ||
+            null,
+          coachGuideline3:
+            toString(
+              existingWeekClass?.coachGuideline3 ??
+                existingWeekClass?.coach_guideline_3,
+            ) ||
+            null,
+        })
+
+        setAssignModalOpen(false)
+        setAssignDraft(null)
+        setFeedback('Clase guardada correctamente en el calendario de coaching.')
+        await loadData()
+        return
+      }
+
       const existingWeekClass = getClassSessionByWeek(
         selectedManagedSession.classSessions,
-        assignDraft.weekKey,
+        parsedSessionClassKey.weekKey,
+        'v1',
       )
 
       const baseSessions = Array.isArray(selectedManagedSession.classSessions)
@@ -418,14 +573,14 @@ export function ManageCoachingCalendarView() {
             const key = normalizeProgramWeekKey(
               toString(row.key ?? row.weekKey ?? row.week_key ?? row.week),
             )
-            return key !== assignDraft.weekKey
+            return key !== parsedSessionClassKey.weekKey
           })
         : []
 
       const nextWeekClass = {
         id: toString(existingWeekClass?.id) || crypto.randomUUID(),
-        key: assignDraft.weekKey,
-        weekKey: assignDraft.weekKey,
+        key: parsedSessionClassKey.weekKey,
+        weekKey: parsedSessionClassKey.weekKey,
         title: 'Clase semanal',
         loomUrl: toString(existingWeekClass?.loomUrl ?? existingWeekClass?.loom_url) || null,
         report: toString(existingWeekClass?.report) || null,
@@ -528,6 +683,34 @@ export function ManageCoachingCalendarView() {
 
   const currentUserId = user?.id || ''
 
+  const selectedEntrySession = useMemo(() => {
+    if (!selectedEntry) return null
+    return managedRows.find((row) => row.id === selectedEntry.sessionId) || null
+  }, [managedRows, selectedEntry])
+
+  const editWeekOptions = useMemo(() => {
+    if (!selectedEntrySession) {
+      return Array.from({ length: 12 }, (_, index) => weekKeyFromNumber(index + 1))
+    }
+
+    const maxWeeks = getSessionMaxWeeks(selectedEntrySession)
+    const minWeek = getSessionMinAssignableWeek(selectedEntrySession)
+    const isV2 = selectedEntrySession.programVersion === 'v2'
+    const options: string[] = []
+
+    for (let week = minWeek; week <= maxWeeks; week += 1) {
+      const weekKey = weekKeyFromNumber(week, maxWeeks)
+      if (isV2) {
+        options.push(buildSessionClassKey(weekKey, 1, 'v2'))
+        options.push(buildSessionClassKey(weekKey, 2, 'v2'))
+      } else {
+        options.push(weekKey)
+      }
+    }
+
+    return options
+  }, [selectedEntrySession])
+
   useEffect(() => {
     if (!selectedEntry) {
       setEditingSelectedClass(false)
@@ -563,16 +746,88 @@ export function ManageCoachingCalendarView() {
       return
     }
 
+    const maxWeeks = getSessionMaxWeeks(selectedSession)
+    const programVersion: 'v1' | 'v2' =
+      selectedSession.programVersion === 'v2' ? 'v2' : 'v1'
+    const currentSessionClass = parseSessionClassKey(
+      selectedEntry.sessionWeekKey,
+      programVersion,
+      maxWeeks,
+    )
+    const nextSessionClass = parseSessionClassKey(
+      editClassDraft.weekKey,
+      programVersion,
+      maxWeeks,
+    )
+
+    if (programVersion === 'v2') {
+      const existingTargetClass = getClassSessionByWeek(
+        selectedSession.classSessions,
+        editClassDraft.weekKey,
+        'v2',
+      )
+
+      await upsertCoachingV2ClassCoachGuidelines({
+        sessionId: selectedSession.id,
+        periodNumber: weekNumberFromKey(nextSessionClass.weekKey, maxWeeks),
+        classIndex: nextSessionClass.classIndex,
+        title:
+          toString(existingTargetClass?.title) ||
+          `Clase ${nextSessionClass.classIndex}`,
+        assignedByCoachUserId:
+          toString(
+            existingTargetClass?.assignedByCoachUserId ??
+              existingTargetClass?.assigned_by_coach_user_id,
+          ) ||
+          selectedEntry.coachUserId ||
+          null,
+        loomUrl:
+          toString(existingTargetClass?.loomUrl ?? existingTargetClass?.loom_url) ||
+          selectedEntry.loomUrl ||
+          null,
+        report: toString(existingTargetClass?.report) || selectedEntry.report || null,
+        reportImagePath:
+          toString(
+            existingTargetClass?.reportImagePath ??
+              existingTargetClass?.report_image_path,
+          ) || null,
+        scheduledAt: nextScheduledAt,
+        coachGuideline1:
+          toString(
+            existingTargetClass?.coachGuideline1 ??
+              existingTargetClass?.coach_guideline_1,
+          ) || null,
+        coachGuideline2:
+          toString(
+            existingTargetClass?.coachGuideline2 ??
+              existingTargetClass?.coach_guideline_2,
+          ) || null,
+        coachGuideline3:
+          toString(
+            existingTargetClass?.coachGuideline3 ??
+              existingTargetClass?.coach_guideline_3,
+          ) || null,
+      })
+
+      setEditingSelectedClass(false)
+      setSelectedEntry(null)
+      setFeedback('Clase actualizada correctamente.')
+      await loadData()
+      return
+    }
+
     const existingCurrentWeekClass = getClassSessionByWeek(
       selectedSession.classSessions,
-      selectedEntry.sessionWeekKey,
+      currentSessionClass.weekKey,
+      'v1',
     )
     const existingTargetWeekClass = getClassSessionByWeek(
       selectedSession.classSessions,
-      editClassDraft.weekKey,
+      nextSessionClass.weekKey,
+      'v1',
     )
     const rowBase =
-      editClassDraft.weekKey === selectedEntry.sessionWeekKey
+      nextSessionClass.weekKey === currentSessionClass.weekKey
         ? existingCurrentWeekClass
         : existingTargetWeekClass
 
@@ -580,11 +835,11 @@ export function ManageCoachingCalendarView() {
       ? selectedSession.classSessions.filter((item) => {
           if (!item || typeof item !== 'object') return false
           const row = item as Record<string, unknown>
-          const key = normalizeProgramWeekKey(
-            toString(row.key ?? row.weekKey ?? row.week_key ?? row.week),
-          )
-          return (
-            key !== selectedEntry.sessionWeekKey && key !== editClassDraft.weekKey
+            const key = normalizeProgramWeekKey(
+              toString(row.key ?? row.weekKey ?? row.week_key ?? row.week),
+            )
+            return (
+            key !== currentSessionClass.weekKey && key !== nextSessionClass.weekKey
           )
         })
       : []
@@ -595,8 +850,8 @@ export function ManageCoachingCalendarView() {
         toString(existingCurrentWeekClass?.id) ||
         selectedEntry.id ||
         crypto.randomUUID(),
-      key: editClassDraft.weekKey,
-      weekKey: editClassDraft.weekKey,
+      key: nextSessionClass.weekKey,
+      weekKey: nextSessionClass.weekKey,
       title: 'Clase semanal',
       loomUrl: toString(rowBase?.loomUrl ?? rowBase?.loom_url) || null,
       report: toString(rowBase?.report) || null,
@@ -655,6 +910,77 @@ export function ManageCoachingCalendarView() {
       managedRows.find((row) => row.id === selectedEntry.sessionId) || null
     if (!selectedSession) {
       setFeedback('No se encontró la sesión para eliminar la clase.')
+      return
+    }
+
+    const maxWeeks = getSessionMaxWeeks(selectedSession)
+    const programVersion: 'v1' | 'v2' =
+      selectedSession.programVersion === 'v2' ? 'v2' : 'v1'
+
+    if (programVersion === 'v2') {
+      const parsed = parseSessionClassKey(
+        selectedEntry.sessionWeekKey,
+        'v2',
+        maxWeeks,
+      )
+
+      setDeletingSelectedClass(true)
+      setFeedback(null)
+      try {
+        const existingTargetClass = getClassSessionByWeek(
+          selectedSession.classSessions,
+          selectedEntry.sessionWeekKey,
+          'v2',
+        )
+
+        await upsertCoachingV2ClassCoachGuidelines({
+          sessionId: selectedSession.id,
+          periodNumber: weekNumberFromKey(parsed.weekKey, maxWeeks),
+          classIndex: parsed.classIndex,
+          title:
+            toString(existingTargetClass?.title) || `Clase ${parsed.classIndex}`,
+          assignedByCoachUserId:
+            toString(
+              existingTargetClass?.assignedByCoachUserId ??
+                existingTargetClass?.assigned_by_coach_user_id,
+            ) || null,
+          loomUrl:
+            toString(existingTargetClass?.loomUrl ?? existingTargetClass?.loom_url) ||
+            null,
+          report: toString(existingTargetClass?.report) || null,
+          reportImagePath:
+            toString(
+              existingTargetClass?.reportImagePath ??
+                existingTargetClass?.report_image_path,
+            ) || null,
+          scheduledAt: null,
+          coachGuideline1:
+            toString(
+              existingTargetClass?.coachGuideline1 ??
+                existingTargetClass?.coach_guideline_1,
+            ) || null,
+          coachGuideline2:
+            toString(
+              existingTargetClass?.coachGuideline2 ??
+                existingTargetClass?.coach_guideline_2,
+            ) || null,
+          coachGuideline3:
+            toString(
+              existingTargetClass?.coachGuideline3 ??
+                existingTargetClass?.coach_guideline_3,
+            ) || null,
+        })
+
+        setSelectedEntry(null)
+        setFeedback('Clase eliminada correctamente.')
+        await loadData()
+      } catch (err) {
+        setFeedback(
+          err instanceof Error ? err.message : 'No se pudo eliminar la clase.',
+        )
+      } finally {
+        setDeletingSelectedClass(false)
+      }
       return
     }
 
@@ -913,8 +1239,15 @@ export function ManageCoachingCalendarView() {
                             coachUserId: coachId,
                             sessionId: firstSession?.id || '',
                             weekKey: firstSession
-                              ? weekKeyFromNumber(
-                                  getSessionMinAssignableWeek(firstSession),
+                              ? buildSessionClassKey(
+                                  weekKeyFromNumber(
+                                    getSessionMinAssignableWeek(firstSession),
+                                    getSessionMaxWeeks(firstSession),
+                                  ),
+                                  1,
+                                  firstSession.programVersion === 'v2'
+                                    ? 'v2'
+                                    : 'v1',
                                 )
                               : 'W01',
                           }
@@ -947,8 +1280,13 @@ export function ManageCoachingCalendarView() {
                           ...prev,
                           sessionId,
                           weekKey: selected
-                            ? weekKeyFromNumber(
-                                getSessionMinAssignableWeek(selected),
+                            ? buildSessionClassKey(
+                                weekKeyFromNumber(
+                                  getSessionMinAssignableWeek(selected),
+                                  getSessionMaxWeeks(selected),
+                                ),
+                                1,
+                                selected.programVersion === 'v2' ? 'v2' : 'v1',
                               )
                             : prev.weekKey,
                         }
@@ -974,7 +1312,7 @@ export function ManageCoachingCalendarView() {
             </div>
 
             <div className='space-y-1.5'>
-              <Label htmlFor='assign-week-select'>Semana (W0x)</Label>
+              <Label htmlFor='assign-week-select'>Semana</Label>
               <select
                 id='assign-week-select'
                 className='h-10 w-full rounded-md border bg-background px-3 text-sm'
@@ -1168,24 +1506,19 @@ export function ManageCoachingCalendarView() {
                       onChange={(event) =>
                         setEditClassDraft((prev) =>
                           prev
-                            ? {
-                                ...prev,
-                                weekKey: normalizeProgramWeekKey(
-                                  event.target.value,
-                                ),
-                              }
-                            : prev,
-                        )
+                              ? {
+                                  ...prev,
+                                  weekKey: event.target.value,
+                                }
+                              : prev,
+                          )
                       }
                     >
-                      {Array.from({ length: 12 }, (_, index) => {
-                        const weekKey = weekKeyFromNumber(index + 1)
-                        return (
-                          <option key={weekKey} value={weekKey}>
-                            {weekKey}
-                          </option>
-                        )
-                      })}
+                      {editWeekOptions.map((weekKey) => (
+                        <option key={weekKey} value={weekKey}>
+                          {weekKey}
+                        </option>
+                      ))}
                     </select>
                   </div>
 

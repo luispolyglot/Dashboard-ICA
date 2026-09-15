@@ -68,6 +68,12 @@ type WeekActivationRow = {
   ended_at: string | null
 }
 
+type V2PeriodActivationRow = {
+  period_number: number
+  activated_at: string
+  ended_at: string | null
+}
+
 type PushSubscriptionRow = {
   id: string
   endpoint: string
@@ -260,10 +266,28 @@ Deno.serve(async (req) => {
 
         if (activationsError) throw new Error(activationsError.message)
 
-        const weekNumber = getWeekFromActivations(
+        let weekNumber = getWeekFromActivations(
           closedAt,
           (activations || []) as WeekActivationRow[],
         )
+
+        if (!weekNumber) {
+          const { data: v2Activations, error: v2ActivationsError } = await adminClient
+            .from('coaching_v2_period_activations')
+            .select('period_number, activated_at, ended_at')
+            .eq('session_id', sessionRow.id)
+            .order('period_number', { ascending: true })
+
+          if (v2ActivationsError) throw new Error(v2ActivationsError.message)
+
+          const mapped = ((v2Activations || []) as V2PeriodActivationRow[]).map((item) => ({
+            week_number: item.period_number,
+            activated_at: item.activated_at,
+            ended_at: item.ended_at,
+          }))
+
+          weekNumber = getWeekFromActivations(closedAt, mapped)
+        }
 
         if (!weekNumber) {
           coachingNotificationReason = 'outside_activated_week'

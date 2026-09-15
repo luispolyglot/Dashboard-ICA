@@ -17,6 +17,9 @@ import {
 } from './week-activation.ts'
 import {
   resolveClassScheduleNotificationEvent,
+  hasPostClassResources,
+  hasUpcomingClassResources,
+  buildClassScheduleSignature,
   type ClassNotificationRow,
   type ClassScheduleNotificationEvent,
 } from './class-notification.ts'
@@ -2605,6 +2608,20 @@ Deno.serve(async (req) => {
 
     if (insertError) return jsonResponse(500, { error: insertError.message })
 
+    await sendCoachingActiveSessionNotification({
+      adminClient: admin.adminClient,
+      recipientUserId: sessionRow.user_id,
+      title: 'Coaching ICA',
+      body: `Tu coach activó la Semana ${nextEligible} de tu programa.`,
+      url: '/coaching-personalized',
+      tag: `coaching-v2-period-activated-${sessionId}-${nextEligible}`,
+      data: {
+        type: 'coaching-week-activated',
+        sessionId,
+        weekNumber: nextEligible,
+      },
+    })
+
     const latest = await fetchV2PeriodActivations(admin.adminClient, sessionId)
     if (latest.error) return jsonResponse(500, { error: latest.error })
 
@@ -3656,6 +3673,20 @@ Deno.serve(async (req) => {
         : null
       : null
 
+    const { data: previousClassRow, error: previousClassError } = await admin.adminClient
+      .from('coaching_session_classes')
+      .select(
+        'id, session_id, week_number, class_index, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, coach_guideline_1, coach_guideline_2, coach_guideline_3, student_completed_at, student_report_text, student_report_image_path, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, created_at, updated_at',
+      )
+      .eq('session_id', sessionId)
+      .eq('week_number', periodNumber)
+      .eq('class_index', classIndex)
+      .maybeSingle<CoachingSessionClassRow>()
+
+    if (previousClassError) {
+      return jsonResponse(500, { error: previousClassError.message })
+    }
+
     const { error: upsertError } = await admin.adminClient
       .from('coaching_session_classes')
       .upsert(
@@ -3694,6 +3725,98 @@ Deno.serve(async (req) => {
 
     if (updatedClassError) {
       return jsonResponse(500, { error: updatedClassError.message })
+    }
+
+    const activations = await fetchV2PeriodActivations(admin.adminClient, sessionId)
+    if (activations.error) {
+      return jsonResponse(500, { error: activations.error })
+    }
+
+    const periodState = buildV2PeriodState(activations.rows)
+    const isCurrentActivePeriod = periodState.currentActivePeriod === periodNumber
+
+    if (isCurrentActivePeriod && updatedClassRow) {
+      const previousRowLite: ClassNotificationRow | null = previousClassRow
+        ? {
+            week_number: previousClassRow.week_number,
+            loom_url: previousClassRow.loom_url,
+            report: previousClassRow.report,
+            report_image_path: previousClassRow.report_image_path,
+            scheduled_at: previousClassRow.scheduled_at,
+          }
+        : null
+
+      const nextRowLite: ClassNotificationRow = {
+        week_number: updatedClassRow.week_number,
+        loom_url: updatedClassRow.loom_url,
+        report: updatedClassRow.report,
+        report_image_path: updatedClassRow.report_image_path,
+        scheduled_at: updatedClassRow.scheduled_at,
+      }
+
+      if (
+        !hasPostClassResources(nextRowLite) &&
+        hasUpcomingClassResources(nextRowLite, sessionRow.class_join_url)
+      ) {
+        const previousSignature = buildClassScheduleSignature(
+          previousRowLite,
+          sessionRow.class_join_url,
+        )
+        const nextSignature = buildClassScheduleSignature(
+          nextRowLite,
+          sessionRow.class_join_url,
+        )
+
+        if (nextSignature && nextSignature !== previousSignature) {
+          const hadUpcomingBefore =
+            Boolean(previousSignature) &&
+            hasUpcomingClassResources(previousRowLite, sessionRow.class_join_url) &&
+            !hasPostClassResources(previousRowLite)
+
+          const eventType: 'scheduled' | 'rescheduled' = hadUpcomingBefore
+            ? 'rescheduled'
+            : 'scheduled'
+
+          await logAndSendCoachingClassNotification({
+            adminClient: admin.adminClient,
+            sessionId,
+            userId: sessionRow.user_id,
+            weekNumber: periodNumber,
+            type: eventType,
+            scheduleSignature: nextSignature,
+            scheduledAt: updatedClassRow.scheduled_at,
+            classJoinUrl: sessionRow.class_join_url,
+            reminderMinutes: 0,
+          })
+
+          const { data: preferences } = await admin.adminClient
+            .from('user_coaching_notification_preferences')
+            .select('class_schedule_reminder_minutes')
+            .eq('user_id', sessionRow.user_id)
+            .maybeSingle<{
+              class_schedule_reminder_minutes: number
+            }>()
+
+          const reminderMinutesRaw = preferences?.class_schedule_reminder_minutes ?? 30
+          const reminderMinutes: 10 | 30 | 60 =
+            reminderMinutesRaw === 10 ||
+            reminderMinutesRaw === 60 ||
+            reminderMinutesRaw === 30
+              ? reminderMinutesRaw
+              : 30
+
+          await enqueueCoachingClassReminderNotification({
+            adminClient: admin.adminClient,
+            sessionId,
+            userId: sessionRow.user_id,
+            weekNumber: periodNumber,
+            scheduleSignature: nextSignature,
+            scheduledAt: updatedClassRow.scheduled_at,
+            classJoinUrl: sessionRow.class_join_url,
+            reminderMinutes,
+          })
+        }
+      }
     }
 
     return jsonResponse(200, {
