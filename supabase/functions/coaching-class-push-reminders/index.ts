@@ -37,6 +37,12 @@ type SessionRow = {
   class_join_url: string | null
 }
 
+type CoachingV2PeriodActivationRow = {
+  period_number: number
+  activated_at: string
+  ended_at: string | null
+}
+
 type PushSubscriptionRow = {
   id: string
   endpoint: string
@@ -320,12 +326,18 @@ Deno.serve(async (req) => {
       .eq('session_id', row.session_id)
       .order('week_number', { ascending: true })
 
-    if (activationError) {
+    const { data: v2ActivationRows, error: v2ActivationError } = await adminClient
+      .from('coaching_v2_period_activations')
+      .select('period_number, activated_at, ended_at')
+      .eq('session_id', row.session_id)
+      .order('period_number', { ascending: true })
+
+    if (activationError || v2ActivationError) {
       await updateNotificationStatus({
         adminClient,
         id: row.id,
         status: 'failed',
-        errorMessage: activationError.message,
+        errorMessage: activationError?.message || v2ActivationError?.message || 'activation_query_failed',
       })
       continue
     }
@@ -336,7 +348,14 @@ Deno.serve(async (req) => {
       nowMs,
     )
 
-    if (activationState.currentActiveWeek !== row.week_number) {
+    const currentV2ActivePeriod = ((v2ActivationRows || []) as CoachingV2PeriodActivationRow[])
+      .find((item) => !item.ended_at)?.period_number || null
+
+    const isWeekActive =
+      activationState.currentActiveWeek === row.week_number ||
+      currentV2ActivePeriod === row.week_number
+
+    if (!isWeekActive) {
       await updateNotificationStatus({
         adminClient,
         id: row.id,
