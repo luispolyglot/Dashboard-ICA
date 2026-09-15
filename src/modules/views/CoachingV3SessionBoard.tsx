@@ -224,10 +224,14 @@ export function CoachingV3SessionBoard({
   const [regeneratingFocusId, setRegeneratingFocusId] = useState<string | null>(
     null,
   );
-  const [savingExternalTrainingUrlFocusId, setSavingExternalTrainingUrlFocusId] =
-    useState<string | null>(null);
-  const [externalTrainingUrlDraftByFocusId, setExternalTrainingUrlDraftByFocusId] =
-    useState<Record<string, string>>({});
+  const [
+    savingExternalTrainingUrlFocusId,
+    setSavingExternalTrainingUrlFocusId,
+  ] = useState<string | null>(null);
+  const [
+    externalTrainingUrlDraftByFocusId,
+    setExternalTrainingUrlDraftByFocusId,
+  ] = useState<Record<string, string>>({});
   const reportSectionRef = useRef<HTMLDivElement | null>(null);
 
   function getEmbeddableVideoUrl(value: string | null): string | null {
@@ -1189,7 +1193,8 @@ export function CoachingV3SessionBoard({
               const hasExternalTraining = Boolean(externalTrainingUrl);
               const canTrainNow = trainReady || hasExternalTraining;
               const externalDraftValue =
-                externalTrainingUrlDraftByFocusId[focus.id] ?? externalTrainingUrl;
+                externalTrainingUrlDraftByFocusId[focus.id] ??
+                externalTrainingUrl;
 
               return (
                 <Card
@@ -1393,7 +1398,7 @@ export function CoachingV3SessionBoard({
                       </p>
                     )}
 
-                  {mode === "coach" && canUseTrainedActions && (
+                  {mode === "coach" && trainedPhaseSelected && (
                     <div className="mt-3 space-y-2">
                       <Input
                         value={externalDraftValue}
@@ -1415,7 +1420,9 @@ export function CoachingV3SessionBoard({
                           !canEditSelectedPeriod ||
                           savingExternalTrainingUrlFocusId === focus.id
                         }
-                        onClick={() => void handleSaveExternalTrainingUrl(focus)}
+                        onClick={() =>
+                          void handleSaveExternalTrainingUrl(focus)
+                        }
                       >
                         {savingExternalTrainingUrlFocusId === focus.id
                           ? "Guardando link..."
@@ -2130,7 +2137,6 @@ export function CoachingV3SessionBoard({
                           Aún no hay imagen de reporte para esta semana.
                         </p>
                       )}
-
                     </div>
                   )}
                 </>
@@ -2145,12 +2151,12 @@ export function CoachingV3SessionBoard({
                     Editar reporte de la semana
                   </p>
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 relative">
                       <Input
                         id={`period-report-image-${selectedPeriod}`}
                         type="file"
                         accept="image/*"
-                        className="sr-only"
+                        className="sr-only!"
                         onChange={(event) => {
                           setReportDraftImageFile(
                             event.target.files?.[0] || null,
