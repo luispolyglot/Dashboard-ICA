@@ -621,15 +621,85 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
           <Tabs value={tab} onValueChange={(value) => setTab(value as TabKey)} className='mb-4'>
             <TabsList className='grid w-full grid-cols-3'>
               <TabsTrigger value='active'>
-                Activos ({inProgressChallenges.length + incomingChallenges.length})
+                Activos ({inProgressChallenges.length})
               </TabsTrigger>
-              <TabsTrigger value='pending'>Pendientes ({outgoingChallenges.length})</TabsTrigger>
+              <TabsTrigger value='pending'>
+                Pendientes ({incomingChallenges.length + outgoingChallenges.length})
+              </TabsTrigger>
               <TabsTrigger value='history'>Historial</TabsTrigger>
             </TabsList>
           </Tabs>
 
           <div className='space-y-3'>
             {tab === 'active' && (
+              <>
+                {inProgressChallenges.length > 0 ? (
+                  <>
+                  <p className='pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground'>
+                    En curso
+                  </p>
+                  {inProgressChallenges.map((challenge) => {
+                    const rivalId = getOpponentUserId(challenge, currentUserId)
+                    const rival = resolveUser(rivalId)
+                    const isMyTurn = !challenge.turnUserId || challenge.turnUserId === currentUserId
+                    const alreadyPlayed =
+                      !!currentUserId &&
+                      hasOwnWordsResult(challenge, currentUserId, playsByChallengeId[challenge.id])
+                    const canOpenPlayView = alreadyPlayed || isMyTurn
+                    const ctaLabel = alreadyPlayed ? 'Ver partida' : 'Jugar ahora'
+                    const score = getScores(challenge, currentUserId)
+
+                    return (
+                      <div key={challenge.id} className='rounded-xl border p-3'>
+                        <div className='mb-2 flex items-center justify-between gap-2'>
+                          <div className='flex items-center gap-3'>
+                            {renderAvatar(rival.displayName, rival.avatarUrl, rivalId)}
+                            <div>
+                              {renderChallengeChip(challenge)}
+                              <p className='mt-1 font-medium'>{rival.displayName}</p>
+                              <p className='text-xs text-muted-foreground'>
+                                {isMyTurn
+                                  ? `Te toca · ${formatTimeLeft(challenge.turnExpiresAt)}`
+                                  : `Turno de tu rival · ${formatTimeLeft(challenge.turnExpiresAt)}`}
+                              </p>
+                            </div>
+                          </div>
+                          <div className='text-right'>
+                            <p className='font-serif text-xl'>
+                              {score.mine} · {score.rival}
+                            </p>
+                            <Badge variant='secondary'>{getChallengeStatusLabel(challenge.status)}</Badge>
+                          </div>
+                        </div>
+                        <p className='mb-3 text-xs text-muted-foreground'>
+                          {challenge.challengeSlug === 'ica-own-words'
+                            ? `Configuración: ${getIcaOwnWordsConfigLabel(challenge.gameMetadata)}`
+                            : 'Configuración disponible próximamente'}
+                        </p>
+                        <div className='mt-3 flex justify-end'>
+                          {canOpenPlayView ? (
+                            <Button type='button' size='sm' asChild>
+                              <Link to={getIcaChallengePlayRoute(challenge.id)}>{ctaLabel}</Link>
+                            </Button>
+                          ) : (
+                            <Button type='button' size='sm' disabled>
+                              {ctaLabel}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                  </>
+                ) : (
+                  <p className='rounded-lg border px-3 py-4 text-sm text-muted-foreground'>
+                    No tienes desafíos en curso ahora mismo.
+                  </p>
+                )}
+              </>
+            )}
+
+            {tab === 'pending' && (
               <>
                 {incomingChallenges.length > 0 && (
                   <p className='text-xs font-medium uppercase tracking-wide text-muted-foreground'>
@@ -641,7 +711,7 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                   const rival = resolveUser(rivalId)
 
                   return (
-                    <div key={challenge.id} className='rounded-xl border p-3'>
+                    <div key={challenge.id} className='rounded-xl border border-amber-300/50 bg-amber-50/20 p-3 dark:border-amber-900/50 dark:bg-amber-950/10'>
                       <div className='mb-2 flex items-center justify-between gap-2'>
                         <div className='flex items-center gap-3'>
                           {renderAvatar(rival.displayName, rival.avatarUrl, rivalId)}
@@ -649,7 +719,7 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                             {renderChallengeChip(challenge)}
                             <p className='mt-1 font-medium'>{rival.displayName}</p>
                             <p className='text-xs text-muted-foreground'>
-                              Caduca en {formatTimeLeft(challenge.acceptUntil)}
+                              Pendiente de tu respuesta · {formatTimeLeft(challenge.acceptUntil)}
                             </p>
                           </div>
                         </div>
@@ -679,71 +749,11 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                   )
                 })}
 
-                {inProgressChallenges.length > 0 && (
+                {outgoingChallenges.length > 0 && (
                   <p className='pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground'>
-                    En curso
+                    Esperando aceptación
                   </p>
                 )}
-                {inProgressChallenges.map((challenge) => {
-                  const rivalId = getOpponentUserId(challenge, currentUserId)
-                  const rival = resolveUser(rivalId)
-                  const isMyTurn = !challenge.turnUserId || challenge.turnUserId === currentUserId
-                  const canPlayNow =
-                    !!currentUserId &&
-                    isMyTurn &&
-                    !hasOwnWordsResult(challenge, currentUserId, playsByChallengeId[challenge.id])
-                  const score = getScores(challenge, currentUserId)
-
-                  return (
-                    <div key={challenge.id} className='rounded-xl border p-3'>
-                      <div className='mb-2 flex items-center justify-between gap-2'>
-                        <div className='flex items-center gap-3'>
-                          {renderAvatar(rival.displayName, rival.avatarUrl, rivalId)}
-                          <div>
-                            {renderChallengeChip(challenge)}
-                            <p className='mt-1 font-medium'>{rival.displayName}</p>
-                            <p className='text-xs text-muted-foreground'>
-                              {isMyTurn
-                                ? `Te toca · ${formatTimeLeft(challenge.turnExpiresAt)}`
-                                : `Esperando rival · ${formatTimeLeft(challenge.turnExpiresAt)}`}
-                            </p>
-                          </div>
-                        </div>
-                        <div className='text-right'>
-                          <p className='font-serif text-xl'>
-                            {score.mine} · {score.rival}
-                          </p>
-                          <Badge variant='secondary'>{getChallengeStatusLabel(challenge.status)}</Badge>
-                        </div>
-                      </div>
-                      <p className='mb-3 text-xs text-muted-foreground'>
-                        {challenge.challengeSlug === 'ica-own-words'
-                          ? `Configuración: ${getIcaOwnWordsConfigLabel(challenge.gameMetadata)}`
-                          : 'Configuración disponible próximamente'}
-                      </p>
-                      {canPlayNow ? (
-                        <Button type='button' size='sm' asChild>
-                          <Link to={getIcaChallengePlayRoute(challenge.id)}>Jugar ahora</Link>
-                        </Button>
-                      ) : (
-                        <Button type='button' size='sm' variant='outline' asChild>
-                          <Link to={getIcaChallengePlayRoute(challenge.id)}>Ver partida</Link>
-                        </Button>
-                      )}
-                    </div>
-                  )
-                })}
-
-                {incomingChallenges.length === 0 && inProgressChallenges.length === 0 && (
-                  <p className='rounded-lg border px-3 py-4 text-sm text-muted-foreground'>
-                    Todavía no tienes desafíos activos.
-                  </p>
-                )}
-              </>
-            )}
-
-            {tab === 'pending' && (
-              <>
                 {outgoingChallenges.map((challenge) => {
                   const rivalId = getOpponentUserId(challenge, currentUserId)
                   const rival = resolveUser(rivalId)
@@ -779,9 +789,9 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                   )
                 })}
 
-                {outgoingChallenges.length === 0 && (
+                {incomingChallenges.length === 0 && outgoingChallenges.length === 0 && (
                   <p className='rounded-lg border px-3 py-4 text-sm text-muted-foreground'>
-                    No tienes retos pendientes de aceptación.
+                    No tienes retos pendientes.
                   </p>
                 )}
               </>
