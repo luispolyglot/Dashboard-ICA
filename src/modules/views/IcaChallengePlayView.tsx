@@ -12,9 +12,15 @@ import {
   getOwnWordsChallengeConfig,
   hasOwnWordsResult,
   ICA_CHALLENGE_SLUG_OWN_WORDS,
+  listIcaChallengePlays,
   submitIcaOwnWordsChallengeResult,
 } from '../services/icaChallenges'
-import type { IcaChallengeRecord, IcaTestQuestion, Lexicard } from '../types'
+import type {
+  IcaChallengePlayRecord,
+  IcaChallengeRecord,
+  IcaTestQuestion,
+  Lexicard,
+} from '../types'
 
 type IcaChallengePlayViewProps = {
   challengeId: string
@@ -30,6 +36,7 @@ export function IcaChallengePlayView({
   cards,
 }: IcaChallengePlayViewProps) {
   const [challenge, setChallenge] = useState<IcaChallengeRecord | null>(null)
+  const [plays, setPlays] = useState<IcaChallengePlayRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -48,9 +55,12 @@ export function IcaChallengePlayView({
           getIcaChallengeById(challengeId),
         ])
 
+        const playRows = await listIcaChallengePlays(challengeId)
+
         if (!active) return
         setCurrentUserId(data.user?.id ?? null)
         setChallenge(challengeData)
+        setPlays(playRows)
       } catch {
         if (!active) return
         setError('No pudimos cargar el desafío.')
@@ -83,8 +93,8 @@ export function IcaChallengePlayView({
 
   const alreadyPlayed = useMemo(() => {
     if (!challenge || !currentUserId) return false
-    return hasOwnWordsResult(challenge, currentUserId)
-  }, [challenge, currentUserId])
+    return hasOwnWordsResult(challenge, currentUserId, plays)
+  }, [challenge, currentUserId, plays])
 
   const runner = useIcaTestRunner({
     questions,
@@ -102,7 +112,9 @@ export function IcaChallengePlayView({
           responseSeconds: config.responseSeconds,
         })
         const updated = await getIcaChallengeById(challenge.id)
+        const updatedPlays = await listIcaChallengePlays(challenge.id)
         setChallenge(updated)
+        setPlays(updatedPlays)
         toast.success('Resultado enviado.')
       } catch (submitError) {
         toast.error(

@@ -19,6 +19,27 @@ type PushSubscriptionRow = {
   auth: string
 }
 
+type OwnWordsAnswerRow = {
+  questionIndex: number
+  selectedOptionIndex: number | null
+  isCorrect: boolean
+  timedOut: boolean
+  responseMs: number | null
+}
+
+const INVITATION_WINDOW_SECONDS = 12 * 60 * 60
+const TURN_WINDOW_SECONDS = 10 * 60 * 60
+
+type ChallengeTypeRow = {
+  id: string
+  nombre: string
+  icono: string
+  activo: boolean
+  orden: number
+  ambitos: string[]
+  config: Record<string, unknown>
+}
+
 function toText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -50,6 +71,114 @@ function toDurationSecondsDaysRange(value: unknown): number {
   if (parsed < minValue) return minValue
   if (parsed > maxValue) return maxValue
   return parsed
+}
+
+function addSecondsToNow(seconds: number): string {
+  return new Date(Date.now() + seconds * 1000).toISOString()
+}
+
+function normalizeOwnWordsAnswers(value: unknown): OwnWordsAnswerRow[] {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .map((raw): OwnWordsAnswerRow | null => {
+      if (!raw || typeof raw !== 'object') return null
+      const answer = raw as Record<string, unknown>
+      const questionIndex = Math.max(0, Math.round(Number(answer.questionIndex || 0)))
+      const selectedOptionRaw = answer.selectedOptionIndex
+      const selectedOptionIndex =
+        selectedOptionRaw === null || selectedOptionRaw === undefined
+          ? null
+          : Math.max(0, Math.round(Number(selectedOptionRaw)))
+      const isCorrect = Boolean(answer.isCorrect)
+      const timedOut = Boolean(answer.timedOut)
+      const responseMsRaw = Number(answer.responseMs)
+      const responseMs = Number.isFinite(responseMsRaw)
+        ? Math.max(0, Math.round(responseMsRaw))
+        : null
+
+      return {
+        questionIndex,
+        selectedOptionIndex,
+        isCorrect,
+        timedOut,
+        responseMs,
+      }
+    })
+    .filter((item): item is OwnWordsAnswerRow => item !== null)
+    .sort((a, b) => a.questionIndex - b.questionIndex)
+}
+
+function normalizeChallengeTypeScopes(value: unknown): ChallengeScope[] {
+  if (!Array.isArray(value)) return ['global']
+
+  const next = value
+    .map((item) => (item === 'language' ? 'language' : item === 'global' ? 'global' : null))
+    .filter((item): item is ChallengeScope => item !== null)
+
+  return next.length > 0 ? Array.from(new Set(next)) : ['global']
+}
+
+function toChallengeTypeRow(raw: Record<string, unknown>): ChallengeTypeRow {
+  const config =
+    raw.config && typeof raw.config === 'object' && !Array.isArray(raw.config)
+      ? (raw.config as Record<string, unknown>)
+      : {}
+
+  return {
+    id: toText(raw.id),
+    nombre: toText(raw.nombre),
+    icono: toText(raw.icono),
+    activo: Boolean(raw.activo),
+    orden: Number(raw.orden || 0),
+    ambitos: normalizeChallengeTypeScopes(raw.ambitos),
+    config,
+  }
+}
+
+async function getChallengeTypeById(input: {
+  adminClient: ReturnType<typeof createClient>
+  challengeTypeId: string
+}): Promise<{ row: ChallengeTypeRow | null; error: string | null }> {
+  const { data, error } = await input.adminClient
+    .from('desafio_tipos')
+    .select('id, nombre, icono, activo, orden, ambitos, config')
+    .eq('id', input.challengeTypeId)
+    .maybeSingle()
+
+  if (error) return { row: null, error: error.message }
+  if (!data || typeof data !== 'object') return { row: null, error: null }
+  return { row: toChallengeTypeRow(data as Record<string, unknown>), error: null }
+}
+
+async function listChallengeTypes(input: {
+  adminClient: ReturnType<typeof createClient>
+}) {
+  const { data, error } = await input.adminClient
+    .from('desafio_tipos')
+    .select('id, nombre, icono, activo, orden, ambitos, config')
+    .order('orden', { ascending: true })
+    .order('nombre', { ascending: true })
+
+  if (error) return jsonResponse(500, { error: error.message })
+
+  const rows = (data || [])
+    .filter((row): row is Record<string, unknown> => typeof row === 'object' && row !== null)
+    .map((row) => {
+      const item = toChallengeTypeRow(row)
+      return {
+        id: item.id,
+        name: item.nombre,
+        iconKey: item.icono,
+        isActive: item.activo,
+        order: item.orden,
+        scopes: item.ambitos,
+        config: item.config,
+        isPlayable: item.id === 'ica-own-words',
+      }
+    })
+
+  return jsonResponse(200, { rows })
 }
 
 async function sendPushToUser(input: {
@@ -152,7 +281,7 @@ async function listAvailableUsers(input: {
 
   const enrollmentQuery = input.adminClient
     .from('users_ica_challenges')
-    .select('user_id')
+    .select('user_id, target_lang, native_lang, updated_at')
     .eq('is_active', true)
 
   if (input.scope === 'language') {
@@ -172,6 +301,39 @@ async function listAvailableUsers(input: {
     ),
   )
 
+  const latestEnrollmentByUser = new Map<
+    string,
+    { targetLang: string | null; nativeLang: string | null; updatedAt: string | null }
+  >()
+
+  for (const row of enrollmentRows || []) {
+    const rawRow = row as {
+      user_id?: string
+      target_lang?: string
+      native_lang?: string
+      updated_at?: string
+    }
+    const userId = toText(rawRow.user_id)
+    if (!userId || userId === input.userId) continue
+
+    const previous = latestEnrollmentByUser.get(userId)
+    const currentUpdatedAt = toText(rawRow.updated_at) || null
+    const previousUpdatedAt = previous?.updatedAt || null
+
+    const shouldReplace =
+      !previous ||
+      (currentUpdatedAt !== null &&
+        (previousUpdatedAt === null || currentUpdatedAt > previousUpdatedAt))
+
+    if (!shouldReplace) continue
+
+    latestEnrollmentByUser.set(userId, {
+      targetLang: toText(rawRow.target_lang) || null,
+      nativeLang: toText(rawRow.native_lang) || null,
+      updatedAt: currentUpdatedAt,
+    })
+  }
+
   if (candidateIds.length === 0) {
     return jsonResponse(200, { rows: [], myActiveChallengesCount: activeCount })
   }
@@ -182,6 +344,35 @@ async function listAvailableUsers(input: {
     .in('id', candidateIds)
 
   if (profilesError) return jsonResponse(500, { error: profilesError.message })
+
+  const { data: settingsRows, error: settingsError } = await input.adminClient
+    .from('user_settings')
+    .select('user_id, target_lang, native_lang, cefr_level')
+    .in('user_id', candidateIds)
+
+  if (settingsError) return jsonResponse(500, { error: settingsError.message })
+
+  const settingsByUser = new Map<
+    string,
+    { targetLang: string | null; nativeLang: string | null; cefrLevel: string | null }
+  >()
+
+  for (const row of settingsRows || []) {
+    const rawRow = row as {
+      user_id?: string
+      target_lang?: string
+      native_lang?: string
+      cefr_level?: string
+    }
+    const userId = toText(rawRow.user_id)
+    if (!userId) continue
+
+    settingsByUser.set(userId, {
+      targetLang: toText(rawRow.target_lang) || null,
+      nativeLang: toText(rawRow.native_lang) || null,
+      cefrLevel: toText(rawRow.cefr_level) || null,
+    })
+  }
 
   const rows = await Promise.all(
     (profilesRows || []).map(async (row) => {
@@ -196,10 +387,16 @@ async function listAvailableUsers(input: {
       else if (activePair)
         blockedReason = 'Ya tienen un desafío activo entre ustedes.'
 
+      const setting = settingsByUser.get(userId)
+      const enrollment = latestEnrollmentByUser.get(userId)
+
       return {
         userId,
         displayName: toText((row as { display_name?: string }).display_name) || 'Usuario',
         username: toText((row as { username?: string }).username) || null,
+        nativeLang: setting?.nativeLang || enrollment?.nativeLang || null,
+        targetLang: setting?.targetLang || enrollment?.targetLang || null,
+        cefrLevel: setting?.cefrLevel || null,
         activeChallengesCount: userActiveCount,
         canChallenge: blockedReason === null,
         blockedReason,
@@ -216,6 +413,7 @@ async function createOwnWordsChallenge(input: {
   userId: string
   body: Record<string, unknown>
 }) {
+  const challengeTypeId = toText(input.body.challengeTypeId) || 'ica-own-words'
   const challengedUserId = toText(input.body.challengedUserId)
   const scope = toScope(input.body.scope)
   const targetLang = toText(input.body.targetLang)
@@ -231,6 +429,30 @@ async function createOwnWordsChallenge(input: {
 
   if (scope === 'language' && (!targetLang || !nativeLang)) {
     return jsonResponse(400, { error: 'Faltan idiomas para el desafío por idioma.' })
+  }
+
+  const challengeTypeResult = await getChallengeTypeById({
+    adminClient: input.adminClient,
+    challengeTypeId,
+  })
+  if (challengeTypeResult.error) {
+    return jsonResponse(500, { error: challengeTypeResult.error })
+  }
+
+  if (!challengeTypeResult.row) {
+    return jsonResponse(400, { error: 'ICA_CHALLENGE_TYPE_NOT_FOUND' })
+  }
+
+  if (!challengeTypeResult.row.activo) {
+    return jsonResponse(400, { error: 'ICA_CHALLENGE_TYPE_NOT_ACTIVE' })
+  }
+
+  if (!challengeTypeResult.row.ambitos.includes(scope)) {
+    return jsonResponse(400, { error: 'ICA_CHALLENGE_SCOPE_NOT_SUPPORTED' })
+  }
+
+  if (challengeTypeId !== 'ica-own-words') {
+    return jsonResponse(400, { error: 'ICA_CHALLENGE_TYPE_NOT_PLAYABLE_YET' })
   }
 
   const myActiveCount = await countActiveChallenges(input.adminClient, input.userId)
@@ -295,11 +517,12 @@ async function createOwnWordsChallenge(input: {
   }
 
   const expiresAt = new Date(Date.now() + durationSeconds * 1000).toISOString()
+  const acceptUntil = addSecondsToNow(INVITATION_WINDOW_SECONDS)
 
   const { data: challenge, error: challengeError } = await input.adminClient
     .from('ica_challenges')
     .insert({
-      challenge_slug: 'ica-own-words',
+      challenge_slug: challengeTypeId,
       status: 'created',
       result_type: 'pending',
       scope,
@@ -309,6 +532,7 @@ async function createOwnWordsChallenge(input: {
       challenged_user_id: challengedUserId,
       duration_seconds: durationSeconds,
       expires_at: expiresAt,
+      accept_until: acceptUntil,
       game_metadata: {
         mode: 'own_words_quiz',
         rounds,
@@ -374,7 +598,7 @@ async function respondInvitation(input: {
 
   const { data: existing, error: existingError } = await input.adminClient
     .from('ica_challenges')
-    .select('id, challenger_user_id, challenged_user_id, status')
+    .select('id, challenger_user_id, challenged_user_id, status, accept_until')
     .eq('id', challengeId)
     .eq('challenged_user_id', input.userId)
     .maybeSingle()
@@ -385,7 +609,26 @@ async function respondInvitation(input: {
     return jsonResponse(400, { error: 'El desafío ya fue respondido.' })
   }
 
+  const nowTs = Date.now()
+  const acceptUntilTs = existing.accept_until ? Date.parse(existing.accept_until) : NaN
+  if (Number.isFinite(acceptUntilTs) && acceptUntilTs <= nowTs) {
+    await input.adminClient
+      .from('ica_challenges')
+      .update({
+        status: 'not_accepted',
+        result_type: 'not_accepted',
+        finalized_at: new Date().toISOString(),
+        winner_user_id: null,
+        turn_user_id: null,
+        turn_expires_at: null,
+      })
+      .eq('id', challengeId)
+
+    return jsonResponse(400, { error: 'El reto ya caducó.' })
+  }
+
   const nowIso = new Date().toISOString()
+  const firstTurnExpiresAt = addSecondsToNow(TURN_WINDOW_SECONDS)
   const { error: competitorError } = await input.adminClient
     .from('ica_challenge_competitors')
     .update({
@@ -406,6 +649,8 @@ async function respondInvitation(input: {
       started_at: accept ? nowIso : null,
       finalized_at: accept ? null : nowIso,
       winner_user_id: null,
+      turn_user_id: accept ? toText(existing.challenger_user_id) : null,
+      turn_expires_at: accept ? firstTurnExpiresAt : null,
     })
     .eq('id', challengeId)
 
@@ -425,6 +670,56 @@ async function respondInvitation(input: {
   return jsonResponse(200, { ok: true, challengeId, status: accept ? 'in_progress' : 'not_accepted' })
 }
 
+async function cancelInvitation(input: {
+  adminClient: ReturnType<typeof createClient>
+  userId: string
+  body: Record<string, unknown>
+}) {
+  const challengeId = toText(input.body.challengeId)
+  if (!challengeId) return jsonResponse(400, { error: 'challengeId inválido.' })
+
+  const { data: challenge, error: readError } = await input.adminClient
+    .from('ica_challenges')
+    .select('id, status, challenger_user_id, challenged_user_id')
+    .eq('id', challengeId)
+    .eq('challenger_user_id', input.userId)
+    .maybeSingle()
+
+  if (readError) return jsonResponse(500, { error: readError.message })
+  if (!challenge) return jsonResponse(404, { error: 'Desafío no encontrado.' })
+
+  if (challenge.status !== 'created') {
+    return jsonResponse(400, { error: 'El desafío ya no está pendiente.' })
+  }
+
+  const nowIso = new Date().toISOString()
+  const { error: updateError } = await input.adminClient
+    .from('ica_challenges')
+    .update({
+      status: 'cancelled',
+      result_type: 'cancelled',
+      finalized_at: nowIso,
+      winner_user_id: null,
+      turn_user_id: null,
+      turn_expires_at: null,
+    })
+    .eq('id', challengeId)
+    .eq('status', 'created')
+
+  if (updateError) return jsonResponse(500, { error: updateError.message })
+
+  await sendPushToUser({
+    adminClient: input.adminClient,
+    userId: toText(challenge.challenged_user_id),
+    title: 'Reto cancelado',
+    body: 'El retador canceló el desafío antes de que respondieras.',
+    tag: `ica-challenge-cancelled-${challengeId}`,
+    url: '/desafios-ica',
+  })
+
+  return jsonResponse(200, { ok: true, challengeId, status: 'cancelled' })
+}
+
 async function submitOwnWordsResult(input: {
   adminClient: ReturnType<typeof createClient>
   userId: string
@@ -438,13 +733,13 @@ async function submitOwnWordsResult(input: {
   )
   const rounds = toRounds(input.body.rounds)
   const responseSeconds = toResponseSeconds(input.body.responseSeconds)
-  const answers = Array.isArray(input.body.answers) ? input.body.answers : []
+  const answers = normalizeOwnWordsAnswers(input.body.answers)
 
   if (!challengeId) return jsonResponse(400, { error: 'challengeId inválido.' })
 
   const { data: challenge, error: challengeError } = await input.adminClient
     .from('ica_challenges')
-    .select('id, status, challenger_user_id, challenged_user_id, challenge_slug')
+    .select('id, status, challenger_user_id, challenged_user_id, challenge_slug, turn_user_id, turn_expires_at')
     .eq('id', challengeId)
     .maybeSingle()
 
@@ -456,6 +751,18 @@ async function submitOwnWordsResult(input: {
 
   if (challenge.status !== 'in_progress') {
     return jsonResponse(400, { error: 'El desafío no está en curso.' })
+  }
+
+  const turnUserId = toText(challenge.turn_user_id)
+  if (turnUserId && input.userId !== turnUserId) {
+    return jsonResponse(400, { error: 'No es tu turno para jugar.' })
+  }
+
+  if (challenge.turn_expires_at) {
+    const turnExpiresTs = Date.parse(challenge.turn_expires_at)
+    if (Number.isFinite(turnExpiresTs) && turnExpiresTs <= Date.now()) {
+      return jsonResponse(400, { error: 'Tu turno ya venció.' })
+    }
   }
 
   if (
@@ -506,6 +813,28 @@ async function submitOwnWordsResult(input: {
     },
   }
 
+  const answerRows = answers.map((answer) => ({
+    desafio_id: challengeId,
+    usuario_id: input.userId,
+    indice: answer.questionIndex,
+    acierto: answer.isCorrect,
+    ms: answer.responseMs,
+    payload: {
+      selectedOptionIndex: answer.selectedOptionIndex,
+      timedOut: answer.timedOut,
+    },
+  }))
+
+  if (answerRows.length > 0) {
+    const { error: upsertAnswerRowsError } = await input.adminClient
+      .from('desafio_jugadas')
+      .upsert(answerRows, { onConflict: 'desafio_id,usuario_id,indice' })
+
+    if (upsertAnswerRowsError) {
+      return jsonResponse(500, { error: upsertAnswerRowsError.message })
+    }
+  }
+
   const { error: updateCompetitorError } = await input.adminClient
     .from('ica_challenge_competitors')
     .update({
@@ -533,6 +862,22 @@ async function submitOwnWordsResult(input: {
     rows.find((row) => row.user_id === challenge.challenged_user_id)?.score ?? null
 
   if (challengerScore === null || challengedScore === null) {
+    const nextTurnUserId =
+      input.userId === challenge.challenger_user_id
+        ? challenge.challenged_user_id
+        : challenge.challenger_user_id
+
+    const { error: setTurnError } = await input.adminClient
+      .from('ica_challenges')
+      .update({
+        turn_user_id: nextTurnUserId,
+        turn_expires_at: addSecondsToNow(TURN_WINDOW_SECONDS),
+      })
+      .eq('id', challengeId)
+      .eq('status', 'in_progress')
+
+    if (setTurnError) return jsonResponse(500, { error: setTurnError.message })
+
     return jsonResponse(200, { ok: true, challengeId })
   }
 
@@ -557,6 +902,8 @@ async function submitOwnWordsResult(input: {
       result_type: resultType,
       winner_user_id: winnerUserId,
       finalized_at: nowIso,
+      turn_user_id: null,
+      turn_expires_at: null,
     })
     .eq('id', challengeId)
 
@@ -604,8 +951,22 @@ Deno.serve(async (req) => {
     })
   }
 
+  if (action === 'list-challenge-types') {
+    return listChallengeTypes({
+      adminClient: auth.adminClient,
+    })
+  }
+
   if (action === 'respond-invitation') {
     return respondInvitation({
+      adminClient: auth.adminClient,
+      userId: auth.userId,
+      body: payload,
+    })
+  }
+
+  if (action === 'cancel-invitation') {
+    return cancelInvitation({
       adminClient: auth.adminClient,
       userId: auth.userId,
       body: payload,
