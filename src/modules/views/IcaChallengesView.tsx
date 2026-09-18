@@ -1049,10 +1049,10 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
 
                   <p className='inline-flex items-center gap-2 text-xs font-medium text-muted-foreground'>
                     <TimerIcon className='h-3.5 w-3.5' />
-                    Recomendado: 10 rondas y 5s por respuesta.
+                    Recomendado: 5 rondas y 5s por respuesta.
                   </p>
 
-                  <p className='inline-flex items-center gap-2 text-xs text-muted-foreground'>
+                  <p className='flex items-center gap-2 text-xs text-muted-foreground'>
                     <CalendarDaysIcon className='h-3.5 w-3.5' />
                     Duración del desafío: {durationDays} día{durationDays === 1 ? '' : 's'}.
                   </p>
