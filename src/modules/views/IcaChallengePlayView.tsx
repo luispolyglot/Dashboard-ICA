@@ -11,6 +11,7 @@ import {
   getIcaChallengeById,
   getOwnWordsChallengeConfig,
   hasOwnWordsResult,
+  ICA_CHALLENGE_OWN_WORDS_TOTAL_QUESTIONS,
   ICA_CHALLENGE_SLUG_OWN_WORDS,
   listIcaChallengePlays,
   submitIcaOwnWordsChallengeResult,
@@ -85,10 +86,22 @@ export function IcaChallengePlayView({
     [challenge?.gameMetadata],
   )
 
-  const questions: IcaTestQuestion[] = useMemo(() => {
+  const myAnsweredQuestions = useMemo(
+    () => plays.filter((play) => play.userId === currentUserId).length,
+    [currentUserId, plays],
+  )
+
+  const questionsPerRound = ICA_CHALLENGE_OWN_WORDS_TOTAL_QUESTIONS / config.rounds
+
+  const allQuestions: IcaTestQuestion[] = useMemo(() => {
     if (!challenge || !hasStarted) return []
-    return buildOwnWordsChallengeQuestions(cards, targetLang, nativeLang, config.rounds)
-  }, [cards, challenge, config.rounds, hasStarted, nativeLang, targetLang])
+    return buildOwnWordsChallengeQuestions(cards, targetLang, nativeLang)
+  }, [cards, challenge, hasStarted, nativeLang, targetLang])
+
+  const questions: IcaTestQuestion[] = useMemo(
+    () => allQuestions.slice(myAnsweredQuestions, myAnsweredQuestions + questionsPerRound),
+    [allQuestions, myAnsweredQuestions, questionsPerRound],
+  )
 
   const myCompetitor = useMemo(() => {
     if (!challenge || !currentUserId) return null
@@ -120,8 +133,11 @@ export function IcaChallengePlayView({
         await submitIcaOwnWordsChallengeResult({
           challengeId: challenge.id,
           score: answers.filter((item) => item.isCorrect).length,
-          totalQuestions: questions.length,
-          answers,
+          totalQuestions: ICA_CHALLENGE_OWN_WORDS_TOTAL_QUESTIONS,
+          answers: answers.map((answer) => ({
+            ...answer,
+            questionIndex: answer.questionIndex + myAnsweredQuestions,
+          })),
           rounds: config.rounds,
           responseSeconds: config.responseSeconds,
         })
@@ -244,7 +260,8 @@ export function IcaChallengePlayView({
         <CardHeader>
           <CardTitle>Palabras ICA propias</CardTitle>
           <CardDescription>
-            {config.rounds} rondas y {config.responseSeconds}s por respuesta.
+            10 preguntas en {config.rounds} rondas de {questionsPerRound}. Esta ronda tiene{' '}
+            {questionsPerRound} preguntas y luego le toca al rival.
           </CardDescription>
         </CardHeader>
         <CardContent className='space-y-3'>
@@ -289,7 +306,8 @@ export function IcaChallengePlayView({
       <Card>
         <CardHeader>
           <CardTitle>
-            Ronda {runner.currentQuestionIndex + 1}/{runner.totalQuestions}
+            Ronda {Math.floor(myAnsweredQuestions / questionsPerRound) + 1}/{config.rounds} · Pregunta{' '}
+            {runner.currentQuestionIndex + 1}/{runner.totalQuestions}
           </CardTitle>
           <CardDescription>
             Tiempo restante: {runner.timeLeft}s · Aciertos: {runner.score}

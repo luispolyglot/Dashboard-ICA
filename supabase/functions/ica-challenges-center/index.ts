@@ -48,10 +48,12 @@ function toScope(value: unknown): ChallengeScope {
   return value === 'language' ? 'language' : 'global'
 }
 
-function toRounds(value: unknown): 3 | 5 | 10 {
+const OWN_WORDS_TOTAL_QUESTIONS = 10
+
+function toRounds(value: unknown): 2 | 5 {
   const numberValue = Number(value)
-  if (numberValue === 3 || numberValue === 5) return numberValue
-  return 10
+  if (numberValue === 2 || numberValue === 5) return numberValue
+  return 2
 }
 
 function toResponseSeconds(value: unknown): number {
@@ -537,7 +539,8 @@ async function createOwnWordsChallenge(input: {
         mode: 'own_words_quiz',
         rounds,
         responseSeconds,
-        questionsPerRound: 10,
+        totalQuestions: OWN_WORDS_TOTAL_QUESTIONS,
+        questionsPerRound: OWN_WORDS_TOTAL_QUESTIONS / rounds,
       },
       phases_json: [
         { key: 'invitation', status: 'pending' },
@@ -726,20 +729,13 @@ async function submitOwnWordsResult(input: {
   body: Record<string, unknown>
 }) {
   const challengeId = toText(input.body.challengeId)
-  const score = Math.max(0, Math.round(Number(input.body.score || 0)))
-  const totalQuestions = Math.max(
-    1,
-    Math.round(Number(input.body.totalQuestions || 1)),
-  )
-  const rounds = toRounds(input.body.rounds)
-  const responseSeconds = toResponseSeconds(input.body.responseSeconds)
   const answers = normalizeOwnWordsAnswers(input.body.answers)
 
   if (!challengeId) return jsonResponse(400, { error: 'challengeId inválido.' })
 
   const { data: challenge, error: challengeError } = await input.adminClient
     .from('ica_challenges')
-    .select('id, status, challenger_user_id, challenged_user_id, challenge_slug, turn_user_id, turn_expires_at')
+    .select('id, status, challenger_user_id, challenged_user_id, challenge_slug, turn_user_id, turn_expires_at, game_metadata')
     .eq('id', challengeId)
     .maybeSingle()
 
@@ -788,31 +784,50 @@ async function submitOwnWordsResult(input: {
     return jsonResponse(400, { error: 'No puedes jugar este desafío.' })
   }
 
+  const gameMetadata =
+    challenge.game_metadata && typeof challenge.game_metadata === 'object'
+      ? (challenge.game_metadata as Record<string, unknown>)
+      : {}
+  const rounds = toRounds(gameMetadata.rounds)
+  const responseSeconds = toResponseSeconds(gameMetadata.responseSeconds)
+  const questionsPerRound = OWN_WORDS_TOTAL_QUESTIONS / rounds
+
+  const { data: existingPlays, error: existingPlaysError } = await input.adminClient
+    .from('desafio_jugadas')
+    .select('indice')
+    .eq('desafio_id', challengeId)
+    .eq('usuario_id', input.userId)
+    .order('indice', { ascending: true })
+
+  if (existingPlaysError) {
+    return jsonResponse(500, { error: existingPlaysError.message })
+  }
+
+  const answeredBefore = (existingPlays || []).length
+  const expectedBatchSize = Math.min(
+    questionsPerRound,
+    OWN_WORDS_TOTAL_QUESTIONS - answeredBefore,
+  )
+
+  if (answeredBefore >= OWN_WORDS_TOTAL_QUESTIONS) {
+    return jsonResponse(400, { error: 'Ya completaste tus 10 preguntas.' })
+  }
+
+  if (answers.length !== expectedBatchSize) {
+    return jsonResponse(400, { error: 'Debes completar todas las preguntas de esta ronda.' })
+  }
+
+  const hasExpectedIndexes = answers.every(
+    (answer, index) => answer.questionIndex === answeredBefore + index,
+  )
+  if (!hasExpectedIndexes) {
+    return jsonResponse(400, { error: 'Las respuestas no corresponden a la ronda actual.' })
+  }
+
   const currentPayload =
     competitorRow.payload && typeof competitorRow.payload === 'object'
       ? (competitorRow.payload as Record<string, unknown>)
       : {}
-  const currentOwnWords =
-    currentPayload.ownWords && typeof currentPayload.ownWords === 'object'
-      ? (currentPayload.ownWords as Record<string, unknown>)
-      : null
-
-  if (currentOwnWords?.completedAt) {
-    return jsonResponse(400, { error: 'Ya enviaste tu resultado.' })
-  }
-
-  const nextPayload = {
-    ...currentPayload,
-    ownWords: {
-      completedAt: nowIso,
-      score,
-      totalQuestions,
-      rounds,
-      responseSeconds,
-      answers,
-    },
-  }
-
   const answerRows = answers.map((answer) => ({
     desafio_id: challengeId,
     usuario_id: input.userId,
@@ -835,10 +850,44 @@ async function submitOwnWordsResult(input: {
     }
   }
 
+  const { data: allPlays, error: allPlaysError } = await input.adminClient
+    .from('desafio_jugadas')
+    .select('usuario_id, acierto')
+    .eq('desafio_id', challengeId)
+
+  if (allPlaysError) return jsonResponse(500, { error: allPlaysError.message })
+
+  const challengePlays = (allPlays || []) as Array<{ usuario_id: string; acierto: boolean }>
+  const getProgress = (userId: string) => {
+    const userPlays = challengePlays.filter((play) => play.usuario_id === userId)
+    return {
+      answered: userPlays.length,
+      score: userPlays.reduce((total, play) => total + Number(play.acierto), 0),
+    }
+  }
+
+  const myProgress = getProgress(input.userId)
+  const challengerProgress = getProgress(challenge.challenger_user_id)
+  const challengedProgress = getProgress(challenge.challenged_user_id)
+  const hasCompletedOwnQuestions = myProgress.answered >= OWN_WORDS_TOTAL_QUESTIONS
+
+  const nextPayload = {
+    ...currentPayload,
+    ownWords: {
+      completedAt: hasCompletedOwnQuestions ? nowIso : null,
+      score: myProgress.score,
+      totalQuestions: OWN_WORDS_TOTAL_QUESTIONS,
+      rounds,
+      questionsPerRound,
+      responseSeconds,
+      answeredQuestions: myProgress.answered,
+    },
+  }
+
   const { error: updateCompetitorError } = await input.adminClient
     .from('ica_challenge_competitors')
     .update({
-      score,
+      score: myProgress.score,
       payload: nextPayload,
     })
     .eq('challenge_id', challengeId)
@@ -848,24 +897,17 @@ async function submitOwnWordsResult(input: {
     return jsonResponse(500, { error: updateCompetitorError.message })
   }
 
-  const { data: competitors, error: competitorsError } = await input.adminClient
-    .from('ica_challenge_competitors')
-    .select('user_id, score')
-    .eq('challenge_id', challengeId)
+  const challengerCompleted = challengerProgress.answered >= OWN_WORDS_TOTAL_QUESTIONS
+  const challengedCompleted = challengedProgress.answered >= OWN_WORDS_TOTAL_QUESTIONS
 
-  if (competitorsError) return jsonResponse(500, { error: competitorsError.message })
-
-  const rows = (competitors || []) as Array<{ user_id: string; score: number | null }>
-  const challengerScore =
-    rows.find((row) => row.user_id === challenge.challenger_user_id)?.score ?? null
-  const challengedScore =
-    rows.find((row) => row.user_id === challenge.challenged_user_id)?.score ?? null
-
-  if (challengerScore === null || challengedScore === null) {
-    const nextTurnUserId =
+  if (!challengerCompleted || !challengedCompleted) {
+    const otherUserId =
       input.userId === challenge.challenger_user_id
         ? challenge.challenged_user_id
         : challenge.challenger_user_id
+    const otherProgress = getProgress(otherUserId)
+    const nextTurnUserId =
+      otherProgress.answered >= OWN_WORDS_TOTAL_QUESTIONS ? input.userId : otherUserId
 
     const { error: setTurnError } = await input.adminClient
       .from('ica_challenges')
@@ -882,9 +924,9 @@ async function submitOwnWordsResult(input: {
   }
 
   const resultType =
-    challengerScore > challengedScore
+    challengerProgress.score > challengedProgress.score
       ? 'challenger_win'
-      : challengedScore > challengerScore
+      : challengedProgress.score > challengerProgress.score
         ? 'challenged_win'
         : 'draw'
 

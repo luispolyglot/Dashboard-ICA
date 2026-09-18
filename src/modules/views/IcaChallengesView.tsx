@@ -37,7 +37,12 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useIcaChallengesOverview } from '../hooks/useIcaChallengesOverview'
 import { getIcaOwnWordsConfigLabel, hasOwnWordsResult } from '../services/icaChallenges'
 import { getIcaChallengePlayRoute } from '../routes/paths'
-import type { IcaChallengeRecord, IcaChallengeScope, IcaChallengeTypeRecord } from '../types'
+import type {
+  IcaChallengePlayRecord,
+  IcaChallengeRecord,
+  IcaChallengeScope,
+  IcaChallengeTypeRecord,
+} from '../types'
 
 type IcaChallengesViewProps = {
   targetLang: string
@@ -127,6 +132,46 @@ function getScores(challenge: IcaChallengeRecord, currentUserId: string | null):
     mine: myRow?.score ?? 0,
     rival: rivalRow?.score ?? 0,
   }
+}
+
+function renderOwnWordsProgress(input: {
+  plays: IcaChallengePlayRecord[]
+  userId: string | null
+  rivalUserId: string
+  rivalName: string
+}) {
+  const renderRow = (label: string, userId: string | null) => {
+    const userPlays = input.plays.filter((play) => play.userId === userId)
+    const playByIndex = new Map(userPlays.map((play) => [play.index, play]))
+    const correctCount = userPlays.reduce((total, play) => total + Number(play.isCorrect), 0)
+
+    return (
+      <div className='grid grid-cols-[3.5rem_1fr_2.5rem] items-center gap-2'>
+        <span className='truncate text-xs text-muted-foreground'>{label}</span>
+        <div className='grid grid-cols-10 gap-1'>
+          {Array.from({ length: 10 }, (_, index) => {
+            const play = playByIndex.get(index)
+            const colorClass =
+              play === undefined
+                ? 'bg-muted'
+                : play.isCorrect
+                  ? 'bg-primary'
+                  : 'bg-destructive'
+
+            return <span key={index} className={`h-1.5 rounded-full ${colorClass}`} />
+          })}
+        </div>
+        <span className='text-right text-xs text-muted-foreground'>{correctCount}/10</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className='mt-3 space-y-2 border-t pt-3'>
+      {renderRow('Tú', input.userId)}
+      {renderRow(input.rivalName.split(' ')[0] || 'Rival', input.rivalUserId)}
+    </div>
+  )
 }
 
 function getInitials(name: string): string {
@@ -236,7 +281,7 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
 
   const [tab, setTab] = useState<TabKey>('active')
   const [search, setSearch] = useState('')
-  const [rounds, setRounds] = useState<3 | 5 | 10>(10)
+  const [rounds, setRounds] = useState<2 | 5>(2)
   const [responseSeconds, setResponseSeconds] = useState(5)
   const [durationDays, setDurationDays] = useState<1 | 2 | 3>(1)
 
@@ -676,6 +721,13 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                             ? `Configuración: ${getIcaOwnWordsConfigLabel(challenge.gameMetadata)}`
                             : 'Configuración disponible próximamente'}
                         </p>
+                        {challenge.challengeSlug === 'ica-own-words' &&
+                          renderOwnWordsProgress({
+                            plays: playsByChallengeId[challenge.id] || [],
+                            userId: currentUserId,
+                            rivalUserId: rivalId,
+                            rivalName: rival.displayName,
+                          })}
                         <div className='mt-3 flex justify-end'>
                           {canOpenPlayView ? (
                             <Button type='button' size='sm' asChild>
@@ -944,15 +996,14 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                       <Label>Rondas</Label>
                       <Select
                         value={String(rounds)}
-                        onValueChange={(value) => setRounds(Number(value) as 3 | 5 | 10)}
+                        onValueChange={(value) => setRounds(Number(value) as 2 | 5)}
                       >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value='3'>3</SelectItem>
+                          <SelectItem value='2'>2</SelectItem>
                           <SelectItem value='5'>5</SelectItem>
-                          <SelectItem value='10'>10</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

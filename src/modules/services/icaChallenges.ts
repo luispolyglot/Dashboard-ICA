@@ -17,7 +17,8 @@ import type {
 } from '../types'
 
 export const ICA_CHALLENGE_SLUG_OWN_WORDS = 'ica-own-words'
-export const ICA_CHALLENGE_ALLOWED_ROUNDS = [3, 5, 10] as const
+export const ICA_CHALLENGE_ALLOWED_ROUNDS = [2, 5] as const
+export const ICA_CHALLENGE_OWN_WORDS_TOTAL_QUESTIONS = 10
 export const ICA_CHALLENGE_MIN_RESPONSE_SECONDS = 3
 export const ICA_CHALLENGE_MAX_RESPONSE_SECONDS = 8
 
@@ -233,7 +234,7 @@ function toChallengePlayRecord(row: IcaChallengePlayRow): IcaChallengePlayRecord
 function sanitizeOwnWordsConfig(config: IcaOwnWordsChallengeConfig): IcaOwnWordsChallengeConfig {
   const rounds = ICA_CHALLENGE_ALLOWED_ROUNDS.includes(config.rounds)
     ? config.rounds
-    : 10
+    : 2
 
   const responseSeconds = Math.max(
     ICA_CHALLENGE_MIN_RESPONSE_SECONDS,
@@ -258,9 +259,9 @@ export function getOwnWordsChallengeConfig(
   metadata: Record<string, unknown>,
 ): IcaOwnWordsChallengeConfig {
   const roundsValue = Number(metadata.rounds ?? 10)
-  const rounds = ICA_CHALLENGE_ALLOWED_ROUNDS.includes(roundsValue as 3 | 5 | 10)
-    ? (roundsValue as 3 | 5 | 10)
-    : 10
+  const rounds = ICA_CHALLENGE_ALLOWED_ROUNDS.includes(roundsValue as 2 | 5)
+    ? (roundsValue as 2 | 5)
+    : 2
 
   const responseSeconds = Math.max(
     ICA_CHALLENGE_MIN_RESPONSE_SECONDS,
@@ -280,7 +281,6 @@ export function buildOwnWordsChallengeQuestions(
   cards: Lexicard[],
   targetLang: string,
   nativeLang: string,
-  rounds: number,
 ): IcaTestQuestion[] {
   const filteredCards = cards.filter((card) => {
     const hasText = card.target.trim() && card.native.trim()
@@ -301,7 +301,7 @@ export function buildOwnWordsChallengeQuestions(
   const uniqueCards = Array.from(uniqueByTarget.values())
   if (uniqueCards.length < 4) return []
 
-  const totalQuestions = Math.max(1, Math.min(10, Math.round(rounds)))
+  const totalQuestions = ICA_CHALLENGE_OWN_WORDS_TOTAL_QUESTIONS
   const questionPool = shuffle(uniqueCards)
   const questions: IcaTestQuestion[] = []
 
@@ -600,13 +600,15 @@ export function hasOwnWordsResult(
   userId: string,
   plays?: IcaChallengePlayRecord[],
 ): boolean {
-  if (Array.isArray(plays) && plays.some((play) => play.userId === userId)) {
-    return true
+  if (Array.isArray(plays)) {
+    return (
+      plays.filter((play) => play.userId === userId).length >=
+      ICA_CHALLENGE_OWN_WORDS_TOTAL_QUESTIONS
+    )
   }
 
   const competitor = challenge.competitors.find((item) => item.userId === userId)
   if (!competitor) return false
-  if (competitor.score !== null) return true
   if (!isRecord(competitor.payload)) return false
   const ownWords = competitor.payload.ownWords
   if (!isRecord(ownWords)) return false
@@ -644,7 +646,8 @@ export async function submitIcaOwnWordsChallengeResult(input: {
 
 export function getIcaOwnWordsConfigLabel(metadata: Record<string, unknown>): string {
   const config = getOwnWordsChallengeConfig(metadata)
-  return `${config.rounds} rondas · ${config.responseSeconds}s por respuesta`
+  const questionsPerRound = ICA_CHALLENGE_OWN_WORDS_TOTAL_QUESTIONS / config.rounds
+  return `10 preguntas · ${config.rounds} rondas de ${questionsPerRound} · ${config.responseSeconds}s por respuesta`
 }
 
 export async function listIcaChallengePlays(challengeId: string): Promise<IcaChallengePlayRecord[]> {
