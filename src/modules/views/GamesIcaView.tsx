@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DASHBOARD_ROUTES } from '../routes/paths'
+import { useFeatureFlagsStore } from '../stores/featureFlagsStore'
 
 type GamesIcaViewProps = {
   flashcardsReady: boolean
@@ -27,8 +29,16 @@ export function GamesIcaView({
   pregunticaProgress,
 }: GamesIcaViewProps) {
   const navigate = useNavigate()
+  const loadFlags = useFeatureFlagsStore((state) => state.loadFlags)
+  const icaChallengesEnabled = useFeatureFlagsStore(
+    (state) => state.flags['ica-challenges'],
+  )
   const progress = parseProgress(pregunticaProgress)
   const progressPct = Math.max(0, Math.min(100, (progress.current / progress.total) * 100))
+
+  useEffect(() => {
+    void loadFlags()
+  }, [loadFlags])
 
   return (
     <section className='mx-auto flex w-full max-w-6xl flex-1 items-center justify-center p-4 pb-24'>
@@ -36,12 +46,12 @@ export function GamesIcaView({
         <div>
           <h2 className='mb-1 font-serif text-2xl font-bold lg:text-3xl'>🎮 Juegos ICA</h2>
           <p className='text-sm text-muted-foreground'>
-            Elige tu forma de entrenar hoy: refuerza tu memoria con Flashcards o
-            práctica expresión real con PreguntICA.
+            Elige tu forma de entrenar hoy: refuerza memoria, juega desafíos o practica
+            expresión real.
           </p>
         </div>
 
-        <div className='mt-6 grid gap-4 md:grid-cols-2'>
+        <div className={`mt-6 grid gap-4 ${icaChallengesEnabled ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
         <button
           type='button'
           onClick={() => navigate(DASHBOARD_ROUTES.flashcards)}
@@ -63,6 +73,25 @@ export function GamesIcaView({
               : 'Añade palabras ICA para desbloquearlo'}
           </p>
         </button>
+
+        {icaChallengesEnabled && (
+          <button
+            type='button'
+            onClick={() => navigate(DASHBOARD_ROUTES.challengesIca)}
+            className='group relative min-h-52 overflow-hidden rounded-[22px] border border-slate-800 bg-[linear-gradient(160deg,#ffffff,#eef3f9)] p-6 text-left transition hover:-translate-y-0.5 hover:shadow-xl dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
+          >
+            <p className='text-3xl' aria-hidden='true'>⚔️</p>
+            <h2 className='mt-5 font-serif text-2xl font-bold text-slate-700 dark:text-slate-100'>
+              Desafíos ICA
+            </h2>
+            <p className='mt-1 text-sm text-slate-500'>
+              Retos 1 vs 1 con turnos por rondas y notificaciones.
+            </p>
+            <p className='mt-3 text-xs font-medium text-slate-600 dark:text-slate-300'>
+              Compite con tus propias palabras ICA
+            </p>
+          </button>
+        )}
 
         <button
           type='button'
