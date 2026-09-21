@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
@@ -11,10 +11,17 @@ import {
   getIcaChallengeById,
   getOwnWordsChallengeConfig,
   hasOwnWordsResult,
+  ICA_CHALLENGE_OWN_WORDS_TOTAL_QUESTIONS,
   ICA_CHALLENGE_SLUG_OWN_WORDS,
+  listIcaChallengePlays,
   submitIcaOwnWordsChallengeResult,
 } from '../services/icaChallenges'
-import type { IcaChallengeRecord, IcaTestQuestion, Lexicard } from '../types'
+import type {
+  IcaChallengePlayRecord,
+  IcaChallengeRecord,
+  IcaTestQuestion,
+  Lexicard,
+} from '../types'
 
 type IcaChallengePlayViewProps = {
   challengeId: string
@@ -29,7 +36,12 @@ export function IcaChallengePlayView({
   nativeLang,
   cards,
 }: IcaChallengePlayViewProps) {
+  const renderPage = (content: ReactNode) => (
+    <section className='mx-auto w-full max-w-4xl flex-1 p-4 pb-24 lg:pb-4'>{content}</section>
+  )
+
   const [challenge, setChallenge] = useState<IcaChallengeRecord | null>(null)
+  const [plays, setPlays] = useState<IcaChallengePlayRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -48,9 +60,12 @@ export function IcaChallengePlayView({
           getIcaChallengeById(challengeId),
         ])
 
+        const playRows = await listIcaChallengePlays(challengeId)
+
         if (!active) return
         setCurrentUserId(data.user?.id ?? null)
         setChallenge(challengeData)
+        setPlays(playRows)
       } catch {
         if (!active) return
         setError('No pudimos cargar el desafío.')
@@ -71,10 +86,22 @@ export function IcaChallengePlayView({
     [challenge?.gameMetadata],
   )
 
-  const questions: IcaTestQuestion[] = useMemo(() => {
+  const myAnsweredQuestions = useMemo(
+    () => plays.filter((play) => play.userId === currentUserId).length,
+    [currentUserId, plays],
+  )
+
+  const questionsPerRound = ICA_CHALLENGE_OWN_WORDS_TOTAL_QUESTIONS / config.rounds
+
+  const allQuestions: IcaTestQuestion[] = useMemo(() => {
     if (!challenge || !hasStarted) return []
-    return buildOwnWordsChallengeQuestions(cards, targetLang, nativeLang, config.rounds)
-  }, [cards, challenge, config.rounds, hasStarted, nativeLang, targetLang])
+    return buildOwnWordsChallengeQuestions(cards, targetLang, nativeLang)
+  }, [cards, challenge, hasStarted, nativeLang, targetLang])
+
+  const questions: IcaTestQuestion[] = useMemo(
+    () => allQuestions.slice(myAnsweredQuestions, myAnsweredQuestions + questionsPerRound),
+    [allQuestions, myAnsweredQuestions, questionsPerRound],
+  )
 
   const myCompetitor = useMemo(() => {
     if (!challenge || !currentUserId) return null
@@ -83,7 +110,17 @@ export function IcaChallengePlayView({
 
   const alreadyPlayed = useMemo(() => {
     if (!challenge || !currentUserId) return false
-    return hasOwnWordsResult(challenge, currentUserId)
+    return hasOwnWordsResult(challenge, currentUserId, plays)
+  }, [challenge, currentUserId, plays])
+
+  const rivalCompetitor = useMemo(() => {
+    if (!challenge || !currentUserId) return null
+    return challenge.competitors.find((item) => item.userId !== currentUserId) ?? null
+  }, [challenge, currentUserId])
+
+  const isMyTurn = useMemo(() => {
+    if (!challenge || !currentUserId) return false
+    return !challenge.turnUserId || challenge.turnUserId === currentUserId
   }, [challenge, currentUserId])
 
   const runner = useIcaTestRunner({
@@ -96,13 +133,18 @@ export function IcaChallengePlayView({
         await submitIcaOwnWordsChallengeResult({
           challengeId: challenge.id,
           score: answers.filter((item) => item.isCorrect).length,
-          totalQuestions: questions.length,
-          answers,
+          totalQuestions: ICA_CHALLENGE_OWN_WORDS_TOTAL_QUESTIONS,
+          answers: answers.map((answer) => ({
+            ...answer,
+            questionIndex: answer.questionIndex + myAnsweredQuestions,
+          })),
           rounds: config.rounds,
           responseSeconds: config.responseSeconds,
         })
         const updated = await getIcaChallengeById(challenge.id)
+        const updatedPlays = await listIcaChallengePlays(challenge.id)
         setChallenge(updated)
+        setPlays(updatedPlays)
         toast.success('Resultado enviado.')
       } catch (submitError) {
         toast.error(
@@ -117,11 +159,11 @@ export function IcaChallengePlayView({
   })
 
   if (isLoading) {
-    return <p className='text-sm text-muted-foreground'>Cargando desafío...</p>
+    return renderPage(<p className='text-sm text-muted-foreground'>Cargando desafío...</p>)
   }
 
   if (error || !challenge) {
-    return (
+    return renderPage(
       <Card>
         <CardHeader>
           <CardTitle>No se pudo abrir el desafío</CardTitle>
@@ -132,7 +174,7 @@ export function IcaChallengePlayView({
   }
 
   if (challenge.challengeSlug !== ICA_CHALLENGE_SLUG_OWN_WORDS) {
-    return (
+    return renderPage(
       <Card>
         <CardHeader>
           <CardTitle>Desafío no soportado</CardTitle>
@@ -145,7 +187,7 @@ export function IcaChallengePlayView({
   }
 
   if (!myCompetitor || myCompetitor.invitationStatus !== 'accepted') {
-    return (
+    return renderPage(
       <Card>
         <CardHeader>
           <CardTitle>Aún no puedes jugar</CardTitle>
@@ -158,7 +200,7 @@ export function IcaChallengePlayView({
   }
 
   if (challenge.status !== 'in_progress' && !alreadyPlayed) {
-    return (
+    return renderPage(
       <Card>
         <CardHeader>
           <CardTitle>El desafío no está en curso</CardTitle>
@@ -170,8 +212,26 @@ export function IcaChallengePlayView({
     )
   }
 
+  if (challenge.status === 'in_progress' && !alreadyPlayed && !isMyTurn) {
+    return renderPage(
+      <Card>
+        <CardHeader>
+          <CardTitle>Aún no es tu turno</CardTitle>
+          <CardDescription>
+            Tu rival debe jugar primero. Vuelve desde Desafíos ICA cuando el turno cambie.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button asChild variant='outline'>
+            <Link to={DASHBOARD_ROUTES.challengesIca}>Volver a Desafíos ICA</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
   if (alreadyPlayed) {
-    return (
+    return renderPage(
       <Card>
         <CardHeader>
           <CardTitle>Ya jugaste este desafío</CardTitle>
@@ -179,7 +239,13 @@ export function IcaChallengePlayView({
             Tu resultado ya fue enviado. Espera al rival o revisa el resultado final.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className='space-y-4'>
+          <div className='rounded-lg border bg-muted/20 px-3 py-2 text-sm'>
+            <p className='font-medium'>Marcador actual</p>
+            <p className='text-muted-foreground'>
+              Tú: {myCompetitor.score ?? 0} · Rival: {rivalCompetitor?.score ?? 0}
+            </p>
+          </div>
           <Button asChild>
             <Link to={DASHBOARD_ROUTES.challengesIca}>Volver a Desafíos ICA</Link>
           </Button>
@@ -189,12 +255,13 @@ export function IcaChallengePlayView({
   }
 
   if (!hasStarted) {
-    return (
+    return renderPage(
       <Card>
         <CardHeader>
           <CardTitle>Palabras ICA propias</CardTitle>
           <CardDescription>
-            {config.rounds} rondas y {config.responseSeconds}s por respuesta.
+            10 preguntas en {config.rounds} rondas de {questionsPerRound}. Esta ronda tiene{' '}
+            {questionsPerRound} preguntas y luego le toca al rival.
           </CardDescription>
         </CardHeader>
         <CardContent className='space-y-3'>
@@ -211,7 +278,7 @@ export function IcaChallengePlayView({
   }
 
   if (questions.length === 0) {
-    return (
+    return renderPage(
       <Card>
         <CardHeader>
           <CardTitle>No hay palabras suficientes</CardTitle>
@@ -224,7 +291,7 @@ export function IcaChallengePlayView({
   }
 
   if (!runner.currentQuestion) {
-    return (
+    return renderPage(
       <Card>
         <CardHeader>
           <CardTitle>Finalizando...</CardTitle>
@@ -234,12 +301,13 @@ export function IcaChallengePlayView({
     )
   }
 
-  return (
+  return renderPage(
     <div className='flex flex-col gap-4'>
       <Card>
         <CardHeader>
           <CardTitle>
-            Ronda {runner.currentQuestionIndex + 1}/{runner.totalQuestions}
+            Ronda {Math.floor(myAnsweredQuestions / questionsPerRound) + 1}/{config.rounds} · Pregunta{' '}
+            {runner.currentQuestionIndex + 1}/{runner.totalQuestions}
           </CardTitle>
           <CardDescription>
             Tiempo restante: {runner.timeLeft}s · Aciertos: {runner.score}
@@ -270,6 +338,6 @@ export function IcaChallengePlayView({
           </div>
         </CardContent>
       </Card>
-    </div>
+    </div>,
   )
 }

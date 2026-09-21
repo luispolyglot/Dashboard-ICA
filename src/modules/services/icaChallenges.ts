@@ -4,10 +4,12 @@ import type {
   IcaChallengeCompetitor,
   IcaChallengeCompetitorInvitationStatus,
   IcaChallengeEnrollment,
+  IcaChallengePlayRecord,
   IcaChallengeRecord,
   IcaChallengeResultType,
   IcaChallengeScope,
   IcaChallengeStatus,
+  IcaChallengeTypeRecord,
   IcaOwnWordsChallengeConfig,
   IcaTestAnswer,
   IcaTestQuestion,
@@ -15,7 +17,8 @@ import type {
 } from '../types'
 
 export const ICA_CHALLENGE_SLUG_OWN_WORDS = 'ica-own-words'
-export const ICA_CHALLENGE_ALLOWED_ROUNDS = [3, 5, 10] as const
+export const ICA_CHALLENGE_ALLOWED_ROUNDS = [1, 2, 5, 10] as const
+export const ICA_CHALLENGE_OWN_WORDS_TOTAL_QUESTIONS = 10
 export const ICA_CHALLENGE_MIN_RESPONSE_SECONDS = 3
 export const ICA_CHALLENGE_MAX_RESPONSE_SECONDS = 8
 
@@ -45,6 +48,9 @@ type IcaChallengeRow = {
   winner_user_id: string | null
   duration_seconds: number | null
   expires_at: string | null
+  accept_until: string | null
+  turn_user_id: string | null
+  turn_expires_at: string | null
   started_at: string | null
   finalized_at: string | null
   game_metadata: unknown
@@ -64,11 +70,25 @@ type IcaChallengeEnrollmentRow = {
   updated_at: string
 }
 
+type IcaChallengePlayRow = {
+  id: string
+  desafio_id: string
+  usuario_id: string
+  indice: number
+  acierto: boolean
+  ms: number | null
+  payload: unknown
+  creado_at: string
+}
+
 type AvailableUsersResponse = {
   rows?: Array<{
     userId: string
     displayName: string
     username: string | null
+    nativeLang: string | null
+    targetLang: string | null
+    cefrLevel: string | null
     activeChallengesCount: number
     canChallenge: boolean
     blockedReason: string | null
@@ -76,6 +96,25 @@ type AvailableUsersResponse = {
   myActiveChallengesCount?: number
   error?: string
 }
+
+type ChallengeTypesResponse = {
+  rows?: Array<{
+    id: string
+    name: string
+    iconKey: string
+    isActive: boolean
+    isPlayable: boolean
+    order: number
+    scopes: IcaChallengeScope[]
+    config?: Record<string, unknown>
+  }>
+  error?: string
+}
+
+export type IcaChallengeProfileMap = Record<
+  string,
+  { displayName: string; username: string | null; avatarUrl: string | null }
+>
 
 type SimpleActionResponse = {
   ok?: boolean
@@ -154,6 +193,9 @@ function toChallengeRecord(row: IcaChallengeRow): IcaChallengeRecord {
     durationSeconds:
       row.duration_seconds === null ? null : Number(row.duration_seconds),
     expiresAt: row.expires_at,
+    acceptUntil: row.accept_until,
+    turnUserId: row.turn_user_id,
+    turnExpiresAt: row.turn_expires_at,
     startedAt: row.started_at,
     finalizedAt: row.finalized_at,
     gameMetadata: isRecord(row.game_metadata) ? row.game_metadata : {},
@@ -176,10 +218,23 @@ function toEnrollment(row: IcaChallengeEnrollmentRow): IcaChallengeEnrollment {
   }
 }
 
+function toChallengePlayRecord(row: IcaChallengePlayRow): IcaChallengePlayRecord {
+  return {
+    id: row.id,
+    challengeId: row.desafio_id,
+    userId: row.usuario_id,
+    index: Number(row.indice || 0),
+    isCorrect: Boolean(row.acierto),
+    responseMs: row.ms === null ? null : Number(row.ms),
+    payload: isRecord(row.payload) ? row.payload : {},
+    createdAt: row.creado_at,
+  }
+}
+
 function sanitizeOwnWordsConfig(config: IcaOwnWordsChallengeConfig): IcaOwnWordsChallengeConfig {
   const rounds = ICA_CHALLENGE_ALLOWED_ROUNDS.includes(config.rounds)
     ? config.rounds
-    : 10
+    : 2
 
   const responseSeconds = Math.max(
     ICA_CHALLENGE_MIN_RESPONSE_SECONDS,
@@ -204,9 +259,9 @@ export function getOwnWordsChallengeConfig(
   metadata: Record<string, unknown>,
 ): IcaOwnWordsChallengeConfig {
   const roundsValue = Number(metadata.rounds ?? 10)
-  const rounds = ICA_CHALLENGE_ALLOWED_ROUNDS.includes(roundsValue as 3 | 5 | 10)
-    ? (roundsValue as 3 | 5 | 10)
-    : 10
+  const rounds = ICA_CHALLENGE_ALLOWED_ROUNDS.includes(roundsValue as 1 | 2 | 5 | 10)
+    ? (roundsValue as 1 | 2 | 5 | 10)
+    : 2
 
   const responseSeconds = Math.max(
     ICA_CHALLENGE_MIN_RESPONSE_SECONDS,
@@ -226,7 +281,6 @@ export function buildOwnWordsChallengeQuestions(
   cards: Lexicard[],
   targetLang: string,
   nativeLang: string,
-  rounds: number,
 ): IcaTestQuestion[] {
   const filteredCards = cards.filter((card) => {
     const hasText = card.target.trim() && card.native.trim()
@@ -247,7 +301,7 @@ export function buildOwnWordsChallengeQuestions(
   const uniqueCards = Array.from(uniqueByTarget.values())
   if (uniqueCards.length < 4) return []
 
-  const totalQuestions = Math.max(1, Math.min(10, Math.round(rounds)))
+  const totalQuestions = ICA_CHALLENGE_OWN_WORDS_TOTAL_QUESTIONS
   const questionPool = shuffle(uniqueCards)
   const questions: IcaTestQuestion[] = []
 
@@ -355,7 +409,7 @@ export async function listMyIcaChallenges(
   const { data, error } = await supabase
     .from('ica_challenges')
     .select(
-      'id, challenge_slug, status, result_type, scope, target_lang, native_lang, challenger_user_id, challenged_user_id, winner_user_id, duration_seconds, expires_at, started_at, finalized_at, game_metadata, phases_json, created_at, updated_at, ica_challenge_competitors(challenge_id, user_id, competitor_order, invitation_status, score, payload, accepted_at, rejected_at, created_at, updated_at)',
+      'id, challenge_slug, status, result_type, scope, target_lang, native_lang, challenger_user_id, challenged_user_id, winner_user_id, duration_seconds, expires_at, accept_until, turn_user_id, turn_expires_at, started_at, finalized_at, game_metadata, phases_json, created_at, updated_at, ica_challenge_competitors(challenge_id, user_id, competitor_order, invitation_status, score, payload, accepted_at, rejected_at, created_at, updated_at)',
     )
     .or(`challenger_user_id.eq.${userId},challenged_user_id.eq.${userId}`)
     .order('created_at', { ascending: false })
@@ -380,7 +434,7 @@ export async function getIcaChallengeById(
   const { data, error } = await supabase
     .from('ica_challenges')
     .select(
-      'id, challenge_slug, status, result_type, scope, target_lang, native_lang, challenger_user_id, challenged_user_id, winner_user_id, duration_seconds, expires_at, started_at, finalized_at, game_metadata, phases_json, created_at, updated_at, ica_challenge_competitors(challenge_id, user_id, competitor_order, invitation_status, score, payload, accepted_at, rejected_at, created_at, updated_at)',
+      'id, challenge_slug, status, result_type, scope, target_lang, native_lang, challenger_user_id, challenged_user_id, winner_user_id, duration_seconds, expires_at, accept_until, turn_user_id, turn_expires_at, started_at, finalized_at, game_metadata, phases_json, created_at, updated_at, ica_challenge_competitors(challenge_id, user_id, competitor_order, invitation_status, score, payload, accepted_at, rejected_at, created_at, updated_at)',
     )
     .eq('id', challengeId)
     .maybeSingle()
@@ -391,6 +445,7 @@ export async function getIcaChallengeById(
 }
 
 export async function createIcaOwnWordsChallenge(input: {
+  challengeTypeId?: string
   challengedUserId: string
   scope: IcaChallengeScope
   targetLang?: string
@@ -410,6 +465,7 @@ export async function createIcaOwnWordsChallenge(input: {
     {
       body: {
         action: 'create-own-words',
+        challengeTypeId: input.challengeTypeId || ICA_CHALLENGE_SLUG_OWN_WORDS,
         challengedUserId: input.challengedUserId,
         scope: input.scope,
         targetLang: input.targetLang,
@@ -446,6 +502,23 @@ export async function respondIcaChallengeInvitation(
   if (!data?.ok) throw new Error(data?.error || 'No se pudo actualizar el desafío.')
 }
 
+export async function cancelIcaChallengeInvitation(challengeId: string): Promise<void> {
+  if (!supabase) throw new Error('Falta configurar Supabase')
+
+  const { data, error } = await supabase.functions.invoke<SimpleActionResponse>(
+    'ica-challenges-center',
+    {
+      body: {
+        action: 'cancel-invitation',
+        challengeId,
+      },
+    },
+  )
+
+  if (error) throw error
+  if (!data?.ok) throw new Error(data?.error || 'No se pudo cancelar el desafío.')
+}
+
 export async function listAvailableIcaChallengeUsers(input: {
   targetLang: string
   nativeLang: string
@@ -474,6 +547,9 @@ export async function listAvailableIcaChallengeUsers(input: {
         userId: row.userId,
         displayName: row.displayName,
         username: row.username,
+        nativeLang: row.nativeLang || null,
+        targetLang: row.targetLang || null,
+        cefrLevel: row.cefrLevel || null,
         activeChallengesCount: Number(row.activeChallengesCount || 0),
         canChallenge: Boolean(row.canChallenge),
         blockedReason: row.blockedReason || null,
@@ -482,10 +558,55 @@ export async function listAvailableIcaChallengeUsers(input: {
   }
 }
 
+export async function listIcaChallengeTypes(): Promise<IcaChallengeTypeRecord[]> {
+  if (!supabase) return []
+
+  const { data, error } = await supabase.functions.invoke<ChallengeTypesResponse>(
+    'ica-challenges-center',
+    {
+      body: {
+        action: 'list-challenge-types',
+      },
+    },
+  )
+
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+
+  return (data?.rows || [])
+    .map((row) => {
+      const scopes: IcaChallengeScope[] = Array.isArray(row.scopes)
+        ? row.scopes.filter(
+            (scope): scope is IcaChallengeScope => scope === 'global' || scope === 'language',
+          )
+        : ['global']
+
+      return {
+        id: row.id,
+        name: row.name,
+        iconKey: row.iconKey,
+        isActive: Boolean(row.isActive),
+        isPlayable: Boolean(row.isPlayable),
+        order: Number(row.order || 0),
+        scopes,
+        config: isRecord(row.config) ? row.config : {},
+      }
+    })
+    .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name, 'es'))
+}
+
 export function hasOwnWordsResult(
   challenge: IcaChallengeRecord,
   userId: string,
+  plays?: IcaChallengePlayRecord[],
 ): boolean {
+  if (Array.isArray(plays)) {
+    return (
+      plays.filter((play) => play.userId === userId).length >=
+      ICA_CHALLENGE_OWN_WORDS_TOTAL_QUESTIONS
+    )
+  }
+
   const competitor = challenge.competitors.find((item) => item.userId === userId)
   if (!competitor) return false
   if (!isRecord(competitor.payload)) return false
@@ -525,5 +646,80 @@ export async function submitIcaOwnWordsChallengeResult(input: {
 
 export function getIcaOwnWordsConfigLabel(metadata: Record<string, unknown>): string {
   const config = getOwnWordsChallengeConfig(metadata)
-  return `${config.rounds} rondas · ${config.responseSeconds}s por respuesta`
+  const questionsPerRound = ICA_CHALLENGE_OWN_WORDS_TOTAL_QUESTIONS / config.rounds
+  return `10 preguntas · ${config.rounds} rondas de ${questionsPerRound} · ${config.responseSeconds}s por respuesta`
+}
+
+export async function listIcaChallengePlays(challengeId: string): Promise<IcaChallengePlayRecord[]> {
+  if (!supabase) return []
+
+  const { data, error } = await supabase
+    .from('desafio_jugadas')
+    .select('id, desafio_id, usuario_id, indice, acierto, ms, payload, creado_at')
+    .eq('desafio_id', challengeId)
+    .order('indice', { ascending: true })
+    .order('creado_at', { ascending: true })
+
+  if (error) throw error
+
+  return (data || []).map((row) => toChallengePlayRecord(row as IcaChallengePlayRow))
+}
+
+export async function listIcaChallengePlaysByChallengeIds(
+  challengeIds: string[],
+): Promise<Record<string, IcaChallengePlayRecord[]>> {
+  if (!supabase || challengeIds.length === 0) return {}
+
+  const uniqueChallengeIds = Array.from(
+    new Set(challengeIds.map((id) => id.trim()).filter(Boolean)),
+  )
+  if (uniqueChallengeIds.length === 0) return {}
+
+  const { data, error } = await supabase
+    .from('desafio_jugadas')
+    .select('id, desafio_id, usuario_id, indice, acierto, ms, payload, creado_at')
+    .in('desafio_id', uniqueChallengeIds)
+    .order('indice', { ascending: true })
+    .order('creado_at', { ascending: true })
+
+  if (error) throw error
+
+  const rows = (data || []).map((row) => toChallengePlayRecord(row as IcaChallengePlayRow))
+  return rows.reduce<Record<string, IcaChallengePlayRecord[]>>((acc, row) => {
+    if (!acc[row.challengeId]) acc[row.challengeId] = []
+    acc[row.challengeId].push(row)
+    return acc
+  }, {})
+}
+
+export async function listIcaChallengeProfilesByIds(
+  userIds: string[],
+): Promise<IcaChallengeProfileMap> {
+  if (!supabase || userIds.length === 0) return {}
+
+  const uniqueUserIds = Array.from(
+    new Set(userIds.map((id) => id.trim()).filter(Boolean)),
+  )
+  if (uniqueUserIds.length === 0) return {}
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, display_name, username, avatar_url')
+    .in('id', uniqueUserIds)
+
+  if (error) throw error
+
+  return (data || []).reduce<IcaChallengeProfileMap>((acc, row) => {
+    const id = String((row as { id?: string }).id || '').trim()
+    if (!id) return acc
+
+    acc[id] = {
+      displayName:
+        String((row as { display_name?: string }).display_name || '').trim() || 'Usuario',
+      username: String((row as { username?: string }).username || '').trim() || null,
+      avatarUrl: String((row as { avatar_url?: string }).avatar_url || '').trim() || null,
+    }
+
+    return acc
+  }, {})
 }

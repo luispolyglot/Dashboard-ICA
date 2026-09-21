@@ -381,6 +381,17 @@ export interface IcaChallengeCompetitor {
   updatedAt: string
 }
 
+export interface IcaChallengePlayRecord {
+  id: string
+  challengeId: string
+  userId: string
+  index: number
+  isCorrect: boolean
+  responseMs: number | null
+  payload: Record<string, unknown>
+  createdAt: string
+}
+
 export interface IcaChallengeRecord {
   id: string
   challengeSlug: string
@@ -394,6 +405,9 @@ export interface IcaChallengeRecord {
   winnerUserId: string | null
   durationSeconds: number | null
   expiresAt: string | null
+  acceptUntil: string | null
+  turnUserId: string | null
+  turnExpiresAt: string | null
   startedAt: string | null
   finalizedAt: string | null
   gameMetadata: Record<string, unknown>
@@ -407,9 +421,23 @@ export interface IcaChallengeAvailableUser {
   userId: string
   displayName: string
   username: string | null
+  nativeLang: string | null
+  targetLang: string | null
+  cefrLevel: string | null
   activeChallengesCount: number
   canChallenge: boolean
   blockedReason: string | null
+}
+
+export interface IcaChallengeTypeRecord {
+  id: string
+  name: string
+  iconKey: string
+  isActive: boolean
+  isPlayable: boolean
+  order: number
+  scopes: IcaChallengeScope[]
+  config: Record<string, unknown>
 }
 
 export interface IcaChallengeEnrollment {
@@ -423,7 +451,7 @@ export interface IcaChallengeEnrollment {
 }
 
 export interface IcaOwnWordsChallengeConfig {
-  rounds: 3 | 5 | 10
+  rounds: 1 | 2 | 5 | 10
   responseSeconds: number
 }
 
