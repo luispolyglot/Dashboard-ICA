@@ -17,7 +17,7 @@ import type {
 } from '../types'
 
 export const ICA_CHALLENGE_SLUG_OWN_WORDS = 'ica-own-words'
-export const ICA_CHALLENGE_ALLOWED_ROUNDS = [2, 5] as const
+export const ICA_CHALLENGE_ALLOWED_ROUNDS = [1, 2, 5, 10] as const
 export const ICA_CHALLENGE_OWN_WORDS_TOTAL_QUESTIONS = 10
 export const ICA_CHALLENGE_MIN_RESPONSE_SECONDS = 3
 export const ICA_CHALLENGE_MAX_RESPONSE_SECONDS = 8
@@ -259,8 +259,8 @@ export function getOwnWordsChallengeConfig(
   metadata: Record<string, unknown>,
 ): IcaOwnWordsChallengeConfig {
   const roundsValue = Number(metadata.rounds ?? 10)
-  const rounds = ICA_CHALLENGE_ALLOWED_ROUNDS.includes(roundsValue as 2 | 5)
-    ? (roundsValue as 2 | 5)
+  const rounds = ICA_CHALLENGE_ALLOWED_ROUNDS.includes(roundsValue as 1 | 2 | 5 | 10)
+    ? (roundsValue as 1 | 2 | 5 | 10)
     : 2
 
   const responseSeconds = Math.max(

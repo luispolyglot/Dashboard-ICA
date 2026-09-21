@@ -281,7 +281,7 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
 
   const [tab, setTab] = useState<TabKey>('active')
   const [search, setSearch] = useState('')
-  const [rounds, setRounds] = useState<2 | 5>(2)
+  const [rounds, setRounds] = useState<1 | 2 | 5 | 10>(2)
   const [responseSeconds, setResponseSeconds] = useState(5)
   const [durationDays, setDurationDays] = useState<1 | 2 | 3>(1)
 
@@ -996,14 +996,16 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                       <Label>Rondas</Label>
                       <Select
                         value={String(rounds)}
-                        onValueChange={(value) => setRounds(Number(value) as 2 | 5)}
+                        onValueChange={(value) => setRounds(Number(value) as 1 | 2 | 5 | 10)}
                       >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value='1'>1</SelectItem>
                           <SelectItem value='2'>2</SelectItem>
                           <SelectItem value='5'>5</SelectItem>
+                          <SelectItem value='10'>10</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

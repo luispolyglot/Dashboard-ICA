@@ -50,9 +50,11 @@ function toScope(value: unknown): ChallengeScope {
 
 const OWN_WORDS_TOTAL_QUESTIONS = 10
 
-function toRounds(value: unknown): 2 | 5 {
+function toRounds(value: unknown): 1 | 2 | 5 | 10 {
   const numberValue = Number(value)
-  if (numberValue === 2 || numberValue === 5) return numberValue
+  if (numberValue === 1 || numberValue === 2 || numberValue === 5 || numberValue === 10) {
+    return numberValue
+  }
   return 2
 }
 

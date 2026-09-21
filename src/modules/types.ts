@@ -451,7 +451,7 @@ export interface IcaChallengeEnrollment {
 }
 
 export interface IcaOwnWordsChallengeConfig {
-  rounds: 2 | 5
+  rounds: 1 | 2 | 5 | 10
   responseSeconds: number
 }
 
