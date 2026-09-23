@@ -112,8 +112,7 @@ const PHASE_INFO: Array<{
   {
     key: "phaseUnderstoodExplained",
     label: "Entendido",
-    description:
-      "Te sale bien cuando te concentras, pero necesitas un segundo para construirlo.",
+    description: "El estudiante le explica al coach el foco gramatical.",
   },
   {
     key: "phaseUsed",
@@ -396,6 +395,9 @@ export function CoachingV3SessionBoard({
   const selectedExercises = (board?.focusExercises || []).filter(
     (row) => row.periodNumber === selectedPeriod,
   );
+  const focusExerciseByFocusId = new Map(
+    (board?.focusExercises || []).map((row) => [row.focusId, row]),
+  );
   const selectedAttempts = (board?.focusExerciseAttempts || []).filter(
     (row) => row.periodNumber === selectedPeriod,
   );
@@ -425,6 +427,28 @@ export function CoachingV3SessionBoard({
       : "Las grabaciones se quedan contigo para siempre.";
   const classJoinUrl = board?.session.classJoinUrl?.trim() || "";
   const hasClassLink = Boolean(classJoinUrl);
+  const assignedCoachNameInSelectedPeriod = selectedClasses
+    .map((classRow) => {
+      if (!classRow.assignedByCoachUserId) return null;
+      return (
+        board?.coachers?.classAssignedCoachDisplayNameByClassIndex?.[
+          String(classRow.classIndex)
+        ] || null
+      );
+    })
+    .find((name) => Boolean(name)) || null;
+  const secondaryCoachDisplayName =
+    (mode === "student"
+      ? assignedCoachNameInSelectedPeriod
+      : board?.coachers?.selectedCoachDisplayName) ||
+    board?.coachers?.selectedCoachDisplayName ||
+    coachDisplayName ||
+    "Eve";
+  const isSecondaryCoachPrimary =
+    secondaryCoachDisplayName.trim().toLowerCase() === "luis";
+  const coachLineLabel = isSecondaryCoachPrimary
+    ? "Luis"
+    : `Luis y ${secondaryCoachDisplayName}`;
   const nowTs = Date.now();
   const isScheduledLiveNow =
     hasClassLink &&
@@ -933,21 +957,12 @@ export function CoachingV3SessionBoard({
               <span className="inline-flex size-6 items-center justify-center rounded-full border border-cyan-400/30 bg-cyan-400/20 text-xs font-semibold text-cyan-300">
                 L
               </span>
-              <span className="inline-flex size-6 items-center justify-center rounded-full border border-amber-500/35 bg-amber-500/15 text-xs font-semibold text-amber-300">
-                {(
-                  board.coachers?.selectedCoachDisplayName ||
-                  coachDisplayName ||
-                  "Eve"
-                )
-                  .slice(0, 1)
-                  .toUpperCase()}
-              </span>
-              <p>
-                Luis y{" "}
-                {board.coachers?.selectedCoachDisplayName ||
-                  coachDisplayName ||
-                  "Eve"}
-              </p>
+              {!isSecondaryCoachPrimary ? (
+                <span className="inline-flex size-6 items-center justify-center rounded-full border border-amber-500/35 bg-amber-500/15 text-xs font-semibold text-amber-300">
+                  {secondaryCoachDisplayName.slice(0, 1).toUpperCase()}
+                </span>
+              ) : null}
+              <p>{coachLineLabel}</p>
             </div>
             <div className="mt-2 text-end">
               {hasClassLink ? (
@@ -1162,12 +1177,14 @@ export function CoachingV3SessionBoard({
               }
 
               const progress = focusProgress(focus);
-              const currentPhaseIdx = Math.max(0, Math.min(3, progress - 1));
+              const currentPhaseIdx =
+                progress > 0 ? Math.max(0, Math.min(3, progress - 1)) : null;
               const suggestedPhaseIdx = getSuggestedPhaseIndex(focus);
-              const selectedPhaseIdx =
-                typeof selectedFocusPhase[focus.id] === "number"
-                  ? selectedFocusPhase[focus.id]
-                  : suggestedPhaseIdx;
+              const hasManualPhaseSelection =
+                typeof selectedFocusPhase[focus.id] === "number";
+              const selectedPhaseIdx = hasManualPhaseSelection
+                ? selectedFocusPhase[focus.id]
+                : suggestedPhaseIdx;
               const selectedPhaseInfo =
                 PHASE_INFO[selectedPhaseIdx] || PHASE_INFO[suggestedPhaseIdx];
               const selectedPhaseDone = Boolean(focus[selectedPhaseInfo.key]);
@@ -1233,8 +1250,11 @@ export function CoachingV3SessionBoard({
                   <div className="mt-3 grid grid-cols-4 gap-1.5">
                     {PHASE_LABELS.map((phaseLabel, phaseIdx) => {
                       const done = phaseIdx < progress;
-                      const isCurrent = phaseIdx === currentPhaseIdx;
+                      const isCurrent =
+                        currentPhaseIdx !== null && phaseIdx === currentPhaseIdx;
                       const isSelected = phaseIdx === selectedPhaseIdx;
+                      const isManuallySelected =
+                        hasManualPhaseSelection && isSelected;
                       return (
                         <button
                           key={`${focus.id}-${phaseLabel}`}
@@ -1251,10 +1271,10 @@ export function CoachingV3SessionBoard({
                             className="block h-1.5 rounded-full"
                             style={{
                               background:
-                                isCurrent || done
+                                done || isManuallySelected
                                   ? "var(--v3-cyan)"
                                   : "color-mix(in oklab, var(--v3-line) 88%, black 12%)",
-                              boxShadow: isCurrent
+                              boxShadow: isManuallySelected
                                 ? "0 0 0 3px color-mix(in oklab, var(--v3-cyan) 22%, transparent 78%)"
                                 : "none",
                             }}
@@ -1262,12 +1282,12 @@ export function CoachingV3SessionBoard({
                           <span
                             className="mt-1 block text-[10px]"
                             style={{
-                              color: isSelected
+                              color: isManuallySelected
                                 ? "var(--v3-cyan)"
                                 : isCurrent
                                   ? "var(--v3-text)"
                                   : "var(--v3-muted)",
-                              fontWeight: isSelected || isCurrent ? 600 : 400,
+                              fontWeight: isManuallySelected || isCurrent ? 600 : 400,
                             }}
                           >
                             {phaseLabel}
@@ -1452,13 +1472,42 @@ export function CoachingV3SessionBoard({
                 Ya dominados:
               </span>
               {allCompletedUntilSelected.map((focus) => (
-                <Badge
-                  key={`done-${focus.id}`}
-                  variant="outline"
-                  className="rounded-full border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                >
-                  <SparklesIcon className="mr-1 size-3" /> {focus.focusTitle}
-                </Badge>
+                (() => {
+                  const focusExercise = focusExerciseByFocusId.get(focus.id);
+                  const externalTrainingUrl =
+                    focusExercise?.externalTrainingUrl?.trim() || "";
+                  const trainingHref =
+                    focusExercise?.status === "ready"
+                      ? getCoachingV2ExerciseRoute(
+                          sessionId,
+                          focus.periodNumber,
+                          focus.id,
+                        )
+                      : externalTrainingUrl || null;
+                  const trainingIsExternal =
+                    focusExercise?.status !== "ready" &&
+                    Boolean(externalTrainingUrl);
+
+                  return (
+                    <Badge
+                      key={`done-${focus.id}`}
+                      variant="outline"
+                      className="rounded-full border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                    >
+                      <SparklesIcon className="mr-1 size-3" /> {focus.focusTitle}
+                      {trainingHref ? (
+                        <a
+                          href={trainingHref}
+                          target={trainingIsExternal ? "_blank" : undefined}
+                          rel={trainingIsExternal ? "noopener noreferrer" : undefined}
+                          className="ml-1 underline underline-offset-2"
+                        >
+                          (entrenamiento)
+                        </a>
+                      ) : null}
+                    </Badge>
+                  );
+                })()
               ))}
             </div>
           )}

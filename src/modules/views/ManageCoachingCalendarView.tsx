@@ -363,26 +363,39 @@ export function ManageCoachingCalendarView() {
 
   const todayDateKey = useMemo(() => getLocalDateKey(new Date()), [])
   const currentMonthKey = useMemo(() => todayDateKey.slice(0, 7), [todayDateKey])
+  const activeManagedRows = useMemo(
+    () => managedRows.filter((row) => row.isActive && row.status === 'active'),
+    [managedRows],
+  )
+
   const coaches = useMemo(() => {
     const byId = new Map<string, string>()
-    for (const row of managedRows) {
+    for (const row of activeManagedRows) {
       if (!row.coachUserId) continue
       byId.set(row.coachUserId, row.coachDisplayName || row.coachUserId)
     }
-    if (managedRows.some((row) => row.supportCoachUserId === OWNER_SUPPORT_COACH_USER_ID)) {
+    if (
+      activeManagedRows.some(
+        (row) => row.supportCoachUserId === OWNER_SUPPORT_COACH_USER_ID,
+      )
+    ) {
       byId.set(OWNER_SUPPORT_COACH_USER_ID, OWNER_SUPPORT_COACH_LABEL)
     }
     return Array.from(byId.entries())
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
-  }, [managedRows])
+  }, [activeManagedRows])
 
   const studentsByCoach = useMemo(() => {
-    if (!isSuperAdmin) return managedRows
+    if (!isSuperAdmin) return activeManagedRows
     if (!assignDraft?.coachUserId) return []
-    if (assignDraft.coachUserId === OWNER_SUPPORT_COACH_USER_ID) return managedRows
-    return managedRows.filter((row) => row.coachUserId === assignDraft.coachUserId)
-  }, [assignDraft?.coachUserId, isSuperAdmin, managedRows])
+    if (assignDraft.coachUserId === OWNER_SUPPORT_COACH_USER_ID) {
+      return activeManagedRows
+    }
+    return activeManagedRows.filter(
+      (row) => row.coachUserId === assignDraft.coachUserId,
+    )
+  }, [activeManagedRows, assignDraft?.coachUserId, isSuperAdmin])
 
   const selectedManagedSession = useMemo(() => {
     if (!assignDraft?.sessionId) return null
@@ -446,7 +459,7 @@ export function ManageCoachingCalendarView() {
   const handleOpenAssignModal = (dateKey: string) => {
     const initialSession = isSuperAdmin
       ? null
-      : managedRows.find(
+      : activeManagedRows.find(
           (row) =>
             row.coachUserId === user?.id || row.supportCoachUserId === user?.id,
         ) || null
@@ -1229,8 +1242,10 @@ export function ManageCoachingCalendarView() {
                   value={assignDraft?.coachUserId || ''}
                   onChange={(event) => {
                     const coachId = event.target.value
-                    const firstSession = managedRows.find(
-                      (row) => row.coachUserId === coachId,
+                    const firstSession = activeManagedRows.find((row) =>
+                      coachId === OWNER_SUPPORT_COACH_USER_ID
+                        ? row.supportCoachUserId === OWNER_SUPPORT_COACH_USER_ID
+                        : row.coachUserId === coachId,
                     )
                     setAssignDraft((prev) =>
                       prev
