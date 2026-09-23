@@ -91,9 +91,7 @@ export function ProfileView({
   const [isSavingName, setIsSavingName] = useState(false);
 
   const {
-    currentMonthCode,
     hasCurrentMonthTest,
-    canTakeCurrentMonth,
     canHighlightCurrentMonth,
     featureAvailable,
     wordPool,
@@ -463,22 +461,9 @@ export function ProfileView({
                   ? "Disponible desde mayo de 2026."
                   : hasCurrentMonthTest
                     ? "Ya completaste el test del mes actual."
-                    : wordPool.eligible
+                  : wordPool.eligible
                       ? "Tienes vocabulario suficiente para hacer el test del mes."
                       : `Necesitas ${ICA_TEST_REQUIRED_WORDS} palabras ICA. Tienes ${wordPool.availableWords}.`
-              }
-              actions={
-                canTakeCurrentMonth ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() =>
-                      navigate(`${DASHBOARD_ROUTES.testsIca}/${currentMonthCode}`)
-                    }
-                  >
-                    Hacer test
-                  </Button>
-                ) : undefined
               }
             />
           </div>
