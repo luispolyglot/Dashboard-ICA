@@ -560,8 +560,8 @@ export function MasterNotesView({
         ⭐ Notas Maestras
       </h2>
       <p className='mb-5 text-sm text-muted-foreground'>
-        Crea notas maestras en {targetLang} y cierra cada una al completar entre
-        3:00 y 3:30.
+        Graba frases en {targetLang}: cada nota maestra se completa sola al
+        llegar a 3:00.
       </p>
       {(error || playbackError || playlistsError) && (
         <p className='mb-3 text-sm text-red-400'>
@@ -687,6 +687,7 @@ export function MasterNotesView({
                       </div>
                       <div className='mt-1 text-xs text-muted-foreground'>
                         Duración: {formatDuration(item.total_duration_ms)}
+                        {item.state === 'open' ? ' / 3:00' : ''}
                         {item.state === 'closed'
                           ? ` · Cerrada el: ${formatDate(item.closed_at)}`
                           : ''}

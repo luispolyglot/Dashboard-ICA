@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import confetti from 'canvas-confetti'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   DownloadIcon,
@@ -21,7 +22,16 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { MasterNoteProgressBar } from '../components/MasterNoteProgressBar'
 import { IcaDeletionWarningDialog } from '../components/IcaDeletionWarningDialog'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import {
@@ -29,11 +39,14 @@ import {
   fetchPhraseHistoryPage,
 } from '../services/phraseHistory'
 import {
+  MASTER_NOTE_COMPLETE_DURATION_MS,
   closeMasterNote,
   deleteMasterNote,
   downloadMasterNoteAudio,
   fetchMasterNoteById,
   fetchMasterNoteChunks,
+  fetchNextMasterNoteLabel,
+  formatMasterNoteLabel,
   removeMasterNoteChunk,
 } from '../services/masterNotes'
 import {
@@ -61,8 +74,13 @@ type MasterNoteDetailViewProps = {
   todayVoiceActivationsCount: number
 }
 
-const MIN_DURATION_MS = 3 * 60 * 1000
-const MAX_DURATION_MS = 3 * 60 * 1000 + 30 * 1000
+const MIN_DURATION_MS = MASTER_NOTE_COMPLETE_DURATION_MS
+
+type CompletionCelebration = {
+  noteLabel: string
+  nextNoteLabel: string | null
+  coachNotified: boolean
+}
 
 function formatDuration(durationMs: number): string {
   const totalSeconds = Math.max(0, Math.round(durationMs / 1000))
@@ -125,6 +143,10 @@ export function MasterNoteDetailView({
     useState<MasterNoteChunk | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [challengeOpen, setChallengeOpen] = useState(false)
+  const [celebration, setCelebration] = useState<CompletionCelebration | null>(
+    null,
+  )
+  const celebrationHandledRef = useRef(false)
 
   const {
     error: playbackError,
@@ -219,6 +241,41 @@ export function MasterNoteDetailView({
     setSearchParams(nextParams, { replace: true })
   }, [searchParams, setSearchParams])
 
+  // 🎉 Celebración al completarse la nota (llegamos aquí con ?completed=1 tras guardar el audio)
+  useEffect(() => {
+    if (searchParams.get('completed') !== '1') return
+    if (!note || celebrationHandledRef.current) return
+    celebrationHandledRef.current = true
+
+    const coachNotified = searchParams.get('coach') === '1'
+    const noteLabel = formatMasterNoteLabel(note.name)
+    setCelebration({ noteLabel, nextNoteLabel: null, coachNotified })
+
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('completed')
+    nextParams.delete('coach')
+    setSearchParams(nextParams, { replace: true })
+
+    confetti({
+      particleCount: 120,
+      spread: 160,
+      startVelocity: 26,
+      ticks: 260,
+      origin: { x: 0.5, y: 0.35 },
+      zIndex: 1300,
+    })
+
+    const lang = note.target_lang || targetLang
+    const nativeLang = note.native_lang || ''
+    if (lang && nativeLang) {
+      void fetchNextMasterNoteLabel(lang, nativeLang)
+        .then((nextNoteLabel) => {
+          setCelebration((prev) => (prev ? { ...prev, nextNoteLabel } : prev))
+        })
+        .catch(() => {})
+    }
+  }, [note, searchParams, setSearchParams, targetLang])
+
   const activatedInThisNote = useMemo(() => {
     return new Set(chunks.map((chunk) => chunk.phrase_generation_id))
   }, [chunks])
@@ -280,8 +337,7 @@ export function MasterNoteDetailView({
 
   const canClose =
     !!note && note.state === 'open' && note.total_duration_ms >= MIN_DURATION_MS
-  const canActivateMorePhrases =
-    !!note && note.state === 'open' && note.total_duration_ms < MAX_DURATION_MS
+  const canActivateMorePhrases = !!note && note.state === 'open'
   const canPlayNote = !!note && canPlay(note, chunks.length)
 
   const handlePlayNote = async (): Promise<void> => {
@@ -302,6 +358,19 @@ export function MasterNoteDetailView({
     setClosing(true)
     try {
       const closeResult = await closeMasterNote(note.id)
+      const noteLabel = formatMasterNoteLabel(note.name)
+      setCelebration({
+        noteLabel,
+        nextNoteLabel: null,
+        coachNotified: closeResult.coachingNotificationStatus === 'sent',
+      })
+      if (note.target_lang && note.native_lang) {
+        void fetchNextMasterNoteLabel(note.target_lang, note.native_lang)
+          .then((nextNoteLabel) => {
+            setCelebration((prev) => (prev ? { ...prev, nextNoteLabel } : prev))
+          })
+          .catch(() => {})
+      }
       setNote((prev) =>
         prev
           ? {
@@ -545,21 +614,74 @@ export function MasterNoteDetailView({
       )}
 
       {note.state === 'open' && (
-        <Card className='mb-4 rounded-2xl'>
-          <CardContent className='flex flex-wrap items-center justify-between gap-3'>
-            <p className='text-sm text-muted-foreground'>
-              Cierra la nota cuando supere 3:00.
-            </p>
+        <div className='mb-4 space-y-2'>
+          <MasterNoteProgressBar
+            noteName={note.name}
+            savedMs={note.total_duration_ms}
+          />
+          {canClose ? (
+            // Notas antiguas que ya pasaron de 3:00 sin cerrarse: se completan con un toque.
             <Button
               type='button'
+              className='w-full sm:w-auto'
               onClick={() => void handleCloseNote()}
-              disabled={!canClose || closing}
+              disabled={closing}
             >
-              {closing ? 'Cerrando...' : 'Cerrar nota maestra'}
+              {closing ? 'Completando...' : '🎉 Completar nota maestra'}
             </Button>
-          </CardContent>
-        </Card>
+          ) : (
+            <p className='text-xs text-muted-foreground'>
+              Se completa sola cuando guardes la frase que la lleve a 3:00.
+            </p>
+          )}
+        </div>
       )}
+
+      <Dialog
+        open={Boolean(celebration)}
+        onOpenChange={(open) => {
+          if (!open) setCelebration(null)
+        }}
+      >
+        <DialogContent className='text-center sm:max-w-sm'>
+          <DialogHeader className='items-center text-center'>
+            <div className='mb-1 text-5xl leading-none' aria-hidden='true'>
+              🎉
+            </div>
+            <DialogTitle className='font-serif text-2xl'>
+              {celebration?.noteLabel} completada
+            </DialogTitle>
+            <DialogDescription className='text-base text-balance'>
+              {celebration?.nextNoteLabel
+                ? `Tu próxima frase empezará la ${celebration.nextNoteLabel}.`
+                : 'Tu próxima frase empezará una nueva Nota Maestra.'}
+            </DialogDescription>
+          </DialogHeader>
+          {celebration?.coachNotified && (
+            <p className='rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm'>
+              📩 Hemos avisado a tu coach para que te dé feedback de
+              pronunciación.
+            </p>
+          )}
+          <DialogFooter className='flex-col gap-2 sm:flex-col'>
+            <Button type='button' onClick={() => setCelebration(null)}>
+              ¡Genial!
+            </Button>
+            {isChallengeEnabled && challengePhrases.length > 0 && (
+              <Button
+                type='button'
+                variant='secondary'
+                onClick={() => {
+                  setCelebration(null)
+                  setChallengeOpen(true)
+                }}
+              >
+                🎯 Probar la nota desafiante
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card className='rounded-2xl'>
         <CardContent>
@@ -682,12 +804,6 @@ export function MasterNoteDetailView({
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder='Buscar frase...'
                 />
-                {!canActivateMorePhrases && (
-                  <p className='text-xs font-semibold text-red-400'>
-                    Límite alcanzado: esta nota superó 3:30 y ya no admite
-                    nuevas activaciones.
-                  </p>
-                )}
                 <label className='inline-flex items-center gap-2 text-xs text-muted-foreground'>
                   <input
                     type='checkbox'

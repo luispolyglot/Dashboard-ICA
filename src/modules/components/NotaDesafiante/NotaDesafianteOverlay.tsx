@@ -19,6 +19,8 @@ import {
   isSpeechRecognitionSupported,
   listenOnce,
   playBeep,
+  playFailTone,
+  playSuccessChime,
   speakAsync,
   stopSpeaking,
   wait,
@@ -37,8 +39,13 @@ type Props = {
 type Phase = 'preparing' | 'error' | 'intro' | 'running' | 'paused' | 'finished'
 type Step = 'prompt' | 'listening' | 'feedback'
 
+// Con al menos estas palabras bien (sin acertar el trozo entero) se dice «Casi».
+const ALMOST_MIN_WORDS = 2
+
 type Feedback = {
   correct: boolean
+  /** No es correcto, pero ha dicho bien varias palabras. Cuenta como fallo en la nota. */
+  almost?: boolean
   marks: WordMark[]
   heard: string
   note?: string
@@ -234,7 +241,12 @@ export function NotaDesafianteOverlay({
         }
 
         const check = checkAnswer(round.target, outcome.candidates)
-        outcomeFeedback = { correct: check.correct, marks: check.marks, heard: check.heard }
+        outcomeFeedback = {
+          correct: check.correct,
+          almost: !check.correct && check.matchedWords >= ALMOST_MIN_WORDS,
+          marks: check.marks,
+          heard: check.heard,
+        }
       }
 
       setResultAt(position, outcomeFeedback.correct)
@@ -242,10 +254,17 @@ export function NotaDesafianteOverlay({
       setStep('feedback')
 
       if (outcomeFeedback.correct) {
-        await playBeep(1320, 120)
-        await wait(900)
+        await playSuccessChime()
+        await wait(600)
       } else {
-        // Si falla, suena la versión correcta.
+        // «Casi» si ha dicho bien varias palabras; si no, tono de fallo.
+        // Después, en los dos casos, suena la versión correcta como siempre.
+        if (outcomeFeedback.almost) {
+          await speakAsync('Casi.', nativeLang)
+        } else {
+          await playFailTone()
+        }
+        if (cancelled()) return
         await wait(250)
         if (cancelled()) return
         await speakAsync(round.target, targetLang, 0.95)
@@ -310,7 +329,7 @@ export function NotaDesafianteOverlay({
   // ---------------------------------------------------------------- vista
   return (
     <div className='fixed inset-0 z-100 flex flex-col bg-[#0A1128] text-slate-100'>
-      <div className='flex items-center justify-between gap-3 border-b border-white/10 px-5 py-3'>
+      <div className='flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-5 py-3'>
         <div className='min-w-0'>
           <p className='text-[11px] font-semibold tracking-[0.12em] text-sky-300 uppercase'>
             🎯 Nota desafiante
@@ -327,8 +346,9 @@ export function NotaDesafianteOverlay({
         </Button>
       </div>
 
-      <div className='flex flex-1 items-center justify-center overflow-y-auto px-5 py-8'>
-        <div className='w-full max-w-xl'>
+      {/* m-auto centra cuando cabe, y cuando no cabe deja hacer scroll sin cortar la parte de arriba */}
+      <div className='flex min-h-0 flex-1 overflow-y-auto px-5 py-8'>
+        <div className='m-auto w-full max-w-xl'>
           {phase === 'preparing' && (
             <div className='text-center'>
               <p className='mb-3 font-serif text-2xl font-bold'>Preparando tu desafío…</p>
@@ -461,10 +481,12 @@ export function NotaDesafianteOverlay({
                         'mb-4 inline-block rounded-full border-[1.5px] px-3 py-0.5 text-sm font-bold',
                         feedback.correct
                           ? 'border-emerald-400 text-emerald-300'
-                          : 'border-rose-400 text-rose-300',
+                          : feedback.almost
+                            ? 'border-amber-400 text-amber-300'
+                            : 'border-rose-400 text-rose-300',
                       )}
                     >
-                      {feedback.correct ? 'Correcto' : 'Incorrecto'}
+                      {feedback.correct ? '✓ Correcto' : feedback.almost ? 'Casi' : 'Incorrecto'}
                     </span>
                     <p className='mb-1 text-xs tracking-wider text-slate-400 uppercase'>
                       {feedback.correct ? 'Has dicho' : 'Correcto sería'}
