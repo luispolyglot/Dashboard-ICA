@@ -309,7 +309,20 @@ export type CoachingV2FocusExerciseAttempt = {
   blockScores: unknown
   tagScores: unknown
   failures: unknown
+  /** Todas las respuestas del alumno (intentos nuevos). Vacío en intentos antiguos. */
+  answers?: CoachingV2AttemptAnswer[]
   submittedAt: string
+}
+
+export type CoachingV2AttemptAnswer = {
+  block: 'reconocer' | 'construir' | 'conversacion'
+  blockTitle: string
+  question: string
+  unit?: string
+  mine: string
+  found?: string | null
+  expected: string
+  ok: boolean
 }
 
 export type CoachingV2SessionBoard = {
@@ -807,6 +820,7 @@ export async function submitCoachingV2FocusExerciseAttempt(input: {
   blockScores: unknown[]
   tagScores: unknown[]
   failures: unknown[]
+  answers?: CoachingV2AttemptAnswer[]
 }): Promise<{ phaseTrainedUpdated: boolean }> {
   const data = await invokeCoachingFunction<{
     ok?: boolean
@@ -825,6 +839,7 @@ export async function submitCoachingV2FocusExerciseAttempt(input: {
       blockScores: input.blockScores,
       tagScores: input.tagScores,
       failures: input.failures,
+      answers: input.answers || [],
     },
     'No se pudo guardar el resultado del ejercicio.',
   )
