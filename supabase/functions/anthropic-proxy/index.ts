@@ -1,5 +1,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import {
+  createAnthropicToolCaller,
+  generateCoachingFocusExercise,
+} from '../_shared/coaching-focus-exercise.ts'
+import {
   generateActivationText,
   normalizeSpaces,
   splitExistingText,
@@ -157,7 +161,9 @@ type CoachingFocusExercisePayload = {
   nativeLang: string
   level: string
   focusTitle: string
+  focusComment?: string
   studentContext?: string
+  studentName?: string
   focusSlot?: string
   phase?: string
 }
@@ -181,10 +187,6 @@ type RequestPayload =
   | ManualPhraseSuggestionPayload
   | SplitPhrasePayload
   | CoachingFocusExercisePayload
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -641,547 +643,6 @@ function parsePhraseTokenInsight(raw: string | null): {
     grammarTip,
     examples,
   }
-}
-
-function parseCoachingFocusExercise(raw: string | null): {
-  exercise: Record<string, unknown> | null
-  errorReason: string | null
-} {
-  const parsed = parseLastJsonObject(raw)
-  if (!parsed) return { exercise: null, errorReason: 'invalid_json' }
-  return parseCoachingFocusExerciseObject(parsed)
-}
-
-function parseCoachingFocusExerciseObject(parsed: Record<string, unknown>): {
-  exercise: Record<string, unknown> | null
-  errorReason: string | null
-} {
-  if (!isRecord(parsed.etiquetas)) return { exercise: null, errorReason: 'missing_etiquetas' }
-
-  if (!Array.isArray(parsed.bloques)) {
-    return { exercise: null, errorReason: 'invalid_bloques_count' }
-  }
-
-  const bloques = parsed.bloques.filter((item): item is Record<string, unknown> => isRecord(item))
-
-  const normalizeBlockId = (value: unknown): 'reconocer' | 'construir' | 'conversacion' | null => {
-    if (typeof value !== 'string') return null
-    const normalized = value
-      .trim()
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-
-    if (normalized === 'reconocer') return 'reconocer'
-    if (normalized === 'construir') return 'construir'
-    if (normalized === 'conversacion') return 'conversacion'
-    return null
-  }
-
-  const orderedBlocks: Record<string, unknown>[] = []
-  const requiredIds: Array<'reconocer' | 'construir' | 'conversacion'> = ['reconocer', 'construir', 'conversacion']
-  let canResolveById = true
-
-  for (const id of requiredIds) {
-    const block = bloques.find((item) => normalizeBlockId(item.id) === id)
-    if (!block) canResolveById = false
-    if (block) orderedBlocks.push(block)
-  }
-
-  if (!canResolveById) {
-    if (bloques.length < 3) {
-      return { exercise: null, errorReason: 'invalid_bloques_count' }
-    }
-    orderedBlocks.length = 0
-    for (let idx = 0; idx < requiredIds.length; idx += 1) {
-      const original = bloques[idx]
-      orderedBlocks.push({
-        ...original,
-        id: requiredIds[idx],
-      })
-    }
-  }
-
-  parsed.bloques = orderedBlocks
-
-  const recoBlock = parsed.bloques[0]
-  if (isRecord(recoBlock) && Array.isArray(recoBlock.items) && recoBlock.items.length > 0) {
-    const firstItem = recoBlock.items[0]
-    if (isRecord(firstItem) && Array.isArray(firstItem.options)) {
-      const options = firstItem.options.filter(isRecord)
-      for (const option of options) {
-        const text = typeof option.t === 'string' ? option.t : ''
-        if (!text.includes('[SIN_ERROR_REAL]')) continue
-        const replacement = options.find((candidate) => {
-          const candidateText = typeof candidate.t === 'string' ? candidate.t.trim() : ''
-          return candidateText.length > 0 && !candidateText.includes('[SIN_ERROR_REAL]')
-        })
-        option.t = replacement && typeof replacement.t === 'string'
-          ? replacement.t
-          : 'Frase con error típico del foco'
-      }
-    }
-  }
-
-  return { exercise: parsed, errorReason: null }
-}
-
-function buildInvalidJsonSnippet(raw: string | null): string | null {
-  if (!raw) return null
-
-  const normalized = raw.replace(/\s+/g, ' ').trim()
-  if (!normalized) return null
-
-  return normalized.slice(0, 800)
-}
-
-function buildSnippetFromUnknown(value: unknown): string | null {
-  if (typeof value === 'string') return buildInvalidJsonSnippet(value)
-  if (!value) return null
-  try {
-    return buildInvalidJsonSnippet(JSON.stringify(value))
-  } catch {
-    return null
-  }
-}
-
-function asTrimmedString(value: unknown, fallback = ''): string {
-  return typeof value === 'string' ? value.trim() || fallback : fallback
-}
-
-function toStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return []
-  return value
-    .filter((item): item is string => typeof item === 'string')
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
-
-function toStringMap(value: unknown): Record<string, string> {
-  if (!isRecord(value)) return {}
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([, item]) => typeof item === 'string')
-      .map(([key, item]) => [key.trim(), String(item).trim()])
-      .filter(([key, item]) => key.length > 0 && item.length > 0),
-  )
-}
-
-function buildCoachingFocusHeaderTool(): AnthropicToolDefinition {
-  return {
-    name: 'report_coaching_focus_header',
-    description: 'Devuelve metadatos del ejercicio: subtitulo, etiquetas y equivalencias',
-    input_schema: {
-      type: 'object',
-      properties: {
-        foco_subtitulo: { type: 'string' },
-        etiquetas: {
-          type: 'object',
-          additionalProperties: { type: 'string' },
-        },
-        equivalencias: {
-          type: 'object',
-          additionalProperties: { type: 'string' },
-        },
-      },
-      required: ['foco_subtitulo', 'etiquetas', 'equivalencias'],
-    },
-  }
-}
-
-function buildCoachingFocusReconocerTool(): AnthropicToolDefinition {
-  return {
-    name: 'report_coaching_focus_reconocer',
-    description: 'Devuelve el bloque reconocer del ejercicio',
-    input_schema: {
-      type: 'object',
-      properties: {
-        titulo: { type: 'string' },
-        instruccion: { type: 'string' },
-        items: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              lead: { type: 'string' },
-              tags: { type: 'array', items: { type: 'string' } },
-              options: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    t: { type: 'string' },
-                    ok: { type: 'boolean' },
-                    why: { type: 'string' },
-                  },
-                  required: ['t', 'ok', 'why'],
-                },
-              },
-            },
-            required: ['lead', 'tags', 'options'],
-          },
-        },
-      },
-      required: ['titulo', 'instruccion', 'items'],
-    },
-  }
-}
-
-function buildCoachingFocusConstruirTool(): AnthropicToolDefinition {
-  return {
-    name: 'report_coaching_focus_construir',
-    description: 'Devuelve el bloque construir del ejercicio',
-    input_schema: {
-      type: 'object',
-      properties: {
-        titulo: { type: 'string' },
-        instruccion: { type: 'string' },
-        items: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              situacion: { type: 'string' },
-              ejemplo: { type: 'string' },
-              verbos: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    nombre: { type: 'string' },
-                    formas: { type: 'array', items: { type: 'string' } },
-                    mal: { type: 'array', items: { type: 'string' } },
-                    tags: { type: 'array', items: { type: 'string' } },
-                    nota: { type: 'string' },
-                  },
-                  required: ['nombre', 'formas', 'mal', 'tags', 'nota'],
-                },
-              },
-            },
-            required: ['situacion', 'ejemplo', 'verbos'],
-          },
-        },
-      },
-      required: ['titulo', 'instruccion', 'items'],
-    },
-  }
-}
-
-function buildCoachingFocusConversacionTool(): AnthropicToolDefinition {
-  return {
-    name: 'report_coaching_focus_conversacion',
-    description: 'Devuelve el bloque conversacion del ejercicio',
-    input_schema: {
-      type: 'object',
-      properties: {
-        titulo: { type: 'string' },
-        instruccion: { type: 'string' },
-        lineas: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              quien: { type: 'string' },
-              texto: { type: 'string' },
-            },
-            required: ['quien', 'texto'],
-          },
-        },
-        items: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              verbo: { type: 'string' },
-              formas: { type: 'array', items: { type: 'string' } },
-              show: { type: 'string' },
-              tags: { type: 'array', items: { type: 'string' } },
-              why: { type: 'string' },
-            },
-            required: ['verbo', 'formas', 'show', 'tags', 'why'],
-          },
-        },
-      },
-      required: ['titulo', 'instruccion', 'lineas', 'items'],
-    },
-  }
-}
-
-function buildCoachingFocusExerciseContextPrompt(input: {
-  targetLang: string
-  focusTitle: string
-  level: string
-  studentContext: string
-  focusSlot: string
-  phase: string
-  nativeLang: string
-}): string {
-  return [
-    'Eres el generador de ejercicios del programa Coaching ICA, un programa de coaching linguistico 1:1.',
-    'Generas contenido didactico para un foco gramatical de un alumno concreto.',
-    '',
-    'CONTEXTO DEL ENCARGO',
-    `- Idioma objetivo: ${input.targetLang}`,
-    `- Foco gramatical: ${input.focusTitle}`,
-    `- Nivel del alumno: ${input.level}`,
-    `- Contexto del alumno: ${input.studentContext || 'Sin contexto adicional'}`,
-    `- Slot: ${input.focusSlot} · Fase: ${input.phase}`,
-    '',
-    'REGLAS GENERALES',
-    '- Las frases del idioma objetivo deben sonar reales para el contexto del alumno.',
-    '- El vocabulario no puede pasar del nivel indicado y se evalua gramatica, no palabras raras.',
-    `- Explicaciones SIEMPRE en ${input.nativeLang}, en segunda persona, maximo dos frases.`,
-    '- En explicaciones evita usar las palabras "correcto" o "incorrecto".',
-  ].join('\n')
-}
-
-async function generateCoachingFocusExerciseByBlocks(input: {
-  targetLang: string
-  nativeLang: string
-  focusTitle: string
-  level: string
-  studentContext: string
-  focusSlot: string
-  phase: string
-}): Promise<{ exercise: Record<string, unknown> | null; errorReason: string | null; invalidJsonSnippet: string | null }> {
-  const contextPrompt = buildCoachingFocusExerciseContextPrompt(input)
-
-  const headerPrompt = [
-    contextPrompt,
-    '',
-    'TAREA',
-    '- Devuelve solo cabecera del ejercicio.',
-    '- foco_subtitulo: una frase breve en espanol sobre que se evalua.',
-    '- etiquetas: objeto clave->nombre (2 a 4 claves).',
-    '- equivalencias: objeto cifra->palabra del idioma objetivo cuando aplique.',
-  ].join('\n')
-
-  const headerResult = await callAnthropic(
-    'Generas cabeceras didacticas de ejercicios de gramatica. Responde usando la tool definida.',
-    headerPrompt,
-    {
-      maxTokens: 700,
-      temperature: 0.1,
-      tool: buildCoachingFocusHeaderTool(),
-    },
-  )
-
-  const headerRaw = headerResult.toolInput || parseLastJsonObject(headerResult.text)
-  if (!headerRaw || !isRecord(headerRaw)) {
-    return {
-      exercise: null,
-      errorReason: 'invalid_header',
-      invalidJsonSnippet: buildInvalidJsonSnippet(headerResult.text),
-    }
-  }
-
-  const etiquetas = toStringMap(headerRaw.etiquetas)
-  const equivalencias = toStringMap(headerRaw.equivalencias)
-  const focoSubtitulo = asTrimmedString(headerRaw.foco_subtitulo, `Practicas ${input.focusTitle}`)
-
-  const tagKeys = Object.keys(etiquetas)
-  const tagsPromptLine = tagKeys.length > 0
-    ? `Usa estas etiquetas exactamente en tags (1 o 2 por unidad): ${tagKeys.join(', ')}.`
-    : 'Si usas tags, manten entre 1 y 2 por unidad y usa claves cortas en minusculas.'
-
-  const reconocerPrompt = [
-    contextPrompt,
-    '',
-    'TAREA BLOQUE reconocer',
-    '- Genera 4 preguntas de opcion multiple.',
-    '- Cada pregunta con 3 opciones y exactamente 1 opcion con ok=true.',
-    '- Distractores plausibles del foco y nivel.',
-    '- why en espanol y maximo dos frases.',
-    tagsPromptLine,
-  ].join('\n')
-
-  const construirPrompt = [
-    contextPrompt,
-    '',
-    'TAREA BLOQUE construir',
-    '- Genera 4 situaciones para escritura libre.',
-    '- Evalua gramatica en verbos, no una frase exacta cerrada.',
-    '- Cada verbo con nombre, formas, mal, tags y nota.',
-    '- formas: nucleo verbal en minusculas, sin acentos, sin apostrofes y sin sujeto.',
-    '- Entre todos los items, crea entre 5 y 7 unidades verbales.',
-    '- Al menos un item con dos verbos en contraste.',
-    tagsPromptLine,
-  ].join('\n')
-
-  const conversacionPrompt = [
-    contextPrompt,
-    '',
-    'TAREA BLOQUE conversacion',
-    '- Genera dialogo natural de 4 o 5 lineas con exactamente 5 huecos.',
-    '- Huecos en texto como {0}...{4}, alineados con items.',
-    '- El alumno ve solo el infinitivo en verbo.',
-    '- formas contiene solo lo que va dentro del hueco.',
-    '- why en espanol y maximo dos frases.',
-    tagsPromptLine,
-  ].join('\n')
-
-  const [reconocerResult, construirResult, conversacionResult] = await Promise.all([
-    callAnthropic(
-      'Generas el bloque reconocer para un ejercicio gramatical. Responde usando la tool definida.',
-      reconocerPrompt,
-      {
-        maxTokens: 1200,
-        temperature: 0.1,
-        tool: buildCoachingFocusReconocerTool(),
-      },
-    ),
-    callAnthropic(
-      'Generas el bloque construir para un ejercicio gramatical. Responde usando la tool definida.',
-      construirPrompt,
-      {
-        maxTokens: 1500,
-        temperature: 0.1,
-        tool: buildCoachingFocusConstruirTool(),
-      },
-    ),
-    callAnthropic(
-      'Generas el bloque conversacion para un ejercicio gramatical. Responde usando la tool definida.',
-      conversacionPrompt,
-      {
-        maxTokens: 1200,
-        temperature: 0.1,
-        tool: buildCoachingFocusConversacionTool(),
-      },
-    ),
-  ])
-
-  const recoRaw = reconocerResult.toolInput || parseLastJsonObject(reconocerResult.text)
-  if (!recoRaw || !isRecord(recoRaw)) {
-    return {
-      exercise: null,
-      errorReason: 'invalid_reconocer_block',
-      invalidJsonSnippet: buildInvalidJsonSnippet(reconocerResult.text),
-    }
-  }
-
-  let recoItems = Array.isArray(recoRaw.items)
-    ? recoRaw.items.filter(isRecord)
-    : []
-
-  if (recoItems.length === 0) {
-    const recoRetryResult = await callAnthropic(
-      'Generas el bloque reconocer para un ejercicio gramatical. Responde usando la tool definida.',
-      [
-        reconocerPrompt,
-        '',
-        'REINTENTO OBLIGATORIO',
-        '- Tu respuesta anterior vino sin items validos.',
-        '- Devuelve EXACTAMENTE 4 items en "items".',
-        '- Cada item debe incluir lead, tags y options.',
-        '- Cada item debe tener 3 options y exactamente una con ok=true.',
-      ].join('\n'),
-      {
-        maxTokens: 1200,
-        temperature: 0,
-        tool: buildCoachingFocusReconocerTool(),
-      },
-    )
-
-    const recoRetryRaw = recoRetryResult.toolInput || parseLastJsonObject(recoRetryResult.text)
-    if (recoRetryRaw && isRecord(recoRetryRaw)) {
-      recoItems = Array.isArray(recoRetryRaw.items)
-        ? recoRetryRaw.items.filter(isRecord)
-        : []
-      recoRaw.titulo = asTrimmedString(recoRetryRaw.titulo, asTrimmedString(recoRaw.titulo, 'Reconocer'))
-      recoRaw.instruccion = asTrimmedString(recoRetryRaw.instruccion, asTrimmedString(recoRaw.instruccion))
-    }
-  }
-
-  const construirRaw = construirResult.toolInput || parseLastJsonObject(construirResult.text)
-  if (!construirRaw || !isRecord(construirRaw)) {
-    return {
-      exercise: null,
-      errorReason: 'invalid_construir_block',
-      invalidJsonSnippet: buildInvalidJsonSnippet(construirResult.text),
-    }
-  }
-
-  const conversacionRaw = conversacionResult.toolInput || parseLastJsonObject(conversacionResult.text)
-  if (!conversacionRaw || !isRecord(conversacionRaw)) {
-    return {
-      exercise: null,
-      errorReason: 'invalid_conversacion_block',
-      invalidJsonSnippet: buildInvalidJsonSnippet(conversacionResult.text),
-    }
-  }
-
-  const buildItems = Array.isArray(construirRaw.items) ? construirRaw.items.filter(isRecord) : []
-  const dialogItems = Array.isArray(conversacionRaw.items) ? conversacionRaw.items.filter(isRecord) : []
-  const dialogLines = Array.isArray(conversacionRaw.lineas) ? conversacionRaw.lineas.filter(isRecord) : []
-
-  if (recoItems.length === 0) {
-    return {
-      exercise: null,
-      errorReason: 'invalid_reconocer_items',
-      invalidJsonSnippet: buildSnippetFromUnknown(recoRaw),
-    }
-  }
-  if (buildItems.length === 0) {
-    return {
-      exercise: null,
-      errorReason: 'invalid_construir_items',
-      invalidJsonSnippet: buildSnippetFromUnknown(construirRaw),
-    }
-  }
-  if (dialogItems.length === 0 || dialogLines.length === 0) {
-    return {
-      exercise: null,
-      errorReason: 'invalid_conversacion_items',
-      invalidJsonSnippet: buildSnippetFromUnknown(conversacionRaw),
-    }
-  }
-
-  const buildUnitsCount = buildItems.reduce((acc, item) => {
-    if (!isRecord(item)) return acc
-    const verbos = Array.isArray(item.verbos) ? item.verbos.filter(isRecord) : []
-    return acc + verbos.length
-  }, 0)
-  const scoringUnits = recoItems.length + buildUnitsCount + dialogItems.length
-
-  const exerciseCandidate: Record<string, unknown> = {
-    idioma: input.targetLang,
-    nivel: input.level,
-    foco: input.focusTitle,
-    foco_subtitulo: focoSubtitulo,
-    foco_slot: input.focusSlot,
-    fase: input.phase,
-    umbral: Math.max(1, scoringUnits - 2),
-    equivalencias,
-    etiquetas,
-    bloques: [
-      {
-        id: 'reconocer',
-        titulo: asTrimmedString(recoRaw.titulo, 'Reconocer'),
-        instruccion: asTrimmedString(recoRaw.instruccion),
-        items: recoItems,
-      },
-      {
-        id: 'construir',
-        titulo: asTrimmedString(construirRaw.titulo, 'Construir'),
-        instruccion: asTrimmedString(construirRaw.instruccion),
-        items: buildItems,
-      },
-      {
-        id: 'conversacion',
-        titulo: asTrimmedString(conversacionRaw.titulo, 'En conversacion'),
-        instruccion: asTrimmedString(conversacionRaw.instruccion),
-        lineas: dialogLines,
-        items: dialogItems,
-      },
-    ],
-  }
-
-  const parsed = parseCoachingFocusExerciseObject(exerciseCandidate)
-  if (!parsed.exercise) {
-    return { exercise: null, errorReason: parsed.errorReason, invalidJsonSnippet: null }
-  }
-
-  return { exercise: parsed.exercise, errorReason: null, invalidJsonSnippet: null }
 }
 
 Deno.serve(async (req) => {
@@ -1669,25 +1130,43 @@ Deno.serve(async (req) => {
         })
       }
 
-      const generated = await generateCoachingFocusExerciseByBlocks({
-        targetLang,
-        nativeLang,
-        focusTitle,
-        level,
-        studentContext,
-        focusSlot,
-        phase,
-      })
+      const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
+      if (!apiKey) throw new Error('Missing ANTHROPIC_API_KEY secret')
+
+      const generated = await generateCoachingFocusExercise(
+        createAnthropicToolCaller({
+          apiKey,
+          model:
+            Deno.env.get('ANTHROPIC_COACHING_MODEL') ||
+            Deno.env.get('ANTHROPIC_MODEL') ||
+            'claude-sonnet-4-6',
+          baseUrl: Deno.env.get('ANTHROPIC_BASE_URL') || undefined,
+        }),
+        {
+          targetLang,
+          nativeLang,
+          focusTitle,
+          focusComment:
+            typeof payload.focusComment === 'string' ? payload.focusComment.trim() : '',
+          level,
+          studentContext,
+          studentName:
+            typeof payload.studentName === 'string' ? payload.studentName.trim() : '',
+          focusSlot,
+          phase,
+        },
+      )
 
       if (!generated.exercise) {
         return jsonResponse(200, {
           exercise: null,
           error: `invalid_schema:${generated.errorReason || 'unknown'}`,
           invalidJsonSnippet: generated.invalidJsonSnippet,
+          warnings: generated.warnings,
         })
       }
 
-      return jsonResponse(200, { exercise: generated.exercise })
+      return jsonResponse(200, { exercise: generated.exercise, warnings: generated.warnings })
     }
 
     return jsonResponse(400, { error: 'Unsupported action' })

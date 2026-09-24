@@ -1669,13 +1669,20 @@ async function requestFocusExerciseGeneration(input: {
   nativeLang: string | null
   level: string
   focusTitle: string
+  focusComment: string | null
   studentContext: string | null
+  studentName: string | null
   focusSlot: string
-}): Promise<{ exercise: Record<string, unknown> | null; error: string | null; invalidJsonSnippet: string | null }> {
+}): Promise<{
+  exercise: Record<string, unknown> | null
+  error: string | null
+  invalidJsonSnippet: string | null
+  warnings: string[]
+}> {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     if (!supabaseUrl) {
-      return { exercise: null, error: 'SUPABASE_URL is not configured', invalidJsonSnippet: null }
+      return { exercise: null, error: 'SUPABASE_URL is not configured', invalidJsonSnippet: null, warnings: [] }
     }
 
     const response = await fetch(`${supabaseUrl}/functions/v1/anthropic-proxy`, {
@@ -1690,7 +1697,9 @@ async function requestFocusExerciseGeneration(input: {
         nativeLang: input.nativeLang || 'es',
         level: input.level,
         focusTitle: input.focusTitle,
+        focusComment: input.focusComment || '',
         studentContext: input.studentContext || '',
+        studentName: input.studentName || '',
         focusSlot: input.focusSlot,
         phase: 'Entrenado',
       }),
@@ -1700,7 +1709,11 @@ async function requestFocusExerciseGeneration(input: {
       exercise?: unknown
       error?: string
       invalidJsonSnippet?: unknown
+      warnings?: unknown
     }
+    const warnings = Array.isArray(responseData.warnings)
+      ? responseData.warnings.filter((item): item is string => typeof item === 'string').slice(0, 10)
+      : []
 
     const invalidJsonSnippet = typeof responseData.invalidJsonSnippet === 'string'
       ? responseData.invalidJsonSnippet.trim().slice(0, 800)
@@ -1711,6 +1724,7 @@ async function requestFocusExerciseGeneration(input: {
         exercise: null,
         error: responseData.error || `anthropic_proxy_error_${response.status}`,
         invalidJsonSnippet,
+        warnings,
       }
     }
 
@@ -1726,16 +1740,18 @@ async function requestFocusExerciseGeneration(input: {
         exercise: null,
         error: responseData.error || 'invalid_exercise_payload',
         invalidJsonSnippet,
+        warnings,
       }
     }
 
-    return { exercise, error: null, invalidJsonSnippet: null }
+    return { exercise, error: null, invalidJsonSnippet: null, warnings }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown_request_error'
     return {
       exercise: null,
       error: `anthropic_proxy_request_failed:${message}`,
       invalidJsonSnippet: null,
+      warnings: [],
     }
   }
 }
@@ -1745,7 +1761,7 @@ async function appendFocusExerciseGenerationLog(input: {
   sessionId: string
   focusId: string
   periodNumber: number
-  triggerSource: 'create_focus' | 'regenerate' | 'carry_over' | 'unknown'
+  triggerSource: 'create_focus' | 'edit_focus' | 'regenerate' | 'carry_over' | 'unknown'
   stage: string
   status: 'info' | 'success' | 'error'
   message?: string | null
@@ -1779,7 +1795,7 @@ async function runFocusExerciseGeneration(input: {
   level: string
   studentContext: string | null
   focusSlot: string
-  triggerSource?: 'create_focus' | 'regenerate' | 'carry_over' | 'unknown'
+  triggerSource?: 'create_focus' | 'edit_focus' | 'regenerate' | 'carry_over' | 'unknown'
   requestedBy?: string | null
 }): Promise<void> {
   const triggerSource = input.triggerSource || 'unknown'
@@ -1824,15 +1840,56 @@ async function runFocusExerciseGeneration(input: {
     return
   }
 
+  // Datos extra para personalizar el ejercicio: nota del coach y nombre del alumno.
+  const { data: focusExtra } = await input.adminClient
+    .from('coaching_v2_focuses')
+    .select('focus_comment')
+    .eq('id', input.focusId)
+    .maybeSingle()
+  const { data: sessionExtra } = await input.adminClient
+    .from('coaching_sessions')
+    .select('user_id')
+    .eq('id', input.sessionId)
+    .maybeSingle()
+  let studentName: string | null = null
+  if (sessionExtra?.user_id) {
+    const names = await fetchProfileDisplayNamesByIds(input.adminClient, [String(sessionExtra.user_id)])
+    const fullName = names.rows[0]?.displayName || ''
+    studentName = fullName && fullName !== 'Coach' ? fullName.split(/\s+/)[0] : null
+  }
+
   const generated = await requestFocusExerciseGeneration({
     authHeader: input.authHeader,
     targetLang: input.targetLang,
     nativeLang: input.nativeLang,
     level: input.level,
     focusTitle: input.focusTitle,
+    focusComment: typeof focusExtra?.focus_comment === 'string' ? focusExtra.focus_comment : null,
     studentContext: input.studentContext,
+    studentName,
     focusSlot: input.focusSlot,
   })
+
+  // Si mientras tanto el coach cambió el título del foco (o lo borró), este resultado ya no vale.
+  const { data: focusNow } = await input.adminClient
+    .from('coaching_v2_focuses')
+    .select('focus_title, archived_at')
+    .eq('id', input.focusId)
+    .maybeSingle()
+  if (!focusNow || focusNow.archived_at || focusNow.focus_title !== input.focusTitle) {
+    await appendFocusExerciseGenerationLog({
+      adminClient: input.adminClient,
+      sessionId: input.sessionId,
+      focusId: input.focusId,
+      periodNumber: input.periodNumber,
+      triggerSource,
+      stage: 'generation_discarded',
+      status: 'info',
+      message: 'El foco cambió mientras se generaba; se descarta este resultado.',
+      requestedBy: input.requestedBy,
+    })
+    return
+  }
 
   if (generated.error || !generated.exercise) {
     const errorMessage =
@@ -1850,6 +1907,7 @@ async function runFocusExerciseGeneration(input: {
       payload: {
         tookMs: Date.now() - startedAt,
         invalidJsonSnippet: generated.invalidJsonSnippet,
+        warnings: generated.warnings,
       },
       requestedBy: input.requestedBy,
     })
@@ -1886,6 +1944,7 @@ async function runFocusExerciseGeneration(input: {
     message: 'Exercise generated successfully.',
     payload: {
       tookMs: Date.now() - startedAt,
+      warnings: generated.warnings,
     },
     requestedBy: input.requestedBy,
   })
@@ -2996,9 +3055,9 @@ Deno.serve(async (req) => {
 
     const { data: existing, error: existingError } = await admin.adminClient
       .from('coaching_v2_focuses')
-      .select('id, session_id, period_number')
+      .select('id, session_id, period_number, focus_title')
       .eq('id', focusId)
-      .maybeSingle<{ id: string; session_id: string; period_number: number }>()
+      .maybeSingle<{ id: string; session_id: string; period_number: number; focus_title: string }>()
 
     if (existingError) {
       return jsonResponse(500, { error: existingError.message })
@@ -3024,9 +3083,82 @@ Deno.serve(async (req) => {
       return jsonResponse(500, { error: updateError.message })
     }
 
+    // Si el coach cambia el foco, el ejercicio de Entrenado ya no sirve: se genera otro.
+    const titleChanged =
+      Boolean(updated) &&
+      existing.focus_title.trim().toLowerCase() !== focusTitle.trim().toLowerCase()
+    let exerciseRegenerating = false
+
+    if (updated && titleChanged) {
+      const { rows: periodRows } = await fetchV2FocusesByPeriod({
+        adminClient: admin.adminClient,
+        sessionId,
+        periodNumber: updated.period_number,
+      })
+      const focusSlot = getFocusSlotLabel(periodRows, updated.id)
+
+      const { error: exerciseUpsertError } = await admin.adminClient
+        .from('coaching_v2_focus_exercises')
+        .upsert(
+          {
+            session_id: sessionId,
+            period_number: updated.period_number,
+            focus_id: updated.id,
+            status: 'pending',
+            payload: null,
+            error_message: null,
+            generated_at: null,
+            requested_by: admin.userId,
+          },
+          { onConflict: 'focus_id' },
+        )
+
+      if (!exerciseUpsertError) {
+        exerciseRegenerating = true
+        await appendFocusExerciseGenerationLog({
+          adminClient: admin.adminClient,
+          sessionId,
+          focusId: updated.id,
+          periodNumber: updated.period_number,
+          triggerSource: 'edit_focus',
+          stage: 'queued',
+          status: 'info',
+          message: 'Exercise regeneration queued after focus title change.',
+          requestedBy: admin.userId,
+        })
+
+        const generationTask = runFocusExerciseGeneration({
+          adminClient: admin.adminClient,
+          authHeader,
+          sessionId,
+          periodNumber: updated.period_number,
+          focusId: updated.id,
+          focusTitle: updated.focus_title,
+          targetLang: sessionRow.target_lang,
+          nativeLang: sessionRow.native_lang,
+          level: sessionRow.level,
+          studentContext: sessionRow.notes || null,
+          focusSlot,
+          triggerSource: 'edit_focus',
+          requestedBy: admin.userId,
+        })
+
+        const edgeRuntime = (globalThis as unknown as {
+          EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void }
+        }).EdgeRuntime
+
+        if (edgeRuntime?.waitUntil) {
+          edgeRuntime.waitUntil(generationTask)
+        } else {
+          void generationTask
+        }
+      }
+    }
+
     return jsonResponse(200, {
       ok: true,
       focus: updated ? toV2FocusState(updated) : null,
+      exerciseRegenerating,
     })
   }
 
@@ -3152,10 +3284,8 @@ Deno.serve(async (req) => {
       return jsonResponse(400, { error: 'Session is not v2' })
     }
 
-    const canRegenerate =
-      sessionRow.coach_user_id === auth.userId ||
-      sessionRow.support_coach_user_id === auth.userId
-    if (!canRegenerate) {
+    // Mismo permiso que el resto de acciones del coach (incluye super admin).
+    if (!canManageSession(admin, sessionRow.coach_user_id, sessionRow.support_coach_user_id)) {
       return jsonResponse(403, { error: 'Forbidden' })
     }
 

@@ -7,16 +7,28 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  AlertTriangleIcon,
+  ArrowRightIcon,
+  CalendarIcon,
   CheckIcon,
+  ChevronDownIcon,
   CirclePlusIcon,
   DownloadIcon,
   EyeIcon,
+  LinkIcon,
+  ListChecksIcon,
+  Loader2Icon,
   LockIcon,
   LockOpenIcon,
   MessageCircleIcon,
+  PencilIcon,
   PlayCircleIcon,
+  RefreshCwIcon,
   SparklesIcon,
+  Trash2Icon,
   UploadIcon,
+  UserIcon,
+  VideoIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +54,7 @@ import {
 import {
   activateCoachingV2Period,
   closeCoachingV2Period,
+  deleteCoachingV2Focus,
   fetchCoachingV2SessionBoard,
   fetchMyCoachingV2SessionBoard,
   regenerateCoachingV2FocusExercise,
@@ -58,6 +71,8 @@ import {
   type CoachingV2SessionBoard,
 } from "../services/coaching";
 import { getCoachingV2ExerciseRoute } from "../routes/paths";
+import { normalizeExercisePayload } from "./coachingV2ExerciseLogic";
+import { CoachingFocusExerciseRunner } from "./CoachingFocusExerciseRunner";
 import {
   toDateAndTimeFromIso,
   toIsoFromDateAndTime,
@@ -159,6 +174,38 @@ function canTogglePhase(
   return true;
 }
 
+/* Estado del ejercicio de Entrenado, tal y como lo ve el coach. */
+type TrainingState = "missing" | "generating" | "stuck" | "ready" | "error";
+
+// Si lleva más de 6 minutos "generando", la función se cortó: se ofrece reintentar.
+const GENERATION_STUCK_MS = 6 * 60 * 1000;
+
+function getTrainingState(
+  exercise: CoachingV2SessionBoard["focusExercises"][number] | undefined,
+): TrainingState {
+  if (!exercise) return "missing";
+  if (exercise.status === "ready") return "ready";
+  if (exercise.status === "error") return "error";
+  const updated = new Date(exercise.updatedAt).getTime();
+  if (Number.isFinite(updated) && Date.now() - updated > GENERATION_STUCK_MS) {
+    return "stuck";
+  }
+  return "generating";
+}
+
+function formatShortDateTime(value: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return date.toLocaleString("es-ES", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 type AggregatedTask = {
   index: number;
   classIndex: 1 | 2;
@@ -191,9 +238,21 @@ export function CoachingV3SessionBoard({
     string | null
   >(null);
   const [focusModalOpen, setFocusModalOpen] = useState(false);
+  const [editingFocusId, setEditingFocusId] = useState<string | null>(null);
   const [focusDraftTitle, setFocusDraftTitle] = useState("");
   const [focusDraftComment, setFocusDraftComment] = useState("");
   const [savingFocus, setSavingFocus] = useState(false);
+  const [deletingFocus, setDeletingFocus] = useState(false);
+  const [previewFocusId, setPreviewFocusId] = useState<string | null>(null);
+  const [confirmRegenerateFocusId, setConfirmRegenerateFocusId] = useState<
+    string | null
+  >(null);
+  const [externalLinkOpenByFocusId, setExternalLinkOpenByFocusId] = useState<
+    Record<string, boolean>
+  >({});
+  const [classEditOpenByKey, setClassEditOpenByKey] = useState<
+    Record<string, boolean>
+  >({});
   const [classDrafts, setClassDrafts] = useState<
     Record<
       string,
@@ -232,6 +291,8 @@ export function CoachingV3SessionBoard({
     setExternalTrainingUrlDraftByFocusId,
   ] = useState<Record<string, string>>({});
   const reportSectionRef = useRef<HTMLDivElement | null>(null);
+  const focusSectionRef = useRef<HTMLElement | null>(null);
+  const classesSectionRef = useRef<HTMLElement | null>(null);
 
   function getEmbeddableVideoUrl(value: string | null): string | null {
     if (!value) return null;
@@ -543,39 +604,110 @@ export function CoachingV3SessionBoard({
     }
   };
 
-  const handleCreateFocus = async () => {
+  const openCreateFocus = () => {
+    setEditingFocusId(null);
+    setFocusDraftTitle("");
+    setFocusDraftComment("");
+    setFocusModalOpen(true);
+  };
+
+  const openEditFocus = (focus: CoachingV2Focus) => {
+    setEditingFocusId(focus.id);
+    setFocusDraftTitle(focus.focusTitle);
+    setFocusDraftComment(focus.focusComment || "");
+    setFocusModalOpen(true);
+  };
+
+  /* Crear o editar un foco. Al crearlo (o cambiarle el título) el servidor
+     genera solo el ejercicio de Entrenado: aquí lo marcamos como "generando". */
+  const handleSaveFocus = async () => {
     if (!focusDraftTitle.trim()) return;
     if (isSelectedPeriodClosed) {
       toast.error("La semana está cerrada. Ya no se puede editar.");
       return;
     }
+    const editingFocus = editingFocusId
+      ? (board?.focuses || []).find((row) => row.id === editingFocusId) || null
+      : null;
+    const titleChanged =
+      !editingFocus ||
+      editingFocus.focusTitle.trim().toLowerCase() !==
+        focusDraftTitle.trim().toLowerCase();
+
     setSavingFocus(true);
     try {
-      const created = await upsertCoachingV2Focus({
+      const saved = await upsertCoachingV2Focus({
         sessionId,
-        periodNumber: selectedPeriod,
+        periodNumber: editingFocus?.periodNumber ?? selectedPeriod,
+        ...(editingFocus ? { focusId: editingFocus.id } : {}),
         focusTitle: focusDraftTitle.trim(),
         focusComment: focusDraftComment.trim() || null,
       });
-      if (!created) throw new Error("No se pudo crear el foco.");
+      if (!saved) throw new Error("No se pudo guardar el foco.");
+      setBoard((prev) => {
+        if (!prev) return prev;
+        const focuses = editingFocus
+          ? prev.focuses.map((row) => (row.id === saved.id ? saved : row))
+          : [...prev.focuses, saved];
+        const focusExercises = titleChanged
+          ? [
+              ...prev.focusExercises.filter((row) => row.focusId !== saved.id),
+              {
+                focusId: saved.id,
+                periodNumber: saved.periodNumber,
+                status: "pending" as const,
+                exercise: null,
+                error: null,
+                generatedAt: null,
+                externalTrainingUrl:
+                  prev.focusExercises.find((row) => row.focusId === saved.id)
+                    ?.externalTrainingUrl || null,
+                updatedAt: new Date().toISOString(),
+              },
+            ]
+          : prev.focusExercises;
+        return { ...prev, focuses, focusExercises };
+      });
+      setFocusDraftTitle("");
+      setFocusDraftComment("");
+      setEditingFocusId(null);
+      setFocusModalOpen(false);
+      toast.success(
+        titleChanged
+          ? "Foco guardado. Preparando el ejercicio de Entrenado (≈1 min)..."
+          : "Foco guardado.",
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "No se pudo guardar el foco.",
+      );
+    } finally {
+      setSavingFocus(false);
+    }
+  };
+
+  const handleDeleteFocus = async () => {
+    if (!editingFocusId) return;
+    setDeletingFocus(true);
+    try {
+      await deleteCoachingV2Focus({ sessionId, focusId: editingFocusId });
       setBoard((prev) =>
         prev
           ? {
               ...prev,
-              focuses: [...prev.focuses, created],
+              focuses: prev.focuses.filter((row) => row.id !== editingFocusId),
             }
           : prev,
       );
-      setFocusDraftTitle("");
-      setFocusDraftComment("");
       setFocusModalOpen(false);
-      toast.success("Foco creado.");
+      setEditingFocusId(null);
+      toast.success("Foco eliminado.");
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "No se pudo crear el foco.",
+        err instanceof Error ? err.message : "No se pudo eliminar el foco.",
       );
     } finally {
-      setSavingFocus(false);
+      setDeletingFocus(false);
     }
   };
 
@@ -811,6 +943,7 @@ export function CoachingV3SessionBoard({
             exercise: null,
             error: null,
             generatedAt: null,
+            updatedAt: new Date().toISOString(),
           };
         } else {
           nextExercises.push({
@@ -831,7 +964,7 @@ export function CoachingV3SessionBoard({
         };
       });
 
-      toast.success("Generando entrenamiento...");
+      toast.success("Generando el ejercicio (≈1 min)...");
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -901,6 +1034,99 @@ export function CoachingV3SessionBoard({
       setSavingExternalTrainingUrlFocusId(null);
     }
   };
+
+  const scrollToRef = (ref: { current: HTMLElement | null }) => {
+    ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  /* "Te toca": lo que le falta al coach en la semana seleccionada, en orden. */
+  type CoachTodo = {
+    key: string;
+    label: string;
+    action: string;
+    onClick: () => void;
+    tone?: "warn";
+  };
+  const coachTodos: CoachTodo[] = [];
+  if (mode === "coach" && board && !isSelectedPeriodClosed) {
+    if (
+      !board.periodState.currentActivePeriod &&
+      board.periodState.nextPeriodEligible
+    ) {
+      coachTodos.push({
+        key: "activate",
+        label: `La semana ${board.periodState.nextPeriodEligible} está sin activar`,
+        action: "Activar",
+        onClick: () => void handleActivateNextWeek(),
+      });
+    }
+    const freeSlots = Math.max(0, 3 - activeFocuses.length);
+    if (freeSlots > 0) {
+      coachTodos.push({
+        key: "add-focus",
+        label:
+          freeSlots === 3
+            ? "Esta semana no tiene focos"
+            : `Tienes ${freeSlots} hueco${freeSlots === 1 ? "" : "s"} de foco libre${freeSlots === 1 ? "" : "s"}`,
+        action: "Añadir foco",
+        onClick: openCreateFocus,
+      });
+    }
+    for (const focus of activeFocuses) {
+      const state = getTrainingState(exerciseByFocusId.get(focus.id));
+      if (state === "error" || state === "stuck" || state === "missing") {
+        coachTodos.push({
+          key: `exercise-${focus.id}`,
+          label: `El ejercicio de «${focus.focusTitle}» no está listo`,
+          action: "Ver",
+          tone: "warn",
+          onClick: () => scrollToRef(focusSectionRef),
+        });
+      } else if (!focus.phaseExplained) {
+        coachTodos.push({
+          key: `explain-${focus.id}`,
+          label: `¿Ya explicaste «${focus.focusTitle}»? Márcalo como Explicado`,
+          action: "Ir",
+          onClick: () => scrollToRef(focusSectionRef),
+        });
+      }
+    }
+    for (const slot of [1, 2] as const) {
+      const classRow =
+        selectedClasses.find((row) => row.classIndex === slot) || null;
+      const editKey = `${selectedPeriod}-${slot}`;
+      const openClass = () => {
+        setClassEditOpenByKey((prev) => ({ ...prev, [editKey]: true }));
+        scrollToRef(classesSectionRef);
+      };
+      if (!classRow?.scheduledAt) {
+        coachTodos.push({
+          key: `schedule-${slot}`,
+          label: `La clase ${slot} no tiene fecha`,
+          action: "Poner fecha",
+          onClick: openClass,
+        });
+      } else if (
+        !classRow.loomUrl &&
+        new Date(classRow.scheduledAt).getTime() < Date.now()
+      ) {
+        coachTodos.push({
+          key: `loom-${slot}`,
+          label: `Falta la grabación de la clase ${slot}`,
+          action: "Subir",
+          onClick: openClass,
+        });
+      }
+    }
+    if (reportStatus === "preparing") {
+      coachTodos.push({
+        key: "report",
+        label: "El alumno ha hecho las 6 tareas: falta su reporte",
+        action: "Subir reporte",
+        onClick: () => scrollToRef(reportSectionRef),
+      });
+    }
+  }
 
   const handleScrollToReport = () => {
     reportSectionRef.current?.scrollIntoView({
@@ -1021,6 +1247,71 @@ export function CoachingV3SessionBoard({
           </div>
         </header>
 
+        {mode === "coach" && !isSelectedPeriodClosed ? (
+          <section
+            className="mt-5 rounded-2xl border p-4"
+            style={{
+              borderColor:
+                "color-mix(in oklab, var(--v3-cyan) 35%, var(--v3-line) 65%)",
+              background:
+                "color-mix(in oklab, var(--v3-cyan) 6%, var(--v3-card) 94%)",
+            }}
+          >
+            <div className="mb-2 flex items-center gap-2">
+              <ListChecksIcon
+                className="size-4"
+                style={{ color: "var(--v3-cyan)" }}
+              />
+              <p className="text-sm font-semibold">
+                Te toca · semana {selectedPeriod}
+              </p>
+            </div>
+            {coachTodos.length === 0 ? (
+              <p className="text-sm" style={{ color: "var(--v3-muted)" }}>
+                Todo al día esta semana. ✓
+              </p>
+            ) : (
+              <ul className="grid gap-1.5 md:grid-cols-2">
+                {coachTodos.map((todo) => (
+                  <li key={todo.key}>
+                    <button
+                      type="button"
+                      onClick={todo.onClick}
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm transition hover:-translate-y-0.5"
+                      style={{
+                        borderColor:
+                          todo.tone === "warn"
+                            ? "color-mix(in oklab, #f59e0b 45%, var(--v3-line) 55%)"
+                            : "var(--v3-line)",
+                        background: "var(--v3-card)",
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        {todo.tone === "warn" ? (
+                          <AlertTriangleIcon className="size-3.5 shrink-0 text-amber-500" />
+                        ) : (
+                          <span
+                            className="inline-block size-1.5 shrink-0 rounded-full"
+                            style={{ background: "var(--v3-cyan)" }}
+                          />
+                        )}
+                        {todo.label}
+                      </span>
+                      <span
+                        className="inline-flex shrink-0 items-center gap-1 text-xs font-medium"
+                        style={{ color: "var(--v3-cyan)" }}
+                      >
+                        {todo.action}
+                        <ArrowRightIcon className="size-3" />
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ) : null}
+
         <section className="mt-7">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-sm font-medium">{titleRecorrido}</p>
@@ -1116,7 +1407,7 @@ export function CoachingV3SessionBoard({
           )}
         </section>
 
-        <section className="mt-10">
+        <section ref={focusSectionRef} className="mt-10 scroll-mt-4">
           <div className="mb-4 flex items-baseline justify-between gap-3">
             <h2 className="text-2xl font-semibold tracking-tight">
               Los tres focos
@@ -1144,7 +1435,7 @@ export function CoachingV3SessionBoard({
                         canAddFocus &&
                         canEditSelectedPeriod
                       )
-                        setFocusModalOpen(true);
+                        openCreateFocus();
                     }}
                   >
                     <p
@@ -1157,19 +1448,22 @@ export function CoachingV3SessionBoard({
                       className="mt-2 text-xs"
                       style={{ color: "var(--v3-muted)" }}
                     >
-                      Se abre un foco nuevo cuando uno de los otros llegue a
-                      dominado.
+                      {mode === "coach"
+                        ? "Escribe un foco gramatical y la IA prepara sola su ejercicio de Entrenado."
+                        : "Se abre un foco nuevo cuando uno de los otros llegue a dominado."}
                     </p>
                     {mode === "coach" && canAddFocus && (
                       <Button
                         type="button"
-                        variant="outline"
                         size="sm"
                         className="mt-3"
                         disabled={!canEditSelectedPeriod}
-                        onClick={() => setFocusModalOpen(true)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openCreateFocus();
+                        }}
                       >
-                        <CirclePlusIcon className="size-4" /> Agregar foco
+                        <CirclePlusIcon className="size-4" /> Añadir foco
                       </Button>
                     )}
                   </Card>
@@ -1187,11 +1481,6 @@ export function CoachingV3SessionBoard({
                 : suggestedPhaseIdx;
               const selectedPhaseInfo =
                 PHASE_INFO[selectedPhaseIdx] || PHASE_INFO[suggestedPhaseIdx];
-              const selectedPhaseDone = Boolean(focus[selectedPhaseInfo.key]);
-              const canToggleSelectedPhase = canTogglePhase(
-                focus,
-                selectedPhaseInfo.key,
-              );
               const focusExercise = exerciseByFocusId.get(focus.id);
               const focusAttempt = attemptByFocusId.get(focus.id);
               const trainedPhaseSelected =
@@ -1199,9 +1488,7 @@ export function CoachingV3SessionBoard({
               const canUseTrainedActions =
                 trainedPhaseSelected && focus.phaseExplained;
               const trainButtonLabel = focusAttempt ? "Reintentar" : "Entrenar";
-              const trainMissing = !focusExercise;
               const trainReady = focusExercise?.status === "ready";
-              const trainError = focusExercise?.status === "error";
               const trainPreparing =
                 focusExercise?.status === "pending" ||
                 focusExercise?.status === "generating";
@@ -1212,6 +1499,320 @@ export function CoachingV3SessionBoard({
               const externalDraftValue =
                 externalTrainingUrlDraftByFocusId[focus.id] ??
                 externalTrainingUrl;
+
+              if (mode === "coach") {
+                const trainingState = getTrainingState(focusExercise);
+                const nextPhaseIdx = PHASE_KEYS.findIndex((key) => !focus[key]);
+                const nextPhaseLabel =
+                  nextPhaseIdx >= 0 ? PHASE_LABELS[nextPhaseIdx] : null;
+                const nextPhaseHint =
+                  nextPhaseIdx === 0
+                    ? "Cuando se lo expliques en clase, marca «Explicado»: así se le abre el ejercicio."
+                    : nextPhaseIdx === 1
+                      ? "Se marca solo cuando el alumno supera el ejercicio. También puedes marcarlo tú."
+                      : nextPhaseIdx === 2
+                        ? "Marca «Entendido» cuando el alumno te lo explique a ti."
+                        : nextPhaseIdx === 3
+                          ? "Marca «Dominado» cuando le salga solo en clase."
+                          : "Foco dominado. Deja el hueco libre para uno nuevo.";
+                const linkOpen =
+                  externalLinkOpenByFocusId[focus.id] ?? hasExternalTraining;
+
+                return (
+                  <Card
+                    key={focus.id}
+                    className="rounded-2xl border p-4"
+                    style={{
+                      borderColor: "var(--v3-line)",
+                      background: "var(--v3-card)",
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className="text-xs"
+                        style={{ color: "var(--v3-muted)" }}
+                      >
+                        Foco {idx + 1} · desde semana {focus.periodNumber}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-semibold">
+                          {progress}/4
+                        </span>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="size-7 rounded-full"
+                          title="Nota del foco"
+                          onClick={() => setOpenFocusComment(focus.id)}
+                        >
+                          <MessageCircleIcon className="size-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="size-7 rounded-full"
+                          title="Editar foco"
+                          disabled={!canEditSelectedPeriod}
+                          onClick={() => openEditFocus(focus)}
+                        >
+                          <PencilIcon className="size-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                    <h3 className="mt-2 text-lg font-semibold leading-tight">
+                      {focus.focusTitle}
+                    </h3>
+
+                    {/* Fases: un clic marca o desmarca. Solo se puede tocar la siguiente o la última hecha. */}
+                    <div className="mt-3 grid grid-cols-4 gap-1.5">
+                      {PHASE_KEYS.map((phaseKey, phaseIdx) => {
+                        const done = Boolean(focus[phaseKey]);
+                        const clickable =
+                          canEditSelectedPeriod &&
+                          canTogglePhase(focus, phaseKey);
+                        const isNext = phaseIdx === nextPhaseIdx;
+                        return (
+                          <button
+                            key={`${focus.id}-${phaseKey}`}
+                            type="button"
+                            disabled={!clickable}
+                            onClick={() =>
+                              void handleToggleFocus(focus, phaseKey)
+                            }
+                            title={
+                              done
+                                ? clickable
+                                  ? `Desmarcar ${PHASE_LABELS[phaseIdx]}`
+                                  : PHASE_LABELS[phaseIdx]
+                                : clickable
+                                  ? `Marcar ${PHASE_LABELS[phaseIdx]}`
+                                  : "Primero marca la fase anterior"
+                            }
+                            className={`flex flex-col items-center gap-1 rounded-lg border px-1 py-2 text-[11px] font-medium transition disabled:cursor-not-allowed ${clickable ? "hover:-translate-y-0.5" : ""} ${isNext && clickable ? "animate-pulse" : ""}`}
+                            style={{
+                              borderColor: done
+                                ? "var(--v3-cyan)"
+                                : isNext && clickable
+                                  ? "color-mix(in oklab, var(--v3-cyan) 60%, var(--v3-line) 40%)"
+                                  : "var(--v3-line)",
+                              background: done
+                                ? "color-mix(in oklab, var(--v3-cyan) 18%, transparent 82%)"
+                                : "transparent",
+                              color: done
+                                ? "var(--v3-text)"
+                                : clickable
+                                  ? "var(--v3-text)"
+                                  : "var(--v3-muted)",
+                              opacity: !done && !clickable ? 0.6 : 1,
+                            }}
+                          >
+                            <span
+                              className="inline-flex size-5 items-center justify-center rounded-full border"
+                              style={{
+                                borderColor: done
+                                  ? "var(--v3-cyan)"
+                                  : "var(--v3-line)",
+                                background: done
+                                  ? "var(--v3-cyan)"
+                                  : "transparent",
+                                color: done ? "#031522" : "var(--v3-muted)",
+                              }}
+                            >
+                              {done ? (
+                                <CheckIcon className="size-3" />
+                              ) : (
+                                phaseIdx + 1
+                              )}
+                            </span>
+                            {PHASE_LABELS[phaseIdx]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p
+                      className="mt-2 text-xs leading-relaxed"
+                      style={{ color: "var(--v3-muted)" }}
+                    >
+                      {nextPhaseLabel ? (
+                        <b style={{ color: "var(--v3-text)" }}>
+                          Siguiente: {nextPhaseLabel}.{" "}
+                        </b>
+                      ) : null}
+                      {nextPhaseHint}
+                    </p>
+
+                    {/* Ejercicio de Entrenado: se genera solo al crear el foco */}
+                    <div
+                      className="mt-3 rounded-xl border p-3"
+                      style={{
+                        borderColor:
+                          trainingState === "error" || trainingState === "stuck"
+                            ? "color-mix(in oklab, #ef4444 45%, var(--v3-line) 55%)"
+                            : trainingState === "ready"
+                              ? "color-mix(in oklab, var(--v3-cyan) 45%, var(--v3-line) 55%)"
+                              : "var(--v3-line)",
+                      }}
+                    >
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        {trainingState === "ready" ? (
+                          <CheckIcon
+                            className="size-4"
+                            style={{ color: "var(--v3-cyan)" }}
+                          />
+                        ) : trainingState === "generating" ? (
+                          <Loader2Icon
+                            className="size-4 animate-spin"
+                            style={{ color: "var(--v3-cyan)" }}
+                          />
+                        ) : (
+                          <AlertTriangleIcon className="size-4 text-amber-500" />
+                        )}
+                        <span>
+                          {trainingState === "ready"
+                            ? "Ejercicio listo"
+                            : trainingState === "generating"
+                              ? "Preparando el ejercicio…"
+                              : trainingState === "stuck"
+                                ? "El ejercicio se ha quedado atascado"
+                                : trainingState === "error"
+                                  ? "No se pudo generar el ejercicio"
+                                  : "Sin ejercicio todavía"}
+                        </span>
+                      </div>
+                      <p
+                        className="mt-1 text-xs leading-relaxed"
+                        style={{ color: "var(--v3-muted)" }}
+                      >
+                        {trainingState === "ready"
+                          ? focus.phaseExplained
+                            ? "El alumno ya lo tiene en Entrenado."
+                            : "Se le abrirá al alumno cuando marques «Explicado»."
+                          : trainingState === "generating"
+                            ? "La IA lo está creando con tu plantilla (≈1 min). Puedes seguir trabajando."
+                            : "Vuelve a generarlo: no tienes que hacer nada más."}
+                      </p>
+                      {focusAttempt ? (
+                        <p className="mt-1 text-xs">
+                          Último intento:{" "}
+                          <b>
+                            {focusAttempt.scoreCorrect}/{focusAttempt.scoreTotal}
+                          </b>{" "}
+                          ·{" "}
+                          {focusAttempt.passed ? "superado" : "no superado"}
+                        </p>
+                      ) : null}
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {trainingState === "ready" ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8"
+                            onClick={() => setPreviewFocusId(focus.id)}
+                          >
+                            <EyeIcon className="size-3.5" /> Ver ejercicio
+                          </Button>
+                        ) : null}
+                        {focusAttempt ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8"
+                            onClick={() => setOpenReviewFocusId(focus.id)}
+                          >
+                            <ListChecksIcon className="size-3.5" /> Revisar
+                            intento
+                          </Button>
+                        ) : null}
+                        {trainingState !== "generating" ? (
+                          <Button
+                            size="sm"
+                            variant={
+                              trainingState === "ready" ? "ghost" : "default"
+                            }
+                            className="h-8"
+                            disabled={
+                              regeneratingFocusId === focus.id ||
+                              !canEditSelectedPeriod
+                            }
+                            onClick={() => {
+                              if (trainingState === "ready") {
+                                setConfirmRegenerateFocusId(focus.id);
+                                return;
+                              }
+                              void handleRegenerateTraining(focus);
+                            }}
+                          >
+                            <RefreshCwIcon className="size-3.5" />
+                            {trainingState === "ready"
+                              ? "Rehacer"
+                              : trainingState === "missing"
+                                ? "Generar"
+                                : "Reintentar"}
+                          </Button>
+                        ) : null}
+                      </div>
+                      {trainingState === "error" && focusExercise?.error ? (
+                        <details className="mt-2 text-[11px]" style={{ color: "var(--v3-muted)" }}>
+                          <summary className="cursor-pointer">Detalle técnico</summary>
+                          <p className="mt-1 break-words">{focusExercise.error}</p>
+                        </details>
+                      ) : null}
+                    </div>
+
+                    <button
+                      type="button"
+                      className="mt-2 inline-flex items-center gap-1 text-xs"
+                      style={{ color: "var(--v3-muted)" }}
+                      onClick={() =>
+                        setExternalLinkOpenByFocusId((prev) => ({
+                          ...prev,
+                          [focus.id]: !linkOpen,
+                        }))
+                      }
+                    >
+                      <LinkIcon className="size-3" />
+                      {hasExternalTraining
+                        ? "Link externo guardado"
+                        : "Añadir link externo (opcional)"}
+                      <ChevronDownIcon
+                        className={`size-3 transition ${linkOpen ? "rotate-180" : ""}`}
+                      />
+                    </button>
+                    {linkOpen ? (
+                      <div className="mt-2 flex gap-2">
+                        <Input
+                          value={externalDraftValue}
+                          onChange={(event) =>
+                            setExternalTrainingUrlDraftByFocusId((prev) => ({
+                              ...prev,
+                              [focus.id]: event.target.value,
+                            }))
+                          }
+                          disabled={!canEditSelectedPeriod}
+                          placeholder="https://… (se usa si no hay ejercicio)"
+                          className="h-8"
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8"
+                          disabled={
+                            !canEditSelectedPeriod ||
+                            savingExternalTrainingUrlFocusId === focus.id
+                          }
+                          onClick={() =>
+                            void handleSaveExternalTrainingUrl(focus)
+                          }
+                        >
+                          {savingExternalTrainingUrlFocusId === focus.id
+                            ? "…"
+                            : "Guardar"}
+                        </Button>
+                      </div>
+                    ) : null}
+                  </Card>
+                );
+              }
 
               return (
                 <Card
@@ -1307,38 +1908,6 @@ export function CoachingV3SessionBoard({
                     {selectedPhaseInfo.description}
                   </p>
 
-                  {mode === "coach" && (
-                    <div className="mt-3 flex justify-end">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 rounded-full px-3 text-xs"
-                        style={{
-                          borderColor: selectedPhaseDone
-                            ? "color-mix(in oklab, var(--v3-cyan) 45%, var(--v3-line) 55%)"
-                            : "var(--v3-line)",
-                          color: selectedPhaseDone
-                            ? "var(--v3-cyan)"
-                            : "var(--v3-muted)",
-                          background: selectedPhaseDone
-                            ? "color-mix(in oklab, var(--v3-cyan) 12%, transparent 88%)"
-                            : "transparent",
-                        }}
-                        disabled={
-                          !canToggleSelectedPhase || !canEditSelectedPeriod
-                        }
-                        onClick={() =>
-                          void handleToggleFocus(focus, selectedPhaseInfo.key)
-                        }
-                      >
-                        {selectedPhaseDone ? (
-                          <CheckIcon className="size-3.5" />
-                        ) : null}
-                        {selectedPhaseDone ? "Hecho" : "Marcar como hecho"}
-                      </Button>
-                    </div>
-                  )}
-
                   {mode === "student" && canUseTrainedActions && (
                     <>
                       {canTrainNow ? (
@@ -1384,83 +1953,6 @@ export function CoachingV3SessionBoard({
                     </>
                   )}
 
-                  {mode === "coach" &&
-                    canUseTrainedActions &&
-                    (trainMissing || trainError) && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="mt-3 w-full"
-                        disabled={
-                          regeneratingFocusId === focus.id ||
-                          !canEditSelectedPeriod
-                        }
-                        onClick={() => void handleRegenerateTraining(focus)}
-                      >
-                        {regeneratingFocusId === focus.id
-                          ? "Generando entrenamiento..."
-                          : "Generar entrenamiento"}
-                      </Button>
-                    )}
-
-                  {mode === "coach" &&
-                    canUseTrainedActions &&
-                    !trainReady &&
-                    !trainError &&
-                    !trainMissing && (
-                      <p
-                        className="mt-2 text-center text-xs"
-                        style={{ color: "var(--v3-muted)" }}
-                      >
-                        {trainPreparing
-                          ? "Preparando entrenamiento..."
-                          : "Entrenamiento pendiente."}
-                      </p>
-                    )}
-
-                  {mode === "coach" && trainedPhaseSelected && (
-                    <div className="mt-3 space-y-2">
-                      <Input
-                        value={externalDraftValue}
-                        onChange={(event) =>
-                          setExternalTrainingUrlDraftByFocusId((prev) => ({
-                            ...prev,
-                            [focus.id]: event.target.value,
-                          }))
-                        }
-                        disabled={!canEditSelectedPeriod}
-                        placeholder="https://tu-artefacto-externo"
-                        className="h-8"
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-full"
-                        disabled={
-                          !canEditSelectedPeriod ||
-                          savingExternalTrainingUrlFocusId === focus.id
-                        }
-                        onClick={() =>
-                          void handleSaveExternalTrainingUrl(focus)
-                        }
-                      >
-                        {savingExternalTrainingUrlFocusId === focus.id
-                          ? "Guardando link..."
-                          : "Guardar link externo"}
-                      </Button>
-                    </div>
-                  )}
-
-                  {mode === "coach" && canUseTrainedActions && focusAttempt && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="mt-3 w-full"
-                      onClick={() => setOpenReviewFocusId(focus.id)}
-                    >
-                      <EyeIcon className="size-4" /> Revisar intento
-                    </Button>
-                  )}
                 </Card>
               );
             })}
@@ -1643,7 +2135,7 @@ export function CoachingV3SessionBoard({
           </Card>
         </section>
 
-        <section className="mt-10">
+        <section ref={classesSectionRef} className="mt-10 scroll-mt-4">
           <div className="mb-4 flex items-baseline justify-between gap-3">
             <h2 className="text-2xl font-semibold tracking-tight">
               {titleClases}
@@ -1692,6 +2184,7 @@ export function CoachingV3SessionBoard({
                 response3: classRow?.studentGuidelineResponse3 || "",
               };
               const embedUrl = getEmbeddableVideoUrl(classRow?.loomUrl || null);
+              const classEditOpen = Boolean(classEditOpenByKey[key]);
 
               return (
                 <Card
@@ -1875,7 +2368,56 @@ export function CoachingV3SessionBoard({
                       className="mt-4 space-y-2 rounded-xl border p-3"
                       style={{ borderColor: "var(--v3-line)" }}
                     >
-                      <p className="text-xs font-medium">Edicion de clase</p>
+                      {/* Resumen de la clase: de un vistazo qué falta. */}
+                      <div className="grid gap-1.5 text-sm">
+                        <p className="flex items-center gap-2">
+                          <CalendarIcon className="size-4 shrink-0" style={{ color: "var(--v3-muted)" }} />
+                          {formatShortDateTime(classRow?.scheduledAt || null) || (
+                            <span className="text-amber-600 dark:text-amber-400">Sin fecha</span>
+                          )}
+                        </p>
+                        <p className="flex items-center gap-2">
+                          <UserIcon className="size-4 shrink-0" style={{ color: "var(--v3-muted)" }} />
+                          {classCoachName || (
+                            <span style={{ color: "var(--v3-muted)" }}>Sin coach asignado</span>
+                          )}
+                          {classRoleLabel ? (
+                            <span style={{ color: "var(--v3-muted)" }}>· {classRoleLabel}</span>
+                          ) : null}
+                        </p>
+                        <p className="flex items-center gap-2">
+                          <VideoIcon className="size-4 shrink-0" style={{ color: "var(--v3-muted)" }} />
+                          {classRow?.loomUrl ? (
+                            "Grabación subida"
+                          ) : (
+                            <span className="text-amber-600 dark:text-amber-400">Grabación pendiente</span>
+                          )}
+                        </p>
+                        <p className="flex items-center gap-2">
+                          <ListChecksIcon className="size-4 shrink-0" style={{ color: "var(--v3-muted)" }} />
+                          Tareas respondidas: {classTasks.filter((task) => task.done).length}/3
+                        </p>
+                      </div>
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={classEditOpen ? "secondary" : "outline"}
+                        className="w-full"
+                        onClick={() =>
+                          setClassEditOpenByKey((prev) => ({
+                            ...prev,
+                            [key]: !classEditOpen,
+                          }))
+                        }
+                      >
+                        <PencilIcon className="size-3.5" />
+                        {classEditOpen ? "Cerrar edición" : "Editar fecha, coach y grabación"}
+                        <ChevronDownIcon className={`size-3.5 transition ${classEditOpen ? "rotate-180" : ""}`} />
+                      </Button>
+
+                      {classEditOpen ? (
+                      <div className="space-y-2">
                       <Input
                         value={draft.classRole}
                         onChange={(event) =>
@@ -1970,6 +2512,11 @@ export function CoachingV3SessionBoard({
                         placeholder="Link Loom de la clase"
                         disabled={!canEditSelectedPeriod}
                       />
+                      </div>
+                      ) : null}
+                      <p className="pt-1 text-xs font-medium" style={{ color: "var(--v3-muted)" }}>
+                        Tareas de esta clase (el alumno las responde en su tablero)
+                      </p>
                       <Accordion type="single" collapsible>
                         {[
                           {
@@ -2063,7 +2610,7 @@ export function CoachingV3SessionBoard({
                       >
                         {savingClassKey === key
                           ? "Guardando..."
-                          : "Guardar clase"}
+                          : `Guardar clase ${slot}`}
                       </Button>
                     </div>
                   )}
@@ -2076,19 +2623,18 @@ export function CoachingV3SessionBoard({
             <Card
               className="mt-4 rounded-2xl border p-5"
               style={{
+                // Colores con variables del tablero: se lee bien en modo claro y oscuro.
                 borderColor:
                   reportStatus === "blocked"
-                    ? "#2a5163"
+                    ? "color-mix(in oklab, var(--v3-cyan) 30%, var(--v3-line) 70%)"
                     : reportStatus === "available"
-                      ? "#6d5122"
+                      ? "color-mix(in oklab, var(--v3-gold) 55%, var(--v3-line) 45%)"
                       : "var(--v3-line)",
                 borderStyle: reportStatus === "blocked" ? "dashed" : "solid",
                 background:
                   reportStatus === "available"
-                    ? "linear-gradient(120deg, #1b1608, #0a2230 62%)"
-                    : reportStatus === "preparing"
-                      ? "#0a2230"
-                      : "#07202d",
+                    ? "linear-gradient(120deg, color-mix(in oklab, var(--v3-gold) 14%, var(--v3-card) 86%), var(--v3-card) 62%)"
+                    : "color-mix(in oklab, var(--v3-cyan) 5%, var(--v3-card) 95%)",
               }}
             >
               {reportStatus === "blocked" ? (
@@ -2319,35 +2865,174 @@ export function CoachingV3SessionBoard({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={focusModalOpen} onOpenChange={setFocusModalOpen}>
+      <Dialog
+        open={focusModalOpen}
+        onOpenChange={(open) => {
+          setFocusModalOpen(open);
+          if (!open) setEditingFocusId(null);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Agregar foco del periodo</DialogTitle>
+            <DialogTitle>
+              {editingFocusId ? "Editar foco" : `Nuevo foco · semana ${selectedPeriod}`}
+            </DialogTitle>
+            <DialogDescription>
+              {editingFocusId
+                ? "Si cambias el foco, la IA vuelve a preparar su ejercicio."
+                : "Escribe el punto gramatical que habéis trabajado. La IA prepara sola el ejercicio de Entrenado (≈1 min) y el alumno lo verá cuando marques «Explicado»."}
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <Input
-              value={focusDraftTitle}
-              onChange={(event) => setFocusDraftTitle(event.target.value)}
-              placeholder="Título del foco"
-              disabled={!canEditSelectedPeriod}
-            />
-            <Textarea
-              value={focusDraftComment}
-              onChange={(event) => setFocusDraftComment(event.target.value)}
-              rows={4}
-              placeholder="Descripción o comentario del foco"
-              disabled={!canEditSelectedPeriod}
-            />
+          <form
+            className="space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSaveFocus();
+            }}
+          >
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium" htmlFor="focus-title">
+                Foco gramatical
+              </label>
+              <Input
+                id="focus-title"
+                autoFocus
+                value={focusDraftTitle}
+                onChange={(event) => setFocusDraftTitle(event.target.value)}
+                placeholder="Ej.: Can · Could · Should · Would"
+                disabled={!canEditSelectedPeriod}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium" htmlFor="focus-comment">
+                Nota para el alumno{" "}
+                <span className="font-normal text-muted-foreground">
+                  (opcional)
+                </span>
+              </label>
+              <Textarea
+                id="focus-comment"
+                value={focusDraftComment}
+                onChange={(event) => setFocusDraftComment(event.target.value)}
+                rows={3}
+                placeholder="Ej.: Se te escapa el «to» detrás de can. La IA también usa esta nota para afinar el ejercicio."
+                disabled={!canEditSelectedPeriod}
+              />
+            </div>
+            <DialogFooter className="gap-2 sm:justify-between">
+              {editingFocusId &&
+              (() => {
+                const editing = (board.focuses.find((row) => row.id === editingFocusId) || null);
+                return (
+                  editing &&
+                  focusProgress(editing) === 0 &&
+                  !(board.focusExerciseAttempts || []).some(
+                    (row) => row.focusId === editing.id,
+                  )
+                );
+              })() ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="text-destructive"
+                  disabled={deletingFocus || savingFocus}
+                  onClick={() => void handleDeleteFocus()}
+                >
+                  <Trash2Icon className="size-4" />
+                  {deletingFocus ? "Eliminando..." : "Eliminar foco"}
+                </Button>
+              ) : (
+                <span />
+              )}
+              <Button
+                type="submit"
+                disabled={
+                  savingFocus || !focusDraftTitle.trim() || !canEditSelectedPeriod
+                }
+              >
+                {savingFocus
+                  ? "Guardando..."
+                  : editingFocusId
+                    ? "Guardar cambios"
+                    : "Crear foco y preparar ejercicio"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(confirmRegenerateFocusId)}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRegenerateFocusId(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿Rehacer el ejercicio?</DialogTitle>
+            <DialogDescription>
+              La IA prepara uno nuevo para este foco (≈1 min). El actual se
+              sustituye; los intentos del alumno se conservan.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
             <Button
               type="button"
-              onClick={() => void handleCreateFocus()}
-              disabled={
-                savingFocus || !focusDraftTitle.trim() || !canEditSelectedPeriod
-              }
+              variant="outline"
+              onClick={() => setConfirmRegenerateFocusId(null)}
             >
-              {savingFocus ? "Guardando..." : "Guardar foco"}
+              Cancelar
             </Button>
-          </div>
+            <Button
+              type="button"
+              onClick={() => {
+                const target = board.focuses.find(
+                  (row) => row.id === confirmRegenerateFocusId,
+                );
+                setConfirmRegenerateFocusId(null);
+                if (target) void handleRegenerateTraining(target);
+              }}
+            >
+              <RefreshCwIcon className="size-4" /> Rehacer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(previewFocusId)}
+        onOpenChange={(open) => {
+          if (!open) setPreviewFocusId(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>
+              Vista previa ·{" "}
+              {board.focuses.find((row) => row.id === previewFocusId)
+                ?.focusTitle || "Ejercicio"}
+            </DialogTitle>
+            <DialogDescription>
+              Así lo verá el alumno. Puedes probarlo: lo que respondas aquí no
+              se guarda.
+            </DialogDescription>
+          </DialogHeader>
+          {(() => {
+            const payload = previewFocusId
+              ? focusExerciseByFocusId.get(previewFocusId)?.exercise || null
+              : null;
+            const previewData = normalizeExercisePayload(payload);
+            return previewData ? (
+              <CoachingFocusExerciseRunner
+                key={previewFocusId || "preview"}
+                data={previewData}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Este ejercicio no tiene el formato esperado. Pulsa «Rehacer».
+              </p>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 

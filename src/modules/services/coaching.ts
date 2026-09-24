@@ -458,6 +458,51 @@ export async function fetchCoachingPendingReviewSummary(): Promise<CoachingPendi
   }
 }
 
+export type CoachingNavSummary = CoachingPendingReviewSummary & {
+  isCoachingAdmin: boolean
+  /** Alumnos con coaching activo que el coach puede gestionar (para el acceso rápido). */
+  activeStudents: CoachingManagedUser[]
+}
+
+/* Una sola pasada para la cabecera: permisos, avisos pendientes y alumnos activos. */
+export async function fetchCoachingNavSummary(): Promise<CoachingNavSummary> {
+  const access = await fetchCoachingAccess()
+  if (!access?.isCoachingAdmin) {
+    return {
+      isCoachingAdmin: false,
+      activeStudents: [],
+      hasPendingReviews: false,
+      pendingSessions: 0,
+      pendingNotes: 0,
+    }
+  }
+
+  const rows = await fetchCoachingManagedUsers()
+  const pendingRows = rows.filter(
+    (row) =>
+      row.hasPendingMasterNotesReview || (row.pendingMasterNotesReviewCount || 0) > 0,
+  )
+  const activeStudents = rows
+    .filter((row) => row.status === 'active')
+    .sort(
+      (a, b) =>
+        Number(Boolean(b.hasPendingMasterNotesReview)) -
+          Number(Boolean(a.hasPendingMasterNotesReview)) ||
+        a.userDisplayName.localeCompare(b.userDisplayName, 'es'),
+    )
+
+  return {
+    isCoachingAdmin: true,
+    activeStudents,
+    hasPendingReviews: pendingRows.length > 0,
+    pendingSessions: pendingRows.length,
+    pendingNotes: rows.reduce(
+      (total, row) => total + Math.max(0, row.pendingMasterNotesReviewCount || 0),
+      0,
+    ),
+  }
+}
+
 export async function fetchAvailableUsersForCoaching(): Promise<CoachingAvailableUser[]> {
   const data = await invokeCoachingFunction<{ rows?: CoachingAvailableUser[] }>(
     'coaching-center',

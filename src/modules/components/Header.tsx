@@ -3,10 +3,22 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { AppBreadcrumbs } from './AppBreadcrumbs'
 import { LeaderboardMenu } from './LeaderboardMenu'
 import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
-import { DASHBOARD_ROUTES } from '../routes/paths'
+import {
+  DASHBOARD_ROUTES,
+  getManageCoachingUserRoute,
+} from '../routes/paths'
+import type { CoachingManagedUser } from '../services/coaching'
 import type { DailyProgressMap } from '../types'
 import { PendingReviewDot } from './PendingReviewDot'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Tooltip,
   TooltipContent,
@@ -19,7 +31,89 @@ type HeaderProps = {
   voiceActivationsToday: number
   shouldHighlightProfileButton: boolean
   shouldHighlightCoachingProfileButton?: boolean
+  /** Solo para coaches: alumnos con coaching activo (null = no es coach). */
+  coachStudents?: CoachingManagedUser[] | null
   boltButtonRef: (node: HTMLButtonElement | null) => void
+}
+
+/* Acceso rápido del coach (solo ordenador): un clic y estás en el tablero del alumno. */
+function CoachQuickAccess({
+  students,
+  hasPending,
+}: {
+  students: CoachingManagedUser[]
+  hasPending: boolean
+}) {
+  const navigate = useNavigate()
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant='outline'
+          className='relative hidden h-9 gap-2 px-3 md:inline-flex'
+          aria-label='Acceso rápido a coaching'
+        >
+          <span aria-hidden='true'>🎯</span>
+          <span className='text-sm font-semibold'>Coaching</span>
+          {students.length > 0 && (
+            <span className='rounded-full bg-primary/15 px-1.5 text-xs font-semibold text-primary'>
+              {students.length}
+            </span>
+          )}
+          {hasPending && (
+            <span className='absolute -right-1 -top-1 size-2.5 rounded-full bg-amber-400 ring-2 ring-background' />
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align='end' className='w-80'>
+        <DropdownMenuLabel>Tus alumnos en coaching</DropdownMenuLabel>
+        {students.length === 0 ? (
+          <p className='px-2 py-1.5 text-sm text-muted-foreground'>
+            No hay coachings activos.
+          </p>
+        ) : (
+          <div className='max-h-80 overflow-y-auto'>
+            {students.map((student) => (
+              <DropdownMenuItem
+                key={student.id}
+                className='flex items-center justify-between gap-3'
+                onSelect={() =>
+                  navigate(getManageCoachingUserRoute(student.userId, student.id))
+                }
+              >
+                <span className='min-w-0'>
+                  <span className='block truncate font-medium'>
+                    {student.userDisplayName}
+                  </span>
+                  <span className='block text-xs text-muted-foreground'>
+                    {student.targetLang} · {student.level}
+                  </span>
+                </span>
+                {student.hasPendingMasterNotesReview ||
+                (student.pendingMasterNotesReviewCount || 0) > 0 ? (
+                  <span
+                    className='shrink-0 rounded-full bg-amber-400/20 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300'
+                    title='Notas maestras pendientes de revisar'
+                  >
+                    {student.pendingMasterNotesReviewCount || 1} por revisar
+                  </span>
+                ) : null}
+              </DropdownMenuItem>
+            ))}
+          </div>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => navigate(DASHBOARD_ROUTES.manageCoaching)}>
+          Ver todos los alumnos
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={() => navigate(DASHBOARD_ROUTES.manageCoachingCalendar)}
+        >
+          Calendario de coaching
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
 }
 
 type HeaderBoltIconProps = {
@@ -90,6 +184,7 @@ export function Header({
   voiceActivationsToday,
   shouldHighlightProfileButton,
   shouldHighlightCoachingProfileButton = false,
+  coachStudents = null,
   boltButtonRef,
 }: HeaderProps) {
   const navigate = useNavigate()
@@ -145,6 +240,12 @@ export function Header({
         </div>
 
         <div className='flex items-center gap-2'>
+          {coachStudents ? (
+            <CoachQuickAccess
+              students={coachStudents}
+              hasPending={shouldHighlightCoachingProfileButton}
+            />
+          ) : null}
           <LeaderboardMenu />
           <div className='hidden md:block'>
             <Tooltip>
