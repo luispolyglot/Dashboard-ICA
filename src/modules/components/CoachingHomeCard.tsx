@@ -164,7 +164,7 @@ function getNextStep(data: HomeCoachingData): NextStep {
     return { emoji: '📅', text: `Próxima clase: ${formatClassDate(nextClass.scheduledAt)}` }
   }
 
-  return { emoji: '✅', text: 'Todo al día esta semana' }
+  return { emoji: '✅', text: 'Todo al día' }
 }
 
 type CoachingHomeCardProps = {
@@ -259,9 +259,6 @@ export function CoachingHomeCard({
             🎯
           </div>
           <div>
-            <span className='mb-0.5 inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-300 to-amber-500 px-2 py-px text-[10px] font-extrabold tracking-[0.18em] text-amber-950'>
-              ★ PREMIUM 1:1
-            </span>
             <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
               TU COACHING
             </h2>

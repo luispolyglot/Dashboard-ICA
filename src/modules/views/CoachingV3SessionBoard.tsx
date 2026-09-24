@@ -1275,7 +1275,7 @@ export function CoachingV3SessionBoard({
             </div>
             {coachTodos.length === 0 ? (
               <p className="text-sm" style={{ color: "var(--v3-muted)" }}>
-                Todo al día esta semana. ✓
+                Todo al día. ✓
               </p>
             ) : (
               <ul className="grid gap-1.5 md:grid-cols-2">
