@@ -3102,26 +3102,41 @@ export function CoachingV3SessionBoard({
                   const answers = (openReviewAttempt.answers || []).filter(
                     (row) => row.block === blockId,
                   );
-                  // Intentos antiguos: solo se guardaban los fallos.
-                  const legacyName =
-                    blockId === "reconocer"
-                      ? "reconocer"
-                      : blockId === "construir"
-                        ? "construir"
-                        : "conversacion";
+                  // Intentos antiguos: solo se guardaban los fallos, etiquetados con el
+                  // TÍTULO del bloque (que la IA podía inventar). Lo resolvemos con el
+                  // propio ejercicio; si no casa con ninguno, va a "Reconocer".
+                  const reviewExercise = openReviewFocusId
+                    ? normalizeExercisePayload(
+                        focusExerciseByFocusId.get(openReviewFocusId)?.exercise ||
+                          null,
+                      )
+                    : null;
                   const normalize = (text: string) =>
                     text
                       .toLowerCase()
                       .normalize("NFD")
-                      .replace(/[\u0300-\u036f]/g, "");
+                      .replace(/[\u0300-\u036f]/g, "")
+                      .trim();
+                  const legacyBlockOf = (
+                    title: string,
+                  ): "reconocer" | "construir" | "conversacion" => {
+                    const t = normalize(title);
+                    if (reviewExercise) {
+                      if (t === normalize(reviewExercise.construir.titulo)) return "construir";
+                      if (t === normalize(reviewExercise.conversacion.titulo)) return "conversacion";
+                      if (t === normalize(reviewExercise.reconocer.titulo)) return "reconocer";
+                    }
+                    if (t.includes("constru")) return "construir";
+                    if (t.includes("conversa") || t.includes("dialog")) return "conversacion";
+                    return "reconocer";
+                  };
                   const legacyFailures =
                     answers.length === 0 && Array.isArray(openReviewAttempt.failures)
                       ? (openReviewAttempt.failures as Array<Record<string, unknown>>)
                           .filter(
                             (row) =>
                               row &&
-                              typeof row.block === "string" &&
-                              normalize(row.block).includes(legacyName),
+                              legacyBlockOf(String(row.block || "")) === blockId,
                           )
                           .map((row) => ({
                             question: String(row.question || "Pregunta"),
@@ -3142,8 +3157,8 @@ export function CoachingV3SessionBoard({
                     >
                       {answers.length === 0 ? (
                         <p className="text-xs text-muted-foreground">
-                          Intento anterior a esta versión: solo se guardaron
-                          los fallos.
+                          Este intento se hizo antes de guardar todas las
+                          respuestas: aquí solo salen los fallos.
                         </p>
                       ) : null}
                       {rows.length === 0 ? (

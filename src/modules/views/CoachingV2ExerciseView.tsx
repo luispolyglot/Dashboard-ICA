@@ -12,6 +12,7 @@ import {
 } from "../services/coaching";
 import { getCoachingPersonalizedSessionRoute } from "../routes/paths";
 import { normalizeExercisePayload } from "./coachingV2ExerciseLogic";
+import { invalidateHomeCoachingCache } from "../components/CoachingHomeCard";
 import {
   CoachingFocusExerciseRunner,
   type CoachingFocusExerciseResult,
@@ -114,6 +115,7 @@ export function CoachingV2ExerciseView({
         focusId,
         ...result,
       });
+      invalidateHomeCoachingCache();
       return saved.phaseTrainedUpdated
         ? "Entregado. El foco pasa a Entrenado y tu coach ya ve tus respuestas."
         : "Entregado. Tu coach ya ve tus respuestas.";

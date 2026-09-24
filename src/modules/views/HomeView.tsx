@@ -3,7 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { MetaTrackerSection } from '../components/MetaTracker/MetaTrackerSection'
-import { CoachingHomeCard } from '../components/CoachingHomeCard'
+import {
+  CoachingHomeCard,
+  expectsHomeCoaching,
+} from '../components/CoachingHomeCard'
 import { CREATION_WORDS_GOAL, getTodayProgress } from '../constants'
 import type { DailyProgressMap } from '../types'
 import type { AppConfig } from '../types'
@@ -34,7 +37,10 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   const navigate = useNavigate()
   const [showPregunticaPulse, setShowPregunticaPulse] = useState(false)
   // Alumnos de coaching: su tarjeta va a la izquierda de Juegos ICA (y también en móvil).
-  const [hasCoaching, setHasCoaching] = useState(false)
+  // Se inicializa con lo que ya sabemos para que la tarjeta y Juegos ICA no se vean un instante a pantalla completa.
+  const [hasCoaching, setHasCoaching] = useState(() =>
+    expectsHomeCoaching(config.targetLang),
+  )
   const todayProgress = getTodayProgress(dailyProgress)
   const cardBaseClass =
     'relative flex min-h-[220px] w-full flex-col px-[25px] py-8 text-left font-sans transition-[transform,border-color,box-shadow,background] duration-250 ease-[cubic-bezier(0.2,0.8,0.2,1)]'
