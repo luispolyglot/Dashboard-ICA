@@ -26,6 +26,32 @@ type HomeCoachingData = {
 const CACHE_TTL_MS = 60_000
 let cache: { key: string; at: number; data: HomeCoachingData | null } | null = null
 
+/* Recordamos (en este navegador) si el alumno tiene coaching, para que la home
+   pinte el hueco de la tarjeta desde el primer momento y no "salte". */
+const FLAG_KEY = (targetLang: string) => `ica.homeCoaching.${targetLang}`
+
+export function expectsHomeCoaching(targetLang: string): boolean {
+  if (cache && cache.key === targetLang) return Boolean(cache.data)
+  try {
+    return window.localStorage.getItem(FLAG_KEY(targetLang)) === '1'
+  } catch {
+    return false
+  }
+}
+
+function rememberHomeCoaching(targetLang: string, available: boolean) {
+  try {
+    window.localStorage.setItem(FLAG_KEY(targetLang), available ? '1' : '0')
+  } catch {
+    /* sin almacenamiento: no pasa nada */
+  }
+}
+
+/* Tras entregar un ejercicio o cambiar algo del coaching, la home debe pedirlo de nuevo. */
+export function invalidateHomeCoachingCache() {
+  cache = null
+}
+
 async function loadHomeCoaching(targetLang: string): Promise<HomeCoachingData | null> {
   if (cache && cache.key === targetLang && Date.now() - cache.at < CACHE_TTL_MS) {
     return cache.data
@@ -164,6 +190,7 @@ export function CoachingHomeCard({
       .then((result) => {
         if (!active) return
         setData(result)
+        rememberHomeCoaching(targetLang, Boolean(result))
         onAvailabilityChange?.(Boolean(result))
       })
       .catch(() => {
@@ -175,7 +202,18 @@ export function CoachingHomeCard({
     }
   }, [onAvailabilityChange, targetLang])
 
-  if (!data) return null
+  if (!data) {
+    // Mientras carga, si esperamos coaching, reservamos su hueco para que nada salte.
+    return expectsHomeCoaching(targetLang) ? (
+      <div
+        aria-hidden='true'
+        className={cn(
+          'min-h-[230px] animate-pulse rounded-[20px] border border-sky-400/25 bg-sky-400/5',
+          className,
+        )}
+      />
+    ) : null
+  }
 
   const { membership, board } = data
   const totalWeeks = board?.session.durationPeriods || membership.durationPeriods || 10
