@@ -240,21 +240,36 @@ export function CoachingHomeCard({
         }
       }}
       className={cn(
-        'relative flex w-full cursor-pointer flex-col overflow-hidden rounded-[20px] border border-sky-400/35 px-[25px] py-6 text-left transition-[transform,box-shadow] duration-250 hover:-translate-y-[2px] hover:shadow-[0_0_0_1px_rgba(96,165,250,0.5),0_0_24px_rgba(59,130,246,0.33)]',
-        'bg-[linear-gradient(180deg,rgba(59,130,246,0.1),rgba(59,130,246,0.03)),linear-gradient(160deg,#ffffff,#eef3f9)] dark:bg-[linear-gradient(180deg,rgba(59,130,246,0.12),rgba(59,130,246,0.04)),linear-gradient(160deg,#0f172a,#0a0f1a)]',
-        step.urgent && 'border-sky-400/80 shadow-[0_0_0_1px_rgba(96,165,250,0.45),0_0_22px_rgba(59,130,246,0.28)]',
+        // Aspecto premium: borde dorado degradado, brillo cálido y fondo con un toque de oro.
+        'group relative flex w-full cursor-pointer flex-col overflow-hidden rounded-[20px] border border-transparent px-[25px] py-6 text-left transition-[transform,box-shadow] duration-250 hover:-translate-y-[2px]',
+        '[background:linear-gradient(160deg,#fffdf7,#f3f5fb)_padding-box,linear-gradient(135deg,#f5d77e,#c9962b_35%,#60a5fa_70%,#f5d77e)_border-box] dark:[background:linear-gradient(160deg,#111a2e,#0a0f1a)_padding-box,linear-gradient(135deg,#f5d77e,#b8862a_35%,#3b82f6_70%,#f5d77e)_border-box]',
+        'shadow-[0_0_0_1px_rgba(234,179,8,0.12),0_10px_30px_-12px_rgba(234,179,8,0.35)] hover:shadow-[0_0_0_1px_rgba(234,179,8,0.35),0_14px_36px_-10px_rgba(234,179,8,0.45)]',
+        step.urgent && 'shadow-[0_0_0_1px_rgba(234,179,8,0.4),0_0_26px_rgba(234,179,8,0.3)]',
         className,
       )}
     >
-      <div className='flex items-start justify-between gap-3'>
-        <div className='flex items-center gap-2'>
-          <div className='text-3xl'>🎯</div>
+      {/* Destello dorado que cruza la tarjeta al pasar el ratón */}
+      <span
+        aria-hidden='true'
+        className='pointer-events-none absolute -inset-y-8 -left-1/3 w-1/3 rotate-12 bg-gradient-to-r from-transparent via-amber-200/25 to-transparent opacity-0 transition-all duration-700 group-hover:left-[110%] group-hover:opacity-100'
+      />
+      <div className='relative flex items-start justify-between gap-3'>
+        <div className='flex items-center gap-2.5'>
+          <div className='flex size-11 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-200 to-amber-500 text-2xl shadow-[0_4px_14px_-4px_rgba(217,119,6,0.6)]'>
+            🎯
+          </div>
           <div>
+            <span className='mb-0.5 inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-300 to-amber-500 px-2 py-px text-[10px] font-extrabold tracking-[0.18em] text-amber-950'>
+              ★ PREMIUM 1:1
+            </span>
             <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
               TU COACHING
             </h2>
             <p className='m-0 text-xs text-slate-500'>
-              {membership.targetLang} · {membership.level}
+              {membership.targetLang} · {membership.level} · {(() => {
+                const second = (membership.coachDisplayName || '').trim()
+                return second && second.toLowerCase() !== 'luis' ? `con Luis y ${second}` : 'con Luis'
+              })()}
             </p>
           </div>
         </div>
@@ -325,7 +340,7 @@ export function CoachingHomeCard({
       </div>
 
       {/* Siguiente paso */}
-      <div className='mt-4 flex items-center justify-between gap-3 border-t border-sky-400/20 pt-3'>
+      <div className='relative mt-4 flex items-center justify-between gap-3 border-t border-amber-400/25 pt-3'>
         <p className='m-0 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-300'>
           <span aria-hidden='true'>{step.emoji}</span>
           <span>{step.text}</span>
@@ -333,7 +348,7 @@ export function CoachingHomeCard({
         {step.cta ? (
           <button
             type='button'
-            className='shrink-0 rounded-full bg-[#3B82F6] px-3 py-1 text-xs font-bold text-white transition hover:bg-[#2563eb]'
+            className='shrink-0 rounded-full bg-gradient-to-r from-amber-400 to-amber-500 px-3 py-1 text-xs font-bold text-amber-950 shadow-[0_2px_10px_-2px_rgba(217,119,6,0.6)] transition hover:from-amber-300 hover:to-amber-500'
             onClick={(event) => {
               event.stopPropagation()
               if (step.cta?.href) {
