@@ -13,7 +13,10 @@ import { MobileBottomNav } from '../components/MobileBottomNav'
 import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
 
-import { fetchCoachingPendingReviewSummary } from '../services/coaching'
+import {
+  fetchCoachingNavSummary,
+  type CoachingManagedUser,
+} from '../services/coaching'
 import { fetchCalendarIcademyEntries } from '../services/calendarIcademy'
 import {
   fetchCalendarIcademyPreferences,
@@ -113,6 +116,9 @@ export function DashboardLayout() {
   const [activeFlight, setActiveFlight] = useState(0)
   const [hasPendingCoachingReview, setHasPendingCoachingReview] =
     useState(false)
+  const [coachStudents, setCoachStudents] = useState<
+    CoachingManagedUser[] | null
+  >(null)
   const { canHighlightCurrentMonth } = useIcaTestsOverview({
     targetLang: config?.targetLang,
     nativeLang: config?.nativeLang,
@@ -157,9 +163,10 @@ export function DashboardLayout() {
 
     const refreshPendingCoachingReview = async (): Promise<void> => {
       try {
-        const summary = await fetchCoachingPendingReviewSummary()
+        const summary = await fetchCoachingNavSummary()
         if (!active) return
         setHasPendingCoachingReview(summary.hasPendingReviews)
+        setCoachStudents(summary.isCoachingAdmin ? summary.activeStudents : null)
       } catch {
         if (!active) return
         setHasPendingCoachingReview(false)
@@ -315,6 +322,7 @@ export function DashboardLayout() {
           voiceActivationsToday={todayProgress.voiceActivationsCount}
           shouldHighlightProfileButton={canHighlightCurrentMonth}
           shouldHighlightCoachingProfileButton={hasPendingCoachingReview}
+          coachStudents={coachStudents}
           boltButtonRef={(node) => {
             boltButtonRef.current = node
           }}
