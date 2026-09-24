@@ -11,7 +11,7 @@
  * - el script de prueba local scripts/test-coaching-exercise.mjs (Node).
  * Solo importa archivos de _shared (con extensión .ts, como pide Deno).
  */
-import { findForm, patternOf, type CorrectorLibre } from './coaching-exercise-corrector.ts'
+import { findForm, passThreshold, patternOf, type CorrectorLibre } from './coaching-exercise-corrector.ts'
 import { COACHING_EXERCISE_TEMPLATE_EXAMPLE } from './coaching-exercise-template.ts'
 
 type Json = Record<string, unknown>
@@ -826,7 +826,7 @@ export async function generateCoachingFocusExercise(
     foco_subtitulo: plan.foco_subtitulo,
     foco_slot: input.focusSlot,
     fase: input.phase,
-    umbral: Math.max(1, units - 2),
+    umbral: passThreshold(units),
     equivalencias: plan.equivalencias,
     libre: plan.libre,
     etiquetas: plan.etiquetas,

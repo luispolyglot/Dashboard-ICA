@@ -17,8 +17,9 @@
 4. El resultado queda en `coaching_v2_focus_exercises` (`ready` / `error`). Todo queda en
    `coaching_v2_focus_exercise_generation_logs` (con `warnings`).
 5. El alumno solo ve el botón "Entrenar" cuando el coach marca **Explicado**.
-6. Al terminar el ejercicio se guarda el intento con TODAS sus respuestas (`answers`) y el foco pasa
-   solo a **Entrenado** (se supere o no). El coach las ve en "Ver respuestas".
+6. Al terminar el ejercicio se guarda el intento con TODAS sus respuestas (`answers`); el coach las
+   ve en "Ver respuestas". Si lo supera (75 % de aciertos, `PASS_RATIO` en
+   `_shared/coaching-exercise-corrector.ts`), el foco pasa solo a **Entrenado**.
 7. Si el foco está escrito con palabras de otro idioma, se entrena su equivalente en el idioma
    del coaching (p. ej. "Can · Could" en polaco → móc / powinien / chciałbym).
 

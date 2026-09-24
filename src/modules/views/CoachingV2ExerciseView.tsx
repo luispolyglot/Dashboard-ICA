@@ -117,7 +117,7 @@ export function CoachingV2ExerciseView({
       });
       invalidateHomeCoachingCache();
       return saved.phaseTrainedUpdated
-        ? "Entregado. El foco pasa a Entrenado y tu coach ya ve tus respuestas."
+        ? "¡Superado! El foco pasa a Entrenado y tu coach ya ve tus respuestas."
         : "Entregado. Tu coach ya ve tus respuestas.";
     },
     [focusId, periodNumber, sessionId],

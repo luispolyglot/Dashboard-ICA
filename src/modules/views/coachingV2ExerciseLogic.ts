@@ -1,6 +1,7 @@
 import {
   findForm,
   normalizeText,
+  passThreshold,
   readablePattern,
   type CorrectorContext,
   type CorrectorLibre,
@@ -65,15 +66,6 @@ function asStringArray(value: unknown): string[] {
     .filter((item): item is string => typeof item === 'string')
     .map((item) => item.trim())
     .filter(Boolean)
-}
-
-function asNumber(value: unknown, fallback = 0): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value)
-  if (typeof value === 'string') {
-    const parsed = Number(value.trim())
-    if (Number.isFinite(parsed)) return Math.trunc(parsed)
-  }
-  return fallback
 }
 
 function asLibre(value: unknown): CorrectorLibre | undefined {
@@ -197,7 +189,12 @@ export function normalizeExercisePayload(payload: unknown): ExerciseData | null 
     focoSubtitulo: asString(payload.foco_subtitulo),
     focoSlot: asString(payload.foco_slot, 'Foco'),
     fase: asString(payload.fase, 'Entrenado'),
-    umbral: Math.max(1, asNumber(payload.umbral, 1)),
+    // La nota para superar se calcula siempre igual (75 %), también en ejercicios antiguos.
+    umbral: passThreshold(
+      recoItems.length +
+        buildItems.reduce((total, item) => total + item.verbos.length, 0) +
+        dialogItems.length,
+    ),
     equivalencias,
     etiquetas,
     libre: asLibre(payload.libre) || {},
