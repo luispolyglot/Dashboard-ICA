@@ -10,6 +10,7 @@ import {
   scoreDialogItem,
   type ExerciseData,
 } from "./coachingV2ExerciseLogic";
+import type { CoachingV2AttemptAnswer } from "../services/coaching";
 
 /* Ejercicio de foco (fase Entrenado): los tres bloques + resultado.
    Lo usan el alumno (guarda su intento) y el coach (vista previa, sin guardar). */
@@ -28,6 +29,8 @@ export type CoachingFocusExerciseResult = {
     expected: string;
     why: string;
   }>;
+  /** Todas las respuestas, acertadas o no: el coach ve el ejercicio tal y como lo hizo el alumno. */
+  answers: CoachingV2AttemptAnswer[];
 };
 
 type UnitMeta = {
@@ -321,6 +324,48 @@ export function CoachingFocusExerciseRunner({
     return out;
   }, [data, said, scores]);
 
+  const answers = useMemo(() => {
+    const out: CoachingV2AttemptAnswer[] = [];
+    data.reconocer.items.forEach((item, idx) => {
+      const key = unitKey(0, idx);
+      out.push({
+        block: "reconocer",
+        blockTitle: data.reconocer.titulo,
+        question: item.lead,
+        mine: said[key] || "—",
+        expected: item.options.find((option) => option.ok)?.t || "—",
+        ok: Boolean(scores[key]),
+      });
+    });
+    data.construir.items.forEach((item, idx) => {
+      item.verbos.forEach((verb, verbIdx) => {
+        const key = unitKey(1, idx, verbIdx);
+        out.push({
+          block: "construir",
+          blockTitle: data.construir.titulo,
+          question: item.situacion,
+          unit: verb.nombre,
+          mine: said[itemKey(1, idx)] || "—",
+          found: found[key] || null,
+          expected: readablePattern(verb.formas[0] || "") || "—",
+          ok: Boolean(scores[key]),
+        });
+      });
+    });
+    data.conversacion.items.forEach((item, idx) => {
+      const key = unitKey(2, idx);
+      out.push({
+        block: "conversacion",
+        blockTitle: data.conversacion.titulo,
+        question: `Hueco ${idx + 1} (${item.verbo})`,
+        mine: said[key] || "—",
+        expected: item.show || item.formas[0] || "—",
+        ok: Boolean(scores[key]),
+      });
+    });
+    return out;
+  }, [data, found, said, scores]);
+
   useEffect(() => {
     if (step !== 3 || attemptSaved || attemptSaving || !onComplete) return;
     setAttemptSaving(true);
@@ -333,6 +378,7 @@ export function CoachingFocusExerciseRunner({
       blockScores: blockScore,
       tagScores: tagScore,
       failures,
+      answers,
     })
       .then((message) => {
         setAttemptSaved(true);
@@ -349,6 +395,7 @@ export function CoachingFocusExerciseRunner({
         setAttemptSaving(false);
       });
   }, [
+    answers,
     attemptSaved,
     attemptSaving,
     blockScore,

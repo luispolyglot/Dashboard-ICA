@@ -115,8 +115,8 @@ export function CoachingV2ExerciseView({
         ...result,
       });
       return saved.phaseTrainedUpdated
-        ? "Resultado guardado. Se ha marcado Entrenado automáticamente para este foco."
-        : "Resultado guardado. Tu coach lo verá en tu tablero.";
+        ? "Entregado. El foco pasa a Entrenado y tu coach ya ve tus respuestas."
+        : "Entregado. Tu coach ya ve tus respuestas.";
     },
     [focusId, periodNumber, sessionId],
   );

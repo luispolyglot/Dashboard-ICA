@@ -465,9 +465,16 @@ export function CoachingV3SessionBoard({
   const exerciseByFocusId = new Map(
     selectedExercises.map((row) => [row.focusId, row]),
   );
-  const attemptByFocusId = new Map(
-    selectedAttempts.map((row) => [row.focusId, row]),
-  );
+  // Los intentos llegan del más nuevo al más antiguo: nos quedamos con el último de cada foco.
+  const attemptByFocusId = new Map<string, (typeof selectedAttempts)[number]>();
+  const attemptCountByFocusId = new Map<string, number>();
+  for (const row of selectedAttempts) {
+    if (!attemptByFocusId.has(row.focusId)) attemptByFocusId.set(row.focusId, row);
+    attemptCountByFocusId.set(
+      row.focusId,
+      (attemptCountByFocusId.get(row.focusId) || 0) + 1,
+    );
+  }
   const periodActivationByNumber = new Map(
     (board?.periodActivations || []).map((row) => [row.periodNumber, row]),
   );
@@ -1509,7 +1516,7 @@ export function CoachingV3SessionBoard({
                   nextPhaseIdx === 0
                     ? "Cuando se lo expliques en clase, marca «Explicado»: así se le abre el ejercicio."
                     : nextPhaseIdx === 1
-                      ? "Se marca solo cuando el alumno supera el ejercicio. También puedes marcarlo tú."
+                      ? "Se marca solo cuando el alumno entrega el ejercicio. También puedes marcarlo tú."
                       : nextPhaseIdx === 2
                         ? "Marca «Entendido» cuando el alumno te lo explique a ti."
                         : nextPhaseIdx === 3
@@ -1693,12 +1700,17 @@ export function CoachingV3SessionBoard({
                       </p>
                       {focusAttempt ? (
                         <p className="mt-1 text-xs">
-                          Último intento:{" "}
+                          {(attemptCountByFocusId.get(focus.id) || 1) > 1
+                            ? `Último de ${attemptCountByFocusId.get(focus.id)} intentos: `
+                            : "Entregado: "}
                           <b>
                             {focusAttempt.scoreCorrect}/{focusAttempt.scoreTotal}
                           </b>{" "}
                           ·{" "}
                           {focusAttempt.passed ? "superado" : "no superado"}
+                          {formatShortDateTime(focusAttempt.submittedAt)
+                            ? ` · ${formatShortDateTime(focusAttempt.submittedAt)}`
+                            : ""}
                         </p>
                       ) : null}
                       <div className="mt-2 flex flex-wrap gap-2">
@@ -1719,8 +1731,8 @@ export function CoachingV3SessionBoard({
                             className="h-8"
                             onClick={() => setOpenReviewFocusId(focus.id)}
                           >
-                            <ListChecksIcon className="size-3.5" /> Revisar
-                            intento
+                            <ListChecksIcon className="size-3.5" /> Ver
+                            respuestas
                           </Button>
                         ) : null}
                         {trainingState !== "generating" ? (
@@ -3064,7 +3076,12 @@ export function CoachingV3SessionBoard({
       >
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Revisión de intento</DialogTitle>
+            <DialogTitle>
+              Respuestas del alumno
+              {openReviewFocusId
+                ? ` · ${board.focuses.find((row) => row.id === openReviewFocusId)?.focusTitle || ""}`
+                : ""}
+            </DialogTitle>
             <DialogDescription>
               {openReviewAttempt
                 ? `${openReviewAttempt.passed ? "Superado" : "No superado"} · ${openReviewAttempt.scoreCorrect}/${openReviewAttempt.scoreTotal}`
@@ -3080,12 +3097,16 @@ export function CoachingV3SessionBoard({
                 <TabsTrigger value="conversacion">Conversación</TabsTrigger>
               </TabsList>
 
-              {(["Reconocer", "Construir", "En conversacion"] as const).map(
-                (name, idx) => {
-                  const value =
-                    idx === 0
+              {(["reconocer", "construir", "conversacion"] as const).map(
+                (blockId) => {
+                  const answers = (openReviewAttempt.answers || []).filter(
+                    (row) => row.block === blockId,
+                  );
+                  // Intentos antiguos: solo se guardaban los fallos.
+                  const legacyName =
+                    blockId === "reconocer"
                       ? "reconocer"
-                      : idx === 1
+                      : blockId === "construir"
                         ? "construir"
                         : "conversacion";
                   const normalize = (text: string) =>
@@ -3093,52 +3114,86 @@ export function CoachingV3SessionBoard({
                       .toLowerCase()
                       .normalize("NFD")
                       .replace(/[\u0300-\u036f]/g, "");
-                  const failures = Array.isArray(openReviewAttempt.failures)
-                    ? openReviewAttempt.failures.filter((item) => {
-                        if (!item || typeof item !== "object") return false;
-                        const row = item as Record<string, unknown>;
-                        const block =
-                          typeof row.block === "string" ? row.block : "";
-                        return normalize(block).includes(normalize(name));
-                      })
-                    : [];
+                  const legacyFailures =
+                    answers.length === 0 && Array.isArray(openReviewAttempt.failures)
+                      ? (openReviewAttempt.failures as Array<Record<string, unknown>>)
+                          .filter(
+                            (row) =>
+                              row &&
+                              typeof row.block === "string" &&
+                              normalize(row.block).includes(legacyName),
+                          )
+                          .map((row) => ({
+                            question: String(row.question || "Pregunta"),
+                            unit: undefined as string | undefined,
+                            mine: String(row.mine || "—"),
+                            found: null as string | null | undefined,
+                            expected: String(row.expected || "—"),
+                            ok: false,
+                          }))
+                      : [];
+                  const rows = answers.length > 0 ? answers : legacyFailures;
 
                   return (
                     <TabsContent
-                      key={`review-tab-${value}`}
-                      value={value}
+                      key={`review-tab-${blockId}`}
+                      value={blockId}
                       className="mt-3 space-y-2"
                     >
-                      {failures.length === 0 ? (
+                      {answers.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          Intento anterior a esta versión: solo se guardaron
+                          los fallos.
+                        </p>
+                      ) : null}
+                      {rows.length === 0 ? (
                         <p className="text-sm text-muted-foreground">
-                          Sin fallos registrados en esta sección.
+                          Sin fallos en esta sección.
                         </p>
                       ) : (
-                        failures.map((item, itemIdx) => {
-                          const row = item as Record<string, unknown>;
-                          return (
-                            <div
-                              key={`failure-${value}-${itemIdx}`}
-                              className="rounded-md border p-3 text-sm"
-                            >
-                              <p className="font-medium">
-                                {typeof row.question === "string"
-                                  ? row.question
-                                  : "Pregunta"}
+                        rows.map((row, rowIdx) => (
+                          <div
+                            key={`answer-${blockId}-${rowIdx}`}
+                            className={`rounded-md border p-3 text-sm ${row.ok ? "border-emerald-500/40" : "border-rose-500/40"}`}
+                          >
+                            <p className="flex items-start gap-2 font-medium">
+                              <span
+                                className={
+                                  row.ok
+                                    ? "text-emerald-600 dark:text-emerald-400"
+                                    : "text-rose-600 dark:text-rose-400"
+                                }
+                              >
+                                {row.ok ? "✓" : "✗"}
+                              </span>
+                              <span>
+                                {row.question}
+                                {row.unit ? (
+                                  <span className="block text-xs font-normal text-muted-foreground">
+                                    Se corrige: {row.unit}
+                                  </span>
+                                ) : null}
+                              </span>
+                            </p>
+                            <p className="mt-1 pl-5 text-sm">
+                              <span className="text-xs text-muted-foreground">
+                                Escribió:{" "}
+                              </span>
+                              {row.mine}
+                              {row.found && row.found !== row.mine ? (
+                                <span className="text-xs text-muted-foreground">
+                                  {" "}
+                                  (encontrado: «{row.found}»)
+                                </span>
+                              ) : null}
+                            </p>
+                            {!row.ok ? (
+                              <p className="pl-5 text-xs text-emerald-700 dark:text-emerald-300">
+                                Esperado: {row.expected}
                               </p>
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                Respondio:{" "}
-                                {typeof row.mine === "string" ? row.mine : "—"}
-                              </p>
-                              <p className="text-xs text-emerald-700">
-                                Esperado:{" "}
-                                {typeof row.expected === "string"
-                                  ? row.expected
-                                  : "—"}
-                              </p>
-                            </div>
-                          );
-                        })
+                            ) : null}
+                          </div>
+                        ))
                       )}
                     </TabsContent>
                   );

@@ -59,6 +59,7 @@ function withDefaultClassGuideline(value: string | null, index: 0 | 1 | 2): stri
 
 type CoachingCenterPayload = {
   action?: string
+  answers?: unknown
   sessionId?: string
   masterNoteId?: string
   feedbackLoomUrl?: string | null
@@ -306,6 +307,7 @@ type CoachingV2FocusExerciseAttemptRow = {
   block_scores: unknown
   tag_scores: unknown
   failures: unknown
+  answers?: unknown
   submitted_at: string
   created_at: string
 }
@@ -322,6 +324,7 @@ type CoachingV2FocusExerciseAttempt = {
   blockScores: unknown
   tagScores: unknown
   failures: unknown
+  answers: unknown
   submittedAt: string
 }
 
@@ -1645,6 +1648,7 @@ function toV2FocusExerciseAttempt(
     blockScores: row.block_scores,
     tagScores: row.tag_scores,
     failures: row.failures,
+    answers: Array.isArray(row.answers) ? row.answers : [],
     submittedAt: row.submitted_at,
   }
 }
@@ -2340,31 +2344,43 @@ Deno.serve(async (req) => {
     if (!focusRow) return jsonResponse(404, { error: 'Focus not found' })
 
     const submittedAt = new Date().toISOString()
-    const { data: attemptRow, error: attemptError } = await auth.adminClient
+    const answers = Array.isArray(payload.answers) ? payload.answers.slice(0, 80) : []
+    const attemptInsert = {
+      session_id: sessionId,
+      period_number: periodNumber,
+      focus_id: focusId,
+      student_user_id: auth.userId,
+      score_correct: scoreCorrect,
+      score_total: scoreTotal,
+      score_threshold: scoreThreshold,
+      passed,
+      block_scores: blockScores,
+      tag_scores: tagScores,
+      failures,
+      submitted_at: submittedAt,
+    }
+    let { data: attemptRow, error: attemptError } = await auth.adminClient
       .from('coaching_v2_focus_exercise_attempts')
-      .insert({
-        session_id: sessionId,
-        period_number: periodNumber,
-        focus_id: focusId,
-        student_user_id: auth.userId,
-        score_correct: scoreCorrect,
-        score_total: scoreTotal,
-        score_threshold: scoreThreshold,
-        passed,
-        block_scores: blockScores,
-        tag_scores: tagScores,
-        failures,
-        submitted_at: submittedAt,
-      })
-      .select(
-        'id, session_id, period_number, focus_id, student_user_id, score_correct, score_total, score_threshold, passed, block_scores, tag_scores, failures, submitted_at, created_at',
-      )
+      .insert({ ...attemptInsert, answers })
+      .select('*')
       .maybeSingle<CoachingV2FocusExerciseAttemptRow>()
+
+    // Si aún no está la columna "answers" (migración sin aplicar), se guarda sin ella.
+    if (attemptError && /answers/i.test(attemptError.message)) {
+      const retry = await auth.adminClient
+        .from('coaching_v2_focus_exercise_attempts')
+        .insert(attemptInsert)
+        .select('*')
+        .maybeSingle<CoachingV2FocusExerciseAttemptRow>()
+      attemptRow = retry.data
+      attemptError = retry.error
+    }
 
     if (attemptError) return jsonResponse(500, { error: attemptError.message })
 
+    // Entregar el ejercicio = el foco ya está entrenado (se supere o no; el coach ve la nota y las respuestas).
     let phaseTrainedUpdated = false
-    if (passed && focusRow.phase_explained && !focusRow.phase_trained) {
+    if (focusRow.phase_explained && !focusRow.phase_trained) {
       const { error: updateFocusError } = await auth.adminClient
         .from('coaching_v2_focuses')
         .update({
@@ -2452,9 +2468,8 @@ Deno.serve(async (req) => {
         .eq('session_id', sessionId),
       auth.adminClient
         .from('coaching_v2_focus_exercise_attempts')
-        .select(
-          'id, session_id, period_number, focus_id, student_user_id, score_correct, score_total, score_threshold, passed, block_scores, tag_scores, failures, submitted_at, created_at',
-        )
+        // '*': incluye "answers" si la migración ya está aplicada, sin romper si no.
+        .select('*')
         .eq('session_id', sessionId)
         .eq('student_user_id', auth.userId)
         .order('submitted_at', { ascending: false }),
@@ -2759,9 +2774,8 @@ Deno.serve(async (req) => {
         .eq('session_id', sessionId),
       admin.adminClient
         .from('coaching_v2_focus_exercise_attempts')
-        .select(
-          'id, session_id, period_number, focus_id, student_user_id, score_correct, score_total, score_threshold, passed, block_scores, tag_scores, failures, submitted_at, created_at',
-        )
+        // '*': incluye "answers" si la migración ya está aplicada, sin romper si no.
+        .select('*')
         .eq('session_id', sessionId)
         .order('submitted_at', { ascending: false }),
       fetchV2PeriodReport({
