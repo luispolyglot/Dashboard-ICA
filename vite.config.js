@@ -4,12 +4,14 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import fs from 'node:fs';
 import path from 'node:path';
+import { localAiDevPlugin } from './dev/local-ai-plugin.mjs';
 var buildId = ((_a = process.env.VERCEL_GIT_COMMIT_SHA) === null || _a === void 0 ? void 0 : _a.slice(0, 12)) || String(Date.now());
 var builtAt = new Date().toISOString();
 export default defineConfig({
     plugins: [
         react(),
         tailwindcss(),
+        localAiDevPlugin(),
         {
             name: 'write-version-json',
             apply: 'build',

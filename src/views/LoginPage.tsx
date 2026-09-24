@@ -40,7 +40,7 @@ export function LoginPage() {
   }
 
   return (
-    <AuthShell title='Bienvenido de nuevo' subtitle='Iniciá sesión para continuar tu progreso en Icademy.'>
+    <AuthShell title='Bienvenido de nuevo' subtitle='Inicia sesión para continuar tu progreso en Icademy.'>
       {!hasSupabaseConfig && (
         <div className='mb-4 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive'>
           <AlertTriangleIcon className='size-4' />
@@ -85,7 +85,7 @@ export function LoginPage() {
       </form>
 
       <p className='mt-4 text-sm text-muted-foreground'>
-        No tienes cuenta?{' '}
+        ¿No tienes cuenta?{' '}
         <Link to='/register' className='font-semibold text-primary'>
           Regístrate
         </Link>

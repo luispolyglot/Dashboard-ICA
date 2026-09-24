@@ -42,6 +42,12 @@ import {
 } from '../components/MetaTracker/colors'
 import { fetchPhraseVoiceActivations } from '../services/phraseVoiceActivations'
 import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
+import { NotaDesafianteOverlay } from '../components/NotaDesafiante/NotaDesafianteOverlay'
+import {
+  isChallengeEnabled,
+  isChallengeLocalMode,
+  type ChallengePhraseInput,
+} from '../services/challengeChunks'
 import type {
   MasterNote,
   MasterNoteChunk,
@@ -118,6 +124,7 @@ export function MasterNoteDetailView({
   const [chunkDeleteCandidate, setChunkDeleteCandidate] =
     useState<MasterNoteChunk | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [challengeOpen, setChallengeOpen] = useState(false)
 
   const {
     error: playbackError,
@@ -225,6 +232,19 @@ export function MasterNoteDetailView({
       }))
       .filter((item) => item.phrase !== null)
   }, [chunks, phrases])
+
+  // Nota desafiante: las frases grabadas en esta nota, en su orden.
+  const challengePhrases = useMemo<ChallengePhraseInput[]>(
+    () =>
+      activatedPhrasesInThisNote
+        .map(({ phrase }) => ({
+          phraseId: phrase?.id || '',
+          target: (phrase?.generated_phrase || '').trim(),
+          native: (phrase?.translation || '').trim(),
+        }))
+        .filter((item) => item.phraseId && item.target && item.native),
+    [activatedPhrasesInThisNote],
+  )
 
   const visiblePhrases = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -470,6 +490,15 @@ export function MasterNoteDetailView({
           )}
           {playingNoteId !== note.id && (
             <>
+              {isChallengeEnabled && challengePhrases.length > 0 && (
+                <Button
+                  type='button'
+                  variant='secondary'
+                  onClick={() => setChallengeOpen(true)}
+                >
+                  🎯 Desafío
+                </Button>
+              )}
               {note.state === 'closed' && (
                 <Button
                   type='button'
@@ -496,6 +525,21 @@ export function MasterNoteDetailView({
           )}
         </div>
       </div>
+      {isChallengeEnabled && isChallengeLocalMode && challengePhrases.length > 0 && (
+        <p className='-mt-2 mb-4 text-xs text-muted-foreground'>
+          🧪 Modo prueba: en la versión final, el desafío se desbloquea al escuchar la nota entera.
+        </p>
+      )}
+      {challengeOpen && (
+        <NotaDesafianteOverlay
+          open={challengeOpen}
+          noteName={note.name}
+          phrases={challengePhrases}
+          targetLang={note.target_lang || targetLang}
+          nativeLang={note.native_lang || 'Español'}
+          onClose={() => setChallengeOpen(false)}
+        />
+      )}
       {(error || playbackError) && (
         <p className='mb-3 text-sm text-red-400'>{error || playbackError}</p>
       )}

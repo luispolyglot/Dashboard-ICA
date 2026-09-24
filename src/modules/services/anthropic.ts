@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase'
+import { callLocalAi, isChallengeLocalMode } from './challengeChunks'
 import type {
   ActivationPhraseResult,
   Lexicard,
@@ -182,21 +183,33 @@ export async function fetchActivationPhrase(
   level: StudyLevel,
   previousPhrase?: string,
 ): Promise<ActivationPhraseResult | null> {
+  const body = {
+    action: 'activation_phrase',
+    words: words.map((word) => ({
+      target: word.target,
+      native: word.native,
+    })),
+    targetLang,
+    nativeLang,
+    level,
+    previousPhrase,
+  }
+
+  // Nota desafiante: en modo prueba local la frase (con trozos) se genera desde este ordenador.
+  if (isChallengeLocalMode) {
+    try {
+      return await callLocalAi<ActivationPhraseResult>('activation_phrase', body)
+    } catch (error) {
+      console.error(error)
+      return null
+    }
+  }
+
   if (!supabase) return null
 
   try {
     const { data, error } = await supabase.functions.invoke<ActivationPhraseResponse>('anthropic-proxy', {
-      body: {
-        action: 'activation_phrase',
-        words: words.map((word) => ({
-          target: word.target,
-          native: word.native,
-        })),
-        targetLang,
-        nativeLang,
-        level,
-        previousPhrase,
-      },
+      body,
     })
 
     if (error) {

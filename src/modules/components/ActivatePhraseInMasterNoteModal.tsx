@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import {
@@ -36,6 +36,16 @@ export function ActivatePhraseInMasterNoteModal({
   const [masterNotesError, setMasterNotesError] = useState<string | null>(null)
   const [activatingInNoteId, setActivatingInNoteId] = useState<string | null>(null)
   const [creatingAndActivating, setCreatingAndActivating] = useState(false)
+  // Si no hay nada que elegir (0 o 1 nota abierta), vamos directos a grabar
+  const [autoRouting, setAutoRouting] = useState(false)
+  const autoRoutedRef = useRef(false)
+
+  useEffect(() => {
+    if (!open) {
+      autoRoutedRef.current = false
+      setAutoRouting(false)
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open || !phraseId) return
@@ -53,6 +63,16 @@ export function ActivatePhraseInMasterNoteModal({
             note.total_duration_ms < MAX_MASTER_NOTE_DURATION_MS,
         )
         setOpenMasterNotes(available)
+
+        if (available.length <= 1 && !autoRoutedRef.current) {
+          autoRoutedRef.current = true
+          setAutoRouting(true)
+          if (available.length === 1) {
+            handleActivateInExistingNote(available[0].id)
+          } else {
+            void handleActivateInNewNote()
+          }
+        }
       })
       .catch((error) => {
         console.error(error)
@@ -90,6 +110,7 @@ export function ActivatePhraseInMasterNoteModal({
     } catch (error) {
       console.error(error)
       setMasterNotesError('No se pudo crear la nota maestra')
+      setAutoRouting(false)
     } finally {
       setCreatingAndActivating(false)
     }
@@ -108,14 +129,14 @@ export function ActivatePhraseInMasterNoteModal({
         <DialogHeader>
           <DialogTitle>Activar frase en Nota Maestra</DialogTitle>
           <DialogDescription>
-            Elige una nota maestra abierta para grabar esta frase, o crea una
-            nueva.
+            Una Nota Maestra es tu audio de práctica: vas grabando frases hasta
+            sumar 3 minutos. Elige en cuál grabar esta frase o empieza una nueva.
           </DialogDescription>
         </DialogHeader>
 
-        {loadingMasterNotes && (
+        {(loadingMasterNotes || autoRouting) && (
           <p className='text-sm text-muted-foreground'>
-            Cargando notas abiertas...
+            Preparando tu grabación...
           </p>
         )}
 
@@ -123,13 +144,13 @@ export function ActivatePhraseInMasterNoteModal({
           <p className='text-sm text-red-400'>{masterNotesError}</p>
         )}
 
-        {!loadingMasterNotes && !masterNotesError && openMasterNotes.length === 0 && (
+        {!loadingMasterNotes && !autoRouting && !masterNotesError && openMasterNotes.length === 0 && (
           <p className='text-sm text-muted-foreground'>
             No tienes notas maestras abiertas con tiempo disponible para grabar.
           </p>
         )}
 
-        {!loadingMasterNotes && openMasterNotes.length > 0 && (
+        {!loadingMasterNotes && !autoRouting && openMasterNotes.length > 0 && (
           <div className='max-h-60 space-y-2 overflow-y-auto pr-1'>
             {openMasterNotes.map((note) => {
               const isActivatingThis = activatingInNoteId === note.id

@@ -1,4 +1,10 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import {
+  generateActivationText,
+  normalizeSpaces,
+  splitExistingText,
+  type AnthropicCall,
+} from '../_shared/challenge-chunks.ts'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -136,6 +142,15 @@ type ManualPhraseSuggestionPayload = {
   nativeLang: string
 }
 
+// NOTA DESAFIANTE: divide un texto que ya existe en trozos, sin cambiarlo.
+type SplitPhrasePayload = {
+  action: 'split_phrase'
+  targetPhrase: string
+  nativePhrase: string
+  targetLang: string
+  nativeLang: string
+}
+
 type CoachingFocusExercisePayload = {
   action: 'coaching_focus_exercise'
   targetLang: string
@@ -164,6 +179,7 @@ type RequestPayload =
   | WordExamplePayload
   | PhraseTokenInsightPayload
   | ManualPhraseSuggestionPayload
+  | SplitPhrasePayload
   | CoachingFocusExercisePayload
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1305,17 +1321,8 @@ Deno.serve(async (req) => {
         return jsonResponse(400, { error: 'Words are required' })
       }
 
-      const sentenceLengthByWordCount: Record<number, string> = {
-        5: '20-25 words long',
-        6: '20-30 words long',
-        7: '20-35 words long',
-        8: '20-40 words long',
-      }
-      const sentenceLengthRule =
-        sentenceLengthByWordCount[words.length] || '20-28 words long'
-
-      const normalizedLevel = normalizeLevelKey(payload.level)
-      const levelDescription = getLevelDescription(payload.level)
+      // NOTA DESAFIANTE (fase 1): texto coherente y correcto, ya dividido en trozos.
+      // La lógica (prompt, reglas de trozos, reintentos) está en ../_shared/challenge-chunks.ts
       const intendedMeanings = normalizedWords
         .filter((word) => word.native)
         .map((word) => `${word.target} = ${word.native}`)
@@ -1323,64 +1330,42 @@ Deno.serve(async (req) => {
         ? payload.previousPhrase.trim()
         : ''
 
-      const buildActivationPrompt = (forbiddenPhrase?: string): string => {
-        return [
-          `Task: generate one original sentence in ${payload.targetLang} for a language learner using ALL required ICA words.`,
-          `Required ICA words: ${words.join(', ')}`,
-          'Rules (strict):',
-          `- CEFR ${normalizedLevel} level. Description: ${levelDescription}`,
-          `- ${sentenceLengthRule}`,
-          '- Use all required ICA words in the sentence.',
-          '- Keep the intended meaning for each ICA word; do not switch sense.',
-          '- You may add up to 10 extra words only when needed for coherence and naturalness.',
-          '- Natural, native-sounding, practical wording.',
-          forbiddenPhrase
-            ? `- Forbidden previous sentence (do not reuse wording or structure): ${JSON.stringify(forbiddenPhrase)}`
-            : '',
-          forbiddenPhrase
-            ? '- Produce a clearly different sentence from the forbidden one (different opening and clause structure).'
-            : '',
-          intendedMeanings.length
-            ? `- Intended meanings (${payload.targetLang} -> ${payload.nativeLang}): ${intendedMeanings.join('; ')}`
-            : '',
-          `- Translate to ${payload.nativeLang}`,
-          'Reply ONLY:',
-          '{"phrase":"<sentence>","translation":"<translation>","words_used":["w1","w2"]}',
-        ]
-          .filter(Boolean)
-          .join('\n')
+      const activationResult = await generateActivationText(
+        {
+          words,
+          intendedMeanings,
+          targetLang: payload.targetLang,
+          nativeLang: payload.nativeLang,
+          normalizedLevel: normalizeLevelKey(payload.level),
+          levelDescription: getLevelDescription(payload.level),
+          previousPhrase,
+        },
+        callAnthropic as AnthropicCall,
+      )
+
+      return jsonResponse(200, { result: activationResult })
+    }
+
+    if (payload.action === 'split_phrase') {
+      // Se llama al guardar una frase escrita por el alumno y al preparar el desafío
+      // de notas antiguas. Si targetIsCorrect es false, la frase no entra en el desafío.
+      const targetPhrase = normalizeSpaces(payload.targetPhrase ?? '')
+      const nativePhrase = normalizeSpaces(payload.nativePhrase ?? '')
+      if (!targetPhrase || !nativePhrase) {
+        return jsonResponse(400, { error: 'targetPhrase and nativePhrase are required' })
       }
 
-      let result: { phrase: string; translation: string; words_used?: string[] } | null = null
-      let fallbackCandidate: { phrase: string; translation: string; words_used?: string[] } | null = null
-      const maxAttempts = previousPhrase ? 2 : 1
+      const splitResult = await splitExistingText(
+        {
+          targetPhrase,
+          nativePhrase,
+          targetLang: payload.targetLang,
+          nativeLang: payload.nativeLang,
+        },
+        callAnthropic as AnthropicCall,
+      )
 
-      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        const forbiddenPhrase = attempt === 0 ? previousPhrase : previousPhrase || result?.phrase || ''
-        const raw = await callAnthropic(
-          'You generate natural sentences for language learners. Follow strict constraints and reply ONLY in JSON. No markdown, no backticks.',
-          buildActivationPrompt(forbiddenPhrase || undefined),
-          {
-            maxTokens: 260,
-            temperature: attempt === 0 ? 0.2 : 0,
-          },
-        )
-
-        const parsed = parseActivationPhrase(raw.text)
-        if (!parsed) continue
-
-        if (!fallbackCandidate) {
-          fallbackCandidate = parsed
-        }
-
-        if (!hasAllRequiredWords(parsed.phrase, words)) continue
-        if (previousPhrase && isTooSimilarToPreviousPhrase(parsed.phrase, previousPhrase)) continue
-
-        result = parsed
-        break
-      }
-
-      return jsonResponse(200, { result: result || fallbackCandidate })
+      return jsonResponse(200, { result: splitResult })
     }
 
     if (payload.action === 'word_example') {
@@ -1548,6 +1533,8 @@ Deno.serve(async (req) => {
         '- You may reorder sentence structure to make it natural and correct.',
         '- If the phrase is already good, do NOT force a rewrite.',
         '- Optionally suggest a better native-language version if helpful.',
+        '- If the phrase is grammatical but makes no sense in real life, it is NOT perfect: suggest a sensible version.',
+        '- In the suggestion, write numbers in words, never in digits.',
         `- If you provide "suggestion", it MUST be written only in ${payload.targetLang}.`,
         `- If you provide "nativeSuggestion", it MUST be written only in ${payload.nativeLang}.`,
         'Output format (CRITICAL):',
@@ -1559,10 +1546,10 @@ Deno.serve(async (req) => {
       ].join('\n')
 
       const result = await callAnthropic(
-        'You improve learner sentences. Preserve required tokens exactly. Reply ONLY JSON.',
+        'You review and improve learner sentences. Keep the meaning of the required ICA words and inflect them only when grammar requires it. Reply ONLY JSON.',
         prompt,
         {
-          maxTokens: 180,
+          maxTokens: 600, // Antes 180: la respuesta completa no cabía
           temperature: 0,
           tool: {
             name: 'report_manual_phrase_suggestion',
@@ -1597,6 +1584,14 @@ Deno.serve(async (req) => {
         ? parseManualPhraseSuggestion(JSON.stringify(result.toolInput))
         : null
       const parsed = parsedFromTool ?? parseManualPhraseSuggestion(result.text)
+
+      // Antes, si la revisión fallaba o llegaba cortada, se decía "perfecta" sin revisar nada.
+      if (!parsed) {
+        return jsonResponse(502, {
+          error: 'review_failed',
+          message: 'No se ha podido revisar la frase. Inténtalo de nuevo.',
+        })
+      }
 
       const suggestion = parsed?.suggestion || null
       const missingRequiredWords = suggestion

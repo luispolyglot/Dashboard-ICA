@@ -16,6 +16,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ActivatePhraseInMasterNoteModal } from '../components/ActivatePhraseInMasterNoteModal'
+import {
+  isChallengeEnabled,
+  storeChallengeForNewPhrase,
+} from '../services/challengeChunks'
 import { ExplorePhraseTokenModal } from '../components/ExplorePhraseTokenModal'
 import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
 import { InteractivePhraseText } from '../components/InteractivePhraseText'
@@ -332,6 +336,18 @@ export function PhraseView({
           })
         await onPhraseGenerated()
         setResultPhraseId(phraseGenerationId)
+        // Nota desafiante: guardar los trozos de la frase (sin bloquear la pantalla).
+        if (isChallengeEnabled && phraseGenerationId) {
+          void storeChallengeForNewPhrase({
+            phraseId: phraseGenerationId,
+            result: response,
+            isManual: mode === 'manualPhrase',
+            targetLang: config.targetLang,
+            nativeLang: config.nativeLang,
+          }).catch((error) => {
+            console.error('[nota desafiante] no se pudieron guardar los trozos', error)
+          })
+        }
         if (typeof activationWordsTotal === 'number') {
           if (metaTrackerProfile?.confirmedAt && trackerSnapshot) {
             const nextSnapshot = getMetaTrackerSnapshot(
@@ -519,9 +535,9 @@ export function PhraseView({
           }
         >
           <TabsList className='grid w-full grid-cols-3'>
-            <TabsTrigger value='automatic'>Automática</TabsTrigger>
-            <TabsTrigger value='manual'>Palabras manual</TabsTrigger>
-            <TabsTrigger value='manualPhrase'>Frase manual</TabsTrigger>
+            <TabsTrigger value='automatic'>La IA la crea</TabsTrigger>
+            <TabsTrigger value='manual'>Elijo palabras</TabsTrigger>
+            <TabsTrigger value='manualPhrase'>La escribo yo</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -745,6 +761,9 @@ export function PhraseView({
       <Button
         type='button'
         onClick={handlePrimaryAction}
+        variant={
+          mode === 'manualPhrase' && manualPhraseApproved ? 'outline' : 'default'
+        }
         disabled={
           loading ||
           (mode !== 'manualPhrase' &&
@@ -766,7 +785,7 @@ export function PhraseView({
           </>
         ) : mode === 'manualPhrase' ? (
           manualPhraseApproved ? (
-            '🔄 No me convence, quiero crear otra frase manual'
+            '🔄 Escribir otra frase'
           ) : (
             `✅ Guardar frase manual · ${selectedWords.length}/${minWordsRequired}`
           )
@@ -843,24 +862,48 @@ export function PhraseView({
             </div>
           )}
 
+          {isChallengeEnabled && result.chunks !== undefined && (
+            <div className='border-t border-border bg-muted/20 px-5 py-3.5'>
+              <span className='mb-2 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground'>
+                🎯 Trozos para la nota desafiante
+              </span>
+              {result.chunks ? (
+                <ol className='space-y-1.5'>
+                  {result.chunks.map((chunk, index) => (
+                    <li key={`${index}-${chunk.target}`} className='text-sm'>
+                      <span className='mr-1.5 text-xs text-muted-foreground'>
+                        {index + 1}.
+                      </span>
+                      <span className='font-semibold'>{chunk.target}</span>
+                      <span className='text-muted-foreground'> — {chunk.native}</span>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className='text-xs text-muted-foreground'>
+                  No se pudo dividir en trozos válidos: esta frase no entrará en el desafío.
+                </p>
+              )}
+            </div>
+          )}
+
           {resultPhraseId && (
             <div className='border-t border-border bg-muted/20 p-5'>
               <div className='flex flex-col gap-2'>
                 <Button
                   type='button'
-                  onClick={() => setExtractWordsModalOpen(true)}
-                  variant='secondary'
-                  className='w-full'
+                  onClick={openActivateModal}
+                  className='h-11 w-full text-base font-bold'
                 >
-                  📦 Extraer nuevas palabras
+                  🗣️ Activar frase
                 </Button>
                 <Button
                   type='button'
-                  onClick={openActivateModal}
+                  onClick={() => setExtractWordsModalOpen(true)}
                   variant='outline'
                   className='w-full'
                 >
-                  🗣️ Activar frase
+                  📦 Extraer nuevas palabras
                 </Button>
               </div>
             </div>

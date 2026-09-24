@@ -28,8 +28,8 @@ export function MobileBottomNav({
     (hasIcaProfileAlert || hasCoachingProfileAlert) && !isOnProfileRoute
   const profileAlertTitle = hasCoachingProfileAlert
     ? hasIcaProfileAlert
-      ? 'Tienes novedades: test ICA y coaching pendiente de revision.'
-      : 'Tienes notas maestras pendientes de revision en coaching.'
+      ? 'Tienes novedades: test ICA y coaching pendiente de revisión.'
+      : 'Tienes notas maestras pendientes de revisión en coaching.'
     : 'Tienes un test ICA disponible este mes.'
 
   return (
