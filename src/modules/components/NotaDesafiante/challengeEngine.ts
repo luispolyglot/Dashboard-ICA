@@ -50,6 +50,69 @@ export async function playBeep(frequency = 880, durationMs = 170): Promise<void>
   }
 }
 
+// Nota corta con un timbre concreto, programada en el tiempo del AudioContext.
+function scheduleNote(
+  ctx: AudioContext,
+  frequency: number,
+  startAt: number,
+  durationS: number,
+  type: OscillatorType,
+  volume: number,
+): void {
+  const oscillator = ctx.createOscillator()
+  const gain = ctx.createGain()
+  oscillator.type = type
+  oscillator.frequency.setValueAtTime(frequency, startAt)
+  gain.gain.setValueAtTime(0.0001, startAt)
+  gain.gain.exponentialRampToValueAtTime(volume, startAt + 0.015)
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + durationS)
+  oscillator.connect(gain).connect(ctx.destination)
+  oscillator.start(startAt)
+  oscillator.stop(startAt + durationS + 0.03)
+}
+
+async function getAudioContext(): Promise<AudioContext> {
+  audioContext = audioContext || new AudioContext()
+  if (audioContext.state === 'suspended') await audioContext.resume()
+  return audioContext
+}
+
+/**
+ * ✅ Acierto: arpegio alegre que sube (do–mi–sol–do agudos), fuerte y claro,
+ * muy distinto del pitido de turno. Va más agudo y más alto que antes porque
+ * en los altavoces del portátil o del móvil las notas graves casi no se oían.
+ */
+export async function playSuccessChime(): Promise<void> {
+  try {
+    const ctx = await getAudioContext()
+    const now = ctx.currentTime + 0.02
+    const notes = [1046.5, 1318.5, 1568, 2093]
+    notes.forEach((frequency, position) => {
+      const isLast = position === notes.length - 1
+      const startAt = now + position * 0.1
+      scheduleNote(ctx, frequency, startAt, isLast ? 0.55 : 0.18, 'sine', 0.42)
+      // Un poco de "cuerpo" para que suene a campanita y no a pitido
+      scheduleNote(ctx, frequency / 2, startAt, isLast ? 0.4 : 0.14, 'triangle', 0.16)
+    })
+    await wait(Math.round((notes.length * 0.1 + 0.55) * 1000))
+  } catch {
+    // Sin audio: el juego sigue igual.
+  }
+}
+
+/** ❌ Fallo: dos notas graves que bajan, suaves (no castiga, pero se nota la diferencia). */
+export async function playFailTone(): Promise<void> {
+  try {
+    const ctx = await getAudioContext()
+    const now = ctx.currentTime + 0.02
+    scheduleNote(ctx, 311.13, now, 0.18, 'triangle', 0.28)
+    scheduleNote(ctx, 233.08, now + 0.17, 0.32, 'triangle', 0.28)
+    await wait(560)
+  } catch {
+    // Sin audio: el juego sigue igual.
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Escuchar al alumno (reconocimiento de voz del navegador)
 // ---------------------------------------------------------------------------
@@ -304,6 +367,8 @@ export type AnswerCheck = {
   correct: boolean
   marks: WordMark[]
   heard: string
+  /** Palabras del trozo que ha dicho bien (todas si es correcto). */
+  matchedWords: number
 }
 
 export function checkAnswer(expected: string, candidates: string[]): AnswerCheck {
@@ -371,5 +436,10 @@ export function checkAnswer(expected: string, candidates: string[]): AnswerCheck
     }
   })
 
-  return { correct: result.correct, marks, heard: result.heard }
+  return {
+    correct: result.correct,
+    marks,
+    heard: result.heard,
+    matchedWords: marks.filter((mark) => mark.ok).length,
+  }
 }

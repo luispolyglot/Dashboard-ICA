@@ -6,6 +6,17 @@ import type { MasterNote, MasterNoteChunk } from '../types'
 
 const MASTER_NOTES_BUCKET = 'master-notes'
 
+/** Una Nota Maestra se completa (se cierra sola) al guardar la grabación que la lleva a 3:00 o más. */
+export const MASTER_NOTE_COMPLETE_DURATION_MS = 3 * 60 * 1000
+
+/** "Nota Maestra: 2" -> "Nota Maestra 2" (para textos de la interfaz). */
+export function formatMasterNoteLabel(name: string | null | undefined): string {
+  const clean = (name || '').trim()
+  const match = clean.match(/^nota maestra:\s*(\d+)$/i)
+  if (match) return `Nota Maestra ${match[1]}`
+  return clean || 'Nota Maestra'
+}
+
 function getNextMasterNoteNumber(names: string[]): number {
   const maxNumber = names.reduce((max, name) => {
     const match = name.match(/^nota maestra:\s*(\d+)$/i)
@@ -301,6 +312,11 @@ type AddMasterNoteChunkParams = {
   durationMs: number
 }
 
+export type AddMasterNoteChunkResult = {
+  chunk: MasterNoteChunk
+  totalDurationMs: number
+}
+
 type RerecordMasterNoteChunkParams = {
   noteId: string
   chunkId: string
@@ -384,7 +400,7 @@ export async function addMasterNoteChunk({
   audioBlob,
   mimeType,
   durationMs,
-}: AddMasterNoteChunkParams): Promise<MasterNoteChunk> {
+}: AddMasterNoteChunkParams): Promise<AddMasterNoteChunkResult> {
   if (!supabase) throw new Error('Falta configurar Supabase')
 
   const userId = await getCurrentUserId()
@@ -536,12 +552,14 @@ export async function addMasterNoteChunk({
 
   if (noteUpdateError) throw noteUpdateError
 
-  return data as MasterNoteChunk
+  return { chunk: data as MasterNoteChunk, totalDurationMs }
 }
 
-type CloseMasterNoteResult = {
+export type CloseMasterNoteResult = {
   closedAt: string
   closedLevel: string | null
+  /** 'sent' cuando se avisó al coach (alumnos de coaching) para el feedback de pronunciación. */
+  coachingNotificationStatus: 'sent' | 'failed' | 'skipped'
 }
 
 export async function closeMasterNote(noteId: string): Promise<CloseMasterNoteResult> {
@@ -560,7 +578,39 @@ export async function closeMasterNote(noteId: string): Promise<CloseMasterNoteRe
     typeof data?.closedLevel === 'string' && data.closedLevel.length > 0
       ? data.closedLevel
       : null
-  return { closedAt, closedLevel }
+  const coachingNotificationStatus =
+    data?.coachingNotificationStatus === 'sent' ||
+    data?.coachingNotificationStatus === 'failed'
+      ? data.coachingNotificationStatus
+      : 'skipped'
+  return { closedAt, closedLevel, coachingNotificationStatus }
+}
+
+/**
+ * Nombre de la nota en la que caerá la próxima frase activada:
+ * una nota abierta si ya existe, o la siguiente que se creará.
+ */
+export async function fetchNextMasterNoteLabel(
+  targetLang: string,
+  nativeLang: string,
+): Promise<string> {
+  if (!supabase) return 'una nueva Nota Maestra'
+
+  const { data, error } = await supabase
+    .from('master_notes')
+    .select('name, state, created_at')
+    .eq('target_lang', targetLang)
+    .eq('native_lang', nativeLang)
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+
+  const rows = (data || []) as { name: string | null; state: string }[]
+  const openNote = rows.find((row) => row.state === 'open')
+  if (openNote) return formatMasterNoteLabel(openNote.name)
+
+  const nextNumber = getNextMasterNoteNumber(rows.map((row) => row.name || ''))
+  return `Nota Maestra ${nextNumber}`
 }
 
 export async function createSignedMasterNoteAudioUrl(

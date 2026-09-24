@@ -862,31 +862,6 @@ export function PhraseView({
             </div>
           )}
 
-          {isChallengeEnabled && result.chunks !== undefined && (
-            <div className='border-t border-border bg-muted/20 px-5 py-3.5'>
-              <span className='mb-2 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground'>
-                🎯 Trozos para la nota desafiante
-              </span>
-              {result.chunks ? (
-                <ol className='space-y-1.5'>
-                  {result.chunks.map((chunk, index) => (
-                    <li key={`${index}-${chunk.target}`} className='text-sm'>
-                      <span className='mr-1.5 text-xs text-muted-foreground'>
-                        {index + 1}.
-                      </span>
-                      <span className='font-semibold'>{chunk.target}</span>
-                      <span className='text-muted-foreground'> — {chunk.native}</span>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className='text-xs text-muted-foreground'>
-                  No se pudo dividir en trozos válidos: esta frase no entrará en el desafío.
-                </p>
-              )}
-            </div>
-          )}
-
           {resultPhraseId && (
             <div className='border-t border-border bg-muted/20 p-5'>
               <div className='flex flex-col gap-2'>
