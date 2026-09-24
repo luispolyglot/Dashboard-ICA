@@ -8,13 +8,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import importantInfoNmImage from '@/images/important-info-nm.png'
+import importantInfoIcaChallengesImage from '@/images/important-info-ica-challenges.png'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 
 type ImportantInfoMode = 'video' | 'image'
 
-const IMPORTANT_INFO_VERSION = 'nm_video_monthly_score_v2'
+const IMPORTANT_INFO_VERSION = 'ica_challenges_image_v1'
 const IMPORTANT_INFO_MODE_BY_VERSION: Record<string, ImportantInfoMode> = {
+  ica_challenges_image_v1: 'image',
   nm_image_v1: 'image',
   nm_video_monthly_score_v1: 'video',
   nm_video_monthly_score_v2: 'video',
@@ -34,7 +35,7 @@ const DISMISS_DELAY_SECONDS =
     : VIDEO_DISMISS_DELAY_SECONDS
 const IMPORTANT_INFO_VIDEO_URL =
   'https://www.loom.com/embed/1932cdc979874bd7b5ab636920e80aa2'
-const IMPORTANT_INFO_IMAGE_ALT = 'Información importante sobre Notas Maestras'
+const IMPORTANT_INFO_IMAGE_ALT = 'Información importante sobre Desafíos ICA'
 
 type ConfirmAction = 'close_once' | 'dismiss_forever' | null
 
@@ -103,10 +104,10 @@ export function ImportantInfoModal() {
     handleTemporaryClose()
   }
 
-  const handleGoToActivation = (): void => {
+  const handleNavigateTo = (): void => {
     window.localStorage.setItem(DISMISS_STORAGE_KEY, '1')
     setOpen(false)
-    navigate(DASHBOARD_ROUTES.masterNotes)
+    navigate(DASHBOARD_ROUTES.challengesIca)
   }
 
   const handleClose = (): void => {
@@ -134,8 +135,8 @@ export function ImportantInfoModal() {
               <DialogTitle>INFORMACIÓN IMPORTANTE</DialogTitle>
               <DialogDescription>
                 {IMPORTANT_INFO_MODE === 'video'
-                  ? 'Conoce PreguntICA, el nuevo juego disponible en Juegos ICA.'
-                  : 'Revisa esta imagen para conocer PreguntICA en Juegos ICA.'}
+                  ? 'Conoce Desafíos ICA, el nuevo juego disponible en Juegos ICA.'
+                  : 'Revisa esta imagen para conocer los nuevos Desafíos ICA en Juegos ICA.'}
               </DialogDescription>
             </DialogHeader>
 
@@ -150,10 +151,10 @@ export function ImportantInfoModal() {
               />
             ) : (
               <img
-                src={importantInfoNmImage}
+                src={importantInfoIcaChallengesImage}
                 alt={IMPORTANT_INFO_IMAGE_ALT}
                 className='h-auto w-full'
-                onClick={handleGoToActivation}
+                onClick={handleNavigateTo}
               />
             )}
           </div>
@@ -162,10 +163,10 @@ export function ImportantInfoModal() {
             {isImageMode ? (
               <Button
                 type='button'
-                onClick={handleGoToActivation}
+                onClick={handleNavigateTo}
                 className='w-full'
               >
-                Ir a Activación
+                Ir a Desafíos ICA
               </Button>
             ) : !confirmAction ? (
               <Button
