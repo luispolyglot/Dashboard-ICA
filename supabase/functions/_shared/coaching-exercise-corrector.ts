@@ -25,6 +25,15 @@
                    (verbos separables del alemán, ne … pas).
    ══════════════════════════════════════════════════════════════════════ */
 
+/* Nota para superar el ejercicio de Entrenado: el 75 % de las unidades, redondeando hacia arriba
+   (9 de 12, 11 de 14, 12 de 15, 12 de 16). Superarlo pasa el foco a "Entrenado".
+   Para cambiar la exigencia, cambia solo este número. */
+export const PASS_RATIO = 0.75
+
+export function passThreshold(totalUnits: number): number {
+  return Math.max(1, Math.ceil(totalUnits * PASS_RATIO))
+}
+
 export type CorrectorLibre = {
   prohibidas?: string[]
   no_verbo?: string[]

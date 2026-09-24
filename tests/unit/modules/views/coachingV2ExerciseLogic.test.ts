@@ -104,6 +104,10 @@ describe('coachingV2ExerciseLogic · plantilla oficial (patrones _, ~, a|b)', ()
     expect(readablePattern('rufe … an')).toBe('rufe an')
   })
 
+  it('passes with 75% of the units (template: 12 of 15)', () => {
+    expect(data.umbral).toBe(12)
+  })
+
   it('shows patterns to the student without symbols', () => {
     expect(readablePattern('could ~ _')).toBe('could + verbo')
     expect(readablePattern('would|d like|love to _')).toBe('would like to + verbo')

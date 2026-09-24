@@ -2378,9 +2378,9 @@ Deno.serve(async (req) => {
 
     if (attemptError) return jsonResponse(500, { error: attemptError.message })
 
-    // Entregar el ejercicio = el foco ya está entrenado (se supere o no; el coach ve la nota y las respuestas).
+    // Superar el ejercicio (75 % de aciertos, ver passThreshold) pasa el foco a Entrenado.
     let phaseTrainedUpdated = false
-    if (focusRow.phase_explained && !focusRow.phase_trained) {
+    if (passed && focusRow.phase_explained && !focusRow.phase_trained) {
       const { error: updateFocusError } = await auth.adminClient
         .from('coaching_v2_focuses')
         .update({

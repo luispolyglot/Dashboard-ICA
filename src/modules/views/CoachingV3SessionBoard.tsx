@@ -1516,7 +1516,7 @@ export function CoachingV3SessionBoard({
                   nextPhaseIdx === 0
                     ? "Cuando se lo expliques en clase, marca «Explicado»: así se le abre el ejercicio."
                     : nextPhaseIdx === 1
-                      ? "Se marca solo cuando el alumno entrega el ejercicio. También puedes marcarlo tú."
+                      ? "Se marca solo cuando el alumno supera el ejercicio (75 % de aciertos). También puedes marcarlo tú."
                       : nextPhaseIdx === 2
                         ? "Marca «Entendido» cuando el alumno te lo explique a ti."
                         : nextPhaseIdx === 3

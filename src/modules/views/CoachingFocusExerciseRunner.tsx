@@ -770,8 +770,8 @@ export function CoachingFocusExerciseRunner({
                 </p>
                 <p className="text-sm text-muted-foreground">
                   {passed
-                    ? `Superado. Umbral: ${data.umbral}.`
-                    : `No superado. Te faltan ${Math.max(0, data.umbral - correctCount)} aciertos para llegar a ${data.umbral}.`}
+                    ? `Superado: necesitabas ${data.umbral} de ${totalUnits}. El foco pasa a Entrenado.`
+                    : `No superado: te faltan ${Math.max(0, data.umbral - correctCount)} aciertos para llegar a ${data.umbral} de ${totalUnits}. Repásalo y vuelve a intentarlo.`}
                 </p>
               </div>
 
