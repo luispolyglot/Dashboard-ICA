@@ -49,6 +49,9 @@ import {
   fetchMasterNotes,
 } from '../services/masterNotes'
 import { useMasterNotePlaylists } from '../hooks/useMasterNotePlaylists'
+import { NotaDesafianteChip } from '../components/NotaDesafiante/NotaDesafianteChip'
+import { isChallengeEnabled } from '../services/challengeChunks'
+import { CHALLENGE_UNLOCK_RATIO } from '../services/challengeUnlocks'
 import type { MasterNote } from '../types'
 
 type MasterNotesViewProps = {
@@ -563,6 +566,12 @@ export function MasterNotesView({
         Graba frases en {targetLang}: cada nota maestra se completa sola al
         llegar a 3:00.
       </p>
+      {isChallengeEnabled && (
+        <p className='-mt-3 mb-5 text-sm text-muted-foreground'>
+          🎯 Escucha al menos el {Math.round(CHALLENGE_UNLOCK_RATIO * 100)} % de una
+          nota y se desbloquea su nota desafiante hasta el final del día.
+        </p>
+      )}
       {(error || playbackError || playlistsError) && (
         <p className='mb-3 text-sm text-red-400'>
           {error || playbackError || playlistsError}
@@ -692,6 +701,13 @@ export function MasterNotesView({
                           ? ` · Cerrada el: ${formatDate(item.closed_at)}`
                           : ''}
                       </div>
+                      {isChallengeEnabled && item.total_duration_ms > 0 && (
+                        <NotaDesafianteChip
+                          noteId={item.id}
+                          noteDurationMs={item.total_duration_ms}
+                          noteHref={`${DASHBOARD_ROUTES.masterNotes}/note/${item.id}`}
+                        />
+                      )}
                     </div>
 
                     <div className='flex gap-2'>

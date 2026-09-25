@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import confetti from 'canvas-confetti'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -13,6 +13,7 @@ import {
   Volume2Icon,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useAuth } from '@/auth/AuthContext'
 import {
   Accordion,
   AccordionContent,
@@ -56,9 +57,13 @@ import {
 import { fetchPhraseVoiceActivations } from '../services/phraseVoiceActivations'
 import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
 import { NotaDesafianteOverlay } from '../components/NotaDesafiante/NotaDesafianteOverlay'
+import { NotaDesafianteCard } from '../components/NotaDesafiante/NotaDesafianteCard'
+import {
+  useChallengeUnlock,
+  useOnChallengeUnlocked,
+} from '../services/challengeUnlocks'
 import {
   isChallengeEnabled,
-  isChallengeLocalMode,
   type ChallengePhraseInput,
 } from '../services/challengeChunks'
 import type {
@@ -143,6 +148,7 @@ export function MasterNoteDetailView({
     useState<MasterNoteChunk | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [challengeOpen, setChallengeOpen] = useState(false)
+  const { user } = useAuth()
   const [celebration, setCelebration] = useState<CompletionCelebration | null>(
     null,
   )
@@ -339,6 +345,43 @@ export function MasterNoteDetailView({
     !!note && note.state === 'open' && note.total_duration_ms >= MIN_DURATION_MS
   const canActivateMorePhrases = !!note && note.state === 'open'
   const canPlayNote = !!note && canPlay(note, chunks.length)
+
+  // Nota desafiante: se desbloquea al escuchar el 80 % de esta nota hoy
+  const challengeUnlock = useChallengeUnlock(
+    user?.id,
+    note?.id,
+    note?.total_duration_ms || 0,
+  )
+  const showChallenge = isChallengeEnabled && challengePhrases.length > 0
+
+  const openChallenge = useCallback((): void => {
+    stop()
+    setChallengeOpen(true)
+  }, [stop])
+
+  useOnChallengeUnlocked(
+    useCallback(
+      (unlockedNoteId: string) => {
+        if (!note || unlockedNoteId !== note.id || !showChallenge) return
+        toast.success('🎯 Nota desafiante desbloqueada', {
+          description: 'Ya puedes ponerte a prueba con las frases de esta nota.',
+          action: { label: 'Empezar', onClick: openChallenge },
+          duration: 10000,
+        })
+      },
+      [note, openChallenge, showChallenge],
+    ),
+  )
+
+  // Desde la lista de notas (?challenge=1): abrir el desafío directamente si ya está desbloqueado
+  useEffect(() => {
+    if (searchParams.get('challenge') !== '1') return
+    if (!note || !showChallenge) return
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('challenge')
+    setSearchParams(nextParams, { replace: true })
+    if (challengeUnlock.unlocked) setChallengeOpen(true)
+  }, [challengeUnlock.unlocked, note, searchParams, setSearchParams, showChallenge])
 
   const handlePlayNote = async (): Promise<void> => {
     if (!note) return
@@ -559,15 +602,6 @@ export function MasterNoteDetailView({
           )}
           {playingNoteId !== note.id && (
             <>
-              {isChallengeEnabled && challengePhrases.length > 0 && (
-                <Button
-                  type='button'
-                  variant='secondary'
-                  onClick={() => setChallengeOpen(true)}
-                >
-                  🎯 Desafío
-                </Button>
-              )}
               {note.state === 'closed' && (
                 <Button
                   type='button'
@@ -594,10 +628,14 @@ export function MasterNoteDetailView({
           )}
         </div>
       </div>
-      {isChallengeEnabled && isChallengeLocalMode && challengePhrases.length > 0 && (
-        <p className='-mt-2 mb-4 text-xs text-muted-foreground'>
-          🧪 Modo prueba: en la versión final, el desafío se desbloquea al escuchar la nota entera.
-        </p>
+      {showChallenge && (
+        <NotaDesafianteCard
+          progress={challengeUnlock.progress}
+          unlocked={challengeUnlock.unlocked}
+          isPlayingThisNote={playingNoteId === note.id}
+          onListen={() => void handlePlayNote()}
+          onStart={openChallenge}
+        />
       )}
       {challengeOpen && (
         <NotaDesafianteOverlay
@@ -667,16 +705,22 @@ export function MasterNoteDetailView({
             <Button type='button' onClick={() => setCelebration(null)}>
               ¡Genial!
             </Button>
-            {isChallengeEnabled && challengePhrases.length > 0 && (
+            {showChallenge && (
               <Button
                 type='button'
                 variant='secondary'
                 onClick={() => {
                   setCelebration(null)
-                  setChallengeOpen(true)
+                  if (challengeUnlock.unlocked) {
+                    openChallenge()
+                  } else {
+                    void handlePlayNote()
+                  }
                 }}
               >
-                🎯 Probar la nota desafiante
+                {challengeUnlock.unlocked
+                  ? '🎯 Empezar nota desafiante'
+                  : '▶ Escúchala y desbloquea su nota desafiante'}
               </Button>
             )}
           </DialogFooter>
