@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { addChallengeListening } from '../services/challengeUnlocks'
+import { isChallengeEnabled } from '../services/challengeChunks'
 import { useAuth } from '@/auth/AuthContext'
 import type { MasterNote } from '../types'
 import {
@@ -182,6 +184,37 @@ export function useMasterNotePlayback() {
   const listeningLastTickAtRef = useRef<number | null>(null)
   const listeningBufferedSecondsRef = useRef(0)
   const listeningFlushIntervalRef = useRef<number | null>(null)
+  // Nota desafiante: cuánto audio de ESTA nota ha sonado de verdad (para desbloquearla al 80 %)
+  const challengeNoteRef = useRef<{ id: string; durationMs: number } | null>(null)
+  const challengeLastAudioTimeRef = useRef<number | null>(null)
+  const challengePendingSecondsRef = useRef(0)
+
+  const flushChallengeListening = (): void => {
+    const current = challengeNoteRef.current
+    const seconds = challengePendingSecondsRef.current
+    challengePendingSecondsRef.current = 0
+    if (!isChallengeEnabled || !current || seconds <= 0) return
+    addChallengeListening({
+      userId: user?.id,
+      noteId: current.id,
+      noteDurationMs: current.durationMs,
+      seconds,
+    })
+  }
+
+  const trackChallengeListening = (audio: HTMLAudioElement): void => {
+    if (!isChallengeEnabled || !challengeNoteRef.current) return
+    const now = audio.currentTime || 0
+    const last = challengeLastAudioTimeRef.current
+    challengeLastAudioTimeRef.current = now
+    if (last === null || audio.paused) return
+    const delta = now - last
+    // Solo avance normal: los saltos (+10 s, arrastrar) y los retrocesos no suman.
+    if (delta > 0 && delta <= 1.5) {
+      challengePendingSecondsRef.current += delta
+      if (challengePendingSecondsRef.current >= 2) flushChallengeListening()
+    }
+  }
 
   const clearUnifiedChunkCache = (): void => {
     for (const cachedTrack of unifiedChunkCacheRef.current.values()) {
@@ -214,6 +247,9 @@ export function useMasterNotePlayback() {
   }
 
   const stop = (): void => {
+    flushChallengeListening()
+    challengeNoteRef.current = null
+    challengeLastAudioTimeRef.current = null
     checkpointListening(true)
     stopListeningTicker()
     tokenRef.current += 1
@@ -230,6 +266,7 @@ export function useMasterNotePlayback() {
   const pause = (): void => {
     if (!audioRef.current || !playingNoteId) return
     if (!audioRef.current.paused) {
+      flushChallengeListening()
       checkpointListening(true)
       stopListeningTicker()
       audioRef.current.pause()
@@ -457,6 +494,7 @@ export function useMasterNotePlayback() {
 
     const onEnded = () => {
       if (token !== tokenRef.current) return
+      flushChallengeListening()
       checkpointListening(true)
       stopListeningTicker()
       setPositionSec(getCurrentDuration())
@@ -481,6 +519,7 @@ export function useMasterNotePlayback() {
     audio.onerror = onError
     audio.ontimeupdate = () => {
       if (token !== tokenRef.current) return
+      trackChallengeListening(audio)
       updateTimeline()
     }
     audio.onloadedmetadata = () => {
@@ -688,6 +727,7 @@ export function useMasterNotePlayback() {
     if (total <= 0) return
 
     const target = clamp(audioRef.current.currentTime + deltaSec, 0, total)
+    challengeLastAudioTimeRef.current = target
     audioRef.current.currentTime = target
     updateTimeline()
   }
@@ -757,6 +797,8 @@ export function useMasterNotePlayback() {
     setDurationSec(track.durationSec)
     setPositionSec(0)
     setPlayingNoteId(note.id)
+    challengeNoteRef.current = { id: note.id, durationMs: note.total_duration_ms }
+    challengeLastAudioTimeRef.current = 0
     currentTrackMetaRef.current =
       note.target_lang && note.native_lang
         ? {
