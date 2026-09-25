@@ -135,10 +135,25 @@ export function useChallengeUnlock(
     window.addEventListener(CHALLENGE_UNLOCKS_CHANGED_EVENT, onChanged)
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', onVisibility)
+
+    // Aunque la app se quede abierta en pantalla, a las 00:00 (hora del alumno)
+    // todas las notas desafiantes se vuelven a bloquear.
+    let midnightTimer = 0
+    const scheduleMidnight = () => {
+      const now = new Date()
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1)
+      midnightTimer = window.setTimeout(() => {
+        refresh()
+        scheduleMidnight()
+      }, nextMidnight.getTime() - now.getTime())
+    }
+    scheduleMidnight()
+
     return () => {
       window.removeEventListener(CHALLENGE_UNLOCKS_CHANGED_EVENT, onChanged)
       window.removeEventListener('focus', refresh)
       document.removeEventListener('visibilitychange', onVisibility)
+      window.clearTimeout(midnightTimer)
     }
   }, [noteId, read])
 
