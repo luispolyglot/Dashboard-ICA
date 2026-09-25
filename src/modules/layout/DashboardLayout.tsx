@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, RefObject } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useAuth } from '@/auth/AuthContext'
 import { toast } from 'sonner'
 import { FullscreenLoading } from '@/components/ui/fullscreen-loading'
 import { Header } from '../components/Header'
@@ -30,6 +31,34 @@ import {
   OFFLINE_SAFE_ROUTE_TRIGGER_EVENT,
 } from '../offline/events'
 import { LanguageSetup } from '../views/LanguageSetup'
+
+/* Último resumen de coaching de la barra superior, guardado en este navegador:
+   al recargar, el botón «Coaching» sale al momento en vez de tardar ~2 s. */
+type StoredCoachingNav = {
+  hasPendingReviews: boolean
+  coachStudents: CoachingManagedUser[] | null
+}
+
+const COACHING_NAV_KEY = (userId: string) => `ica.coachingNav.${userId}`
+
+function readStoredCoachingNav(userId: string | undefined): StoredCoachingNav | null {
+  if (!userId) return null
+  try {
+    const raw = window.localStorage.getItem(COACHING_NAV_KEY(userId))
+    return raw ? (JSON.parse(raw) as StoredCoachingNav) : null
+  } catch {
+    return null
+  }
+}
+
+function storeCoachingNav(userId: string | undefined, value: StoredCoachingNav): void {
+  if (!userId) return
+  try {
+    window.localStorage.setItem(COACHING_NAV_KEY(userId), JSON.stringify(value))
+  } catch {
+    /* sin almacenamiento: se cargará como antes */
+  }
+}
 
 type DailyMilestones = {
   flash: boolean
@@ -114,11 +143,13 @@ export function DashboardLayout() {
   const milestonesReadyRef = useRef(false)
   const [flightQueue, setFlightQueue] = useState(0)
   const [activeFlight, setActiveFlight] = useState(0)
-  const [hasPendingCoachingReview, setHasPendingCoachingReview] =
-    useState(false)
+  const { user } = useAuth()
+  const [hasPendingCoachingReview, setHasPendingCoachingReview] = useState(
+    () => readStoredCoachingNav(user?.id)?.hasPendingReviews ?? false,
+  )
   const [coachStudents, setCoachStudents] = useState<
     CoachingManagedUser[] | null
-  >(null)
+  >(() => readStoredCoachingNav(user?.id)?.coachStudents ?? null)
   const { canHighlightCurrentMonth } = useIcaTestsOverview({
     targetLang: config?.targetLang,
     nativeLang: config?.nativeLang,
@@ -165,8 +196,13 @@ export function DashboardLayout() {
       try {
         const summary = await fetchCoachingNavSummary()
         if (!active) return
+        const nextCoachStudents = summary.isCoachingAdmin ? summary.activeStudents : null
         setHasPendingCoachingReview(summary.hasPendingReviews)
-        setCoachStudents(summary.isCoachingAdmin ? summary.activeStudents : null)
+        setCoachStudents(nextCoachStudents)
+        storeCoachingNav(user?.id, {
+          hasPendingReviews: summary.hasPendingReviews,
+          coachStudents: nextCoachStudents,
+        })
       } catch {
         if (!active) return
         setHasPendingCoachingReview(false)
@@ -192,7 +228,7 @@ export function DashboardLayout() {
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  }, [loading, location.pathname])
+  }, [loading, location.pathname, user?.id])
 
   useEffect(() => {
     if (loading) return
