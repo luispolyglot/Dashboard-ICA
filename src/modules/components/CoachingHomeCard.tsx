@@ -39,6 +39,28 @@ export function expectsHomeCoaching(targetLang: string): boolean {
   }
 }
 
+/* Últimos datos de la tarjeta guardados en este navegador: al recargar la página
+   se pintan al momento y se actualizan por detrás (antes esperaba ~2 s cargando). */
+const DATA_KEY = (targetLang: string) => `ica.homeCoachingData.${targetLang}`
+
+function readStoredHomeCoaching(targetLang: string): HomeCoachingData | null {
+  try {
+    const raw = window.localStorage.getItem(DATA_KEY(targetLang))
+    return raw ? (JSON.parse(raw) as HomeCoachingData) : null
+  } catch {
+    return null
+  }
+}
+
+function storeHomeCoaching(targetLang: string, data: HomeCoachingData | null) {
+  try {
+    if (data) window.localStorage.setItem(DATA_KEY(targetLang), JSON.stringify(data))
+    else window.localStorage.removeItem(DATA_KEY(targetLang))
+  } catch {
+    /* sin espacio o bloqueado: se cargará como antes */
+  }
+}
+
 function rememberHomeCoaching(targetLang: string, available: boolean) {
   try {
     window.localStorage.setItem(FLAG_KEY(targetLang), available ? '1' : '0')
@@ -180,8 +202,8 @@ export function CoachingHomeCard({
   onAvailabilityChange,
 }: CoachingHomeCardProps) {
   const navigate = useNavigate()
-  const [data, setData] = useState<HomeCoachingData | null>(
-    cache?.key === targetLang ? cache.data : null,
+  const [data, setData] = useState<HomeCoachingData | null>(() =>
+    cache?.key === targetLang ? cache.data : readStoredHomeCoaching(targetLang),
   )
 
   useEffect(() => {
@@ -190,6 +212,7 @@ export function CoachingHomeCard({
       .then((result) => {
         if (!active) return
         setData(result)
+        storeHomeCoaching(targetLang, result)
         rememberHomeCoaching(targetLang, Boolean(result))
         onAvailabilityChange?.(Boolean(result))
       })
