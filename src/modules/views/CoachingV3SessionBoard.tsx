@@ -7,6 +7,7 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  ArrowUpRightIcon,
   AlertTriangleIcon,
   ArrowRightIcon,
   CalendarIcon,
@@ -1992,23 +1993,44 @@ export function CoachingV3SessionBoard({
                     focusExercise?.status !== "ready" &&
                     Boolean(externalTrainingUrl);
 
+                  const badgeClassName =
+                    "rounded-full border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+
+                  // Sin entrenamiento: el foco se muestra, pero no se puede abrir.
+                  if (!trainingHref) {
+                    return (
+                      <Badge
+                        key={`done-${focus.id}`}
+                        variant="outline"
+                        className={badgeClassName}
+                      >
+                        <SparklesIcon className="mr-1 size-3" /> {focus.focusTitle}
+                      </Badge>
+                    );
+                  }
+
+                  // Con entrenamiento: todo el foco es el enlace (antes había un «(entrenamiento)» aparte).
                   return (
                     <Badge
                       key={`done-${focus.id}`}
+                      asChild
                       variant="outline"
-                      className="rounded-full border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                      className={`${badgeClassName} cursor-pointer transition-colors hover:border-amber-500/70 hover:bg-amber-500/20`}
                     >
-                      <SparklesIcon className="mr-1 size-3" /> {focus.focusTitle}
-                      {trainingHref ? (
-                        <a
-                          href={trainingHref}
-                          target={trainingIsExternal ? "_blank" : undefined}
-                          rel={trainingIsExternal ? "noopener noreferrer" : undefined}
-                          className="ml-1 underline underline-offset-2"
-                        >
-                          (entrenamiento)
-                        </a>
-                      ) : null}
+                      <a
+                        href={trainingHref}
+                        target={trainingIsExternal ? "_blank" : undefined}
+                        rel={trainingIsExternal ? "noopener noreferrer" : undefined}
+                        title={`Ver el entrenamiento de «${focus.focusTitle}»`}
+                        onClick={(event) => {
+                          if (trainingIsExternal) return;
+                          event.preventDefault();
+                          navigate(trainingHref);
+                        }}
+                      >
+                        <SparklesIcon className="mr-1 size-3" /> {focus.focusTitle}
+                        <ArrowUpRightIcon className="ml-0.5 size-3 opacity-70" aria-hidden="true" />
+                      </a>
                     </Badge>
                   );
                 })()
