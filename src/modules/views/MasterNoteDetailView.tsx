@@ -373,15 +373,27 @@ export function MasterNoteDetailView({
     ),
   )
 
-  // Desde la lista de notas (?challenge=1): abrir el desafío directamente si ya está desbloqueado
+  // Desde la lista de notas (?challenge=1): abrir el desafío directamente si ya está desbloqueado.
+  // Mientras carga se muestra ya la pantalla del desafío, para no ver la página de la nota un instante.
+  const [pendingAutoChallenge, setPendingAutoChallenge] = useState(
+    () => searchParams.get('challenge') === '1',
+  )
   useEffect(() => {
-    if (searchParams.get('challenge') !== '1') return
-    if (!note || !showChallenge) return
+    if (!pendingAutoChallenge || loading) return
     const nextParams = new URLSearchParams(searchParams)
     nextParams.delete('challenge')
     setSearchParams(nextParams, { replace: true })
-    if (challengeUnlock.unlocked) setChallengeOpen(true)
-  }, [challengeUnlock.unlocked, note, searchParams, setSearchParams, showChallenge])
+    if (note && showChallenge && challengeUnlock.unlocked) setChallengeOpen(true)
+    setPendingAutoChallenge(false)
+  }, [
+    challengeUnlock.unlocked,
+    loading,
+    note,
+    pendingAutoChallenge,
+    searchParams,
+    setSearchParams,
+    showChallenge,
+  ])
 
   const handlePlayNote = async (): Promise<void> => {
     if (!note) return
@@ -491,6 +503,15 @@ export function MasterNoteDetailView({
       setRemovingChunkId(null)
       setChunkDeleteCandidate(null)
     }
+  }
+
+  if (pendingAutoChallenge) {
+    // Mismo fondo que el desafío: se pasa de la lista al desafío sin ver nada en medio
+    return (
+      <div className='fixed inset-0 z-100 flex items-center justify-center bg-[#0A1128] text-slate-100'>
+        <p className='font-serif text-2xl font-bold'>Preparando tu desafío…</p>
+      </div>
+    )
   }
 
   if (loading) {
