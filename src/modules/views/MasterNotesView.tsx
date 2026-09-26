@@ -569,8 +569,9 @@ export function MasterNotesView({
       </p>
       {challengeEnabled && (
         <p className='-mt-3 mb-5 text-sm text-muted-foreground'>
-          🎯 Escucha al menos el {Math.round(CHALLENGE_UNLOCK_RATIO * 100)} % de una
-          nota y se desbloquea su nota desafiante hasta el final del día.
+          🎯 Cuando una nota maestra esté completa, escucha al menos el{' '}
+          {Math.round(CHALLENGE_UNLOCK_RATIO * 100)} % y se desbloquea su nota
+          desafiante hasta el final del día.
         </p>
       )}
       {(error || playbackError || playlistsError) && (
@@ -702,7 +703,7 @@ export function MasterNotesView({
                           ? ` · Cerrada el: ${formatDate(item.closed_at)}`
                           : ''}
                       </div>
-                      {challengeEnabled && item.total_duration_ms > 0 && (
+                      {challengeEnabled && item.state === 'closed' && item.total_duration_ms > 0 && (
                         <NotaDesafianteChip
                           noteId={item.id}
                           noteDurationMs={item.total_duration_ms}

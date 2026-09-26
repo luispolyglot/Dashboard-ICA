@@ -2,6 +2,8 @@
  * NOTA DESAFIANTE — desbloqueo por escucha.
  *
  * Regla (decidida por Luis):
+ * - Solo las notas maestras CERRADAS (completas, 3:00 o más) tienen nota desafiante.
+ *   Escuchar una nota abierta no cuenta.
  * - El desafío de una nota maestra se desbloquea al escuchar al menos el 80 % de ESA nota.
  * - Se puede desbloquear en varias notas el mismo día.
  * - Una vez desbloqueado, queda abierto el resto del día.
@@ -184,7 +186,7 @@ async function sendPendingNow(userId: string): Promise<void> {
 
       if (error) {
         // Nota borrada o día ya no válido: se descarta. Cualquier otro error: se reintenta luego.
-        if (/MASTER_NOTE_NOT_FOUND|INVALID_DAY/.test(error.message || '')) {
+        if (/MASTER_NOTE_NOT_FOUND|MASTER_NOTE_NOT_CLOSED|INVALID_DAY/.test(error.message || '')) {
           const pending = readPending(userId)
           delete pending[key]
           writePending(userId, pending)

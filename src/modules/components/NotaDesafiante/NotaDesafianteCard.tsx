@@ -4,6 +4,8 @@ import { cn } from '@/lib/utils'
 import { CHALLENGE_UNLOCK_RATIO } from '../../services/challengeUnlocks'
 
 type NotaDesafianteCardProps = {
+  /** Solo las notas cerradas (completas) tienen nota desafiante. */
+  noteClosed: boolean
   /** 0–1: cuánto falta para desbloquear (1 = desbloqueada). */
   progress: number
   unlocked: boolean
@@ -20,6 +22,7 @@ const UNLOCK_PERCENT = Math.round(CHALLENGE_UNLOCK_RATIO * 100)
  * Bloqueada hasta escuchar el 80 % de la nota hoy; después, botón para empezar.
  */
 export function NotaDesafianteCard({
+  noteClosed,
   progress,
   unlocked,
   isPlayingThisNote,
@@ -29,6 +32,36 @@ export function NotaDesafianteCard({
 }: NotaDesafianteCardProps) {
   // Lo que se muestra es el % de la nota escuchado (0–80 %), no el % del objetivo.
   const listenedPercent = Math.round(progress * UNLOCK_PERCENT)
+
+  // Nota abierta: primero hay que completarla; la escucha todavía no cuenta.
+  if (!noteClosed) {
+    return (
+      <div
+        className={cn('mb-4 overflow-hidden rounded-2xl border border-border/70 bg-muted/30 p-4', className)}
+      >
+        <div className='flex items-start gap-3'>
+          <div
+            className='flex size-11 shrink-0 items-center justify-center rounded-xl bg-muted'
+            aria-hidden='true'
+          >
+            <LockIcon className='size-5 text-muted-foreground' />
+          </div>
+          <div className='min-w-0 flex-1'>
+            <p className='text-[11px] font-semibold tracking-[0.12em] text-sky-600 uppercase dark:text-sky-300'>
+              Nota desafiante
+            </p>
+            <p className='font-serif text-lg leading-snug font-bold'>
+              Completa esta nota para desbloquearla
+            </p>
+            <p className='mt-0.5 text-sm text-muted-foreground'>
+              Cuando la nota llegue a 3:00 y se complete, escucha al menos el {UNLOCK_PERCENT} % y
+              podrás hacer su nota desafiante.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div

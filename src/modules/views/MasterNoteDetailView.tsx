@@ -354,7 +354,10 @@ export function MasterNoteDetailView({
     note?.total_duration_ms || 0,
     challengeEnabled,
   )
-  const showChallenge = challengeEnabled && challengePhrases.length > 0
+  // Solo las notas cerradas tienen nota desafiante (para contar la escucha y para empezarla).
+  const noteClosed = note?.state === 'closed'
+  const hasChallengePhrases = challengeEnabled && challengePhrases.length > 0
+  const showChallenge = hasChallengePhrases && noteClosed
 
   const openChallenge = useCallback((): void => {
     stop()
@@ -651,10 +654,11 @@ export function MasterNoteDetailView({
           )}
         </div>
       </div>
-      {showChallenge && (
+      {hasChallengePhrases && (
         <NotaDesafianteCard
+          noteClosed={noteClosed}
           progress={challengeUnlock.progress}
-          unlocked={challengeUnlock.unlocked}
+          unlocked={noteClosed && challengeUnlock.unlocked}
           isPlayingThisNote={playingNoteId === note.id}
           onListen={() => void handlePlayNote()}
           onStart={openChallenge}

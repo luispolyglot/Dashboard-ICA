@@ -797,7 +797,9 @@ export function useMasterNotePlayback() {
     setDurationSec(track.durationSec)
     setPositionSec(0)
     setPlayingNoteId(note.id)
-    challengeNoteRef.current = { id: note.id, durationMs: note.total_duration_ms }
+    // Nota desafiante: solo cuenta la escucha de notas maestras cerradas.
+    challengeNoteRef.current =
+      note.state === 'closed' ? { id: note.id, durationMs: note.total_duration_ms } : null
     challengeLastAudioTimeRef.current = 0
     currentTrackMetaRef.current =
       note.target_lang && note.native_lang
