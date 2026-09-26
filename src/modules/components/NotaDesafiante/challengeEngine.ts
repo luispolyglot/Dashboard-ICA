@@ -329,10 +329,31 @@ async function waitRecognitionIdle(maxMs = 1500): Promise<void> {
 
 type Segment = string[] // alternativas de un trozo reconocido (la primera es la mejor)
 
+/** Cuántas palabras seguidas coinciden desde el principio. */
+function commonPrefixWords(a: string, b: string): number {
+  const wa = a.split(' ').filter(Boolean)
+  const wb = b.split(' ').filter(Boolean)
+  let count = 0
+  while (count < wa.length && count < wb.length && wa[count] === wb[count]) count += 1
+  return count
+}
+
 /**
- * Chrome en Android (y a veces Safari) devuelve cada resultado repitiendo lo anterior:
- * «hola» · «hola qué» · «hola qué tal». Si se suman tal cual sale
- * «hola hola qué hola qué tal». Aquí se quedan solo los trozos nuevos.
+ * ¿El trozo nuevo es otra versión de lo anterior (lo repite, lo amplía o lo corrige)?
+ * Pasa si empieza igual: las 2 primeras palabras (o la única, si lo anterior era una).
+ * Si el alumno vuelve a empezar la frase, también vale: cuenta el último intento.
+ */
+function isNewVersionOf(text: string, previous: string): boolean {
+  if (!previous) return false
+  const previousWords = previous.split(' ').filter(Boolean).length
+  return commonPrefixWords(text, previous) >= Math.min(2, previousWords)
+}
+
+/**
+ * Chrome en Android (y a veces Safari) devuelve cada resultado repitiendo lo anterior
+ * y a veces corrigiéndolo: «I» · «I copy» · «I copy the text to the clipper» ·
+ * «I copy the text to my clipboard». Si se suman tal cual sale
+ * «I I copy I copy the…» (captura de Nahuel). Aquí se queda solo la última versión.
  */
 export function mergeRecognitionSegments(segments: Segment[]): Segment[] {
   const out: Segment[] = []
@@ -340,8 +361,8 @@ export function mergeRecognitionSegments(segments: Segment[]): Segment[] {
     const text = normalizeAnswer(segment[0] || '')
     if (!text) continue
     const joined = normalizeAnswer(out.map((item) => item[0] || '').join(' '))
-    // Repite todo lo anterior y añade algo (o es igual): sustituye a todo.
-    if (joined && (text === joined || text.startsWith(`${joined} `))) {
+    // Otra versión de todo lo anterior: sustituye a todo.
+    if (isNewVersionOf(text, joined)) {
       out.length = 0
       out.push(segment)
       continue
@@ -349,15 +370,13 @@ export function mergeRecognitionSegments(segments: Segment[]): Segment[] {
     const previous = out[out.length - 1]
     if (previous) {
       const previousText = normalizeAnswer(previous[0] || '')
-      // Repite el último trozo y añade algo: sustituye al último.
-      if (text.startsWith(`${previousText} `)) {
+      // Otra versión del último trozo: lo sustituye.
+      if (isNewVersionOf(text, previousText)) {
         out[out.length - 1] = segment
         continue
       }
-      // Ya estaba dicho (repetición exacta o final del anterior): se ignora.
-      if (text === previousText || previousText.endsWith(` ${text}`) || joined.endsWith(` ${text}`)) {
-        continue
-      }
+      // Ya estaba dicho (final de lo anterior): se ignora.
+      if (previousText.endsWith(` ${text}`) || joined.endsWith(` ${text}`)) continue
     }
     out.push(segment)
   }
@@ -373,7 +392,7 @@ export function composeRecognitionText(segments: Segment[], interim: string): st
   if (!finalText) return interimClean
   const finalNorm = normalizeAnswer(finalText)
   const interimNorm = normalizeAnswer(interimClean)
-  if (interimNorm === finalNorm || interimNorm.startsWith(`${finalNorm} `)) return interimClean
+  if (isNewVersionOf(interimNorm, finalNorm)) return interimClean
   if (finalNorm.endsWith(interimNorm)) return finalText
   return `${finalText} ${interimClean}`
 }
@@ -521,13 +540,16 @@ function listenSession(
       resolve(outcome)
     }
 
-    const allSegments = (): Segment[] => mergeRecognitionSegments([...committed, ...sessionFinals])
-
     const buildOutcome = (): ListenOutcome => {
       if (cancelled) return { status: 'cancelled' }
       if (errorOutcome) return errorOutcome
-      const merged = allSegments()
-      if (!merged.length && interimText.trim()) merged.push([interimText.trim()])
+      // Lo provisional cuenta como un trozo más al final (Safari a veces nunca lo da
+      // por definitivo); si repite lo anterior, lo sustituye en vez de sumarse.
+      const merged = mergeRecognitionSegments([
+        ...committed,
+        ...sessionFinals,
+        ...(interimText.trim() ? [[interimText.trim()]] : []),
+      ])
       const transcript = merged.map((alternatives) => alternatives[0] || '').join(' ').trim()
       if (!transcript) return speechStarted ? { status: 'unclear' } : { status: 'silence' }
 
@@ -584,7 +606,7 @@ function listenSession(
       // Se reconstruye desde la lista completa (no se va sumando): así, aunque el
       // navegador repita resultados, cada palabra cuenta una sola vez.
       const finals: Segment[] = []
-      let interim = ''
+      const interimPieces: Segment[] = []
       for (let i = 0; i < event.results.length; i += 1) {
         const result = event.results[i]
         if (!result) continue
@@ -596,11 +618,16 @@ function listenSession(
           }
           if (alternatives.length) finals.push(alternatives)
         } else {
-          interim += ` ${result[0]?.transcript || ''}`
+          const text = result[0]?.transcript?.trim()
+          if (text) interimPieces.push([text])
         }
       }
       sessionFinals = finals
-      interimText = interim.trim()
+      // Lo provisional también puede venir repetido («I» · «I copy» · «I copy the»…).
+      interimText = mergeRecognitionSegments(interimPieces)
+        .map((item) => item[0] || '')
+        .join(' ')
+        .trim()
 
       const shown = composeRecognitionText([...committed, ...sessionFinals], interimText)
       if (shown) speechStarted = true

@@ -120,6 +120,35 @@ describe('listenOnce', () => {
     expect(checkAnswer('Je suis allé à Paris', outcome.candidates).correct).toBe(true)
   })
 
+  // Caso real de la captura de Nahuel (Android): «I I I I copy I copy the I copy the text…»
+  const screenshotSteps = [
+    'I', 'I', 'I', 'I copy', 'I copy the', 'I copy the text', 'I copy the text', 'I copy the text',
+    'I copy the text', 'I copy the text to', 'I copy the text to', 'I copy the text to the',
+    'I copy the text to the clipper', 'I copy the text to my clipboard',
+  ]
+
+  for (const final of [true, false]) {
+    it(`captura de Android (resultados ${final ? 'definitivos' : 'provisionales'}): sin repetir`, async () => {
+      const shown: string[] = []
+      const listening = listenOnce('Inglés', { onInterim: (text) => shown.push(text) })
+      await vi.advanceTimersByTimeAsync(300)
+      const rec = FakeRecognition.instances[0]
+      const sent: Array<{ text: string; final: boolean }> = []
+      for (const text of screenshotSteps) {
+        sent.push({ text, final })
+        rec.emit([...sent])
+        await vi.advanceTimersByTimeAsync(200)
+      }
+      await vi.advanceTimersByTimeAsync(6000)
+      const outcome = await listening.promise
+      expect(outcome.status).toBe('heard')
+      if (outcome.status !== 'heard') return
+      expect(outcome.transcript).toBe('I copy the text to my clipboard')
+      expect(shown[shown.length - 1]).toBe('I copy the text to my clipboard')
+      expect(checkAnswer('I copy the text to my clipboard.', outcome.candidates).correct).toBe(true)
+    })
+  }
+
   it('iPhone: si el micro no se abre, se tira y se abre otro solo', async () => {
     FakeRecognition.mode = 'dead-first'
     const ua = vi
