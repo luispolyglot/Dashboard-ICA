@@ -49,6 +49,9 @@ import {
   fetchMasterNotes,
 } from '../services/masterNotes'
 import { useMasterNotePlaylists } from '../hooks/useMasterNotePlaylists'
+import { NotaDesafianteChip } from '../components/NotaDesafiante/NotaDesafianteChip'
+import { useChallengeEnabled } from '../services/challengeChunks'
+import { CHALLENGE_UNLOCK_RATIO } from '../services/challengeUnlocks'
 import type { MasterNote } from '../types'
 
 type MasterNotesViewProps = {
@@ -108,6 +111,7 @@ export function MasterNotesView({
   nativeLang,
   todayVoiceActivationsCount,
 }: MasterNotesViewProps) {
+  const challengeEnabled = useChallengeEnabled()
   const navigate = useNavigate()
   const [items, setItems] = useState<MasterNote[]>([])
   const [loading, setLoading] = useState(true)
@@ -560,9 +564,15 @@ export function MasterNotesView({
         ⭐ Notas Maestras
       </h2>
       <p className='mb-5 text-sm text-muted-foreground'>
-        Crea notas maestras en {targetLang} y cierra cada una al completar entre
-        3:00 y 3:30.
+        Graba frases en {targetLang}: cada nota maestra se completa sola al
+        llegar a 3:00.
       </p>
+      {challengeEnabled && (
+        <p className='-mt-3 mb-5 text-sm text-muted-foreground'>
+          🎯 Escucha al menos el {Math.round(CHALLENGE_UNLOCK_RATIO * 100)} % de una
+          nota y se desbloquea su nota desafiante hasta el final del día.
+        </p>
+      )}
       {(error || playbackError || playlistsError) && (
         <p className='mb-3 text-sm text-red-400'>
           {error || playbackError || playlistsError}
@@ -687,10 +697,18 @@ export function MasterNotesView({
                       </div>
                       <div className='mt-1 text-xs text-muted-foreground'>
                         Duración: {formatDuration(item.total_duration_ms)}
+                        {item.state === 'open' ? ' / 3:00' : ''}
                         {item.state === 'closed'
                           ? ` · Cerrada el: ${formatDate(item.closed_at)}`
                           : ''}
                       </div>
+                      {challengeEnabled && item.total_duration_ms > 0 && (
+                        <NotaDesafianteChip
+                          noteId={item.id}
+                          noteDurationMs={item.total_duration_ms}
+                          noteHref={`${DASHBOARD_ROUTES.masterNotes}/note/${item.id}`}
+                        />
+                      )}
                     </div>
 
                     <div className='flex gap-2'>

@@ -113,6 +113,10 @@ export function AddView({
   const recent = cards.slice(-25).reverse()
   const todayProgress = getTodayProgress(dailyProgress)
   const canCreatePhrase = todayProgress.wordsAdded >= CREATION_WORDS_GOAL
+  const wordsLeftForPhrase = Math.max(
+    0,
+    CREATION_WORDS_GOAL - todayProgress.wordsAdded,
+  )
   const trimmedTarget = target.trim()
   const targetCharsCount = Array.from(target).length
   const duplicateWord = cards.find(
@@ -555,6 +559,15 @@ export function AddView({
           >
             🧩 Crear nueva frase
           </Button>
+          <div className='lg:hidden'>
+            {!canCreatePhrase && (
+              <p className='mt-1.5 text-center text-xs text-muted-foreground'>
+                🔒 Añade {wordsLeftForPhrase}{' '}
+                {wordsLeftForPhrase === 1 ? 'palabra' : 'palabras'} más hoy para
+                crear tu frase
+              </p>
+            )}
+          </div>
 
           {showDuplicateWarning && (
             <p className='mt-2 text-xs text-red-600 dark:text-red-300'>
@@ -576,6 +589,13 @@ export function AddView({
           >
             🧩 Crear nueva frase
           </Button>
+          {!canCreatePhrase && (
+            <p className='mt-1.5 text-center text-xs text-muted-foreground'>
+              🔒 Añade {wordsLeftForPhrase}{' '}
+              {wordsLeftForPhrase === 1 ? 'palabra' : 'palabras'} más hoy para
+              crear tu frase
+            </p>
+          )}
         </div>
       </div>
     </section>

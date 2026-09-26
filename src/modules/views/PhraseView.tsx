@@ -16,6 +16,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ActivatePhraseInMasterNoteModal } from '../components/ActivatePhraseInMasterNoteModal'
+import {
+  storeChallengeForNewPhrase,
+  useChallengeEnabled,
+} from '../services/challengeChunks'
 import { ExplorePhraseTokenModal } from '../components/ExplorePhraseTokenModal'
 import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
 import { InteractivePhraseText } from '../components/InteractivePhraseText'
@@ -76,6 +80,7 @@ export function PhraseView({
   onActivationWordsTotalChange,
   LevelBadge,
 }: PhraseViewProps) {
+  const challengeEnabled = useChallengeEnabled()
   const [wordCount, setWordCount] = useState(5)
   const [mode, setMode] = useState<'automatic' | 'manual' | 'manualPhrase'>(
     'automatic',
@@ -332,6 +337,16 @@ export function PhraseView({
           })
         await onPhraseGenerated()
         setResultPhraseId(phraseGenerationId)
+        // Nota desafiante: guardar los trozos de la frase (sin bloquear la pantalla).
+        if (challengeEnabled && phraseGenerationId) {
+          void storeChallengeForNewPhrase({
+            phraseId: phraseGenerationId,
+            result: response,
+            isManual: mode === 'manualPhrase',
+          }).catch((error) => {
+            console.error('[nota desafiante] no se pudieron guardar los trozos', error)
+          })
+        }
         if (typeof activationWordsTotal === 'number') {
           if (metaTrackerProfile?.confirmedAt && trackerSnapshot) {
             const nextSnapshot = getMetaTrackerSnapshot(
@@ -519,9 +534,9 @@ export function PhraseView({
           }
         >
           <TabsList className='grid w-full grid-cols-3'>
-            <TabsTrigger value='automatic'>Automática</TabsTrigger>
-            <TabsTrigger value='manual'>Palabras manual</TabsTrigger>
-            <TabsTrigger value='manualPhrase'>Frase manual</TabsTrigger>
+            <TabsTrigger value='automatic'>La IA la crea</TabsTrigger>
+            <TabsTrigger value='manual'>Elijo palabras</TabsTrigger>
+            <TabsTrigger value='manualPhrase'>La escribo yo</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -745,6 +760,9 @@ export function PhraseView({
       <Button
         type='button'
         onClick={handlePrimaryAction}
+        variant={
+          mode === 'manualPhrase' && manualPhraseApproved ? 'outline' : 'default'
+        }
         disabled={
           loading ||
           (mode !== 'manualPhrase' &&
@@ -766,7 +784,7 @@ export function PhraseView({
           </>
         ) : mode === 'manualPhrase' ? (
           manualPhraseApproved ? (
-            '🔄 No me convence, quiero crear otra frase manual'
+            '🔄 Escribir otra frase'
           ) : (
             `✅ Guardar frase manual · ${selectedWords.length}/${minWordsRequired}`
           )
@@ -848,19 +866,18 @@ export function PhraseView({
               <div className='flex flex-col gap-2'>
                 <Button
                   type='button'
-                  onClick={() => setExtractWordsModalOpen(true)}
-                  variant='secondary'
-                  className='w-full'
+                  onClick={openActivateModal}
+                  className='h-11 w-full text-base font-bold'
                 >
-                  📦 Extraer nuevas palabras
+                  🗣️ Activar frase
                 </Button>
                 <Button
                   type='button'
-                  onClick={openActivateModal}
+                  onClick={() => setExtractWordsModalOpen(true)}
                   variant='outline'
                   className='w-full'
                 >
-                  🗣️ Activar frase
+                  📦 Extraer nuevas palabras
                 </Button>
               </div>
             </div>

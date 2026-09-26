@@ -1,4 +1,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import {
+  generateActivationText,
+  getChunkProblems,
+  joinChunks,
+  sanitizeChunks,
+  splitExistingText,
+  type AnthropicCall,
+} from '../_shared/challenge-chunks.ts'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -136,6 +144,15 @@ type ManualPhraseSuggestionPayload = {
   nativeLang: string
 }
 
+// NOTA DESAFIANTE: prepara los trozos de una frase ya guardada y los guarda el servidor.
+// El texto se lee de la base de datos (no se confía en el navegador).
+// chunks (opcional): trozos que ya trajo la IA al crear la frase; se validan antes de guardarlos.
+type SplitPhrasePayload = {
+  action: 'split_phrase'
+  phraseId: string
+  chunks?: unknown
+}
+
 type CoachingFocusExercisePayload = {
   action: 'coaching_focus_exercise'
   targetLang: string
@@ -164,6 +181,7 @@ type RequestPayload =
   | WordExamplePayload
   | PhraseTokenInsightPayload
   | ManualPhraseSuggestionPayload
+  | SplitPhrasePayload
   | CoachingFocusExercisePayload
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -421,7 +439,9 @@ function parseManualPhraseSuggestion(raw: string | null): ManualPhraseReviewResu
   }
 }
 
-async function requireUser(req: Request): Promise<{ ok: true } | { ok: false; response: Response }> {
+async function requireUser(
+  req: Request,
+): Promise<{ ok: true; userId: string } | { ok: false; response: Response }> {
   const authHeader = req.headers.get('Authorization')
   if (!authHeader) {
     return { ok: false, response: jsonResponse(401, { error: 'Missing authorization header' }) }
@@ -450,7 +470,126 @@ async function requireUser(req: Request): Promise<{ ok: true } | { ok: false; re
     return { ok: false, response: jsonResponse(401, { error: 'Unauthorized' }) }
   }
 
-  return { ok: true }
+  return { ok: true, userId: user.id }
+}
+
+const CHALLENGE_FEATURE_FLAG_KEY = 'nota-desafiante'
+
+type ChallengePhraseRow = {
+  id: string
+  generated_phrase: string | null
+  translation: string | null
+  target_lang: string | null
+  native_lang: string | null
+  challenge_chunks: unknown
+  challenge_ready: boolean | null
+  challenge_problem: string | null
+}
+
+type ChallengeResult = {
+  chunks: Array<{ target: string; native: string }> | null
+  ready: boolean | null
+  problem: string | null
+}
+
+function createAdminClient() {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!supabaseUrl || !serviceRoleKey) return null
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+}
+
+// NOTA DESAFIANTE: trozos de una frase del alumno. Idempotente: si ya se procesó,
+// devuelve lo guardado sin volver a llamar a la IA.
+async function handleSplitPhrase(payload: SplitPhrasePayload, userId: string): Promise<Response> {
+  const phraseId = typeof payload.phraseId === 'string' ? payload.phraseId.trim() : ''
+  if (!phraseId) return jsonResponse(400, { error: 'phraseId is required' })
+
+  const admin = createAdminClient()
+  if (!admin) return jsonResponse(500, { error: 'Supabase function environment is not configured' })
+
+  const { data: flagRow } = await admin
+    .from('feature_flags')
+    .select('is_enabled')
+    .eq('key', CHALLENGE_FEATURE_FLAG_KEY)
+    .maybeSingle()
+  if (!flagRow?.is_enabled) {
+    return jsonResponse(403, { error: 'feature_disabled' })
+  }
+
+  const { data: row, error: rowError } = await admin
+    .from('phrase_generations')
+    .select(
+      'id, generated_phrase, translation, target_lang, native_lang, challenge_chunks, challenge_ready, challenge_problem',
+    )
+    .eq('id', phraseId)
+    .eq('user_id', userId)
+    .maybeSingle<ChallengePhraseRow>()
+
+  if (rowError) return jsonResponse(500, { error: rowError.message })
+  if (!row) return jsonResponse(404, { error: 'phrase_not_found' })
+
+  if (row.challenge_ready !== null) {
+    const stored: ChallengeResult = {
+      chunks: sanitizeChunks(row.challenge_chunks),
+      ready: row.challenge_ready,
+      problem: row.challenge_problem,
+    }
+    return jsonResponse(200, { result: stored })
+  }
+
+  const targetPhrase = (row.generated_phrase || '').trim()
+  const nativePhrase = (row.translation || '').trim()
+  if (!targetPhrase || !nativePhrase) {
+    return jsonResponse(422, { error: 'phrase_without_text' })
+  }
+
+  let result: ChallengeResult | null = null
+
+  // Trozos que trajo la IA al crear la frase: solo se aceptan si reproducen la frase guardada.
+  const providedChunks = sanitizeChunks(payload.chunks)
+  if (
+    providedChunks &&
+    !getChunkProblems(providedChunks, targetPhrase).length &&
+    joinChunks(providedChunks, 'native').length > 0
+  ) {
+    result = { chunks: providedChunks, ready: true, problem: null }
+  }
+
+  if (!result) {
+    const split = await splitExistingText(
+      {
+        targetPhrase,
+        nativePhrase,
+        targetLang: row.target_lang || '',
+        nativeLang: row.native_lang || '',
+      },
+      callAnthropic as AnthropicCall,
+    )
+    result = {
+      chunks: split.chunks,
+      ready: Boolean(split.chunks) && split.targetIsCorrect !== false,
+      problem:
+        split.problem ||
+        (split.chunks ? null : 'No se pudo dividir la frase en trozos válidos.'),
+    }
+  }
+
+  const { error: updateError } = await admin
+    .from('phrase_generations')
+    .update({
+      challenge_chunks: result.chunks,
+      challenge_ready: result.ready,
+      challenge_problem: result.problem,
+    })
+    .eq('id', row.id)
+    .eq('user_id', userId)
+
+  if (updateError) return jsonResponse(500, { error: updateError.message })
+
+  return jsonResponse(200, { result })
 }
 
 async function callAnthropic(
@@ -1305,17 +1444,8 @@ Deno.serve(async (req) => {
         return jsonResponse(400, { error: 'Words are required' })
       }
 
-      const sentenceLengthByWordCount: Record<number, string> = {
-        5: '20-25 words long',
-        6: '20-30 words long',
-        7: '20-35 words long',
-        8: '20-40 words long',
-      }
-      const sentenceLengthRule =
-        sentenceLengthByWordCount[words.length] || '20-28 words long'
-
-      const normalizedLevel = normalizeLevelKey(payload.level)
-      const levelDescription = getLevelDescription(payload.level)
+      // NOTA DESAFIANTE (fase 1): texto coherente y correcto, ya dividido en trozos.
+      // La lógica (prompt, reglas de trozos, reintentos) está en ../_shared/challenge-chunks.ts
       const intendedMeanings = normalizedWords
         .filter((word) => word.native)
         .map((word) => `${word.target} = ${word.native}`)
@@ -1323,64 +1453,24 @@ Deno.serve(async (req) => {
         ? payload.previousPhrase.trim()
         : ''
 
-      const buildActivationPrompt = (forbiddenPhrase?: string): string => {
-        return [
-          `Task: generate one original sentence in ${payload.targetLang} for a language learner using ALL required ICA words.`,
-          `Required ICA words: ${words.join(', ')}`,
-          'Rules (strict):',
-          `- CEFR ${normalizedLevel} level. Description: ${levelDescription}`,
-          `- ${sentenceLengthRule}`,
-          '- Use all required ICA words in the sentence.',
-          '- Keep the intended meaning for each ICA word; do not switch sense.',
-          '- You may add up to 10 extra words only when needed for coherence and naturalness.',
-          '- Natural, native-sounding, practical wording.',
-          forbiddenPhrase
-            ? `- Forbidden previous sentence (do not reuse wording or structure): ${JSON.stringify(forbiddenPhrase)}`
-            : '',
-          forbiddenPhrase
-            ? '- Produce a clearly different sentence from the forbidden one (different opening and clause structure).'
-            : '',
-          intendedMeanings.length
-            ? `- Intended meanings (${payload.targetLang} -> ${payload.nativeLang}): ${intendedMeanings.join('; ')}`
-            : '',
-          `- Translate to ${payload.nativeLang}`,
-          'Reply ONLY:',
-          '{"phrase":"<sentence>","translation":"<translation>","words_used":["w1","w2"]}',
-        ]
-          .filter(Boolean)
-          .join('\n')
-      }
+      const activationResult = await generateActivationText(
+        {
+          words,
+          intendedMeanings,
+          targetLang: payload.targetLang,
+          nativeLang: payload.nativeLang,
+          normalizedLevel: normalizeLevelKey(payload.level),
+          levelDescription: getLevelDescription(payload.level),
+          previousPhrase,
+        },
+        callAnthropic as AnthropicCall,
+      )
 
-      let result: { phrase: string; translation: string; words_used?: string[] } | null = null
-      let fallbackCandidate: { phrase: string; translation: string; words_used?: string[] } | null = null
-      const maxAttempts = previousPhrase ? 2 : 1
+      return jsonResponse(200, { result: activationResult })
+    }
 
-      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        const forbiddenPhrase = attempt === 0 ? previousPhrase : previousPhrase || result?.phrase || ''
-        const raw = await callAnthropic(
-          'You generate natural sentences for language learners. Follow strict constraints and reply ONLY in JSON. No markdown, no backticks.',
-          buildActivationPrompt(forbiddenPhrase || undefined),
-          {
-            maxTokens: 260,
-            temperature: attempt === 0 ? 0.2 : 0,
-          },
-        )
-
-        const parsed = parseActivationPhrase(raw.text)
-        if (!parsed) continue
-
-        if (!fallbackCandidate) {
-          fallbackCandidate = parsed
-        }
-
-        if (!hasAllRequiredWords(parsed.phrase, words)) continue
-        if (previousPhrase && isTooSimilarToPreviousPhrase(parsed.phrase, previousPhrase)) continue
-
-        result = parsed
-        break
-      }
-
-      return jsonResponse(200, { result: result || fallbackCandidate })
+    if (payload.action === 'split_phrase') {
+      return await handleSplitPhrase(payload, auth.userId)
     }
 
     if (payload.action === 'word_example') {
@@ -1548,6 +1638,8 @@ Deno.serve(async (req) => {
         '- You may reorder sentence structure to make it natural and correct.',
         '- If the phrase is already good, do NOT force a rewrite.',
         '- Optionally suggest a better native-language version if helpful.',
+        '- If the phrase is grammatical but makes no sense in real life, it is NOT perfect: suggest a sensible version.',
+        '- In the suggestion, write numbers in words, never in digits.',
         `- If you provide "suggestion", it MUST be written only in ${payload.targetLang}.`,
         `- If you provide "nativeSuggestion", it MUST be written only in ${payload.nativeLang}.`,
         'Output format (CRITICAL):',
@@ -1559,10 +1651,10 @@ Deno.serve(async (req) => {
       ].join('\n')
 
       const result = await callAnthropic(
-        'You improve learner sentences. Preserve required tokens exactly. Reply ONLY JSON.',
+        'You review and improve learner sentences. Keep the meaning of the required ICA words and inflect them only when grammar requires it. Reply ONLY JSON.',
         prompt,
         {
-          maxTokens: 180,
+          maxTokens: 600, // Antes 180: la respuesta completa no cabía
           temperature: 0,
           tool: {
             name: 'report_manual_phrase_suggestion',
@@ -1597,6 +1689,14 @@ Deno.serve(async (req) => {
         ? parseManualPhraseSuggestion(JSON.stringify(result.toolInput))
         : null
       const parsed = parsedFromTool ?? parseManualPhraseSuggestion(result.text)
+
+      // Antes, si la revisión fallaba o llegaba cortada, se decía "perfecta" sin revisar nada.
+      if (!parsed) {
+        return jsonResponse(502, {
+          error: 'review_failed',
+          message: 'No se ha podido revisar la frase. Inténtalo de nuevo.',
+        })
+      }
 
       const suggestion = parsed?.suggestion || null
       const missingRequiredWords = suggestion

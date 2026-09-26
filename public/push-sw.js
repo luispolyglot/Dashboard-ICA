@@ -23,6 +23,10 @@ self.addEventListener('fetch', (event) => {
 
   if (!isSameOrigin(request.url)) return
 
+  // En desarrollo (pnpm dev) nunca se usa la caché: si no, al recargar
+  // se servía el código viejo y los cambios parecían no aplicarse.
+  if (isDevelopmentRequest(request)) return
+
   if (shouldIgnoreRequest(request)) return
 
   const isStaticAsset =
@@ -67,7 +71,8 @@ self.addEventListener('push', (event) => {
   )
 })
 
-const CACHE_VERSION = 'v1'
+// v2: limpia el código de desarrollo que se había quedado guardado con la v1.
+const CACHE_VERSION = 'v2'
 const APP_SHELL_CACHE = `dashboard-ica-app-shell-${CACHE_VERSION}`
 const STATIC_ASSETS_CACHE = `dashboard-ica-static-assets-${CACHE_VERSION}`
 const RUNTIME_DATA_CACHE = `dashboard-ica-runtime-data-${CACHE_VERSION}`
@@ -205,6 +210,26 @@ async function handleDataRequest(request) {
     }
     return Response.error()
   }
+}
+
+function isDevelopmentRequest(request) {
+  const host = self.location.hostname
+  const isLocalHost =
+    host === 'localhost'
+    || host === '127.0.0.1'
+    || host === '[::1]'
+    || host.startsWith('192.168.')
+    || host.startsWith('10.')
+    || /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+  if (isLocalHost) return true
+
+  // Archivos que solo sirve Vite en desarrollo
+  const { pathname } = new URL(request.url)
+  return (
+    pathname.startsWith('/src/')
+    || pathname.startsWith('/@')
+    || pathname.startsWith('/node_modules/')
+  )
 }
 
 function shouldIgnoreRequest(request) {
