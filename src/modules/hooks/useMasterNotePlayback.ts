@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { addChallengeListening } from '../services/challengeUnlocks'
-import { isChallengeEnabled } from '../services/challengeChunks'
+import { isChallengeEnabledNow } from '../services/challengeChunks'
 import { useAuth } from '@/auth/AuthContext'
 import type { MasterNote } from '../types'
 import {
@@ -193,7 +193,7 @@ export function useMasterNotePlayback() {
     const current = challengeNoteRef.current
     const seconds = challengePendingSecondsRef.current
     challengePendingSecondsRef.current = 0
-    if (!isChallengeEnabled || !current || seconds <= 0) return
+    if (!isChallengeEnabledNow() || !current || seconds <= 0) return
     addChallengeListening({
       userId: user?.id,
       noteId: current.id,
@@ -203,7 +203,7 @@ export function useMasterNotePlayback() {
   }
 
   const trackChallengeListening = (audio: HTMLAudioElement): void => {
-    if (!isChallengeEnabled || !challengeNoteRef.current) return
+    if (!isChallengeEnabledNow() || !challengeNoteRef.current) return
     const now = audio.currentTime || 0
     const last = challengeLastAudioTimeRef.current
     challengeLastAudioTimeRef.current = now

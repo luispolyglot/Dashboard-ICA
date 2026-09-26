@@ -1,5 +1,4 @@
 import { supabase } from '../../lib/supabase'
-import { callLocalAi, isChallengeLocalMode } from './challengeChunks'
 import type {
   ActivationPhraseResult,
   Lexicard,
@@ -193,16 +192,6 @@ export async function fetchActivationPhrase(
     nativeLang,
     level,
     previousPhrase,
-  }
-
-  // Nota desafiante: en modo prueba local la frase (con trozos) se genera desde este ordenador.
-  if (isChallengeLocalMode) {
-    try {
-      return await callLocalAi<ActivationPhraseResult>('activation_phrase', body)
-    } catch (error) {
-      console.error(error)
-      return null
-    }
   }
 
   if (!supabase) return null

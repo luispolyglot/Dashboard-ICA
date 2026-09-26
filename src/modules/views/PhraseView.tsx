@@ -17,8 +17,8 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ActivatePhraseInMasterNoteModal } from '../components/ActivatePhraseInMasterNoteModal'
 import {
-  isChallengeEnabled,
   storeChallengeForNewPhrase,
+  useChallengeEnabled,
 } from '../services/challengeChunks'
 import { ExplorePhraseTokenModal } from '../components/ExplorePhraseTokenModal'
 import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
@@ -80,6 +80,7 @@ export function PhraseView({
   onActivationWordsTotalChange,
   LevelBadge,
 }: PhraseViewProps) {
+  const challengeEnabled = useChallengeEnabled()
   const [wordCount, setWordCount] = useState(5)
   const [mode, setMode] = useState<'automatic' | 'manual' | 'manualPhrase'>(
     'automatic',
@@ -337,13 +338,11 @@ export function PhraseView({
         await onPhraseGenerated()
         setResultPhraseId(phraseGenerationId)
         // Nota desafiante: guardar los trozos de la frase (sin bloquear la pantalla).
-        if (isChallengeEnabled && phraseGenerationId) {
+        if (challengeEnabled && phraseGenerationId) {
           void storeChallengeForNewPhrase({
             phraseId: phraseGenerationId,
             result: response,
             isManual: mode === 'manualPhrase',
-            targetLang: config.targetLang,
-            nativeLang: config.nativeLang,
           }).catch((error) => {
             console.error('[nota desafiante] no se pudieron guardar los trozos', error)
           })

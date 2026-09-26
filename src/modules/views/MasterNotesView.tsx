@@ -50,7 +50,7 @@ import {
 } from '../services/masterNotes'
 import { useMasterNotePlaylists } from '../hooks/useMasterNotePlaylists'
 import { NotaDesafianteChip } from '../components/NotaDesafiante/NotaDesafianteChip'
-import { isChallengeEnabled } from '../services/challengeChunks'
+import { useChallengeEnabled } from '../services/challengeChunks'
 import { CHALLENGE_UNLOCK_RATIO } from '../services/challengeUnlocks'
 import type { MasterNote } from '../types'
 
@@ -111,6 +111,7 @@ export function MasterNotesView({
   nativeLang,
   todayVoiceActivationsCount,
 }: MasterNotesViewProps) {
+  const challengeEnabled = useChallengeEnabled()
   const navigate = useNavigate()
   const [items, setItems] = useState<MasterNote[]>([])
   const [loading, setLoading] = useState(true)
@@ -566,7 +567,7 @@ export function MasterNotesView({
         Graba frases en {targetLang}: cada nota maestra se completa sola al
         llegar a 3:00.
       </p>
-      {isChallengeEnabled && (
+      {challengeEnabled && (
         <p className='-mt-3 mb-5 text-sm text-muted-foreground'>
           🎯 Escucha al menos el {Math.round(CHALLENGE_UNLOCK_RATIO * 100)} % de una
           nota y se desbloquea su nota desafiante hasta el final del día.
@@ -701,7 +702,7 @@ export function MasterNotesView({
                           ? ` · Cerrada el: ${formatDate(item.closed_at)}`
                           : ''}
                       </div>
-                      {isChallengeEnabled && item.total_duration_ms > 0 && (
+                      {challengeEnabled && item.total_duration_ms > 0 && (
                         <NotaDesafianteChip
                           noteId={item.id}
                           noteDurationMs={item.total_duration_ms}

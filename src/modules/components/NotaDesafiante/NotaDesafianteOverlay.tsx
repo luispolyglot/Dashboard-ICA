@@ -91,8 +91,6 @@ export function NotaDesafianteOverlay({
 
     void prepareNoteChallenge({
       phrases,
-      targetLang,
-      nativeLang,
       onProgress: (done, total) => {
         if (active) setProgress({ done, total })
       },

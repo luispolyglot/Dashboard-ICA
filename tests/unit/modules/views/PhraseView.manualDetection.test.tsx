@@ -119,7 +119,7 @@ describe('PhraseView manual phrase detection', () => {
       </MemoryRouter>,
     )
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Frase manual' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'La escribo yo' }))
 
     const textareas = screen.getAllByRole('textbox')
     const targetInput = textareas[0]

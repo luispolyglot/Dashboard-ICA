@@ -3,8 +3,6 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import fs from 'node:fs'
 import path from 'node:path'
-// @ts-ignore: plugin de desarrollo en JS (modo prueba local de la nota desafiante)
-import { localAiDevPlugin } from './dev/local-ai-plugin.mjs'
 
 const buildId = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || String(Date.now())
 const builtAt = new Date().toISOString()
@@ -13,7 +11,6 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    localAiDevPlugin(),
     {
       name: 'write-version-json',
       apply: 'build',

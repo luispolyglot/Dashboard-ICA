@@ -63,7 +63,7 @@ import {
   useOnChallengeUnlocked,
 } from '../services/challengeUnlocks'
 import {
-  isChallengeEnabled,
+  useChallengeEnabled,
   type ChallengePhraseInput,
 } from '../services/challengeChunks'
 import type {
@@ -347,12 +347,14 @@ export function MasterNoteDetailView({
   const canPlayNote = !!note && canPlay(note, chunks.length)
 
   // Nota desafiante: se desbloquea al escuchar el 80 % de esta nota hoy
+  const challengeEnabled = useChallengeEnabled()
   const challengeUnlock = useChallengeUnlock(
     user?.id,
     note?.id,
     note?.total_duration_ms || 0,
+    challengeEnabled,
   )
-  const showChallenge = isChallengeEnabled && challengePhrases.length > 0
+  const showChallenge = challengeEnabled && challengePhrases.length > 0
 
   const openChallenge = useCallback((): void => {
     stop()

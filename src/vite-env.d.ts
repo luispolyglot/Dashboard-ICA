@@ -16,9 +16,6 @@ interface ImportMetaEnv {
   readonly VITE_ANTHROPIC_MODEL?: string
   readonly VITE_SUPABASE_URL?: string
   readonly VITE_SUPABASE_ANON_KEY?: string
-  // Nota desafiante
-  readonly VITE_CHALLENGE_LOCAL?: string
-  readonly VITE_CHALLENGE_CHUNKS_DB?: string
 }
 
 interface ImportMeta {

@@ -1,15 +1,14 @@
 /**
  * NOTA DESAFIANTE — trozos de cada frase (fase 1) y preparación del desafío.
  *
- * Dos formas de funcionar:
- * - Modo prueba local (VITE_CHALLENGE_LOCAL=true en .env, solo con `pnpm dev`):
- *   la IA se llama desde el propio ordenador (dev/local-ai-plugin.mjs) y los trozos
- *   se guardan en este navegador. No toca Supabase.
- * - Modo real (VITE_CHALLENGE_CHUNKS_DB=true, cuando esté publicada la migración
- *   20260924120000_nota_desafiante_phrase_chunks.sql y la Edge Function nueva):
- *   la IA va por anthropic-proxy y los trozos se guardan en phrase_generations.
+ * - Se enciende con el feature flag `nota-desafiante` (tabla feature_flags), para todos a la vez.
+ * - La IA solo se llama desde el servidor (anthropic-proxy, acción split_phrase).
+ * - Los trozos los guarda el servidor en phrase_generations (challenge_*). El navegador solo lee;
+ *   un trigger impide que el cliente escriba esas columnas.
  */
+import { useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useFeatureFlagsStore } from '../stores/featureFlagsStore'
 import type { ActivationPhraseResult } from '../types'
 
 export type PhraseChunk = { target: string; native: string }
@@ -21,142 +20,75 @@ export type PhraseChallengeData = {
   problem: string | null
 }
 
-type SplitPhraseResult = {
-  chunks: PhraseChunk[] | null
-  translation: string
-  targetIsCorrect: boolean | null
-  problem: string | null
+export const CHALLENGE_FEATURE_FLAG = 'nota-desafiante' as const
+
+/** Lectura puntual del flag (fuera de React o dentro de callbacks). */
+export function isChallengeEnabledNow(): boolean {
+  return Boolean(useFeatureFlagsStore.getState().flags[CHALLENGE_FEATURE_FLAG])
 }
 
-export const isChallengeLocalMode =
-  import.meta.env.DEV && import.meta.env.VITE_CHALLENGE_LOCAL === 'true'
-export const isChallengeDbMode = import.meta.env.VITE_CHALLENGE_CHUNKS_DB === 'true'
-export const isChallengeEnabled = isChallengeLocalMode || isChallengeDbMode
-
-const LOCAL_STORAGE_KEY = 'ica-nota-desafiante-chunks-v1'
-
-// ---------------------------------------------------------------------------
-// Llamadas a la IA
-// ---------------------------------------------------------------------------
-
-export async function callLocalAi<T>(
-  action: 'activation_phrase' | 'split_phrase',
-  body: Record<string, unknown>,
-): Promise<T | null> {
-  const response = await fetch(`/__local-ai/${action}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  const data = (await response.json().catch(() => null)) as
-    | { result?: T; error?: string }
-    | null
-  if (!response.ok) {
-    throw new Error(data?.error || `Modo prueba local: error ${response.status}`)
-  }
-  return data?.result ?? null
+/** Flag reactivo para componentes. Carga los flags si aún no se han cargado. */
+export function useChallengeEnabled(): boolean {
+  const loadFlags = useFeatureFlagsStore((state) => state.loadFlags)
+  const enabled = useFeatureFlagsStore((state) => state.flags[CHALLENGE_FEATURE_FLAG])
+  useEffect(() => {
+    void loadFlags()
+  }, [loadFlags])
+  return Boolean(enabled)
 }
 
-export async function splitPhraseForChallenge(params: {
-  targetPhrase: string
-  nativePhrase: string
-  targetLang: string
-  nativeLang: string
-}): Promise<SplitPhraseResult | null> {
-  const body = { action: 'split_phrase', ...params }
+// ---------------------------------------------------------------------------
+// Servidor: preparar (y guardar) los trozos de una frase
+// ---------------------------------------------------------------------------
 
-  if (isChallengeLocalMode) {
-    return callLocalAi<SplitPhraseResult>('split_phrase', body)
-  }
-
+/**
+ * Pide al servidor los trozos de una frase ya guardada. El servidor:
+ * - devuelve lo guardado si ya se procesó (sin gastar IA),
+ * - acepta `chunks` si reproducen la frase guardada (frases nuevas de la IA),
+ * - si no, divide la frase con la IA y guarda el resultado.
+ */
+async function requestPhraseChallenge(
+  phraseId: string,
+  chunks?: PhraseChunk[] | null,
+): Promise<PhraseChallengeData | null> {
   if (!supabase) return null
-  const { data, error } = await supabase.functions.invoke<{ result?: SplitPhraseResult }>(
+  const { data, error } = await supabase.functions.invoke<{ result?: PhraseChallengeData }>(
     'anthropic-proxy',
-    { body },
+    { body: { action: 'split_phrase', phraseId, ...(chunks ? { chunks } : {}) } },
   )
   if (error) throw error
   return data?.result ?? null
 }
 
 // ---------------------------------------------------------------------------
-// Guardar y leer
+// Leer
 // ---------------------------------------------------------------------------
-
-function readLocalStore(): Record<string, PhraseChallengeData> {
-  try {
-    const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY)
-    const parsed = raw ? JSON.parse(raw) : {}
-    return parsed && typeof parsed === 'object' ? parsed : {}
-  } catch {
-    return {}
-  }
-}
-
-function writeLocalStore(store: Record<string, PhraseChallengeData>): void {
-  try {
-    window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(store))
-  } catch {
-    // Sin espacio o bloqueado: el desafío volverá a dividir la frase la próxima vez.
-  }
-}
-
-export async function saveChallengeData(
-  phraseId: string,
-  data: PhraseChallengeData,
-): Promise<void> {
-  if (isChallengeDbMode && !isChallengeLocalMode) {
-    if (!supabase) return
-    const { error } = await supabase
-      .from('phrase_generations')
-      .update({
-        challenge_chunks: data.chunks,
-        challenge_ready: data.ready,
-        challenge_problem: data.problem,
-      })
-      .eq('id', phraseId)
-    if (error) throw error
-    return
-  }
-
-  const store = readLocalStore()
-  store[phraseId] = data
-  writeLocalStore(store)
-}
 
 export async function loadChallengeData(
   phraseIds: string[],
 ): Promise<Record<string, PhraseChallengeData>> {
   const ids = Array.from(new Set(phraseIds.filter(Boolean)))
-  if (!ids.length) return {}
+  if (!ids.length || !supabase) return {}
 
-  if (isChallengeDbMode && !isChallengeLocalMode) {
-    if (!supabase) return {}
-    const { data, error } = await supabase
-      .from('phrase_generations')
-      .select('id, challenge_chunks, challenge_ready, challenge_problem')
-      .in('id', ids)
-    if (error) throw error
-    const map: Record<string, PhraseChallengeData> = {}
-    for (const row of (data || []) as Array<{
-      id: string
-      challenge_chunks: PhraseChunk[] | null
-      challenge_ready: boolean | null
-      challenge_problem: string | null
-    }>) {
-      map[row.id] = {
-        chunks: row.challenge_chunks,
-        ready: row.challenge_ready,
-        problem: row.challenge_problem,
-      }
-    }
-    return map
-  }
+  const { data, error } = await supabase
+    .from('phrase_generations')
+    .select('id, challenge_chunks, challenge_ready, challenge_problem')
+    .in('id', ids)
+  if (error) throw error
 
-  const store = readLocalStore()
   const map: Record<string, PhraseChallengeData> = {}
-  ids.forEach((id) => {
-    if (store[id]) map[id] = store[id]
-  })
+  for (const row of (data || []) as Array<{
+    id: string
+    challenge_chunks: PhraseChunk[] | null
+    challenge_ready: boolean | null
+    challenge_problem: string | null
+  }>) {
+    map[row.id] = {
+      chunks: row.challenge_chunks,
+      ready: row.challenge_ready,
+      problem: row.challenge_problem,
+    }
+  }
   return map
 }
 
@@ -168,38 +100,16 @@ export async function storeChallengeForNewPhrase(params: {
   phraseId: string
   result: ActivationPhraseResult
   isManual: boolean
-  targetLang: string
-  nativeLang: string
 }): Promise<void> {
-  const { phraseId, result, isManual, targetLang, nativeLang } = params
-
-  // Frase generada por la IA con el prompt nuevo: ya trae sus trozos.
-  if (!isManual && result.chunks !== undefined) {
-    await saveChallengeData(phraseId, {
-      chunks: result.chunks,
-      ready: Boolean(result.chunks),
-      problem: result.chunks ? null : 'No se pudo dividir la frase en trozos válidos.',
-    })
-    return
-  }
-
-  // Frase escrita por el alumno (o generada antes del cambio): se divide ahora.
-  const split = await splitPhraseForChallenge({
-    targetPhrase: result.phrase,
-    nativePhrase: result.translation,
-    targetLang,
-    nativeLang,
-  })
-  if (!split) return
-  await saveChallengeData(phraseId, {
-    chunks: split.chunks,
-    ready: Boolean(split.chunks) && split.targetIsCorrect !== false,
-    problem: split.problem,
-  })
+  const { phraseId, result, isManual } = params
+  // Frase de la IA con el prompt nuevo: ya trae sus trozos y el servidor solo los valida.
+  // Frase escrita por el alumno: el servidor la divide.
+  const chunks = !isManual && result.chunks ? result.chunks : null
+  await requestPhraseChallenge(phraseId, chunks)
 }
 
 // ---------------------------------------------------------------------------
-// Al abrir el desafío de una nota (frases antiguas sin trozos se dividen aquí)
+// Al abrir el desafío de una nota (frases antiguas sin trozos se preparan aquí)
 // ---------------------------------------------------------------------------
 
 export type ChallengePhraseInput = {
@@ -215,11 +125,9 @@ export type PreparedChallenge = {
 
 export async function prepareNoteChallenge(params: {
   phrases: ChallengePhraseInput[]
-  targetLang: string
-  nativeLang: string
   onProgress?: (done: number, total: number) => void
 }): Promise<PreparedChallenge> {
-  const { phrases, targetLang, nativeLang, onProgress } = params
+  const { phrases, onProgress } = params
   const stored = await loadChallengeData(phrases.map((item) => item.phraseId))
   const missing = phrases.filter((item) => stored[item.phraseId]?.ready == null)
 
@@ -233,23 +141,8 @@ export async function prepareNoteChallenge(params: {
     await Promise.all(
       batch.map(async (item) => {
         try {
-          const split = await splitPhraseForChallenge({
-            targetPhrase: item.target,
-            nativePhrase: item.native,
-            targetLang,
-            nativeLang,
-          })
-          const data: PhraseChallengeData = split
-            ? {
-                chunks: split.chunks,
-                ready: Boolean(split.chunks) && split.targetIsCorrect !== false,
-                problem:
-                  split.problem ||
-                  (split.chunks ? null : 'No se pudo dividir la frase en trozos válidos.'),
-              }
-            : { chunks: null, ready: null, problem: null }
-          stored[item.phraseId] = data
-          if (data.ready !== null) await saveChallengeData(item.phraseId, data)
+          const data = await requestPhraseChallenge(item.phraseId)
+          stored[item.phraseId] = data ?? { chunks: null, ready: null, problem: null }
         } catch (error) {
           console.error('[nota desafiante] split_phrase', error)
           stored[item.phraseId] = { chunks: null, ready: null, problem: null }
@@ -284,8 +177,7 @@ export async function prepareNoteChallenge(params: {
     })
   })
 
-  // Si no se ha podido preparar nada por un error (por ejemplo, falta la clave),
-  // se muestra ese error en vez de un desafío vacío.
+  // Si no se ha podido preparar nada por un error, se muestra ese error en vez de un desafío vacío.
   if (!rounds.length && firstError) throw firstError
 
   return { rounds, excluded }
