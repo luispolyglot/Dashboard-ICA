@@ -182,21 +182,23 @@ export async function fetchActivationPhrase(
   level: StudyLevel,
   previousPhrase?: string,
 ): Promise<ActivationPhraseResult | null> {
+  const body = {
+    action: 'activation_phrase',
+    words: words.map((word) => ({
+      target: word.target,
+      native: word.native,
+    })),
+    targetLang,
+    nativeLang,
+    level,
+    previousPhrase,
+  }
+
   if (!supabase) return null
 
   try {
     const { data, error } = await supabase.functions.invoke<ActivationPhraseResponse>('anthropic-proxy', {
-      body: {
-        action: 'activation_phrase',
-        words: words.map((word) => ({
-          target: word.target,
-          native: word.native,
-        })),
-        targetLang,
-        nativeLang,
-        level,
-        previousPhrase,
-      },
+      body,
     })
 
     if (error) {

@@ -16,11 +16,14 @@ import { useDashboardContext } from '../context/DashboardContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchPhraseHistoryEntry } from '../services/phraseHistory'
 import {
+  MASTER_NOTE_COMPLETE_DURATION_MS,
   addMasterNoteChunk,
+  closeMasterNote,
   fetchMasterNoteById,
   fetchMasterNoteChunks,
   rerecordMasterNoteChunk,
 } from '../services/masterNotes'
+import { MasterNoteProgressBar } from '../components/MasterNoteProgressBar'
 import type { MasterNote, MasterNoteChunk, PhraseGenerationEntry } from '../types'
 
 type MasterNoteActivatePhraseViewProps = {
@@ -37,8 +40,7 @@ type RecordingDraft = {
   sizeBytes: number
 }
 
-const MAX_DURATION_MS = 3 * 60 * 1000 + 30 * 1000
-const MIN_CLOSED_NOTE_DURATION_MS = 3 * 60 * 1000
+const MIN_CLOSED_NOTE_DURATION_MS = MASTER_NOTE_COMPLETE_DURATION_MS
 const MIN_SAVE_DURATION_MS = 10 * 1000
 
 type PendingLeaveAction =
@@ -107,6 +109,7 @@ export function MasterNoteActivatePhraseView({
   const [recordingPaused, setRecordingPaused] = useState(false)
   const [recordingElapsedMs, setRecordingElapsedMs] = useState(0)
   const [saving, setSaving] = useState(false)
+  const [completingNote, setCompletingNote] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [phraseAlreadyActivated, setPhraseAlreadyActivated] = useState(false)
@@ -163,7 +166,9 @@ export function MasterNoteActivatePhraseView({
 
       const target = event.target as Element | null
       if (!target) return
-      if (target.closest('[role="dialog"]')) return
+      // Solo ignoramos el propio aviso de "salir durante grabación";
+      // los enlaces de otros paneles (p. ej. el perfil en móvil) también se protegen.
+      if (target.closest('[data-recording-leave-dialog]')) return
       if (pageSectionRef.current?.contains(target)) return
 
       const anchor = target.closest('a[href]') as HTMLAnchorElement | null
@@ -367,27 +372,24 @@ export function MasterNoteActivatePhraseView({
     0,
     (note?.total_duration_ms || 0) - (rerecordMode ? rerecordDurationMs : 0),
   )
-  const remainingBeforeRecordingMs = Math.max(
-    0,
-    MAX_DURATION_MS - effectiveNoteDurationMs,
-  )
-  const remainingDuringRecordingMs = Math.max(
-    0,
-    remainingBeforeRecordingMs - recordingElapsedMs,
-  )
+  const isOpenNote = note?.state === 'open'
+  // Lo que se está grabando ahora (o el borrador sin guardar) suma en la barra de progreso.
+  const pendingRecordingMs = recording
+    ? recordingElapsedMs
+    : recordingDraft?.durationMs || 0
+  const draftCompletesNote =
+    isOpenNote &&
+    !!recordingDraft &&
+    effectiveNoteDurationMs + recordingDraft.durationMs >=
+      MASTER_NOTE_COMPLETE_DURATION_MS
   const isClosedRerecord =
     rerecordMode && note?.state === 'closed' && Boolean(rerecordChunk)
   const canRecord =
     !!note &&
     (rerecordMode || note.state === 'open') &&
-    (rerecordMode || remainingBeforeRecordingMs > 0) &&
     !phraseAlreadyActivated &&
     (!rerecordMode || Boolean(rerecordChunk))
 
-  const exceededLimitWhileRecording =
-    recording && !rerecordMode && remainingDuringRecordingMs === 0
-  const exceededLimitForNewRecordings =
-    !recording && !rerecordMode && remainingBeforeRecordingMs === 0
   const isDraftTooShort =
     !!recordingDraft && recordingDraft.durationMs < MIN_SAVE_DURATION_MS
   const closedRerecordPreviewTotalMs =
@@ -569,12 +571,13 @@ export function MasterNoteActivatePhraseView({
 
     setSaving(true)
     try {
+      let nextTotalMs: number
       if (rerecordMode) {
         if (!rerecordChunk) {
           throw new Error('No se encontró el chunk a regrabar')
         }
 
-        await rerecordMasterNoteChunk({
+        const result = await rerecordMasterNoteChunk({
           noteId: note.id,
           chunkId: rerecordChunk.id,
           phraseGenerationId: phrase.id,
@@ -582,22 +585,43 @@ export function MasterNoteActivatePhraseView({
           mimeType: recordingDraft.mimeType,
           durationMs: recordingDraft.durationMs,
         })
+        nextTotalMs = result.totalDurationMs
       } else {
-        await addMasterNoteChunk({
+        const result = await addMasterNoteChunk({
           noteId: note.id,
           phraseGenerationId: phrase.id,
           audioBlob: recordingDraft.blob,
           mimeType: recordingDraft.mimeType,
           durationMs: recordingDraft.durationMs,
         })
+        nextTotalMs = result.totalDurationMs
       }
 
       await refreshCreationDaysFromSource()
-      navigate(
-        rerecordMode
-          ? `${DASHBOARD_ROUTES.masterNotes}/note/${note.id}?rerecordUpdated=1`
-          : `${DASHBOARD_ROUTES.masterNotes}/note/${note.id}`,
-      )
+
+      const noteUrl = `${DASHBOARD_ROUTES.masterNotes}/note/${note.id}`
+
+      // La nota se completa sola al guardar la grabación que la lleva a 3:00 o más.
+      // Nunca cortamos a mitad de grabación: si estaba en 2:50 y graba 0:30, queda en 3:20.
+      if (note.state === 'open' && nextTotalMs >= MASTER_NOTE_COMPLETE_DURATION_MS) {
+        setCompletingNote(true)
+        try {
+          const closeResult = await closeMasterNote(note.id)
+          const params = new URLSearchParams({ completed: '1' })
+          if (closeResult.coachingNotificationStatus === 'sent') {
+            params.set('coach', '1')
+          }
+          navigate(`${noteUrl}?${params.toString()}`)
+          return
+        } catch (closeError) {
+          // El audio ya está guardado; en el detalle queda el botón para completarla.
+          console.error(closeError)
+        } finally {
+          setCompletingNote(false)
+        }
+      }
+
+      navigate(rerecordMode ? `${noteUrl}?rerecordUpdated=1` : noteUrl)
     } catch (err) {
       console.error(err)
       const message =
@@ -662,16 +686,19 @@ export function MasterNoteActivatePhraseView({
         <h2 className='mb-1 font-serif text-2xl lg:text-3xl font-bold'>
           {rerecordMode ? '🎙️ Regrabar frase' : '🗣️ Activar frase'}
         </h2>
-        <p className='mb-2 text-sm text-muted-foreground'>Nota: {note.name}</p>
+        <p className={`${isOpenNote ? 'mb-4' : 'mb-2'} text-sm text-muted-foreground`}>
+          Nota: {note.name}
+        </p>
         {rerecordMode && rerecordChunk && (
           <p className='mb-2 text-xs text-muted-foreground'>
             Audio actual: {formatDuration(rerecordChunk.duration_ms)}
           </p>
         )}
-        <p className='mb-4 text-sm text-muted-foreground'>
-          Acumulado: {formatDuration(note.total_duration_ms)}
-          {rerecordMode ? '' : ` · Disponible: ${formatDuration(remainingBeforeRecordingMs)}`}
-        </p>
+        {!isOpenNote && (
+          <p className='mb-4 text-sm text-muted-foreground'>
+            Acumulado: {formatDuration(note.total_duration_ms)}
+          </p>
+        )}
         {isClosedRerecord && (
           <p className='mb-2 text-xs text-muted-foreground'>
             Regla: al regrabar, el total debe mantenerse en al menos 3:00.
@@ -722,21 +749,25 @@ export function MasterNoteActivatePhraseView({
                 GRABADOR
               </p>
 
+              {isOpenNote && (
+                <MasterNoteProgressBar
+                  className='mb-3 bg-background'
+                  noteName={note.name}
+                  savedMs={effectiveNoteDurationMs}
+                  pendingMs={pendingRecordingMs}
+                  recording={recording && !recordingPaused}
+                />
+              )}
+
               {recording && (
                 <div className='mb-2 space-y-1'>
                   <p className='text-sm'>
                     {recordingPaused ? 'Grabación pausada' : 'Grabando'}:{' '}
                     {formatDuration(recordingElapsedMs)}
                   </p>
-                  <p className='text-xs text-muted-foreground'>
-                    {rerecordMode
-                      ? `Duración actual de esta toma: ${formatDuration(recordingElapsedMs)}`
-                      : `Tiempo restante para la nota: ${formatDuration(remainingDuringRecordingMs)}`}
-                  </p>
-                  {exceededLimitWhileRecording && (
-                    <p className='text-xs font-semibold text-red-400'>
-                      Superaste 3:30. Puedes guardar este audio, pero no podrás
-                      grabar más.
+                  {rerecordMode && (
+                    <p className='text-xs text-muted-foreground'>
+                      Duración actual de esta toma: {formatDuration(recordingElapsedMs)}
                     </p>
                   )}
                   <canvas
@@ -784,12 +815,6 @@ export function MasterNoteActivatePhraseView({
                 </Button>
               )}
 
-              {exceededLimitForNewRecordings && (
-                <p className='mt-2 text-xs font-semibold text-red-400'>
-                  Esta nota ya superó 3:30. Ya no puedes grabar más audios.
-                </p>
-              )}
-
               {recordingDraft && (
                 <div className='mt-3 rounded-lg border border-border/60 bg-background p-2'>
                   <p className='mb-1 text-xs text-muted-foreground'>
@@ -808,11 +833,15 @@ export function MasterNoteActivatePhraseView({
                       variant='outline'
                       disabled={saving || isDraftTooShort || breaksClosedMinTotal}
                     >
-                      {saving
-                        ? 'Guardando...'
-                        : rerecordMode
-                          ? 'Guardar regrabación'
-                          : 'Guardar audio'}
+                      {completingNote
+                        ? 'Completando nota...'
+                        : saving
+                          ? 'Guardando...'
+                          : draftCompletesNote
+                            ? '🎉 Guardar y completar nota'
+                            : rerecordMode
+                              ? 'Guardar regrabación'
+                              : 'Guardar audio'}
                     </Button>
                     {!saving && (
                       <Button
@@ -854,7 +883,7 @@ export function MasterNoteActivatePhraseView({
           if (!open) handleKeepRecording()
         }}
       >
-        <DialogContent>
+        <DialogContent data-recording-leave-dialog>
           <DialogHeader>
             <DialogTitle>Salir durante grabación</DialogTitle>
             <DialogDescription>

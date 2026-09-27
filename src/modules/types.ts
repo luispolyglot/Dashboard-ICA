@@ -503,6 +503,8 @@ export interface ActivationPhraseResult {
   phrase: string
   translation: string
   words_used?: string[]
+  // Nota desafiante: trozos {target, native}. null = no se pudo dividir; undefined = prompt antiguo.
+  chunks?: Array<{ target: string; native: string }> | null
 }
 
 export interface PhraseTokenInsightResult {

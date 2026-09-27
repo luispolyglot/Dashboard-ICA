@@ -497,7 +497,7 @@ export function ProfileView({
                   headerRight={
                     pendingCoachingSessions > 0 ? (
                       <PendingReviewDot
-                        title={`Tienes ${pendingCoachingNotes} notas pendientes de revision en ${pendingCoachingSessions} sesiones.`}
+                        title={`Tienes ${pendingCoachingNotes} notas pendientes de revisión en ${pendingCoachingSessions} sesiones.`}
                         useIconSpeaker
                       />
                     ) : null

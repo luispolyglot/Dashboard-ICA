@@ -100,7 +100,9 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
         description: 'Crea frases contextualizadas con tu Baúl ICA.',
         emoji: '🧩',
         tone: '#3B82F6',
-        statusLabel: phraseDone
+        statusLabel: !hasFiveWordsTotal
+          ? `Añade ${pluralize(CREATION_WORDS_GOAL - cardCount, 'palabra', 'palabras')} más para desbloquear`
+          : phraseDone
           ? 'Frase diaria completada'
           : `Te queda ${pluralize(1, 'frase de creación', 'frases de creación')}`,
         statusDone: phraseDone,
@@ -132,6 +134,11 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
     ],
   )
 
+  // Primera tarjeta pendiente y disponible: la resaltamos para guiar el orden I -> C -> A
+  const nextStepInitial = cards.find(
+    (card) => !card.statusDone && !card.disabled,
+  )?.initial
+
   return (
     <section className='flex flex-1 items-center justify-center px-4 pt-0 pb-28 lg:px-6 lg:py-12'>
       <div className='w-full max-w-240'>
@@ -139,6 +146,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
 
         <div className='grid w-full max-w-240 grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-5'>
           {cards.map((card) => {
+            const isNextStep = card.initial === nextStepInitial
             const cardBody = (
               <>
                 <div
@@ -155,6 +163,11 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
                 </div>
 
                 <div className='relative z-1 mt-9'>
+                  {isNextStep && (
+                    <span className='mb-2 inline-flex items-center rounded-full bg-[#3B82F6] px-2.5 py-0.5 text-[11px] font-bold tracking-wide text-white'>
+                      Empieza aquí
+                    </span>
+                  )}
                   <div className='mb-1.25 flex items-center gap-2'>
                     <h2 className='m-0 font-serif text-xl font-bold tracking-widest text-slate-700 dark:text-slate-100'>
                       {card.title}
@@ -165,7 +178,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
                   </p>
                   <div className='mt-2.5 inline-flex items-center gap-1.5 text-xs text-slate-400'>
                     <span aria-hidden='true'>
-                      {card.statusDone ? '✅' : '🕒'}
+                      {card.statusDone ? '✅' : card.disabled ? '🔒' : '🕒'}
                     </span>
                     <span>{card.statusLabel}</span>
                   </div>
@@ -201,6 +214,8 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
                       cardBaseClass,
                       cardSurfaceClass,
                       cardHoverClass,
+                      isNextStep &&
+                        'border-sky-400/80 shadow-[0_0_0_1px_rgba(96,165,250,0.45),0_0_22px_rgba(59,130,246,0.28)]',
                       card.disabled && disabledCardClass,
                     )}
                     disabled={card.disabled}

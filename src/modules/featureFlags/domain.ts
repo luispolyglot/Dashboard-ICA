@@ -1,4 +1,4 @@
-export const FEATURE_FLAG_KEYS = ['ica-challenges'] as const
+export const FEATURE_FLAG_KEYS = ['ica-challenges', 'nota-desafiante'] as const
 
 export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[number]
 
@@ -18,6 +18,7 @@ export type FeatureFlagState = Record<FeatureFlagKey, boolean>
 
 export const DEFAULT_FEATURE_FLAGS: FeatureFlagState = {
   'ica-challenges': false,
+  'nota-desafiante': false,
 }
 
 function isFeatureFlagKey(value: string): value is FeatureFlagKey {

@@ -117,8 +117,8 @@ export function Header({
     (hasIcaProfileAlert || hasCoachingProfileAlert) && !isOnProfileRoute
   const profileAlertTitle = hasCoachingProfileAlert
     ? hasIcaProfileAlert
-      ? 'Tienes novedades: test ICA y coaching pendiente de revision.'
-      : 'Tienes notas maestras pendientes de revision en coaching.'
+      ? 'Tienes novedades: test ICA y coaching pendiente de revisión.'
+      : 'Tienes notas maestras pendientes de revisión en coaching.'
     : 'Tienes un test ICA disponible este mes.'
 
   return (
@@ -195,7 +195,7 @@ export function Header({
                 <HeaderBoltIcon segments={completedSegments} size={16} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Mis rachas</TooltipContent>
+            <TooltipContent>{`Objetivos de hoy: ${completedSegments}/2 · Ver mis rachas`}</TooltipContent>
           </Tooltip>
         </div>
       </div>

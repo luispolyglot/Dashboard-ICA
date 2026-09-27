@@ -121,7 +121,7 @@ export function RegisterPage() {
       </form>
 
       <p className='mt-4 text-sm text-muted-foreground'>
-        Ya tienes cuenta?{' '}
+        ¿Ya tienes cuenta?{' '}
         <Link to='/login' className='font-semibold text-primary'>
           Iniciar sesión
         </Link>
