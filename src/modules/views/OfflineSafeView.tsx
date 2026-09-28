@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ChevronDownIcon,
@@ -40,7 +40,11 @@ import {
 import { useOfflineMasterNotePlaylists } from '../hooks/useOfflineMasterNotePlaylists'
 import { useLoopedMasterNotePlayback } from '../hooks/useLoopedMasterNotePlayback'
 import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
-import { OFFLINE_SAFE_LAST_PATH_STORAGE_KEY } from '../offline/events'
+import {
+  OFFLINE_SAFE_LAST_PATH_STORAGE_KEY,
+  registerOfflineSafeAutoReturn,
+  resetOfflineSafeAutoReturns,
+} from '../offline/events'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import {
   listOfflineClosedMasterNotes,
@@ -173,13 +177,28 @@ export function OfflineSafeView() {
     )
   }, [])
 
+  // Retraso de la vuelta automática para este montaje. `undefined` = aún no
+  // calculado; `null` = se alcanzó el máximo de vueltas seguidas (evita el
+  // bucle offline → pantalla principal → offline si una request falla siempre).
+  const autoReturnDelayRef = useRef<number | null | undefined>(undefined)
+  const [autoReturnBlocked, setAutoReturnBlocked] = useState(false)
+
   useEffect(() => {
     if (!isOnline || !shouldAutoReturn) return
+
+    if (autoReturnDelayRef.current === undefined) {
+      autoReturnDelayRef.current = registerOfflineSafeAutoReturn()
+    }
+    const delay = autoReturnDelayRef.current
+    if (delay === null) {
+      setAutoReturnBlocked(true)
+      return
+    }
 
     const timeoutId = window.setTimeout(() => {
       window.sessionStorage.removeItem(OFFLINE_SAFE_LAST_PATH_STORAGE_KEY)
       navigate(returnPath, { replace: true })
-    }, 700)
+    }, delay)
 
     return () => {
       window.clearTimeout(timeoutId)
@@ -190,7 +209,16 @@ export function OfflineSafeView() {
     if (typeof window !== 'undefined') {
       window.sessionStorage.removeItem(OFFLINE_SAFE_LAST_PATH_STORAGE_KEY)
     }
+    resetOfflineSafeAutoReturns()
     navigate(returnPath, { replace: true })
+  }
+
+  const handleGoHome = () => {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(OFFLINE_SAFE_LAST_PATH_STORAGE_KEY)
+    }
+    resetOfflineSafeAutoReturns()
+    navigate(DASHBOARD_ROUTES.home, { replace: true })
   }
 
   const languageGroups = useMemo(() => {
@@ -549,14 +577,20 @@ export function OfflineSafeView() {
           </div>
 
           <p className='text-sm text-muted-foreground'>
-            Si la conexión vuelve, puedes reintentar para regresar a la pantalla
-            anterior.
+            {autoReturnBlocked
+              ? 'No pudimos cargar la pantalla anterior después de varios intentos. Puedes reintentar o volver al inicio.'
+              : 'Si la conexión vuelve, puedes reintentar para regresar a la pantalla anterior.'}
           </p>
 
           <div className='flex flex-wrap gap-2'>
             <Button type='button' onClick={handleRetry} disabled={!isOnline}>
               Reintentar y volver
             </Button>
+            {autoReturnBlocked ? (
+              <Button type='button' variant='outline' onClick={handleGoHome}>
+                Ir al inicio
+              </Button>
+            ) : null}
             <Button
               type='button'
               variant='outline'

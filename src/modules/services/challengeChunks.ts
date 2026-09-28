@@ -8,6 +8,7 @@
  */
 import { useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { runInBatches } from '../../lib/utils'
 import { useFeatureFlagsStore } from '../stores/featureFlagsStore'
 import type { ActivationPhraseResult } from '../types'
 
@@ -70,19 +71,24 @@ export async function loadChallengeData(
   const ids = Array.from(new Set(phraseIds.filter(Boolean)))
   if (!ids.length || !supabase) return {}
 
-  const { data, error } = await supabase
-    .from('phrase_generations')
-    .select('id, challenge_chunks, challenge_ready, challenge_problem')
-    .in('id', ids)
-  if (error) throw error
-
-  const map: Record<string, PhraseChallengeData> = {}
-  for (const row of (data || []) as Array<{
+  type ChallengeRow = {
     id: string
     challenge_chunks: PhraseChunk[] | null
     challenge_ready: boolean | null
     challenge_problem: string | null
-  }>) {
+  }
+  const client = supabase
+  const data = await runInBatches(ids, async (batchIds) => {
+    const { data: batchData, error } = await client
+      .from('phrase_generations')
+      .select('id, challenge_chunks, challenge_ready, challenge_problem')
+      .in('id', batchIds)
+    if (error) throw error
+    return (batchData || []) as ChallengeRow[]
+  })
+
+  const map: Record<string, PhraseChallengeData> = {}
+  for (const row of data) {
     map[row.id] = {
       chunks: row.challenge_chunks,
       ready: row.challenge_ready,

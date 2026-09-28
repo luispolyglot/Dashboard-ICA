@@ -6,7 +6,8 @@
  * 3. Se corta tras 4 s de silencio (máx. 30 s) y se compara.
  * 4. Si falla alguna palabra, suena la versión correcta. Al final: «18 de 25».
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
@@ -16,6 +17,7 @@ import {
 } from '../../services/challengeChunks'
 import {
   checkAnswer,
+  isIOSDevice,
   isSpeechRecognitionSupported,
   listenOnce,
   playBeep,
@@ -23,7 +25,9 @@ import {
   playSuccessChime,
   speakAsync,
   stopSpeaking,
+  unlockChallengeAudio,
   wait,
+  warmUpMicrophone,
   type WordMark,
 } from './challengeEngine'
 
@@ -36,7 +40,7 @@ type Props = {
   onClose: () => void
 }
 
-type Phase = 'preparing' | 'error' | 'intro' | 'running' | 'paused' | 'finished'
+type Phase = 'preparing' | 'error' | 'intro' | 'mic' | 'running' | 'paused' | 'finished'
 type Step = 'prompt' | 'listening' | 'feedback'
 
 // Con al menos estas palabras bien (sin acertar el trozo entero) se dice «Casi».
@@ -81,8 +85,18 @@ export function NotaDesafianteOverlay({
   const score = results.filter((value) => value === true).length
 
   // ---------------------------------------------------------------- preparar
+  // Se prepara solo cuando cambian de verdad las frases, no cada vez que la página
+  // de la nota se repinta (si no, el desafío podía volver a «Preparando…» a mitad).
+  const phrasesKey = useMemo(
+    () => phrases.map((item) => `${item.phraseId}|${item.target}|${item.native}`).join('§'),
+    [phrases],
+  )
+  const phrasesRef = useRef(phrases)
+  phrasesRef.current = phrases
+
   useEffect(() => {
     if (!open) return
+    const phrases = phrasesRef.current
     let active = true
     setPhase('preparing')
     setPrepared(null)
@@ -116,7 +130,7 @@ export function NotaDesafianteOverlay({
     return () => {
       active = false
     }
-  }, [open, phrases, targetLang, nativeLang])
+  }, [open, phrasesKey])
 
   // ---------------------------------------------------------------- utilidades
   const stopEverything = useCallback(() => {
@@ -277,14 +291,31 @@ export function NotaDesafianteOverlay({
 
   // ---------------------------------------------------------------- controles
   const start = async () => {
+    // Primero, sin ningún await antes: desbloquear el audio dentro del toque.
+    // (En iPhone, si no, la voz en el idioma materno no suena y solo se oyen los pitidos.)
+    unlockChallengeAudio()
     stopEverything()
+    const runId = runIdRef.current
     resultsRef.current = []
     setResults([])
     setFeedback(null)
+    setErrorMessage(null)
     setIndex(0)
+    void requestWakeLock()
+
+    // Permisos del micrófono y del reconocimiento de voz ANTES del primer trozo,
+    // para que no salten en mitad del juego.
+    setPhase('mic')
+    const mic = await warmUpMicrophone(targetLang)
+    if (runIdRef.current !== runId) return
+    if (!mic.ok) {
+      setErrorMessage(mic.message)
+      setPhase('error')
+      releaseWakeLock()
+      return
+    }
+
     setPhase('running')
-    await requestWakeLock()
-    const runId = runIdRef.current
     void runTurn(0, runId)
   }
 
@@ -294,6 +325,7 @@ export function NotaDesafianteOverlay({
   }
 
   const resume = () => {
+    unlockChallengeAudio()
     stopEverything()
     setPhase('running')
     const runId = runIdRef.current
@@ -303,6 +335,7 @@ export function NotaDesafianteOverlay({
   }
 
   const skip = () => {
+    unlockChallengeAudio()
     stopEverything()
     setResultAt(index, false)
     setPhase('running')
@@ -325,8 +358,16 @@ export function NotaDesafianteOverlay({
     .filter(({ position }) => results[position] === false)
 
   // ---------------------------------------------------------------- vista
-  return (
-    <div className='fixed inset-0 z-100 flex flex-col bg-[#0A1128] text-slate-100'>
+  // Se pinta directamente en <body> para que nada de la página (cabecera, barra de
+  // abajo, scroll) quede por encima y el botón «Salir» siempre se pueda tocar.
+  return createPortal(
+    <div
+      className='fixed inset-0 z-100 flex flex-col bg-[#0A1128] text-slate-100'
+      style={{
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}
+    >
       <div className='flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-5 py-3'>
         <div className='min-w-0'>
           <p className='text-[11px] font-semibold tracking-[0.12em] text-sky-300 uppercase'>
@@ -373,9 +414,33 @@ export function NotaDesafianteOverlay({
               {prepared && prepared.excluded.length > 0 && (
                 <ExcludedList excluded={prepared.excluded} />
               )}
-              <Button type='button' onClick={close}>
-                Volver a la nota
-              </Button>
+              <div className='flex flex-wrap justify-center gap-2'>
+                {rounds.length > 0 && (
+                  <Button type='button' onClick={() => void start()}>
+                    Reintentar
+                  </Button>
+                )}
+                <Button
+                  type='button'
+                  variant={rounds.length > 0 ? 'outline' : 'default'}
+                  className={rounds.length > 0 ? 'border-white/20 bg-transparent text-slate-200' : undefined}
+                  onClick={close}
+                >
+                  Volver a la nota
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {phase === 'mic' && (
+            <div className='text-center'>
+              <div className='mx-auto mb-5 flex h-20 w-20 animate-pulse items-center justify-center rounded-full border-2 border-sky-400 bg-sky-400/15 text-3xl'>
+                🎙️
+              </div>
+              <p className='mb-2 font-serif text-2xl font-bold'>Preparando el micrófono…</p>
+              <p className='text-sm text-slate-400'>
+                Si te pide permiso para el micrófono o el reconocimiento de voz, pulsa «Permitir».
+              </p>
             </div>
           )}
 
@@ -410,7 +475,9 @@ export function NotaDesafianteOverlay({
 
               {!isSpeechRecognitionSupported() ? (
                 <p className='mb-4 text-sm text-amber-300'>
-                  Tu navegador no tiene reconocimiento de voz. Abre la app en Google Chrome.
+                  {isIOSDevice()
+                    ? 'Aquí no funciona el reconocimiento de voz. Abre icademy.app en Safari.'
+                    : 'Tu navegador no tiene reconocimiento de voz. Abre la app en Google Chrome.'}
                 </p>
               ) : (
                 <p className='mb-4 text-xs text-slate-500'>
@@ -567,7 +634,8 @@ export function NotaDesafianteOverlay({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

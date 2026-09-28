@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { runInBatches } from '@/lib/utils'
 import type {
   IcaChallengeAvailableUser,
   IcaChallengeCompetitor,
@@ -675,16 +676,20 @@ export async function listIcaChallengePlaysByChallengeIds(
   )
   if (uniqueChallengeIds.length === 0) return {}
 
-  const { data, error } = await supabase
-    .from('desafio_jugadas')
-    .select('id, desafio_id, usuario_id, indice, acierto, ms, payload, creado_at')
-    .in('desafio_id', uniqueChallengeIds)
-    .order('indice', { ascending: true })
-    .order('creado_at', { ascending: true })
+  const client = supabase
+  const data = await runInBatches(uniqueChallengeIds, async (batchIds) => {
+    const { data: batchData, error } = await client
+      .from('desafio_jugadas')
+      .select('id, desafio_id, usuario_id, indice, acierto, ms, payload, creado_at')
+      .in('desafio_id', batchIds)
+      .order('indice', { ascending: true })
+      .order('creado_at', { ascending: true })
 
-  if (error) throw error
+    if (error) throw error
+    return (batchData || []) as IcaChallengePlayRow[]
+  })
 
-  const rows = (data || []).map((row) => toChallengePlayRecord(row as IcaChallengePlayRow))
+  const rows = data.map((row) => toChallengePlayRecord(row))
   return rows.reduce<Record<string, IcaChallengePlayRecord[]>>((acc, row) => {
     if (!acc[row.challengeId]) acc[row.challengeId] = []
     acc[row.challengeId].push(row)
@@ -702,14 +707,18 @@ export async function listIcaChallengeProfilesByIds(
   )
   if (uniqueUserIds.length === 0) return {}
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id, display_name, username, avatar_url')
-    .in('id', uniqueUserIds)
+  const client = supabase
+  const data = await runInBatches(uniqueUserIds, async (batchIds) => {
+    const { data: batchData, error } = await client
+      .from('profiles')
+      .select('id, display_name, username, avatar_url')
+      .in('id', batchIds)
 
-  if (error) throw error
+    if (error) throw error
+    return batchData || []
+  })
 
-  return (data || []).reduce<IcaChallengeProfileMap>((acc, row) => {
+  return data.reduce<IcaChallengeProfileMap>((acc, row) => {
     const id = String((row as { id?: string }).id || '').trim()
     if (!id) return acc
 

@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase'
+import { runInBatches } from '../../lib/utils'
 
 const PREGUNTICA_AUDIO_BUCKET = 'preguntica-audios'
 
@@ -371,14 +372,17 @@ async function fetchQuestionTranslationsById(
   const uniqueIds = Array.from(new Set(questionIds.filter(Boolean)))
   if (uniqueIds.length === 0) return {}
 
-  const { data, error } = await client
-    .from('preguntica_question_bank')
-    .select('id, question_es')
-    .in('id', uniqueIds)
+  const data = await runInBatches(uniqueIds, async (batchIds) => {
+    const { data: batchData, error } = await client
+      .from('preguntica_question_bank')
+      .select('id, question_es')
+      .in('id', batchIds)
 
-  if (error) throw error
+    if (error) throw error
+    return batchData || []
+  })
 
-  return (data || []).reduce<Record<string, string>>((acc, item) => {
+  return data.reduce<Record<string, string>>((acc, item) => {
     const row = item as { id: string; question_es: string }
     if (!row.id || !row.question_es) return acc
     acc[row.id] = row.question_es
@@ -864,28 +868,36 @@ export async function fetchPregunticaHistory(
   let suggestionsByAttempt: Record<string, PregunticaHistorySuggestionSet[]> = {}
 
   if (attemptIds.length > 0) {
-    const [audiosResult, suggestionsResult] = await Promise.all([
-      client
-        .from('preguntica_attempt_audios')
-        .select(
-          'id, preguntica_attempt_id, storage_path, duration_ms, mime_type, size_bytes, status, transcription_text, analysis_score, analysis_payload, created_at',
-        )
-        .in('preguntica_attempt_id', attemptIds)
-        .order('created_at', { ascending: false }),
-      client
-        .from('preguntica_feedback_suggestions')
-        .select(
-          'id, preguntica_attempt_id, refresh_index, suggested_words, model, created_at',
-        )
-        .in('preguntica_attempt_id', attemptIds)
-        .order('created_at', { ascending: false }),
+    const byCreatedAtDesc = (a: { created_at: string }, b: { created_at: string }) =>
+      b.created_at.localeCompare(a.created_at)
+
+    const [audiosRows, suggestionsRows] = await Promise.all([
+      runInBatches(attemptIds, async (batchIds) => {
+        const { data, error } = await client
+          .from('preguntica_attempt_audios')
+          .select(
+            'id, preguntica_attempt_id, storage_path, duration_ms, mime_type, size_bytes, status, transcription_text, analysis_score, analysis_payload, created_at',
+          )
+          .in('preguntica_attempt_id', batchIds)
+          .order('created_at', { ascending: false })
+        if (error) throw error
+        return (data || []) as PregunticaAttemptAudioRow[]
+      }),
+      runInBatches(attemptIds, async (batchIds) => {
+        const { data, error } = await client
+          .from('preguntica_feedback_suggestions')
+          .select(
+            'id, preguntica_attempt_id, refresh_index, suggested_words, model, created_at',
+          )
+          .in('preguntica_attempt_id', batchIds)
+          .order('created_at', { ascending: false })
+        if (error) throw error
+        return (data || []) as PregunticaSuggestionRow[]
+      }),
     ])
 
-    if (audiosResult.error) throw audiosResult.error
-    if (suggestionsResult.error) throw suggestionsResult.error
-
-    const audios = (audiosResult.data || []) as PregunticaAttemptAudioRow[]
-    const suggestions = (suggestionsResult.data || []) as PregunticaSuggestionRow[]
+    const audios = audiosRows.sort(byCreatedAtDesc)
+    const suggestions = suggestionsRows.sort(byCreatedAtDesc)
 
     const signedPairs = await Promise.all(
       audios.map(async (audio) => {

@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase'
+import { runInBatches } from '../../lib/utils'
 import { notifyCreationMetricsChanged } from './creationMetricsSync'
 import type { PhraseVoiceActivationEntry } from '../types'
 
@@ -36,19 +37,23 @@ export async function fetchPhraseVoiceActivations(
 ): Promise<Record<string, PhraseVoiceActivationEntry[]>> {
   if (!supabase || phraseGenerationIds.length === 0) return {}
 
-  const { data, error } = await supabase
-    .from('phrase_voice_activations')
-    .select(
-      'id, phrase_generation_id, storage_path, duration_ms, mime_type, size_bytes, status, created_at',
-    )
-    .in('phrase_generation_id', phraseGenerationIds)
-    .order('created_at', { ascending: false })
+  const client = supabase
+  const uniqueIds = Array.from(new Set(phraseGenerationIds.filter(Boolean)))
+  const rows = await runInBatches(uniqueIds, async (batchIds) => {
+    const { data, error } = await client
+      .from('phrase_voice_activations')
+      .select(
+        'id, phrase_generation_id, storage_path, duration_ms, mime_type, size_bytes, status, created_at',
+      )
+      .in('phrase_generation_id', batchIds)
+      .order('created_at', { ascending: false })
 
-  if (error) {
-    throw error
-  }
+    if (error) {
+      throw error
+    }
 
-  const rows = (data || []) as PhraseVoiceActivationEntry[]
+    return (data || []) as PhraseVoiceActivationEntry[]
+  })
   return rows.reduce<Record<string, PhraseVoiceActivationEntry[]>>((acc, row) => {
     if (!acc[row.phrase_generation_id]) {
       acc[row.phrase_generation_id] = []

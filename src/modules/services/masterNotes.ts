@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { getSessionSafe } from '@/lib/supabaseAuthSafe'
+import { runInBatches } from '@/lib/utils'
 import { notifyCreationMetricsChanged } from './creationMetricsSync'
 import { syncClosedMasterNotesOfflineSnapshot } from './masterNotesOfflineStore'
 import type { MasterNote, MasterNoteChunk } from '../types'
@@ -173,25 +174,34 @@ export async function deleteMasterNote(noteId: string): Promise<void> {
 
   const chunkIds = (chunks || []).map((row) => row.id).filter(Boolean)
 
-  if (chunkIds.length > 0) {
-    const { error: deleteActivationsBySourceError } = await supabase
+  const client = supabase
+
+  await runInBatches(chunkIds, async (batchIds) => {
+    const { error: deleteActivationsBySourceError } = await client
       .from('phrase_voice_activations')
       .delete()
       .eq('activation_source', 'master_note_chunk')
-      .in('activation_source_id', chunkIds)
+      .in('activation_source_id', batchIds)
 
     if (deleteActivationsBySourceError) throw deleteActivationsBySourceError
-  }
+    return []
+  })
 
   const chunkPaths = (chunks || []).map((row) => row.storage_path).filter(Boolean)
-  if (chunkPaths.length > 0) {
-    const { error: deleteActivationsByPathError } = await supabase
-      .from('phrase_voice_activations')
-      .delete()
-      .in('storage_path', chunkPaths)
+  // Las rutas de storage son largas (~120 caracteres), por eso lotes más chicos.
+  await runInBatches(
+    chunkPaths,
+    async (batchPaths) => {
+      const { error: deleteActivationsByPathError } = await client
+        .from('phrase_voice_activations')
+        .delete()
+        .in('storage_path', batchPaths)
 
-    if (deleteActivationsByPathError) throw deleteActivationsByPathError
-  }
+      if (deleteActivationsByPathError) throw deleteActivationsByPathError
+      return []
+    },
+    30,
+  )
 
   if (paths.length > 0) {
     const { error: removeError } = await supabase.storage

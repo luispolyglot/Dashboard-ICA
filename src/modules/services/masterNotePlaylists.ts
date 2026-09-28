@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { runInBatches } from '@/lib/utils'
 import { getSessionSafe } from '@/lib/supabaseAuthSafe'
 import {
   syncMasterNotePlaylistsOfflineSnapshot,
@@ -58,15 +59,19 @@ async function fetchPlaylistItemsByPlaylistIds(
 ): Promise<MasterNotePlaylistItem[]> {
   if (!supabase || playlistIds.length === 0) return []
 
-  const { data, error } = await supabase
-    .from('master_note_playlist_items')
-    .select('id, playlist_id, master_note_id, sort_order, created_at')
-    .in('playlist_id', playlistIds)
-    .order('sort_order', { ascending: true })
-    .order('created_at', { ascending: true })
+  const client = supabase
+  const rows = await runInBatches(playlistIds, async (batchIds) => {
+    const { data, error } = await client
+      .from('master_note_playlist_items')
+      .select('id, playlist_id, master_note_id, sort_order, created_at')
+      .in('playlist_id', batchIds)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true })
 
-  if (error) throw error
-  return (data || []).map((row) => mapPlaylistItemRow(row as MasterNotePlaylistItemRow))
+    if (error) throw error
+    return (data || []) as MasterNotePlaylistItemRow[]
+  })
+  return rows.map((row) => mapPlaylistItemRow(row))
 }
 
 export async function fetchMasterNotePlaylistsBundle(

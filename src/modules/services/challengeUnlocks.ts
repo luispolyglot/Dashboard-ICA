@@ -20,6 +20,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { runInBatches } from '@/lib/utils'
 
 export const CHALLENGE_UNLOCK_RATIO = 0.8
 
@@ -322,21 +323,29 @@ async function runSync(userId: string, noteIds: string[]): Promise<void> {
   // Primero se envía lo pendiente, para que la lectura ya lo incluya.
   await sendPendingNow(userId).catch(() => {})
 
-  const { data, error } = await supabase
-    .from('master_note_challenge_unlocks')
-    .select('note_id, listened_seconds, unlocked_at')
-    .eq('user_id', userId)
-    .eq('day', day)
-    .in('note_id', noteIds)
+  const client = supabase
+  type UnlockRow = { note_id: string; listened_seconds: number; unlocked_at: string | null }
+  let data: UnlockRow[] | null = null
+  let error: unknown = null
+  try {
+    data = await runInBatches(noteIds, async (batchIds) => {
+      const result = await client
+        .from('master_note_challenge_unlocks')
+        .select('note_id, listened_seconds, unlocked_at')
+        .eq('user_id', userId)
+        .eq('day', day)
+        .in('note_id', batchIds)
+      if (result.error) throw result.error
+      return (result.data || []) as UnlockRow[]
+    })
+  } catch (batchError) {
+    error = batchError
+  }
 
   if (error) {
     console.error('[nota desafiante] no se pudo leer el desbloqueo', error)
   } else {
-    for (const row of (data || []) as Array<{
-      note_id: string
-      listened_seconds: number
-      unlocked_at: string | null
-    }>) {
+    for (const row of data || []) {
       mergeServerState(
         userId,
         day,

@@ -36,12 +36,71 @@ function isConnectivityError(error: unknown): boolean {
   return false
 }
 
+const REACHABILITY_PROBE_TIMEOUT_MS = 5000
+
+let reachabilityProbe: Promise<boolean> | null = null
+
+/**
+ * Comprueba si el servidor de Supabase responde de verdad.
+ *
+ * `fetch` lanza TypeError no solo sin conexión: también cuando la respuesta no
+ * trae cabeceras CORS (p. ej. un 431/414 del gateway por URL demasiado larga,
+ * o un 5xx de una edge function). En esos casos hay internet y no debemos
+ * mandar al usuario al modo offline, porque al volver se repite la misma
+ * request y se entra en un bucle.
+ *
+ * Se usa `mode: 'no-cors'`: la promesa se resuelve (respuesta opaca) si hay
+ * red hasta el servidor, sin importar el status ni las cabeceras CORS, y solo
+ * se rechaza ante un fallo de red real.
+ */
+function isSupabaseReachable(): Promise<boolean> {
+  if (reachabilityProbe) return reachabilityProbe
+  if (!supabaseUrl) return Promise.resolve(false)
+
+  reachabilityProbe = (async () => {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), REACHABILITY_PROBE_TIMEOUT_MS)
+    try {
+      await fetch(`${supabaseUrl}/auth/v1/health`, {
+        method: 'GET',
+        mode: 'no-cors',
+        cache: 'no-store',
+        signal: controller.signal,
+      })
+      return true
+    } catch {
+      return false
+    } finally {
+      clearTimeout(timeoutId)
+    }
+  })().finally(() => {
+    reachabilityProbe = null
+  })
+
+  return reachabilityProbe
+}
+
+async function handleConnectivityError(): Promise<void> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    dispatchNetworkUnreachableEvent()
+    return
+  }
+
+  const reachable = await isSupabaseReachable()
+  if (!reachable) {
+    dispatchNetworkUnreachableEvent()
+  }
+}
+
 const supabaseFetch: typeof fetch = async (input, init) => {
   try {
     return await fetch(input, init)
   } catch (error) {
     if (isConnectivityError(error)) {
-      dispatchNetworkUnreachableEvent()
+      if (import.meta.env.DEV) {
+        console.warn('[supabase] request falló a nivel de red', input, error)
+      }
+      void handleConnectivityError()
     }
     throw error
   }

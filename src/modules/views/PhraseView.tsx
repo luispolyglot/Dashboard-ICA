@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { ComponentType, Dispatch, SetStateAction } from 'react'
+import type { ComponentType } from 'react'
 import { CopyIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Link } from 'react-router-dom'
@@ -20,9 +20,6 @@ import {
   storeChallengeForNewPhrase,
   useChallengeEnabled,
 } from '../services/challengeChunks'
-import { ExplorePhraseTokenModal } from '../components/ExplorePhraseTokenModal'
-import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
-import { InteractivePhraseText } from '../components/InteractivePhraseText'
 import {
   MetaTrackerLevelUpModal,
   type MetaTrackerLevelUpCelebration,
@@ -51,9 +48,7 @@ import { getEffectiveStudyLevel } from '../utils/studyLevel'
 
 type PhraseViewProps = {
   cards: Lexicard[]
-  setCards: Dispatch<SetStateAction<Lexicard[]>>
   config: AppConfig
-  onWordAdded: () => Promise<DailyProgressEntry>
   onPhraseGenerated: () => Promise<DailyProgressEntry>
   metaTrackerProfile: MetaTrackerProfile | null
   onActivationWordsTotalChange: (activationWordsTotal: number) => void
@@ -72,9 +67,7 @@ const MAX_EXTRA_GENERATIONS = 2
 
 export function PhraseView({
   cards,
-  setCards,
   config,
-  onWordAdded,
   onPhraseGenerated,
   metaTrackerProfile,
   onActivationWordsTotalChange,
@@ -106,9 +99,6 @@ export function PhraseView({
   const [resultCopied, setResultCopied] = useState(false)
   const [resultPhraseId, setResultPhraseId] = useState<string | null>(null)
   const [activateModalOpen, setActivateModalOpen] = useState(false)
-  const [extractWordsModalOpen, setExtractWordsModalOpen] = useState(false)
-  const [exploreModalOpen, setExploreModalOpen] = useState(false)
-  const [exploreToken, setExploreToken] = useState('')
   const [extraGenerationsCount, setExtraGenerationsCount] = useState(0)
   const [levelUpCelebration, setLevelUpCelebration] =
     useState<MetaTrackerLevelUpCelebration | null>(null)
@@ -446,12 +436,6 @@ export function PhraseView({
     } finally {
       setCopyingResult(false)
     }
-  }
-
-  const handleOpenExploreModal = (token: string): void => {
-    if (!result?.phrase) return
-    setExploreToken(token)
-    setExploreModalOpen(true)
   }
 
   const handleManualPhraseSuggestion = async (): Promise<void> => {
@@ -804,12 +788,9 @@ export function PhraseView({
                 <LevelBadge level={level} size='small' />
               </div>
             </div>
-            <InteractivePhraseText
-              text={result.phrase}
-              language={config.targetLang}
-              onTokenClick={handleOpenExploreModal}
-              className='font-serif text-2xl font-bold leading-relaxed'
-            />
+            <p className='font-serif text-2xl font-bold leading-relaxed'>
+              {result.phrase}
+            </p>
             <RomanizationHint
               text={result.phrase}
               language={config.targetLang}
@@ -863,23 +844,13 @@ export function PhraseView({
 
           {resultPhraseId && (
             <div className='border-t border-border bg-muted/20 p-5'>
-              <div className='flex flex-col gap-2'>
-                <Button
-                  type='button'
-                  onClick={openActivateModal}
-                  className='h-11 w-full text-base font-bold'
-                >
-                  🗣️ Activar frase
-                </Button>
-                <Button
-                  type='button'
-                  onClick={() => setExtractWordsModalOpen(true)}
-                  variant='outline'
-                  className='w-full'
-                >
-                  📦 Extraer nuevas palabras
-                </Button>
-              </div>
+              <Button
+                type='button'
+                onClick={openActivateModal}
+                className='h-11 w-full text-base font-bold'
+              >
+                🗣️ Activar frase
+              </Button>
             </div>
           )}
         </article>
@@ -913,32 +884,6 @@ export function PhraseView({
         onOpenChange={(open) => {
           if (!open) setLevelUpCelebration(null)
         }}
-      />
-
-      <ExtractWordsToVaultModal
-        open={extractWordsModalOpen}
-        onOpenChange={setExtractWordsModalOpen}
-        text={result?.phrase || ''}
-        translation={result?.translation || ''}
-        seedWords={result?.words_used || []}
-        targetLang={config.targetLang}
-        nativeLang={config.nativeLang}
-        cards={cards}
-        setCards={setCards}
-        onWordAdded={onWordAdded}
-      />
-
-      <ExplorePhraseTokenModal
-        open={exploreModalOpen}
-        onOpenChange={setExploreModalOpen}
-        token={exploreToken}
-        phrase={result?.phrase || ''}
-        phraseTranslation={result?.translation || ''}
-        targetLang={config.targetLang}
-        nativeLang={config.nativeLang}
-        cards={cards}
-        setCards={setCards}
-        onWordAdded={onWordAdded}
       />
 
       <Dialog

@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase'
+import { chunkArray } from '../../lib/utils'
 import { notifyActivationMetricsChanged } from './creationMetricsSync'
 import { fetchAllPages } from './lexicardsPagination'
 import type { MetaTrackerProfile, MetaTrackerStartLevel } from '../types'
@@ -136,26 +137,31 @@ export async function fetchWordActivationCounts(
   const ids = Array.from(new Set(lexicardIds.filter((id) => id.length > 0)))
   if (ids.length === 0) return {}
 
-  try {
-    const { data, error } = await supabase
-      .from('lexicards')
-      .select('id, activation_count')
-      .eq('user_id', userId)
-      .eq('target_lang', targetLang)
-      .eq('native_lang', nativeLang)
-      .in('id', ids)
+  const client = supabase
+  const results = await Promise.allSettled(
+    chunkArray(ids).map(async (batchIds) => {
+      const { data, error } = await client
+        .from('lexicards')
+        .select('id, activation_count')
+        .eq('user_id', userId)
+        .eq('target_lang', targetLang)
+        .eq('native_lang', nativeLang)
+        .in('id', batchIds)
 
-    if (error) throw error
+      if (error) throw error
+      return data || []
+    }),
+  )
 
-    const map: Record<string, number> = {}
-    for (const row of data || []) {
+  const map: Record<string, number> = {}
+  for (const result of results) {
+    if (result.status !== 'fulfilled') continue
+    for (const row of result.value) {
       map[row.id] = Number(row.activation_count || 0)
     }
-
-    return map
-  } catch {
-    return {}
   }
+
+  return map
 }
 
 export async function registerWordActivations(
