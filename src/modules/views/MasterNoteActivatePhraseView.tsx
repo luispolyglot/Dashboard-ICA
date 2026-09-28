@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -10,6 +11,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { ExplorePhraseTokenModal } from '../components/ExplorePhraseTokenModal'
+import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
+import { InteractivePhraseText } from '../components/InteractivePhraseText'
 import { RomanizationHint } from '../components/RomanizationHint'
 import { SpeakButton } from '../components/SpeakButton'
 import { useDashboardContext } from '../context/DashboardContext'
@@ -24,12 +28,21 @@ import {
   rerecordMasterNoteChunk,
 } from '../services/masterNotes'
 import { MasterNoteProgressBar } from '../components/MasterNoteProgressBar'
-import type { MasterNote, MasterNoteChunk, PhraseGenerationEntry } from '../types'
+import type {
+  Lexicard,
+  MasterNote,
+  MasterNoteChunk,
+  PhraseGenerationEntry,
+} from '../types'
 
 type MasterNoteActivatePhraseViewProps = {
   noteId: string
   phraseId: string
   targetLang: string
+  nativeLang: string
+  cards: Lexicard[]
+  setCards: Dispatch<SetStateAction<Lexicard[]>>
+  onWordAdded: () => Promise<unknown>
 }
 
 type RecordingDraft = {
@@ -87,6 +100,10 @@ export function MasterNoteActivatePhraseView({
   noteId,
   phraseId,
   targetLang,
+  nativeLang,
+  cards,
+  setCards,
+  onWordAdded,
 }: MasterNoteActivatePhraseViewProps) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -114,6 +131,9 @@ export function MasterNoteActivatePhraseView({
   const [error, setError] = useState<string | null>(null)
   const [phraseAlreadyActivated, setPhraseAlreadyActivated] = useState(false)
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false)
+  const [extractWordsModalOpen, setExtractWordsModalOpen] = useState(false)
+  const [exploreModalOpen, setExploreModalOpen] = useState(false)
+  const [exploreToken, setExploreToken] = useState('')
   const pendingLeaveRef = useRef<PendingLeaveAction>(null)
   const allowNavigationRef = useRef(false)
   const pageSectionRef = useRef<HTMLElement | null>(null)
@@ -641,6 +661,12 @@ export function MasterNoteActivatePhraseView({
     }
   }
 
+  const handleOpenExploreModal = (token: string): void => {
+    if (!phrase?.generated_phrase) return
+    setExploreToken(token)
+    setExploreModalOpen(true)
+  }
+
   const handleKeepRecording = (): void => {
     pendingLeaveRef.current = null
     setLeaveDialogOpen(false)
@@ -708,9 +734,16 @@ export function MasterNoteActivatePhraseView({
 
         <Card className='rounded-2xl'>
           <CardContent>
-            <p className='font-serif text-2xl font-bold'>
-              {phrase.generated_phrase || 'Sin frase'}
-            </p>
+            {phrase.generated_phrase ? (
+              <InteractivePhraseText
+                text={phrase.generated_phrase}
+                language={targetLang}
+                onTokenClick={handleOpenExploreModal}
+                className='font-serif text-2xl font-bold'
+              />
+            ) : (
+              <p className='font-serif text-2xl font-bold'>Sin frase</p>
+            )}
             {phrase.generated_phrase && (
               <RomanizationHint
                 text={phrase.generated_phrase}
@@ -780,7 +813,7 @@ export function MasterNoteActivatePhraseView({
               )}
 
               {recording ? (
-                <div className='flex gap-2'>
+                <div className='flex flex-wrap gap-2'>
                   {recordingPaused ? (
                     <Button
                       type='button'
@@ -825,7 +858,7 @@ export function MasterNoteActivatePhraseView({
                     Para guardar, el audio debe durar al menos 0:10.
                   </p>
                   <audio controls src={recordingDraft.url} className='w-full' />
-                  <div className='mt-2 flex gap-2'>
+                  <div className='mt-2 flex flex-wrap gap-2'>
                     <Button
                       type='button'
                       onClick={() => void handleSaveChunk()}
@@ -873,9 +906,46 @@ export function MasterNoteActivatePhraseView({
                 </div>
               )}
             </div>
+
+            {phrase.generated_phrase && (
+              <Button
+                type='button'
+                onClick={() => setExtractWordsModalOpen(true)}
+                variant='outline'
+                className='mt-4 w-full'
+              >
+                📦 Extraer nuevas palabras
+              </Button>
+            )}
           </CardContent>
         </Card>
       </section>
+
+      <ExtractWordsToVaultModal
+        open={extractWordsModalOpen}
+        onOpenChange={setExtractWordsModalOpen}
+        text={phrase.generated_phrase || ''}
+        translation={phrase.translation || ''}
+        seedWords={phrase.source_words || []}
+        targetLang={targetLang}
+        nativeLang={nativeLang}
+        cards={cards}
+        setCards={setCards}
+        onWordAdded={onWordAdded}
+      />
+
+      <ExplorePhraseTokenModal
+        open={exploreModalOpen}
+        onOpenChange={setExploreModalOpen}
+        token={exploreToken}
+        phrase={phrase.generated_phrase || ''}
+        phraseTranslation={phrase.translation || ''}
+        targetLang={targetLang}
+        nativeLang={nativeLang}
+        cards={cards}
+        setCards={setCards}
+        onWordAdded={onWordAdded}
+      />
 
       <Dialog
         open={leaveDialogOpen}

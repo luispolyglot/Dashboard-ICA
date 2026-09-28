@@ -415,9 +415,7 @@ export function FlashcardsPlayPage() {
 export function ActivationPhrasePage() {
   const {
     cards,
-    setCards,
     config,
-    handleWordAdded,
     handlePhraseGenerated,
     metaTrackerProfile,
     setMetaTrackerActivationWordsTotal,
@@ -428,9 +426,7 @@ export function ActivationPhrasePage() {
     <PageLayout>
       <PhraseView
         cards={cards}
-        setCards={setCards}
         config={config}
-        onWordAdded={handleWordAdded}
         onPhraseGenerated={handlePhraseGenerated}
         metaTrackerProfile={metaTrackerProfile}
         onActivationWordsTotalChange={setMetaTrackerActivationWordsTotal}
@@ -499,7 +495,7 @@ export function MasterNoteDetailPage() {
 }
 
 export function MasterNoteActivatePhrasePage() {
-  const { config } = useDashboardContext()
+  const { config, cards, setCards, handleWordAdded } = useDashboardContext()
   const { noteId, phraseId } = useParams<{ noteId: string; phraseId: string }>()
   if (!config || !noteId || !phraseId) return null
 
@@ -509,6 +505,10 @@ export function MasterNoteActivatePhrasePage() {
         noteId={noteId}
         phraseId={phraseId}
         targetLang={config.targetLang}
+        nativeLang={config.nativeLang}
+        cards={cards}
+        setCards={setCards}
+        onWordAdded={handleWordAdded}
       />
     </PageLayout>
   )
