@@ -615,7 +615,7 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                 </p>
               )}
 
-              <div className='rounded-lg border'>
+              <div className='max-h-[26rem] overflow-y-auto rounded-lg border'>
                 {filteredUsers.length === 0 ? (
                   <p className='px-3 py-4 text-sm text-muted-foreground'>
                     {search.trim()

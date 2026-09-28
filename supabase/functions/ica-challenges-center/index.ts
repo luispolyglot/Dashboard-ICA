@@ -654,7 +654,7 @@ async function respondInvitation(input: {
       started_at: accept ? nowIso : null,
       finalized_at: accept ? null : nowIso,
       winner_user_id: null,
-      turn_user_id: accept ? toText(existing.challenger_user_id) : null,
+      turn_user_id: accept ? input.userId : null,
       turn_expires_at: accept ? firstTurnExpiresAt : null,
     })
     .eq('id', challengeId)
@@ -666,7 +666,7 @@ async function respondInvitation(input: {
     userId: toText(existing.challenger_user_id),
     title: accept ? 'Desafío aceptado' : 'Desafío rechazado',
     body: accept
-      ? 'Tu rival aceptó el desafío. Ya está en curso.'
+      ? 'Tu rival aceptó el desafío. Empieza su primer turno.'
       : 'Tu rival no aceptó el desafío.',
     tag: `ica-challenge-response-${challengeId}`,
     url: '/desafios-ica',
@@ -921,6 +921,17 @@ async function submitOwnWordsResult(input: {
       .eq('status', 'in_progress')
 
     if (setTurnError) return jsonResponse(500, { error: setTurnError.message })
+
+    if (nextTurnUserId !== input.userId) {
+      await sendPushToUser({
+        adminClient: input.adminClient,
+        userId: nextTurnUserId,
+        title: 'Te toca jugar',
+        body: 'Tu rival terminó su ronda. Continúa el desafío ICA.',
+        tag: `ica-challenge-turn-${challengeId}`,
+        url: `/desafios-ica/${challengeId}`,
+      })
+    }
 
     return jsonResponse(200, { ok: true, challengeId })
   }
