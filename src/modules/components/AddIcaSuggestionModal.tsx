@@ -44,6 +44,8 @@ type AddIcaSuggestionModalProps = {
   setCards: Dispatch<SetStateAction<Lexicard[]>>
   onWordAdded: () => Promise<unknown>
   onAdded?: (word: string) => void
+  title?: string
+  description?: string
 }
 
 function normalizeComparableText(value: string): string {
@@ -59,6 +61,8 @@ export function AddIcaSuggestionModal({
   setCards,
   onWordAdded,
   onAdded,
+  title = 'Añadir sugerencia al Baúl ICA',
+  description = 'Ajusta los campos si lo necesitas y guarda la palabra sugerida.',
 }: AddIcaSuggestionModalProps) {
   const [target, setTarget] = useState('')
   const [native, setNative] = useState('')
@@ -137,10 +141,8 @@ export function AddIcaSuggestionModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Añadir sugerencia al Baúl ICA</DialogTitle>
-          <DialogDescription>
-            Ajusta los campos si lo necesitas y guarda la palabra sugerida.
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
         <div className='space-y-4'>

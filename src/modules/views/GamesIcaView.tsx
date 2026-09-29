@@ -2,6 +2,13 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { useFeatureFlagsStore } from '../stores/featureFlagsStore'
+import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocal'
+import { ChallengeAlertPill } from '../components/IcaChallenges/ChallengeAlertBadge'
+import {
+  challengesRouteForAlerts,
+  describeIcaChallengeAlerts,
+  useIcaChallengeAlerts,
+} from '../hooks/useIcaChallengeAlerts'
 
 type GamesIcaViewProps = {
   flashcardsReady: boolean
@@ -30,9 +37,13 @@ export function GamesIcaView({
 }: GamesIcaViewProps) {
   const navigate = useNavigate()
   const loadFlags = useFeatureFlagsStore((state) => state.loadFlags)
-  const icaChallengesEnabled = useFeatureFlagsStore(
+  const icaChallengesFlag = useFeatureFlagsStore(
     (state) => state.flags['ica-challenges'],
   )
+  // En el modo local de prueba la tarjeta sale siempre.
+  const icaChallengesEnabled = icaChallengesFlag || ICA_CHALLENGES_LOCAL
+  const challengeAlerts = useIcaChallengeAlerts()
+  const challengeAlertText = describeIcaChallengeAlerts(challengeAlerts)
   const progress = parseProgress(pregunticaProgress)
   const progressPct = Math.max(0, Math.min(100, (progress.current / progress.total) * 100))
 
@@ -77,9 +88,14 @@ export function GamesIcaView({
         {icaChallengesEnabled && (
           <button
             type='button'
-            onClick={() => navigate(DASHBOARD_ROUTES.challengesIca)}
+            onClick={() => navigate(challengesRouteForAlerts(challengeAlerts))}
             className='group relative min-h-52 overflow-hidden rounded-[22px] border border-slate-800 bg-[linear-gradient(160deg,#ffffff,#eef3f9)] p-6 text-left transition hover:-translate-y-0.5 hover:shadow-xl dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
           >
+            {challengeAlertText && (
+              <span className='absolute right-4 top-4'>
+                <ChallengeAlertPill text={challengeAlertText} />
+              </span>
+            )}
             <p className='text-3xl' aria-hidden='true'>⚔️</p>
             <h2 className='mt-5 font-serif text-2xl font-bold text-slate-700 dark:text-slate-100'>
               Desafíos ICA

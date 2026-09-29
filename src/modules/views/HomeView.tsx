@@ -8,6 +8,12 @@ import {
   CoachingHomeCard,
   expectsHomeCoaching,
 } from '../components/CoachingHomeCard'
+import { ChallengeAlertPill } from '../components/IcaChallenges/ChallengeAlertBadge'
+import {
+  challengesRouteForAlerts,
+  describeIcaChallengeAlerts,
+  useIcaChallengeAlerts,
+} from '../hooks/useIcaChallengeAlerts'
 import { CREATION_WORDS_GOAL, getTodayProgress } from '../constants'
 import type { DailyProgressMap } from '../types'
 import type { AppConfig } from '../types'
@@ -43,6 +49,8 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   const [hasCoaching, setHasCoaching] = useState(() =>
     expectsHomeCoaching(user?.id, config.targetLang),
   )
+  const challengeAlerts = useIcaChallengeAlerts()
+  const challengeAlertText = describeIcaChallengeAlerts(challengeAlerts)
   const todayProgress = getTodayProgress(dailyProgress)
   const cardBaseClass =
     'relative flex min-h-[220px] w-full flex-col px-[25px] py-8 text-left font-sans transition-[transform,border-color,box-shadow,background] duration-250 ease-[cubic-bezier(0.2,0.8,0.2,1)]'
@@ -75,7 +83,8 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
 
     const loadPregunticaStatus = async () => {
       try {
-        const { fetchPregunticaWeekStatus } = await import('../services/preguntica')
+        const { fetchPregunticaWeekStatus } =
+          await import('../services/preguntica')
         const status = await fetchPregunticaWeekStatus({
           targetLang: config.targetLang,
           nativeLang: config.nativeLang,
@@ -118,8 +127,8 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
         statusLabel: !hasFiveWordsTotal
           ? `Añade ${pluralize(CREATION_WORDS_GOAL - cardCount, 'palabra', 'palabras')} más para desbloquear`
           : phraseDone
-          ? 'Frase diaria completada'
-          : `Te queda ${pluralize(1, 'frase de creación', 'frases de creación')}`,
+            ? 'Frase diaria completada'
+            : `Te queda ${pluralize(1, 'frase de creación', 'frases de creación')}`,
         statusDone: phraseDone,
         to: DASHBOARD_ROUTES.activationPhrase,
         disabled: !hasFiveWordsTotal,
@@ -246,7 +255,9 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
         <div
           className={cn(
             'mt-5 gap-4',
-            hasCoaching ? 'grid md:grid-cols-2' : 'hidden md:grid md:grid-cols-1',
+            hasCoaching
+              ? 'grid md:grid-cols-2'
+              : 'hidden md:grid md:grid-cols-1',
           )}
         >
           <CoachingHomeCard
@@ -255,17 +266,75 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
             onAvailabilityChange={setHasCoaching}
           />
           <div className='hidden md:block'>
-          {flashDone ? (
-            <div className='relative h-full w-full overflow-hidden rounded-[22px] shadow-[0_0_12px_#eab30850,0_0_60px_#eab30828]'>
-              <div className='pointer-events-none absolute inset-[-120%] z-0 animate-[rotateCW_8s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0deg,transparent_255deg,#eab30818_265deg,#eab30860_280deg,#eab308cc_305deg,#fde68a_322deg,#ffffffff_328deg,#fde68a_334deg,#eab308cc_350deg,#eab30860_368deg,#eab30818_378deg,transparent_390deg)]' />
+            {flashDone ? (
+              <div className='relative h-full w-full overflow-hidden rounded-[22px] shadow-[0_0_12px_#eab30850,0_0_60px_#eab30828]'>
+                <div className='pointer-events-none absolute inset-[-120%] z-0 animate-[rotateCW_8s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0deg,transparent_255deg,#eab30818_265deg,#eab30860_280deg,#eab308cc_305deg,#fde68a_322deg,#ffffffff_328deg,#fde68a_334deg,#eab308cc_350deg,#eab30860_368deg,#eab30818_378deg,transparent_390deg)]' />
+                <button
+                  type='button'
+                  onClick={() => navigate(DASHBOARD_ROUTES.gamesIca)}
+                  className={cn(
+                    cardBaseClass,
+                    cardSurfaceHaloClass,
+                    cardHoverWithHaloClass,
+                    'relative z-1 m-0.5 h-[calc(100%-4px)] min-h-40',
+                  )}
+                >
+                  {showPregunticaPulse && (
+                    <span
+                      aria-hidden='true'
+                      className='absolute right-4 top-4 inline-block text-xl text-amber-500 animate-pulse'
+                    >
+                      🎙️
+                    </span>
+                  )}
+                  {challengeAlertText && (
+                    <span
+                      role='link'
+                      tabIndex={0}
+                      title='Ir a Desafíos ICA'
+                      onClick={(event) => {
+                        // Directo a Desafíos ICA (a «Pendientes» si te han retado), sin pasar por Juegos ICA.
+                        event.stopPropagation()
+                        navigate(challengesRouteForAlerts(challengeAlerts))
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter') return
+                        event.stopPropagation()
+                        navigate(challengesRouteForAlerts(challengeAlerts))
+                      }}
+                      className={`absolute top-4 z-2 cursor-pointer ${showPregunticaPulse ? 'right-12' : 'right-4'}`}
+                    >
+                      <ChallengeAlertPill text={challengeAlertText} />
+                    </span>
+                  )}
+                  <div className='relative z-1'>
+                    <div className='mb-1.25 flex items-center gap-2'>
+                      <div className='text-3xl'>🎮</div>
+                      <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
+                        JUEGOS ICA
+                      </h2>
+                    </div>
+                    <p className='m-0 text-xs leading-normal text-slate-500'>
+                      Entrena con Flashcards y desbloquea tu PreguntICA semanal.
+                    </p>
+                    <div className='mt-2.5 inline-flex items-center gap-1.5 text-xs text-slate-400'>
+                      <span aria-hidden='true'>✅</span>
+                      <span>Flashcards completadas hoy</span>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            ) : (
               <button
                 type='button'
                 onClick={() => navigate(DASHBOARD_ROUTES.gamesIca)}
+                disabled={cardCount === 0}
                 className={cn(
                   cardBaseClass,
-                  cardSurfaceHaloClass,
-                  cardHoverWithHaloClass,
-                  'relative z-1 m-0.5 h-[calc(100%-4px)] min-h-40',
+                  cardSurfaceClass,
+                  cardHoverClass,
+                  'h-full min-h-40',
+                  cardCount === 0 && disabledCardClass,
                 )}
               >
                 {showPregunticaPulse && (
@@ -276,7 +345,27 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
                     🎙️
                   </span>
                 )}
-                <div className='relative z-1'>
+                {challengeAlertText && (
+                  <span
+                    role='link'
+                    tabIndex={0}
+                    title='Ir a Desafíos ICA'
+                    onClick={(event) => {
+                      // Directo a Desafíos ICA (a «Pendientes» si te han retado), sin pasar por Juegos ICA.
+                      event.stopPropagation()
+                      navigate(challengesRouteForAlerts(challengeAlerts))
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter') return
+                      event.stopPropagation()
+                      navigate(challengesRouteForAlerts(challengeAlerts))
+                    }}
+                    className={`absolute top-4 z-2 cursor-pointer ${showPregunticaPulse ? 'right-12' : 'right-4'}`}
+                  >
+                    <ChallengeAlertPill text={challengeAlertText} />
+                  </span>
+                )}
+                <div className='relative z-1 my-auto'>
                   <div className='mb-1.25 flex items-center gap-2'>
                     <div className='text-3xl'>🎮</div>
                     <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
@@ -284,57 +373,19 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
                     </h2>
                   </div>
                   <p className='m-0 text-xs leading-normal text-slate-500'>
-                    Entrena con Flashcards y desbloquea tu PreguntICA semanal.
+                    Flashcards + PreguntICA en una sola pantalla.
                   </p>
                   <div className='mt-2.5 inline-flex items-center gap-1.5 text-xs text-slate-400'>
-                    <span aria-hidden='true'>✅</span>
-                    <span>Flashcards completadas hoy</span>
+                    <span aria-hidden='true'>🕒</span>
+                    <span>
+                      {cardCount === 0
+                        ? 'Añade palabras para iniciar'
+                        : `Llevas ${pluralize(todayProgress.reviewCorrect, 'acierto', 'aciertos')} hoy`}
+                    </span>
                   </div>
                 </div>
               </button>
-            </div>
-          ) : (
-            <button
-              type='button'
-              onClick={() => navigate(DASHBOARD_ROUTES.gamesIca)}
-              disabled={cardCount === 0}
-              className={cn(
-                cardBaseClass,
-                cardSurfaceClass,
-                cardHoverClass,
-                'h-full min-h-40',
-                cardCount === 0 && disabledCardClass,
-              )}
-            >
-              {showPregunticaPulse && (
-                <span
-                  aria-hidden='true'
-                  className='absolute right-4 top-4 inline-block text-xl text-amber-500 animate-pulse'
-                >
-                  🎙️
-                </span>
-              )}
-              <div className='relative z-1 my-auto'>
-                <div className='mb-1.25 flex items-center gap-2'>
-                  <div className='text-3xl'>🎮</div>
-                  <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
-                    JUEGOS ICA
-                  </h2>
-                </div>
-                <p className='m-0 text-xs leading-normal text-slate-500'>
-                  Flashcards + PreguntICA en una sola pantalla.
-                </p>
-                <div className='mt-2.5 inline-flex items-center gap-1.5 text-xs text-slate-400'>
-                  <span aria-hidden='true'>🕒</span>
-                  <span>
-                    {cardCount === 0
-                      ? 'Añade palabras para iniciar'
-                      : `Llevas ${pluralize(todayProgress.reviewCorrect, 'acierto', 'aciertos')} hoy`}
-                  </span>
-                </div>
-              </div>
-            </button>
-          )}
+            )}
           </div>
         </div>
       </div>

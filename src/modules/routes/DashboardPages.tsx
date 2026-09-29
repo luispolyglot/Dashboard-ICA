@@ -24,6 +24,10 @@ import { HomeView } from '../views/HomeView'
 import { GamesIcaView } from '../views/GamesIcaView'
 import { IcaChallengesView } from '../views/IcaChallengesView'
 import { IcaChallengePlayView } from '../views/IcaChallengePlayView'
+import {
+  ICA_CHALLENGES_LOCAL,
+  registerIcaChallengesLocalContext,
+} from '../services/icaChallengesLocal'
 import { ManageCoachingView } from '../views/ManageCoachingView'
 import { ManageCoachingCalendarView } from '../views/ManageCoachingCalendarView'
 import { ManageCoachingUserView } from '../views/ManageCoachingUserView'
@@ -263,8 +267,12 @@ export function GamesIcaPage() {
 }
 
 export function IcaChallengesPage() {
-  const { config } = useDashboardContext()
+  const { config, cards } = useDashboardContext()
   if (!config) return null
+  // Modo local de prueba: el "servidor" del navegador necesita tus palabras e idiomas.
+  if (ICA_CHALLENGES_LOCAL) {
+    registerIcaChallengesLocalContext({ cards, targetLang: config.targetLang, nativeLang: config.nativeLang })
+  }
 
   return (
     <PageLayout>
@@ -277,17 +285,21 @@ export function IcaChallengesPage() {
 }
 
 export function IcaChallengePlayPage() {
-  const { config, cards } = useDashboardContext()
+  const { config, cards, setCards, handleWordAdded } = useDashboardContext()
   const { challengeId } = useParams<{ challengeId: string }>()
   if (!config || !challengeId) return null
+  if (ICA_CHALLENGES_LOCAL) {
+    registerIcaChallengesLocalContext({ cards, targetLang: config.targetLang, nativeLang: config.nativeLang })
+  }
 
   return (
     <PageLayout backTo={DASHBOARD_ROUTES.challengesIca}>
       <IcaChallengePlayView
         challengeId={challengeId}
-        targetLang={config.targetLang}
-        nativeLang={config.nativeLang}
+        config={config}
         cards={cards}
+        setCards={setCards}
+        onWordAdded={handleWordAdded}
       />
     </PageLayout>
   )
