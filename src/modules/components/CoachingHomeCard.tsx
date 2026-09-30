@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
 import { cn } from '@/lib/utils'
+import { LoaderCircleIcon } from 'lucide-react'
 import {
   fetchMyCoachingDashboard,
   fetchMyCoachingV2SessionBoard,
@@ -213,15 +214,72 @@ export function CoachingHomeCard({
   }, [key, onAvailabilityChange, targetLang, user?.id])
 
   if (!data) {
-    // Mientras carga, si esperamos coaching, reservamos su hueco para que nada salte.
+    // Conserva el hueco de la tarjeta conocida sin mostrar un bloque gris genérico.
     return expectsHomeCoaching(user?.id, targetLang) ? (
       <div
-        aria-hidden='true'
+        role='status'
+        aria-label='Cargando tu coaching'
         className={cn(
-          'min-h-[230px] animate-pulse rounded-[20px] border border-sky-400/25 bg-sky-400/5',
+          'relative flex min-h-[230px] w-full flex-col overflow-hidden rounded-[20px] border border-amber-300/60 px-[25px] py-6 shadow-[0_8px_26px_-14px_rgba(217,119,6,0.3)] dark:border-amber-500/25',
+          '[background:linear-gradient(160deg,#fffdf7,#f3f5fb)_padding-box,linear-gradient(135deg,rgba(245,215,126,.8),rgba(96,165,250,.45))_border-box] dark:[background:linear-gradient(160deg,#111a2e,#0a0f1a)_padding-box,linear-gradient(135deg,rgba(245,215,126,.3),rgba(59,130,246,.25))_border-box]',
           className,
         )}
-      />
+      >
+        <div className='flex items-start justify-between gap-3'>
+          <div className='flex items-center gap-2.5'>
+            <div className='flex size-11 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-200 to-amber-500 text-2xl shadow-[0_4px_14px_-4px_rgba(217,119,6,0.35)]'>
+              🎯
+            </div>
+            <div>
+              <p className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
+                TU COACHING
+              </p>
+              <p className='m-0 text-xs text-slate-500'>
+                Preparando tu semana...
+              </p>
+            </div>
+          </div>
+          <LoaderCircleIcon
+            aria-hidden='true'
+            className='mt-1 size-4 animate-spin text-amber-600/70 dark:text-amber-300/70'
+          />
+        </div>
+
+        <div className='mt-5 flex items-center gap-2'>
+          <span className='h-1.5 w-16 rounded-full bg-amber-300/70 dark:bg-amber-300/35' />
+          <span className='h-1.5 flex-1 rounded-full bg-slate-200/80 dark:bg-slate-700/75' />
+        </div>
+
+        <div className='mt-4 space-y-2.5'>
+          {[0, 1, 2].map((row) => (
+            <div key={row} className='flex items-center justify-between gap-4'>
+              <span
+                className={cn(
+                  'h-3 rounded-full bg-slate-300/55 dark:bg-slate-600/45',
+                  row === 0 ? 'w-2/3' : row === 1 ? 'w-1/2' : 'w-3/5',
+                  'animate-pulse',
+                )}
+              />
+              <span className='flex gap-1'>
+                {[0, 1, 2, 3].map((pip) => (
+                  <span
+                    key={pip}
+                    className='size-1.5 animate-pulse rounded-full bg-amber-300/55 dark:bg-amber-300/30'
+                    style={{ animationDelay: `${(row * 4 + pip) * 70}ms` }}
+                  />
+                ))}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className='mt-auto pt-4'>
+          <div className='border-t border-amber-400/25 pt-3'>
+            <span className='inline-block h-3 w-3/4 animate-pulse rounded-full bg-slate-300/45 dark:bg-slate-600/35' />
+          </div>
+        </div>
+        <span className='sr-only'>Cargando tu coaching</span>
+      </div>
     ) : null
   }
 
