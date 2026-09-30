@@ -646,7 +646,11 @@ export function ManageCoachingCalendarView() {
 
   const availableMonths = useMemo(() => {
     const months = new Set(entries.map((entry) => entry.dateKey.slice(0, 7)))
-    months.add(currentMonthKey)
+    const [year, month] = currentMonthKey.split('-').map(Number)
+    for (let offset = 0; offset <= 2; offset += 1) {
+      const date = new Date(year, month - 1 + offset, 1)
+      months.add(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`)
+    }
     return Array.from(months).sort((a, b) => a.localeCompare(b))
   }, [currentMonthKey, entries])
 
