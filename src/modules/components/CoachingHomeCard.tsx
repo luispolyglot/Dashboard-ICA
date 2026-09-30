@@ -1,0 +1,432 @@
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '@/auth/AuthContext'
+import { cn } from '@/lib/utils'
+import { LoaderCircleIcon } from 'lucide-react'
+import {
+  fetchMyCoachingDashboard,
+  fetchMyCoachingV2SessionBoard,
+  type CoachingMembership,
+  type CoachingV2SessionBoard,
+} from '../services/coaching'
+import {
+  getCoachingPersonalizedSessionRoute,
+  getCoachingV2ExerciseRoute,
+} from '../routes/paths'
+
+/* ══════════════════════════════════════════════════════════════════════
+   Tarjeta COACHING de la home (solo para alumnos con coaching activo).
+   De un vistazo: semana del programa, sus tres focos y el siguiente paso.
+   ══════════════════════════════════════════════════════════════════════ */
+
+type HomeCoachingData = {
+  membership: CoachingMembership
+  board: CoachingV2SessionBoard | null
+}
+
+// Caché corta para no pedirlo otra vez cada vez que se vuelve a la home.
+const CACHE_TTL_MS = 60_000
+let cache: { key: string; at: number; data: HomeCoachingData | null } | null = null
+
+/* Recordamos (en este navegador) si el alumno tiene coaching, para que la home
+   pinte el hueco de la tarjeta desde el primer momento y no "salte". */
+const cacheKey = (userId: string | undefined, targetLang: string) =>
+  `${userId || 'anon'}:${targetLang.trim().toLowerCase()}`
+const FLAG_KEY = (key: string) => `ica.homeCoaching.${key}`
+
+export function expectsHomeCoaching(userId: string | undefined, targetLang: string): boolean {
+  const key = cacheKey(userId, targetLang)
+  if (cache && cache.key === key) return Boolean(cache.data)
+  try {
+    return window.localStorage.getItem(FLAG_KEY(key)) === '1'
+  } catch {
+    return false
+  }
+}
+
+function rememberHomeCoaching(key: string, available: boolean) {
+  try {
+    window.localStorage.setItem(FLAG_KEY(key), available ? '1' : '0')
+  } catch {
+    /* sin almacenamiento: no pasa nada */
+  }
+}
+
+/* Tras entregar un ejercicio o cambiar algo del coaching, la home debe pedirlo de nuevo. */
+export function invalidateHomeCoachingCache() {
+  cache = null
+}
+
+async function loadHomeCoaching(
+  userId: string | undefined,
+  targetLang: string,
+): Promise<HomeCoachingData | null> {
+  const key = cacheKey(userId, targetLang)
+  if (cache && cache.key === key && Date.now() - cache.at < CACHE_TTL_MS) {
+    return cache.data
+  }
+  const memberships = await fetchMyCoachingDashboard(targetLang)
+  const membership =
+    memberships.find((row) => row.status === 'active' && row.programVersion === 'v2') ||
+    memberships.find((row) => row.status === 'active') ||
+    null
+  let data: HomeCoachingData | null = null
+  if (membership) {
+    const board =
+      membership.programVersion === 'v2'
+        ? await fetchMyCoachingV2SessionBoard({ sessionId: membership.id }).catch(() => null)
+        : null
+    data = { membership, board }
+  }
+  cache = { key, at: Date.now(), data }
+  return data
+}
+
+const PHASE_KEYS = [
+  'phaseExplained',
+  'phaseTrained',
+  'phaseUnderstoodExplained',
+  'phaseUsed',
+] as const
+
+type NextStep = {
+  emoji: string
+  text: string
+  cta?: { label: string; to?: string; href?: string }
+  urgent?: boolean
+}
+
+function formatClassDate(value: string): string {
+  return new Date(value).toLocaleString('es-ES', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function getNextStep(data: HomeCoachingData): NextStep {
+  const { membership, board } = data
+  if (!board) {
+    return { emoji: '🎯', text: 'Abre tu coaching para ver tu semana.' }
+  }
+  const period = board.periodNumber
+  const now = Date.now()
+  const classes = board.classes.filter((row) => row.periodNumber === period)
+  const joinUrl = board.session.classJoinUrl?.trim() || membership.classJoinUrl?.trim() || ''
+
+  const liveClass = classes.find((row) => {
+    if (!row.scheduledAt) return false
+    const ts = new Date(row.scheduledAt).getTime()
+    return Math.abs(now - ts) <= 15 * 60 * 1000
+  })
+  if (liveClass && joinUrl) {
+    return {
+      emoji: '🔴',
+      text: `Tu clase ${liveClass.classIndex} empieza ahora`,
+      cta: { label: 'Entrar', href: joinUrl },
+      urgent: true,
+    }
+  }
+
+  const readyFocus = board.focuses.find((focus) => {
+    if (focus.periodNumber !== period || focus.archivedAt) return false
+    if (!focus.phaseExplained || focus.phaseTrained) return false
+    const exercise = board.focusExercises.find((row) => row.focusId === focus.id)
+    const latestAttempt = board.focusExerciseAttempts.find((row) => row.focusId === focus.id)
+    return exercise?.status === 'ready' && !latestAttempt?.passed
+  })
+  if (readyFocus) {
+    return {
+      emoji: '💪',
+      text: `Tu entrenamiento de «${readyFocus.focusTitle}» está listo`,
+      cta: {
+        label: 'Entrenar',
+        to: getCoachingV2ExerciseRoute(membership.id, period, readyFocus.id),
+      },
+      urgent: true,
+    }
+  }
+
+  const tasks = classes.flatMap((row) => [
+    row.studentGuidelineResponse1,
+    row.studentGuidelineResponse2,
+    row.studentGuidelineResponse3,
+  ])
+  const pendingTasks = tasks.filter((value) => !value?.trim()).length
+  if (tasks.length > 0 && pendingTasks > 0) {
+    return {
+      emoji: '📝',
+      text: `Te ${pendingTasks === 1 ? 'falta 1 tarea' : `faltan ${pendingTasks} tareas`} de esta semana`,
+    }
+  }
+
+  if (board.periodReport && (board.periodReport.reportImageUrl || board.periodReport.reportText)) {
+    return { emoji: '📄', text: 'Tu reporte de la semana está listo' }
+  }
+
+  const nextClass = classes
+    .filter((row) => row.scheduledAt && new Date(row.scheduledAt).getTime() > now)
+    .sort((a, b) => new Date(a.scheduledAt || 0).getTime() - new Date(b.scheduledAt || 0).getTime())[0]
+  if (nextClass?.scheduledAt) {
+    return { emoji: '📅', text: `Próxima clase: ${formatClassDate(nextClass.scheduledAt)}` }
+  }
+
+  return { emoji: '✅', text: 'Todo al día' }
+}
+
+type CoachingHomeCardProps = {
+  targetLang: string
+  className?: string
+  /** Avisa al padre de si hay coaching activo (para colocar la tarjeta). */
+  onAvailabilityChange?: (available: boolean) => void
+}
+
+export function CoachingHomeCard({
+  targetLang,
+  className,
+  onAvailabilityChange,
+}: CoachingHomeCardProps) {
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const key = cacheKey(user?.id, targetLang)
+  const [data, setData] = useState<HomeCoachingData | null>(() =>
+    cache?.key === key ? cache.data : null,
+  )
+
+  useEffect(() => {
+    let active = true
+    void loadHomeCoaching(user?.id, targetLang)
+      .then((result) => {
+        if (!active) return
+        setData(result)
+        rememberHomeCoaching(key, Boolean(result))
+        onAvailabilityChange?.(Boolean(result))
+      })
+      .catch(() => {
+        if (!active) return
+        if (!cache || cache.key !== key) onAvailabilityChange?.(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [key, onAvailabilityChange, targetLang, user?.id])
+
+  if (!data) {
+    // Conserva el hueco de la tarjeta conocida sin mostrar un bloque gris genérico.
+    return expectsHomeCoaching(user?.id, targetLang) ? (
+      <div
+        role='status'
+        aria-label='Cargando tu coaching'
+        className={cn(
+          'relative flex min-h-[230px] w-full flex-col overflow-hidden rounded-[20px] border border-amber-300/60 px-[25px] py-6 shadow-[0_8px_26px_-14px_rgba(217,119,6,0.3)] dark:border-amber-500/25',
+          '[background:linear-gradient(160deg,#fffdf7,#f3f5fb)_padding-box,linear-gradient(135deg,rgba(245,215,126,.8),rgba(96,165,250,.45))_border-box] dark:[background:linear-gradient(160deg,#111a2e,#0a0f1a)_padding-box,linear-gradient(135deg,rgba(245,215,126,.3),rgba(59,130,246,.25))_border-box]',
+          className,
+        )}
+      >
+        <div className='flex items-start justify-between gap-3'>
+          <div className='flex items-center gap-2.5'>
+            <div className='flex size-11 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-200 to-amber-500 text-2xl shadow-[0_4px_14px_-4px_rgba(217,119,6,0.35)]'>
+              🎯
+            </div>
+            <div>
+              <p className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
+                TU COACHING
+              </p>
+              <p className='m-0 text-xs text-slate-500'>
+                Preparando tu semana...
+              </p>
+            </div>
+          </div>
+          <LoaderCircleIcon
+            aria-hidden='true'
+            className='mt-1 size-4 animate-spin text-amber-600/70 dark:text-amber-300/70'
+          />
+        </div>
+
+        <div className='mt-5 flex items-center gap-2'>
+          <span className='h-1.5 w-16 rounded-full bg-amber-300/70 dark:bg-amber-300/35' />
+          <span className='h-1.5 flex-1 rounded-full bg-slate-200/80 dark:bg-slate-700/75' />
+        </div>
+
+        <div className='mt-4 space-y-2.5'>
+          {[0, 1, 2].map((row) => (
+            <div key={row} className='flex items-center justify-between gap-4'>
+              <span
+                className={cn(
+                  'h-3 rounded-full bg-slate-300/55 dark:bg-slate-600/45',
+                  row === 0 ? 'w-2/3' : row === 1 ? 'w-1/2' : 'w-3/5',
+                  'animate-pulse',
+                )}
+              />
+              <span className='flex gap-1'>
+                {[0, 1, 2, 3].map((pip) => (
+                  <span
+                    key={pip}
+                    className='size-1.5 animate-pulse rounded-full bg-amber-300/55 dark:bg-amber-300/30'
+                    style={{ animationDelay: `${(row * 4 + pip) * 70}ms` }}
+                  />
+                ))}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className='mt-auto pt-4'>
+          <div className='border-t border-amber-400/25 pt-3'>
+            <span className='inline-block h-3 w-3/4 animate-pulse rounded-full bg-slate-300/45 dark:bg-slate-600/35' />
+          </div>
+        </div>
+        <span className='sr-only'>Cargando tu coaching</span>
+      </div>
+    ) : null
+  }
+
+  const { membership, board } = data
+  const totalWeeks = board?.session.durationPeriods || membership.durationPeriods || 10
+  const currentWeek = board?.periodNumber || 1
+  const closedWeeks = new Set(
+    (board?.periodActivations || []).filter((row) => row.endedAt).map((row) => row.periodNumber),
+  )
+  const activeFocuses = (board?.focuses || [])
+    .filter((focus) => focus.periodNumber === currentWeek && !focus.archivedAt)
+    .filter((focus) => !PHASE_KEYS.every((key) => focus[key]))
+    .slice(0, 3)
+  const step = getNextStep(data)
+  const sessionRoute = getCoachingPersonalizedSessionRoute(membership.id)
+
+  return (
+    <div
+      role='button'
+      tabIndex={0}
+      onClick={() => navigate(sessionRoute)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          navigate(sessionRoute)
+        }
+      }}
+      className={cn(
+        // Aspecto premium: borde dorado degradado, brillo cálido y fondo con un toque de oro.
+        'group relative flex w-full cursor-pointer flex-col overflow-hidden rounded-[20px] border border-transparent px-[25px] py-6 text-left transition-[transform,box-shadow] duration-250 hover:-translate-y-[2px]',
+        '[background:linear-gradient(160deg,#fffdf7,#f3f5fb)_padding-box,linear-gradient(135deg,#f5d77e,#c9962b_35%,#60a5fa_70%,#f5d77e)_border-box] dark:[background:linear-gradient(160deg,#111a2e,#0a0f1a)_padding-box,linear-gradient(135deg,#f5d77e,#b8862a_35%,#3b82f6_70%,#f5d77e)_border-box]',
+        'shadow-[0_0_0_1px_rgba(234,179,8,0.12),0_10px_30px_-12px_rgba(234,179,8,0.35)] hover:shadow-[0_0_0_1px_rgba(234,179,8,0.35),0_14px_36px_-10px_rgba(234,179,8,0.45)]',
+        step.urgent && 'shadow-[0_0_0_1px_rgba(234,179,8,0.4),0_0_26px_rgba(234,179,8,0.3)]',
+        className,
+      )}
+    >
+      {/* Destello dorado que cruza la tarjeta al pasar el ratón */}
+      <span
+        aria-hidden='true'
+        className='pointer-events-none absolute -inset-y-8 -left-1/3 w-1/3 rotate-12 bg-gradient-to-r from-transparent via-amber-200/25 to-transparent opacity-0 transition-all duration-700 group-hover:left-[110%] group-hover:opacity-100'
+      />
+      <div className='relative flex items-start justify-between gap-3'>
+        <div className='flex items-center gap-2.5'>
+          <div className='flex size-11 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-200 to-amber-500 text-2xl shadow-[0_4px_14px_-4px_rgba(217,119,6,0.6)]'>
+            🎯
+          </div>
+          <div>
+            <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
+              TU COACHING
+            </h2>
+            <p className='m-0 text-xs text-slate-500'>
+              {membership.targetLang} · {membership.level} · {(() => {
+                const second = (membership.coachDisplayName || '').trim()
+                return second && second.toLowerCase() !== 'luis' ? `con Luis y ${second}` : 'con Luis'
+              })()}
+            </p>
+          </div>
+        </div>
+        <p className='m-0 text-right text-xs text-slate-500'>
+          Semana{' '}
+          <b className='font-serif text-2xl leading-none text-slate-700 dark:text-slate-100'>
+            {currentWeek}
+          </b>{' '}
+          de {totalWeeks}
+        </p>
+      </div>
+
+      {/* Recorrido de semanas */}
+      <div
+        className='mt-4 grid gap-1'
+        style={{ gridTemplateColumns: `repeat(${totalWeeks}, minmax(0, 1fr))` }}
+        aria-label={`Semana ${currentWeek} de ${totalWeeks}`}
+      >
+        {Array.from({ length: totalWeeks }, (_, idx) => {
+          const week = idx + 1
+          const done = closedWeeks.has(week) || week < currentWeek
+          const current = week === currentWeek
+          return (
+            <span
+              key={week}
+              className={cn(
+                'h-1.5 rounded-full',
+                current
+                  ? 'bg-[#3B82F6]'
+                  : done
+                    ? 'bg-amber-400'
+                    : 'bg-slate-300/70 dark:bg-slate-700',
+              )}
+            />
+          )
+        })}
+      </div>
+
+      {/* Los focos de la semana */}
+      <div className='mt-4 space-y-2'>
+        {activeFocuses.length === 0 ? (
+          <p className='m-0 text-xs text-slate-500'>
+            Tu coach añadirá tus focos en la próxima clase.
+          </p>
+        ) : (
+          activeFocuses.map((focus) => {
+            const progress = PHASE_KEYS.filter((key) => focus[key]).length
+            return (
+              <div key={focus.id} className='flex items-center justify-between gap-3'>
+                <span className='min-w-0 truncate text-sm font-medium text-slate-700 dark:text-slate-100'>
+                  {focus.focusTitle}
+                </span>
+                <span className='flex shrink-0 items-center gap-1' aria-label={`${progress} de 4 fases`}>
+                  {PHASE_KEYS.map((key, idx) => (
+                    <span
+                      key={key}
+                      className={cn(
+                        'h-1.5 w-4 rounded-full',
+                        idx < progress ? 'bg-[#3B82F6]' : 'bg-slate-300/70 dark:bg-slate-700',
+                      )}
+                    />
+                  ))}
+                </span>
+              </div>
+            )
+          })
+        )}
+      </div>
+
+      {/* Siguiente paso */}
+      <div className='relative mt-4 flex items-center justify-between gap-3 border-t border-amber-400/25 pt-3'>
+        <p className='m-0 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-300'>
+          <span aria-hidden='true'>{step.emoji}</span>
+          <span>{step.text}</span>
+        </p>
+        {step.cta ? (
+          <button
+            type='button'
+            className='shrink-0 rounded-full bg-gradient-to-r from-amber-400 to-amber-500 px-3 py-1 text-xs font-bold text-amber-950 shadow-[0_2px_10px_-2px_rgba(217,119,6,0.6)] transition hover:from-amber-300 hover:to-amber-500'
+            onClick={(event) => {
+              event.stopPropagation()
+              if (step.cta?.href) {
+                window.open(step.cta.href, '_blank', 'noopener,noreferrer')
+                return
+              }
+              if (step.cta?.to) navigate(step.cta.to)
+            }}
+          >
+            {step.cta.label}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  )
+}

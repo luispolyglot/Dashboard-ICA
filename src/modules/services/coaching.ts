@@ -309,7 +309,22 @@ export type CoachingV2FocusExerciseAttempt = {
   blockScores: unknown
   tagScores: unknown
   failures: unknown
+  /** Todas las respuestas del alumno (intentos nuevos). Vacío en intentos antiguos. */
+  answers?: CoachingV2AttemptAnswer[]
   submittedAt: string
+}
+
+export type CoachingV2AttemptAnswer = {
+  block: 'reconocer' | 'construir' | 'conversacion'
+  itemIndex?: number
+  unitIndex?: number
+  blockTitle: string
+  question: string
+  unit?: string
+  mine: string
+  found?: string | null
+  expected: string
+  ok: boolean
 }
 
 export type CoachingV2SessionBoard = {
@@ -455,6 +470,51 @@ export async function fetchCoachingPendingReviewSummary(): Promise<CoachingPendi
     hasPendingReviews: pendingSessions > 0,
     pendingSessions,
     pendingNotes,
+  }
+}
+
+export type CoachingNavSummary = CoachingPendingReviewSummary & {
+  isCoachingAdmin: boolean
+  /** Alumnos con coaching activo que el coach puede gestionar (para el acceso rápido). */
+  activeStudents: CoachingManagedUser[]
+}
+
+/* Una sola pasada para la cabecera: permisos, avisos pendientes y alumnos activos. */
+export async function fetchCoachingNavSummary(): Promise<CoachingNavSummary> {
+  const access = await fetchCoachingAccess()
+  if (!access?.isCoachingAdmin) {
+    return {
+      isCoachingAdmin: false,
+      activeStudents: [],
+      hasPendingReviews: false,
+      pendingSessions: 0,
+      pendingNotes: 0,
+    }
+  }
+
+  const rows = await fetchCoachingManagedUsers()
+  const pendingRows = rows.filter(
+    (row) =>
+      row.hasPendingMasterNotesReview || (row.pendingMasterNotesReviewCount || 0) > 0,
+  )
+  const activeStudents = rows
+    .filter((row) => row.status === 'active')
+    .sort(
+      (a, b) =>
+        Number(Boolean(b.hasPendingMasterNotesReview)) -
+          Number(Boolean(a.hasPendingMasterNotesReview)) ||
+        a.userDisplayName.localeCompare(b.userDisplayName, 'es'),
+    )
+
+  return {
+    isCoachingAdmin: true,
+    activeStudents,
+    hasPendingReviews: pendingRows.length > 0,
+    pendingSessions: pendingRows.length,
+    pendingNotes: rows.reduce(
+      (total, row) => total + Math.max(0, row.pendingMasterNotesReviewCount || 0),
+      0,
+    ),
   }
 }
 
@@ -762,6 +822,7 @@ export async function submitCoachingV2FocusExerciseAttempt(input: {
   blockScores: unknown[]
   tagScores: unknown[]
   failures: unknown[]
+  answers?: CoachingV2AttemptAnswer[]
 }): Promise<{ phaseTrainedUpdated: boolean }> {
   const data = await invokeCoachingFunction<{
     ok?: boolean
@@ -780,6 +841,7 @@ export async function submitCoachingV2FocusExerciseAttempt(input: {
       blockScores: input.blockScores,
       tagScores: input.tagScores,
       failures: input.failures,
+      answers: input.answers || [],
     },
     'No se pudo guardar el resultado del ejercicio.',
   )

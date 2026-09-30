@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/auth/AuthContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { MetaTrackerSection } from '../components/MetaTracker/MetaTrackerSection'
+import {
+  CoachingHomeCard,
+  expectsHomeCoaching,
+} from '../components/CoachingHomeCard'
 import { CREATION_WORDS_GOAL, getTodayProgress } from '../constants'
 import type { DailyProgressMap } from '../types'
 import type { AppConfig } from '../types'
@@ -31,7 +36,13 @@ function pluralize(value: number, singular: string, plural: string): string {
 
 export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [showPregunticaPulse, setShowPregunticaPulse] = useState(false)
+  // Alumnos de coaching: su tarjeta va a la izquierda de Juegos ICA (y también en móvil).
+  // Se inicializa con lo que ya sabemos para que la tarjeta y Juegos ICA no se vean un instante a pantalla completa.
+  const [hasCoaching, setHasCoaching] = useState(() =>
+    expectsHomeCoaching(user?.id, config.targetLang),
+  )
   const todayProgress = getTodayProgress(dailyProgress)
   const cardBaseClass =
     'relative flex min-h-[220px] w-full flex-col px-[25px] py-8 text-left font-sans transition-[transform,border-color,box-shadow,background] duration-250 ease-[cubic-bezier(0.2,0.8,0.2,1)]'
@@ -54,6 +65,10 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   )
   const flashDone = todayProgress.reviewCorrect >= 10
   const phraseDone = todayProgress.phraseGenerated
+
+  useEffect(() => {
+    setHasCoaching(expectsHomeCoaching(user?.id, config.targetLang))
+  }, [config.targetLang, user?.id])
 
   useEffect(() => {
     let active = true
@@ -228,9 +243,20 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           })}
         </div>
 
-        <div className='mt-5 hidden gap-4 md:grid md:grid-cols-1'>
+        <div
+          className={cn(
+            'mt-5 gap-4',
+            hasCoaching ? 'grid md:grid-cols-2' : 'hidden md:grid md:grid-cols-1',
+          )}
+        >
+          <CoachingHomeCard
+            key={`${user?.id || 'anon'}:${config.targetLang}`}
+            targetLang={config.targetLang}
+            onAvailabilityChange={setHasCoaching}
+          />
+          <div className='hidden md:block'>
           {flashDone ? (
-            <div className='relative w-full overflow-hidden rounded-[22px] shadow-[0_0_12px_#eab30850,0_0_60px_#eab30828]'>
+            <div className='relative h-full w-full overflow-hidden rounded-[22px] shadow-[0_0_12px_#eab30850,0_0_60px_#eab30828]'>
               <div className='pointer-events-none absolute inset-[-120%] z-0 animate-[rotateCW_8s_linear_infinite] bg-[conic-gradient(from_0deg,transparent_0deg,transparent_255deg,#eab30818_265deg,#eab30860_280deg,#eab308cc_305deg,#fde68a_322deg,#ffffffff_328deg,#fde68a_334deg,#eab308cc_350deg,#eab30860_368deg,#eab30818_378deg,transparent_390deg)]' />
               <button
                 type='button'
@@ -239,7 +265,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
                   cardBaseClass,
                   cardSurfaceHaloClass,
                   cardHoverWithHaloClass,
-                  'relative z-1 m-0.5 min-h-40',
+                  'relative z-1 m-0.5 h-[calc(100%-4px)] min-h-40',
                 )}
               >
                 {showPregunticaPulse && (
@@ -276,7 +302,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
                 cardBaseClass,
                 cardSurfaceClass,
                 cardHoverClass,
-                'min-h-40',
+                'h-full min-h-40',
                 cardCount === 0 && disabledCardClass,
               )}
             >
@@ -309,6 +335,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
               </div>
             </button>
           )}
+          </div>
         </div>
       </div>
     </section>

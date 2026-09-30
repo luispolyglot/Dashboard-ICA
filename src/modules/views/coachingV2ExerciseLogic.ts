@@ -1,3 +1,15 @@
+import {
+  findForm,
+  normalizeText,
+  passThreshold,
+  readablePattern,
+  type CorrectorContext,
+  type CorrectorLibre,
+} from '../../../supabase/functions/_shared/coaching-exercise-corrector'
+
+export type { CorrectorContext, CorrectorLibre }
+export { readablePattern }
+
 export type RecoOption = { t: string; ok: boolean; why: string }
 export type RecoItem = { lead: string; tags: string[]; options: RecoOption[] }
 export type VerbUnit = {
@@ -6,6 +18,7 @@ export type VerbUnit = {
   mal: string[]
   tags: string[]
   nota: string
+  libre?: CorrectorLibre
 }
 export type BuildItem = { situacion: string; ejemplo: string; verbos: VerbUnit[] }
 export type DialogLine = { quien: string; texto: string }
@@ -15,6 +28,7 @@ export type DialogItem = {
   show: string
   tags: string[]
   why: string
+  libre?: CorrectorLibre
 }
 
 export type ExerciseData = {
@@ -27,6 +41,7 @@ export type ExerciseData = {
   umbral: number
   equivalencias: Record<string, string>
   etiquetas: Record<string, string>
+  libre: CorrectorLibre
   reconocer: { titulo: string; instruccion: string; items: RecoItem[] }
   construir: { titulo: string; instruccion: string; items: BuildItem[] }
   conversacion: {
@@ -53,17 +68,27 @@ function asStringArray(value: unknown): string[] {
     .filter(Boolean)
 }
 
-function asNumber(value: unknown, fallback = 0): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value)
-  if (typeof value === 'string') {
-    const parsed = Number(value.trim())
-    if (Number.isFinite(parsed)) return Math.trunc(parsed)
+function asLibre(value: unknown): CorrectorLibre | undefined {
+  if (!isRecord(value)) return undefined
+  const out: CorrectorLibre = {}
+  for (const key of [
+    'prohibidas',
+    'no_verbo',
+    'no_termina',
+    'excepciones',
+    'no_precedido',
+  ] as const) {
+    const list = asStringArray(value[key])
+    if (list.length > 0) out[key] = list
   }
-  return fallback
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 export function normalizeExercisePayload(payload: unknown): ExerciseData | null {
   if (!isRecord(payload)) return null
+  // No permitir que un marcador temporal de generación se convierta en una
+  // respuesta visible/corregible del alumno.
+  if (JSON.stringify(payload).includes('[SIN_ERROR_REAL]')) return null
   const blocksRaw = Array.isArray(payload.bloques) ? payload.bloques : []
   const blocks = blocksRaw.filter(isRecord)
 
@@ -84,21 +109,10 @@ export function normalizeExercisePayload(payload: unknown): ExerciseData | null 
         }))
         .filter((option) => option.t.length > 0)
 
-      const fallbackText =
-        options.find((option) => !option.t.includes('[SIN_ERROR_REAL]'))?.t ||
-        'Frase con error típico del foco'
-
       return {
         lead: asString(item.lead),
         tags: asStringArray(item.tags),
-        options: options.map((option) =>
-          option.t.includes('[SIN_ERROR_REAL]')
-            ? {
-                ...option,
-                t: fallbackText,
-              }
-            : option,
-        ),
+        options,
       }
     })
     .filter((item) => item.options.length > 0)
@@ -116,6 +130,7 @@ export function normalizeExercisePayload(payload: unknown): ExerciseData | null 
           mal: asStringArray(verb.mal),
           tags: asStringArray(verb.tags),
           nota: asString(verb.nota),
+          libre: asLibre(verb.libre),
         }))
         .filter((verb) => verb.formas.length > 0),
     }))
@@ -129,6 +144,7 @@ export function normalizeExercisePayload(payload: unknown): ExerciseData | null 
       show: asString(item.show),
       tags: asStringArray(item.tags),
       why: asString(item.why),
+      libre: asLibre(item.libre),
     }))
     .filter((item) => item.formas.length > 0)
 
@@ -165,9 +181,15 @@ export function normalizeExercisePayload(payload: unknown): ExerciseData | null 
     focoSubtitulo: asString(payload.foco_subtitulo),
     focoSlot: asString(payload.foco_slot, 'Foco'),
     fase: asString(payload.fase, 'Entrenado'),
-    umbral: Math.max(1, asNumber(payload.umbral, 1)),
+    // La nota para superar se calcula siempre igual (75 %), también en ejercicios antiguos.
+    umbral: passThreshold(
+      recoItems.length +
+        buildItems.reduce((total, item) => total + item.verbos.length, 0) +
+        dialogItems.length,
+    ),
     equivalencias,
     etiquetas,
+    libre: asLibre(payload.libre) || {},
     reconocer: {
       titulo: asString(reconocer.titulo, 'Reconocer'),
       instruccion: asString(reconocer.instruccion),
@@ -187,60 +209,49 @@ export function normalizeExercisePayload(payload: unknown): ExerciseData | null 
   }
 }
 
+export function correctorContextOf(data: ExerciseData): CorrectorContext {
+  return { equivalencias: data.equivalencias, libre: data.libre }
+}
+
 export function normalizeLooseText(
   value: string,
   equivalencias: Record<string, string>,
 ): string {
-  return value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/œ/g, 'oe')
-    .replace(/[’‘`´]/g, "'")
-    .replace(/[.,;:!?¿¡"«»…()\-]/g, ' ')
-    .replace(/'/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .map((token) => equivalencias[token] || token)
-    .join(' ')
+  return normalizeText(value, { equivalencias })
 }
 
-export function containsPhrase(text: string, phrase: string): boolean {
-  return ` ${text} `.includes(` ${phrase} `)
+/* Bloque 2 · devuelve el trozo de la frase que encaja con la forma buena (o null). */
+export function findBuildVerbMatch(
+  rawText: string,
+  verb: VerbUnit,
+  ctx: CorrectorContext,
+): string | null {
+  return findForm(rawText, verb.formas, ctx, verb)
 }
 
 export function scoreBuildVerbMatch(
   rawText: string,
-  formas: string[],
-  equivalencias: Record<string, string>,
+  verb: VerbUnit,
+  ctx: CorrectorContext,
 ): boolean {
-  const normalizedText = normalizeLooseText(rawText, equivalencias)
-  return formas.some((form) =>
-    containsPhrase(normalizedText, normalizeLooseText(form, equivalencias)),
-  )
+  return Boolean(findBuildVerbMatch(rawText, verb, ctx))
 }
 
+/* Bloque 2 · si no encaja la buena, busca el error típico que ha escrito el alumno. */
 export function detectWrongBuildCandidate(
   rawText: string,
-  wrongForms: string[],
-  equivalencias: Record<string, string>,
+  verb: VerbUnit,
+  ctx: CorrectorContext,
 ): string | null {
-  const normalizedText = normalizeLooseText(rawText, equivalencias)
-  const found = wrongForms.find((candidate) =>
-    containsPhrase(normalizedText, normalizeLooseText(candidate, equivalencias)),
-  )
-  return found || null
+  return findForm(rawText, verb.mal, ctx, verb)
 }
 
+/* Bloque 3 · el hueco entero tiene que encajar con alguna forma. */
 export function scoreDialogItem(
   rawAnswer: string,
-  formas: string[],
-  equivalencias: Record<string, string>,
+  item: DialogItem,
+  ctx: CorrectorContext,
 ): boolean {
-  const normalizedAnswer = normalizeLooseText(rawAnswer, equivalencias)
-  if (!normalizedAnswer) return false
-  return formas.some(
-    (form) => normalizeLooseText(form, equivalencias) === normalizedAnswer,
-  )
+  if (!normalizeText(rawAnswer, ctx)) return false
+  return Boolean(findForm(rawAnswer, item.formas, ctx, item, true))
 }
