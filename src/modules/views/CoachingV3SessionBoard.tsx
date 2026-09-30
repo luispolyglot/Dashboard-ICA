@@ -512,12 +512,14 @@ export function CoachingV3SessionBoard({
       : board?.coachers?.selectedCoachDisplayName) ||
     board?.coachers?.selectedCoachDisplayName ||
     coachDisplayName ||
-    "Eve";
+    null;
   const isSecondaryCoachPrimary =
-    secondaryCoachDisplayName.trim().toLowerCase() === "luis";
+    secondaryCoachDisplayName?.trim().toLowerCase() === "luis";
   const coachLineLabel = isSecondaryCoachPrimary
     ? "Luis"
-    : `Luis y ${secondaryCoachDisplayName}`;
+    : secondaryCoachDisplayName
+      ? `Luis y ${secondaryCoachDisplayName}`
+      : "Luis";
   const nowTs = Date.now();
   const isScheduledLiveNow =
     hasClassLink &&
@@ -1191,7 +1193,7 @@ export function CoachingV3SessionBoard({
               <span className="inline-flex size-6 items-center justify-center rounded-full border border-cyan-400/30 bg-cyan-400/20 text-xs font-semibold text-cyan-300">
                 L
               </span>
-              {!isSecondaryCoachPrimary ? (
+              {!isSecondaryCoachPrimary && secondaryCoachDisplayName ? (
                 <span className="inline-flex size-6 items-center justify-center rounded-full border border-amber-500/35 bg-amber-500/15 text-xs font-semibold text-amber-300">
                   {secondaryCoachDisplayName.slice(0, 1).toUpperCase()}
                 </span>
@@ -1515,9 +1517,9 @@ export function CoachingV3SessionBoard({
                   nextPhaseIdx >= 0 ? PHASE_LABELS[nextPhaseIdx] : null;
                 const nextPhaseHint =
                   nextPhaseIdx === 0
-                    ? "Cuando se lo expliques en clase, marca «Explicado»: así se le abre el ejercicio."
-                    : nextPhaseIdx === 1
-                      ? "Se marca solo cuando el alumno supera el ejercicio (75 % de aciertos). También puedes marcarlo tú."
+                      ? "Cuando se lo expliques en clase, marca «Explicado»: así se le abre el ejercicio."
+                      : nextPhaseIdx === 1
+                       ? "Se marca automáticamente al superar el ejercicio. Solo si falla la generación y hay un enlace externo podrás marcarlo manualmente."
                       : nextPhaseIdx === 2
                         ? "Marca «Entendido» cuando el alumno te lo explique a ti."
                         : nextPhaseIdx === 3
@@ -1575,9 +1577,15 @@ export function CoachingV3SessionBoard({
                     <div className="mt-3 grid grid-cols-4 gap-1.5">
                       {PHASE_KEYS.map((phaseKey, phaseIdx) => {
                         const done = Boolean(focus[phaseKey]);
+                        const hasExternalFallback =
+                          focusExercise?.status === "error" &&
+                          Boolean(focusExercise.externalTrainingUrl?.trim());
+                        const canManuallySetTrained =
+                          phaseKey !== "phaseTrained" || done || hasExternalFallback;
                         const clickable =
                           canEditSelectedPeriod &&
-                          canTogglePhase(focus, phaseKey);
+                          canTogglePhase(focus, phaseKey) &&
+                          canManuallySetTrained;
                         const isNext = phaseIdx === nextPhaseIdx;
                         return (
                           <button
@@ -1593,7 +1601,11 @@ export function CoachingV3SessionBoard({
                                   ? `Desmarcar ${PHASE_LABELS[phaseIdx]}`
                                   : PHASE_LABELS[phaseIdx]
                                 : clickable
-                                  ? `Marcar ${PHASE_LABELS[phaseIdx]}`
+                                  ? phaseKey === "phaseTrained" && hasExternalFallback
+                                    ? "Marcar Entrenado con enlace externo"
+                                    : `Marcar ${PHASE_LABELS[phaseIdx]}`
+                                  : phaseKey === "phaseTrained" && !done
+                                    ? "Se marca al superar el ejercicio; para marcarlo manualmente, debe fallar la generación y haber un enlace externo"
                                   : "Primero marca la fase anterior"
                             }
                             className={`flex flex-col items-center gap-1 rounded-lg border px-1 py-2 text-[11px] font-medium transition disabled:cursor-not-allowed ${clickable ? "hover:-translate-y-0.5" : ""} ${isNext && clickable ? "animate-pulse" : ""}`}

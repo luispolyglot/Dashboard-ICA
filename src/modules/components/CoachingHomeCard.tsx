@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '@/auth/AuthContext'
 import { cn } from '@/lib/utils'
 import {
   fetchMyCoachingDashboard,
@@ -28,42 +29,23 @@ let cache: { key: string; at: number; data: HomeCoachingData | null } | null = n
 
 /* Recordamos (en este navegador) si el alumno tiene coaching, para que la home
    pinte el hueco de la tarjeta desde el primer momento y no "salte". */
-const FLAG_KEY = (targetLang: string) => `ica.homeCoaching.${targetLang}`
+const cacheKey = (userId: string | undefined, targetLang: string) =>
+  `${userId || 'anon'}:${targetLang.trim().toLowerCase()}`
+const FLAG_KEY = (key: string) => `ica.homeCoaching.${key}`
 
-export function expectsHomeCoaching(targetLang: string): boolean {
-  if (cache && cache.key === targetLang) return Boolean(cache.data)
+export function expectsHomeCoaching(userId: string | undefined, targetLang: string): boolean {
+  const key = cacheKey(userId, targetLang)
+  if (cache && cache.key === key) return Boolean(cache.data)
   try {
-    return window.localStorage.getItem(FLAG_KEY(targetLang)) === '1'
+    return window.localStorage.getItem(FLAG_KEY(key)) === '1'
   } catch {
     return false
   }
 }
 
-/* Últimos datos de la tarjeta guardados en este navegador: al recargar la página
-   se pintan al momento y se actualizan por detrás (antes esperaba ~2 s cargando). */
-const DATA_KEY = (targetLang: string) => `ica.homeCoachingData.${targetLang}`
-
-function readStoredHomeCoaching(targetLang: string): HomeCoachingData | null {
+function rememberHomeCoaching(key: string, available: boolean) {
   try {
-    const raw = window.localStorage.getItem(DATA_KEY(targetLang))
-    return raw ? (JSON.parse(raw) as HomeCoachingData) : null
-  } catch {
-    return null
-  }
-}
-
-function storeHomeCoaching(targetLang: string, data: HomeCoachingData | null) {
-  try {
-    if (data) window.localStorage.setItem(DATA_KEY(targetLang), JSON.stringify(data))
-    else window.localStorage.removeItem(DATA_KEY(targetLang))
-  } catch {
-    /* sin espacio o bloqueado: se cargará como antes */
-  }
-}
-
-function rememberHomeCoaching(targetLang: string, available: boolean) {
-  try {
-    window.localStorage.setItem(FLAG_KEY(targetLang), available ? '1' : '0')
+    window.localStorage.setItem(FLAG_KEY(key), available ? '1' : '0')
   } catch {
     /* sin almacenamiento: no pasa nada */
   }
@@ -74,8 +56,12 @@ export function invalidateHomeCoachingCache() {
   cache = null
 }
 
-async function loadHomeCoaching(targetLang: string): Promise<HomeCoachingData | null> {
-  if (cache && cache.key === targetLang && Date.now() - cache.at < CACHE_TTL_MS) {
+async function loadHomeCoaching(
+  userId: string | undefined,
+  targetLang: string,
+): Promise<HomeCoachingData | null> {
+  const key = cacheKey(userId, targetLang)
+  if (cache && cache.key === key && Date.now() - cache.at < CACHE_TTL_MS) {
     return cache.data
   }
   const memberships = await fetchMyCoachingDashboard(targetLang)
@@ -91,7 +77,7 @@ async function loadHomeCoaching(targetLang: string): Promise<HomeCoachingData | 
         : null
     data = { membership, board }
   }
-  cache = { key: targetLang, at: Date.now(), data }
+  cache = { key, at: Date.now(), data }
   return data
 }
 
@@ -147,8 +133,8 @@ function getNextStep(data: HomeCoachingData): NextStep {
     if (focus.periodNumber !== period || focus.archivedAt) return false
     if (!focus.phaseExplained || focus.phaseTrained) return false
     const exercise = board.focusExercises.find((row) => row.focusId === focus.id)
-    const attempted = board.focusExerciseAttempts.some((row) => row.focusId === focus.id)
-    return exercise?.status === 'ready' && !attempted
+    const latestAttempt = board.focusExerciseAttempts.find((row) => row.focusId === focus.id)
+    return exercise?.status === 'ready' && !latestAttempt?.passed
   })
   if (readyFocus) {
     return {
@@ -202,32 +188,33 @@ export function CoachingHomeCard({
   onAvailabilityChange,
 }: CoachingHomeCardProps) {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const key = cacheKey(user?.id, targetLang)
   const [data, setData] = useState<HomeCoachingData | null>(() =>
-    cache?.key === targetLang ? cache.data : readStoredHomeCoaching(targetLang),
+    cache?.key === key ? cache.data : null,
   )
 
   useEffect(() => {
     let active = true
-    void loadHomeCoaching(targetLang)
+    void loadHomeCoaching(user?.id, targetLang)
       .then((result) => {
         if (!active) return
         setData(result)
-        storeHomeCoaching(targetLang, result)
-        rememberHomeCoaching(targetLang, Boolean(result))
+        rememberHomeCoaching(key, Boolean(result))
         onAvailabilityChange?.(Boolean(result))
       })
       .catch(() => {
         if (!active) return
-        onAvailabilityChange?.(false)
+        if (!cache || cache.key !== key) onAvailabilityChange?.(false)
       })
     return () => {
       active = false
     }
-  }, [onAvailabilityChange, targetLang])
+  }, [key, onAvailabilityChange, targetLang, user?.id])
 
   if (!data) {
     // Mientras carga, si esperamos coaching, reservamos su hueco para que nada salte.
-    return expectsHomeCoaching(targetLang) ? (
+    return expectsHomeCoaching(user?.id, targetLang) ? (
       <div
         aria-hidden='true'
         className={cn(

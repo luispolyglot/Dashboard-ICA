@@ -86,6 +86,9 @@ function asLibre(value: unknown): CorrectorLibre | undefined {
 
 export function normalizeExercisePayload(payload: unknown): ExerciseData | null {
   if (!isRecord(payload)) return null
+  // No permitir que un marcador temporal de generación se convierta en una
+  // respuesta visible/corregible del alumno.
+  if (JSON.stringify(payload).includes('[SIN_ERROR_REAL]')) return null
   const blocksRaw = Array.isArray(payload.bloques) ? payload.bloques : []
   const blocks = blocksRaw.filter(isRecord)
 
@@ -106,21 +109,10 @@ export function normalizeExercisePayload(payload: unknown): ExerciseData | null 
         }))
         .filter((option) => option.t.length > 0)
 
-      const fallbackText =
-        options.find((option) => !option.t.includes('[SIN_ERROR_REAL]'))?.t ||
-        'Frase con error típico del foco'
-
       return {
         lead: asString(item.lead),
         tags: asStringArray(item.tags),
-        options: options.map((option) =>
-          option.t.includes('[SIN_ERROR_REAL]')
-            ? {
-                ...option,
-                t: fallbackText,
-              }
-            : option,
-        ),
+        options,
       }
     })
     .filter((item) => item.options.length > 0)

@@ -316,6 +316,8 @@ export type CoachingV2FocusExerciseAttempt = {
 
 export type CoachingV2AttemptAnswer = {
   block: 'reconocer' | 'construir' | 'conversacion'
+  itemIndex?: number
+  unitIndex?: number
   blockTitle: string
   question: string
   unit?: string

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/auth/AuthContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { MetaTrackerSection } from '../components/MetaTracker/MetaTrackerSection'
 import {
@@ -35,11 +36,12 @@ function pluralize(value: number, singular: string, plural: string): string {
 
 export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [showPregunticaPulse, setShowPregunticaPulse] = useState(false)
   // Alumnos de coaching: su tarjeta va a la izquierda de Juegos ICA (y también en móvil).
   // Se inicializa con lo que ya sabemos para que la tarjeta y Juegos ICA no se vean un instante a pantalla completa.
   const [hasCoaching, setHasCoaching] = useState(() =>
-    expectsHomeCoaching(config.targetLang),
+    expectsHomeCoaching(user?.id, config.targetLang),
   )
   const todayProgress = getTodayProgress(dailyProgress)
   const cardBaseClass =
@@ -63,6 +65,10 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   )
   const flashDone = todayProgress.reviewCorrect >= 10
   const phraseDone = todayProgress.phraseGenerated
+
+  useEffect(() => {
+    setHasCoaching(expectsHomeCoaching(user?.id, config.targetLang))
+  }, [config.targetLang, user?.id])
 
   useEffect(() => {
     let active = true
@@ -244,6 +250,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           )}
         >
           <CoachingHomeCard
+            key={`${user?.id || 'anon'}:${config.targetLang}`}
             targetLang={config.targetLang}
             onAvailabilityChange={setHasCoaching}
           />

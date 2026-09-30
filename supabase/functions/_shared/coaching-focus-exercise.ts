@@ -11,7 +11,15 @@
  * - el script de prueba local scripts/test-coaching-exercise.mjs (Node).
  * Solo importa archivos de _shared (con extensión .ts, como pide Deno).
  */
-import { findForm, passThreshold, patternOf, type CorrectorLibre } from './coaching-exercise-corrector.ts'
+import {
+  findForm,
+  normalizeText,
+  passThreshold,
+  patternOf,
+  readablePattern,
+  type CorrectorContext,
+  type CorrectorLibre,
+} from './coaching-exercise-corrector.ts'
 import { COACHING_EXERCISE_TEMPLATE_EXAMPLE } from './coaching-exercise-template.ts'
 
 type Json = Record<string, unknown>
@@ -73,6 +81,250 @@ const strMap = (value: unknown): Record<string, string> =>
           .map(([key, item]) => [key.trim(), String(item).trim()]),
       )
     : {}
+
+export type FocusExerciseSubmittedAnswer = {
+  block: 'reconocer' | 'construir' | 'conversacion'
+  itemIndex: number
+  unitIndex?: number
+  mine: string
+}
+
+export type EvaluatedFocusExerciseAnswer = FocusExerciseSubmittedAnswer & {
+  blockTitle: string
+  question: string
+  unit?: string
+  found: string | null
+  expected: string
+  ok: boolean
+  tags: string[]
+}
+
+export type FocusExerciseAttemptEvaluation = {
+  answers: EvaluatedFocusExerciseAnswer[]
+  scoreCorrect: number
+  scoreTotal: number
+  scoreThreshold: number
+  passed: boolean
+  blockScores: Array<{ id: string; title: string; got: number; max: number }>
+  tagScores: Array<{ tag: string; ok: number; total: number }>
+  failures: Array<{
+    block: string
+    question: string
+    mine: string
+    expected: string
+    why: string
+  }>
+}
+
+function answerCoordinateKey(answer: FocusExerciseSubmittedAnswer): string {
+  return `${answer.block}:${answer.itemIndex}:${answer.unitIndex ?? ''}`
+}
+
+export function evaluateCoachingFocusExerciseAttempt(input: {
+  exercise: unknown
+  submittedAnswers: unknown
+}): FocusExerciseAttemptEvaluation {
+  if (!isRecord(input.exercise)) throw new Error('Invalid stored exercise payload')
+  if (!Array.isArray(input.exercise.bloques)) throw new Error('Stored exercise has no blocks')
+
+  const blockRows = input.exercise.bloques.filter(isRecord)
+  const blocks = new Map(blockRows.map((block) => [str(block.id), block]))
+  const recognize = blocks.get('reconocer')
+  const build = blocks.get('construir')
+  const conversation = blocks.get('conversacion')
+  if (!recognize || !build || !conversation) throw new Error('Stored exercise is incomplete')
+
+  const context: CorrectorContext = {
+    equivalencias: strMap(input.exercise.equivalencias),
+    libre: isRecord(input.exercise.libre) ? input.exercise.libre as CorrectorLibre : {},
+  }
+
+  const expectedAnswers: Array<{
+    coordinate: string
+    block: FocusExerciseSubmittedAnswer['block']
+    itemIndex: number
+    unitIndex?: number
+    blockTitle: string
+    question: string
+    unit?: string
+    expected: string
+    tags: string[]
+    evaluate: (mine: string) => { ok: boolean; found: string | null }
+    why: string
+  }> = []
+
+  const recognizeItems = Array.isArray(recognize.items) ? recognize.items.filter(isRecord) : []
+  recognizeItems.forEach((item, itemIndex) => {
+    const options = Array.isArray(item.options) ? item.options.filter(isRecord) : []
+    const correctOptions = options.filter((option) => option.ok === true)
+    if (correctOptions.length !== 1) throw new Error(`Invalid recognition item ${itemIndex}`)
+    const expected = str(correctOptions[0].t)
+    if (!expected) throw new Error(`Recognition item ${itemIndex} has no answer`)
+    const tags = strList(item.tags)
+    const blockTitle = str(recognize.titulo, 'Reconocer')
+    const question = str(item.lead, `Pregunta ${itemIndex + 1}`)
+    expectedAnswers.push({
+      coordinate: `reconocer:${itemIndex}:`,
+      block: 'reconocer',
+      itemIndex,
+      blockTitle,
+      question,
+      expected,
+      tags,
+      why: str(correctOptions[0].why),
+      evaluate: (mine) => ({
+        ok: normalizeText(mine, context) === normalizeText(expected, context),
+        found: mine.trim() || null,
+      }),
+    })
+  })
+
+  const buildItems = Array.isArray(build.items) ? build.items.filter(isRecord) : []
+  buildItems.forEach((item, itemIndex) => {
+    const verbs = Array.isArray(item.verbos) ? item.verbos.filter(isRecord) : []
+    verbs.forEach((verb, unitIndex) => {
+      const forms = strList(verb.formas)
+      if (forms.length === 0) throw new Error(`Build unit ${itemIndex}.${unitIndex} has no forms`)
+      const unit = { libre: isRecord(verb.libre) ? verb.libre as CorrectorLibre : undefined }
+      expectedAnswers.push({
+        coordinate: `construir:${itemIndex}:${unitIndex}`,
+        block: 'construir',
+        itemIndex,
+        unitIndex,
+        blockTitle: str(build.titulo, 'Construir'),
+        question: str(item.situacion, `Situación ${itemIndex + 1}`),
+        unit: str(verb.nombre) || undefined,
+        expected: readablePattern(forms[0]),
+        tags: strList(verb.tags),
+        why: str(verb.nota),
+        evaluate: (mine) => {
+          const found = findForm(mine, forms, context, unit)
+          return { ok: Boolean(found), found }
+        },
+      })
+    })
+  })
+
+  const conversationItems = Array.isArray(conversation.items)
+    ? conversation.items.filter(isRecord)
+    : []
+  conversationItems.forEach((item, itemIndex) => {
+    const forms = strList(item.formas)
+    if (forms.length === 0) throw new Error(`Conversation item ${itemIndex} has no forms`)
+    const unit = { libre: isRecord(item.libre) ? item.libre as CorrectorLibre : undefined }
+    expectedAnswers.push({
+      coordinate: `conversacion:${itemIndex}:`,
+      block: 'conversacion',
+      itemIndex,
+      blockTitle: str(conversation.titulo, 'En conversación'),
+      question: `Hueco ${itemIndex + 1} (${str(item.verbo, 'verbo')})`,
+      unit: str(item.verbo) || undefined,
+      expected: readablePattern(str(item.show) || forms[0]),
+      tags: strList(item.tags),
+      why: str(item.why),
+      evaluate: (mine) => {
+        const found = findForm(mine, forms, context, unit, true)
+        return { ok: Boolean(found), found }
+      },
+    })
+  })
+
+  if (expectedAnswers.length === 0) throw new Error('Stored exercise has no answerable units')
+  if (!Array.isArray(input.submittedAnswers)) throw new Error('Answers are required')
+
+  const submittedByCoordinate = new Map<string, FocusExerciseSubmittedAnswer>()
+  for (const rawAnswer of input.submittedAnswers) {
+    if (!isRecord(rawAnswer)) throw new Error('Invalid submitted answer')
+    const block = str(rawAnswer.block) as FocusExerciseSubmittedAnswer['block']
+    const itemIndex = Number(rawAnswer.itemIndex)
+    const unitIndexValue = rawAnswer.unitIndex
+    const unitIndex = unitIndexValue === undefined || unitIndexValue === null
+      ? undefined
+      : Number(unitIndexValue)
+    if (
+      !['reconocer', 'construir', 'conversacion'].includes(block) ||
+      !Number.isInteger(itemIndex) || itemIndex < 0 ||
+      (unitIndex !== undefined && (!Number.isInteger(unitIndex) || unitIndex < 0)) ||
+      typeof rawAnswer.mine !== 'string'
+    ) {
+      throw new Error('Invalid submitted answer coordinates')
+    }
+    const answer: FocusExerciseSubmittedAnswer = {
+      block,
+      itemIndex,
+      ...(unitIndex === undefined ? {} : { unitIndex }),
+      mine: rawAnswer.mine.slice(0, 2000),
+    }
+    const key = answerCoordinateKey(answer)
+    if (submittedByCoordinate.has(key)) throw new Error('Duplicate submitted answer')
+    submittedByCoordinate.set(key, answer)
+  }
+
+  if (submittedByCoordinate.size !== expectedAnswers.length) {
+    throw new Error('The submitted answers do not cover the exercise')
+  }
+
+  const evaluatedAnswers = expectedAnswers.map((expectedAnswer) => {
+    const submitted = submittedByCoordinate.get(expectedAnswer.coordinate)
+    if (!submitted) throw new Error('A submitted answer does not match the exercise')
+    const evaluation = expectedAnswer.evaluate(submitted.mine)
+    return {
+      block: expectedAnswer.block,
+      itemIndex: expectedAnswer.itemIndex,
+      ...(expectedAnswer.unitIndex === undefined ? {} : { unitIndex: expectedAnswer.unitIndex }),
+      blockTitle: expectedAnswer.blockTitle,
+      question: expectedAnswer.question,
+      ...(expectedAnswer.unit ? { unit: expectedAnswer.unit } : {}),
+      mine: submitted.mine,
+      found: evaluation.found,
+      expected: expectedAnswer.expected,
+      ok: evaluation.ok,
+      tags: expectedAnswer.tags,
+      why: expectedAnswer.why,
+    }
+  })
+
+  const scoreCorrect = evaluatedAnswers.filter((answer) => answer.ok).length
+  const scoreTotal = evaluatedAnswers.length
+  const scoreThreshold = passThreshold(scoreTotal)
+  const blockScores = (['reconocer', 'construir', 'conversacion'] as const).map((id) => {
+    const rows = evaluatedAnswers.filter((answer) => answer.block === id)
+    return {
+      id,
+      title: rows[0]?.blockTitle || id,
+      got: rows.filter((answer) => answer.ok).length,
+      max: rows.length,
+    }
+  })
+  const tagMap = new Map<string, { ok: number; total: number }>()
+  for (const answer of evaluatedAnswers) {
+    for (const tag of answer.tags) {
+      const row = tagMap.get(tag) || { ok: 0, total: 0 }
+      row.total += 1
+      row.ok += Number(answer.ok)
+      tagMap.set(tag, row)
+    }
+  }
+
+  return {
+    answers: evaluatedAnswers,
+    scoreCorrect,
+    scoreTotal,
+    scoreThreshold,
+    passed: scoreCorrect >= scoreThreshold,
+    blockScores,
+    tagScores: Array.from(tagMap, ([tag, result]) => ({ tag, ...result })),
+    failures: evaluatedAnswers
+      .filter((answer) => !answer.ok)
+      .map((answer) => ({
+        block: answer.blockTitle,
+        question: answer.question,
+        mine: answer.mine || '—',
+        expected: answer.expected || '—',
+        why: answer.why,
+      })),
+  }
+}
 
 const snippet = (value: unknown): string | null => {
   try {

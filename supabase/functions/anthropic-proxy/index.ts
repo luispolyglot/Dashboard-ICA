@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { ensureCoachingAdmin, scopeAllows } from '../_shared/coaching-auth.ts'
 import {
   createAnthropicToolCaller,
   generateCoachingFocusExercise,
@@ -1233,6 +1234,12 @@ Deno.serve(async (req) => {
         return jsonResponse(400, {
           error: 'targetLang, nativeLang and focusTitle are required',
         })
+      }
+
+      const coachingAdmin = await ensureCoachingAdmin(req)
+      if (!coachingAdmin.ok) return coachingAdmin.response
+      if (!scopeAllows(coachingAdmin.adminRole, coachingAdmin.scopes, targetLang, level)) {
+        return jsonResponse(403, { error: 'Forbidden' })
       }
 
       const apiKey = Deno.env.get('ANTHROPIC_API_KEY')

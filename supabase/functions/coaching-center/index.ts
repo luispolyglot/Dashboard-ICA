@@ -43,6 +43,7 @@ import {
   hasAllStudentGuidelineResponses,
   hasCoachGuidelinesCompleted,
 } from './v2-class.ts'
+import { evaluateCoachingFocusExerciseAttempt } from '../_shared/coaching-focus-exercise.ts'
 
 const OWNER_SUPPORT_COACH_USER_ID = '68890bd8-894d-422d-b865-08806acdb312'
 
@@ -2295,17 +2296,11 @@ Deno.serve(async (req) => {
     const sessionId = safeString(payload.sessionId)
     const periodNumber = normalizePeriodNumber(payload.periodNumber)
     const focusId = safeString(payload.focusId)
-    const scoreCorrect = Math.max(0, safeInteger(payload.scoreCorrect) || 0)
-    const scoreTotal = Math.max(0, safeInteger(payload.scoreTotal) || 0)
-    const scoreThreshold = Math.max(0, safeInteger(payload.scoreThreshold) || 0)
-    const passed = Boolean(payload.passed)
-    const blockScores = Array.isArray(payload.blockScores) ? payload.blockScores : []
-    const tagScores = Array.isArray(payload.tagScores) ? payload.tagScores : []
-    const failures = Array.isArray(payload.failures) ? payload.failures : []
+    const submittedAnswers = Array.isArray(payload.answers) ? payload.answers : null
 
-    if (!sessionId || !periodNumber || !focusId) {
+    if (!sessionId || !periodNumber || !focusId || !submittedAnswers) {
       return jsonResponse(400, {
-        error: 'sessionId, periodNumber and focusId are required',
+        error: 'sessionId, periodNumber, focusId and answers are required',
       })
     }
 
@@ -2342,26 +2337,51 @@ Deno.serve(async (req) => {
 
     if (focusError) return jsonResponse(500, { error: focusError.message })
     if (!focusRow) return jsonResponse(404, { error: 'Focus not found' })
+    if (!focusRow.phase_explained) {
+      return jsonResponse(403, { error: 'The focus must be explained before training.' })
+    }
+
+    const { data: exerciseRow, error: exerciseError } = await auth.adminClient
+      .from('coaching_v2_focus_exercises')
+      .select('status, payload')
+      .eq('focus_id', focusId)
+      .maybeSingle<{ status: string; payload: unknown }>()
+
+    if (exerciseError) return jsonResponse(500, { error: exerciseError.message })
+    if (!exerciseRow || exerciseRow.status !== 'ready' || !exerciseRow.payload) {
+      return jsonResponse(409, { error: 'The generated exercise is not ready.' })
+    }
+
+    let evaluation
+    try {
+      evaluation = evaluateCoachingFocusExerciseAttempt({
+        exercise: exerciseRow.payload,
+        submittedAnswers,
+      })
+    } catch (error) {
+      return jsonResponse(400, {
+        error: error instanceof Error ? error.message : 'Invalid exercise answers.',
+      })
+    }
 
     const submittedAt = new Date().toISOString()
-    const answers = Array.isArray(payload.answers) ? payload.answers.slice(0, 80) : []
     const attemptInsert = {
       session_id: sessionId,
       period_number: periodNumber,
       focus_id: focusId,
       student_user_id: auth.userId,
-      score_correct: scoreCorrect,
-      score_total: scoreTotal,
-      score_threshold: scoreThreshold,
-      passed,
-      block_scores: blockScores,
-      tag_scores: tagScores,
-      failures,
+      score_correct: evaluation.scoreCorrect,
+      score_total: evaluation.scoreTotal,
+      score_threshold: evaluation.scoreThreshold,
+      passed: evaluation.passed,
+      block_scores: evaluation.blockScores,
+      tag_scores: evaluation.tagScores,
+      failures: evaluation.failures,
       submitted_at: submittedAt,
     }
     let { data: attemptRow, error: attemptError } = await auth.adminClient
       .from('coaching_v2_focus_exercise_attempts')
-      .insert({ ...attemptInsert, answers })
+      .insert({ ...attemptInsert, answers: evaluation.answers })
       .select('*')
       .maybeSingle<CoachingV2FocusExerciseAttemptRow>()
 
@@ -2380,7 +2400,7 @@ Deno.serve(async (req) => {
 
     // Superar el ejercicio (75 % de aciertos, ver passThreshold) pasa el foco a Entrenado.
     let phaseTrainedUpdated = false
-    if (passed && focusRow.phase_explained && !focusRow.phase_trained) {
+    if (evaluation.passed && focusRow.phase_explained && !focusRow.phase_trained) {
       const { error: updateFocusError } = await auth.adminClient
         .from('coaching_v2_focuses')
         .update({
@@ -3244,6 +3264,24 @@ Deno.serve(async (req) => {
 
     if (!checked && hasNextDone) {
       return jsonResponse(400, { error: 'Cannot uncheck while next phases are completed' })
+    }
+
+    if (phase === 'phaseTrained' && checked) {
+      const { data: exerciseRow, error: exerciseError } = await admin.adminClient
+        .from('coaching_v2_focus_exercises')
+        .select('status, external_training_url')
+        .eq('focus_id', focusId)
+        .maybeSingle<{ status: string; external_training_url: string | null }>()
+
+      if (exerciseError) return jsonResponse(500, { error: exerciseError.message })
+      if (
+        exerciseRow?.status !== 'error' ||
+        !safeString(exerciseRow.external_training_url)
+      ) {
+        return jsonResponse(400, {
+          error: 'Manual training completion requires a failed generated exercise and an external training link.',
+        })
+      }
     }
 
     const nextState = applyFocusPhaseToggle({

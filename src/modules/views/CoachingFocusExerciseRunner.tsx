@@ -330,6 +330,7 @@ export function CoachingFocusExerciseRunner({
       const key = unitKey(0, idx);
       out.push({
         block: "reconocer",
+        itemIndex: idx,
         blockTitle: data.reconocer.titulo,
         question: item.lead,
         mine: said[key] || "—",
@@ -342,6 +343,8 @@ export function CoachingFocusExerciseRunner({
         const key = unitKey(1, idx, verbIdx);
         out.push({
           block: "construir",
+          itemIndex: idx,
+          unitIndex: verbIdx,
           blockTitle: data.construir.titulo,
           question: item.situacion,
           unit: verb.nombre,
@@ -356,6 +359,7 @@ export function CoachingFocusExerciseRunner({
       const key = unitKey(2, idx);
       out.push({
         block: "conversacion",
+        itemIndex: idx,
         blockTitle: data.conversacion.titulo,
         question: `Hueco ${idx + 1} (${item.verbo})`,
         mine: said[key] || "—",

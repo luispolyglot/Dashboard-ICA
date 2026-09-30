@@ -18,6 +18,10 @@ vi.mock('react-router-dom', () => ({
   useLocation: () => locationMock,
 }))
 
+vi.mock('@/auth/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'test-user' } }),
+}))
+
 vi.mock('@/modules/context/DashboardContext', () => ({
   useDashboardContext: () => useDashboardContextMock(),
 }))
@@ -34,7 +38,13 @@ vi.mock('@/modules/views/LanguageSetup', () => ({ LanguageSetup: () => null }))
 vi.mock('@/components/ui/fullscreen-loading', () => ({ FullscreenLoading: () => null }))
 
 vi.mock('@/modules/services/coaching', () => ({
-  fetchCoachingPendingReviewSummary: vi.fn(async () => ({ hasPendingReviews: false })),
+  fetchCoachingNavSummary: vi.fn(async () => ({
+    isCoachingAdmin: false,
+    activeStudents: [],
+    hasPendingReviews: false,
+    pendingSessions: 0,
+    pendingNotes: 0,
+  })),
 }))
 
 vi.mock('@/modules/services/calendarIcademy', () => ({
