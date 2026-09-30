@@ -49,6 +49,7 @@ import type {
   CalendarIcademyEntryInput,
   IcademyTeacher,
 } from '../types'
+import { useSoftLoading } from '../hooks/useSoftLoading'
 
 type EntryFormState = {
   classKey: string
@@ -198,7 +199,7 @@ function validateBulkSchedule(input: unknown): {
 export function ManageCalendarIcademyView() {
   const [entries, setEntries] = useState<CalendarIcademyEntry[]>([])
   const [teachers, setTeachers] = useState<IcademyTeacher[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading, refreshing] = useSoftLoading(true)
   const [error, setError] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingEntry, setEditingEntry] = useState<CalendarIcademyEntry | null>(
@@ -511,8 +512,12 @@ export function ManageCalendarIcademyView() {
               type='button'
               variant='outline'
               onClick={() => void loadEntries()}
+              disabled={refreshing}
             >
-              <RefreshCcwIcon data-icon='inline-start' />
+              <RefreshCcwIcon
+                data-icon='inline-start'
+                className={refreshing ? 'animate-spin' : undefined}
+              />
               Recargar
             </Button>
             <Button type='button' variant='outline' onClick={openBulkModal}>

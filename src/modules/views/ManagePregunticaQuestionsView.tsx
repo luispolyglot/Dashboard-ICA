@@ -12,13 +12,15 @@ import {
   updatePregunticaQuestionText,
   type PregunticaAdminQuestion,
 } from '../services/pregunticaAdmin'
+import { ListLoading } from '@/components/ui/loading-state'
+import { useSoftLoading } from '../hooks/useSoftLoading'
 
 export function ManagePregunticaQuestionsView() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [bulkText, setBulkText] = useState('')
   const [rows, setRows] = useState<PregunticaAdminQuestion[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading, refreshing] = useSoftLoading(true)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -170,8 +172,13 @@ export function ManagePregunticaQuestionsView() {
               <SaveIcon className='h-4 w-4' />
               Guardar preguntas
             </Button>
-            <Button type='button' variant='ghost' onClick={() => void load()} disabled={loading}>
-              <RefreshCwIcon className='h-4 w-4' />
+            <Button
+              type='button'
+              variant='ghost'
+              onClick={() => void load()}
+              disabled={loading || refreshing}
+            >
+              <RefreshCwIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
               Recargar
             </Button>
           </div>
@@ -200,7 +207,7 @@ export function ManagePregunticaQuestionsView() {
           )}
 
           {loading ? (
-            <p className='text-sm text-muted-foreground'>Cargando preguntas...</p>
+            <ListLoading label='Cargando preguntas...' />
           ) : rows.length === 0 ? (
             <p className='text-sm text-muted-foreground'>No hay preguntas cargadas.</p>
           ) : (

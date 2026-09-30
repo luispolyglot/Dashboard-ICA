@@ -46,6 +46,7 @@ import type {
   IcaTestRecord,
   Lexicard,
 } from "../types";
+import { ContentLoading } from "@/components/ui/loading-state";
 
 type IcaTestMode = "official" | "redo";
 
@@ -675,9 +676,7 @@ export function IcaTestMonthView({
   }
 
   if (isLoadingStoredTest) {
-    return (
-      <p className="text-sm text-muted-foreground">Cargando test ICA...</p>
-    );
+    return <ContentLoading label="Cargando test ICA..." cards={2} />;
   }
 
   if (loadError) {

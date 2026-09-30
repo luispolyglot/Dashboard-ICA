@@ -53,6 +53,7 @@ import { NotaDesafianteChip } from '../components/NotaDesafiante/NotaDesafianteC
 import { useChallengeEnabled } from '../services/challengeChunks'
 import { CHALLENGE_UNLOCK_RATIO } from '../services/challengeUnlocks'
 import type { MasterNote } from '../types'
+import { ListLoading } from '@/components/ui/loading-state'
 
 type MasterNotesViewProps = {
   targetLang: string
@@ -607,9 +608,7 @@ export function MasterNotesView({
             </CardContent>
           </Card>
 
-          {loading && (
-            <p className='text-sm text-muted-foreground'>Cargando notas...</p>
-          )}
+          {loading && <ListLoading label='Cargando notas...' />}
 
           {!loading && (
             <DropdownMenu>
@@ -869,11 +868,7 @@ export function MasterNotesView({
 
           <Card className='rounded-2xl'>
             <CardContent>
-              {playlistsLoading && (
-                <p className='text-sm text-muted-foreground'>
-                  Cargando listas...
-                </p>
-              )}
+              {playlistsLoading && <ListLoading label='Cargando listas...' rows={2} />}
 
               {!playlistsLoading && playlists.length === 0 && (
                 <p className='text-sm text-muted-foreground'>

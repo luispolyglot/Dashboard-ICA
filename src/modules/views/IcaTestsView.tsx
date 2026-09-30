@@ -17,6 +17,7 @@ import {
   ICA_TEST_REQUIRED_WORDS,
 } from '../services/icaTests'
 import type { Lexicard } from '../types'
+import { ListLoading } from '@/components/ui/loading-state'
 
 type IcaTestsViewProps = {
   targetLang: string
@@ -139,11 +140,7 @@ export function IcaTestsView({
             </CardContent>
           </Card>
 
-          {isLoading && (
-            <p className='text-sm text-muted-foreground'>
-              Cargando histórico de tests...
-            </p>
-          )}
+          {isLoading && <ListLoading label='Cargando histórico de tests...' rows={3} />}
           {error && <p className='text-sm text-destructive'>{error}</p>}
 
           {!isLoading && !error && tests.length === 0 && (

@@ -14,6 +14,7 @@ import {
   type HistoricLeaderboardEntry,
   type HistoricLeaderboardMonth,
 } from "../services/historicLeaderboard";
+import { ListLoading } from "@/components/ui/loading-state";
 
 type HistoricLeaderboardRowWithRankLabel = {
   row: HistoricLeaderboardEntry;
@@ -213,9 +214,7 @@ export function HistoricLeaderboardView() {
 
         <CardContent>
           {loadingMonths || loadingRows ? (
-            <p className="text-sm text-muted-foreground">
-              Cargando leaderboard...
-            </p>
+            <ListLoading label="Cargando leaderboard..." rows={5} />
           ) : months.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Aún no hay snapshots mensuales disponibles.

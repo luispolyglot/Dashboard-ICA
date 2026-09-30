@@ -52,6 +52,7 @@ import {
 } from '../services/masterNotesOfflineStore'
 import type { MasterNote } from '../types'
 import { formatDate } from '../utils'
+import { ListLoading } from '@/components/ui/loading-state'
 
 function getCurrentPath(): string {
   if (typeof window === 'undefined') return DASHBOARD_ROUTES.home
@@ -689,11 +690,7 @@ export function OfflineSafeView() {
               </DropdownMenu>
             )}
 
-            {loadingNotes && (
-              <p className='text-sm text-muted-foreground'>
-                Cargando notas offline...
-              </p>
-            )}
+            {loadingNotes && <ListLoading label='Cargando notas offline...' rows={3} />}
 
             {!loadingNotes && !notesError && visibleNotes.length === 0 && (
               <p className='text-sm text-muted-foreground'>
@@ -811,11 +808,7 @@ export function OfflineSafeView() {
               Listas de reproducción disponibles offline
             </p>
 
-            {playlistsLoading && (
-              <p className='text-sm text-muted-foreground'>
-                Cargando listas offline...
-              </p>
-            )}
+            {playlistsLoading && <ListLoading label='Cargando listas offline...' rows={2} />}
 
             {!playlistsLoading && playlists.length === 0 && (
               <p className='text-sm text-muted-foreground'>

@@ -19,6 +19,7 @@ import {
   listImprovementTrackers,
 } from '../services/trackers'
 import type { ImprovementTracker } from '../types'
+import { ListLoading } from '@/components/ui/loading-state'
 
 type TrackersViewProps = {
   targetLang: string
@@ -154,7 +155,7 @@ export function TrackersView({ targetLang, nativeLang }: TrackersViewProps) {
         </Button>
       </div>
 
-      {isLoading && <p className='text-sm text-muted-foreground'>Cargando trackers...</p>}
+      {isLoading && <ListLoading label='Cargando trackers...' rows={3} />}
       {error && <p className='text-sm text-destructive'>{error}</p>}
 
       {!isLoading && !error && trackers.length === 0 && (

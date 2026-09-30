@@ -35,6 +35,7 @@ import {
   listImprovementTrackers,
   updateImprovementTracker,
 } from '../services/trackers'
+import { ContentLoading } from '@/components/ui/loading-state'
 
 type TrackerDetailViewProps = {
   trackerId: string
@@ -220,7 +221,7 @@ export function TrackerDetailView({ trackerId, targetLang, nativeLang }: Tracker
   }
 
   if (isLoading) {
-    return <p className='text-sm text-muted-foreground'>Cargando tracker...</p>
+    return <ContentLoading label='Cargando tracker...' cards={2} />
   }
 
   if (error && !trackerMonthSource) {

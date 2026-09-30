@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { useSoftLoading } from './useSoftLoading'
 import type { MasterNotePlaylist, MasterNotePlaylistItem } from '../types'
 import {
   createMasterNotePlaylist,
@@ -20,7 +21,9 @@ export function useMasterNotePlaylists({
 }: UseMasterNotePlaylistsParams) {
   const [playlists, setPlaylists] = useState<MasterNotePlaylist[]>([])
   const [items, setItems] = useState<MasterNotePlaylistItem[]>([])
-  const [loading, setLoading] = useState(false)
+  // Solo se enseña «cargando» la primera vez; al crear, renombrar o borrar
+  // listas se actualizan sin que desaparezcan de la pantalla.
+  const [loading, setLoading] = useSoftLoading(false, `${targetLang}|${nativeLang}`)
   const [error, setError] = useState<string | null>(null)
 
   const itemsByPlaylistId = useMemo(() => {

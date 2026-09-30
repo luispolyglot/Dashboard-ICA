@@ -19,11 +19,13 @@ import {
   fetchIcademyTeachers,
 } from '../services/icademyTeachers'
 import type { IcademyTeacher, IcademyTeacherAssignableUser } from '../types'
+import { ListLoading } from '@/components/ui/loading-state'
+import { useSoftLoading } from '../hooks/useSoftLoading'
 
 export function ManageIcademyTeachersView() {
   const [teachers, setTeachers] = useState<IcademyTeacher[]>([])
   const [users, setUsers] = useState<IcademyTeacherAssignableUser[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading, refreshing] = useSoftLoading(true)
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -156,9 +158,9 @@ export function ManageIcademyTeachersView() {
                 type='button'
                 variant='ghost'
                 onClick={() => void loadData()}
-                disabled={loading}
+                disabled={loading || refreshing}
               >
-                <RefreshCwIcon className='h-4 w-4' />
+                <RefreshCwIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
                 Recargar
               </Button>
             </div>
@@ -173,7 +175,7 @@ export function ManageIcademyTeachersView() {
 
         <CardContent>
           {loading ? (
-            <p className='text-sm text-muted-foreground'>Cargando profesores...</p>
+            <ListLoading label='Cargando profesores...' />
           ) : error ? (
             <p className='rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive'>
               {error}

@@ -33,6 +33,7 @@ import type {
   PhraseGenerationEntry,
   PhraseVoiceActivationEntry,
 } from '../types'
+import { ListLoading } from '@/components/ui/loading-state'
 
 type PhraseHistoryViewProps = {
   targetLang: string
@@ -318,9 +319,7 @@ export function PhraseHistoryView({
       </div>
 
       <div className='min-h-0 flex-1 overflow-visible lg:overflow-y-auto lg:pr-1'>
-        {loading && (
-          <p className='text-sm text-muted-foreground'>Cargando historial...</p>
-        )}
+        {loading && <ListLoading label='Cargando historial...' />}
         {error && <p className='text-sm text-red-400'>{error}</p>}
 
         {!loading && !error && visibleItems.length === 0 && (
