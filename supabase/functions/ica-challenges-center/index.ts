@@ -1,22 +1,19 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
 import { CORS_HEADERS, jsonResponse } from '../_shared/http.ts'
 import { ensureAuthenticated } from '../_shared/coaching-auth.ts'
+import { listAvailableUsers } from './directory.ts'
+import { cancelInvitation, createChallenge, respondInvitation } from './invitations.ts'
+import type { AdminClient, ChallengeScope, ChallengeStatus, LanguagePair } from './types.ts'
 import {
-  activeSinceDay,
   boardIndices,
   boardStart,
-  buildModeSettings,
-  checkMixedAllowed,
-  countEligible,
-  DEFAULT_MAX_LEVEL_GAP,
   decideResult,
+  DEFAULT_MAX_LEVEL_GAP,
   evaluatePairsBoard,
   evaluateResponse,
   generateQuestions,
   isAnswerInTime,
   isCompetitorDone,
-  isRecentlyActive,
   isLightningSessionOver,
   LIGHTNING_GRACE_MS,
   isPendingQuestionStale,
@@ -24,7 +21,6 @@ import {
   isRoundFinished,
   levelFromTracker,
   MIN_WORDS_TO_JOIN,
-  minWordsForKind,
   MODE_DEFAULTS,
   nextTurnUserId,
   normalizeLevel,
@@ -33,11 +29,8 @@ import {
   readPairMatches,
   remainingQuestionMs,
   roundInfo,
-  settingsToMetadata,
-  summarizeChallengeActivity,
   usesTimeTiebreak,
   wordsMissingToJoin,
-  type ActivityChallengeRow,
   type CompetitorGameState,
   type EngineCard,
   type ModeSettings,
@@ -47,17 +40,6 @@ import {
   type SecretAnswer,
   type WordSource,
 } from './engine.ts'
-
-type AdminClient = ReturnType<typeof createClient>
-
-type ChallengeScope = 'global' | 'language'
-type ChallengeStatus =
-  | 'created'
-  | 'in_progress'
-  | 'completed'
-  | 'cancelled'
-  | 'expired'
-  | 'not_accepted'
 
 type PushSubscriptionRow = {
   id: string
@@ -77,7 +59,7 @@ type ChallengeTypeRow = {
   icono: string
   activo: boolean
   orden: number
-  ambitos: string[]
+  ambitos: ChallengeScope[]
   config: Record<string, unknown>
 }
 
@@ -367,8 +349,6 @@ async function fetchLevelsForPair(input: {
 // Palabras ICA de cada alumno
 // ---------------------------------------------------------------------------
 
-type LanguagePair = { targetLang: string; nativeLang: string }
-
 async function fetchCards(
   adminClient: AdminClient,
   userId: string,
@@ -499,755 +479,6 @@ function notEnoughWordsToJoinMessage(wordCount: number, action: 'retar' | 'acept
   const missing = wordsMissingToJoin(wordCount)
   const verb = action === 'retar' ? 'retar' : 'aceptar retos'
   return `Necesitas ${MIN_WORDS_TO_JOIN} palabras en tu Baúl ICA para ${verb}. Tienes ${wordCount}: te faltan ${missing}.`
-}
-
-// ---------------------------------------------------------------------------
-// Rivales disponibles
-// ---------------------------------------------------------------------------
-
-async function listAvailableUsers(input: {
-  adminClient: AdminClient
-  userId: string
-  targetLang: string
-  nativeLang: string
-  scope: ChallengeScope
-}) {
-  const activeCount = await countActiveChallenges(input.adminClient, input.userId)
-
-  const enrollmentQuery = input.adminClient
-    .from('users_ica_challenges')
-    .select('user_id, target_lang, native_lang, updated_at')
-    .eq('is_active', true)
-
-  if (input.scope === 'language') {
-    enrollmentQuery
-      .eq('target_lang', input.targetLang)
-      .eq('native_lang', input.nativeLang)
-  }
-
-  const { data: enrollmentRows, error: enrollmentError } = await enrollmentQuery
-  if (enrollmentError) return jsonResponse(500, { error: enrollmentError.message })
-
-  const enrollmentList = (enrollmentRows || []) as Array<Record<string, unknown>>
-
-  const candidateIds = Array.from(
-    new Set(
-      enrollmentList
-        .map((row) => toText(row.user_id))
-        .filter((id) => id && id !== input.userId),
-    ),
-  )
-
-  const latestEnrollmentByUser = new Map<
-    string,
-    { targetLang: string | null; nativeLang: string | null; updatedAt: string | null }
-  >()
-  // Quién está inscrito con MI par de idiomas (puede jugar "por idioma").
-  const samePairUserIds = new Set<string>()
-
-  for (const rawRow of enrollmentList) {
-    const userId = toText(rawRow.user_id)
-    if (!userId || userId === input.userId) continue
-
-    if (
-      toText(rawRow.target_lang) === input.targetLang &&
-      toText(rawRow.native_lang) === input.nativeLang
-    ) {
-      samePairUserIds.add(userId)
-    }
-
-    const previous = latestEnrollmentByUser.get(userId)
-    const currentUpdatedAt = toText(rawRow.updated_at) || null
-    const previousUpdatedAt = previous?.updatedAt || null
-
-    const shouldReplace =
-      !previous ||
-      (currentUpdatedAt !== null &&
-        (previousUpdatedAt === null || currentUpdatedAt > previousUpdatedAt))
-
-    if (!shouldReplace) continue
-
-    latestEnrollmentByUser.set(userId, {
-      targetLang: toText(rawRow.target_lang) || null,
-      nativeLang: toText(rawRow.native_lang) || null,
-      updatedAt: currentUpdatedAt,
-    })
-  }
-
-  const settingsByUser = await fetchSettingsByUser(input.adminClient, [input.userId, ...candidateIds])
-  const levels = await fetchLevelsForPair({
-    adminClient: input.adminClient,
-    userIds: [input.userId, ...Array.from(samePairUserIds)],
-    targetLang: input.targetLang,
-    nativeLang: input.nativeLang,
-    settingsByUser,
-  })
-  const myLevel = levels.get(input.userId) ?? null
-  const myWordCount =
-    input.targetLang && input.nativeLang
-      ? await countWordsForPair(input.adminClient, input.userId, {
-          targetLang: input.targetLang,
-          nativeLang: input.nativeLang,
-        })
-      : 0
-  const wordsInfo = { myWordCount, minWordsToJoin: MIN_WORDS_TO_JOIN }
-
-  if (candidateIds.length === 0) {
-    return jsonResponse(200, { rows: [], myActiveChallengesCount: activeCount, myLevel, ...wordsInfo })
-  }
-
-  const { data: profilesRows, error: profilesError } = await input.adminClient
-    .from('profiles')
-    .select('id, display_name, username')
-    .in('id', candidateIds)
-
-  if (profilesError) return jsonResponse(500, { error: profilesError.message })
-
-  const candidatePairs = new Map<string, LanguagePair>()
-  for (const userId of candidateIds) {
-    const candidateSetting = settingsByUser.get(userId)
-    const candidateEnrollment = latestEnrollmentByUser.get(userId)
-    const pair =
-      input.scope === 'language'
-        ? { targetLang: input.targetLang, nativeLang: input.nativeLang }
-        : candidateSetting?.targetLang && candidateSetting.nativeLang
-          ? { targetLang: candidateSetting.targetLang, nativeLang: candidateSetting.nativeLang }
-          : candidateEnrollment?.targetLang && candidateEnrollment.nativeLang
-            ? { targetLang: candidateEnrollment.targetLang, nativeLang: candidateEnrollment.nativeLang }
-            : null
-    if (pair) candidatePairs.set(userId, pair)
-  }
-
-  const directoryMetricsResult = await input.adminClient.rpc('ica_challenge_directory_metrics', {
-    p_current_user_id: input.userId,
-    p_candidate_ids: candidateIds,
-    p_language_pairs: Array.from(candidatePairs, ([userId, pair]) => ({
-      user_id: userId,
-      target_lang: pair.targetLang,
-      native_lang: pair.nativeLang,
-    })),
-  })
-  if (directoryMetricsResult.error) {
-    return jsonResponse(500, { error: directoryMetricsResult.error.message })
-  }
-  const directoryMetricsByUser = new Map<string, Record<string, unknown>>()
-  for (const metric of (directoryMetricsResult.data || []) as Array<Record<string, unknown>>) {
-    const userId = toText(metric.user_id)
-    if (userId) directoryMetricsByUser.set(userId, metric)
-  }
-
-  // --- Actividad: quién juega más retos, su racha y quién lleva 30 días sin entrar ---
-  const nowMs = Date.now()
-  const [metricsResult, activityResult] = await Promise.all([
-    input.adminClient
-      .from('daily_metrics')
-      .select('user_id, day')
-      .in('user_id', candidateIds)
-      .gte('day', activeSinceDay(nowMs)),
-    input.adminClient
-      .from('ica_challenges')
-      .select('challenger_user_id, challenged_user_id, status, result_type, winner_user_id, finalized_at, created_at')
-      .or(`challenger_user_id.in.(${candidateIds.join(',')}),challenged_user_id.in.(${candidateIds.join(',')})`)
-      .order('created_at', { ascending: false })
-      .limit(3000),
-  ])
-  // Si no se puede saber la actividad, no se esconde a nadie.
-  const activityKnown = !metricsResult.error
-  const lastAppDayByUser = new Map<string, string>()
-  for (const row of (metricsResult.data || []) as Array<Record<string, unknown>>) {
-    const userId = toText(row.user_id)
-    const day = toText(row.day)
-    if (!userId || !day) continue
-    const previous = lastAppDayByUser.get(userId)
-    if (!previous || day > previous) lastAppDayByUser.set(userId, day)
-  }
-  const activityRows: ActivityChallengeRow[] = ((activityResult.data || []) as Array<Record<string, unknown>>).map(
-    (row) => ({
-      challengerUserId: toText(row.challenger_user_id),
-      challengedUserId: toText(row.challenged_user_id),
-      status: toText(row.status),
-      resultType: toText(row.result_type) || null,
-      winnerUserId: toText(row.winner_user_id) || null,
-      finalizedAt: toText(row.finalized_at) || null,
-      createdAt: toText(row.created_at) || null,
-    }),
-  )
-
-  const rows = ((profilesRows || []) as Array<Record<string, unknown>>).map((row) => {
-    const userId = toText(row.id)
-
-    // Quien lleva 30 días o más sin usar la app no sale en la lista.
-    const activity = summarizeChallengeActivity(activityRows, userId, nowMs)
-    if (
-      activityKnown &&
-      !isRecentlyActive({
-        lastAppActivityDay: lastAppDayByUser.get(userId) ?? null,
-        lastChallengeAtMs: activity.lastChallengeAtMs,
-        nowMs,
-      })
-    ) {
-      return null
-    }
-
-    // Solo salen candidatos con un idioma y al menos 20 palabras en su baúl.
-    const candidatePair = candidatePairs.get(userId)
-    if (!candidatePair) return null
-    const metrics = directoryMetricsByUser.get(userId)
-    const candidateWords = Number(metrics?.word_count || 0)
-    if (wordsMissingToJoin(candidateWords) > 0) return null
-
-    const userActiveCount = Number(metrics?.active_challenges_count || 0)
-    const activePair = Boolean(metrics?.has_active_pair)
-
-    let blockedReason: string | null = null
-    if (activeCount >= MAX_ACTIVE_CHALLENGES) blockedReason = 'Tu máximo de desafíos activos es 3.'
-    else if (userActiveCount >= MAX_ACTIVE_CHALLENGES)
-      blockedReason = 'Este usuario ya tiene 3 desafíos activos.'
-    else if (activePair)
-      blockedReason = 'Ya tienen un desafío activo entre ustedes.'
-
-    const setting = settingsByUser.get(userId)
-    const enrollment = latestEnrollmentByUser.get(userId)
-    const samePair = samePairUserIds.has(userId)
-    const level = samePair ? levels.get(userId) ?? null : null
-    const mixed = samePair
-      ? checkMixedAllowed({ myLevel, rivalLevel: level, maxGap: DEFAULT_MAX_LEVEL_GAP })
-      : { allowed: false as const, reason: 'Solo con icademers de tu mismo idioma.' }
-
-    return {
-      userId,
-      displayName: toText(row.display_name) || 'Usuario',
-      username: toText(row.username) || null,
-      nativeLang: setting?.nativeLang || enrollment?.nativeLang || null,
-      targetLang: setting?.targetLang || enrollment?.targetLang || null,
-      // Antes salía el ajuste cefr_level (A2 por defecto). Ahora, el nivel real de la barra.
-      cefrLevel: level,
-      level,
-      samePair,
-      mixedAllowed: mixed.allowed,
-      mixedBlockedReason: mixed.allowed ? null : mixed.reason,
-      activeChallengesCount: userActiveCount,
-      canChallenge: blockedReason === null,
-      blockedReason,
-      // Racha de victorias seguidas (se ve al lado del nombre).
-      winStreak: activity.winStreak,
-      // Desafíos de los últimos 30 días: los que más juegan salen los primeros.
-      recentChallenges: activity.recentChallenges,
-    }
-  })
-
-  const visibleRows = rows.filter((row): row is NonNullable<typeof row> => row !== null)
-  visibleRows.sort(
-    (a, b) => b.recentChallenges - a.recentChallenges || a.displayName.localeCompare(b.displayName, 'es'),
-  )
-  return jsonResponse(200, { rows: visibleRows, myActiveChallengesCount: activeCount, myLevel, ...wordsInfo })
-}
-
-// ---------------------------------------------------------------------------
-// Crear un desafío (cualquier modo)
-// ---------------------------------------------------------------------------
-
-async function createChallenge(input: {
-  adminClient: AdminClient
-  userId: string
-  body: Record<string, unknown>
-}) {
-  const challengeTypeId = toText(input.body.challengeTypeId) || 'ica-own-words'
-  const challengedUserId = toText(input.body.challengedUserId)
-  const scope = toScope(input.body.scope)
-  const targetLang = toText(input.body.targetLang)
-  const nativeLang = toText(input.body.nativeLang)
-  const wordSource = toWordSource(input.body.wordSource)
-  const durationSeconds = toDurationSecondsDaysRange(input.body.durationSeconds)
-
-  if (!challengedUserId) return jsonResponse(400, { error: 'Rival inválido.' })
-  if (challengedUserId === input.userId) {
-    return jsonResponse(400, { error: 'No puedes desafiarte a ti mismo.' })
-  }
-
-  if (scope === 'language' && (!targetLang || !nativeLang)) {
-    return jsonResponse(400, { error: 'Faltan idiomas para el desafío por idioma.' })
-  }
-
-  if (wordSource === 'mixed' && scope !== 'language') {
-    return jsonResponse(400, {
-      code: 'ICA_CHALLENGE_MIXED_NEEDS_LANGUAGE',
-      error: 'La mezcla de baúles ICA solo se puede jugar con alguien de tu mismo idioma.',
-    })
-  }
-
-  const challengeTypeResult = await getChallengeTypeById({
-    adminClient: input.adminClient,
-    challengeTypeId,
-  })
-  if (challengeTypeResult.error) {
-    return jsonResponse(500, { error: challengeTypeResult.error })
-  }
-
-  const challengeType = challengeTypeResult.row
-  if (!challengeType) {
-    return jsonResponse(400, { code: 'ICA_CHALLENGE_TYPE_NOT_FOUND', error: 'Ese modo de desafío no existe.' })
-  }
-
-  if (!challengeType.activo) {
-    return jsonResponse(400, { code: 'ICA_CHALLENGE_TYPE_NOT_ACTIVE', error: 'Ese modo aún no está disponible.' })
-  }
-
-  if (!challengeType.ambitos.includes(scope)) {
-    return jsonResponse(400, {
-      code: 'ICA_CHALLENGE_SCOPE_NOT_SUPPORTED',
-      error: 'Este modo no se puede jugar con este icademer.',
-    })
-  }
-
-  const settings = buildModeSettings({
-    typeId: challengeTypeId,
-    typeConfig: challengeType.config,
-    rounds: input.body.rounds,
-    responseSeconds: input.body.responseSeconds,
-    wordSource,
-  })
-  if (!settings) {
-    return jsonResponse(400, {
-      code: 'ICA_CHALLENGE_TYPE_NOT_PLAYABLE_YET',
-      error: 'Este modo todavía no se puede jugar.',
-    })
-  }
-
-  const myActiveCount = await countActiveChallenges(input.adminClient, input.userId)
-  if (myActiveCount >= MAX_ACTIVE_CHALLENGES) {
-    return jsonResponse(400, {
-      code: 'ICA_CHALLENGE_ACTIVE_LIMIT_REACHED',
-      error: 'Ya tienes 3 desafíos activos. Termina uno para retar de nuevo.',
-    })
-  }
-
-  const rivalActiveCount = await countActiveChallenges(input.adminClient, challengedUserId)
-  if (rivalActiveCount >= MAX_ACTIVE_CHALLENGES) {
-    return jsonResponse(400, {
-      code: 'ICA_CHALLENGE_OPPONENT_ACTIVE_LIMIT_REACHED',
-      error: 'Ese icademer ya tiene 3 desafíos activos.',
-    })
-  }
-
-  const activePair = await hasActivePairChallenge(
-    input.adminClient,
-    input.userId,
-    challengedUserId,
-  )
-  if (activePair) {
-    return jsonResponse(400, {
-      code: 'ICA_CHALLENGE_ACTIVE_PAIR_EXISTS',
-      error: 'Ya tienen un desafío activo entre ustedes.',
-    })
-  }
-
-  const myEnrollmentQuery = input.adminClient
-    .from('users_ica_challenges')
-    .select('id')
-    .eq('user_id', input.userId)
-    .eq('is_active', true)
-
-  if (scope === 'language') {
-    myEnrollmentQuery.eq('target_lang', targetLang).eq('native_lang', nativeLang)
-  }
-
-  const rivalEnrollmentQuery = input.adminClient
-    .from('users_ica_challenges')
-    .select('id')
-    .eq('user_id', challengedUserId)
-    .eq('is_active', true)
-
-  if (scope === 'language') {
-    rivalEnrollmentQuery.eq('target_lang', targetLang).eq('native_lang', nativeLang)
-  }
-
-  const [myEnrollmentResult, rivalEnrollmentResult] = await Promise.all([
-    myEnrollmentQuery.limit(1),
-    rivalEnrollmentQuery.limit(1),
-  ])
-
-  if (myEnrollmentResult.error || rivalEnrollmentResult.error) {
-    return jsonResponse(500, {
-      error:
-        myEnrollmentResult.error?.message ||
-        rivalEnrollmentResult.error?.message ||
-        'No se pudo validar la inscripción.',
-    })
-  }
-
-  if ((myEnrollmentResult.data || []).length === 0) {
-    return jsonResponse(400, { error: 'Debes activar tu inscripción a desafíos.' })
-  }
-
-  if ((rivalEnrollmentResult.data || []).length === 0) {
-    return jsonResponse(400, { error: 'El rival no está inscrito para este modo.' })
-  }
-
-  // --- Nivel parecido (solo para la mezcla de baúles) ---
-  let levelsMetadata: Record<string, string | null> | null = null
-  if (wordSource === 'mixed') {
-    const levels = await fetchLevelsForPair({
-      adminClient: input.adminClient,
-      userIds: [input.userId, challengedUserId],
-      targetLang,
-      nativeLang,
-    })
-    const myLevel = levels.get(input.userId) ?? null
-    const rivalLevel = levels.get(challengedUserId) ?? null
-    const mixed = checkMixedAllowed({
-      myLevel,
-      rivalLevel,
-      maxGap: maxLevelGapFor(challengeType.config),
-    })
-    if (!mixed.allowed) {
-      return jsonResponse(400, { code: 'ICA_CHALLENGE_LEVEL_GAP', error: mixed.reason })
-    }
-    levelsMetadata = { challenger: myLevel, challenged: rivalLevel }
-  }
-
-  // --- ¿Hay palabras suficientes para este modo? ---
-  const myPair: LanguagePair | null =
-    targetLang && nativeLang
-      ? { targetLang, nativeLang }
-      : await resolvePlayerPair(input.adminClient, { scope, target_lang: null, native_lang: null }, input.userId)
-  const rivalPair: LanguagePair | null =
-    scope === 'language'
-      ? { targetLang, nativeLang }
-      : await resolvePlayerPair(input.adminClient, { scope, target_lang: null, native_lang: null }, challengedUserId)
-
-  if (!myPair || !rivalPair) {
-    return jsonResponse(400, { error: 'No encontramos el idioma de alguno de los dos.' })
-  }
-
-  // --- Mínimo de 20 palabras en el baúl para entrar en los retos ---
-  const [myWordCount, rivalWordCount] = await Promise.all([
-    countWordsForPair(input.adminClient, input.userId, myPair),
-    countWordsForPair(input.adminClient, challengedUserId, rivalPair),
-  ])
-  if (wordsMissingToJoin(myWordCount) > 0) {
-    return jsonResponse(400, {
-      code: 'ICA_CHALLENGE_MIN_WORDS',
-      error: notEnoughWordsToJoinMessage(myWordCount, 'retar'),
-    })
-  }
-  if (wordsMissingToJoin(rivalWordCount) > 0) {
-    return jsonResponse(400, {
-      code: 'ICA_CHALLENGE_RIVAL_MIN_WORDS',
-      error: `Este icademer aún no tiene ${MIN_WORDS_TO_JOIN} palabras en su Baúl ICA.`,
-    })
-  }
-
-  const [myCards, rivalCards] = await Promise.all([
-    fetchCards(input.adminClient, input.userId, myPair),
-    fetchCards(input.adminClient, challengedUserId, rivalPair),
-  ])
-  const requirement = KIND_REQUIREMENT[settings.kind]
-  const minWords = minWordsForKind(settings.kind)
-  const myEligible = countEligible(settings.kind, myCards, myPair.targetLang)
-  const rivalEligible = countEligible(settings.kind, rivalCards, rivalPair.targetLang)
-
-  if (wordSource === 'mixed') {
-    const combinedEligible = countEligible(settings.kind, [...myCards, ...rivalCards], targetLang)
-    if (
-      combinedEligible < minWords ||
-      !hasPlayableQuestionSet({ settings, pools: [myCards, rivalCards], language: targetLang })
-    ) {
-      return jsonResponse(400, {
-        code: 'ICA_CHALLENGE_NOT_ENOUGH_WORDS',
-        error: `Entre los dos necesitan al menos ${minWords} palabras ICA${requirement} para «${challengeType.nombre}».`,
-      })
-    }
-  } else {
-    if (
-      myEligible < minWords ||
-      !hasPlayableQuestionSet({ settings, pools: [myCards], language: myPair.targetLang })
-    ) {
-      return jsonResponse(400, {
-        code: 'ICA_CHALLENGE_NOT_ENOUGH_WORDS',
-        error: `Necesitas al menos ${minWords} palabras ICA${requirement} para «${challengeType.nombre}».`,
-      })
-    }
-    if (
-      rivalEligible < minWords ||
-      !hasPlayableQuestionSet({ settings, pools: [rivalCards], language: rivalPair.targetLang })
-    ) {
-      return jsonResponse(400, {
-        code: 'ICA_CHALLENGE_RIVAL_NOT_ENOUGH_WORDS',
-        error: `Tu rival aún no tiene ${minWords} palabras ICA${requirement} para «${challengeType.nombre}».`,
-      })
-    }
-  }
-
-  const expiresAt = new Date(Date.now() + durationSeconds * 1000).toISOString()
-  const acceptUntil = addSecondsToNow(INVITATION_WINDOW_SECONDS)
-
-  const { data: challenge, error: challengeError } = await input.adminClient
-    .from('ica_challenges')
-    .insert({
-      challenge_slug: challengeTypeId,
-      status: 'created',
-      result_type: 'pending',
-      scope,
-      target_lang: scope === 'language' ? targetLang : null,
-      native_lang: scope === 'language' ? nativeLang : null,
-      challenger_user_id: input.userId,
-      challenged_user_id: challengedUserId,
-      duration_seconds: durationSeconds,
-      expires_at: expiresAt,
-      accept_until: acceptUntil,
-      game_metadata: settingsToMetadata(settings, levelsMetadata ? { levels: levelsMetadata } : {}),
-      phases_json: [
-        { key: 'invitation', status: 'pending' },
-        { key: 'duel', status: 'locked' },
-      ],
-    })
-    .select('id')
-    .single()
-
-  if (challengeError || !challenge) {
-    const message = challengeError?.message || 'No se pudo crear el desafío.'
-    return jsonResponse(400, { error: message })
-  }
-
-  const challengeId = toText((challenge as Record<string, unknown>).id)
-  const { error: competitorsError } = await input.adminClient
-    .from('ica_challenge_competitors')
-    .insert([
-      {
-        challenge_id: challengeId,
-        user_id: input.userId,
-        competitor_order: 1,
-        invitation_status: 'accepted',
-        accepted_at: new Date().toISOString(),
-      },
-      {
-        challenge_id: challengeId,
-        user_id: challengedUserId,
-        competitor_order: 2,
-        invitation_status: 'pending',
-      },
-    ])
-
-  if (competitorsError) {
-    return jsonResponse(400, { error: competitorsError.message })
-  }
-
-  await sendPushToUser({
-    adminClient: input.adminClient,
-    userId: challengedUserId,
-    title: 'Nuevo desafío ICA',
-    body: `Te retaron a «${challengeType.nombre}». Respóndelo para empezar.`,
-    tag: `ica-challenge-created-${challengeId}`,
-    url: '/desafios-ica',
-  })
-
-  return jsonResponse(200, { ok: true, challengeId })
-}
-
-async function respondInvitation(input: {
-  adminClient: AdminClient
-  userId: string
-  body: Record<string, unknown>
-}) {
-  const challengeId = toText(input.body.challengeId)
-  const accept = Boolean(input.body.accept)
-  if (!challengeId) return jsonResponse(400, { error: 'challengeId inválido.' })
-
-  const { data: existing, error: existingError } = await input.adminClient
-    .from('ica_challenges')
-    .select('id, challenger_user_id, challenged_user_id, status, accept_until, scope, target_lang, native_lang, challenge_slug, game_metadata')
-    .eq('id', challengeId)
-    .eq('challenged_user_id', input.userId)
-    .maybeSingle()
-
-  if (existingError) return jsonResponse(500, { error: existingError.message })
-  if (!existing) return jsonResponse(404, { error: 'Desafío no encontrado.' })
-  if (existing.status !== 'created') {
-    return jsonResponse(400, { error: 'El desafío ya fue respondido.' })
-  }
-
-  const nowTs = Date.now()
-  const acceptUntilTs = existing.accept_until ? Date.parse(existing.accept_until) : NaN
-  if (Number.isFinite(acceptUntilTs) && acceptUntilTs <= nowTs) {
-    await input.adminClient
-      .from('ica_challenges')
-      .update({
-        status: 'not_accepted',
-        result_type: 'not_accepted',
-        finalized_at: new Date().toISOString(),
-        winner_user_id: null,
-        turn_user_id: null,
-        turn_expires_at: null,
-      })
-      .eq('id', challengeId)
-
-    return jsonResponse(400, { error: 'El reto ya caducó.' })
-  }
-
-  // Para aceptar se vuelven a validar las 20 palabras y las palabras elegibles del modo;
-  // el baúl de cualquiera puede haber cambiado desde que se envió la invitación.
-  if (accept) {
-    const challengePair = {
-      scope: toScope(existing.scope),
-      target_lang: toText(existing.target_lang) || null,
-      native_lang: toText(existing.native_lang) || null,
-    }
-    const [challengerPair, challengedPair] = await Promise.all([
-      resolvePlayerPair(input.adminClient, challengePair, toText(existing.challenger_user_id)),
-      resolvePlayerPair(input.adminClient, challengePair, toText(existing.challenged_user_id)),
-    ])
-    const [challengerCount, challengedCount] = await Promise.all([
-      challengerPair
-        ? countWordsForPair(input.adminClient, toText(existing.challenger_user_id), challengerPair)
-        : Promise.resolve(0),
-      challengedPair
-        ? countWordsForPair(input.adminClient, toText(existing.challenged_user_id), challengedPair)
-        : Promise.resolve(0),
-    ])
-    const wordCount = challengedCount
-    if (wordsMissingToJoin(wordCount) > 0) {
-      return jsonResponse(400, {
-        code: 'ICA_CHALLENGE_MIN_WORDS',
-        error: notEnoughWordsToJoinMessage(wordCount, 'aceptar'),
-      })
-    }
-    if (wordsMissingToJoin(challengerCount) > 0) {
-      return jsonResponse(400, {
-        code: 'ICA_CHALLENGE_RIVAL_MIN_WORDS',
-        error: `El retador necesita al menos ${MIN_WORDS_TO_JOIN} palabras en su Baúl ICA.`,
-      })
-    }
-
-    const settings = readModeSettings(toText(existing.challenge_slug), existing.game_metadata)
-    if (!settings || !challengerPair || !challengedPair) {
-      return jsonResponse(400, { error: 'No se pudo validar el modo o los idiomas del desafío.' })
-    }
-    const [challengerCards, challengedCards] = await Promise.all([
-      fetchCards(input.adminClient, toText(existing.challenger_user_id), challengerPair),
-      fetchCards(input.adminClient, toText(existing.challenged_user_id), challengedPair),
-    ])
-    const minWords = minWordsForKind(settings.kind)
-    if (settings.wordSource === 'mixed') {
-      const language = challengePair.target_lang || challengedPair.targetLang
-      const combinedEligible = countEligible(settings.kind, [...challengerCards, ...challengedCards], language)
-      if (
-        combinedEligible < minWords ||
-        !hasPlayableQuestionSet({ settings, pools: [challengerCards, challengedCards], language })
-      ) {
-        return jsonResponse(400, {
-          code: 'ICA_CHALLENGE_NOT_ENOUGH_WORDS',
-          error: `Entre los dos necesitan al menos ${minWords} palabras ICA${KIND_REQUIREMENT[settings.kind]} para este modo.`,
-        })
-      }
-    } else {
-      const challengerEligible = countEligible(settings.kind, challengerCards, challengerPair.targetLang)
-      const challengedEligible = countEligible(settings.kind, challengedCards, challengedPair.targetLang)
-      if (
-        challengerEligible < minWords ||
-        challengedEligible < minWords ||
-        !hasPlayableQuestionSet({ settings, pools: [challengerCards], language: challengerPair.targetLang }) ||
-        !hasPlayableQuestionSet({ settings, pools: [challengedCards], language: challengedPair.targetLang })
-      ) {
-        return jsonResponse(400, {
-          code: 'ICA_CHALLENGE_NOT_ENOUGH_WORDS',
-          error: `Ambos necesitan al menos ${minWords} palabras ICA${KIND_REQUIREMENT[settings.kind]} válidas para este modo.`,
-        })
-      }
-    }
-  }
-
-  const nowIso = new Date().toISOString()
-  const firstTurnExpiresAt = addSecondsToNow(TURN_WINDOW_SECONDS)
-  const { error: competitorError } = await input.adminClient
-    .from('ica_challenge_competitors')
-    .update({
-      invitation_status: accept ? 'accepted' : 'rejected',
-      accepted_at: accept ? nowIso : null,
-      rejected_at: accept ? null : nowIso,
-    })
-    .eq('challenge_id', challengeId)
-    .eq('user_id', input.userId)
-
-  if (competitorError) return jsonResponse(500, { error: competitorError.message })
-
-  const { error: challengeError } = await input.adminClient
-    .from('ica_challenges')
-    .update({
-      status: accept ? 'in_progress' : 'not_accepted',
-      result_type: accept ? 'pending' : 'not_accepted',
-      started_at: accept ? nowIso : null,
-      finalized_at: accept ? null : nowIso,
-      winner_user_id: null,
-      turn_user_id: accept ? input.userId : null,
-      turn_expires_at: accept ? firstTurnExpiresAt : null,
-    })
-    .eq('id', challengeId)
-
-  if (challengeError) return jsonResponse(500, { error: challengeError.message })
-
-  await sendPushToUser({
-    adminClient: input.adminClient,
-    userId: toText(existing.challenger_user_id),
-    title: accept ? 'Desafío aceptado' : 'Desafío rechazado',
-    body: accept
-      ? 'Tu rival aceptó el desafío. Empieza su primer turno.'
-      : 'Tu rival no aceptó el desafío.',
-    tag: `ica-challenge-response-${challengeId}`,
-    url: '/desafios-ica',
-  })
-
-  return jsonResponse(200, { ok: true, challengeId, status: accept ? 'in_progress' : 'not_accepted' })
-}
-
-async function cancelInvitation(input: {
-  adminClient: AdminClient
-  userId: string
-  body: Record<string, unknown>
-}) {
-  const challengeId = toText(input.body.challengeId)
-  if (!challengeId) return jsonResponse(400, { error: 'challengeId inválido.' })
-
-  const { data: challenge, error: readError } = await input.adminClient
-    .from('ica_challenges')
-    .select('id, status, challenger_user_id, challenged_user_id')
-    .eq('id', challengeId)
-    .eq('challenger_user_id', input.userId)
-    .maybeSingle()
-
-  if (readError) return jsonResponse(500, { error: readError.message })
-  if (!challenge) return jsonResponse(404, { error: 'Desafío no encontrado.' })
-
-  if (challenge.status !== 'created') {
-    return jsonResponse(400, { error: 'El desafío ya no está pendiente.' })
-  }
-
-  const nowIso = new Date().toISOString()
-  const { error: updateError } = await input.adminClient
-    .from('ica_challenges')
-    .update({
-      status: 'cancelled',
-      result_type: 'cancelled',
-      finalized_at: nowIso,
-      winner_user_id: null,
-      turn_user_id: null,
-      turn_expires_at: null,
-    })
-    .eq('id', challengeId)
-    .eq('status', 'created')
-
-  if (updateError) return jsonResponse(500, { error: updateError.message })
-
-  await sendPushToUser({
-    adminClient: input.adminClient,
-    userId: toText(challenge.challenged_user_id),
-    title: 'Reto cancelado',
-    body: 'El retador canceló el desafío antes de que respondieras.',
-    tag: `ica-challenge-cancelled-${challengeId}`,
-    url: '/desafios-ica',
-  })
-
-  return jsonResponse(200, { ok: true, challengeId, status: 'cancelled' })
 }
 
 // ---------------------------------------------------------------------------
@@ -2284,11 +1515,40 @@ Deno.serve(async (req) => {
       targetLang: toText(payload.targetLang),
       nativeLang: toText(payload.nativeLang),
       scope: toScope(payload.scope),
+      maxActiveChallenges: MAX_ACTIVE_CHALLENGES,
+      countActiveChallenges,
+      fetchSettingsByUser,
+      fetchLevelsForPair,
+      countWordsForPair,
+      toText,
     })
   }
 
+  const invitationDependencies = {
+    turnWindowSeconds: TURN_WINDOW_SECONDS,
+    invitationWindowSeconds: INVITATION_WINDOW_SECONDS,
+    maxActiveChallenges: MAX_ACTIVE_CHALLENGES,
+    toText,
+    toScope,
+    toWordSource,
+    toDurationSecondsDaysRange,
+    addSecondsToNow,
+    getChallengeTypeById,
+    maxLevelGapFor,
+    countActiveChallenges,
+    hasActivePairChallenge,
+    fetchLevelsForPair,
+    resolvePlayerPair,
+    countWordsForPair,
+    fetchCards,
+    hasPlayableQuestionSet,
+    notEnoughWordsToJoinMessage,
+    kindRequirement: KIND_REQUIREMENT,
+    sendPushToUser,
+  }
+
   if (action === 'create-challenge' || action === 'create-own-words') {
-    return createChallenge(baseInput)
+    return createChallenge(baseInput, invitationDependencies)
   }
 
   if (action === 'list-challenge-types') {
@@ -2298,11 +1558,11 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'respond-invitation') {
-    return respondInvitation(baseInput)
+    return respondInvitation(baseInput, invitationDependencies)
   }
 
   if (action === 'cancel-invitation') {
-    return cancelInvitation(baseInput)
+    return cancelInvitation(baseInput, invitationDependencies)
   }
 
   if (action === 'play-state') {
