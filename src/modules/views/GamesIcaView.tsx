@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { useFeatureFlagsStore } from '../stores/featureFlagsStore'
-import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocal'
+import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocalMode'
 import { ChallengeAlertPill } from '../components/IcaChallenges/ChallengeAlertBadge'
 import {
   challengesRouteForAlerts,

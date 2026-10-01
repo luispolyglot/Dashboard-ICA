@@ -161,6 +161,7 @@ const FEEDBACK_MS_WRONG = 2000
 const FEEDBACK_MS_PAIRS_PERFECT = 1800
 const FEEDBACK_MS_PAIRS = 3800
 const PAIRS_PER_BOARD = 5
+const LIGHTNING_END_GRACE_MS = 1800
 
 function normalizeComparable(value: string): string {
   return value.normalize('NFKC').trim().toLowerCase()
@@ -562,7 +563,8 @@ export function IcaChallengePlayView({
   const sessionCountdown = useCountdown({
     endsAt: isLightning && phase === 'question' ? sessionEndsAt : null,
     totalMs: sessionTotalMs,
-    onExpire: () => void endLightning(),
+    // El servidor conserva una pequeña gracia para respuestas que llegan al vencer el reloj.
+    onExpire: () => later(() => void endLightning(), LIGHTNING_END_GRACE_MS),
   })
 
   // -------------------------------------------------------------------------

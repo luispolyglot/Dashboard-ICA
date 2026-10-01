@@ -18,6 +18,7 @@ import {
   isCompetitorDone,
   isRecentlyActive,
   isLightningSessionOver,
+  LIGHTNING_GRACE_MS,
   isPendingQuestionStale,
   isPlayableTypeId,
   isRoundFinished,
@@ -451,6 +452,19 @@ const KIND_REQUIREMENT: Record<QuestionKind, string> = {
   pairs: ' cortas',
 }
 
+function hasPlayableQuestionSet(input: {
+  settings: ModeSettings
+  pools: EngineCard[][]
+  language: string
+}): boolean {
+  return generateQuestions({
+    kind: input.settings.kind,
+    pools: input.pools,
+    count: input.settings.totalQuestions,
+    language: input.language,
+  }).ok
+}
+
 // ---------------------------------------------------------------------------
 // Mínimo de palabras para entrar en los retos
 // ---------------------------------------------------------------------------
@@ -589,9 +603,41 @@ async function listAvailableUsers(input: {
 
   if (profilesError) return jsonResponse(500, { error: profilesError.message })
 
+  const candidatePairs = new Map<string, LanguagePair>()
+  for (const userId of candidateIds) {
+    const candidateSetting = settingsByUser.get(userId)
+    const candidateEnrollment = latestEnrollmentByUser.get(userId)
+    const pair =
+      input.scope === 'language'
+        ? { targetLang: input.targetLang, nativeLang: input.nativeLang }
+        : candidateSetting?.targetLang && candidateSetting.nativeLang
+          ? { targetLang: candidateSetting.targetLang, nativeLang: candidateSetting.nativeLang }
+          : candidateEnrollment?.targetLang && candidateEnrollment.nativeLang
+            ? { targetLang: candidateEnrollment.targetLang, nativeLang: candidateEnrollment.nativeLang }
+            : null
+    if (pair) candidatePairs.set(userId, pair)
+  }
+
+  const directoryMetricsResult = await input.adminClient.rpc('ica_challenge_directory_metrics', {
+    p_current_user_id: input.userId,
+    p_candidate_ids: candidateIds,
+    p_language_pairs: Array.from(candidatePairs, ([userId, pair]) => ({
+      user_id: userId,
+      target_lang: pair.targetLang,
+      native_lang: pair.nativeLang,
+    })),
+  })
+  if (directoryMetricsResult.error) {
+    return jsonResponse(500, { error: directoryMetricsResult.error.message })
+  }
+  const directoryMetricsByUser = new Map<string, Record<string, unknown>>()
+  for (const metric of (directoryMetricsResult.data || []) as Array<Record<string, unknown>>) {
+    const userId = toText(metric.user_id)
+    if (userId) directoryMetricsByUser.set(userId, metric)
+  }
+
   // --- Actividad: quién juega más retos, su racha y quién lleva 30 días sin entrar ---
   const nowMs = Date.now()
-  const idList = candidateIds.join(',')
   const [metricsResult, activityResult] = await Promise.all([
     input.adminClient
       .from('daily_metrics')
@@ -601,7 +647,7 @@ async function listAvailableUsers(input: {
     input.adminClient
       .from('ica_challenges')
       .select('challenger_user_id, challenged_user_id, status, result_type, winner_user_id, finalized_at, created_at')
-      .or(`challenger_user_id.in.(${idList}),challenged_user_id.in.(${idList})`)
+      .or(`challenger_user_id.in.(${candidateIds.join(',')}),challenged_user_id.in.(${candidateIds.join(',')})`)
       .order('created_at', { ascending: false })
       .limit(3000),
   ])
@@ -627,79 +673,68 @@ async function listAvailableUsers(input: {
     }),
   )
 
-  const rows = await Promise.all(
-    ((profilesRows || []) as Array<Record<string, unknown>>).map(async (row) => {
-      const userId = toText(row.id)
+  const rows = ((profilesRows || []) as Array<Record<string, unknown>>).map((row) => {
+    const userId = toText(row.id)
 
-      // Quien lleva 30 días o más sin usar la app no sale en la lista.
-      const activity = summarizeChallengeActivity(activityRows, userId, nowMs)
-      if (
-        activityKnown &&
-        !isRecentlyActive({
-          lastAppActivityDay: lastAppDayByUser.get(userId) ?? null,
-          lastChallengeAtMs: activity.lastChallengeAtMs,
-          nowMs,
-        })
-      ) {
-        return null
-      }
+    // Quien lleva 30 días o más sin usar la app no sale en la lista.
+    const activity = summarizeChallengeActivity(activityRows, userId, nowMs)
+    if (
+      activityKnown &&
+      !isRecentlyActive({
+        lastAppActivityDay: lastAppDayByUser.get(userId) ?? null,
+        lastChallengeAtMs: activity.lastChallengeAtMs,
+        nowMs,
+      })
+    ) {
+      return null
+    }
 
-      // Quien no tiene aún 20 palabras en su baúl no sale en la lista. Se cuentan las del
-      // idioma con el que jugaría (el del desafío por idioma, o el suyo en Global).
-      const candidateSetting = settingsByUser.get(userId)
-      const candidateEnrollment = latestEnrollmentByUser.get(userId)
-      const candidatePair: LanguagePair | null =
-        input.scope === 'language'
-          ? { targetLang: input.targetLang, nativeLang: input.nativeLang }
-          : candidateSetting?.targetLang && candidateSetting.nativeLang
-            ? { targetLang: candidateSetting.targetLang, nativeLang: candidateSetting.nativeLang }
-            : candidateEnrollment?.targetLang && candidateEnrollment.nativeLang
-              ? { targetLang: candidateEnrollment.targetLang, nativeLang: candidateEnrollment.nativeLang }
-              : null
-      if (!candidatePair) return null
-      const candidateWords = await countWordsForPair(input.adminClient, userId, candidatePair)
-      if (wordsMissingToJoin(candidateWords) > 0) return null
+    // Solo salen candidatos con un idioma y al menos 20 palabras en su baúl.
+    const candidatePair = candidatePairs.get(userId)
+    if (!candidatePair) return null
+    const metrics = directoryMetricsByUser.get(userId)
+    const candidateWords = Number(metrics?.word_count || 0)
+    if (wordsMissingToJoin(candidateWords) > 0) return null
 
-      const userActiveCount = await countActiveChallenges(input.adminClient, userId)
-      const activePair = await hasActivePairChallenge(input.adminClient, input.userId, userId)
+    const userActiveCount = Number(metrics?.active_challenges_count || 0)
+    const activePair = Boolean(metrics?.has_active_pair)
 
-      let blockedReason: string | null = null
-      if (activeCount >= MAX_ACTIVE_CHALLENGES) blockedReason = 'Tu máximo de desafíos activos es 3.'
-      else if (userActiveCount >= MAX_ACTIVE_CHALLENGES)
-        blockedReason = 'Este usuario ya tiene 3 desafíos activos.'
-      else if (activePair)
-        blockedReason = 'Ya tienen un desafío activo entre ustedes.'
+    let blockedReason: string | null = null
+    if (activeCount >= MAX_ACTIVE_CHALLENGES) blockedReason = 'Tu máximo de desafíos activos es 3.'
+    else if (userActiveCount >= MAX_ACTIVE_CHALLENGES)
+      blockedReason = 'Este usuario ya tiene 3 desafíos activos.'
+    else if (activePair)
+      blockedReason = 'Ya tienen un desafío activo entre ustedes.'
 
-      const setting = settingsByUser.get(userId)
-      const enrollment = latestEnrollmentByUser.get(userId)
-      const samePair = samePairUserIds.has(userId)
-      const level = samePair ? levels.get(userId) ?? null : null
-      const mixed = samePair
-        ? checkMixedAllowed({ myLevel, rivalLevel: level, maxGap: DEFAULT_MAX_LEVEL_GAP })
-        : { allowed: false as const, reason: 'Solo con icademers de tu mismo idioma.' }
+    const setting = settingsByUser.get(userId)
+    const enrollment = latestEnrollmentByUser.get(userId)
+    const samePair = samePairUserIds.has(userId)
+    const level = samePair ? levels.get(userId) ?? null : null
+    const mixed = samePair
+      ? checkMixedAllowed({ myLevel, rivalLevel: level, maxGap: DEFAULT_MAX_LEVEL_GAP })
+      : { allowed: false as const, reason: 'Solo con icademers de tu mismo idioma.' }
 
-      return {
-        userId,
-        displayName: toText(row.display_name) || 'Usuario',
-        username: toText(row.username) || null,
-        nativeLang: setting?.nativeLang || enrollment?.nativeLang || null,
-        targetLang: setting?.targetLang || enrollment?.targetLang || null,
-        // Antes salía el ajuste cefr_level (A2 por defecto). Ahora, el nivel real de la barra.
-        cefrLevel: level,
-        level,
-        samePair,
-        mixedAllowed: mixed.allowed,
-        mixedBlockedReason: mixed.allowed ? null : mixed.reason,
-        activeChallengesCount: userActiveCount,
-        canChallenge: blockedReason === null,
-        blockedReason,
-        // Racha de victorias seguidas (se ve al lado del nombre).
-        winStreak: activity.winStreak,
-        // Desafíos de los últimos 30 días: los que más juegan salen los primeros.
-        recentChallenges: activity.recentChallenges,
-      }
-    }),
-  )
+    return {
+      userId,
+      displayName: toText(row.display_name) || 'Usuario',
+      username: toText(row.username) || null,
+      nativeLang: setting?.nativeLang || enrollment?.nativeLang || null,
+      targetLang: setting?.targetLang || enrollment?.targetLang || null,
+      // Antes salía el ajuste cefr_level (A2 por defecto). Ahora, el nivel real de la barra.
+      cefrLevel: level,
+      level,
+      samePair,
+      mixedAllowed: mixed.allowed,
+      mixedBlockedReason: mixed.allowed ? null : mixed.reason,
+      activeChallengesCount: userActiveCount,
+      canChallenge: blockedReason === null,
+      blockedReason,
+      // Racha de victorias seguidas (se ve al lado del nombre).
+      winStreak: activity.winStreak,
+      // Desafíos de los últimos 30 días: los que más juegan salen los primeros.
+      recentChallenges: activity.recentChallenges,
+    }
+  })
 
   const visibleRows = rows.filter((row): row is NonNullable<typeof row> => row !== null)
   visibleRows.sort(
@@ -913,20 +948,30 @@ async function createChallenge(input: {
   const rivalEligible = countEligible(settings.kind, rivalCards, rivalPair.targetLang)
 
   if (wordSource === 'mixed') {
-    if (myEligible + rivalEligible < minWords || myCards.length + rivalCards.length < minWords) {
+    const combinedEligible = countEligible(settings.kind, [...myCards, ...rivalCards], targetLang)
+    if (
+      combinedEligible < minWords ||
+      !hasPlayableQuestionSet({ settings, pools: [myCards, rivalCards], language: targetLang })
+    ) {
       return jsonResponse(400, {
         code: 'ICA_CHALLENGE_NOT_ENOUGH_WORDS',
         error: `Entre los dos necesitan al menos ${minWords} palabras ICA${requirement} para «${challengeType.nombre}».`,
       })
     }
   } else {
-    if (myEligible < minWords || myCards.length < minWords) {
+    if (
+      myEligible < minWords ||
+      !hasPlayableQuestionSet({ settings, pools: [myCards], language: myPair.targetLang })
+    ) {
       return jsonResponse(400, {
         code: 'ICA_CHALLENGE_NOT_ENOUGH_WORDS',
         error: `Necesitas al menos ${minWords} palabras ICA${requirement} para «${challengeType.nombre}».`,
       })
     }
-    if (rivalEligible < minWords || rivalCards.length < minWords) {
+    if (
+      rivalEligible < minWords ||
+      !hasPlayableQuestionSet({ settings, pools: [rivalCards], language: rivalPair.targetLang })
+    ) {
       return jsonResponse(400, {
         code: 'ICA_CHALLENGE_RIVAL_NOT_ENOUGH_WORDS',
         error: `Tu rival aún no tiene ${minWords} palabras ICA${requirement} para «${challengeType.nombre}».`,
@@ -1011,7 +1056,7 @@ async function respondInvitation(input: {
 
   const { data: existing, error: existingError } = await input.adminClient
     .from('ica_challenges')
-    .select('id, challenger_user_id, challenged_user_id, status, accept_until, scope, target_lang, native_lang')
+    .select('id, challenger_user_id, challenged_user_id, status, accept_until, scope, target_lang, native_lang, challenge_slug, game_metadata')
     .eq('id', challengeId)
     .eq('challenged_user_id', input.userId)
     .maybeSingle()
@@ -1040,23 +1085,75 @@ async function respondInvitation(input: {
     return jsonResponse(400, { error: 'El reto ya caducó.' })
   }
 
-  // Para aceptar también hacen falta 20 palabras en el baúl (rechazar siempre se puede).
+  // Para aceptar se vuelven a validar las 20 palabras y las palabras elegibles del modo;
+  // el baúl de cualquiera puede haber cambiado desde que se envió la invitación.
   if (accept) {
-    const pair = await resolvePlayerPair(
-      input.adminClient,
-      {
-        scope: toScope(existing.scope),
-        target_lang: toText(existing.target_lang) || null,
-        native_lang: toText(existing.native_lang) || null,
-      },
-      input.userId,
-    )
-    const wordCount = pair ? await countWordsForPair(input.adminClient, input.userId, pair) : 0
+    const challengePair = {
+      scope: toScope(existing.scope),
+      target_lang: toText(existing.target_lang) || null,
+      native_lang: toText(existing.native_lang) || null,
+    }
+    const [challengerPair, challengedPair] = await Promise.all([
+      resolvePlayerPair(input.adminClient, challengePair, toText(existing.challenger_user_id)),
+      resolvePlayerPair(input.adminClient, challengePair, toText(existing.challenged_user_id)),
+    ])
+    const [challengerCount, challengedCount] = await Promise.all([
+      challengerPair
+        ? countWordsForPair(input.adminClient, toText(existing.challenger_user_id), challengerPair)
+        : Promise.resolve(0),
+      challengedPair
+        ? countWordsForPair(input.adminClient, toText(existing.challenged_user_id), challengedPair)
+        : Promise.resolve(0),
+    ])
+    const wordCount = challengedCount
     if (wordsMissingToJoin(wordCount) > 0) {
       return jsonResponse(400, {
         code: 'ICA_CHALLENGE_MIN_WORDS',
         error: notEnoughWordsToJoinMessage(wordCount, 'aceptar'),
       })
+    }
+    if (wordsMissingToJoin(challengerCount) > 0) {
+      return jsonResponse(400, {
+        code: 'ICA_CHALLENGE_RIVAL_MIN_WORDS',
+        error: `El retador necesita al menos ${MIN_WORDS_TO_JOIN} palabras en su Baúl ICA.`,
+      })
+    }
+
+    const settings = readModeSettings(toText(existing.challenge_slug), existing.game_metadata)
+    if (!settings || !challengerPair || !challengedPair) {
+      return jsonResponse(400, { error: 'No se pudo validar el modo o los idiomas del desafío.' })
+    }
+    const [challengerCards, challengedCards] = await Promise.all([
+      fetchCards(input.adminClient, toText(existing.challenger_user_id), challengerPair),
+      fetchCards(input.adminClient, toText(existing.challenged_user_id), challengedPair),
+    ])
+    const minWords = minWordsForKind(settings.kind)
+    if (settings.wordSource === 'mixed') {
+      const language = challengePair.target_lang || challengedPair.targetLang
+      const combinedEligible = countEligible(settings.kind, [...challengerCards, ...challengedCards], language)
+      if (
+        combinedEligible < minWords ||
+        !hasPlayableQuestionSet({ settings, pools: [challengerCards, challengedCards], language })
+      ) {
+        return jsonResponse(400, {
+          code: 'ICA_CHALLENGE_NOT_ENOUGH_WORDS',
+          error: `Entre los dos necesitan al menos ${minWords} palabras ICA${KIND_REQUIREMENT[settings.kind]} para este modo.`,
+        })
+      }
+    } else {
+      const challengerEligible = countEligible(settings.kind, challengerCards, challengerPair.targetLang)
+      const challengedEligible = countEligible(settings.kind, challengedCards, challengedPair.targetLang)
+      if (
+        challengerEligible < minWords ||
+        challengedEligible < minWords ||
+        !hasPlayableQuestionSet({ settings, pools: [challengerCards], language: challengerPair.targetLang }) ||
+        !hasPlayableQuestionSet({ settings, pools: [challengedCards], language: challengedPair.targetLang })
+      ) {
+        return jsonResponse(400, {
+          code: 'ICA_CHALLENGE_NOT_ENOUGH_WORDS',
+          error: `Ambos necesitan al menos ${minWords} palabras ICA${KIND_REQUIREMENT[settings.kind]} válidas para este modo.`,
+        })
+      }
     }
   }
 
@@ -2005,9 +2102,16 @@ async function endSession(ctx: GameContext) {
   if (ctx.settings.format !== 'lightning') {
     throw new GameError(400, 'Solo el Modo Relámpago tiene partida por tiempo.')
   }
-  if (ctx.challenge.status === 'in_progress' && ctx.myState.sessionStartedAt && !ctx.myState.completedAt) {
-    await finishLightningSession(ctx)
+  if (ctx.myState.completedAt) return { status: 'done' as const }
+  assertCanPlay(ctx)
+  const sessionEndsAt = ctx.myState.sessionEndsAt ? Date.parse(ctx.myState.sessionEndsAt) : NaN
+  if (!Number.isFinite(sessionEndsAt)) {
+    throw new GameError(409, 'La cuenta atrás todavía no ha empezado.', 'ICA_CHALLENGE_SESSION_NOT_STARTED')
   }
+  if (Date.now() < sessionEndsAt + LIGHTNING_GRACE_MS) {
+    throw new GameError(409, 'La cuenta atrás aún no ha terminado.', 'ICA_CHALLENGE_SESSION_NOT_OVER')
+  }
+  await finishLightningSession(ctx)
   return { status: 'done' as const, progress: progressPayload(ctx) }
 }
 

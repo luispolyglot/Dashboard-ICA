@@ -18,6 +18,8 @@
  */
 import { supabase } from '@/lib/supabase'
 import { loadMetaTrackerProfile } from './metaTracker'
+import { getIcaChallengesLocalContext } from './icaChallengesLocalBridge'
+import { ICA_CHALLENGES_LOCAL } from './icaChallengesLocalMode'
 import {
   boardIndices,
   boardStart,
@@ -65,11 +67,9 @@ import type {
   IcaChallengeRecord,
   IcaChallengeResultType,
   IcaChallengeStatus,
-  Lexicard,
 } from '../types'
 
-export const ICA_CHALLENGES_LOCAL =
-  String(import.meta.env.VITE_ICA_CHALLENGES_LOCAL || '').trim().toLowerCase() === 'true'
+export { ICA_CHALLENGES_LOCAL }
 
 const STORAGE_KEY = 'ica-challenges-local-v1'
 const TURN_WINDOW_MS = 10 * 60 * 60 * 1000
@@ -347,19 +347,7 @@ const nowIso = () => new Date().toISOString()
 // Contexto de la app: tus palabras e idiomas
 // ---------------------------------------------------------------------------
 
-let appContext: { cards: Lexicard[]; targetLang: string; nativeLang: string } = {
-  cards: [],
-  targetLang: '',
-  nativeLang: '',
-}
-
-export function registerIcaChallengesLocalContext(input: {
-  cards: Lexicard[]
-  targetLang: string
-  nativeLang: string
-}) {
-  appContext = input
-}
+const currentAppContext = getIcaChallengesLocalContext
 
 async function getMyUserId(): Promise<string> {
   try {
@@ -400,6 +388,7 @@ function botLevel(myLevel: string, offset: number): string {
 }
 
 function myCards(userId: string, targetLang: string, nativeLang: string): EngineCard[] {
+  const appContext = currentAppContext()
   return appContext.cards
     .filter(
       (card) =>
@@ -461,6 +450,10 @@ const KIND_REQUIREMENT: Record<QuestionKind, string> = {
   pairs: ' cortas',
 }
 
+function hasPlayableQuestionSet(settings: ModeSettings, pools: EngineCard[][], language: string): boolean {
+  return generateQuestions({ kind: settings.kind, pools, count: settings.totalQuestions, language }).ok
+}
+
 type Ctx = {
   me: string
   userId: string
@@ -515,6 +508,7 @@ function pairOf(ctx: Ctx, userId: string): { targetLang: string; nativeLang: str
     return { targetLang: ctx.challenge.targetLang, nativeLang: ctx.challenge.nativeLang }
   }
   void userId
+  const appContext = currentAppContext()
   return { targetLang: appContext.targetLang, nativeLang: appContext.nativeLang }
 }
 
@@ -1159,6 +1153,7 @@ function accept(challenge: LocalChallenge, userId: string, me: string) {
 
 async function seedIfNeeded(me: string) {
   const state = loadState()
+  const appContext = currentAppContext()
   if (state.seededFor === me || !appContext.targetLang || !appContext.nativeLang) return
   state.seededFor = me
   // Un reto de ejemplo pendiente (de Jorge), para ver la pestaña «Pendientes».
@@ -1189,6 +1184,7 @@ async function seedIfNeeded(me: string) {
 }
 
 async function createChallenge(me: string, body: Record<string, unknown>) {
+  const appContext = currentAppContext()
   const typeId = String(body.challengeTypeId || 'ica-own-words')
   const rivalId = String(body.challengedUserId || '')
   const bot = BOTS.find((item) => item.userId === rivalId)
@@ -1219,15 +1215,29 @@ async function createChallenge(me: string, body: Record<string, unknown>) {
 
   const mine = myCards(me, targetLang, nativeLang)
   const theirs = botCards(bot.userId, me, targetLang, nativeLang)
-  // Como en el servidor: 20 palabras en el baúl para entrar en los retos.
+  // El mínimo de producto permite entrar; cada modo valida además sus palabras elegibles.
   if (wordsMissingToJoin(mine.length) > 0) {
     throw new LocalError(notEnoughWordsToJoinMessage(mine.length, 'retar'), 'ICA_CHALLENGE_MIN_WORDS')
+  }
+  if (wordsMissingToJoin(theirs.length) > 0) {
+    throw new LocalError(`Este icademer aún no tiene ${MIN_WORDS_TO_JOIN} palabras en su Baúl ICA.`, 'ICA_CHALLENGE_RIVAL_MIN_WORDS')
   }
   const requirement = KIND_REQUIREMENT[settings.kind]
   const minWords = minWordsForKind(settings.kind)
   const myEligible = countEligible(settings.kind, mine, targetLang)
   const theirEligible = countEligible(settings.kind, theirs, targetLang)
-  if (wordSource === 'mixed' ? myEligible + theirEligible < minWords : myEligible < minWords) {
+  const combinedEligible = countEligible(settings.kind, [...mine, ...theirs], targetLang)
+  if (
+    (wordSource === 'mixed' && (
+      combinedEligible < minWords || !hasPlayableQuestionSet(settings, [mine, theirs], targetLang)
+    )) ||
+    (wordSource === 'own' && (
+      myEligible < minWords ||
+      theirEligible < minWords ||
+      !hasPlayableQuestionSet(settings, [mine], targetLang) ||
+      !hasPlayableQuestionSet(settings, [theirs], targetLang)
+    ))
+  ) {
     throw new LocalError(`Necesitas al menos ${minWords} palabras ICA${requirement} para «${type.name}».`)
   }
 
@@ -1253,12 +1263,13 @@ function notEnoughWordsToJoinMessage(wordCount: number, action: 'retar' | 'acept
 }
 
 async function listAvailableUsers(me: string, body: Record<string, unknown>) {
+  const appContext = currentAppContext()
   const targetLang = String(body.targetLang || appContext.targetLang)
   const nativeLang = String(body.nativeLang || appContext.nativeLang)
   const myLevel = await getMyLevel(targetLang, nativeLang)
   const myActive = activeCount(me)
   const myWordCount = myCards(me, targetLang, nativeLang).length
-  // Los rivales de prueba solo salen si su baúl de ejemplo llega a 20 palabras.
+  // Los rivales de prueba salen si su baúl llega al mínimo de 20 palabras.
   const visibleBots = BOTS.filter(
     (bot) => wordsMissingToJoin(botCards(bot.userId, me, targetLang, nativeLang).length) === 0,
   )
@@ -1337,10 +1348,36 @@ export async function localInvoke(body: Record<string, unknown>): Promise<Record
       } else if (body.accept) {
         const pair = challenge.targetLang && challenge.nativeLang
           ? { targetLang: challenge.targetLang, nativeLang: challenge.nativeLang }
-          : { targetLang: appContext.targetLang, nativeLang: appContext.nativeLang }
+          : {
+              targetLang: currentAppContext().targetLang,
+              nativeLang: currentAppContext().nativeLang,
+            }
         const wordCount = myCards(me, pair.targetLang, pair.nativeLang).length
         if (wordsMissingToJoin(wordCount) > 0) {
           throw new LocalError(notEnoughWordsToJoinMessage(wordCount, 'aceptar'), 'ICA_CHALLENGE_MIN_WORDS')
+        }
+        const settings = readModeSettings(challenge.slug, challenge.gameMetadata)
+        if (!settings) throw new LocalError('Este modo todavía no se puede jugar.')
+        const challengerId = challenge.challengerUserId
+        const challengedId = challenge.challengedUserId
+        const challengerCards = cardsFor(challengerId, me, pair.targetLang, pair.nativeLang)
+        const challengedCards = cardsFor(challengedId, me, pair.targetLang, pair.nativeLang)
+        if (challengerCards.length < MIN_WORDS_TO_JOIN) {
+          throw new LocalError(`El retador necesita al menos ${MIN_WORDS_TO_JOIN} palabras en su Baúl ICA.`, 'ICA_CHALLENGE_RIVAL_MIN_WORDS')
+        }
+        const minimum = minWordsForKind(settings.kind)
+        const eligible = settings.wordSource === 'mixed'
+          ? countEligible(settings.kind, [...challengerCards, ...challengedCards], pair.targetLang)
+          : Math.min(
+              countEligible(settings.kind, challengerCards, pair.targetLang),
+              countEligible(settings.kind, challengedCards, pair.targetLang),
+            )
+        const playable = settings.wordSource === 'mixed'
+          ? hasPlayableQuestionSet(settings, [challengerCards, challengedCards], pair.targetLang)
+          : hasPlayableQuestionSet(settings, [challengerCards], pair.targetLang) &&
+            hasPlayableQuestionSet(settings, [challengedCards], pair.targetLang)
+        if (eligible < minimum || !playable) {
+          throw new LocalError(`Ambos necesitan al menos ${minimum} palabras ICA válidas para este modo.`, 'ICA_CHALLENGE_NOT_ENOUGH_WORDS')
         }
         accept(challenge, me, me)
       } else {
@@ -1360,7 +1397,19 @@ export async function localInvoke(body: Record<string, unknown>): Promise<Record
         runBotTurns(challenge, me)
       } else if (action === 'answer-question') result = answerQuestion(ctx, body)
       else if (action === 'end-session') {
-        if (challenge.status === 'in_progress' && competitorOf(challenge, me).game.sessionStartedAt) finishLightning(ctx)
+        if (ctx.settings.format !== 'lightning') throw new LocalError('Solo el Modo Relámpago tiene partida por tiempo.')
+        const game = competitorOf(challenge, me).game
+        if (!game.completedAt) {
+          assertCanPlay(ctx)
+          const sessionEndsAt = game.sessionEndsAt ? Date.parse(game.sessionEndsAt) : NaN
+          if (!Number.isFinite(sessionEndsAt)) {
+            throw new LocalError('La cuenta atrás todavía no ha empezado.', 'ICA_CHALLENGE_SESSION_NOT_STARTED')
+          }
+          if (Date.now() < sessionEndsAt + 1500) {
+            throw new LocalError('La cuenta atrás aún no ha terminado.', 'ICA_CHALLENGE_SESSION_NOT_OVER')
+          }
+          finishLightning(ctx)
+        }
         runBotTurns(challenge, me)
         result = { status: 'done', progress: progressPayload(ctx) }
       } else if (action === 'review') result = review(ctx)

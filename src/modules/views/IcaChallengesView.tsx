@@ -44,7 +44,8 @@ import {
   isLightningChallenge,
 } from '../services/icaChallenges'
 import { getIcaChallengePlayRoute } from '../routes/paths'
-import { ICA_CHALLENGES_LOCAL, resetIcaChallengesLocal } from '../services/icaChallengesLocal'
+import { resetIcaChallengesLocal } from '../services/icaChallengesLocalBridge'
+import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocalMode'
 import {
   availableTypesForTile,
   CHALLENGE_MODE_TILES,
@@ -639,8 +640,7 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
             variant='outline'
             className='mt-2'
             onClick={() => {
-              resetIcaChallengesLocal()
-              void refresh()
+              void resetIcaChallengesLocal().then(refresh)
             }}
           >
             Empezar de cero
@@ -933,16 +933,11 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                         {getIcaChallengeConfigLabel(challenge)}
                       </p>
 
-                      {wordsLocked && (
-                        <p className='mb-2 text-xs text-muted-foreground'>
-                          Para aceptar necesitas {minWordsToJoin} palabras en tu Baúl ICA.
-                        </p>
-                      )}
                       <div className='flex gap-2'>
                         <Button
                           type='button'
                           size='sm'
-                          disabled={isResponding || wordsLocked}
+                          disabled={isResponding}
                           onClick={() => void handleRespondInvitation(challenge.id, true)}
                         >
                           Aceptar

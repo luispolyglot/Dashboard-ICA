@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchMyIcaChallengeAlerts, type IcaChallengeAlerts } from '../services/icaChallenges'
-import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocal'
+import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocalMode'
 import { useFeatureFlagsStore } from '../stores/featureFlagsStore'
 
 export type IcaChallengeAlertState = IcaChallengeAlerts & { total: number }
