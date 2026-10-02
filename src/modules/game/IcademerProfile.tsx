@@ -13,7 +13,7 @@ import {
   listAvailableIcaChallengeUsers,
   translateChallengeMessage,
 } from '../services/icaChallenges'
-import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocal'
+import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocalMode'
 import { useFeatureFlagsStore } from '../stores/featureFlagsStore'
 import {
   ACHIEVEMENT_CATALOG,

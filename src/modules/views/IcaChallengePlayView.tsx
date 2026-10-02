@@ -66,7 +66,7 @@ import { FichaIcon, TrophyIcon } from '../game/icons'
 import { claimChallengeWinCoin } from '../game/fichas'
 import { CHALLENGE_WIN_REWARD } from '../game/rules'
 import { ReactionPanel } from '../game/reactions'
-import { isLocalBot } from '../services/icaChallengesLocal'
+import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocalMode'
 import {
   answerIcaChallengeQuestion,
   endIcaChallengeSession,
@@ -173,6 +173,7 @@ const FEEDBACK_MS_WRONG = 2000
 const FEEDBACK_MS_PAIRS_PERFECT = 1800
 const FEEDBACK_MS_PAIRS = 3800
 const PAIRS_PER_BOARD = 5
+const LIGHTNING_END_GRACE_MS = 1800
 
 function normalizeComparable(value: string): string {
   return value.normalize('NFKC').trim().toLowerCase()
@@ -574,7 +575,8 @@ export function IcaChallengePlayView({
   const sessionCountdown = useCountdown({
     endsAt: isLightning && phase === 'question' ? sessionEndsAt : null,
     totalMs: sessionTotalMs,
-    onExpire: () => void endLightning(),
+    // El servidor conserva una pequeña gracia para respuestas que llegan al vencer el reloj.
+    onExpire: () => later(() => void endLightning(), LIGHTNING_END_GRACE_MS),
   })
 
   // -------------------------------------------------------------------------
@@ -952,7 +954,8 @@ export function IcaChallengePlayView({
           <ReactionPanel
             challengeId={challenge.id}
             rivalName={firstName(names.rival)}
-            rivalIsTestBot={isLocalBot(state.rival.userId)}
+            // Los rivales de prueba del modo local (solo en desarrollo) responden solos.
+            rivalIsTestBot={ICA_CHALLENGES_LOCAL && (state.rival.userId ?? '').startsWith('local-bot-')}
           />
         ) : null}
 

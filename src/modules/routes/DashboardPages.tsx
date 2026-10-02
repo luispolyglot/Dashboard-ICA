@@ -34,9 +34,9 @@ import { IcaChallengesView } from '../views/IcaChallengesView'
 import { IcaChallengePlayView } from '../views/IcaChallengePlayView'
 import { DailyGameView } from '../views/DailyGameView'
 import {
-  ICA_CHALLENGES_LOCAL,
   registerIcaChallengesLocalContext,
-} from '../services/icaChallengesLocal'
+} from '../services/icaChallengesLocalBridge'
+import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocalMode'
 import { ManageCoachingView } from '../views/ManageCoachingView'
 import { ManageCoachingCalendarView } from '../views/ManageCoachingCalendarView'
 import { ManageCoachingUserView } from '../views/ManageCoachingUserView'

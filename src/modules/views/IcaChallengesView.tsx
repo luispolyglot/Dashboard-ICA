@@ -33,7 +33,6 @@ import {
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { useIcaChallengesOverview } from '../hooks/useIcaChallengesOverview'
-import { ICA_CHALLENGES_LOCAL, prepareChallengesDemo, seedVirtualChallenge } from '../services/icaChallengesLocal'
 import {
   getChallengeWordSource,
   getIcaChallengeConfigLabel,
@@ -42,6 +41,8 @@ import {
   translateChallengeMessage,
 } from '../services/icaChallenges'
 import { getIcaChallengePlayRoute } from '../routes/paths'
+import { resetIcaChallengesLocal } from '../services/icaChallengesLocalBridge'
+import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocalMode'
 import {
   availableTypesForTile,
   CHALLENGE_MODE_TILES,
@@ -590,62 +591,6 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
     setIsChallengeModalOpen(true)
   }
 
-  // Modo local de prueba: un icademer virtual te reta (botón o ?reto-virtual[=parejas] en la dirección).
-  const receiveVirtualChallenge = async (mode?: string | null) => {
-    try {
-      const { botName, modeName } = await seedVirtualChallenge(mode)
-      await refreshOverview()
-      setTab('pending')
-      toast.success(t('{name} te ha retado a {mode}.', { name: botName, mode: t(modeName) }))
-    } catch (seedError) {
-      toast.error(seedError instanceof Error ? seedError.message : t('No se pudo crear el reto de prueba.'))
-    }
-  }
-  const prepareDemo = async () => {
-    try {
-      const { free } = await prepareChallengesDemo()
-      await refreshOverview()
-      await refreshAvailableUsers('global')
-      setTab('pending')
-      toast.success(t('Demo lista: Sofía y Piotr te han retado y tienes {n} icademers libres para retar.', { n: free }))
-    } catch (demoError) {
-      toast.error(demoError instanceof Error ? demoError.message : t('No se pudo preparar la demo.'))
-    }
-  }
-  const demoParam = searchParams.get('demo-desafios')
-  const demoHandledRef = useRef(false)
-  useEffect(() => {
-    if (!ICA_CHALLENGES_LOCAL || demoParam === null || isLoading || demoHandledRef.current) return
-    demoHandledRef.current = true
-    setSearchParams(
-      (previous) => {
-        const next = new URLSearchParams(previous)
-        next.delete('demo-desafios')
-        return next
-      },
-      { replace: true },
-    )
-    void prepareDemo()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demoParam, isLoading])
-
-  const virtualParam = searchParams.get('reto-virtual')
-  const virtualHandledRef = useRef(false)
-  useEffect(() => {
-    if (!ICA_CHALLENGES_LOCAL || virtualParam === null || isLoading || virtualHandledRef.current) return
-    virtualHandledRef.current = true
-    setSearchParams(
-      (previous) => {
-        const next = new URLSearchParams(previous)
-        next.delete('reto-virtual')
-        return next
-      },
-      { replace: true },
-    )
-    void receiveVirtualChallenge(virtualParam || null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [virtualParam, isLoading])
-
   // ?retar=<id>: llega desde el perfil de un icademer en el ranking. Se abre el reto con esa
   // persona (o se explica por qué ahora no se puede) y se quita el parámetro.
   const retarParam = searchParams.get('retar')
@@ -811,23 +756,6 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
       </section>
     ) : (
     <section className='mx-auto w-full max-w-2xl flex-1 px-4 pt-2 pb-28 lg:py-8'>
-      {ICA_CHALLENGES_LOCAL ? (
-        // Solo en el modo local de prueba (tu PC): para enseñar Desafíos ICA con icademers virtuales.
-        <div className='mb-4 rounded-2xl border-2 border-dashed px-3 py-3' style={{ borderColor: 'var(--ica-gold)', background: 'var(--ica-gold-soft)' }}>
-          <p className='m-0 text-xs font-black tracking-[0.08em] uppercase' style={{ color: 'var(--ica-gold-ink)' }}>
-            {t('Modo prueba · icademers virtuales')}
-          </p>
-          <div className='mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2'>
-            <Button type='button' className='h-10 gap-2 rounded-xl font-extrabold' onClick={() => void prepareDemo()}>
-              <SwordsIcon size={18} />
-              {t('Preparar demo')}
-            </Button>
-            <Button type='button' variant='outline' className='h-10 rounded-xl border-2 font-extrabold' onClick={() => void receiveVirtualChallenge()}>
-              {t('Que me rete alguien más')}
-            </Button>
-          </div>
-        </div>
-      ) : null}
       <div className='mb-5 flex items-center gap-3'>
         <span className='flex size-12 shrink-0 items-center justify-center rounded-2xl' style={{ background: 'var(--ica-a-soft)' }}>
           <SwordsIcon size={32} />
@@ -851,6 +779,27 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
           </span>
         </label>
       </div>
+
+      {ICA_CHALLENGES_LOCAL && (
+        <div className='mb-4 rounded-xl border border-violet-400/50 bg-violet-500/10 px-3 py-2.5 text-sm'>
+          <p className='font-medium'>Modo local de prueba</p>
+          <p className='mt-0.5 text-xs text-muted-foreground'>
+            Juegas contra rivales de prueba y los desafíos se guardan solo en este navegador (no en Supabase).
+            «Añadir a mi baúl» sí guarda la palabra de verdad.
+          </p>
+          <Button
+            type='button'
+            size='sm'
+            variant='outline'
+            className='mt-2'
+            onClick={() => {
+              void resetIcaChallengesLocal().then(refreshOverview)
+            }}
+          >
+            Empezar de cero
+          </Button>
+        </div>
+      )}
 
       {wordsLocked && myWordCount !== null && (
         <JoinWordsGate wordCount={myWordCount} minWords={minWordsToJoin} targetLang={targetLang} />
@@ -1138,11 +1087,6 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
               // Pendientes, en filas sencillas: quién, qué reto y cuánto queda; un botón por fila.
               <>
                 {incomingChallenges.length > 0 && <p className='ica-label m-0'>{t('Te han retado')}</p>}
-                {incomingChallenges.length > 0 && wordsLocked && (
-                  <p className='m-0 text-xs font-semibold text-muted-foreground'>
-                    {t('Para aceptar necesitas {n} palabras en tu Baúl ICA.', { n: minWordsToJoin })}
-                  </p>
-                )}
                 {incomingChallenges.map((challenge) => {
                   const rivalId = getOpponentUserId(challenge, currentUserId)
                   const rival = resolveUser(rivalId)
@@ -1167,7 +1111,7 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                         type='button'
                         size='sm'
                         className='shrink-0 rounded-xl font-extrabold'
-                        disabled={isResponding || wordsLocked}
+                        disabled={isResponding}
                         onClick={() => void handleRespondInvitation(challenge.id, true)}
                       >
                         {t('Aceptar')}

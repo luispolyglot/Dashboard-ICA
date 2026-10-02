@@ -7,7 +7,7 @@ import { useDashboardContext } from '../context/DashboardContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { useChallengeEnabled } from '../services/challengeChunks'
 import { useFeatureFlagsStore } from '../stores/featureFlagsStore'
-import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocal'
+import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocalMode'
 import { ChallengeAlertPill } from '../components/IcaChallenges/ChallengeAlertBadge'
 import {
   challengesRouteForAlerts,

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/supabase', () => ({ supabase: { auth: { getUser: async () => ({ data: { user: { id: 'me' } } }) } } }))
 vi.mock('../../../../src/modules/services/metaTracker', () => ({ loadMetaTrackerProfile: async () => null }))
@@ -7,8 +7,8 @@ import {
   localInvoke,
   localListChallenges,
   localListPlays,
-  registerIcaChallengesLocalContext,
 } from '../../../../src/modules/services/icaChallengesLocal'
+import { registerIcaChallengesLocalContext } from '../../../../src/modules/services/icaChallengesLocalBridge'
 
 const BASE_WORDS: Array<[string, string, string | null]> = [
   ['samochód', 'coche', 'Jadę samochodem do pracy.'], ['pies', 'perro', 'Mój pies lubi spacery.'], ['dom', 'casa', null],
@@ -29,6 +29,23 @@ function toCards(words: Array<[string, string, string | null]>) {
 const fewCards = toCards(BASE_WORDS) // 8 palabras
 const cards = toCards([...BASE_WORDS, ...EXTRA_WORDS]) // 22 palabras
 
+beforeEach(() => {
+  const store = new Map<string, string>()
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => store.set(key, String(value)),
+      removeItem: (key: string) => store.delete(key),
+      clear: () => store.clear(),
+      key: (index: number) => Array.from(store.keys())[index] ?? null,
+      get length() {
+        return store.size
+      },
+    },
+  })
+})
+
 function secretFor(challengeId: string, owner: string | null, index: number) {
   const state = JSON.parse(window.localStorage.getItem('ica-challenges-local-v1') || '{}')
   return state.questions.find((q: any) => q.challengeId === challengeId && q.owner === owner && q.index === index)
@@ -46,13 +63,10 @@ describe('Desafíos ICA · modo local de prueba', () => {
   it('flujo completo', async () => {
     // --- Con menos de 20 palabras no se puede retar ni aceptar ---
     registerIcaChallengesLocalContext({ cards: fewCards, targetLang: 'Polaco', nativeLang: 'Español' })
-    const all = await localListChallenges()
-    // Dos retos pendientes de ejemplo: Escucha (de Jorge) y Escritura (de Tomás).
-    expect(all).toHaveLength(2)
-    expect(all.map((c) => c.challengeSlug).sort()).toEqual(['ica-listen', 'ica-writing'])
-    const initial = all.filter((c) => c.challengerUserId === 'local-bot-jorge')
+    const initial = await localListChallenges()
     expect(initial).toHaveLength(1)
     expect(initial[0].status).toBe('created')
+    expect(initial[0].challengerUserId).toBe('local-bot-jorge')
 
     let users: any = await localInvoke({ action: 'list-available-users', targetLang: 'Polaco', nativeLang: 'Español', scope: 'global' })
     expect(users.myWordCount).toBe(8)
@@ -132,7 +146,13 @@ describe('Desafíos ICA · modo local de prueba', () => {
       step = await localInvoke({ action: 'answer-question', challengeId: light.challengeId, questionIndex: q.index, response: good(s), clientMs: 800 })
       q = step.next
     }
+    const earlyEnd: any = await localInvoke({ action: 'end-session', challengeId: light.challengeId })
+    expect(earlyEnd.ok).toBe(false)
+    expect(earlyEnd.code).toBe('ICA_CHALLENGE_SESSION_NOT_OVER')
+    vi.useFakeTimers()
+    await vi.advanceTimersByTimeAsync(62_000)
     await localInvoke({ action: 'end-session', challengeId: light.challengeId })
+    vi.useRealTimers()
     state = await localInvoke({ action: 'play-state', challengeId: light.challengeId })
     expect(state.challenge.status).toBe('completed')
     expect(state.me.correct).toBe(3)

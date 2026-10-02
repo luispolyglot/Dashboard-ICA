@@ -1,16 +1,7 @@
 import { getUiLang, t } from '@/i18n'
 import { supabase } from '@/lib/supabase'
 import { runInBatches } from '@/lib/utils'
-import {
-  ICA_CHALLENGES_LOCAL,
-  localBotProfiles,
-  localFetchEnrollment,
-  localGetChallenge,
-  localInvoke,
-  localListChallenges,
-  localListPlays,
-  localSetEnrollment,
-} from './icaChallengesLocal'
+import { ICA_CHALLENGES_LOCAL } from './icaChallengesLocalMode'
 import type {
   IcaChallengeAvailableUser,
   IcaChallengeCompetitor,
@@ -43,6 +34,8 @@ export const ICA_CHALLENGE_MAX_RESPONSE_SECONDS = 8
 export const ICA_CHALLENGE_MIN_WORDS_TO_JOIN = 20
 export const ICA_CHALLENGE_PAIRS_TYPE_ID = 'ica-pairs'
 export const ICA_CHALLENGE_PAIRS_PER_BOARD = 5
+
+const loadLocalChallenges = () => import('./icaChallengesLocal')
 
 type IcaChallengeCompetitorRow = {
   challenge_id: string
@@ -403,7 +396,7 @@ export async function fetchMyIcaChallengeEnrollment(
   targetLang: string,
   nativeLang: string,
 ): Promise<IcaChallengeEnrollment> {
-  if (ICA_CHALLENGES_LOCAL) return localFetchEnrollment(targetLang, nativeLang)
+  if (ICA_CHALLENGES_LOCAL) return (await loadLocalChallenges()).localFetchEnrollment(targetLang, nativeLang)
   const userId = await getCurrentUserId()
   if (!supabase || !userId) {
     return {
@@ -446,7 +439,7 @@ export async function upsertMyIcaChallengeEnrollment(input: {
   nativeLang: string
   isActive: boolean
 }): Promise<IcaChallengeEnrollment> {
-  if (ICA_CHALLENGES_LOCAL) return localSetEnrollment(input)
+  if (ICA_CHALLENGES_LOCAL) return (await loadLocalChallenges()).localSetEnrollment(input)
   if (!supabase) throw new Error('Falta configurar Supabase')
   const userId = await getCurrentUserId()
   if (!userId) throw new Error('Necesitas iniciar sesión para gestionar desafíos.')
@@ -476,7 +469,7 @@ export async function listMyIcaChallenges(
 ): Promise<IcaChallengeRecord[]> {
   if (ICA_CHALLENGES_LOCAL) {
     // Igual que con el servidor: los «por idioma» solo salen en su idioma.
-    return (await localListChallenges())
+    return (await (await loadLocalChallenges()).localListChallenges())
       .filter(
         (challenge) =>
           challenge.scope === 'global' ||
@@ -550,7 +543,8 @@ export function computeIcaChallengeStats(rows: StatsRow[], userId: string | null
 export async function fetchMyIcaChallengeStats(): Promise<IcaChallengeStats> {
   const empty: IcaChallengeStats = { played: 0, wins: 0, losses: 0, draws: 0, currentStreak: 0, bestStreak: 0 }
   if (ICA_CHALLENGES_LOCAL) {
-    const [records, userId] = await Promise.all([localListChallenges(), getCurrentUserId().catch(() => null)])
+    const local = await loadLocalChallenges()
+    const [records, userId] = await Promise.all([local.localListChallenges(), getCurrentUserId().catch(() => null)])
     const me = userId || 'local-me'
     return computeIcaChallengeStats(
       records.map((record) => ({
@@ -619,7 +613,8 @@ export function countIcaChallengeAlerts(rows: AlertRow[], userId: string | null,
 
 export async function fetchMyIcaChallengeAlerts(): Promise<IcaChallengeAlerts> {
   if (ICA_CHALLENGES_LOCAL) {
-    const [records, userId] = await Promise.all([localListChallenges(), getCurrentUserId().catch(() => null)])
+    const local = await loadLocalChallenges()
+    const [records, userId] = await Promise.all([local.localListChallenges(), getCurrentUserId().catch(() => null)])
     return countIcaChallengeAlerts(
       records.map((record) => ({
         status: record.status,
@@ -658,7 +653,7 @@ export async function fetchMyIcaChallengeAlerts(): Promise<IcaChallengeAlerts> {
 export async function getIcaChallengeById(
   challengeId: string,
 ): Promise<IcaChallengeRecord | null> {
-  if (ICA_CHALLENGES_LOCAL) return localGetChallenge(challengeId)
+  if (ICA_CHALLENGES_LOCAL) return (await loadLocalChallenges()).localGetChallenge(challengeId)
   if (!supabase) return null
 
   const { data, error } = await supabase
@@ -703,7 +698,7 @@ async function invokeChallenges<T>(
 ): Promise<T> {
   if (ICA_CHALLENGES_LOCAL) {
     // Modo local de prueba: el "servidor" funciona dentro del navegador.
-    const localData = await localInvoke(body)
+    const localData = await (await loadLocalChallenges()).localInvoke(body)
     if (!localData.ok) {
       throw new IcaChallengeRequestError(
         typeof localData.error === 'string' ? localData.error : fallbackMessage,
@@ -820,7 +815,7 @@ export async function listAvailableIcaChallengeUsers(input: {
     scope: input.scope,
   }
   const { data, error } = ICA_CHALLENGES_LOCAL
-    ? { data: (await localInvoke(body)) as AvailableUsersResponse, error: null }
+    ? { data: (await (await loadLocalChallenges()).localInvoke(body)) as AvailableUsersResponse, error: null }
     : await supabase!.functions.invoke<AvailableUsersResponse>('ica-challenges-center', { body })
 
   if (error) throw error
@@ -860,7 +855,7 @@ export async function listIcaChallengeTypes(): Promise<IcaChallengeTypeRecord[]>
 
   const body = { action: 'list-challenge-types' }
   const { data, error } = ICA_CHALLENGES_LOCAL
-    ? { data: (await localInvoke(body)) as ChallengeTypesResponse, error: null }
+    ? { data: (await (await loadLocalChallenges()).localInvoke(body)) as ChallengeTypesResponse, error: null }
     : await supabase!.functions.invoke<ChallengeTypesResponse>('ica-challenges-center', { body })
 
   if (error) throw error
@@ -1004,7 +999,7 @@ export async function fetchIcaChallengeReview(challengeId: string): Promise<IcaC
 }
 
 export async function listIcaChallengePlays(challengeId: string): Promise<IcaChallengePlayRecord[]> {
-  if (ICA_CHALLENGES_LOCAL) return localListPlays([challengeId])
+  if (ICA_CHALLENGES_LOCAL) return (await loadLocalChallenges()).localListPlays([challengeId])
   if (!supabase) return []
 
   const { data, error } = await supabase
@@ -1023,7 +1018,7 @@ export async function listIcaChallengePlaysByChallengeIds(
   challengeIds: string[],
 ): Promise<Record<string, IcaChallengePlayRecord[]>> {
   if (ICA_CHALLENGES_LOCAL) {
-    return localListPlays(challengeIds).reduce<Record<string, IcaChallengePlayRecord[]>>((acc, play) => {
+    return (await (await loadLocalChallenges()).localListPlays(challengeIds)).reduce<Record<string, IcaChallengePlayRecord[]>>((acc, play) => {
       if (!acc[play.challengeId]) acc[play.challengeId] = []
       acc[play.challengeId].push(play)
       return acc
@@ -1060,7 +1055,9 @@ export async function listIcaChallengePlaysByChallengeIds(
 export async function listIcaChallengeProfilesByIds(
   userIds: string[],
 ): Promise<IcaChallengeProfileMap> {
-  const botProfiles: IcaChallengeProfileMap = ICA_CHALLENGES_LOCAL ? localBotProfiles() : {}
+  const botProfiles: IcaChallengeProfileMap = ICA_CHALLENGES_LOCAL
+    ? (await loadLocalChallenges()).localBotProfiles()
+    : {}
   if (!supabase || userIds.length === 0) return botProfiles
 
   const uniqueUserIds = Array.from(
