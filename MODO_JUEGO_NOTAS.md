@@ -1,42 +1,82 @@
 # Cambios Dashboard ICA · Modo juego
 
-1 de octubre de 2026 · Luis
+2 de octubre de 2026 · Luis
 
-Rediseño de toda la app con un modo juego propio del método ICA: camino I → C → A, cofre, ICA Coins, insignias, ranking nuevo y Reto del día. Lleva dentro Desafíos ICA, la interfaz en español e inglés y el coaching rediseñado. Hay 3 migraciones nuevas y 3 funciones que volver a desplegar (más una opcional, ver «Cambios de la tarde del 1 de octubre»). Algunas piezas de las ICA Coins son todavía una vista previa guardada en el navegador: sirven para development, no para production (ver más abajo).
+Rediseño de toda la app con un modo juego propio del método ICA: camino I → C → A, cofre, ICA Coins, insignias, ranking nuevo y Reto del día. Lleva dentro Desafíos ICA, la interfaz en español e inglés y el coaching rediseñado. La guía para revisarlo y subirlo, paso a paso, también está en Notion («Modo juego · Entrega a Nahuel»); este archivo es la referencia técnica.
 
-## Rama y estado
+## Lee esto primero
 
 | Dato | Valor |
 |---|---|
-| Rama | `feat/modo-juego`, solo en el PC de Luis. Sin commit ni push hasta que él lo diga |
-| Sale de | `origin/feat/desafios-ica-modos` (6085f2b), que ya incluye `develop` en 75f78f8 |
-| Cambios | 242 archivos: 72 nuevos, 163 modificados y 7 borrados (+35.377 / −15.297) |
-| Incluye | Desafíos ICA completos y tus dos arreglos de develop pasados al diseño nuevo: d75af4d (tarjeta de coaching mientras carga) y 75f78f8 (meses siguientes en el calendario de coaching) |
-| Backend | 3 migraciones nuevas. Desplegar `anthropic-proxy`, `lexicard-example-worker` e `ica-challenges-center` |
-| Verificado | `tsc -b` y `vite build` sin errores. Tests: 204 de 205 (falla `useMasterNotePlayback`, que también falla en develop). Las 134 migraciones aplicadas en orden sobre un Postgres vacío |
+| Rama | `feat/modo-juego`. PR contra `develop` |
+| Base | `develop` actual (82a2bde) ya unida en la rama: no quedan conflictos |
+| Commits | 1) `feat: modo juego` (todo el trabajo, sobre 6085f2b) · 2) merge de `develop` · 3) `fix: ajustes tras unir develop` · 4) `fix(security)` del saldo de monedas · 5) estas notas |
+| Tamaño frente a develop | 263 archivos: 92 nuevos, 164 modificados y 7 borrados (unas +38.400 / −15.600 líneas). Unas 3.200 líneas son diccionarios de inglés y la mayoría del resto es interfaz |
+| Comprobado | `tsc -b` y `vite build` sin errores. Tests unitarios: 229 de 230; falla `useMasterNotePlayback`, que también falla en `develop` (comprobado). `deno check` de las 16 funciones: los mismos errores de tipos que en `develop`, ninguno nuevo. Las 136 migraciones entran en orden en un Postgres 16 vacío con los esquemas de Supabase simulados. No se han ejecutado los tests de integración (necesitan Supabase) |
+| Al unir con `develop` | El CI (`deploy-supabase.yml`) aplica en DEV 4 migraciones nuevas y vuelve a desplegar todas las funciones, porque cambia `_shared/` |
+| Production | No subir a `main` hasta resolver «Antes de production». El modo juego no va detrás de un flag: lo que entre en `develop` sale entero en la próxima subida a `main` |
 
-### Orden de integración
+### Qué hacer, en orden
 
-1. `feat/desafios-ica-modos` → `develop`, como tenías previsto, con su migración y su función.
-2. `feat/modo-juego` → `develop`. Va encima de la anterior; he simulado la unión y no hay conflictos.
-3. `mejora/cargas-fluidas` choca en 32 archivos, porque esas pantallas se han rediseñado aquí. Es mejor rehacerla encima de develop cuando entre esta (Luis me lo puede pedir).
-4. `fix/detalles-racha-y-tildes` (rama local de Luis, sin subir) ya está cubierta aquí y se puede borrar.
+1. Revisar la PR. Lo que toca datos o servidor está en «Qué revisar con atención»; el resto es interfaz.
+2. Unir a `develop`. El CI aplica las migraciones y despliega las funciones en DEV.
+3. En DEV: activar las flags `ica-challenges` y `nota-desafiante`. Opcional: secret `ANTHROPIC_FAST_MODEL` (si no está, se usa `claude-haiku-4-5-20251001`).
+4. Probar con la lista de «Qué probar en development».
+5. Antes de production: pasar al servidor lo que hoy es vista previa (ver su apartado) y repasar «Riesgos».
 
-## Para subirlo a development
-
-- [ ] Aplicar las migraciones en este orden:
+## Migraciones nuevas
 
 | Migración | Qué hace |
 |---|---|
-| `20260928120000_ica_challenges_modes_server_questions.sql` | La de Desafíos (tuya, sin cambios) |
 | `20261001120000_preguntica_extra_attempt_coins.sql` | PreguntICA extra por 50 ICA Coins, también con la semana bloqueada. Redefine 4 funciones con las mismas firmas: `redeem_preguntica_tokens_for_week`, `get_my_preguntica_week_status` (`can_start`), `create_preguntica_attempt` y `complete_preguntica_attempt` (el intento pagado ya no cierra la semana) |
 | `20261001130000_nota_desafiante_weekly_unlock.sql` | El desbloqueo de la nota desafiante dura toda la semana: `bump_master_note_challenge_listening` acepta `p_day` hasta 7 días atrás (la app manda el lunes) |
-| `20261001140000_ranking_point_listen_and_challenge_note.sql` | Tabla `master_note_challenge_plays` y RPC `record_master_note_challenge_play`. El 0,1 diario pasa de «10 min de escucha» a «3 min de escucha + 1 nota desafiante ese día», en `get_monthly_streak_leaderboard` y `snapshot_monthly_leaderboard` |
+| `20261001140000_ranking_point_listen_and_challenge_note.sql` | Tabla `master_note_challenge_plays` y RPC `record_master_note_challenge_play`. El 0,1 diario del ranking pasa de «10 min de escucha» a «3 min de escucha + 1 nota desafiante ese día», en `get_monthly_streak_leaderboard` y `snapshot_monthly_leaderboard` |
+| `20261002120000_lock_coin_tables_to_read_only.sql` | **Seguridad, dos agujeros que existen hoy en production.** 1) `preguntica_token_ledger` y `preguntica_week_token_unlocks` tenían una política `FOR ALL` para su dueño: cualquiera con sesión podía insertarse monedas (+1000 con un `manual_adjustment`), editarlas, borrarlas o crearse un desbloqueo gratis desde la API. Pasan a solo lectura; todas las escrituras legítimas ya iban por funciones `SECURITY DEFINER`. 2) `grant_preguntica_monthly_tokens` y `distribute_preguntica_monthly_tokens_from_snapshot` son `SECURITY DEFINER`, no comprueban quién llama y solo tenían `revoke ... from public`, que no quita el EXECUTE que los privilegios por defecto de Supabase dan a `anon` y `authenticated`: cualquiera, incluso sin sesión, podía darse 100.000 monedas. Se quita EXECUTE a `public`, `anon` y `authenticated` en esas dos, en `snapshot_monthly_leaderboard`, `run_monthly_leaderboard_snapshot_if_needed` y en los trabajos de caducidad de Desafíos; solo los usan el cron (como dueño) y `service_role`. Probado en Postgres 16 con los privilegios por defecto de Supabase simulados: antes, las llamadas funcionan; después, «permission denied», y el canje de 50 por RPC sigue funcionando |
 
-- [ ] Desplegar las funciones `anthropic-proxy` (Haiku), `lexicard-example-worker` (Haiku) e `ica-challenges-center` (Desafíos; al terminar un reto devuelve también las palabras del rival).
-- [ ] Opcional: secret `ANTHROPIC_FAST_MODEL`. Si no se pone, usa `claude-haiku-4-5-20251001`.
-- [ ] En Vercel: `VITE_ICA_CHALLENGES_LOCAL` sin definir o en `false`.
-- [ ] Activar las flags `ica-challenges` y `nota-desafiante` en el entorno.
+`--include-all` del CI aplica también `20261001100000` (la tuya de `develop`) si aún no estaba en DEV. Ninguna de las nuestras toca los mismos objetos que la tuya.
+
+## Funciones
+
+| Función | Cambio |
+|---|---|
+| `ica-challenges-center` | Acción nueva `public-profile` (`{ profileUserId }`) en `profile.ts`, con el mismo patrón de dependencias que `directory.ts`. Devuelve `profile` (nombre, idioma, nivel), `stats` (mejor racha ICA y de flashcards, palabras y desafíos ganados) y `challenge` (`canChallenge`, `blockedReason`, `blockedCode`) con las mismas reglas que al crear un desafío Global. `review` devuelve también `rivalWords` (para «Añadir a mi Baúl ICA») |
+| `anthropic-proxy` | Acción nueva `pronunciation` (`{ words, targetLang, nativeLang }`, máximo 20; responde `{ result: { palabra: transcripción } }`). Las tareas cortas pasan a Haiku (ver «Haiku») |
+| `lexicard-example-worker` | Usa Haiku (`ANTHROPIC_FAST_MODEL` o `claude-haiku-4-5-20251001`) |
+| `_shared/pronunciation-prompt.ts` | Nuevo. Al cambiar `_shared/`, el CI redespliega todas las funciones |
+| `_shared/calendar-icademy-catalog.ts` | Francés queda como una sola clase «Francés» (`fr_basico`). `calendar-icademy-bulk-upsert` se redespliega con el resto |
+
+## Decisiones al unir `develop`
+
+| Archivo | Qué se hizo |
+|---|---|
+| `ica-challenges-center/index.ts` | Tu versión (con `directory.ts` e `invitations.ts`) más lo nuestro: `rivalWords` en `reviewGame` y el despacho de `public-profile`, que vive en `profile.ts` |
+| `icaChallengesLocal.ts` y su test | Tu versión entera. Quitados de la rama la demo local (8 icademers virtuales, «Preparar demo», `?reto-virtual`) y su recuadro |
+| `IcaChallengesView.tsx` | Tus imports (`icaChallengesLocalBridge`, `icaChallengesLocalMode`) y tu recuadro «Modo local de prueba»; las filas de Pendientes del diseño nuevo. Como en tu versión, «Aceptar» ya no se bloquea en el cliente (valida el servidor) |
+| `icaChallenges.ts` | Tu carga diferida (`loadLocalChallenges`) más nuestro filtro por idioma en `listMyIcaChallenges` |
+| `IcaChallengePlayView.tsx`, `game/IcademerProfile.tsx` | Ya no importan `icaChallengesLocal` (el simulador no entra en el build de production; comprobado) |
+
+Después de unir (commit `fix: ajustes tras unir develop`): traducidos al inglés tus 4 mensajes nuevos de `invitations.ts`; `public-profile` resuelve el idioma del rival con `resolvePlayerPair` y responde 500 en JSON si falla la base de datos; la caché rápida se borra al cerrar sesión (y una respuesta que llegue después ya no se guarda); la precarga de Desafíos solo se reutiliza si es de la misma cuenta.
+
+## Qué revisar con atención (toca datos o servidor)
+
+El resto de archivos es interfaz: mismas llamadas, mismos datos.
+
+| Dónde | Qué cambia | Riesgo |
+|---|---|---|
+| Migración PreguntICA + `services/preguntica.ts` | El canje pasa de 1 a 50 y ya no exige la semana completada. El front que hay hoy en production manda 1: **front y migración tienen que salir a la vez** | Alto |
+| Migración del ranking (0,1 diario) | Recalcula el mes en curso: quien escuchó 10 min sin hacer nota desafiante pierde los 0,1 desde el 1 de octubre. `record_master_note_challenge_play` no comprueba el desbloqueo ni un mínimo de aciertos (una partida con `total = 0` cuenta) | Alto |
+| `router/RouteGuards.tsx` | Los guards (admin, super admin, coaching admin, miembro) pintan al momento si la caché rápida dice que sí y comprueban por detrás. A quien le quitan un rol aún ve la pantalla hasta que vuelve la comprobación; la protección real sigue en RLS y funciones. La caché se borra al cerrar sesión | Alto |
+| `public-profile` | Con service role, cualquier usuario con sesión ve de cualquier `profileUserId`: nombre, username, idiomas, nivel, mejores rachas, número de palabras y victorias. Es lo que se enseña en el ranking | Medio |
+| Migración de la nota desafiante semanal | Con el front nuevo y la base sin migrar, de miércoles a domingo da `INVALID_DAY`: salen juntas | Medio |
+| `anthropic-proxy` / `lexicard-example-worker` | Haiku en traducción, ortografía, ejemplos, explicación de palabras y revisión de frase manual. Probar calidad en DEV | Medio |
+| `createIcaChallenge` | Manda `useExtraSlot`, que el servidor ignora (ver «Desafío extra») | Medio |
+| `MetaTrackerSetupModal.tsx` | Solo pregunta el nivel: guarda siempre `priorIcaWords: 0` | Medio |
+| `utils.ts` `sortRoundByReviewPriority` | Cambia el orden de la ronda de flashcards en todos los modos, no solo en «Solo por aprender» | Bajo |
+| `services/leaderboard.ts` | El ranking del mes se pide con 250 filas o más y las fotos con 400 o más; se precargan al abrir la app | Bajo |
+| `services/adminAnalytics.ts` `fetchAdminRole` | `getSession()` en vez de `getUser()` y rol en caché 60 s | Bajo |
+| `ManageCoachingCalendarView.tsx` | Flechas de mes en vez del `<select>`: deja ir a meses fuera de `availableMonths` (salen vacíos) | Bajo |
+
+Archivos grandes que son solo presentación (mismas llamadas): `CoachingV3SessionBoard`, `ManageCoachingUserView`, `CalendarIcademyBoard`, `ProfileView` (salvo el tope de 20 caracteres en el nombre). Con algo de lógica de interfaz: `PregunticaView` (precio 50, `paidAttemptPending`, `?extra=1`), `PhraseView` (límite diario, frase pendiente), `ReviewView` (`ignoreNewCardLimits`, «Continuar», pronunciación).
 
 ## Haiku (el modelo barato)
 
@@ -77,7 +117,9 @@ Antes de pasarlo a production, conviene probar en development unas cuantas tradu
 - **Idioma.** La interfaz va en el idioma nativo del alumno: español si es español, inglés para el resto. Funciona con `t()` en `src/i18n`, y los diccionarios están en `src/i18n/en/*.ts`. El login sale siempre en español la primera vez, y el admin solo está en español.
 - **Velocidad.** `services/quickCache.ts` enseña al momento lo último que se cargó (ranking, insignias, monedas, flags, permisos de admin…) y lo actualiza por detrás. Las claves van por usuario.
 
-## Cambios de la tarde del 1 de octubre
+## Historial de cambios
+
+### Tarde del 1 de octubre
 
 | Cambio | Qué hace | Dónde |
 |---|---|---|
@@ -88,7 +130,7 @@ Antes de pasarlo a production, conviene probar en development unas cuantas tradu
 | Desplegables en la barra de arriba (ordenador) | Al pasar el ratón por la racha: la semana (L–D) con los días hechos, salvados o pendientes, el próximo hito y la racha de flashcards. Por las ICA Coins: en qué puedes gastarlas hoy (precio y si te alcanza) y «Ir a la tienda». En el móvil, tocar sigue abriendo su pantalla | `game/HoverPanel.tsx` y `game/GameStatsBar.tsx` |
 | Perfil de un icademer en el ranking | Tocar la inicial o el nombre (también en el podio) abre una ventana con su nombre, idioma que aprende, nivel, sus insignias (la más alta de cada categoría) y «Desafiar a …». Si no se puede, «No se puede desafiar a este icademer» con el motivo. «Desafiar» lleva a `/desafios-ica?retar=<id>`, que abre el reto con esa persona (Por idioma si es de tu idioma y nivel; si no, Global). En el podio, los puntos abren el detalle de puntos | `game/IcademerProfile.tsx`, `game/ranking.tsx`, `views/LeaderboardView.tsx`, `views/IcaChallengesView.tsx` |
 
-### Cambios de la noche del 1 de octubre
+### Noche del 1 de octubre
 
 | Cambio | Qué hace | Dónde |
 |---|---|---|
@@ -97,7 +139,7 @@ Antes de pasarlo a production, conviene probar en development unas cuantas tradu
 | Botón de sonido en las flashcards | Altavoz arriba a la derecha de la ronda para quitar o poner los sonidos de acierto y fallo (mismo ajuste que en Perfil) | `game/SoundToggleButton.tsx` |
 | Sonidos de insignias nuevos | Sustituidos el 2 de octubre por un whoosh suave (ver abajo) | `game/badgeSounds.ts` |
 
-### Cambios del 2 de octubre
+### 2 de octubre
 
 | Cambio | Qué hace | Dónde |
 |---|---|---|
@@ -107,7 +149,7 @@ Antes de pasarlo a production, conviene probar en development unas cuantas tradu
 | Logo ICA | El logo de ICADEMY sin «DEMY»: marco redondeado abierto abajo, birrete y «ICA» en Nunito 900. Va en la barra de arriba | `game/IcaLogo.tsx`, `Header.tsx` |
 | Rojo y naranja más suaves | Menos brillantes, con algo más de blanco, para que no compitan con el azul ICA: `--ica-fire` (racha), `--ica-a` y `--ica-bad-strong` (botón «No la sabía»). Afecta a toda la app | `index.css` |
 | Camino sin recuadro | El camino de Inicio va directamente sobre el fondo de la app (ya no dentro de un recuadro azul); solo las fichas llevan el azul ICA. Colores en la clase `.ica-path-skin` | `game/IcaPath.tsx`, `index.css` |
-| Cofre y Reto del día cambian de color al activarse | Bloqueados: ficha clara con el dibujo en azul. Cofre listo para abrir: dorado (placa dorada, cofre de madera, brillo); abierto: blanco con las monedas y el check. Reto del día disponible: morado (color de minijuego, `--ica-reto` #a259f0) con un mando de videojuego (antes salía el icono del modo, p. ej. el enlace de Parejas); hecho: blanco con check. Texto: «Tu minijuego con palabras ICA» | `game/IcaPath.tsx` |
+| Cofre y Reto del día cambian de color al activarse | Bloqueados: ficha clara con el dibujo en azul. Cofre listo para abrir: dorado (placa dorada, cofre de madera, brillo); abierto: blanco con las monedas y el check. Reto del día disponible: morado (color de minijuego, `--ica-reto` #a259f0) con un mando de videojuego (antes salía el icono del modo, p. ej. el enlace de Parejas); hecho: blanco con check. Texto debajo: «Mínimo 5 correctas» (ver más abajo) | `game/IcaPath.tsx` |
 | «Estoy aquí» | Si tocas un paso bloqueado (p. ej. Activación sin haber hecho Inmersión), además de temblar, el paso que toca hacer da un solo salto suave y lento (0,9 s) y brilla un poco | `nudgeStep()` en `game/IcaPath.tsx`, animación `ica-nudge` en `index.css` |
 
 | I, C y A en tres azules | Creación, Activación y el resto de pantallas de cada fase dejan el lila y el rosa: Inmersión celeste (#3fc1ec), Creación azul (#3b82f6) y Activación azul oscuro (#1e5fb4). También en la imagen de los trackers | variables `--ica-i*`, `--ica-c*`, `--ica-a*` en `index.css`, `Trackers/TrackerChartPreview.tsx` |
@@ -134,10 +176,11 @@ Antes de pasarlo a production, conviene probar en development unas cuantas tradu
 | ICA Coins: movimientos plegados | Se ven los 4 últimos; el resto con «Ver todos (n)» / «Ver menos» (hasta 40) | `views/FichasView.tsx` |
 | Azul de la I y «Ciclo ICA completado» | `--ica-i` pasa de #3fc1ec a #3aaeee (un poco más cerca del azul de la C): límites de hoy, Inmersión, etc. En la celebración del cofre, I, C y A con sus tres azules (como en «Tus límites de hoy») y letra blanca. Debajo, solo «Racha ICA: N días» (fuera «A los 7 días seguidos ganas…») | `index.css`, `game/CycleCelebration.tsx`, `Trackers/TrackerChartPreview.tsx` |
 | Saludo «Buenos días» / «Hola» | En móvil, al entrar: «Buenos días» de 5:00 a 12:59 y «Hola» el resto del día, en el idioma objetivo. Entra subiendo desde abajo con un pequeño rebote. Si con el nombre no cabe, se quita el nombre o baja el tamaño de letra (18/16/14). En rumano «Bună dimineața» no cabe y usa «Salut» | `game/welcomeGreeting.ts`, `game/WelcomeBrand.tsx`, test `welcomeGreeting.test.ts` |
-| Ranking sin «Ver con gente de ejemplo» | Quitado por completo el modo de ejemplo del ranking (botón, datos y textos). Borrados `game/rankingDemo.ts` y `hooks/useIsSuperAdmin.ts` (no se usaban en otro sitio) | `views/LeaderboardView.tsx`, `i18n/en/base2.ts` |
-| Recap: recuadro del ranking | Vuelve al tono ciruela que tenía (#472e4b) en vez del verde | `game/monthlyRecap.tsx` |
+| Ranking sin «Ver con gente de ejemplo» | Quitado por completo el modo de ejemplo del ranking (botón, datos y textos). Borrados `game/rankingDemo.ts` y `hooks/useIsSuperAdmin.ts`, que eran nuevos de esta rama | `views/LeaderboardView.tsx`, `i18n/en/base2.ts` |
+| Recap: recuadro del ranking | Con los colores del anuncio del Coaching (degradado azul #1d4ed8 → morado #6d28d9 → fucsia #9d174d, con brillo rosa en la esquina) y los números en dorado. Elegido por Luis entre 4 opciones | `game/monthlyRecap.tsx` |
 | Cerrar «Ciclo ICA completado» tocando fuera | Tocar la parte oscura de arriba (fuera de la tarjeta) sale de la pantalla. Si el cofre es nuevo, recoge las ICA Coins igual que el botón (no se pierden) | `game/CycleCelebration.tsx` |
-| Reto del día: todos los modos y aprobado con 5 | Rota entre los modos de Desafíos: Parejas, Lectura, Escritura, Escucha y ahora también Habla (se salta si el navegador no tiene reconocimiento de voz). Solo cuenta como hecho con 5 aciertos o más: con menos, «¡Casi!», «Necesitas 5 aciertos para completarlo» e «Intentarlo otra vez»; el camino no lo marca como hecho y muestra «Hoy 3 de 10 · necesitas 5». **Nahuel:** el resultado sigue guardándose solo en el dispositivo | `game/dailyGame.ts`, `views/DailyGameView.tsx`, `game/IcaPath.tsx`, tests `dailyGame.test.ts`, `gameRules.test.ts` |
+| Reto del día: todos los modos y aprobado con 5 | Rota entre los modos de Desafíos: Parejas, Lectura, Escritura, Escucha y ahora también Habla (se salta si el navegador no tiene reconocimiento de voz). Solo cuenta como hecho con 5 aciertos o más (`DAILY_GAME_PASS`): con menos, «¡Casi!», «Mínimo 5 correctas para completarlo» e «Intentarlo otra vez», y el camino no lo marca como hecho. Bajo «TERMINA AQUÍ», una sola línea: «Mínimo 5 correctas». El resultado sigue guardándose solo en el dispositivo | `game/dailyGame.ts`, `views/DailyGameView.tsx`, `game/IcaPath.tsx`, tests `dailyGame.test.ts`, `gameRules.test.ts` |
+| Cofre sin sonido | Al tocar el cofre (abrirlo o volver a verlo) no suena nada, tampoco al recoger las monedas. El salto del paso siguiente cuando llega la línea sí suena | `game/CycleCelebration.tsx`, `game/IcaPath.tsx` |
 | Saludo al entrar (móvil) | Al abrir la app en el móvil sale a la izquierda «Ciao, Clara» (el «hola» del idioma que aprende y su nombre) con el logo en el centro; al segundo y medio el logo se desliza a su sitio y el saludo va delante de él a la misma velocidad mientras se desvanece. Si el nombre no cabe, sale solo el «hola» (nunca «…»). Una vez por sesión. Hay «hola» para los 28 idiomas (chino y japonés con su propia coma) | `game/WelcomeBrand.tsx`, `game/welcomeGreeting.ts`, `Header.tsx` |
 | Logo al cargar | Mientras carga la app sale el logo ICA en el centro (en `index.html`, así se ve antes de que arranque React, en claro u oscuro según el tema). Las pantallas de carga internas enseñan el mismo logo, del mismo tamaño y en el mismo sitio, así no hay salto al pasar de una a otra | `index.html`, `components/ui/fullscreen-loading.tsx` |
 | Ciclo ICA completado y recap del mes | Fuera los colores antiguos de I, C y A. En «Ciclo ICA completado», tres fichas blancas con la letra y el check azules (como en el camino). En el recap del mes, arriba va el logo ICA en blanco y el fondo y los números son de la gama azul | `game/CycleCelebration.tsx`, `game/monthlyRecap.tsx` |
@@ -148,65 +191,76 @@ Luis comparó cuatro estilos para el camino (pantalla azul, sin recuadro, tarjet
 
 Aplazado por Luis: un chat entre icademers al acabar un desafío (para animar a ir al Club de Dinámica).
 
-### Para Nahuel
 
-- [ ] **`ica-challenges-center` (`create-challenge`)**: la app ya solo manda `rounds` 1 o 2, `responseSeconds` 5 (Lectura) y `durationSeconds` 86400. Conviene que el servidor acepte solo esos valores (hoy admite 5 y 10 rondas y otras duraciones).
-- [ ] **`ica-challenges-center`**: tiene una acción nueva, `public-profile` (`{ profileUserId }`). Devuelve `profile` (nombre, idioma, nivel), `stats` (mejor racha ICA y de flashcards, palabras y desafíos ganados) y `challenge` (`canChallenge`, `blockedReason`), con las mismas reglas que al crear un desafío Global. Ya estaba en la lista de funciones que desplegar. Hasta que se despliegue, la ventana enseña solo las insignias de ranking y eficacia, y si se puede retar lo saca de `list-available-users`.
-- [ ] **Opcional**: volver a desplegar `calendar-icademy-bulk-upsert` para que las clases nuevas de francés se guarden con el nombre «Francés» (`_shared/calendar-icademy-catalog.ts`). En la app ya sale «Francés» igualmente.
-- [ ] **Opcional**: quien tenga avisos activados de una clase oculta no los ve en la app, pero siguen contando en el servidor. Si no se programan sesiones de esas clases no llega ningún aviso. Para limpiarlos: `update public.users_calendar_icademy set notifications_enabled = false where class_key in ('fr_conv','en_avanzado','it_avanzado','de_basico','de_conv');`
-- [ ] **`anthropic-proxy`**: acción nueva `pronunciation` (`{ words, targetLang, nativeLang }`, máximo 20 palabras; responde `{ result: { palabra: transcripción } }`) con Haiku, `temperature: 0`. Ya estaba en la lista de funciones que desplegar. Hasta que se despliegue, en development y production la pronunciación simplemente no aparece.
-- Más adelante se puede guardar la transcripción en una columna de `lexicards` para no pedirla en cada dispositivo.
-- Las traducciones al inglés de los textos nuevos están en `src/i18n/en/modo-juego-octubre.ts`.
+## Antes de production: lo que hoy es vista previa
 
-### Qué probar
+En development se puede probar tal cual. Para production, cada pieza hay que llevarla al servidor o esconderla. Las ICA Coins son la misma moneda que los tokens de PreguntICA (`preguntica_token_ledger`): arriba se enseña servidor + vista previa, pero PreguntICA solo gasta lo del servidor (Luis veía 60 arriba y 42 al canjear).
 
-- [ ] Calendario ICADEMY como alumno: no salen las clases ocultas y francés sale como «Francés». En el admin siguen todas.
-- [ ] Insignias: abrir una de cada rango con el sonido activado.
-- [ ] En el ordenador, pasar el ratón por la racha y por las ICA Coins.
-- [ ] Ranking: tocar a alguien, ver su perfil y pulsar «Desafiar».
-- [ ] Flashcards: al girar una tarjeta sale la pronunciación (/bocú/). En Perfil, «Oculta» la quita. Solo sale cuando `anthropic-proxy` (con la acción `pronunciation`) está desplegada en el entorno.
-- [ ] Inicio: el camino sin recuadro, con I, C y A que se invierten al hacerlas (check azul); el cofre se vuelve dorado al poder abrirlo y el Reto del día morado al poder jugarlo. Tocar Activación sin haber hecho Inmersión: Inmersión da un salto suave. Mirarlo también en modo oscuro.
-- [ ] En el móvil, abrir la app: «Ciao, [nombre]» y el logo en el centro; al segundo y medio el logo vuelve a la izquierda. Recargar en la misma pestaña: ya no sale.
-- [ ] Crear una frase, salir a Inicio y volver a Creación o a Activación: sale «Tienes una frase por activar» / «Tu frase nueva» y el botón lleva a grabarla.
-- [ ] Dentro de una nota maestra abierta: «Grabar esta frase», «Elegir otra frase» plegado y la nota desafiante al final.
-- [ ] Desafíos → Pendientes con retos recibidos y enviados.
-- [ ] Completar el ciclo (celebración con fichas blancas) y abrir el recap del mes (logo ICA arriba).
-
-## Lo que hoy es vista previa (solo en el navegador)
-
-En development se puede probar tal cual. Para production, cada pieza hay que llevarla al servidor u ocultarla.
-
-| Pieza | Dónde se guarda hoy | Qué falta en el servidor |
+| Pieza | Hoy (navegador) | Qué hace falta en el servidor |
 |---|---|---|
-| ICA Coins nuevas: cofre, hitos de racha ICA y de flashcards, +1 por desafío ganado, ampliar el día, desafío extra | `localStorage` `ica-fichas-preview-v1:<userId>` (`game/fichas.ts`) | Movimientos en `preguntica_token_ledger` (con `entry_type` nuevos) y RPCs que comprueben el ciclo, la racha y el saldo, y que no se cobre dos veces. Arriba se ve la suma de servidor + vista previa, pero PreguntICA solo gasta lo del servidor: Luis veía 60 arriba y 42 al canjear |
-| Desafío extra (4.º reto) | Se cobra en la vista previa; `create-challenge` recibe `useExtraSlot` | La función sigue limitada a 3 (`MAX_ACTIVE_CHALLENGES`) e ignora `useExtraSlot`, así que con alumnos reales el 4.º reto falla |
-| Reacciones al acabar un desafío | `localStorage` `ica-challenge-reactions-v1` | Tabla y acciones `send-reaction` / `list-reactions`. Hoy el rival no las recibe |
-| Insignia destacada | `localStorage` (`game/featuredBadge.ts`) | `profiles.featured_badge` (`"categoria:rango"`) devuelto como `featured_badge` en los dos RPC del ranking. El front ya lo lee |
-| Límites diarios | Solo en el cliente | Validarlos al insertar (lexicards, frases, chunks), teniendo en cuenta «ampliar el día» |
-| Resultado del Reto del día | `localStorage` `ica-daily-game-v1:<userId>` | Opcional |
+| ICA Coins nuevas: cofre (1–5), hitos de racha ICA y de flashcards, +1 por desafío ganado, «Ampliar el día» (50), pase de desafío extra (15) | `localStorage` `ica-fichas-preview-v1:<userId>` (`game/fichas.ts`) | Ver «Propuesta: ICA Coins en el servidor» |
+| Desafío extra (4.º reto) | Se cobra en la vista previa; `create-challenge` recibe `useExtraSlot` | El límite sigue en `MAX_ACTIVE_CHALLENGES = 3` (`index.ts`, que se lo pasa a `invitations.ts`) y `useExtraSlot` se ignora: hoy el 4.º reto falla después de cobrar las 15 monedas de vista previa. Propuesta: tabla `ica_challenge_passes (id, user_id, ledger_entry_id unique, used_challenge_id uuid unique null, used_at)` y, en `create-challenge`, si `myActive >= 3 && useExtraSlot`, gastar un pase en la misma transacción que el insert y permitir hasta 4. Mientras tanto se puede esconder la oferta |
+| Límites diarios (10 palabras, 2 frases, 2 activaciones; ×2 con «Ampliar el día») | Solo el cliente (`game/limits.ts`). Las frases se cuentan en `localStorage` `ica-phrases-today-v1:<userId>` | Triggers `BEFORE INSERT` en `lexicards`, `phrase_generations` y `phrase_voice_activations` que cuenten por `now()` en la zona del perfil (no por el `created_at` que manda el cliente) y lancen `DAILY_LIMIT_<TIPO>`. Hace falta distinguir regeneraciones (habría que crear una columna, p. ej. `phrase_generations.is_regeneration`) y decidir si regrabar cuenta como activación |
+| Reacciones al acabar un desafío | `localStorage` `ica-challenge-reactions-v1` (la clave no lleva usuario) | Tabla `ica_challenge_reactions (id, challenge_id fk, sender_user_id, kind check ('face','phrase'), value check (lista cerrada), created_at)`, RLS de lectura solo para los 2 jugadores, y acciones `send-reaction` (participante, reto `completed`, máximo 2 seguidas) y `list-reactions` en `ica-challenges-center`. Hoy el rival no las recibe |
+| Insignia destacada | `localStorage` `ica-featured-badge-v1:<userId>` (`game/featuredBadge.ts`) | `profiles.featured_badge text` con check `^(rachaICA\|rachaFlash\|ranking\|eficacia\|vocab\|desafios):(bronce\|plata\|oro\|rubi\|diamante)$`, RPC `set_my_featured_badge(p_badge)` y devolverla en `get_monthly_streak_leaderboard`, `snapshot_monthly_leaderboard` y `get_monthly_snapshot_leaderboard` (cambia el tipo de retorno: `drop function` antes). El front ya la lee. Los umbrales de las insignias solo están en `game/achievements.ts` |
+| Resultado del Reto del día | `localStorage` `ica-daily-game-v1:<userId>` | Opcional: tabla `ica_daily_game_results (user_id, day, kind, correct, total, finished_at, PK (user_id, day))` y RPC `save_daily_game_result(p_kind, p_correct, p_total)` que decida el día y guarde el mejor. No da monedas ni puntos |
 
-## A tener en cuenta
+### Propuesta: ICA Coins en el servidor
 
-- **PreguntICA extra.** Es un intento aparte (`token_unlock`): no cierra la semana ni da puntos de ranking, porque el ranking solo cuenta `weekly`. La PreguntICA gratis de la semana sigue disponible cuando el alumno activa sus palabras.
-  - Lo he probado en Postgres con 18 comprobaciones: semana bloqueada, gratis después, extra con la semana ya respondida y saldo.
-  - En esta revisión arreglé un fallo: la migración cobraba 50, pero `create_preguntica_attempt` seguía exigiendo la semana desbloqueada, así que el alumno pagaba y no podía jugar.
-  - Si un pago se queda sin empezar, la app ofrece «Empezar» en vez de volver a cobrar.
-- **Finales de línea.** En el PC de Luis los archivos están en CRLF y el índice en LF. Hay que hacer el commit desde Windows (VS Code, `core.autocrlf=true`); si no, saldrían todas las líneas como cambiadas.
-- **Archivos borrados** (ya no los usa nada): `LeaderboardMenu`, `AppBreadcrumbs`, `useDashboardBreadcrumbs`, `MetaTrackerBar`, `MetaTrackerSection`, `ui/breadcrumb` y `ui/separator`.
+- **Tipos nuevos** en el check de `entry_type`: `cycle_chest`, `streak_milestone`, `flash_milestone`, `challenge_win`, `day_boost`, `challenge_pass`. Columnas nuevas `reference_day date` y `reference_key text`.
+- **Unicidad**: un cofre y un «Ampliar el día» por usuario y día (`unique (user_id, entry_type, reference_day) where entry_type in ('cycle_chest','day_boost')`); un hito o desafío una sola vez (`unique (user_id, entry_type, reference_key) where entry_type in ('streak_milestone','flash_milestone','challenge_win')`).
+- **Hoy del usuario**: helper `ica_local_today(uid) → date` con `profiles.timezone`. Ninguna RPC de premios debe fiarse de un `p_day` que mande el cliente.
+- **RPCs** (`SECURITY DEFINER`, `search_path` fijo, mismo `pg_advisory_xact_lock` que el canje):
+  - `get_my_ica_coins_state()` → saldo, hoy, monedas del cofre de hoy, si hay «Ampliar el día» hoy, pases sin usar, hitos ya cobrados.
+  - `claim_cycle_chest()` → recalcula el día con `recompute_daily_creation_metrics_for_user_day`, exige `daily_metrics.creation_goal_completed` (la misma regla que el cliente), tira las monedas con las probabilidades de `game/rules.ts` (`CYCLE_CHEST_ODDS`: 1→40 %, 2→30 %, 3→20 %, 4→8 %, 5→2 %) y, si ya existe, devuelve la fila de hoy.
+  - `claim_streak_milestones(p_kind)` → la racha la calcula el servidor (como `ica_streak_days` del ranking). Premios en `STREAK_MILESTONES` y `FLASH_STREAK_MILESTONES`.
+  - `buy_day_boost()` (50) y `buy_challenge_pass()` (15).
+- **Victoria en desafío**: trigger `AFTER UPDATE` en `ica_challenges` cuando pasa a `completed` con ganador y `finalized_at >= 2026-10-01`, +1 con `reference_key = id`. Tiene que ser trigger porque el ganador también se decide en SQL (caducidad de turnos), no solo en la función.
+- **Cliente**: `useFichas` lee `get_my_ica_coins_state`; `claimCycleChest`, `claimReachedMilestones`, `claimReachedFlashMilestones`, `buyDayBoost`, `buyChallengeSlot`, `consumeChallengeSlot` llaman a las RPC; se borran las llamadas a `claimChallengeWinCoin` (`IcaChallengesView.tsx`, `IcaChallengePlayView.tsx`); «Movimientos» de `/fichas` lee el ledger (hoy solo enseña los de vista previa). Las entradas locales no se importan: sus cantidades no son de fiar.
+
+### Reglas que hoy solo comprueba el cliente
+
+| Regla | Cliente | Servidor |
+|---|---|---|
+| Límites diarios y «Ampliar el día» | ver arriba | No |
+| Desafío extra (4.º) | `IcaChallengesView.tsx` | Fijo en 3 |
+| Flashcards desde 20 palabras activadas | `useActivatedWords.ts`, `DashboardPages.tsx` | No (`bump_daily_review_metrics` acepta cualquier `p_day`) |
+| Nota desafiante con 2 notas maestras terminadas | `GamesIcaView`, `MasterNotesView`, `NotaDesafianteView` | No: las RPC solo comprueban que la nota es suya y está cerrada |
+| Reto del día: 10 palabras y 5 aciertos | `game/dailyGame.ts` | No (no da premio) |
+| 20 palabras para entrar en Desafíos | `ChallengesUnlocked` | Sí (`invitations.ts`) |
+
+### «Hoy» en el cliente y en el servidor
+
+El cliente usa la hora del dispositivo (`todayKey()` en `utils.ts`, `getTodayProgress`, `pathFill.ts`, los desbloqueos de los lunes). El servidor usa `profiles.timezone` (UTC si falta) en `daily_metrics.day`; `record_master_note_challenge_play` y `bump_master_note_challenge_listening` comparan en UTC. La app manda la zona con `set_my_timezone` al cargar. Si eso falla, en España entre las 00:00 y las 02:00 el límite y el cofre miran días distintos. Y todo lo «una vez al día» de la vista previa se salta cambiando el reloj del móvil: otra razón para pasarlo al servidor.
+
+## Riesgos y detalles
+
+- **Funciones `SECURITY DEFINER` y privilegios.** En Supabase, `revoke ... from public` no basta: los privilegios por defecto dan EXECUTE a `anon` y `authenticated` en cada función nueva de `public`. Las funciones de servidor deberían llevar `revoke execute ... from public, anon, authenticated`. La migración de seguridad lo hace con las que dan monedas, las del ranking mensual y los trabajos de Desafíos; conviene repasar el resto con `has_function_privilege('authenticated', ...)` en DEV.
+- **Datos en el navegador.** `services/quickCache.ts` guarda en `localStorage` ranking, fotos del mes, analíticas de admin (con nombres), flags y permisos. Desde esta revisión se borra al cerrar sesión (`clearQuickCache` en `AuthContext`).
 - **Tamaño.** El bloque principal pasa de 2,54 MB a 3,02 MB (de 797 a 944 KB con gzip). Unos 200 KB son los diccionarios de inglés, que se podrían cargar solo cuando la interfaz va en inglés.
-- **`.gitignore`.** Ahora también ignora `.env.*` (menos `.env.example`), para que copias como `.env.luis` (con claves) no se suban nunca. Luis usa desde el 2 de octubre el `.env` de Nahuel (base de datos de desarrollo), sin modos de prueba locales.
-- **Ayudas de prueba quitadas (2 oct).** A petición de Nahuel (que la IA no meta código «para probar en local»), se han borrado de la rama: el modo prueba del camino (`game/pathSimulation.ts`, `PathSimulationBanner.tsx`, `?simular-camino`), las 120 ICA Coins de prueba (`VITE_ICA_TEST_COINS`) y el atajo de pronunciación de `pnpm dev` (`scripts/dev-pronunciation.mjs`). `vite.config.ts/.js` y `.env.example` vuelven a estar como en la base. La pronunciación ahora solo usa `anthropic-proxy`.
-- **`pnpm-workspace.yaml`.** Lo creó pnpm en el PC de Luis y queda fuera de Git.
-- **Modo local de Desafíos.** Con `VITE_ICA_CHALLENGES_LOCAL=true` se juega contra rivales de prueba sin Supabase. En `develop` Nahuel dejó una versión aligerada (`icaChallengesLocalBridge.ts`, `icaChallengesLocalMode.ts`); esta rama aún tiene la versión anterior con 8 icademers virtuales y el recuadro «Modo prueba». Al unir `develop` con esta rama se adopta la versión de Nahuel.
-- **Seguridad.** Si no está hecho, hay que rotar la clave de Anthropic que salió en una captura el 30 de septiembre.
+- **Código sin usar.** `peekAdminRole`, `quickAge`, `ACTIVE_CALENDAR_ICADEMY_CATALOG` y `fetchTotalIcademers`/`peekTotalIcademers` ya no se llaman.
+- **`LeaderboardView.test.tsx`.** El caso de foto con `ica_test_points: 0` ahora usa 0.7: ya no se prueba el valor cero.
+- **`create-challenge`.** La app solo manda `rounds` 1 o 2, `responseSeconds` 5 (Lectura) y `durationSeconds` 86400. Tu validación de `develop` lo acepta (también 5 y 10 rondas); se puede estrechar.
+- **Pronunciación.** Se guarda en el navegador (`ica-pronunciation-v1:*`). Más adelante, una columna en `lexicards` evitaría pedirla en cada dispositivo.
+- **Clases ocultas del calendario.** Quien tenga avisos de una clase oculta no los ve en la app, pero siguen en el servidor. Para limpiarlos: `update public.users_calendar_icademy set notifications_enabled = false where class_key in ('fr_conv','en_avanzado','it_avanzado','de_basico','de_conv');`
+- **Archivos borrados** (no los usa nada): `LeaderboardMenu`, `AppBreadcrumbs`, `useDashboardBreadcrumbs`, `MetaTrackerBar`, `MetaTrackerSection`, `ui/breadcrumb` y `ui/separator`.
+- **`.gitignore`.** Ignora `.env.*` (menos `.env.example`), para que copias con claves no se suban nunca.
+- **Ayudas de prueba quitadas.** A petición tuya: el simulador del camino, las monedas de prueba (`VITE_ICA_TEST_COINS`), el atajo de pronunciación de `pnpm dev` y la demo local de Desafíos. El modo local de Desafíos que queda es el tuyo.
+- **Seguridad.** Si no está hecho, rotar la clave de Anthropic que salió en una captura el 30 de septiembre.
 
-## Qué revisar y cómo probarlo
+## Qué probar en development
 
-- [ ] Con una cuenta nueva: el login y el registro salen en español, y al llegar a 20 palabras salta la celebración de Desafíos.
-- [ ] Hacer I → C → A, abrir el cofre y pulsar «Recoger mis ICA Coins»: las monedas vuelan al contador.
+- [ ] Cuenta nueva: login y registro en español; al llegar a 20 palabras salta la celebración de Desafíos.
+- [ ] Inicio: I → C → A, abrir el cofre (sin sonido), «Recoger mis ICA Coins» y ver volar las monedas. Tocar fuera de la tarjeta también la cierra. Al volver a Inicio, la línea se rellena hasta el paso siguiente.
+- [ ] Reto del día: con menos de 5 aciertos sale «¡Casi!» y el camino no lo marca; con 5 o más, sí. Probar Habla en Chrome.
+- [ ] Límites: la 11.ª palabra del día se bloquea; «Ampliar el día» los duplica.
 - [ ] PreguntICA con la semana bloqueada y al menos 50 ICA Coins en el servidor: «Jugarla ya» cobra, se puede jugar y la semana sigue bloqueada.
-- [ ] Escuchar 3 min de una nota maestra y hacer una nota desafiante: el detalle de puntos del ranking suma 0,1 ese día.
+- [ ] Nota desafiante: escuchar 3 min de una nota maestra y hacer una nota desafiante; el detalle de puntos del ranking suma 0,1 ese día.
+- [ ] Ranking: tocar a alguien, ver su perfil (tras desplegar `public-profile`) y «Desafiar»: abre «Retar a …» con los modos.
+- [ ] Desafíos: retar en cada modo (1 o 2 rondas, reglas fijas), aceptar con menos de 20 palabras (mensaje del servidor) y Pendientes con retos recibidos y enviados.
+- [ ] Insignias: abrir una de cada rango con el sonido activado (gira y suena).
+- [ ] Flashcards: al girar sale la pronunciación (/bocú/); en Perfil, «Oculta» la quita.
 - [ ] Traducir y corregir en Inmersión y Creación: la calidad de Haiku es aceptable.
-- [ ] Ranking con más de 30 personas, insignias, y la app en inglés (`?lang=en`).
-
-Cuando Luis dé el OK, hago el commit en `feat/modo-juego` y el push. El PR va contra `develop`, o contra `feat/desafios-ica-modos` si esa aún no está integrada.
+- [ ] Calendario ICADEMY como alumno: no salen las clases ocultas y francés es «Francés». En el admin siguen todas.
+- [ ] Estadísticas → recap del mes; ranking con más de 30 personas; la app en inglés (`?lang=en`); modo oscuro; móvil y ordenador.
+- [ ] Cerrar sesión y entrar con otra cuenta en el mismo navegador: no queda nada de la anterior.
