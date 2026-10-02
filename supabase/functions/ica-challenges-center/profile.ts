@@ -60,7 +60,7 @@ export function longestStreakOf(completedDays: string[], savedDays: string[] = [
  * their badges and whether they can be challenged right now (with the reason if not).
  * Ranking position and efficacy are computed by the app from the monthly snapshots (public).
  */
-export async function getPublicProfile(input: ProfileInput): Promise<Response> {
+async function loadPublicProfile(input: ProfileInput): Promise<Response> {
   const { adminClient, userId, profileUserId, toText } = input
   if (!profileUserId) return jsonResponse(400, { ok: false, error: 'Falta el icademer.' })
   const isMe = profileUserId === userId
@@ -121,8 +121,12 @@ export async function getPublicProfile(input: ProfileInput): Promise<Response> {
       adminClient.from('users_ica_challenges').select('id').eq('user_id', userId).eq('is_active', true).limit(1),
       adminClient.from('users_ica_challenges').select('id').eq('user_id', profileUserId).eq('is_active', true).limit(1),
     ])
-    const myPair = await input.resolvePlayerPair(adminClient, { scope: 'global', target_lang: null, native_lang: null }, userId)
-    const rivalPair = targetLang && nativeLang ? { targetLang, nativeLang } : null
+    // Same pair resolution as create-challenge (settings, then the active enrollment).
+    const globalScope = { scope: 'global' as const, target_lang: null, native_lang: null }
+    const [myPair, rivalPair] = await Promise.all([
+      input.resolvePlayerPair(adminClient, globalScope, userId),
+      input.resolvePlayerPair(adminClient, globalScope, profileUserId),
+    ])
     if ((myEnrollment.data || []).length === 0) {
       blockedCode = 'ICA_CHALLENGE_NOT_ENROLLED'
       blockedReason = 'Activa Desafíos ICA para poder retar.'
@@ -174,4 +178,14 @@ export async function getPublicProfile(input: ProfileInput): Promise<Response> {
     stats,
     challenge: { canChallenge: blockedReason === null, blockedReason, blockedCode },
   })
+}
+
+/** Same as loadPublicProfile, but a database error becomes a JSON 500 (with CORS headers). */
+export async function getPublicProfile(input: ProfileInput): Promise<Response> {
+  try {
+    return await loadPublicProfile(input)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Error inesperado.'
+    return jsonResponse(500, { ok: false, error: message })
+  }
 }

@@ -10,7 +10,7 @@ export const DAILY_LIMITS = {
 
 export type DailyLimitKey = keyof typeof DAILY_LIMITS
 
-/** Por 5 fichas, ese día los límites se multiplican por 2 (20 · 4 · 4). */
+/** «Ampliar el día»: por DAY_BOOST_COST ICA Coins, ese día los límites se multiplican por 2 (20 · 4 · 4). */
 export const DAY_BOOST_COST = 50
 export const DAY_BOOST_MULTIPLIER = 2
 

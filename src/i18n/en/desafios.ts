@@ -72,7 +72,6 @@ const en: Record<string, string> = {
   "No tienes desafíos en curso ahora mismo.": "You don't have any challenges in progress right now.",
   "Te han retado": "You've been challenged",
   "Pendiente de tu respuesta": "Waiting for your answer",
-  "Para aceptar necesitas {n} palabras en tu Baúl ICA.": "To accept, you need {n} words in your ICA vault.",
   "Aceptar": "Accept",
   "Rechazar": "Decline",
   "Esperando aceptación": "Waiting to be accepted",
@@ -360,5 +359,9 @@ const en: Record<string, string> = {
   "No pudimos cargar tus resultados.": "We couldn't load your results.",
   "En el modo local solo puedes retar a los rivales de prueba.": "In local mode you can only challenge the test rivals.",
   "Error en el modo local.": "Local mode error.",
+  "El retador necesita al menos {n} palabras en su Baúl ICA.": "The challenger needs at least {n} words in their ICA vault.",
+  "Entre los dos necesitan al menos {n} palabras ICA{req} para este modo.": "Together you need at least {n} ICA words{req} for this mode.",
+  "Ambos necesitan al menos {n} palabras ICA{req} válidas para este modo.": "You both need at least {n} valid ICA words{req} for this mode.",
+  "No se pudo validar el modo o los idiomas del desafío.": "Couldn't check the challenge mode or languages.",
 }
 export default en

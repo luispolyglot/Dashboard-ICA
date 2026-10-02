@@ -372,6 +372,22 @@ const CHALLENGE_MESSAGE_PATTERNS: Array<{ pattern: RegExp; key: string; vars: st
     key: 'Tu rival aún no tiene {n} palabras ICA{req} para «{mode}».',
     vars: ['n', 'req', 'mode'],
   },
+  // Mensajes de invitations.ts al aceptar un reto (develop, 1 oct).
+  {
+    pattern: /^El retador necesita al menos (\d+) palabras en su Baúl ICA\.$/,
+    key: 'El retador necesita al menos {n} palabras en su Baúl ICA.',
+    vars: ['n'],
+  },
+  {
+    pattern: /^Entre los dos necesitan al menos (\d+) palabras ICA(.*) para este modo\.$/,
+    key: 'Entre los dos necesitan al menos {n} palabras ICA{req} para este modo.',
+    vars: ['n', 'req'],
+  },
+  {
+    pattern: /^Ambos necesitan al menos (\d+) palabras ICA(.*) válidas para este modo\.$/,
+    key: 'Ambos necesitan al menos {n} palabras ICA{req} válidas para este modo.',
+    vars: ['n', 'req'],
+  },
 ]
 
 export function translateChallengeMessage(message: string): string {
@@ -749,7 +765,7 @@ export async function createIcaChallenge(input: {
   nativeLang?: string
   durationSeconds?: number
   config: IcaOwnWordsChallengeConfig
-  /** 4.º desafío activo con un «desafío extra» (2 ICA Coins). El servidor debe aceptarlo (ver notas). */
+  /** 4.º desafío activo con un «desafío extra» (EXTRA_CHALLENGE_COST ICA Coins). El servidor aún no lo acepta (ver MODO_JUEGO_NOTAS.md). */
   extraSlot?: boolean
 }): Promise<void> {
   const cleanConfig = sanitizeOwnWordsConfig(input.config)

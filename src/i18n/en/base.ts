@@ -265,7 +265,7 @@ const en: Record<string, string> = {
   "Racha ICA de {n} días, hoy aún no. Abrir rachas": "{n}-day ICA streak, not done today yet. Open streaks",
   "{n} ICA Coins. Abrir ICA Coins": "{n} ICA Coins. Open ICA Coins",
   "Tu nivel en {lang}": "Your level in {lang}",
-  "Responde 2 preguntas y te situamos en la barra de nivel, de A1 a C1.": "Answer 2 questions and we'll place you on the level bar, from A1 to C1.",
+  "Elige tu nivel y te situamos en la barra de nivel, de A1 a C1.": "Choose your level and we'll place you on the level bar, from A1 to C1.",
   "Situar mi nivel": "Find my level",
   "Cómo se calcula tu nivel": "How your level is calculated",
   "Camino a nivel nativo": "On the way to native level",

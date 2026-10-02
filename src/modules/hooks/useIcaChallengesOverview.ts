@@ -25,6 +25,7 @@ import {
   upsertMyIcaChallengeEnrollment,
 } from '../services/icaChallenges'
 import { refreshIcaChallengeAlerts } from './useIcaChallengeAlerts'
+import { useAuth } from '@/auth/AuthContext'
 
 type UseIcaChallengesOverviewParams = {
   targetLang?: string
@@ -64,7 +65,7 @@ type UseIcaChallengesOverviewResult = {
     scope: IcaChallengeScope
     config: IcaOwnWordsChallengeConfig
     durationSeconds?: number
-    /** 4.º desafío con un «desafío extra» (2 ICA Coins). */
+    /** 4.º desafío con un «desafío extra» (EXTRA_CHALLENGE_COST ICA Coins, ver game/rules.ts). */
     extraSlot?: boolean
   }) => Promise<void>
   respondInvitation: (challengeId: string, accept: boolean) => Promise<void>
@@ -160,9 +161,11 @@ function loadOverviewSnapshot(targetLang: string, nativeLang: string, force = fa
   return promise
 }
 
-function freshSnapshot(targetLang?: string, nativeLang?: string): OverviewSnapshot | null {
+function freshSnapshot(targetLang?: string, nativeLang?: string, userId?: string | null): OverviewSnapshot | null {
   if (!targetLang || !nativeLang || !lastSnapshot) return null
   if (lastSnapshot.key !== `${targetLang}|${nativeLang}`) return null
+  // Solo si es de la misma cuenta (por si se cambia de usuario en la misma pestaña).
+  if (!userId || lastSnapshot.data.currentUserId !== userId) return null
   return Date.now() - lastSnapshot.at < SNAPSHOT_FRESH_MS ? lastSnapshot.data : null
 }
 
@@ -181,7 +184,8 @@ export function useIcaChallengesOverview({
   nativeLang,
 }: UseIcaChallengesOverviewParams): UseIcaChallengesOverviewResult {
   // Si hay datos precargados (de hace menos de 30 s), la página abre ya con ellos.
-  const [initial] = useState(() => freshSnapshot(targetLang, nativeLang))
+  const { user } = useAuth()
+  const [initial] = useState(() => freshSnapshot(targetLang, nativeLang, user?.id))
   const [enrollment, setEnrollment] = useState<IcaChallengeEnrollment | null>(initial?.enrollment ?? null)
   const [challenges, setChallenges] = useState<IcaChallengeRecord[]>(initial?.challenges ?? [])
   const [playsByChallengeId, setPlaysByChallengeId] = useState<

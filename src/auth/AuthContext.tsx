@@ -6,6 +6,7 @@ import { getSessionSafe } from '../lib/supabaseAuthSafe'
 import { recordBootstrapDiagnostic } from '@/modules/utils/bootstrapDiagnostics'
 import { checkLoginEmail, normalizeEmail } from './whitelist'
 import { t } from '@/i18n'
+import { clearQuickCache } from '@/modules/services/quickCache'
 
 type AuthContextValue = {
   user: User | null
@@ -97,6 +98,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (event === 'SIGNED_OUT') {
         setIsPasswordRecovery(false)
         isSigningOutForWhitelistRef.current = false
+        // Fuera la caché rápida de la cuenta que sale (permisos, admin, ranking…).
+        clearQuickCache()
       }
       setSession(nextSession)
       setUser(nextSession?.user ?? null)

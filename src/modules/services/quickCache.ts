@@ -67,6 +67,29 @@ export function forgetQuick(key: string): void {
   }
 }
 
+/**
+ * Borra toda la caché rápida (memoria y navegador). Se llama al cerrar sesión, para que en un
+ * dispositivo compartido no queden datos de la cuenta anterior (permisos, admin, ranking…).
+ */
+/** Sube al borrar la caché: una petición que empezó antes ya no guarda su respuesta. */
+let generation = 0
+
+export function clearQuickCache(): void {
+  generation += 1
+  memory.clear()
+  inflight.clear()
+  try {
+    const keys: string[] = []
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index)
+      if (key?.startsWith(PREFIX)) keys.push(key)
+    }
+    keys.forEach((key) => window.localStorage.removeItem(key))
+  } catch {
+    /* sin almacenamiento: con la memoria basta */
+  }
+}
+
 export function quickFetch<T>(
   key: string,
   fetcher: () => Promise<T>,
@@ -79,13 +102,15 @@ export function quickFetch<T>(
   }
   const running = inflight.get(key)
   if (running) return running as Promise<T>
-  const request = fetcher()
+  const startedIn = generation
+  const request: Promise<T> = fetcher()
     .then((value) => {
-      storeQuick(key, value, persist)
+      // Si se cerró sesión mientras tanto, no se guarda (sería de la cuenta anterior).
+      if (startedIn === generation) storeQuick(key, value, persist)
       return value
     })
     .finally(() => {
-      inflight.delete(key)
+      if (inflight.get(key) === request) inflight.delete(key)
     })
   inflight.set(key, request)
   return request

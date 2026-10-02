@@ -418,7 +418,7 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
   const [pendingChallengeToCancel, setPendingChallengeToCancel] =
     useState<IcaChallengeRecord | null>(null)
 
-  // Desafío extra: con 3 en curso, 2 ICA Coins para retar a una 4.ª persona.
+  // Desafío extra: con 3 en curso, EXTRA_CHALLENGE_COST ICA Coins para retar a una 4.ª persona.
   const { user: authUser } = useAuth()
   const { total: coinBalance, entries: coinEntries } = useFichas(authUser?.id)
   const extraPasses = unusedChallengeSlots(coinEntries)

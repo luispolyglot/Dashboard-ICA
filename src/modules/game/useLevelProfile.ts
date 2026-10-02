@@ -15,4 +15,3 @@ export function useLevelProfile(config: AppConfig): { profile: MetaTrackerProfil
   const cached = peekMetaTrackerProfile(user?.id, config.targetLang, config.nativeLang)
   return cached === undefined ? { profile: null, loading: true } : { profile: cached, loading: false }
 }
-

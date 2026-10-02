@@ -148,7 +148,7 @@ export function claimReachedFlashMilestones(userId: string | null | undefined, s
 }
 
 // ---------------------------------------------------------------------------
-// Desafío extra (4.º desafío activo) por 2 ICA Coins
+// Desafío extra (4.º desafío activo) por EXTRA_CHALLENGE_COST ICA Coins
 // ---------------------------------------------------------------------------
 
 /** Cada desafío ICA ganado da {CHALLENGE_WIN_REWARD} ICA Coin (una sola vez por desafío). Devuelve true si se ha dado ahora. */

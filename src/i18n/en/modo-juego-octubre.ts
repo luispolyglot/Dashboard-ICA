@@ -46,13 +46,6 @@ const en: Record<string, string> = {
   "Quitar el sonido": "Mute sounds",
   "Poner el sonido": "Turn sounds on",
   "Recibir un reto de un icademer virtual": "Get a challenge from a virtual icademer",
-  "Modo prueba · icademers virtuales": "Test mode · virtual icademers",
-  "Preparar demo": "Set up demo",
-  "Que me rete alguien más": "Get challenged by someone else",
-  "Demo lista: Sofía y Piotr te han retado y tienes {n} icademers libres para retar.": "Demo ready: Sofía and Piotr challenged you and {n} icademers are free to challenge.",
-  "No se pudo preparar la demo.": "Couldn't set up the demo.",
-  "{name} te ha retado a {mode}.": "{name} challenged you to {mode}.",
-  "No se pudo crear el reto de prueba.": "Couldn't create the test challenge.",
   // Pronunciación transcrita (flashcards y Últimas añadidas)
   "Cómo suena cada palabra (beaucoup → /bocú/) en las flashcards y en Inmersión.": "How each word sounds (beaucoup → /boh-KOO/) in flashcards and Immersion.",
   "Visible": "Shown",

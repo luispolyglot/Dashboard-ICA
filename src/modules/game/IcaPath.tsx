@@ -1052,4 +1052,3 @@ function IcaJourney({
     </div>
   )
 }
-
