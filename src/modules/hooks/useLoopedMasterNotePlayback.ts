@@ -4,7 +4,8 @@ type UseLoopedMasterNotePlaybackParams = {
   playingNoteId: string | null
   isPaused?: boolean
   playNoteById: (noteId: string) => Promise<void>
-  playTransitionCue: (kind: 'start' | 'step' | 'finish') => Promise<unknown>
+  /** Suena entre nota y nota. `index` es la posición (desde 0) de la nota que va a sonar. */
+  playTransitionCue: (kind: 'start' | 'step' | 'finish', index?: number) => Promise<unknown>
   pausePlayback?: () => void
   resumePlayback?: () => Promise<void>
   seekBack10?: () => void
@@ -88,7 +89,7 @@ export function useLoopedMasterNotePlayback({
 
       setLoopIndex(safeIndex)
 
-      await playTransitionCue(cueKind)
+      await playTransitionCue(cueKind, safeIndex)
       if (token !== tokenRef.current) return
 
       await playNoteById(noteId)

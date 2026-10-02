@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Dispatch, SetStateAction } from 'react'
+import type { Dispatch, ReactNode, SetStateAction } from 'react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { PlusIcon } from 'lucide-react'
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion'
+import { Accordion as AccordionPrimitive } from 'radix-ui'
+import { ChevronDownIcon, HistoryIcon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { t, uiLocale } from '@/i18n'
 import {
   fetchPregunticaHistory,
   type PregunticaHistoryAttempt,
@@ -16,7 +14,19 @@ import {
 } from '../services/preguntica'
 import { AddIcaSuggestionModal } from '../components/AddIcaSuggestionModal'
 import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
+import { DASHBOARD_ROUTES } from '../routes/paths'
+import { FichaIcon, MicGlyph, TrophyIcon } from '../game/icons'
+import { EmptyState, GamePage, IconTile, PageTitle, Pill, SectionLabel, type Tone } from '../game/ui'
 import type { AppConfig, Lexicard } from '../types'
+import {
+  CoachBubble,
+  CorrectionList,
+  ModePill,
+  ScoreHero,
+  SuggestionChips,
+  TranscriptBlock,
+  WordUsage,
+} from './pregunticaParts'
 
 type PregunticaHistoryViewProps = {
   config: AppConfig
@@ -41,11 +51,21 @@ type PregunticaHistoryQuestionCard = {
   attempt: PregunticaHistoryAttempt
 }
 
+/** Las PreguntICAs de una misma semana, juntas. */
+type PregunticaHistoryWeekGroup = {
+  key: string
+  weekStart: string
+  weekEnd: string
+  completedAt: string | null
+  isUnlocked: boolean
+  cards: PregunticaHistoryQuestionCard[]
+}
+
 function formatDate(value: string | null): string {
   if (!value) return '-'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('es-ES', {
+  return date.toLocaleString(uiLocale(), {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -73,24 +93,22 @@ function formatDuration(durationMs: number | null): string {
   return `${minutes}:${String(remaining).padStart(2, '0')}`
 }
 
-function getModeLabel(mode: string): string {
-  const normalized = mode.trim().toLowerCase()
-  if (normalized === 'mixed') return 'Aleatorio'
-  if (normalized === 'vital') return 'Vital'
-  if (normalized === 'frequent') return 'Frecuente'
-  if (normalized === 'occasional') return 'Ocasional'
-  if (normalized === 'rare') return 'Raro'
-  return mode
+function parseDateOnly(value: string): Date | null {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return null
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
 }
 
-function getModeTone(mode: string): string {
-  const normalized = mode.trim().toLowerCase()
-  if (normalized === 'mixed') return 'border-violet-300/60 bg-violet-500/10 text-violet-700 dark:text-violet-300'
-  if (normalized === 'vital') return 'border-blue-300/60 bg-blue-500/10 text-blue-700 dark:text-blue-300'
-  if (normalized === 'frequent') return 'border-emerald-300/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-  if (normalized === 'occasional') return 'border-amber-300/60 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-  if (normalized === 'rare') return 'border-orange-300/60 bg-orange-500/10 text-orange-700 dark:text-orange-300'
-  return 'border-border bg-muted/40 text-muted-foreground'
+/** "22 – 28 sept" (la semana acaba el día antes de `weekEnd`, que es el lunes siguiente). */
+function formatWeekRange(weekStart: string, weekEnd: string): string {
+  const start = parseDateOnly(weekStart)
+  const endExclusive = parseDateOnly(weekEnd)
+  if (!start || !endExclusive) return `${weekStart} → ${weekEnd}`
+  const end = new Date(endExclusive)
+  end.setDate(end.getDate() - 1)
+  const month = (date: Date) => date.toLocaleDateString(uiLocale(), { month: 'short' }).replace('.', '')
+  if (start.getMonth() === end.getMonth()) return `${start.getDate()} – ${end.getDate()} ${month(end)}`
+  return `${start.getDate()} ${month(start)} – ${end.getDate()} ${month(end)}`
 }
 
 function normalizeComparableText(value: string): string {
@@ -138,7 +156,7 @@ function toQuestionCards(weeks: PregunticaHistoryWeek[]): PregunticaHistoryQuest
     .flatMap((week) =>
       week.attempts.map((attempt) => ({
         id: attempt.id,
-        questionText: attempt.questionText?.trim() || 'Sin pregunta registrada',
+        questionText: attempt.questionText?.trim() || t('Sin pregunta registrada'),
         questionTranslation: attempt.questionTranslation,
         createdAt: attempt.createdAt,
         weekStart: week.weekStart,
@@ -158,6 +176,99 @@ function toQuestionCards(weeks: PregunticaHistoryWeek[]): PregunticaHistoryQuest
       if (Number.isNaN(aTime) || Number.isNaN(bTime)) return 0
       return bTime - aTime
     })
+}
+
+/** Agrupa las tarjetas por semana, sin cambiar su orden (de la más reciente a la más antigua). */
+function groupByWeek(cards: PregunticaHistoryQuestionCard[]): PregunticaHistoryWeekGroup[] {
+  const groups: PregunticaHistoryWeekGroup[] = []
+  const byKey = new Map<string, PregunticaHistoryWeekGroup>()
+  cards.forEach((card) => {
+    const key = `${card.weekStart}|${card.weekEnd}`
+    let group = byKey.get(key)
+    if (!group) {
+      group = {
+        key,
+        weekStart: card.weekStart,
+        weekEnd: card.weekEnd,
+        completedAt: card.completedAt,
+        isUnlocked: card.isUnlocked,
+        cards: [],
+      }
+      byKey.set(key, group)
+      groups.push(group)
+    }
+    group.cards.push(card)
+  })
+  return groups
+}
+
+/** La mejor nota de un intento (de sus análisis o, si no hay, la del intento). */
+function bestScore(attempt: PregunticaHistoryAttempt): number | null {
+  const scores = attempt.audios
+    .map((audio) => audio.feedback?.score ?? audio.analysisScore)
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+  if (attempt.feedback) scores.push(attempt.feedback.score)
+  return scores.length > 0 ? Math.max(...scores) : null
+}
+
+function weekStatus(group: { completedAt: string | null; isUnlocked: boolean }): { label: string; tone: Tone } {
+  if (group.completedAt) return { label: t('Completada'), tone: 'ok' }
+  if (group.isUnlocked) return { label: t('Desbloqueada'), tone: 'c' }
+  return { label: t('Bloqueada'), tone: 'neutral' }
+}
+
+/** Día y mes en un cuadradito (como una hoja de calendario). */
+function DateTile({ value }: { value: string }) {
+  const date = new Date(value)
+  const valid = !Number.isNaN(date.getTime())
+  return (
+    <span
+      className='flex size-12 shrink-0 flex-col items-center justify-center rounded-2xl leading-none sm:size-14'
+      style={{ background: 'var(--ica-c-soft)', color: 'var(--ica-c-ink)' }}
+    >
+      <span className='sr-only'>{formatDateShort(value)}</span>
+      <span className='text-xl font-black tabular-nums' aria-hidden='true'>
+        {valid ? date.getDate() : '–'}
+      </span>
+      <span className='mt-0.5 text-[10px] font-extrabold tracking-[0.08em] uppercase' aria-hidden='true'>
+        {valid ? date.toLocaleDateString(uiLocale(), { month: 'short' }).replace('.', '') : ''}
+      </span>
+    </span>
+  )
+}
+
+/** Nota en grande a la derecha de la fila (con la flecha del desplegable debajo). */
+function RowScore({ score }: { score: number | null }) {
+  return (
+    <span className='flex shrink-0 flex-col items-end gap-1.5 leading-none'>
+      {score === null ? (
+        <span className='text-xs font-extrabold text-muted-foreground'>{t('Sin nota')}</span>
+      ) : (
+        <span className='flex items-center gap-1' aria-label={t('Nota {score} de 10', { score: score.toFixed(1) })}>
+          <TrophyIcon size={18} />
+          <span className='text-2xl font-black tabular-nums' style={{ color: 'var(--ica-gold-ink)' }}>
+            {score.toFixed(1)}
+          </span>
+        </span>
+      )}
+      <ChevronDownIcon
+        className='size-5 text-muted-foreground transition-transform group-data-[state=open]:rotate-180'
+        strokeWidth={2.6}
+        aria-hidden='true'
+      />
+    </span>
+  )
+}
+
+/** Dato grande del resumen (arriba). */
+function HistoryStat({ icon, value, label }: { icon: ReactNode; value: ReactNode; label: string }) {
+  return (
+    <div className='ica-panel flex min-w-0 flex-col items-center gap-1 px-2 py-3 text-center'>
+      {icon}
+      <span className='text-2xl leading-none font-black tabular-nums'>{value}</span>
+      <span className='text-xs leading-tight font-bold text-muted-foreground'>{label}</span>
+    </div>
+  )
 }
 
 function AttemptContent({
@@ -185,236 +296,136 @@ function AttemptContent({
   })
 
   return (
-    <article className='space-y-3 pb-1'>
+    <article className='flex flex-col gap-5'>
       {questionTranslation && questionTranslation !== questionText && (
-        <div className='rounded-xl border border-sky-200/70 bg-sky-50/80 p-3 dark:border-sky-500/30 dark:bg-sky-950/25'>
-          <p className='text-[11px] font-semibold uppercase tracking-wide text-sky-700/90 dark:text-sky-300/90'>
-            Traducción (español)
-          </p>
-          <p className='mt-1 font-serif text-[15px] leading-relaxed text-slate-700 dark:text-slate-100'>
-            {questionTranslation}
-          </p>
+        <div className='rounded-2xl border-2 border-border bg-muted/40 px-4 py-3'>
+          <p className='ica-label m-0'>{t('Traducción (español)')}</p>
+          <p className='m-0 mt-1 text-base leading-snug font-bold'>{questionTranslation}</p>
         </div>
       )}
 
       <div>
-        <p className='inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground'>
-          <span>Palabras ICA</span>
-          <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${getModeTone(attempt.wordMode)}`}>
-            {getModeLabel(attempt.wordMode)}
-          </span>
-          <span>:</span>
-        </p>
+        <SectionLabel right={<ModePill mode={attempt.wordMode} />}>{t('Palabras ICA')}</SectionLabel>
         {attempt.icaWords.length > 0 ? (
-          <div className='mt-1.5 flex flex-wrap gap-1.5'>
+          <div className='flex flex-wrap gap-2'>
             {attempt.icaWords.map((word) => (
               <span
                 key={`${attempt.id}-${word}`}
-                className='rounded-full border border-emerald-300/60 bg-emerald-100/70 px-2 py-0.5 text-xs font-medium text-emerald-900 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200'
+                className='rounded-full border-2 px-3 py-1 text-sm font-extrabold'
+                style={{
+                  background: 'var(--ica-i-soft)',
+                  color: 'var(--ica-i-ink)',
+                  borderColor: 'color-mix(in oklab, var(--ica-i) 35%, transparent)',
+                }}
               >
                 {word}
               </span>
             ))}
           </div>
         ) : (
-          <p className='mt-1.5 text-xs text-muted-foreground'>Sin palabras ICA registradas.</p>
+          <p className='m-0 text-sm font-semibold text-muted-foreground'>{t('Sin palabras ICA registradas.')}</p>
         )}
       </div>
 
       {attempt.errorMessage && (
-        <p className='mt-3 rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-800'>
+        <p
+          className='m-0 rounded-2xl px-4 py-3 text-sm font-bold'
+          style={{ background: 'var(--ica-bad-soft)', color: 'var(--ica-bad-ink)' }}
+        >
           {attempt.errorMessage}
         </p>
       )}
 
       {analysisAudios.length > 0 && (
-        <div className='mt-4 space-y-2'>
-          <p className='text-xs font-semibold text-muted-foreground'>
-            Intentos de análisis ({analysisAudios.length}/3)
-          </p>
-          <Accordion type='multiple' className='space-y-2'>
+        <div>
+          <SectionLabel>{t('Intentos de análisis ({n}/3)', { n: analysisAudios.length })}</SectionLabel>
+          <AccordionPrimitive.Root type='multiple' className='flex flex-col gap-2'>
             {analysisAudios.map((audio, index) => {
               const transcript = audio.transcriptionText || ''
               const usage = attempt.icaWords.map((word) => ({
                 word,
                 used: textIncludesWord(transcript, word),
               }))
-              const usedCount = usage.filter((item) => item.used).length
 
               return (
-                <AccordionItem
+                <AccordionPrimitive.Item
                   key={audio.id}
                   value={audio.id}
-                  className='rounded-lg border border-border bg-background px-3'
+                  className='overflow-hidden rounded-2xl border-2 border-border'
                 >
-                  <AccordionTrigger className='py-3 hover:no-underline'>
-                    <div className='flex w-full flex-wrap items-center gap-2 pr-2'>
-                      <span className='font-medium'>Análisis {index + 1}</span>
-                      <span className='text-[11px] text-muted-foreground'>
-                        {formatDate(audio.createdAt)} · {formatDuration(audio.durationMs)}
+                  <AccordionPrimitive.Header className='m-0'>
+                    <AccordionPrimitive.Trigger className='group flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-muted/50'>
+                      <span className='flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted text-sm font-black tabular-nums'>
+                        {index + 1}
+                      </span>
+                      <span className='min-w-0 flex-1'>
+                        <span className='block font-extrabold'>{t('Análisis {n}', { n: index + 1 })}</span>
+                        <span className='block text-xs font-semibold text-muted-foreground'>
+                          {formatDate(audio.createdAt)} · {formatDuration(audio.durationMs)}
+                        </span>
                       </span>
                       {audio.feedback && (
-                        <span className='rounded-full border border-amber-300/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-600 dark:text-amber-300'>
+                        <Pill tone='gold' className='text-xs'>
                           {audio.feedback.score.toFixed(1)}/10
-                        </span>
+                        </Pill>
                       )}
-                    </div>
-                  </AccordionTrigger>
-                  <AccordionContent className='pb-3'>
-                    <div className='space-y-3'>
+                      <ChevronDownIcon
+                        className='size-5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180'
+                        strokeWidth={2.6}
+                        aria-hidden='true'
+                      />
+                    </AccordionPrimitive.Trigger>
+                  </AccordionPrimitive.Header>
+                  <AccordionPrimitive.Content className='overflow-hidden data-open:animate-accordion-down data-closed:animate-accordion-up'>
+                    <div className='flex flex-col gap-4 border-t-2 border-border px-3.5 pt-3.5 pb-4'>
                       {audio.signedUrl ? (
                         <audio controls src={audio.signedUrl} className='w-full' />
                       ) : (
-                        <p className='text-xs text-muted-foreground'>No se pudo cargar el audio</p>
+                        <p className='m-0 text-xs font-semibold text-muted-foreground'>{t('No se pudo cargar el audio')}</p>
                       )}
 
                       {audio.transcriptionText && (
-                        <div className='rounded-lg border border-border bg-muted/30 p-2'>
-                          <p className='text-xs font-semibold text-muted-foreground'>Transcripción</p>
-                          <p className='mt-1 text-sm'>{audio.transcriptionText}</p>
-                          <p className='mt-1 text-[11px] text-muted-foreground'>
-                            {audio.transcriptionText.length} caracteres
-                          </p>
-                        </div>
+                        <TranscriptBlock
+                          text={audio.transcriptionText}
+                          meta={t('{n} caracteres', { n: audio.transcriptionText.length })}
+                        />
                       )}
 
                       {audio.feedback && (
-                        <div className='rounded-lg border border-border bg-[linear-gradient(165deg,hsl(var(--background)),hsl(var(--muted)/0.35))] p-3'>
-                          <div className='flex flex-wrap items-center gap-3'>
-                            <p className='font-serif text-2xl font-bold text-amber-500'>
-                              {audio.feedback.score.toFixed(1)}
-                              <span className='ml-1 text-sm font-medium text-muted-foreground'>/10</span>
-                            </p>
-                            <div className='h-2 min-w-28 flex-1 overflow-hidden rounded-full bg-muted/70'>
-                              <i
-                                className='block h-full rounded-full bg-gradient-to-r from-amber-400 to-yellow-300'
-                                style={{ width: `${Math.max(0, Math.min(100, audio.feedback.score * 10))}%` }}
-                              />
-                            </div>
-                            <p className='text-xs font-semibold tracking-wide text-muted-foreground'>
-                              Naturalidad
-                            </p>
-                          </div>
-                          <p className='mt-1 text-sm text-muted-foreground'>{audio.feedback.naturalness}</p>
-
-                          {usage.length > 0 && (
-                            <div className='mt-3'>
-                              <p className='text-xs font-semibold text-muted-foreground'>
-                                Palabras objetivo usadas · {usedCount}/{usage.length}
-                              </p>
-                              <div className='mt-1.5 flex flex-wrap gap-1.5'>
-                                {usage.map((item) => (
-                                  <span
-                                    key={`${audio.id}-${item.word}-used`}
-                                    className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
-                                      item.used
-                                        ? 'border-emerald-300/60 bg-emerald-100/70 text-emerald-900 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200'
-                                        : 'border-border bg-muted/40 text-muted-foreground'
-                                    }`}
-                                  >
-                                    {item.used ? '✓ ' : ''}
-                                    {item.word}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {audio.feedback.corrections.length > 0 && (
-                            <ul className='mt-3 space-y-2 text-sm'>
-                              {audio.feedback.corrections.map((item, corrIndex) => (
-                                <li key={`${audio.id}-${corrIndex}-correction`} className='rounded-lg border border-border bg-background/70 p-2'>
-                                  {isSameCorrection(item.original, item.suggestion) ? (
-                                    <div className='flex items-start justify-between gap-2'>
-                                      <span className='font-semibold text-emerald-500'>✓ {item.suggestion}</span>
-                                      <button
-                                        type='button'
-                                        onClick={() => onExtractWordClick(item.suggestion)}
-                                        disabled={isExtractWordAdded(item.suggestion)}
-                                        aria-label={`Extraer "${item.suggestion}" al baul`}
-                                        className='inline-flex size-5 items-center justify-center rounded-full border border-emerald-300/70 bg-emerald-100/70 text-emerald-700 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200'
-                                        title={
-                                          isExtractWordAdded(item.suggestion)
-                                            ? 'Ya existe en tu baul ICA'
-                                            : 'Extraer al baul ICA'
-                                        }
-                                      >
-                                        <PlusIcon className='size-3' />
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <div className='flex items-start justify-between gap-2'>
-                                      <div>
-                                        <span className='font-semibold text-red-500 line-through'>{item.original}</span>
-                                        {' '}→{' '}
-                                        <span className='font-semibold text-emerald-500'>{item.suggestion}</span>
-                                      </div>
-                                      <button
-                                        type='button'
-                                        onClick={() => onExtractWordClick(item.suggestion)}
-                                        disabled={isExtractWordAdded(item.suggestion)}
-                                        aria-label={`Extraer "${item.suggestion}" al baul`}
-                                        className='inline-flex size-5 items-center justify-center rounded-full border border-emerald-300/70 bg-emerald-100/70 text-emerald-700 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-400/40 dark:bg-emerald-500/15 dark:text-emerald-200'
-                                        title={
-                                          isExtractWordAdded(item.suggestion)
-                                            ? 'Ya existe en tu baul ICA'
-                                            : 'Extraer al baul ICA'
-                                        }
-                                      >
-                                        <PlusIcon className='size-3' />
-                                      </button>
-                                    </div>
-                                  )}
-                                  <div className='text-xs text-muted-foreground'>{item.reason}</div>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-
-                          <div className='mt-3 rounded-lg border border-amber-400/30 bg-amber-500/10 p-3'>
-                            <p className='text-sm text-foreground/90'>{audio.feedback.coachReply}</p>
-                          </div>
-                        </div>
+                        <>
+                          <ScoreHero score={audio.feedback.score} text={audio.feedback.naturalness} compact />
+                          <WordUsage usage={usage} />
+                          <CorrectionList
+                            corrections={audio.feedback.corrections}
+                            isSame={isSameCorrection}
+                            onExtract={onExtractWordClick}
+                            isExtractAdded={isExtractWordAdded}
+                          />
+                          <CoachBubble text={audio.feedback.coachReply} />
+                        </>
                       )}
                     </div>
-                  </AccordionContent>
-                </AccordionItem>
+                  </AccordionPrimitive.Content>
+                </AccordionPrimitive.Item>
               )
             })}
-          </Accordion>
+          </AccordionPrimitive.Root>
         </div>
       )}
 
       {attempt.suggestionsHistory.length > 0 && (
-        <div className='mt-4 space-y-2'>
-          <p className='text-xs font-semibold text-muted-foreground'>
-            Historial de sugerencias ({attempt.suggestionsHistory.length})
-          </p>
-          {attempt.suggestionsHistory.map((batch) => (
-            <div key={batch.id} className='rounded-lg border border-border p-2'>
-              <p className='text-xs text-muted-foreground'>
-                Actualización {batch.refreshIndex} · {formatDate(batch.createdAt)}
-              </p>
-              <div className='mt-1 flex flex-wrap gap-1.5'>
-                {batch.words.map((item) => (
-                  <button
-                    type='button'
-                    key={`${batch.id}-${item.word}`}
-                    onClick={() => onSuggestionClick(item)}
-                    disabled={isSuggestionAdded(item.word)}
-                    className='rounded-md border border-amber-300/40 bg-amber-500/10 px-2 py-0.5 text-xs text-foreground transition hover:border-amber-300/80 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-70'
-                    title={item.translation
-                      ? `Traducción: ${item.translation}\nMotivo: ${item.reason}`
-                      : `Motivo: ${item.reason}`}
-                  >
-                    {isSuggestionAdded(item.word) ? '✓ ' : '+ '}
-                    {item.word}
-                    {item.translation ? ` · ${item.translation}` : ''}
-                  </button>
-                ))}
+        <div>
+          <SectionLabel>{t('Historial de sugerencias ({n})', { n: attempt.suggestionsHistory.length })}</SectionLabel>
+          <div className='flex flex-col gap-3'>
+            {attempt.suggestionsHistory.map((batch) => (
+              <div key={batch.id}>
+                <p className='m-0 mb-1.5 text-xs font-bold text-muted-foreground'>
+                  {t('Actualización {n}', { n: batch.refreshIndex })} · {formatDate(batch.createdAt)}
+                </p>
+                <SuggestionChips suggestions={batch.words} isAdded={isSuggestionAdded} onPick={onSuggestionClick} />
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
     </article>
@@ -454,7 +465,7 @@ export function PregunticaHistoryView({
         setError(null)
       } catch (err) {
         if (!active) return
-        const message = err instanceof Error ? err.message : 'No se pudo cargar historial'
+        const message = err instanceof Error ? err.message : t('No se pudo cargar historial')
         setError(message)
         toast.error(message)
       } finally {
@@ -469,6 +480,7 @@ export function PregunticaHistoryView({
   }, [config.nativeLang, config.targetLang])
 
   const questionCards = toQuestionCards(weeks)
+  const weekGroups = groupByWeek(questionCards)
   const existingCardWords = useMemo(
     () => new Set(cards.map((card) => normalizeComparableText(card.target))),
     [cards],
@@ -477,6 +489,13 @@ export function PregunticaHistoryView({
     () => new Set(addedSuggestionWords.map(normalizeComparableText)),
     [addedSuggestionWords],
   )
+
+  // Resumen de arriba: cuántas, la mejor nota y cuántas con ICA Coins.
+  const allScores = questionCards
+    .map((card) => bestScore(card.attempt))
+    .filter((value): value is number => value !== null)
+  const topScore = allScores.length > 0 ? Math.max(...allScores) : null
+  const coinAttempts = questionCards.filter((card) => card.attempt.attemptKind === 'token_unlock').length
 
   function isSuggestionAdded(word: string): boolean {
     const key = normalizeComparableText(word)
@@ -499,67 +518,126 @@ export function PregunticaHistoryView({
     setExtractWordsModalOpen(true)
   }
 
+  const isEmpty = !loading && !error && questionCards.length === 0
+
   return (
-    <section className='mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 pb-24 pt-6 md:pb-8'>
-      <h1 className='font-serif text-3xl font-bold'>🗂️ Historial PreguntICA</h1>
-      <p className='mt-2 text-sm text-muted-foreground'>
-        Aquí puedes reescuchar audios, revisar transcripciones, feedback del agente y
-        sugerencias ICA de cada semana.
-      </p>
+    <GamePage>
+      <PageTitle
+        icon={
+          <IconTile tone='c' size={52}>
+            <HistoryIcon className='size-7' strokeWidth={2.6} aria-hidden='true' />
+          </IconTile>
+        }
+        subtitle={t('Reescucha tus audios y repasa transcripciones, feedback y sugerencias ICA de cada semana.')}
+      >
+        {t('Historial PreguntICA')}
+      </PageTitle>
 
-      {loading && <p className='mt-6 text-sm text-muted-foreground'>Cargando historial...</p>}
-      {error && <p className='mt-6 text-sm text-red-500'>{error}</p>}
-
-      {!loading && !error && weeks.length === 0 && (
-        <p className='mt-6 text-sm text-muted-foreground'>Aún no tienes PreguntICAs registradas.</p>
+      {loading && (
+        <div className='flex flex-col gap-3' aria-live='polite'>
+          <p className='m-0 text-sm font-bold text-muted-foreground'>{t('Cargando historial...')}</p>
+          <div className='h-24 animate-pulse rounded-3xl bg-muted/70' aria-hidden='true' />
+          <div className='h-24 animate-pulse rounded-3xl bg-muted/50' aria-hidden='true' />
+        </div>
       )}
-      {!loading && !error && weeks.length > 0 && questionCards.length === 0 && (
-        <p className='mt-6 text-sm text-muted-foreground'>Aún no tienes PreguntICAs registradas.</p>
+
+      {error && (
+        <p
+          className='m-0 rounded-3xl px-5 py-4 text-sm font-bold'
+          style={{ background: 'var(--ica-bad-soft)', color: 'var(--ica-bad-ink)' }}
+        >
+          {error}
+        </p>
       )}
 
-      <Accordion type='multiple' className='mt-6 space-y-4'>
-        {questionCards.map((card) => (
-          <AccordionItem key={card.id} value={card.id} className='rounded-2xl border border-border bg-card px-4'>
-            <AccordionTrigger className='py-4 hover:no-underline'>
-              <div className='flex w-full flex-wrap items-start justify-between gap-3 pr-2 text-left'>
-                <div>
-                  <h2 className='font-serif text-xl font-bold'>
-                    {formatDateShort(card.createdAt)} - {card.questionText}
-                  </h2>
-                  <p className='mt-1 text-xs text-muted-foreground'>
-                    Semana {card.weekStart} → {card.weekEnd}
-                  </p>
+      {isEmpty && (
+        <div className='ica-panel'>
+          <EmptyState
+            icon={
+              <IconTile tone='c' size={80}>
+                <MicGlyph size={50} />
+              </IconTile>
+            }
+            title={t('Aún no tienes PreguntICAs registradas.')}
+            text={t('Cuando respondas tu primera PreguntICA, aquí podrás volver a escucharla y repasar tu feedback.')}
+            action={
+              <Button asChild size='lg' variant='c'>
+                <Link to={DASHBOARD_ROUTES.preguntica}>{t('Ir a PreguntICA')}</Link>
+              </Button>
+            }
+          />
+        </div>
+      )}
+
+      {!loading && !error && questionCards.length > 0 && (
+        <div className='grid grid-cols-3 gap-2'>
+          <HistoryStat icon={<MicGlyph size={28} />} value={questionCards.length} label={t('respondidas')} />
+          <HistoryStat
+            icon={<TrophyIcon size={28} />}
+            value={<span style={{ color: 'var(--ica-gold-ink)' }}>{topScore === null ? '–' : topScore.toFixed(1)}</span>}
+            label={t('mejor nota')}
+          />
+          <HistoryStat icon={<FichaIcon size={28} />} value={coinAttempts} label={t('con ICA Coins')} />
+        </div>
+      )}
+
+      {weekGroups.length > 0 && (
+        <AccordionPrimitive.Root type='multiple' className='flex flex-col gap-6'>
+          {weekGroups.map((group) => {
+            const statusInfo = weekStatus(group)
+            return (
+              <section key={group.key} aria-label={t('Semana {range}', { range: formatWeekRange(group.weekStart, group.weekEnd) })}>
+                <SectionLabel right={<Pill tone={statusInfo.tone}>{statusInfo.label}</Pill>}>
+                  {t('Semana {range}', { range: formatWeekRange(group.weekStart, group.weekEnd) })}
+                </SectionLabel>
+                <div className='flex flex-col gap-3'>
+                  {group.cards.map((card) => {
+                    const score = bestScore(card.attempt)
+                    const isCoins = card.attempt.attemptKind === 'token_unlock'
+                    return (
+                      <AccordionPrimitive.Item key={card.id} value={card.id} className='ica-panel overflow-hidden'>
+                        <AccordionPrimitive.Header className='m-0'>
+                          <AccordionPrimitive.Trigger className='group flex w-full items-center gap-3 px-3.5 py-3.5 text-left sm:px-4'>
+                            <DateTile value={card.createdAt} />
+                            <span className='min-w-0 flex-1'>
+                              <span className='block leading-snug font-extrabold'>{card.questionText}</span>
+                              <span className='mt-1.5 flex flex-wrap gap-1.5'>
+                                {isCoins ? (
+                                  <Pill tone='gold'>
+                                    <FichaIcon size={14} />
+                                    {t('Canje de ICA Coins')}
+                                  </Pill>
+                                ) : (
+                                  <Pill tone='c'>{t('Reto semanal')}</Pill>
+                                )}
+                                <ModePill mode={card.attempt.wordMode} />
+                              </span>
+                            </span>
+                            <RowScore score={score} />
+                          </AccordionPrimitive.Trigger>
+                        </AccordionPrimitive.Header>
+                        <AccordionPrimitive.Content className='overflow-hidden data-open:animate-accordion-down data-closed:animate-accordion-up'>
+                          <div className='border-t-2 border-border px-4 pt-4 pb-5'>
+                            <AttemptContent
+                              attempt={card.attempt}
+                              questionText={card.questionText}
+                              questionTranslation={card.questionTranslation}
+                              onSuggestionClick={handleOpenSuggestionModal}
+                              isSuggestionAdded={isSuggestionAdded}
+                              onExtractWordClick={handleOpenExtractWordsModal}
+                              isExtractWordAdded={isExtractWordAdded}
+                            />
+                          </div>
+                        </AccordionPrimitive.Content>
+                      </AccordionPrimitive.Item>
+                    )
+                  })}
                 </div>
-                <div className='flex flex-col items-end gap-1'>
-                  <span className='rounded-full bg-muted px-2.5 py-1 text-xs'>
-                    {card.completedAt ? 'Completada' : card.isUnlocked ? 'Desbloqueada' : 'Bloqueada'}
-                  </span>
-                  {card.attempt.attemptKind === 'token_unlock' ? (
-                    <span className='rounded-full border border-emerald-300/50 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300'>
-                      Canje de fichas
-                    </span>
-                  ) : (
-                    <span className='rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary'>
-                      Reto semanal
-                    </span>
-                  )}
-                </div>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className='pb-4 pt-2'>
-              <AttemptContent
-                attempt={card.attempt}
-                questionText={card.questionText}
-                questionTranslation={card.questionTranslation}
-                onSuggestionClick={handleOpenSuggestionModal}
-                isSuggestionAdded={isSuggestionAdded}
-                onExtractWordClick={handleOpenExtractWordsModal}
-                isExtractWordAdded={isExtractWordAdded}
-              />
-            </AccordionContent>
-          </AccordionItem>
-        ))}
-      </Accordion>
+              </section>
+            )
+          })}
+        </AccordionPrimitive.Root>
+      )}
 
       <AddIcaSuggestionModal
         open={suggestionModalOpen}
@@ -592,6 +670,6 @@ export function PregunticaHistoryView({
         setCards={setCards}
         onWordAdded={onWordAdded}
       />
-    </section>
+    </GamePage>
   )
 }

@@ -1,8 +1,8 @@
+import { t } from '@/i18n'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Trash2Icon } from 'lucide-react'
+import { LineChartIcon, Trash2Icon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -11,17 +11,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { useAuth } from '@/auth/AuthContext'
 import { TrackerChartPreview } from '../components/Trackers/TrackerChartPreview'
+import { TRACKER_SKILLS, TrackerMetricField, TrackerMonthPicker, TrackerNotice } from '../components/Trackers/TrackerFormParts'
+import { EmptyState, GamePage, IconTile, PageTitle, SectionLabel } from '../game/ui'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import {
   TRACKERS_MIN_MONTH,
@@ -82,7 +75,7 @@ export function TrackerDetailView({ trackerId, targetLang, nativeLang }: Tracker
   const [usedMonths, setUsedMonths] = useState<Set<string>>(new Set())
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
 
-  const ownerName = user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Usuario'
+  const ownerName = user?.user_metadata?.display_name || user?.email?.split('@')[0] || t('Usuario')
 
   const yearOptions = useMemo(
     () => Array.from({ length: currentYear - TRACKERS_MIN_YEAR + 1 }, (_, index) => TRACKERS_MIN_YEAR + index),
@@ -97,7 +90,7 @@ export function TrackerDetailView({ trackerId, targetLang, nativeLang }: Tracker
       const month = startMonth + index
       return {
         value: month,
-        label: MONTH_LABELS[month - 1],
+        label: t(MONTH_LABELS[month - 1]),
       }
     })
   }, [currentMonth, currentYear, selectedYear])
@@ -135,7 +128,7 @@ export function TrackerDetailView({ trackerId, targetLang, nativeLang }: Tracker
 
         if (!mounted) return
         if (!tracker) {
-          setError('No encontramos el tracker solicitado.')
+          setError(t('No encontramos el tracker solicitado.'))
           setIsLoading(false)
           return
         }
@@ -149,7 +142,7 @@ export function TrackerDetailView({ trackerId, targetLang, nativeLang }: Tracker
         setTrackerMonthSource(tracker.trackerMonth)
         setUsedMonths(new Set(allTrackers.map((entry) => entry.trackerMonth)))
       } catch {
-        if (mounted) setError('No pudimos cargar el tracker.')
+        if (mounted) setError(t('No pudimos cargar el tracker.'))
       } finally {
         if (mounted) setIsLoading(false)
       }
@@ -168,12 +161,12 @@ export function TrackerDetailView({ trackerId, targetLang, nativeLang }: Tracker
     setSuccess(null)
 
     if (!isTrackerMonthWithinRange(selectedYear, selectedMonth, currentDate)) {
-      setError('El mes elegido está fuera del rango permitido.')
+      setError(t('El mes elegido está fuera del rango permitido.'))
       return
     }
 
     if (isMonthTakenByOtherTracker) {
-      setError('Ya existe otro tracker para ese mes.')
+      setError(t('Ya existe otro tracker para ese mes.'))
       return
     }
 
@@ -195,7 +188,7 @@ export function TrackerDetailView({ trackerId, targetLang, nativeLang }: Tracker
         return next
       })
       setTrackerMonthSource(updated.trackerMonth)
-      setSuccess('Tracker actualizado correctamente.')
+      setSuccess(t('Tracker actualizado correctamente.'))
     } catch (updateError) {
       setError(getTrackerUpdateErrorMessage(updateError))
     } finally {
@@ -214,178 +207,131 @@ export function TrackerDetailView({ trackerId, targetLang, nativeLang }: Tracker
       await deleteImprovementTracker(trackerId, targetLang, nativeLang)
       navigate(DASHBOARD_ROUTES.trackers)
     } catch {
-      setError('No pudimos eliminar el tracker. Inténtalo de nuevo.')
+      setError(t('No pudimos eliminar el tracker. Inténtalo de nuevo.'))
       setIsDeleting(false)
     }
   }
 
   if (isLoading) {
-    return <p className='text-sm text-muted-foreground'>Cargando tracker...</p>
+    return (
+      <GamePage>
+        <div className='h-64 animate-pulse rounded-3xl bg-muted' aria-hidden='true' />
+      </GamePage>
+    )
   }
 
   if (error && !trackerMonthSource) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Tracker no disponible</CardTitle>
-          <CardDescription>{error}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button asChild>
-            <Link to={DASHBOARD_ROUTES.trackers}>Volver al histórico</Link>
-          </Button>
-        </CardContent>
-      </Card>
+      <GamePage className='justify-center'>
+        <EmptyState
+          icon={
+            <IconTile tone='neutral' size={64}>
+              <LineChartIcon className='size-8' strokeWidth={2.4} aria-hidden='true' />
+            </IconTile>
+          }
+          title={t('Tracker no disponible')}
+          text={error}
+          action={
+            <Button asChild variant='i'>
+              <Link to={DASHBOARD_ROUTES.trackers}>{t('Ver todos mis trackers')}</Link>
+            </Button>
+          }
+        />
+      </GamePage>
     )
   }
 
+  const metricValues = {
+    pronunciation: pronunciationPct,
+    fluency: fluencyPct,
+    improvisation: improvisationPct,
+  }
+  const metricSetters = {
+    pronunciation: setPronunciationPct,
+    fluency: setFluencyPct,
+    improvisation: setImprovisationPct,
+  }
+
   return (
-    <section className='mx-auto w-full max-w-5xl flex-1 p-4 pb-24 lg:pb-4'>
-      <div className='mb-6 flex flex-wrap items-end justify-between gap-3'>
-        <div>
-          <h2 className='font-serif text-3xl font-bold'>Editar tracker</h2>
-          <p className='text-sm text-muted-foreground'>Ajusta porcentajes, mes y descarga la gráfica.</p>
+    <GamePage wide className='gap-6 lg:max-w-4xl'>
+      <PageTitle
+        icon={
+          <IconTile tone='i' size={48} solid>
+            <LineChartIcon className='size-6' strokeWidth={2.6} aria-hidden='true' />
+          </IconTile>
+        }
+        subtitle={t('Cambia los porcentajes o el mes y descarga tu imagen.')}
+        right={
+          <button
+            type='button'
+            onClick={() => setIsDeleteDialogOpen(true)}
+            disabled={isSaving || isDeleting}
+            aria-label={t('Eliminar tracker')}
+            className='flex size-11 items-center justify-center rounded-2xl border-2 border-border text-muted-foreground transition-colors hover:text-[var(--ica-bad-ink)] disabled:opacity-50'
+          >
+            <Trash2Icon className='size-5' strokeWidth={2.4} />
+          </button>
+        }
+      >
+        {trackerMonthLabel}
+      </PageTitle>
+
+      <div className='grid gap-5 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]'>
+        <div className='ica-panel flex flex-col gap-4 px-4 py-4'>
+          <TrackerMonthPicker
+            idPrefix='edit-tracker'
+            year={selectedYear}
+            month={selectedMonth}
+            yearOptions={yearOptions}
+            monthOptions={monthOptions}
+            onYearChange={(year) => {
+              setSelectedYear(year)
+              setError(null)
+              setSuccess(null)
+            }}
+            onMonthChange={(month) => {
+              setSelectedMonth(month)
+              setError(null)
+              setSuccess(null)
+            }}
+          />
+
+          {TRACKER_SKILLS.map((skill) => (
+            <TrackerMetricField
+              key={skill.key}
+              id={`edit-${skill.key}-pct`}
+              label={t(skill.label)}
+              toneKey={skill.tone}
+              value={metricValues[skill.key]}
+              onChange={(value) => {
+                metricSetters[skill.key](clampPercent(value))
+                setError(null)
+                setSuccess(null)
+              }}
+            />
+          ))}
+
+          {isMonthTakenByOtherTracker ? (
+            <TrackerNotice kind='gold'>{t('Ya existe otro tracker para {month}.', { month: trackerMonthLabel })}</TrackerNotice>
+          ) : null}
+          {error ? <TrackerNotice kind='bad'>{error}</TrackerNotice> : null}
+          {success ? <TrackerNotice kind='ok'>{success}</TrackerNotice> : null}
+
+          <Button
+            type='button'
+            variant='i'
+            size='xl'
+            className='w-full'
+            onClick={() => void handleSave()}
+            disabled={isSaving || isDeleting}
+          >
+            {isSaving ? t('Guardando...') : t('Guardar cambios')}
+          </Button>
         </div>
-        <Button type='button' variant='outline' asChild>
-          <Link to={DASHBOARD_ROUTES.trackers}>Volver al histórico</Link>
-        </Button>
-      </div>
 
-      <div className='grid gap-5 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]'>
-        <Card>
-          <CardHeader>
-            <CardTitle>Configuración</CardTitle>
-            <CardDescription>Edita el tracker mensual seleccionado.</CardDescription>
-          </CardHeader>
-          <CardContent className='flex flex-col gap-4'>
-            <div className='grid grid-cols-2 gap-3'>
-              <div className='flex flex-col gap-2'>
-                <Label htmlFor='edit-tracker-year'>Año</Label>
-                <Select
-                  value={String(selectedYear)}
-                  onValueChange={(value) => {
-                    setSelectedYear(Number(value))
-                    setError(null)
-                    setSuccess(null)
-                  }}
-                >
-                  <SelectTrigger id='edit-tracker-year'>
-                    <SelectValue placeholder='Año' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {yearOptions.map((year) => (
-                      <SelectItem key={year} value={String(year)}>
-                        {year}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className='flex flex-col gap-2'>
-                <Label htmlFor='edit-tracker-month'>Mes</Label>
-                <Select
-                  value={String(selectedMonth)}
-                  onValueChange={(value) => {
-                    setSelectedMonth(Number(value))
-                    setError(null)
-                    setSuccess(null)
-                  }}
-                >
-                  <SelectTrigger id='edit-tracker-month'>
-                    <SelectValue placeholder='Mes' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {monthOptions.map((month) => (
-                      <SelectItem key={month.value} value={String(month.value)}>
-                        {month.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className='flex flex-col gap-2'>
-              <Label htmlFor='edit-pronunciation-pct'>Pronunciación (%)</Label>
-              <Input
-                id='edit-pronunciation-pct'
-                type='number'
-                min={0}
-                max={100}
-                step='0.1'
-                value={pronunciationPct}
-                onChange={(event) => {
-                  setPronunciationPct(clampPercent(Number(event.target.value) || 0))
-                  setError(null)
-                  setSuccess(null)
-                }}
-              />
-            </div>
-
-            <div className='flex flex-col gap-2'>
-              <Label htmlFor='edit-fluency-pct'>Fluidez (%)</Label>
-              <Input
-                id='edit-fluency-pct'
-                type='number'
-                min={0}
-                max={100}
-                step='0.1'
-                value={fluencyPct}
-                onChange={(event) => {
-                  setFluencyPct(clampPercent(Number(event.target.value) || 0))
-                  setError(null)
-                  setSuccess(null)
-                }}
-              />
-            </div>
-
-            <div className='flex flex-col gap-2'>
-              <Label htmlFor='edit-improvisation-pct'>Improvisación (%)</Label>
-              <Input
-                id='edit-improvisation-pct'
-                type='number'
-                min={0}
-                max={100}
-                step='0.1'
-                value={improvisationPct}
-                onChange={(event) => {
-                  setImprovisationPct(clampPercent(Number(event.target.value) || 0))
-                  setError(null)
-                  setSuccess(null)
-                }}
-              />
-            </div>
-
-            {isMonthTakenByOtherTracker && (
-              <p className='text-sm text-amber-600'>Ya existe otro tracker para {trackerMonthLabel}.</p>
-            )}
-            {error && <p className='text-sm text-destructive'>{error}</p>}
-            {success && <p className='text-sm text-emerald-600'>{success}</p>}
-
-            <div className='flex flex-wrap gap-2'>
-              <Button type='button' onClick={() => void handleSave()} disabled={isSaving || isDeleting}>
-                {isSaving ? 'Guardando...' : 'Guardar cambios'}
-              </Button>
-              <Button
-                type='button'
-                variant='outline'
-                onClick={() => setIsDeleteDialogOpen(true)}
-                disabled={isSaving || isDeleting}
-              >
-                <Trash2Icon data-icon='inline-start' />
-                {isDeleting ? 'Eliminando...' : 'Eliminar tracker'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Gráfica del tracker</CardTitle>
-            <CardDescription>Vista previa y descarga del estado actual.</CardDescription>
-          </CardHeader>
-          <CardContent>
+        <div>
+          <SectionLabel>{t('Tu imagen para compartir')}</SectionLabel>
+          <div className='ica-panel px-3 py-3'>
             <TrackerChartPreview
               ownerName={ownerName}
               monthLabel={trackerMonthLabel}
@@ -394,16 +340,18 @@ export function TrackerDetailView({ trackerId, targetLang, nativeLang }: Tracker
               improvisationPct={improvisationPct}
               downloadFileName={`tracker-${trackerMonth}.png`}
             />
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Eliminar tracker mensual</DialogTitle>
+            <DialogTitle>{t('Eliminar tracker mensual')}</DialogTitle>
             <DialogDescription>
-              Se eliminará el tracker de {getTrackerMonthLabel(trackerMonthSource || trackerMonth)}. Esta acción no se puede deshacer.
+              {t('Se eliminará el tracker de {month}. Esta acción no se puede deshacer.', {
+                month: getTrackerMonthLabel(trackerMonthSource || trackerMonth),
+              })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -413,7 +361,7 @@ export function TrackerDetailView({ trackerId, targetLang, nativeLang }: Tracker
               onClick={() => setIsDeleteDialogOpen(false)}
               disabled={isDeleting}
             >
-              Cancelar
+              {t('Cancelar')}
             </Button>
             <Button
               type='button'
@@ -421,11 +369,11 @@ export function TrackerDetailView({ trackerId, targetLang, nativeLang }: Tracker
               onClick={() => void handleDelete()}
               disabled={isDeleting}
             >
-              {isDeleting ? 'Eliminando...' : 'Eliminar'}
+              {isDeleting ? t('Eliminando...') : t('Eliminar')}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section>
+    </GamePage>
   )
 }

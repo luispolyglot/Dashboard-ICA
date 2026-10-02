@@ -108,8 +108,16 @@ function catalogRow(typeId: string) {
 // ---------------------------------------------------------------------------
 
 const BOTS = [
-  { userId: 'local-bot-marta', displayName: 'Marta (rival de prueba)', username: 'marta.prueba', levelOffset: 1, accuracy: 0.65 },
-  { userId: 'local-bot-jorge', displayName: 'Jorge (rival de prueba)', username: 'jorge.prueba', levelOffset: 5, accuracy: 0.8 },
+  { userId: 'local-bot-marta', displayName: 'Marta', username: 'marta.prueba', levelOffset: 1, accuracy: 0.65 },
+  { userId: 'local-bot-jorge', displayName: 'Jorge', username: 'jorge.prueba', levelOffset: 5, accuracy: 0.8 },
+  // Dos más para poder probar el 4.º desafío (desafío extra por 2 ICA Coins).
+  { userId: 'local-bot-kasia', displayName: 'Kasia', username: 'kasia.prueba', levelOffset: 0, accuracy: 0.55 },
+  { userId: 'local-bot-tomas', displayName: 'Tomás', username: 'tomas.prueba', levelOffset: 2, accuracy: 0.7 },
+  // Más icademers virtuales para la demo (varias personas que te retan y a las que retar).
+  { userId: 'local-bot-sofia', displayName: 'Sofía', username: 'sofia.prueba', levelOffset: 1, accuracy: 0.75 },
+  { userId: 'local-bot-piotr', displayName: 'Piotr', username: 'piotr.prueba', levelOffset: 0, accuracy: 0.6 },
+  { userId: 'local-bot-lucia', displayName: 'Lucía', username: 'lucia.prueba', levelOffset: 2, accuracy: 0.5 },
+  { userId: 'local-bot-andres', displayName: 'Andrés', username: 'andres.prueba', levelOffset: 3, accuracy: 0.7 },
 ]
 
 export function isLocalBot(userId: string | null | undefined): boolean {
@@ -294,7 +302,13 @@ type LocalPlay = {
 type LocalState = {
   version: 1
   enrollmentActive: boolean
+  /** Activo o en pausa por idioma («Francés|Español»). Si falta, se usa `enrollmentActive`. */
+  enrollmentByLang?: Record<string, boolean>
   seededFor: string | null
+  /** Demo preparada con «Preparar demo»: si te faltan palabras, se completan con las de ejemplo. */
+  demo?: boolean
+  /** Reto de Escritura pendiente añadido después (para los que ya tenían datos de prueba). */
+  seededWritingFor?: string | null
   challenges: LocalChallenge[]
   questions: LocalQuestion[]
   plays: LocalPlay[]
@@ -400,6 +414,26 @@ function botLevel(myLevel: string, offset: number): string {
 }
 
 function myCards(userId: string, targetLang: string, nativeLang: string): EngineCard[] {
+  const own = myRealCards(userId, targetLang, nativeLang)
+  // Con la demo preparada: si tu Baúl ICA de este idioma no llega a 20 palabras, se completa
+  // con el baúl de ejemplo para poder enseñar los retos igualmente. Sin demo, la regla de 20 manda.
+  const sample = nativeLang === 'Español' ? SAMPLE_WORDS[targetLang] : undefined
+  if (!loadState().demo || own.length >= MIN_WORDS_TO_JOIN || !sample) return own
+  const known = new Set(own.map((card) => card.target.trim().toLowerCase()))
+  const extra = sample
+    .filter(([target]) => !known.has(target.trim().toLowerCase()))
+    .map(([target, native, phrase, translation], index) => ({
+      id: `local-sample-${index}`,
+      ownerUserId: userId,
+      target,
+      native,
+      examplePhrase: phrase,
+      exampleTranslation: translation,
+    }))
+  return [...own, ...extra]
+}
+
+function myRealCards(userId: string, targetLang: string, nativeLang: string): EngineCard[] {
   return appContext.cards
     .filter(
       (card) =>
@@ -946,8 +980,9 @@ function answerPairsBoard(
 }
 
 /** El rival de prueba juega su turno al momento (acierta más o menos según su nivel). */
-function botPlayTurn(challenge: LocalChallenge, botId: string, me: string) {
-  const bot = BOTS.find((item) => item.userId === botId)
+function botPlayTurn(challenge: LocalChallenge, botId: string, me: string, accuracyOverride?: number) {
+  const found = BOTS.find((item) => item.userId === botId)
+  const bot = accuracyOverride === undefined ? found : { accuracy: accuracyOverride }
   const ctx = makeCtx(challenge, botId, me)
   const rows = ensureQuestions(ctx)
   const competitor = competitorOf(challenge, botId)
@@ -1072,8 +1107,30 @@ function review(ctx: Ctx) {
     .filter((item): item is NonNullable<typeof item> => item !== null)
 
   const theirs = playsOf(ctx.challenge.id, ctx.rivalId)
+  // Con el desafío terminado, las palabras del baúl del rival (para poder añadirlas al tuyo).
+  const seen = new Set<string>()
+  const rivalWords =
+    finished && ctx.settings.wordSource !== 'mixed'
+      ? loadState()
+          .questions.filter((item) => item.challengeId === ctx.challenge.id && item.owner === ctx.rivalId)
+          .map((item) => item.answer)
+          .filter((answer) => {
+            const key = answer.target.trim().toLowerCase()
+            if (!key || seen.has(key)) return false
+            seen.add(key)
+            return true
+          })
+          .map((answer) => ({
+            target: answer.target,
+            native: answer.native,
+            phrase: answer.phrase ?? null,
+            phraseTranslation: answer.phraseTranslation ?? null,
+            targetLang: answer.language ?? null,
+          }))
+      : []
   return {
     items,
+    rivalWords,
     me: { correct: scoreOf(playsOf(ctx.challenge.id, ctx.userId)), answered: items.length },
     rival: { correct: scoreOf(theirs), answered: theirs.length, done: isDone(ctx, ctx.rivalId) },
     wordSource: ctx.settings.wordSource,
@@ -1157,35 +1214,49 @@ function accept(challenge: LocalChallenge, userId: string, me: string) {
   runBotTurns(challenge, me)
 }
 
-async function seedIfNeeded(me: string) {
+/** Un reto pendiente de un rival de prueba (para ver «Pendientes» y poder aceptarlo). */
+function seedPending(me: string, botIndex: number, typeId: string) {
   const state = loadState()
-  if (state.seededFor === me || !appContext.targetLang || !appContext.nativeLang) return
-  state.seededFor = me
-  // Un reto de ejemplo pendiente (de Jorge), para ver la pestaña «Pendientes».
-  // Marta queda libre para que la retes tú.
-  const bot = BOTS[1]
+  const bot = BOTS[botIndex]
   const settings = buildModeSettings({
-    typeId: 'ica-listen',
-    typeConfig: catalogRow('ica-listen')?.config || {},
+    typeId,
+    typeConfig: catalogRow(typeId)?.config || {},
     rounds: 2,
     responseSeconds: 5,
     wordSource: 'own',
   })
-  if (settings) {
-    state.challenges.push(
-      buildChallenge({
-        typeId: 'ica-listen',
-        challenger: bot.userId,
-        challenged: me,
-        targetLang: appContext.targetLang,
-        nativeLang: appContext.nativeLang,
-        settings,
-        levels: null,
-        durationSeconds: 86400,
-      }),
-    )
+  if (!settings) return
+  state.challenges.push(
+    buildChallenge({
+      typeId,
+      challenger: bot.userId,
+      challenged: me,
+      targetLang: appContext.targetLang,
+      nativeLang: appContext.nativeLang,
+      settings,
+      levels: null,
+      durationSeconds: 86400,
+    }),
+  )
+}
+
+async function seedIfNeeded(me: string) {
+  const state = loadState()
+  if (!appContext.targetLang || !appContext.nativeLang) return
+  let changed = false
+  if (state.seededFor !== me) {
+    state.seededFor = me
+    // Un reto de Escucha pendiente (de Jorge). Marta queda libre para que la retes tú.
+    seedPending(me, 1, 'ica-listen')
+    changed = true
   }
-  saveState()
+  if (state.seededWritingFor !== me) {
+    state.seededWritingFor = me
+    // Y uno de Escritura (de Tomás), para poder aceptar un reto que se juegue escribiendo.
+    seedPending(me, 3, 'ica-writing')
+    changed = true
+  }
+  if (changed) saveState()
 }
 
 async function createChallenge(me: string, body: Record<string, unknown>) {
@@ -1207,7 +1278,9 @@ async function createChallenge(me: string, body: Record<string, unknown>) {
     wordSource,
   })
   if (!settings) throw new LocalError('Este modo todavía no se puede jugar.')
-  if (activeCount(me) >= MAX_ACTIVE) throw new LocalError('Ya tienes 3 desafíos activos. Termina uno para retar de nuevo.')
+  // Con un «desafío extra» (2 ICA Coins) se puede tener un 4.º.
+  const myLimit = MAX_ACTIVE + (body.useExtraSlot ? 1 : 0)
+  if (activeCount(me) >= myLimit) throw new LocalError('Ya tienes 3 desafíos activos. Termina uno para retar de nuevo.')
   if (hasActivePair(me, rivalId)) throw new LocalError('Ya tienen un desafío activo entre ustedes.')
 
   const myLevel = await getMyLevel(targetLang, nativeLang)
@@ -1389,7 +1462,7 @@ export async function localFetchEnrollment(targetLang: string, nativeLang: strin
     userId: me,
     targetLang,
     nativeLang,
-    isActive: loadState().enrollmentActive,
+    isActive: loadState().enrollmentByLang?.[`${targetLang}|${nativeLang}`] ?? loadState().enrollmentActive,
     createdAt: null,
     updatedAt: null,
   }
@@ -1400,7 +1473,8 @@ export async function localSetEnrollment(input: {
   nativeLang: string
   isActive: boolean
 }): Promise<IcaChallengeEnrollment> {
-  loadState().enrollmentActive = input.isActive
+  const state = loadState()
+  state.enrollmentByLang = { ...(state.enrollmentByLang || {}), [`${input.targetLang}|${input.nativeLang}`]: input.isActive }
   saveState()
   return localFetchEnrollment(input.targetLang, input.nativeLang)
 }
@@ -1481,4 +1555,113 @@ export function localBotProfiles(): Record<string, { displayName: string; userna
     },
     {},
   )
+}
+
+// ---------------------------------------------------------------------------
+// Reto de un icademer virtual (para probar «Pendientes» cuando quieras)
+// ---------------------------------------------------------------------------
+
+/** Nombres cortos para `?reto-virtual=<modo>` en la dirección. */
+const VIRTUAL_MODE_ALIASES: Record<string, string> = {
+  lectura: 'ica-own-words',
+  escritura: 'ica-writing',
+  'cuenta-atras': 'ica-lightning',
+  relampago: 'ica-lightning',
+  escucha: 'ica-listen',
+  habla: 'ica-speak',
+  parejas: 'ica-pairs',
+}
+
+/**
+ * Un icademer virtual libre (sin un reto ya abierto contigo) te reta. Sin modo, se elige
+ * uno al azar entre los que se pueden jugar. Solo en el modo local de Desafíos ICA.
+ */
+export async function seedVirtualChallenge(mode?: string | null): Promise<{ botName: string; modeName: string }> {
+  const me = await getMyUserId()
+  if (!appContext.targetLang || !appContext.nativeLang) {
+    throw new LocalError('Abre Desafíos ICA para que el modo de prueba sepa tu idioma.')
+  }
+  const free = BOTS.map((bot, index) => ({ bot, index }))
+    .filter(({ bot }) => !hasActivePair(me, bot.userId))
+    .sort((a, b) => activeCount(a.bot.userId) - activeCount(b.bot.userId))
+  if (free.length === 0) {
+    throw new LocalError('Ya tienes un reto abierto con los 4 icademers virtuales. Termina o rechaza uno.')
+  }
+  const playable = CATALOG.filter((item) => item.isActive && isPlayableTypeId(item.id))
+  const wanted = mode ? VIRTUAL_MODE_ALIASES[mode.toLowerCase()] ?? mode : null
+  const type = (wanted && playable.find((item) => item.id === wanted)) || playable[Math.floor(Math.random() * playable.length)]
+  const pick = free[Math.floor(Math.random() * Math.min(2, free.length))]
+  seedPending(me, pick.index, type.id)
+  saveState()
+  return { botName: pick.bot.displayName, modeName: type.name }
+}
+
+// ---------------------------------------------------------------------------
+// Demo de Desafíos ICA (para enseñarlo): varias personas te retan y puedes retar
+// ---------------------------------------------------------------------------
+
+/** Juega una partida entera en segundo plano (tú con `myAccuracy`) y la deja como de hace unos días. */
+function simulateFinishedChallenge(me: string, botId: string, typeId: string, myAccuracy: number, daysAgo: number) {
+  const settings = buildModeSettings({
+    typeId,
+    typeConfig: catalogRow(typeId)?.config || {},
+    rounds: 2,
+    responseSeconds: 5,
+    wordSource: 'own',
+  })
+  if (!settings) return
+  const challenge = buildChallenge({
+    typeId,
+    challenger: me,
+    challenged: botId,
+    targetLang: appContext.targetLang,
+    nativeLang: appContext.nativeLang,
+    settings,
+    levels: null,
+    durationSeconds: 86400,
+  })
+  loadState().challenges.unshift(challenge)
+  accept(challenge, botId, me)
+  let guard = 0
+  while (challenge.status === 'in_progress' && guard < 40) {
+    if (challenge.turnUserId === me) botPlayTurn(challenge, me, me, myAccuracy)
+    runBotTurns(challenge, me)
+    guard += 1
+  }
+  const when = new Date(Date.now() - daysAgo * 86400000)
+  const iso = when.toISOString()
+  challenge.createdAt = new Date(when.getTime() - 3 * 3600000).toISOString()
+  challenge.startedAt = new Date(when.getTime() - 2 * 3600000).toISOString()
+  challenge.finalizedAt = iso
+  challenge.updatedAt = iso
+}
+
+/**
+ * Deja Desafíos ICA listo para enseñarlo (solo modo local): borra los retos de prueba,
+ * te inscribe, crea un historial (2 ganados seguidos y 1 perdido), y dos icademers te retan
+ * a modos distintos. Quedan libres varios icademers para que los retes tú.
+ */
+export async function prepareChallengesDemo(): Promise<{ pending: number; free: number }> {
+  const me = await getMyUserId()
+  if (!appContext.targetLang || !appContext.nativeLang) {
+    throw new LocalError('Abre Desafíos ICA para que el modo de prueba sepa tu idioma.')
+  }
+  memoryState = emptyState()
+  const state = memoryState
+  state.seededFor = me
+  state.seededWritingFor = me
+  state.demo = true
+  state.enrollmentByLang = { [`${appContext.targetLang}|${appContext.nativeLang}`]: true }
+
+  // Historial: perdiste con Jorge, ganaste a Kasia y a Lucía (racha de 2 victorias).
+  simulateFinishedChallenge(me, 'local-bot-jorge', 'ica-listen', 0.2, 3)
+  simulateFinishedChallenge(me, 'local-bot-kasia', 'ica-own-words', 1, 2)
+  simulateFinishedChallenge(me, 'local-bot-lucia', 'ica-pairs', 1, 1)
+
+  // Te retan: Sofía a Parejas y Piotr a Escritura · cuenta atrás (en «Pendientes»).
+  seedPending(me, BOTS.findIndex((bot) => bot.userId === 'local-bot-sofia'), 'ica-pairs')
+  seedPending(me, BOTS.findIndex((bot) => bot.userId === 'local-bot-piotr'), 'ica-lightning')
+  saveState()
+  const free = BOTS.filter((bot) => !hasActivePair(me, bot.userId)).length
+  return { pending: 2, free }
 }

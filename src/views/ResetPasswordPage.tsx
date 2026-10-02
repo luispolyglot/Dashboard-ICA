@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { LockIcon } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { AuthShell } from './components/AuthShell'
+import { AuthField, AuthNotice, AuthShell } from './components/AuthShell'
+import { t } from '@/i18n'
 
 export function ResetPasswordPage() {
   const { updatePassword, signOut, session, loading, isPasswordRecovery } = useAuth()
@@ -24,19 +24,19 @@ export function ResetPasswordPage() {
     setSuccess(null)
 
     if (!session) {
-      setError('El enlace es inválido o expiró. Solicita uno nuevo desde recuperar contraseña.')
+      setError(t('El enlace es inválido o expiró. Solicita uno nuevo desde recuperar contraseña.'))
       return
     }
     if (!isPasswordRecovery) {
-      setError('Esta pantalla solo funciona desde un enlace de recuperación válido.')
+      setError(t('Esta pantalla solo funciona desde un enlace de recuperación válido.'))
       return
     }
     if (password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres.')
+      setError(t('La contraseña debe tener al menos 6 caracteres.'))
       return
     }
     if (password !== confirmPassword) {
-      setError('Las contraseñas no coinciden.')
+      setError(t('Las contraseñas no coinciden.'))
       return
     }
 
@@ -44,10 +44,10 @@ export function ResetPasswordPage() {
     try {
       await updatePassword(password)
       await signOut()
-      setSuccess('Contraseña actualizada. Ya puedes iniciar sesión con tu nueva clave.')
+      setSuccess(t('Contraseña actualizada. Ya puedes iniciar sesión con tu nueva clave.'))
       window.setTimeout(() => navigate('/login', { replace: true }), 7000)
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'No se pudo actualizar la contraseña'
+      const message = err instanceof Error ? err.message : t('No se pudo actualizar la contraseña')
       setError(message)
     } finally {
       setBusy(false)
@@ -55,51 +55,52 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <AuthShell title='Nueva contraseña' subtitle='Define una contraseña nueva para tu cuenta.'>
-      <form className='space-y-4' onSubmit={handleSubmit}>
+    <AuthShell
+      title={t('Nueva contraseña')}
+      subtitle={t('Elige una contraseña nueva para tu cuenta.')}
+      footer={
+        <Link to='/forgot-password' className='text-sm font-extrabold text-[var(--ica-i)]'>
+          {t('Solicitar un nuevo enlace')}
+        </Link>
+      }
+    >
+      <form className='flex flex-col gap-4' onSubmit={handleSubmit}>
         {!loading && !canSubmit && !success && (
-          <p className='text-sm text-destructive'>
-            No detectamos una sesión de recuperación válida. Pide un nuevo enlace.
-          </p>
+          <AuthNotice tone='warning'>{t('No detectamos una sesión de recuperación válida. Pide un nuevo enlace.')}</AuthNotice>
         )}
 
-        <div className='space-y-1.5'>
-          <Label htmlFor='reset-password'>Nueva contraseña</Label>
-          <Input
-            id='reset-password'
-            type='password'
-            required
-            minLength={6}
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
-        </div>
+        <AuthField
+          id='reset-password'
+          label={t('Nueva contraseña')}
+          icon={LockIcon}
+          type='password'
+          autoComplete='new-password'
+          placeholder={t('Mínimo 6 caracteres')}
+          required
+          minLength={6}
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+        />
 
-        <div className='space-y-1.5'>
-          <Label htmlFor='reset-password-confirm'>Confirmar contraseña</Label>
-          <Input
-            id='reset-password-confirm'
-            type='password'
-            required
-            minLength={6}
-            value={confirmPassword}
-            onChange={(event) => setConfirmPassword(event.target.value)}
-          />
-        </div>
+        <AuthField
+          id='reset-password-confirm'
+          label={t('Repite la contraseña')}
+          icon={LockIcon}
+          type='password'
+          autoComplete='new-password'
+          required
+          minLength={6}
+          value={confirmPassword}
+          onChange={(event) => setConfirmPassword(event.target.value)}
+        />
 
-        {error && <p className='text-sm text-destructive'>{error}</p>}
-        {success && <p className='text-sm text-emerald-500'>{success}</p>}
+        {error && <AuthNotice tone='error'>{error}</AuthNotice>}
+        {success && <AuthNotice tone='success'>{success}</AuthNotice>}
 
-        <Button type='submit' disabled={busy || loading || !canSubmit} className='w-full'>
-          {busy ? 'Guardando...' : 'Actualizar contraseña'}
+        <Button type='submit' size='xl' disabled={busy || loading || !canSubmit} className='mt-1 w-full'>
+          {busy ? t('Guardando...') : t('Actualizar contraseña')}
         </Button>
       </form>
-
-      <p className='mt-4 text-sm text-muted-foreground'>
-        <Link to='/forgot-password' className='font-semibold text-primary'>
-          Solicitar un nuevo enlace
-        </Link>
-      </p>
     </AuthShell>
   )
 }

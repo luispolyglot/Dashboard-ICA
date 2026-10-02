@@ -3,6 +3,7 @@ import { addChallengeListening } from '../services/challengeUnlocks'
 import { isChallengeEnabledNow } from '../services/challengeChunks'
 import { useAuth } from '@/auth/AuthContext'
 import type { MasterNote } from '../types'
+import { t } from '@/i18n'
 import {
   createSignedMasterNoteAudioUrl,
   fetchMasterNoteChunks,
@@ -284,7 +285,7 @@ export function useMasterNotePlayback() {
       setIsPaused(false)
     } catch (err) {
       pushDebugEvent('No se pudo reanudar audio', err)
-      setError('No se pudo reanudar la reproducción')
+      setError(t('No se pudo reanudar la reproducción'))
     }
   }
 
@@ -510,7 +511,7 @@ export function useMasterNotePlayback() {
       pushDebugEvent(
         `HTMLAudioElement lanzó error durante reproducción${mediaErrorCode ? ` (code ${mediaErrorCode})` : ''}`,
       )
-      setError('No se pudo reproducir la nota maestra')
+      setError(t('No se pudo reproducir la nota maestra'))
       setPlayingNoteId(null)
       setIsPaused(false)
     }
@@ -553,7 +554,7 @@ export function useMasterNotePlayback() {
     } catch (err) {
       if (token !== tokenRef.current) return
       pushDebugEvent('audio.play() rechazado', err)
-      setError('No se pudo reproducir la nota maestra')
+      setError(t('No se pudo reproducir la nota maestra'))
       setPlayingNoteId(null)
       setIsPaused(false)
     }
@@ -782,13 +783,13 @@ export function useMasterNotePlayback() {
     } catch (err) {
       if (token !== tokenRef.current) return
       pushDebugEvent('Fallo al resolver pista de reproducción', err)
-      setError('No se pudo reproducir la nota maestra')
+      setError(t('No se pudo reproducir la nota maestra'))
       return
     }
 
     if (!track) {
       pushDebugEvent('No se encontró track reproducible para la nota')
-      setError('No hay audios para reproducir en esta nota maestra')
+      setError(t('No hay audios para reproducir en esta nota maestra'))
       return
     }
 

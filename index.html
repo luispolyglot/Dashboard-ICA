@@ -6,16 +6,71 @@
     <meta name="theme-color" content="#ffffff" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="Dashboard ICA" />
+    <meta name="apple-mobile-web-app-title" content="ICA" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
-    <title>Dashboard ICA</title>
+    <title>ICA</title>
+    <!--
+      Sin destello blanco al abrir o recargar: antes de que cargue nada, la página ya tiene el
+      fondo de la app y, en modo oscuro, la clase «dark» (así la pantalla de carga de React
+      también sale oscura). Mismo criterio que ThemeContext: lo guardado o, si no, el sistema.
+    -->
+    <style>
+      html { background: #eef3f8; color-scheme: light; }
+      html.dark { background: oklch(20.5% 0.03 245); color-scheme: dark; }
+    </style>
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('dashboard-ica-theme')
+          var dark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
+          if (dark) {
+            document.documentElement.classList.add('dark')
+            document.documentElement.dataset.theme = 'dark'
+            var meta = document.querySelector('meta[name="theme-color"]')
+            if (meta) meta.setAttribute('content', '#0b1621')
+          }
+        } catch (e) {}
+      })()
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Pantalla de carga: el logo ICA en el centro hasta que arranca la app (React la sustituye). -->
+    <div id="root">
+      <div id="ica-splash" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#eef3f8;color:#0a72a3">
+        <svg viewBox="0 0 300 210" width="150" height="105" role="img" aria-label="ICA" style="animation:ica-splash-in .5s ease-out both">
+          <path d="M44 186 Q14 183 14 152 L14 78 Q14 50 42 50 L258 50 Q286 50 286 78 L286 152 Q286 183 256 186" fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" />
+          <g transform="translate(150 30)">
+            <path d="M-34 6 L-34 28 Q0 44 34 28 L34 6 L0 18 Z" fill="currentColor" />
+            <path d="M0 -26 L58 -4 L0 18 L-58 -4 Z" fill="currentColor" stroke="var(--ica-splash-bg,#eef3f8)" stroke-width="5" stroke-linejoin="round" />
+            <path d="M44 0 L44 26" stroke="currentColor" stroke-width="4" stroke-linecap="round" />
+            <rect x="38" y="24" width="12" height="16" rx="5" fill="currentColor" />
+          </g>
+          <path d="M66.4 165Q61.5 165 58.8 162.3Q56.1 159.5 56.1 154.5V94.6Q56.1 89.4 58.8 86.7Q61.5 84 66.4 84Q71.5 84 74.1 86.7Q76.7 89.4 76.7 94.6V154.5Q76.7 159.5 74.1 162.3Q71.6 165 66.4 165ZM132.9 165.2Q119.8 165.2 110.4 160.2Q101 155.2 96 146Q91 136.8 91 124.5Q91 115.3 93.9 107.8Q96.8 100.3 102.2 94.9Q107.6 89.5 115.4 86.7Q123.2 83.8 132.9 83.8Q138.1 83.8 143.6 85Q149.2 86.2 153.4 88.5Q156.6 90.2 157.8 92.8Q159 95.3 158.6 98Q158.2 100.7 156.7 102.8Q155.1 105 152.6 105.7Q150.2 106.4 147.3 105Q143.9 103.4 140.6 102.6Q137.3 101.7 133.7 101.7Q126.8 101.7 122.1 104.4Q117.5 107 115.1 112Q112.8 117.1 112.8 124.5Q112.8 131.9 115.1 137Q117.5 142 122.1 144.7Q126.8 147.3 133.7 147.3Q136.6 147.3 140 146.6Q143.3 145.9 146.6 144.3Q150 142.8 152.6 143.5Q155.2 144.2 156.8 146.2Q158.5 148.2 158.9 150.8Q159.4 153.5 158.2 156Q157 158.6 154.1 160.2Q150.2 162.5 144.4 163.9Q138.6 165.2 132.9 165.2ZM174.5 165Q171 165 168.6 163.4Q166.3 161.8 165.7 158.9Q165.2 156 166.7 152.5L194.6 92.4Q196.6 88.1 199.6 86Q202.6 84 206.4 84Q210.2 84 213 86Q215.9 88.1 218 92.4L245.9 152.5Q247.7 156 247.2 159Q246.7 161.9 244.4 163.4Q242.1 165 238.8 165Q234.3 165 231.9 163Q229.5 161 227.6 156.5L224 148H188.7L185.1 156.5Q183.1 161 181 163Q178.8 165 174.5 165ZM206.2 106.5 195.4 132.2H217.2L206.4 106.5Z" fill="currentColor" />
+        </svg>
+      </div>
+      <style>
+        @keyframes ica-splash-in { from { opacity: 0; transform: scale(.94) } to { opacity: 1; transform: scale(1) } }
+        @media (prefers-reduced-motion: reduce) { #ica-splash svg { animation: none !important } }
+      </style>
+      <script>
+        (function () {
+          try {
+            var stored = localStorage.getItem('dashboard-ica-theme')
+            var dark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
+            if (dark) {
+              var el = document.getElementById('ica-splash')
+              el.style.background = 'oklch(20.5% 0.03 245)'
+              el.style.color = '#1597cc'
+              el.style.setProperty('--ica-splash-bg', 'oklch(20.5% 0.03 245)')
+            }
+          } catch (e) {}
+        })()
+      </script>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

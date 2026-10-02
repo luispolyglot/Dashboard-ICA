@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { peekQuick, quickFetch } from './quickCache'
 
 export type AdminRole = 'admin' | 'super_admin'
 
@@ -73,25 +74,36 @@ export async function checkSuperAdminAccess(): Promise<boolean> {
   return role === 'super_admin'
 }
 
-export async function fetchAdminRole(): Promise<AdminRole | null> {
+async function requestAdminRole(userId: string): Promise<AdminRole | null> {
   if (!supabase) return null
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
-
-  if (authError || !user) return null
-
   const { data, error } = await supabase
     .from('admin_users')
     .select('role, is_active')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .eq('is_active', true)
     .maybeSingle<AdminUserRow>()
 
   if (error || !data) return null
   return data.role
+}
+
+/**
+ * Rol de admin del usuario. Antes pedía la sesión al servidor cada vez (lento); ahora usa la
+ * sesión que ya hay en el navegador y recuerda el rol un minuto (los permisos de verdad los
+ * comprueba siempre el servidor al pedir los datos).
+ */
+export async function fetchAdminRole(): Promise<AdminRole | null> {
+  if (!supabase) return null
+  const { data } = await supabase.auth.getSession()
+  const userId = data.session?.user.id
+  if (!userId) return null
+  return quickFetch(`admin-role:${userId}`, () => requestAdminRole(userId), { maxAgeMs: 60_000 })
+}
+
+/** El último rol conocido (al momento), o undefined si todavía no se sabe. */
+export function peekAdminRole(userId: string | null | undefined): AdminRole | null | undefined {
+  if (!userId) return undefined
+  return peekQuick<AdminRole | null>(`admin-role:${userId}`)
 }
 
 export async function fetchAdminAnalytics(): Promise<AdminAnalyticsPayload> {

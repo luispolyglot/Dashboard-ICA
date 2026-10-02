@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { supabase } from '@/lib/supabase'
 import type {
   PushReminderPreferences,
@@ -53,7 +54,7 @@ function mapRow(row: PushReminderPreferencesRow): PushReminderPreferences {
 
 async function getCurrentUserId(): Promise<string> {
   if (!supabase) {
-    throw new PushReminderPreferencesError('Supabase no esta configurado.')
+    throw new PushReminderPreferencesError(t('Supabase no esta configurado.'))
   }
 
   const {
@@ -63,7 +64,7 @@ async function getCurrentUserId(): Promise<string> {
 
   if (error || !user) {
     throw new PushReminderPreferencesError(
-      'Necesitas iniciar sesion para configurar notificaciones.',
+      t('Necesitas iniciar sesión para configurar notificaciones.'),
     )
   }
 
@@ -95,7 +96,7 @@ export async function fetchPushReminderPreferences(): Promise<PushReminderPrefer
 
   if (error) {
     throw new PushReminderPreferencesError(
-      'No se pudieron cargar tus preferencias de notificaciones.',
+      t('No se pudieron cargar tus preferencias de notificaciones.'),
     )
   }
 
@@ -129,7 +130,7 @@ export async function upsertPushReminderPreferences(
 
   if (error || !data) {
     throw new PushReminderPreferencesError(
-      'No se pudieron guardar tus preferencias de notificaciones.',
+      t('No se pudieron guardar tus preferencias de notificaciones.'),
     )
   }
 

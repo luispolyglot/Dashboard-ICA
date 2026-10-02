@@ -10,6 +10,7 @@
  */
 import { LANG_CODES } from '../../constants'
 import { speakNatural, stopTTS } from '../../services/tts'
+import { t } from '@/i18n'
 
 export const getLangCode = (langName: string): string => LANG_CODES[langName] || 'en-US'
 
@@ -312,12 +313,12 @@ type SessionOutcome = ListenOutcome | { status: 'not-started' }
 
 function permissionMessage(): string {
   if (isIOSDevice()) {
-    return 'No hay permiso para el micrófono. En el iPhone: Ajustes › Apps › Safari › Micrófono › Permitir, y Ajustes › Privacidad y seguridad › Reconocimiento de voz › activa Safari. Después cierra la app y vuelve a abrirla.'
+    return t('No hay permiso para el micrófono. En el iPhone: Ajustes › Apps › Safari › Micrófono › Permitir, y Ajustes › Privacidad y seguridad › Reconocimiento de voz › activa Safari. Después cierra la app y vuelve a abrirla.')
   }
   if (isAndroidDevice()) {
-    return 'No hay permiso para el micrófono. Toca el candado (o los tres puntos › Ajustes del sitio) y activa el micrófono para icademy.app.'
+    return t('No hay permiso para el micrófono. Toca el candado (o los tres puntos › Ajustes del sitio) y activa el micrófono para icademy.app.')
   }
-  return 'No hay permiso para usar el micrófono. Permítelo en el candado de la barra de direcciones.'
+  return t('No hay permiso para usar el micrófono. Permítelo en el candado de la barra de direcciones.')
 }
 
 const MIC_NOT_OPENING_MESSAGE =
@@ -432,8 +433,8 @@ export function warmUpMicrophone(
     return Promise.resolve({
       ok: false,
       message: isIOSDevice()
-        ? 'Tu iPhone no deja usar el reconocimiento de voz aquí. Abre icademy.app en Safari.'
-        : 'Tu navegador no tiene reconocimiento de voz. Abre la app en Google Chrome.',
+        ? t('Tu iPhone no deja usar el reconocimiento de voz aquí. Abre icademy.app en Safari.')
+        : t('Tu navegador no tiene reconocimiento de voz. Abre la app en Google Chrome.'),
     })
   }
   if (microphoneReady) return Promise.resolve({ ok: true })
@@ -474,9 +475,9 @@ export function warmUpMicrophone(
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
           finish({ ok: false, message: permissionMessage() })
         } else if (event.error === 'audio-capture') {
-          finish({ ok: false, message: 'No se encuentra ningún micrófono.' })
+          finish({ ok: false, message: t('No se encuentra ningún micrófono.') })
         } else if (event.error === 'network') {
-          finish({ ok: false, message: 'El reconocimiento de voz necesita conexión a internet.' })
+          finish({ ok: false, message: t('El reconocimiento de voz necesita conexión a internet.') })
         }
         // 'no-speech' / 'aborted': el micro funciona; se decide en onend.
       }
@@ -669,12 +670,12 @@ function listenSession(
       if (event.error === 'network') {
         errorOutcome = {
           status: 'error',
-          message: 'El reconocimiento de voz necesita conexión a internet.',
+          message: t('El reconocimiento de voz necesita conexión a internet.'),
         }
         return
       }
       if (event.error === 'audio-capture') {
-        errorOutcome = { status: 'error', message: 'No se encuentra ningún micrófono.' }
+        errorOutcome = { status: 'error', message: t('No se encuentra ningún micrófono.') }
       }
     }
 
@@ -782,7 +783,7 @@ export function listenOnce(
     return {
       promise: Promise.resolve({
         status: 'error',
-        message: 'Tu navegador no tiene reconocimiento de voz. Abre la app en Google Chrome.',
+        message: t('Tu navegador no tiene reconocimiento de voz. Abre la app en Google Chrome.'),
       }),
       cancel: () => {},
     }
@@ -807,7 +808,7 @@ export function listenOnce(
       // El micro no se abrió: se intenta una vez más con uno nuevo.
       await wait(400)
     }
-    return { status: 'error', message: MIC_NOT_OPENING_MESSAGE }
+    return { status: 'error', message: t(MIC_NOT_OPENING_MESSAGE) }
   }
 
   let resolveCancelled: (outcome: ListenOutcome) => void = () => {}

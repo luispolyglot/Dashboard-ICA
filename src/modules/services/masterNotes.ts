@@ -4,6 +4,7 @@ import { runInBatches } from '@/lib/utils'
 import { notifyCreationMetricsChanged } from './creationMetricsSync'
 import { syncClosedMasterNotesOfflineSnapshot } from './masterNotesOfflineStore'
 import type { MasterNote, MasterNoteChunk } from '../types'
+import { t } from '@/i18n'
 
 const MASTER_NOTES_BUCKET = 'master-notes'
 
@@ -14,8 +15,8 @@ export const MASTER_NOTE_COMPLETE_DURATION_MS = 3 * 60 * 1000
 export function formatMasterNoteLabel(name: string | null | undefined): string {
   const clean = (name || '').trim()
   const match = clean.match(/^nota maestra:\s*(\d+)$/i)
-  if (match) return `Nota Maestra ${match[1]}`
-  return clean || 'Nota Maestra'
+  if (match) return t('Nota Maestra {n}', { n: match[1] })
+  return clean || t('Nota Maestra')
 }
 
 function getNextMasterNoteNumber(names: string[]): number {
@@ -604,7 +605,7 @@ export async function fetchNextMasterNoteLabel(
   targetLang: string,
   nativeLang: string,
 ): Promise<string> {
-  if (!supabase) return 'una nueva Nota Maestra'
+  if (!supabase) return t('una nueva Nota Maestra')
 
   const { data, error } = await supabase
     .from('master_notes')
@@ -620,7 +621,7 @@ export async function fetchNextMasterNoteLabel(
   if (openNote) return formatMasterNoteLabel(openNote.name)
 
   const nextNumber = getNextMasterNoteNumber(rows.map((row) => row.name || ''))
-  return `Nota Maestra ${nextNumber}`
+  return t('Nota Maestra {n}', { n: nextNumber })
 }
 
 export async function createSignedMasterNoteAudioUrl(

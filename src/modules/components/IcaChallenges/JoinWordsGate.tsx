@@ -6,6 +6,7 @@
 import { LockIcon, SparklesIcon } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import { langName, t, tn } from '@/i18n'
 import { DASHBOARD_ROUTES } from '../../routes/paths'
 
 export function JoinWordsGate({
@@ -28,10 +29,14 @@ export function JoinWordsGate({
           <LockIcon className='h-5 w-5' />
         </span>
         <div className='min-w-0'>
-          <p className='font-serif text-lg font-semibold leading-tight'>Desbloquea los Desafíos ICA</p>
+          <p className='font-display text-lg font-extrabold leading-tight'>{t('Desbloquea los Desafíos ICA')}</p>
           <p className='mt-1 text-sm text-muted-foreground'>
-            Añade {missing} palabra{missing === 1 ? '' : 's'} más a tu Baúl ICA de {targetLang} para poder retar y
-            que te reten.
+            {tn(
+              missing,
+              'Añade {n} palabra más a tu Baúl ICA de {lang} para poder retar y que te reten.',
+              'Añade {n} palabras más a tu Baúl ICA de {lang} para poder retar y que te reten.',
+              { lang: langName(targetLang) },
+            )}
           </p>
         </div>
       </div>
@@ -39,7 +44,7 @@ export function JoinWordsGate({
       <div className='mt-4'>
         <div className='mb-1.5 flex items-baseline justify-between gap-2 text-xs'>
           <span className='font-medium'>
-            {safeCount} de {minWords} palabras
+            {t('{n} de {total} palabras', { n: safeCount, total: minWords })}
           </span>
           <span className='text-muted-foreground'>{percent}%</span>
         </div>
@@ -49,7 +54,7 @@ export function JoinWordsGate({
           aria-valuemin={0}
           aria-valuemax={minWords}
           aria-valuenow={safeCount}
-          aria-label='Palabras en tu Baúl ICA'
+          aria-label={t('Palabras en tu Baúl ICA')}
         >
           <div
             className='h-full rounded-full bg-primary transition-[width] duration-500'
@@ -61,7 +66,7 @@ export function JoinWordsGate({
       <Button asChild className='mt-4 w-full'>
         <Link to={DASHBOARD_ROUTES.newIcaWords}>
           <SparklesIcon className='mr-2 h-4 w-4' />
-          Añadir palabras en Inmersión
+          {t('Añadir palabras en Inmersión')}
         </Link>
       </Button>
     </div>

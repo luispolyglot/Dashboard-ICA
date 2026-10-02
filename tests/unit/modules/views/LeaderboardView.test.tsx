@@ -18,6 +18,9 @@ vi.mock('@/modules/services/leaderboard', () => ({
   fetchMonthlySnapshotLeaderboard: (...args: unknown[]) =>
     fetchMonthlySnapshotLeaderboardMock(...args),
   fetchTotalIcademers: (...args: unknown[]) => fetchTotalIcademersMock(...args),
+  peekMonthlyStreakLeaderboard: () => undefined,
+  peekMonthlySnapshotLeaderboard: () => undefined,
+  peekTotalIcademers: () => undefined,
 }))
 
 vi.mock('@/modules/services/icaTests', () => ({
@@ -60,7 +63,9 @@ describe('LeaderboardView ICA test column', () => {
     fetchMonthlySnapshotLeaderboardMock.mockResolvedValue([])
   })
 
-  it('hides ICA Test column before official window day in current month', async () => {
+  // El ranking ya no es una tabla: el ICA Test se ve en el detalle de puntuación
+  // (se abre desde tu puesto, arriba, o tocando a alguien del podio).
+  it('does not count ICA Test before the official window day in current month', async () => {
     getIcaTestWindowStartDayMock.mockReturnValue(31)
     fetchMonthlyStreakLeaderboardMock.mockResolvedValue([
       {
@@ -70,6 +75,7 @@ describe('LeaderboardView ICA test column', () => {
         display_name: 'Ana',
         ica_streak_days: 4,
         avg_percent: 80,
+        ica_test_points: 1.1,
         total_points: 8,
       },
     ])
@@ -77,13 +83,18 @@ describe('LeaderboardView ICA test column', () => {
     render(<LeaderboardView />)
 
     await waitFor(() => {
-      expect(fetchMonthlyStreakLeaderboardMock).toHaveBeenCalled()
+      expect(screen.getByText('8,0 pts')).toBeTruthy()
     })
 
-    expect(screen.queryByText('ICA Test')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Ver tu puntuación/ }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Tu puntuación')).toBeTruthy()
+    })
+    expect(screen.queryByText('1,1')).toBeNull()
   })
 
-  it('shows ICA Test column on or after official window day in current month', async () => {
+  it('counts ICA Test on or after the official window day in current month', async () => {
     getIcaTestWindowStartDayMock.mockReturnValue(1)
     fetchMonthlyStreakLeaderboardMock.mockResolvedValue([
       {
@@ -93,7 +104,7 @@ describe('LeaderboardView ICA test column', () => {
         display_name: 'Ana',
         ica_streak_days: 6,
         avg_percent: 85,
-        ica_test_points: 1.3,
+        ica_test_points: 1.1,
         total_points: 9.8,
       },
     ])
@@ -101,14 +112,17 @@ describe('LeaderboardView ICA test column', () => {
     render(<LeaderboardView />)
 
     await waitFor(() => {
-      expect(screen.getByText('ICA Test')).toBeTruthy()
-      expect(screen.getByText('Puntuación total')).toBeTruthy()
-      expect(screen.getByText('1.3')).toBeTruthy()
-      expect(screen.getByText('9.8')).toBeTruthy()
+      expect(screen.getByText('9,8 pts')).toBeTruthy()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Ver tu puntuación/ }))
+
+    await waitFor(() => {
+      expect(screen.getByText('1,1')).toBeTruthy()
     })
   })
 
-  it('shows ICA Test column in historic snapshot only when snapshot has ICA points key', async () => {
+  it('uses the ICA Test in historic snapshots only when the snapshot has ICA points', async () => {
     getIcaTestWindowStartDayMock.mockReturnValue(31)
     fetchMonthlyStreakLeaderboardMock.mockResolvedValue([
       {
@@ -131,7 +145,7 @@ describe('LeaderboardView ICA test column', () => {
             display_name: 'Luz',
             ica_streak_days: 4,
             avg_percent: 84,
-            ica_test_points: 0,
+            ica_test_points: 0.7,
             total_points: 8.4,
           },
         ]
@@ -145,19 +159,24 @@ describe('LeaderboardView ICA test column', () => {
       expect(fetchMonthlyStreakLeaderboardMock).toHaveBeenCalled()
     })
 
-    expect(screen.queryByText('ICA Test')).toBeNull()
-
-    fireEvent.change(screen.getByLabelText('Selecciona mes'), {
-      target: { value: '2026-05-01' },
-    })
+    // El mes se cambia con las flechas ‹ ›: se va hasta el primero (mayo de 2026).
+    const olderMonthButton = screen.getByRole('button', { name: 'Mes anterior' }) as HTMLButtonElement
+    for (let guard = 0; guard < 24 && !olderMonthButton.disabled; guard += 1) {
+      fireEvent.click(olderMonthButton)
+    }
 
     await waitFor(() => {
       expect(fetchMonthlySnapshotLeaderboardMock).toHaveBeenCalledWith(
         '2026-05-01',
-        33,
+        250,
       )
-      expect(screen.getByText('ICA Test')).toBeTruthy()
-      expect(screen.getByText('0.0')).toBeTruthy()
+      expect(screen.getByText('8,4 pts')).toBeTruthy()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /^Luz: / }))
+
+    await waitFor(() => {
+      expect(screen.getByText('0,7')).toBeTruthy()
     })
   })
 
@@ -184,10 +203,10 @@ describe('LeaderboardView ICA test column', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ver premio del puesto 1' }))
 
     expect(
-      screen.getByText('🥇 El icademer que termine top 1 el día 28 del mes ganará:'),
+      screen.getByText('El icademer que termine top 1 el día 28 del mes ganará:'),
     ).toBeTruthy()
-    expect(screen.getByText('👨🏻‍🏫 Clase 1 a 1 de 1 hora con Luis')).toBeTruthy()
-    expect(screen.getByText('💲 1 mes gratis en ICADEMY')).toBeTruthy()
-    expect(screen.getByText('🎖️ Insignia oficial de ICAwards')).toBeTruthy()
+    expect(screen.getByText('Clase 1 a 1 de 1 hora con Luis')).toBeTruthy()
+    expect(screen.getByText('1 mes gratis en ICADEMY')).toBeTruthy()
+    expect(screen.getByText('Insignia oficial de ICAwards')).toBeTruthy()
   })
 })

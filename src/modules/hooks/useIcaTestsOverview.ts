@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { t } from '@/i18n'
 import type { IcaTestRecord, Lexicard } from '../types'
 import {
   buildIcaTestWordPool,
@@ -78,7 +79,7 @@ export function useIcaTestsOverview({
       const data = await listIcaTests(targetLang, nativeLang)
       setTests(data)
     } catch {
-      setError('No pudimos cargar los Tests ICA.')
+      setError(t('No pudimos cargar los Tests ICA.'))
     } finally {
       setIsLoading(false)
     }

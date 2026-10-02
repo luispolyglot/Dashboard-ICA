@@ -1,14 +1,16 @@
+import { t, tn, uiLocale } from '@/i18n'
 import { useEffect, useState } from 'react'
 import {
   BellIcon,
+  BellRingIcon,
   CheckIcon,
   SmartphoneIcon,
+  UserRoundIcon,
   Volume1,
   VolumeOff,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useSearchParams } from 'react-router-dom'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -29,8 +31,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { cn } from '@/lib/utils'
 import { CalendarIcademyBoard } from '../components/calendar-icademy/CalendarIcademyBoard'
-import { getCalendarIcademyCatalogEntry } from '../constants/calendarIcademyCatalog'
+import {
+  FlagTile,
+  getClassMeta,
+} from '../components/calendar-icademy/calendarIcademyUi'
+import {
+  getCalendarIcademyCatalogEntry,
+  isCalendarIcademyClassRetired,
+} from '../constants/calendarIcademyCatalog'
+import { IconTile, ListRow, Pill } from '../game/ui'
 import { fetchCalendarIcademyEntries } from '../services/calendarIcademy'
 import {
   fetchCalendarIcademyPreferences,
@@ -67,7 +78,7 @@ const SPECIAL_CLASS_KEY = 'destripando_niveles'
 const LOCAL_TIME_STORAGE_KEY = 'calendar-icademy-show-local-time'
 
 function formatDateLabelByTimezone(date: Date, timeZone: string): string {
-  return date.toLocaleDateString('es-ES', {
+  return date.toLocaleDateString(uiLocale(), {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -76,7 +87,7 @@ function formatDateLabelByTimezone(date: Date, timeZone: string): string {
 }
 
 function formatTimeLabelByTimezone(date: Date, timeZone: string): string {
-  const label = date.toLocaleTimeString('es-ES', {
+  const label = date.toLocaleTimeString(uiLocale(), {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -156,14 +167,19 @@ export function CalendarIcademyView() {
           ])
         if (!mounted) return
         setEntries(calendarEntries)
-        setPreferences(preferenceEntries)
+        // Los avisos de clases que ya no se imparten no se enseñan (ni ocupan hueco a la vista)
+        setPreferences(
+          preferenceEntries.filter(
+            (item) => !isCalendarIcademyClassRetired(item.classKey),
+          ),
+        )
         setMutedSessions(mutedSessionEntries)
       } catch (err) {
         if (!mounted) return
         const message =
           err instanceof Error
             ? err.message
-            : 'No se pudo cargar el calendario de clases.'
+            : t('No se pudo cargar el calendario de clases.')
         setError(message)
       } finally {
         if (!mounted) return
@@ -359,19 +375,19 @@ export function CalendarIcademyView() {
       })
 
       if (saved.notificationsEnabled) {
-        toast.success(`Recordatorio activado para ${className}.`, {
-          description: `${saved.minutesBefore} min antes de cada clase.`,
+        toast.success(t('Recordatorio activado para {name}.', { name: t(className) }), {
+          description: t('{n} min antes de cada clase.', { n: saved.minutesBefore }),
         })
       } else {
-        toast('Recordatorio desactivado.', {
-          description: className,
+        toast(t('Recordatorio desactivado.'), {
+          description: t(className),
         })
       }
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
-          : 'No se pudo actualizar la preferencia de notificacion.'
+          : t('No se pudo actualizar la preferencia de notificación.')
       setError(message)
       toast.error(message)
     }
@@ -393,14 +409,14 @@ export function CalendarIcademyView() {
         minutesBefore,
       })
 
-      toast.success('Preferencia guardada.', {
-        description: `${className}: ${minutesBefore} min antes.`,
+      toast.success(t('Preferencia guardada.'), {
+        description: t('{name}: {n} min antes.', { name: t(className), n: minutesBefore }),
       })
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
-          : 'No se pudo actualizar el tiempo de recordatorio.'
+          : t('No se pudo actualizar el tiempo de recordatorio.')
       setError(message)
       toast.error(message)
     }
@@ -411,12 +427,12 @@ export function CalendarIcademyView() {
     try {
       await enablePushOnCurrentDevice()
       await refreshPushStatus()
-      toast.success('Notificaciones push activadas en este dispositivo.')
+      toast.success(t('Notificaciones push activadas en este dispositivo.'))
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
-          : 'No se pudo activar push en este dispositivo.'
+          : t('No se pudo activar push en este dispositivo.')
       toast.error(message)
     } finally {
       setIsUpdatingPushDevice(false)
@@ -428,12 +444,12 @@ export function CalendarIcademyView() {
     try {
       await disablePushOnCurrentDevice()
       await refreshPushStatus()
-      toast.success('Notificaciones push desactivadas en este dispositivo.')
+      toast.success(t('Notificaciones push desactivadas en este dispositivo.'))
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
-          : 'No se pudo desactivar push en este dispositivo.'
+          : t('No se pudo desactivar push en este dispositivo.')
       toast.error(message)
     } finally {
       setIsUpdatingPushDevice(false)
@@ -452,8 +468,8 @@ export function CalendarIcademyView() {
         setMutedSessions((prev) =>
           prev.filter((item) => item.calendarEntryId !== entry.id),
         )
-        toast.success('Sesión reactivada para notificaciones.', {
-          description: `${entry.className} · ${entry.sessionTime}`,
+        toast.success(t('Sesión reactivada para notificaciones.'), {
+          description: `${t(entry.className)} · ${entry.sessionTime}`,
         })
       } else {
         const mutedItem = await silenceCalendarIcademySession({
@@ -466,15 +482,15 @@ export function CalendarIcademyView() {
           )
           return [mutedItem, ...withoutCurrent]
         })
-        toast.success('Sesión silenciada.', {
-          description: 'No enviaremos recordatorio para esta clase puntual.',
+        toast.success(t('Sesión silenciada.'), {
+          description: t('No enviaremos recordatorio para esta clase puntual.'),
         })
       }
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
-          : 'No se pudo actualizar el silencio de la sesion.'
+          : t('No se pudo actualizar el silencio de la sesión.')
       toast.error(message)
     } finally {
       setIsUpdatingSessionMute(false)
@@ -506,15 +522,20 @@ export function CalendarIcademyView() {
     setSearchParams(next, { replace: true })
   }
 
+  const activeRemindersCount = activeReminderPreferences.length
+  const selectedEntryMeta = selectedEntry
+    ? getClassMeta(selectedEntry.classKey, selectedEntry)
+    : null
+
   return (
     <>
       <CalendarIcademyBoard
-        title='Calendario ICADEMY'
-        description='Consulta las clases por idioma y filtra las que te interesan.'
+        title={t('Calendario ICADEMY')}
+        description={t('Clases en directo por idioma: elige las tuyas y mira cuándo son.')}
         entries={entries}
         loading={loading}
         error={error}
-        emptyMessage='Aun no hay clases cargadas para este calendario.'
+        emptyMessage={t('Aun no hay clases cargadas para este calendario.')}
         lockToCurrentMonth
         onEntryClick={(entry) => setSelectedEntry(entry)}
         onLocalTimePreferenceChange={setShowLocalTime}
@@ -523,15 +544,46 @@ export function CalendarIcademyView() {
         onToggleEntryMute={(entry) => {
           void handleToggleEntrySilence(entry)
         }}
-        topActions={
-          <Button
+        headerRight={
+          <button
             type='button'
-            variant='outline'
             onClick={handleOpenPrefsModal}
+            aria-label={t('Preferencias de recordatorios')}
+            className='ica-press relative flex size-11 items-center justify-center rounded-2xl border-2 border-border bg-card dark:bg-transparent'
+            style={{
+              boxShadow: '0 3px 0 var(--border)',
+              color:
+                activeRemindersCount > 0
+                  ? 'var(--ica-gold-ink)'
+                  : 'var(--muted-foreground)',
+            }}
           >
-            <BellIcon data-icon='inline-start' />
-            Preferencias de recordatorios
-          </Button>
+            <BellIcon className='size-5' strokeWidth={2.6} />
+            {activeRemindersCount > 0 ? (
+              <span
+                className='absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full text-[11px] font-black'
+                style={{ background: 'var(--ica-gold)', color: '#4a3200' }}
+              >
+                {activeRemindersCount}
+              </span>
+            ) : null}
+          </button>
+        }
+        settingsRows={
+          <ListRow
+            onClick={handleOpenPrefsModal}
+            icon={
+              <IconTile tone='gold' size={48}>
+                <BellRingIcon className='size-6' strokeWidth={2.4} />
+              </IconTile>
+            }
+            title={t('Recordatorios')}
+            text={
+              activeRemindersCount > 0
+                ? tn(activeRemindersCount, 'Activos para {n} clase', 'Activos para {n} clases')
+                : t('Te avisamos antes de tus clases')
+            }
+          />
         }
       />
 
@@ -543,48 +595,63 @@ export function CalendarIcademyView() {
       >
         <DialogContent>
           <DialogHeader>
-            <div className='flex items-center gap-2'>
-              <DialogTitle>
-                {selectedEntry
-                  ? `${getCalendarIcademyCatalogEntry(selectedEntry.classKey)?.flag || '🌐'} ${getCalendarIcademyCatalogEntry(selectedEntry.classKey)?.className || selectedEntry.className}`
-                  : 'Clase'}
-              </DialogTitle>
-              {selectedEntry && selectedEntry.sessionDate === todayKey && (
-                <Badge className='h-auto px-2 py-0 text-[10px]'>Hoy</Badge>
-              )}
+            <div className='flex items-center gap-3'>
+              {selectedEntryMeta ? (
+                <FlagTile meta={selectedEntryMeta} size={52} />
+              ) : null}
+              <div className='min-w-0 text-left'>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <DialogTitle>
+                    {selectedEntryMeta ? t(selectedEntryMeta.className) : t('Clase')}
+                  </DialogTitle>
+                  {selectedEntry && selectedEntry.sessionDate === todayKey && (
+                    <Pill tone='primary' solid>
+                      {t('Hoy')}
+                    </Pill>
+                  )}
+                </div>
+                <DialogDescription className='first-letter:uppercase'>
+                  {selectedEntry ? getEntryDateTimeDescription(selectedEntry) : ''}
+                </DialogDescription>
+              </div>
             </div>
-            <DialogDescription>
-              {selectedEntry ? getEntryDateTimeDescription(selectedEntry) : ''}
-            </DialogDescription>
           </DialogHeader>
 
           {selectedEntry && (
-            <div className='space-y-2 text-sm'>
-              <p>
-                <span className='font-medium'>Profesor:</span>{' '}
-                {selectedEntry.teacher}
-              </p>
+            <div className='flex flex-col gap-3 text-sm'>
+              <div className='flex items-center gap-3 rounded-2xl border-2 border-border px-3 py-2.5'>
+                <IconTile tone='neutral' size={40}>
+                  <UserRoundIcon className='size-5' strokeWidth={2.4} />
+                </IconTile>
+                <p className='m-0'>
+                  <span className='block text-xs font-bold text-muted-foreground'>
+                    {t('Profesor')}
+                  </span>
+                  <span className='block font-extrabold'>
+                    {selectedEntry.teacher}
+                  </span>
+                </p>
+              </div>
 
               {canManageSelectedEntryMute ? (
-                <div className='pt-2'>
-                  <Button
-                    type='button'
-                    variant={isSelectedEntryMuted ? 'outline' : 'secondary'}
-                    size='sm'
-                    disabled={isUpdatingSessionMute}
-                    onClick={() => void handleToggleSessionSilence()}
-                  >
-                    {isSelectedEntryMuted ? <Volume1 /> : <VolumeOff />}
-                    {isSelectedEntryMuted
-                      ? 'Cancelar silencio de esta sesión'
-                      : 'Silenciar esta sesión'}
-                  </Button>
-                </div>
+                <Button
+                  type='button'
+                  variant={isSelectedEntryMuted ? 'outline' : 'secondary'}
+                  size='lg'
+                  className='w-full'
+                  disabled={isUpdatingSessionMute}
+                  onClick={() => void handleToggleSessionSilence()}
+                >
+                  {isSelectedEntryMuted ? <Volume1 /> : <VolumeOff />}
+                  {isSelectedEntryMuted
+                    ? t('Cancelar silencio de esta sesión')
+                    : t('Silenciar esta sesión')}
+                </Button>
               ) : (
-                <p className='pt-2 text-xs text-muted-foreground'>
+                <p className='m-0 rounded-2xl bg-muted px-3 py-2.5 text-xs font-semibold text-muted-foreground'>
                   {isSelectedEntryPastDay
-                    ? 'No puedes silenciar sesiones de dias pasados.'
-                    : 'Para silenciar esta sesión, primero activa recordatorios para esta clase en "Preferencias de recordatorios".'}
+                    ? t('No puedes silenciar sesiones de días pasados.')
+                    : t('Para silenciar esta sesión, primero activa el recordatorio de esta clase en «Recordatorios».')}
                 </p>
               )}
             </div>
@@ -595,26 +662,30 @@ export function CalendarIcademyView() {
       <Dialog open={isPrefsModalOpen} onOpenChange={handlePrefsModalOpenChange}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Recordatorios de clases</DialogTitle>
+            <DialogTitle>{t('Recordatorios de clases')}</DialogTitle>
             <DialogDescription>
-              Configura que clases quieres seguir con notificaciones al entrar a
-              la app.
+              {t('Elige de qué clases quieres un aviso antes de que empiecen.')}
             </DialogDescription>
           </DialogHeader>
 
-          <div className='rounded-lg border border-border bg-muted/30 px-3 py-2'>
-            <div className='mb-2 flex items-center justify-between gap-2'>
-              <p className='text-sm font-medium'>
-                Notificaciones push en este dispositivo
-              </p>
-              <p className='text-xs text-muted-foreground'>
-                Dispositivos activos: {activePushDevicesCount}
-              </p>
+          <div className='rounded-2xl border-2 border-border px-3 py-3'>
+            <div className='mb-3 flex items-center gap-3'>
+              <IconTile tone='i' size={40}>
+                <SmartphoneIcon className='size-5' strokeWidth={2.4} />
+              </IconTile>
+              <div className='min-w-0 flex-1'>
+                <p className='m-0 text-sm font-extrabold'>
+                  {t('Notificaciones push en este dispositivo')}
+                </p>
+                <p className='m-0 text-xs font-semibold text-muted-foreground'>
+                  {t('Dispositivos activos: {n}', { n: activePushDevicesCount })}
+                </p>
+              </div>
             </div>
 
             {pushPermission === 'unsupported' ? (
-              <p className='text-sm text-muted-foreground'>
-                Este navegador no soporta notificaciones push.
+              <p className='m-0 text-sm font-semibold text-muted-foreground'>
+                {t('Este navegador no soporta notificaciones push.')}
               </p>
             ) : (
               <div className='flex flex-wrap items-center gap-2'>
@@ -626,8 +697,8 @@ export function CalendarIcademyView() {
                 >
                   <SmartphoneIcon data-icon='inline-start' />
                   {isCurrentDeviceActive
-                    ? 'Push activo'
-                    : 'Activar en este dispositivo'}
+                    ? t('Push activo')
+                    : t('Activar en este dispositivo')}
                 </Button>
 
                 {isCurrentDeviceActive && (
@@ -637,14 +708,16 @@ export function CalendarIcademyView() {
                     onClick={() => void handleDisablePushOnDevice()}
                     disabled={isUpdatingPushDevice}
                   >
-                    Desactivar en este dispositivo
+                    {t('Desactivar en este dispositivo')}
                   </Button>
                 )}
 
                 {pushPermission === 'denied' && (
-                  <p className='text-xs text-amber-600'>
-                    El navegador bloqueo permisos. Debes habilitarlos
-                    manualmente.
+                  <p
+                    className='m-0 text-xs font-bold'
+                    style={{ color: 'var(--ica-gold-ink)' }}
+                  >
+                    {t('El navegador bloqueó los permisos. Tienes que habilitarlos a mano.')}
                   </p>
                 )}
               </div>
@@ -652,25 +725,32 @@ export function CalendarIcademyView() {
           </div>
 
           <div
-            className={
+            className={cn(
+              'rounded-2xl px-3 py-2.5 text-sm font-semibold',
+              !hasReachedNonSpecialReminderLimit && 'bg-muted text-muted-foreground',
+            )}
+            style={
               hasReachedNonSpecialReminderLimit
-                ? 'rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900'
-                : 'rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground'
+                ? { background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }
+                : undefined
             }
           >
-            Puedes activar hasta {MAX_NON_SPECIAL_ACTIVE_REMINDERS} clases +
-            Destripando Niveles opcional.
+            {t('Puedes activar hasta {n} clases + Destripando Niveles opcional.', {
+              n: MAX_NON_SPECIAL_ACTIVE_REMINDERS,
+            })}
             {hasReachedNonSpecialReminderLimit &&
-              (activeSpecialReminder
-                ? ' Ya llegaste al limite total de recordatorios activos.'
-                : ' Ya activaste 2 clases. Aun puedes activar Destripando Niveles.')}
+              ` ${
+                activeSpecialReminder
+                  ? t('Ya llegaste al límite total de recordatorios activos.')
+                  : t('Ya activaste 2 clases. Aún puedes activar Destripando Niveles.')
+              }`}
           </div>
 
           <div className='max-h-[55dvh] overflow-y-auto pr-1'>
-            <div className='flex flex-col gap-3'>
+            <div className='flex flex-col gap-2'>
               {classOptions.length === 0 && (
-                <p className='text-sm text-muted-foreground'>
-                  No hay clases disponibles para configurar por ahora.
+                <p className='text-sm font-semibold text-muted-foreground'>
+                  {t('No hay clases disponibles para configurar por ahora.')}
                 </p>
               )}
 
@@ -686,20 +766,29 @@ export function CalendarIcademyView() {
                     ? !activeSpecialReminder
                     : activeNonSpecialReminderCount <
                       MAX_NON_SPECIAL_ACTIVE_REMINDERS)
-                const flag = option.flag
+                const meta = getClassMeta(option.classKey, option)
 
                 return (
-                  <div key={option.classKey} className='rounded-lg border p-3'>
-                    <div className='flex items-center justify-between gap-3'>
-                      <div>
-                        <p className='text-sm font-semibold'>
-                          {flag} {option.className}
-                        </p>
-                      </div>
+                  <div
+                    key={option.classKey}
+                    className={cn(
+                      'rounded-2xl border-2 p-3 transition-colors',
+                      enabled ? 'border-[var(--ica-gold)]' : 'border-border',
+                    )}
+                    style={enabled ? { background: 'var(--ica-gold-soft)' } : undefined}
+                  >
+                    <div className='flex items-center gap-3'>
+                      <FlagTile meta={meta} size={40} />
+                      <p className='m-0 min-w-0 flex-1 truncate text-sm font-extrabold'>
+                        {t(option.className)}
+                      </p>
 
                       <div className='flex items-center gap-2'>
-                        <Label htmlFor={`notification-${option.classKey}`}>
-                          Avisar
+                        <Label
+                          htmlFor={`notification-${option.classKey}`}
+                          className='text-xs font-bold text-muted-foreground'
+                        >
+                          {t('Avisar')}
                         </Label>
                         <Switch
                           id={`notification-${option.classKey}`}
@@ -717,44 +806,47 @@ export function CalendarIcademyView() {
                       </div>
                     </div>
 
-                    <div className='mt-3 flex items-center gap-2'>
-                      <Label
-                        htmlFor={`notification-minutes-${option.classKey}`}
-                      >
-                        Avisar
-                      </Label>
-                      <Select
-                        value={String(minutesBefore)}
-                        onValueChange={(value) =>
-                          void handleChangeMinutesBefore(
-                            option.classKey,
-                            option.className,
-                            option.languageCode,
-                            Number(value),
-                          )
-                        }
-                        disabled={isUpdating || !enabled}
-                      >
-                        <SelectTrigger
-                          id={`notification-minutes-${option.classKey}`}
+                    {enabled ? (
+                      <div className='mt-3 flex items-center gap-2 pl-[3.25rem]'>
+                        <Label
+                          htmlFor={`notification-minutes-${option.classKey}`}
+                          className='text-xs font-bold text-muted-foreground'
                         >
-                          <SelectValue placeholder='Tiempo' />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            <SelectLabel>Anticipacion</SelectLabel>
-                            {REMINDER_OPTIONS.map((optionMinutes) => (
-                              <SelectItem
-                                key={optionMinutes}
-                                value={String(optionMinutes)}
-                              >
-                                {optionMinutes} min antes
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                          {t('Avisar')}
+                        </Label>
+                        <Select
+                          value={String(minutesBefore)}
+                          onValueChange={(value) =>
+                            void handleChangeMinutesBefore(
+                              option.classKey,
+                              option.className,
+                              option.languageCode,
+                              Number(value),
+                            )
+                          }
+                          disabled={isUpdating || !enabled}
+                        >
+                          <SelectTrigger
+                            id={`notification-minutes-${option.classKey}`}
+                          >
+                            <SelectValue placeholder={t('Tiempo')} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              <SelectLabel>{t('Antelación')}</SelectLabel>
+                              {REMINDER_OPTIONS.map((optionMinutes) => (
+                                <SelectItem
+                                  key={optionMinutes}
+                                  value={String(optionMinutes)}
+                                >
+                                  {t('{n} min antes', { n: optionMinutes })}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : null}
                   </div>
                 )
               })}
@@ -764,7 +856,7 @@ export function CalendarIcademyView() {
           <DialogFooter>
             <Button type='button' onClick={() => setIsPrefsModalOpen(false)}>
               <CheckIcon data-icon='inline-start' />
-              Cerrar
+              {t('Cerrar')}
             </Button>
           </DialogFooter>
         </DialogContent>

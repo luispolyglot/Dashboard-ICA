@@ -1,3 +1,4 @@
+import { AppSelect } from '@/components/ui/app-select'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { es } from 'date-fns/locale'
@@ -5,6 +6,7 @@ import {
   ArchiveIcon,
   ArrowRightIcon,
   ArrowLeftIcon,
+  RefreshCwIcon,
   CheckCheckIcon,
   Clock2Icon,
   MoreHorizontalIcon,
@@ -84,6 +86,7 @@ import {
 } from '../services/coaching'
 import { CoachingProgramPreview } from './CoachingProgramPreview'
 import { CoachingV3SessionBoard } from './CoachingV3SessionBoard'
+import { Pill, SegmentedTabs } from '../game/ui'
 import { PendingReviewDot } from '../components/PendingReviewDot'
 import { formatDateTime } from '../utils'
 import {
@@ -1641,14 +1644,15 @@ export function ManageCoachingUserView({
   }
 
   return (
-    <section className='mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-5 py-8'>
-      <div className='mb-5 flex flex-wrap items-center justify-between gap-2'>
-        <Button type='button' variant='outline' onClick={() => navigate(-1)}>
+    <section className='coaching-premium mx-auto w-full max-w-6xl flex-1 px-4 py-6 lg:px-8'>
+      <div className='mb-4 flex flex-wrap items-center justify-between gap-2'>
+        <Button type='button' variant='ghost' className='rounded-2xl font-extrabold' onClick={() => navigate(-1)}>
           <ArrowLeftIcon className='h-4 w-4' />
           Volver
         </Button>
 
-        <Button type='button' variant='ghost' onClick={() => void loadAll()}>
+        <Button type='button' variant='ghost' className='rounded-2xl font-extrabold' onClick={() => void loadAll()}>
+          <RefreshCwIcon className='h-4 w-4' />
           Recargar
         </Button>
       </div>
@@ -1661,93 +1665,45 @@ export function ManageCoachingUserView({
         </p>
       )}
 
-      <Card className='mb-4'>
-        <CardHeader className='pb-2'>
-          <div className='flex flex-wrap items-center justify-between gap-2'>
-            <CardTitle>Sesión de coaching</CardTitle>
-
-            {selectedMembership && (
-              <div className='flex min-h-9 flex-wrap items-center justify-end gap-2 text-sm text-muted-foreground'>
-                <span className='inline-flex items-center gap-1'>
-                  <LinkIcon className='h-3.5 w-3.5' />
-                  Link clase en vivo:
-                </span>
-
-                {isEditingSessionClassJoinUrl ? (
-                  <>
-                    <Input
-                      value={sessionClassJoinDraft}
-                      onChange={(event) =>
-                        setSessionClassJoinDraft(event.target.value)
-                      }
-                      placeholder='Ej: https://meet.google.com/...'
-                      className='h-8 w-80 max-w-full'
-                      disabled={isClosedV1Session}
-                    />
-                    <Button
-                      type='button'
-                      size='icon'
-                      className='h-8 w-8'
-                      onClick={() => void handleSaveSessionClassJoinUrl()}
-                      disabled={savingSessionClassJoinUrl || isClosedV1Session}
-                      aria-label='Guardar link de clase'
-                    >
-                      <CheckIcon className='h-4 w-4' />
-                    </Button>
-                    <Button
-                      type='button'
-                      size='icon'
-                      variant='outline'
-                      className='h-8 w-8'
-                      onClick={() => {
-                        setSessionClassJoinDraft(
-                          selectedMembership.classJoinUrl || '',
-                        )
-                        setIsEditingSessionClassJoinUrl(false)
-                      }}
-                      disabled={savingSessionClassJoinUrl || isClosedV1Session}
-                      aria-label='Cancelar edición de link de clase'
-                    >
-                      <XIcon className='h-4 w-4' />
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    {selectedMembership.classJoinUrl ? (
-                      <a
-                        href={selectedMembership.classJoinUrl}
-                        target='_blank'
-                        rel='noopener noreferrer'
-                        className='text-blue-600 underline underline-offset-2'
-                      >
-                        Abrir clase en vivo
-                      </a>
-                    ) : (
-                      <span>Sin link configurado</span>
-                    )}
-                    <Button
-                      type='button'
-                      size='icon'
-                      variant='outline'
-                      className='h-8 w-8'
-                      onClick={() => setIsEditingSessionClassJoinUrl(true)}
-                      disabled={isClosedV1Session}
-                      aria-label='Editar link de clase'
-                    >
-                      <PencilIcon className='h-4 w-4' />
-                    </Button>
-                  </>
-                )}
-              </div>
-            )}
+      {/* Barra del coach: el alumno, cómo lo estás viendo y lo de la sesión */}
+      <div className='ica-panel mb-5 flex flex-col gap-4 px-4 py-4 md:px-5'>
+        {selectedMembership ? (
+          <div className='flex flex-wrap items-center gap-3'>
+            <span
+              className='flex size-14 shrink-0 items-center justify-center rounded-2xl text-2xl font-black text-white'
+              style={{ background: 'linear-gradient(135deg, #1b2450, #3a1752)', boxShadow: '0 4px 0 #11173a' }}
+              aria-hidden='true'
+            >
+              {(selectedMembership.userDisplayName || '?').trim().charAt(0).toUpperCase()}
+            </span>
+            <div className='min-w-0 flex-1'>
+              <p className='m-0 truncate font-display text-2xl leading-tight font-black tracking-tight'>
+                {selectedMembership.userDisplayName}
+              </p>
+              <p className='m-0 mt-1 flex flex-wrap items-center gap-1.5'>
+                <Pill tone='gold' solid className='text-[#4a3200]!'>{selectedMembership.level}</Pill>
+                <Pill tone='neutral'>{selectedMembership.targetLang}</Pill>
+                <Pill tone={selectedMembership.status === 'active' ? 'ok' : 'neutral'}>{selectedMembership.status}</Pill>
+              </p>
+            </div>
+            <SegmentedTabs
+              value={viewMode === 'coach' ? 'coach' : 'user-preview'}
+              onChange={(value) => setViewMode(value)}
+              options={[
+                { value: 'coach', label: 'Edición coach' },
+                { value: 'user-preview', label: 'Vista del alumno' },
+              ]}
+              ariaLabel='Cómo ver el tablero'
+            />
           </div>
-        </CardHeader>
-        <CardContent className='flex flex-wrap items-center gap-3'>
+        ) : null}
+
+        <div className='flex flex-wrap items-center gap-2 border-t-2 border-border pt-3'>
           <Select
             value={selectedSessionId}
             onValueChange={setSelectedSessionId}
           >
-            <SelectTrigger className='min-w-72'>
+            <SelectTrigger className='h-11 min-w-72 rounded-2xl'>
               <SelectValue placeholder='Selecciona sesión coaching' />
             </SelectTrigger>
             <SelectContent>
@@ -1806,45 +1762,82 @@ export function ManageCoachingUserView({
             </DropdownMenu>
           )}
 
-          {selectedMembership && (
-            <p className='text-sm text-muted-foreground'>
-              Idioma:{' '}
-              <span className='font-medium text-foreground'>
-                {selectedMembership.targetLang}
-              </span>{' '}
-              · Nivel:{' '}
-              <span className='font-medium text-foreground'>
-                {selectedMembership.level}
-              </span>{' '}
-              · Estado:{' '}
-              <span className='font-medium text-foreground'>
-                {selectedMembership.status}
-              </span>
-            </p>
-          )}
+        </div>
+            {selectedMembership && (
+              <div className='flex min-h-9 flex-wrap items-center gap-2 text-sm font-bold text-muted-foreground'>
+                <span className='inline-flex items-center gap-1'>
+                  <LinkIcon className='h-3.5 w-3.5' />
+                  Link clase en vivo:
+                </span>
 
-          {selectedMembership && (
-            <div className='ml-auto flex flex-wrap items-center gap-2'>
-              <Button
-                type='button'
-                variant={viewMode === 'coach' ? 'default' : 'outline'}
-                size='sm'
-                onClick={() => setViewMode('coach')}
-              >
-                Edición coach
-              </Button>
-              <Button
-                type='button'
-                variant={viewMode === 'user-preview' ? 'default' : 'outline'}
-                size='sm'
-                onClick={() => setViewMode('user-preview')}
-              >
-                Cómo lo ve el usuario
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                {isEditingSessionClassJoinUrl ? (
+                  <>
+                    <Input
+                      value={sessionClassJoinDraft}
+                      onChange={(event) =>
+                        setSessionClassJoinDraft(event.target.value)
+                      }
+                      placeholder='Ej: https://meet.google.com/...'
+                      className='h-8 w-80 max-w-full'
+                      disabled={isClosedV1Session}
+                    />
+                    <Button
+                      type='button'
+                      size='icon'
+                      className='h-8 w-8'
+                      onClick={() => void handleSaveSessionClassJoinUrl()}
+                      disabled={savingSessionClassJoinUrl || isClosedV1Session}
+                      aria-label='Guardar link de clase'
+                    >
+                      <CheckIcon className='h-4 w-4' />
+                    </Button>
+                    <Button
+                      type='button'
+                      size='icon'
+                      variant='outline'
+                      className='h-8 w-8'
+                      onClick={() => {
+                        setSessionClassJoinDraft(
+                          selectedMembership.classJoinUrl || '',
+                        )
+                        setIsEditingSessionClassJoinUrl(false)
+                      }}
+                      disabled={savingSessionClassJoinUrl || isClosedV1Session}
+                      aria-label='Cancelar edición de link de clase'
+                    >
+                      <XIcon className='h-4 w-4' />
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {selectedMembership.classJoinUrl ? (
+                      <a
+                        href={selectedMembership.classJoinUrl}
+                        target='_blank'
+                        rel='noopener noreferrer'
+                        className='font-extrabold text-primary underline underline-offset-2'
+                      >
+                        Abrir clase en vivo
+                      </a>
+                    ) : (
+                      <span>Sin link configurado</span>
+                    )}
+                    <Button
+                      type='button'
+                      size='icon'
+                      variant='outline'
+                      className='h-8 w-8'
+                      onClick={() => setIsEditingSessionClassJoinUrl(true)}
+                      disabled={isClosedV1Session}
+                      aria-label='Editar link de clase'
+                    >
+                      <PencilIcon className='h-4 w-4' />
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+      </div>
 
       {loading ? (
         <p className='text-sm text-muted-foreground'>Cargando detalle...</p>
@@ -2764,7 +2757,7 @@ export function ManageCoachingUserView({
                                                       ),
                                                     )}
                                                   </p>
-                                                  <p className='font-serif text-base font-bold leading-tight'>
+                                                  <p className='font-display text-base font-extrabold leading-tight'>
                                                     {phrase.generatedPhrase ||
                                                       'Sin frase registrada'}
                                                   </p>
@@ -2913,7 +2906,7 @@ export function ManageCoachingUserView({
 
             <div className='space-y-1.5'>
               <Label htmlFor='change-session-coacher'>Coacher</Label>
-              <select
+              <AppSelect
                 id='change-session-coacher'
                 className='h-10 w-full rounded-md border bg-background px-3 text-sm'
                 value={nextCoacherUserId}
@@ -2927,7 +2920,7 @@ export function ManageCoachingUserView({
                     {row.role === 'super_admin' ? '(super_admin)' : ''}
                   </option>
                 ))}
-              </select>
+              </AppSelect>
             </div>
           </div>
 

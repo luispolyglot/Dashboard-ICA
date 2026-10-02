@@ -5,9 +5,10 @@
  * - Solo las notas maestras CERRADAS (completas, 3:00 o más) tienen nota desafiante.
  *   Escuchar una nota abierta no cuenta.
  * - El desafío de una nota maestra se desbloquea al escuchar al menos el 80 % de ESA nota.
- * - Se puede desbloquear en varias notas el mismo día.
- * - Una vez desbloqueado, queda abierto el resto del día.
- * - Al cambiar de día (hora local del dispositivo) todas se vuelven a bloquear.
+ * - Se puede desbloquear en varias notas la misma semana.
+ * - Una vez desbloqueado, queda abierto toda la semana (hasta el domingo a las 23:59).
+ * - El lunes a las 00:00 (hora local del dispositivo) todas se vuelven a bloquear.
+ *   (En el servidor, la columna `day` guarda el lunes de la semana.)
  *
  * Solo cuenta el audio que suena de verdad (los saltos de +10 s no suman).
  *
@@ -47,7 +48,9 @@ const CACHE_PREFIX = 'ica-challenge-unlocks-v2:'
 const PENDING_PREFIX = 'ica-challenge-unlocks-pending-v2:'
 const SEND_DELAY_MS = 10_000
 
-function getLocalDayStamp(date = new Date()): string {
+/** El lunes de la semana (hora local), en AAAA-MM-DD: es el "día" con el que se guarda todo. */
+function getLocalDayStamp(now = new Date()): string {
+  const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7))
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
@@ -86,7 +89,7 @@ function readCache(userId: string | null | undefined): CachedUnlocks {
   ) {
     return { day: today, listened: parsed.listened, unlocked: parsed.unlocked || {} }
   }
-  // Día nuevo (o nada guardado): todo bloqueado otra vez.
+  // Semana nueva (o nada guardado): todo bloqueado otra vez.
   return { day: today, listened: {}, unlocked: {} }
 }
 
@@ -408,12 +411,13 @@ export function useChallengeUnlock(
     window.addEventListener('focus', refresh)
     document.addEventListener('visibilitychange', onVisibility)
 
-    // Aunque la app se quede abierta en pantalla, a las 00:00 (hora del alumno)
+    // Aunque la app se quede abierta en pantalla, el lunes a las 00:00 (hora del alumno)
     // todas las notas desafiantes se vuelven a bloquear.
     let midnightTimer = 0
     const scheduleMidnight = () => {
       const now = new Date()
-      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1)
+      const daysToMonday = 7 - ((now.getDay() + 6) % 7)
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysToMonday, 0, 0, 1)
       midnightTimer = window.setTimeout(() => {
         refresh()
         scheduleMidnight()
@@ -448,4 +452,26 @@ export function useOnChallengeUnlocked(callback: (noteId: string) => void): void
     window.addEventListener(CHALLENGE_UNLOCKS_CHANGED_EVENT, onChanged)
     return () => window.removeEventListener(CHALLENGE_UNLOCKS_CHANGED_EVENT, onChanged)
   }, [callback])
+}
+
+// ---------------------------------------------------------------------------
+// Partidas terminadas (para el punto diario del ranking: escuchar + nota desafiante)
+// ---------------------------------------------------------------------------
+
+/** Guarda que has hecho la nota desafiante de una nota hoy. Si falla, no pasa nada. */
+export async function recordChallengePlay(noteId: string, correct: number, total: number): Promise<void> {
+  if (!supabase || !noteId) return
+  const now = new Date()
+  const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  try {
+    const { error } = await supabase.rpc('record_master_note_challenge_play', {
+      p_note_id: noteId,
+      p_day: day,
+      p_correct: correct,
+      p_total: total,
+    })
+    if (error) console.error('[nota desafiante] no se pudo guardar la partida', error)
+  } catch (error) {
+    console.error('[nota desafiante] no se pudo guardar la partida', error)
+  }
 }

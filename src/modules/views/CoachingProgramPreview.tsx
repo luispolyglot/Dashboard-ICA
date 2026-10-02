@@ -34,6 +34,7 @@ import {
   hasPostClassResources,
   shouldRenderUpcomingClassResources,
 } from './coachingClassResources'
+import { t, langName, uiLocale } from '@/i18n'
 
 type ClassSession = {
   key: string
@@ -198,7 +199,7 @@ function objectiveStatus(
   actual: number,
 ): ObjectiveStatusResult {
   if (target === null)
-    return { label: 'No definido', done: false, fillPct: null }
+    return { label: t('No definido'), done: false, fillPct: null }
   if (target <= 0)
     return { label: `${actual}/${target}`, done: true, fillPct: 100 }
   const ratio = Math.max(0, Math.min(100, Math.round((actual / target) * 100)))
@@ -227,8 +228,8 @@ function normalizeExerciseObjective(value: unknown): {
 
 function formatDateLabel(value: string): string {
   const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return 'Fecha no disponible'
-  return parsed.toLocaleDateString('es-AR', {
+  if (Number.isNaN(parsed.getTime())) return t('Fecha no disponible')
+  return parsed.toLocaleDateString(uiLocale() === 'es-ES' ? 'es-AR' : uiLocale(), {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -237,8 +238,8 @@ function formatDateLabel(value: string): string {
 
 function formatTimelineDateLabel(value: string): string {
   const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return 'Fecha no disponible'
-  return parsed.toLocaleDateString('es-AR', {
+  if (Number.isNaN(parsed.getTime())) return t('Fecha no disponible')
+  return parsed.toLocaleDateString(uiLocale() === 'es-ES' ? 'es-AR' : uiLocale(), {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -246,10 +247,10 @@ function formatTimelineDateLabel(value: string): string {
 }
 
 function statusLabel(status: ProgramPreviewMembership['status']): string {
-  if (status === 'active') return 'Activo'
-  if (status === 'completed') return 'Completado'
-  if (status === 'cancelled') return 'Archivado'
-  return 'Borrador'
+  if (status === 'active') return t('Activo')
+  if (status === 'completed') return t('Completado')
+  if (status === 'cancelled') return t('Archivado')
+  return t('Borrador')
 }
 
 function statusVariant(
@@ -271,9 +272,9 @@ function ObjectiveItem({ title, status }: ObjectiveItemProps) {
   return (
     <div className='rounded-lg border bg-muted/30 p-3'>
       <div className='mb-2 flex items-center justify-between gap-3'>
-        <p className='text-sm'>{title}</p>
+        <p className='text-sm'>{t(title)}</p>
         <Badge variant={status.done ? 'default' : 'outline'}>
-          {status.done ? 'Cumplido' : status.label}
+          {status.done ? t('Cumplido') : status.label}
         </Badge>
       </div>
 
@@ -287,7 +288,7 @@ function ObjectiveItem({ title, status }: ObjectiveItemProps) {
           />
         </div>
       ) : (
-        <p className='text-xs text-muted-foreground'>Sin objetivo asignado.</p>
+        <p className='text-xs text-muted-foreground'>{t('Sin objetivo asignado.')}</p>
       )}
     </div>
   )
@@ -358,10 +359,10 @@ export function CoachingProgramPreview({
       <Card className='border-primary/20 bg-linear-to-br from-primary/10 via-background to-muted'>
         <CardHeader className='pb-2'>
           <div className='flex flex-wrap items-center justify-between gap-2'>
-            <CardTitle>Sesion de coaching</CardTitle>
+            <CardTitle>{t('Sesión de coaching')}</CardTitle>
             <div className='flex flex-wrap items-center gap-2 text-sm text-muted-foreground'>
               <PlayCircleIcon className='h-4 w-4 text-primary' />
-              <span>Link clase en vivo:</span>
+              <span>{t('Link clase en vivo:')}</span>
               {membership.classJoinUrl ? (
                 <>
                   <a
@@ -370,7 +371,7 @@ export function CoachingProgramPreview({
                     rel='noopener noreferrer'
                     className='text-primary underline underline-offset-2'
                   >
-                    Abrir enlace
+                    {t('Abrir enlace')}
                   </a>
                   <Button
                     type='button'
@@ -378,14 +379,14 @@ export function CoachingProgramPreview({
                     variant='outline'
                     className='h-7 w-7'
                     onClick={() => void handleCopySessionClassLink()}
-                    aria-label='Copiar link de clase en vivo'
+                    aria-label={t('Copiar link de clase en vivo')}
                   >
                     <CopyIcon className='h-3.5 w-3.5' />
                   </Button>
-                  {copiedSessionLink && <span className='text-xs'>Copiado</span>}
+                  {copiedSessionLink && <span className='text-xs'>{t('Copiado')}</span>}
                 </>
               ) : (
-                <span>Sin enlace configurado</span>
+                <span>{t('Sin enlace configurado')}</span>
               )}
             </div>
           </div>
@@ -397,29 +398,29 @@ export function CoachingProgramPreview({
               <Badge variant={statusVariant(membership.status)}>
                 {statusLabel(membership.status)}
               </Badge>
-              <Badge variant='outline'>Programa {durationWeeks} semanas</Badge>
+              <Badge variant='outline'>{t('Programa {n} semanas', { n: durationWeeks })}</Badge>
             </div>
 
             <div className='grid gap-2 text-sm sm:grid-cols-3'>
               <p className='inline-flex items-center gap-2 text-muted-foreground'>
                 <LanguagesIcon className='h-4 w-4 text-primary' />
-                Idioma:{' '}
+                {t('Idioma:')}{' '}
                 <span className='font-medium text-foreground'>
-                  {membership.targetLang}
+                  {langName(membership.targetLang)}
                 </span>
               </p>
               <p className='inline-flex items-center gap-2 text-muted-foreground'>
                 <BookOpenIcon className='h-4 w-4 text-primary' />
-                Nivel:{' '}
+                {t('Nivel:')}{' '}
                 <span className='font-medium text-foreground'>
                   {membership.level}
                 </span>
               </p>
               <p className='inline-flex items-center gap-2 text-muted-foreground'>
                 <UserIcon className='h-4 w-4 text-primary' />
-                Coach:{' '}
+                {t('Coach:')}{' '}
                 <span className='font-medium text-foreground'>
-                  {membership.coachDisplayName || 'Por asignar'}
+                  {membership.coachDisplayName || t('Por asignar')}
                 </span>
               </p>
             </div>
@@ -427,7 +428,7 @@ export function CoachingProgramPreview({
 
           <div className='w-full min-w-52 rounded-lg border bg-card/80 p-3 md:w-64'>
             <p className='mb-1 text-xs uppercase tracking-wide text-muted-foreground'>
-              Semana actual
+              {t('Semana actual')}
             </p>
             <p className='mb-2 text-2xl font-semibold text-foreground'>
               {currentProgramWeek || '-'}
@@ -443,8 +444,8 @@ export function CoachingProgramPreview({
             </div>
             <p className='mt-2 text-xs text-muted-foreground'>
               {unlockedWeeks > 0
-                ? `${unlockedProgressPct}% del programa completado`
-                : 'Esperando activación del coach'}
+                ? t('{pct}% del programa completado', { pct: unlockedProgressPct })
+                : t('Esperando activación del coach')}
             </p>
           </div>
         </CardContent>
@@ -558,10 +559,10 @@ export function CoachingProgramPreview({
               <AccordionTrigger className='py-4 hover:no-underline'>
                 <div className='flex flex-1 flex-wrap items-center justify-between gap-2 pr-3 text-left'>
                   <div className='flex items-center gap-2'>
-                    <span>Semana {week}</span>
-                    {isCurrentWeek && <Badge variant='default'>Activa</Badge>}
+                    <span>{t('Semana {n}', { n: week })}</span>
+                    {isCurrentWeek && <Badge variant='default'>{t('Activa')}</Badge>}
                     {isPastWeek && (
-                      <Badge variant='secondary'>Finalizada</Badge>
+                      <Badge variant='secondary'>{t('Finalizada')}</Badge>
                     )}
                     {weekActivatedAt && weekClosedAt && (
                       <Badge variant='outline' className='gap-1'>
@@ -581,8 +582,8 @@ export function CoachingProgramPreview({
                     }
                   >
                     {hasAnyObjective
-                      ? `${objectiveDone}/${objectiveTotal} objetivos`
-                      : 'Sin objetivos'}
+                      ? t('{done}/{total} objetivos', { done: objectiveDone, total: objectiveTotal })
+                      : t('Sin objetivos')}
                   </Badge>
                 </div>
               </AccordionTrigger>
@@ -593,7 +594,7 @@ export function CoachingProgramPreview({
                     <CardHeader>
                       <CardTitle className='flex items-center gap-2'>
                         <GoalIcon className='h-4 w-4 text-primary' />
-                        Objetivos semanales
+                        {t('Objetivos semanales')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className='space-y-3'>
@@ -613,7 +614,7 @@ export function CoachingProgramPreview({
 
                       <div className='rounded-lg border bg-muted/30 p-3'>
                         <div className='mb-2 flex items-center justify-between gap-2'>
-                          <p className='text-sm'>Objetivo ejercicio</p>
+                          <p className='text-sm'>{t('Objetivo ejercicio')}</p>
                           <Badge
                             variant={exerciseDone ? 'default' : 'outline'}
                             className={
@@ -624,9 +625,9 @@ export function CoachingProgramPreview({
                           >
                             {exercise.url
                               ? exerciseDone
-                                ? 'Cumplido'
-                                : 'Pendiente'
-                              : 'No definido'}
+                                ? t('Cumplido')
+                                : t('Pendiente')
+                              : t('No definido')}
                           </Badge>
                         </div>
 
@@ -638,7 +639,7 @@ export function CoachingProgramPreview({
                               rel='noreferrer'
                               className='inline-flex items-center gap-1 text-sm text-primary underline underline-offset-2'
                             >
-                              Abrir ejercicio
+                              {t('Abrir ejercicio')}
                             </a>
 
                             {allowExerciseCompletion && (
@@ -664,10 +665,10 @@ export function CoachingProgramPreview({
                                   <SquareIcon className='h-4 w-4' />
                                 )}
                                 {exerciseDone
-                                  ? 'Confirmado por ti'
+                                  ? t('Confirmado por ti')
                                   : completingExerciseWeek === weekKey
-                                    ? 'Guardando...'
-                                    : 'Marcar como hecho'}
+                                    ? t('Guardando...')
+                                    : t('Marcar como hecho')}
                               </Button>
                             )}
 
@@ -675,15 +676,13 @@ export function CoachingProgramPreview({
                               !canCompleteExerciseThisWeek &&
                               !exerciseDone && (
                                 <p className='text-xs text-muted-foreground'>
-                                  Solo puedes marcar este ejercicio durante la
-                                  semana {week}.
+                                  {t('Solo puedes marcar este ejercicio durante la semana {n}.', { n: week })}
                                 </p>
                               )}
                           </div>
                         ) : (
                           <p className='text-xs text-muted-foreground'>
-                            Tu coach aún no definió un ejercicio para esta
-                            semana.
+                            {t('Tu coach aún no definió un ejercicio para esta semana.')}
                           </p>
                         )}
                       </div>
@@ -694,13 +693,13 @@ export function CoachingProgramPreview({
                     <CardHeader>
                       <CardTitle className='flex items-center gap-2'>
                         <PlayCircleIcon className='h-4 w-4 text-primary' />
-                        Mi clase
+                        {t('Mi clase')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className='space-y-3'>
                       {!latestClass ? (
                         <div className='rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground'>
-                          Aún no hay clase cargada para esta semana.
+                          {t('Aún no hay clase cargada para esta semana.')}
                         </div>
                       ) : shouldRenderUpcomingClassResources({
                           ...latestClass,
@@ -708,7 +707,7 @@ export function CoachingProgramPreview({
                         }) ? (
                         <div className='rounded-lg border bg-muted/20 p-3'>
                           <p className='mb-1 text-xs font-medium tracking-wide text-muted-foreground'>
-                            Fecha y hora de la clase, y enlace de acceso
+                            {t('Fecha y hora de la clase, y enlace de acceso')}
                           </p>
                           <div className='flex flex-col gap-0'>
                             {latestClass.scheduledAt && (
@@ -727,7 +726,7 @@ export function CoachingProgramPreview({
                                 className='inline-flex w-fit items-center gap-2 text-sm text-primary underline underline-offset-2'
                               >
                                 <PlayCircleIcon className='h-4 w-4' />
-                                Ir a mi clase en vivo
+                                {t('Ir a mi clase en vivo')}
                               </a>
                             )}
                           </div>
@@ -744,7 +743,7 @@ export function CoachingProgramPreview({
                                         latestClass.loomUrl,
                                       ) || ''
                                     }
-                                    title={`Video semana ${week}`}
+                                    title={t('Video semana {n}', { n: week })}
                                     className='aspect-video w-full'
                                     allow='autoplay; fullscreen; picture-in-picture'
                                     allowFullScreen
@@ -758,11 +757,11 @@ export function CoachingProgramPreview({
                                   className='inline-flex w-fit items-center gap-2 text-sm text-primary underline underline-offset-2'
                                 >
                                   <PlayCircleIcon className='h-4 w-4' />
-                                  Abrir clase en Loom
+                                  {t('Abrir clase en Loom')}
                                 </a>
                               ) : (
                                 <p className='text-sm text-muted-foreground'>
-                                  Aún no hay video de clase para esta semana.
+                                  {t('Aún no hay video de clase para esta semana.')}
                                 </p>
                               )}
                             </div>
@@ -781,7 +780,7 @@ export function CoachingProgramPreview({
                                   >
                                     <img
                                       src={latestClass.reportImageUrl}
-                                      alt='Imagen del reporte de clase'
+                                      alt={t('Imagen del reporte de clase')}
                                       className='max-h-56 w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]'
                                     />
                                     <div className='absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100'>
@@ -796,12 +795,12 @@ export function CoachingProgramPreview({
                                     className='inline-flex items-center gap-1 text-sm text-primary underline underline-offset-2'
                                   >
                                     <DownloadIcon className='h-3.5 w-3.5' />
-                                    Descargar imagen del reporte
+                                    {t('Descargar imagen del reporte')}
                                   </a>
                                 </>
                               ) : (
                                 <p className='text-sm text-muted-foreground'>
-                                  Aún no hay imagen de reporte para esta semana.
+                                  {t('Aún no hay imagen de reporte para esta semana.')}
                                 </p>
                               )}
                             </div>
@@ -810,7 +809,7 @@ export function CoachingProgramPreview({
                           {latestClass.report && (
                             <div className='rounded-lg border bg-muted/30 p-3'>
                               <p className='mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground'>
-                                Reporte
+                                {t('Reporte')}
                               </p>
                               <p className='text-sm'>{latestClass.report}</p>
                             </div>
@@ -818,7 +817,7 @@ export function CoachingProgramPreview({
                         </>
                       ) : (
                         <div className='rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground'>
-                          Aún no hay recursos de clase disponibles.
+                          {t('Aún no hay recursos de clase disponibles.')}
                         </div>
                       )}
                     </CardContent>
@@ -828,13 +827,13 @@ export function CoachingProgramPreview({
                     <CardHeader>
                       <CardTitle className='flex items-center gap-2'>
                         <RepeatIcon className='h-4 w-4 text-primary' />
-                        Revision de notas maestras
+                        {t('Revision de notas maestras')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className='space-y-3'>
                       {closedNotes.length === 0 ? (
                         <div className='rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground'>
-                          Aún no hay notas maestras cerradas en esta semana.
+                          {t('Aún no hay notas maestras cerradas en esta semana.')}
                         </div>
                       ) : (
                         closedNotes.map((note) => (
@@ -859,7 +858,7 @@ export function CoachingProgramPreview({
                                           note.feedbackLoomUrl,
                                         ) || ''
                                       }
-                                      title={`Revision ${note.name}`}
+                                      title={t('Revision {name}', { name: note.name })}
                                       className='aspect-video w-full'
                                       allow='autoplay; fullscreen; picture-in-picture'
                                       allowFullScreen
@@ -867,14 +866,14 @@ export function CoachingProgramPreview({
                                   </div>
                                 ) : (
                                   <p className='text-sm text-muted-foreground'>
-                                    Aún no hay video de revisión para esta nota.
+                                    {t('Aún no hay video de revisión para esta nota.')}
                                   </p>
                                 )}
                               </div>
 
                               <div className='rounded-md border bg-muted/20 p-3'>
                                 <p className='mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground'>
-                                  Notas del coach
+                                  {t('Notas del coach')}
                                 </p>
                                 {note.feedbackNotes ? (
                                   <p className='whitespace-pre-wrap text-sm text-foreground'>
@@ -882,7 +881,7 @@ export function CoachingProgramPreview({
                                   </p>
                                 ) : (
                                   <p className='text-sm text-muted-foreground'>
-                                    Aún no hay notas del coach para esta nota.
+                                    {t('Aún no hay notas del coach para esta nota.')}
                                   </p>
                                 )}
                               </div>
@@ -907,12 +906,12 @@ export function CoachingProgramPreview({
       >
         <DialogContent className='max-h-[92dvh] overflow-y-auto sm:max-w-4xl'>
           <DialogHeader>
-            <DialogTitle>Imagen del reporte</DialogTitle>
+            <DialogTitle>{t('Imagen del reporte')}</DialogTitle>
           </DialogHeader>
           {imagePreviewUrl && (
             <img
               src={imagePreviewUrl}
-              alt='Imagen ampliada del reporte de clase'
+              alt={t('Imagen ampliada del reporte de clase')}
               className='h-auto w-full rounded-md border object-contain'
             />
           )}

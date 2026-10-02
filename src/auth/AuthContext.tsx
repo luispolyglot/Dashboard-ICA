@@ -5,6 +5,7 @@ import { hasSupabaseConfig, supabase } from '../lib/supabase'
 import { getSessionSafe } from '../lib/supabaseAuthSafe'
 import { recordBootstrapDiagnostic } from '@/modules/utils/bootstrapDiagnostics'
 import { checkLoginEmail, normalizeEmail } from './whitelist'
+import { t } from '@/i18n'
 
 type AuthContextValue = {
   user: User | null
@@ -165,11 +166,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
       isPasswordRecovery,
       hasSupabaseConfig,
       signIn: async (email, password) => {
-        if (!supabase) throw new Error('Falta configurar Supabase')
+        if (!supabase) throw new Error(t('Falta configurar Supabase'))
         const normalizedEmail = normalizeEmail(email)
         const whitelist = await checkLoginEmail(normalizedEmail)
         if (!whitelist.allowed) {
-          throw new Error(whitelist.reason || 'Tu email no tiene acceso de login actualmente.')
+          throw new Error(whitelist.reason ? t(whitelist.reason) : t('Tu email no tiene acceso de login actualmente.'))
         }
 
         const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password })
@@ -179,11 +180,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const postCheck = await checkLoginEmail(normalizedEmail)
         if (!postCheck.allowed) {
           await supabase.auth.signOut()
-          throw new Error(postCheck.reason || 'Tu acceso fue deshabilitado.')
+          throw new Error(postCheck.reason ? t(postCheck.reason) : t('Tu acceso fue deshabilitado.'))
         }
       },
       signUp: async (email, password, nickname) => {
-        if (!supabase) throw new Error('Falta configurar Supabase')
+        if (!supabase) throw new Error(t('Falta configurar Supabase'))
         const cleanNickname = nickname.trim()
         const { data, error } = await supabase.auth.signUp({
           email: normalizeEmail(email),
@@ -206,44 +207,44 @@ export function AuthProvider({ children }: PropsWithChildren) {
         }
       },
       requestPasswordReset: async (email) => {
-        if (!supabase) throw new Error('Falta configurar Supabase')
+        if (!supabase) throw new Error(t('Falta configurar Supabase'))
         const normalizedEmail = normalizeEmail(email)
         await supabase.auth.resetPasswordForEmail(normalizedEmail, {
           redirectTo: `${window.location.origin}/reset-password`,
         })
       },
       updatePassword: async (password) => {
-        if (!supabase) throw new Error('Falta configurar Supabase')
+        if (!supabase) throw new Error(t('Falta configurar Supabase'))
         const { error } = await supabase.auth.updateUser({ password })
         if (error) throw error
         setIsPasswordRecovery(false)
       },
       changePassword: async (currentPassword, nextPassword) => {
-        if (!supabase) throw new Error('Falta configurar Supabase')
+        if (!supabase) throw new Error(t('Falta configurar Supabase'))
         const email = session?.user?.email || user?.email
-        if (!email) throw new Error('No se pudo verificar tu cuenta actual.')
+        if (!email) throw new Error(t('No se pudo verificar tu cuenta actual.'))
 
         const { error: reauthError } = await supabase.auth.signInWithPassword({
           email: normalizeEmail(email),
           password: currentPassword,
         })
         if (reauthError) {
-          throw new Error('La contraseña actual no es correcta.')
+          throw new Error(t('La contraseña actual no es correcta.'))
         }
 
         const { error: updateError } = await supabase.auth.updateUser({ password: nextPassword })
         if (updateError) throw updateError
       },
       updateDisplayName: async (displayName) => {
-        if (!supabase) throw new Error('Falta configurar Supabase')
+        if (!supabase) throw new Error(t('Falta configurar Supabase'))
 
         const cleanDisplayName = displayName.trim()
         if (cleanDisplayName.length < 3) {
-          throw new Error('El nombre debe tener al menos 3 caracteres.')
+          throw new Error(t('El nombre debe tener al menos 3 caracteres.'))
         }
 
         const currentUserId = user?.id || session?.user?.id
-        if (!currentUserId) throw new Error('No se pudo identificar el usuario actual.')
+        if (!currentUserId) throw new Error(t('No se pudo identificar el usuario actual.'))
 
         const { data, error } = await supabase.auth.updateUser({
           data: { display_name: cleanDisplayName },

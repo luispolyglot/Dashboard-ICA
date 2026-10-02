@@ -1,4 +1,6 @@
+import { AppSelect } from "@/components/ui/app-select"
 import {
+  type CSSProperties,
   type ReactNode,
   useCallback,
   useEffect,
@@ -30,6 +32,8 @@ import {
   UploadIcon,
   UserIcon,
   VideoIcon,
+  VideoOffIcon,
+  CrownIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -78,6 +82,9 @@ import {
   toDateAndTimeFromIso,
   toIsoFromDateAndTime,
 } from "./coachingClassResources";
+import { t, tn, langName, uiLocale } from "@/i18n";
+import { IconTile } from "../game/ui";
+import { TargetGlyph } from "../game/icons";
 
 type CoachingV3SessionBoardProps = {
   sessionId: string;
@@ -198,7 +205,7 @@ function formatShortDateTime(value: string | null): string | null {
   if (!value) return null;
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return null;
-  return date.toLocaleString("es-ES", {
+  return date.toLocaleString(uiLocale(), {
     weekday: "short",
     day: "numeric",
     month: "short",
@@ -322,7 +329,7 @@ export function CoachingV3SessionBoard({
         onSelectedPeriodChange?.(data.periodNumber);
       } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : "No se pudo cargar el tablero.",
+          err instanceof Error ? err.message : t("No se pudo cargar el tablero."),
         );
       } finally {
         if (!options?.silent) setLoading(false);
@@ -488,12 +495,12 @@ export function CoachingV3SessionBoard({
   const currentActivePeriod = board?.periodState.currentActivePeriod || null;
   const canAddFocus = activeFocuses.length < 3;
   const titleRecorrido =
-    mode === "coach" ? "Recorrido del alumno" : "Tu recorrido";
-  const titleClases = mode === "coach" ? "Clases del alumno" : "Tus clases";
+    mode === "coach" ? t("Recorrido del alumno") : t("Tu recorrido");
+  const titleClases = mode === "coach" ? t("Clases del alumno") : t("Tus clases");
   const classesSubtitle =
     mode === "coach"
-      ? "Grabaciones, tareas y seguimiento del alumno por semana."
-      : "Las grabaciones se quedan contigo para siempre.";
+      ? t("Grabaciones, tareas y seguimiento del alumno por semana.")
+      : t("Las grabaciones se quedan contigo para siempre.");
   const classJoinUrl = board?.session.classJoinUrl?.trim() || "";
   const hasClassLink = Boolean(classJoinUrl);
   const assignedCoachNameInSelectedPeriod = selectedClasses
@@ -518,7 +525,7 @@ export function CoachingV3SessionBoard({
   const coachLineLabel = isSecondaryCoachPrimary
     ? "Luis"
     : secondaryCoachDisplayName
-      ? `Luis y ${secondaryCoachDisplayName}`
+      ? t("Luis y {coach}", { coach: secondaryCoachDisplayName })
       : "Luis";
   const nowTs = Date.now();
   const isScheduledLiveNow =
@@ -539,7 +546,7 @@ export function CoachingV3SessionBoard({
   const nextPendingTask = aggregatedTasks.find((task) => !task.done) || null;
   const pendingTaskLabels = aggregatedTasks
     .filter((task) => !task.done)
-    .map((task) => task.title.toLowerCase());
+    .map((task) => t(task.title).toLowerCase());
   const openReviewAttempt = openReviewFocusId
     ? attemptByFocusId.get(openReviewFocusId) || null
     : null;
@@ -561,7 +568,7 @@ export function CoachingV3SessionBoard({
   const handleSavePeriodReport = async () => {
     if (!board || !userId) return;
     if (isSelectedPeriodClosed) {
-      toast.error("La semana está cerrada. Ya no se puede editar.");
+      toast.error(t("La semana está cerrada. Ya no se puede editar."));
       return;
     }
     setSavingReport(true);
@@ -604,10 +611,10 @@ export function CoachingV3SessionBoard({
       );
       setReportDraftImageFile(null);
       setRemoveReportImage(false);
-      toast.success("Reporte del periodo guardado.");
+      toast.success(t("Reporte del periodo guardado."));
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "No se pudo guardar el reporte.",
+        err instanceof Error ? err.message : t("No se pudo guardar el reporte."),
       );
     } finally {
       setSavingReport(false);
@@ -633,7 +640,7 @@ export function CoachingV3SessionBoard({
   const handleSaveFocus = async () => {
     if (!focusDraftTitle.trim()) return;
     if (isSelectedPeriodClosed) {
-      toast.error("La semana está cerrada. Ya no se puede editar.");
+      toast.error(t("La semana está cerrada. Ya no se puede editar."));
       return;
     }
     const editingFocus = editingFocusId
@@ -653,7 +660,7 @@ export function CoachingV3SessionBoard({
         focusTitle: focusDraftTitle.trim(),
         focusComment: focusDraftComment.trim() || null,
       });
-      if (!saved) throw new Error("No se pudo guardar el foco.");
+      if (!saved) throw new Error(t("No se pudo guardar el foco."));
       setBoard((prev) => {
         if (!prev) return prev;
         const focuses = editingFocus
@@ -684,12 +691,12 @@ export function CoachingV3SessionBoard({
       setFocusModalOpen(false);
       toast.success(
         titleChanged
-          ? "Foco guardado. Preparando el ejercicio de Entrenado (≈1 min)..."
-          : "Foco guardado.",
+          ? t("Foco guardado. Preparando el ejercicio de Entrenado (≈1 min)...")
+          : t("Foco guardado."),
       );
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "No se pudo guardar el foco.",
+        err instanceof Error ? err.message : t("No se pudo guardar el foco."),
       );
     } finally {
       setSavingFocus(false);
@@ -711,10 +718,10 @@ export function CoachingV3SessionBoard({
       );
       setFocusModalOpen(false);
       setEditingFocusId(null);
-      toast.success("Foco eliminado.");
+      toast.success(t("Foco eliminado."));
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "No se pudo eliminar el foco.",
+        err instanceof Error ? err.message : t("No se pudo eliminar el foco."),
       );
     } finally {
       setDeletingFocus(false);
@@ -739,7 +746,7 @@ export function CoachingV3SessionBoard({
     classRow: CoachingV2ClassSlot | null,
   ) => {
     if (isSelectedPeriodClosed) {
-      toast.error("La semana está cerrada. Ya no se puede editar.");
+      toast.error(t("La semana está cerrada. Ya no se puede editar."));
       return;
     }
     const key = `${selectedPeriod}-${classIndex}`;
@@ -784,10 +791,10 @@ export function CoachingV3SessionBoard({
             : prev,
         );
       }
-      toast.success(`Clase ${classIndex} actualizada.`);
+      toast.success(t("Clase {n} actualizada.", { n: classIndex }));
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "No se pudo guardar la clase.",
+        err instanceof Error ? err.message : t("No se pudo guardar la clase."),
       );
     } finally {
       setSavingClassKey(null);
@@ -804,7 +811,7 @@ export function CoachingV3SessionBoard({
     responseIndex: 1 | 2 | 3,
   ) => {
     if (isSelectedPeriodClosed) {
-      toast.error("La semana está cerrada. Ya no se puede editar.");
+      toast.error(t("La semana está cerrada. Ya no se puede editar."));
       return;
     }
     const key = `${selectedPeriod}-${classIndex}`;
@@ -841,10 +848,10 @@ export function CoachingV3SessionBoard({
             : prev,
         );
       }
-      toast.success(`Tarea ${responseIndex} guardada.`);
+      toast.success(t("Tarea {n} guardada.", { n: responseIndex }));
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "No se pudo guardar la tarea.",
+        err instanceof Error ? err.message : t("No se pudo guardar la tarea."),
       );
     } finally {
       setSavingClassKey(null);
@@ -855,11 +862,11 @@ export function CoachingV3SessionBoard({
     setSavingPeriodAction(true);
     try {
       await activateCoachingV2Period({ sessionId });
-      toast.success("Semana activada correctamente.");
+      toast.success(t("Semana activada correctamente."));
       await loadBoard(undefined, { silent: true });
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "No se pudo activar la semana.",
+        err instanceof Error ? err.message : t("No se pudo activar la semana."),
       );
     } finally {
       setSavingPeriodAction(false);
@@ -870,11 +877,11 @@ export function CoachingV3SessionBoard({
     setSavingPeriodAction(true);
     try {
       await closeCoachingV2Period({ sessionId });
-      toast.success("Semana cerrada correctamente.");
+      toast.success(t("Semana cerrada correctamente."));
       await loadBoard(undefined, { silent: true });
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "No se pudo cerrar la semana.",
+        err instanceof Error ? err.message : t("No se pudo cerrar la semana."),
       );
     } finally {
       setSavingPeriodAction(false);
@@ -890,7 +897,7 @@ export function CoachingV3SessionBoard({
       | "phaseUsed",
   ) => {
     if (isSelectedPeriodClosed) {
-      toast.error("La semana está cerrada. Ya no se puede editar.");
+      toast.error(t("La semana está cerrada. Ya no se puede editar."));
       return;
     }
     const phaseIndex = PHASE_KEYS.indexOf(phase);
@@ -925,14 +932,14 @@ export function CoachingV3SessionBoard({
       );
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "No se pudo actualizar foco.",
+        err instanceof Error ? err.message : t("No se pudo actualizar foco."),
       );
     }
   };
 
   const handleRegenerateTraining = async (focus: CoachingV2Focus) => {
     if (isSelectedPeriodClosed) {
-      toast.error("La semana está cerrada. Ya no se puede editar.");
+      toast.error(t("La semana está cerrada. Ya no se puede editar."));
       return;
     }
     setRegeneratingFocusId(focus.id);
@@ -974,12 +981,12 @@ export function CoachingV3SessionBoard({
         };
       });
 
-      toast.success("Generando el ejercicio (≈1 min)...");
+      toast.success(t("Generando el ejercicio (≈1 min)..."));
     } catch (err) {
       toast.error(
         err instanceof Error
           ? err.message
-          : "No se pudo regenerar el entrenamiento.",
+          : t("No se pudo regenerar el entrenamiento."),
       );
     } finally {
       setRegeneratingFocusId(null);
@@ -988,7 +995,7 @@ export function CoachingV3SessionBoard({
 
   const handleSaveExternalTrainingUrl = async (focus: CoachingV2Focus) => {
     if (isSelectedPeriodClosed) {
-      toast.error("La semana está cerrada. Ya no se puede editar.");
+      toast.error(t("La semana está cerrada. Ya no se puede editar."));
       return;
     }
 
@@ -1031,14 +1038,14 @@ export function CoachingV3SessionBoard({
 
       toast.success(
         draftValue.trim()
-          ? "Link externo guardado."
-          : "Link externo eliminado.",
+          ? t("Link externo guardado.")
+          : t("Link externo eliminado."),
       );
     } catch (err) {
       toast.error(
         err instanceof Error
           ? err.message
-          : "No se pudo guardar el link externo.",
+          : t("No se pudo guardar el link externo."),
       );
     } finally {
       setSavingExternalTrainingUrlFocusId(null);
@@ -1065,8 +1072,8 @@ export function CoachingV3SessionBoard({
     ) {
       coachTodos.push({
         key: "activate",
-        label: `La semana ${board.periodState.nextPeriodEligible} está sin activar`,
-        action: "Activar",
+        label: t("La semana {n} está sin activar", { n: board.periodState.nextPeriodEligible }),
+        action: t("Activar"),
         onClick: () => void handleActivateNextWeek(),
       });
     }
@@ -1076,9 +1083,9 @@ export function CoachingV3SessionBoard({
         key: "add-focus",
         label:
           freeSlots === 3
-            ? "Esta semana no tiene focos"
-            : `Tienes ${freeSlots} hueco${freeSlots === 1 ? "" : "s"} de foco libre${freeSlots === 1 ? "" : "s"}`,
-        action: "Añadir foco",
+            ? t("Esta semana no tiene focos")
+            : tn(freeSlots, "Tienes {n} hueco de foco libre", "Tienes {n} huecos de foco libres"),
+        action: t("Añadir foco"),
         onClick: openCreateFocus,
       });
     }
@@ -1087,16 +1094,16 @@ export function CoachingV3SessionBoard({
       if (state === "error" || state === "stuck" || state === "missing") {
         coachTodos.push({
           key: `exercise-${focus.id}`,
-          label: `El ejercicio de «${focus.focusTitle}» no está listo`,
-          action: "Ver",
+          label: t("El ejercicio de «{focus}» no está listo", { focus: focus.focusTitle }),
+          action: t("Ver"),
           tone: "warn",
           onClick: () => scrollToRef(focusSectionRef),
         });
       } else if (!focus.phaseExplained) {
         coachTodos.push({
           key: `explain-${focus.id}`,
-          label: `¿Ya explicaste «${focus.focusTitle}»? Márcalo como Explicado`,
-          action: "Ir",
+          label: t("¿Ya explicaste «{focus}»? Márcalo como Explicado", { focus: focus.focusTitle }),
+          action: t("Ir"),
           onClick: () => scrollToRef(focusSectionRef),
         });
       }
@@ -1112,8 +1119,8 @@ export function CoachingV3SessionBoard({
       if (!classRow?.scheduledAt) {
         coachTodos.push({
           key: `schedule-${slot}`,
-          label: `La clase ${slot} no tiene fecha`,
-          action: "Poner fecha",
+          label: t("La clase {n} no tiene fecha", { n: slot }),
+          action: t("Poner fecha"),
           onClick: openClass,
         });
       } else if (
@@ -1122,8 +1129,8 @@ export function CoachingV3SessionBoard({
       ) {
         coachTodos.push({
           key: `loom-${slot}`,
-          label: `Falta la grabación de la clase ${slot}`,
-          action: "Subir",
+          label: t("Falta la grabación de la clase {n}", { n: slot }),
+          action: t("Subir"),
           onClick: openClass,
         });
       }
@@ -1131,8 +1138,8 @@ export function CoachingV3SessionBoard({
     if (reportStatus === "preparing") {
       coachTodos.push({
         key: "report",
-        label: "El alumno ha hecho las 6 tareas: falta su reporte",
-        action: "Subir reporte",
+        label: t("El alumno ha hecho las 6 tareas: falta su reporte"),
+        action: t("Subir reporte"),
         onClick: () => scrollToRef(reportSectionRef),
       });
     }
@@ -1147,119 +1154,179 @@ export function CoachingV3SessionBoard({
 
   if (loading) {
     return (
-      <p className="text-sm text-muted-foreground">Cargando coaching...</p>
+      <p className="text-sm text-muted-foreground">{t("Cargando coaching...")}</p>
     );
   }
 
   if (!board) {
     return (
-      <p className="text-sm text-muted-foreground">Sin datos de coaching.</p>
+      <p className="text-sm text-muted-foreground">{t("Sin datos de coaching.")}</p>
     );
   }
 
   return (
-    <section className="mx-auto w-full max-w-6xl [--v3-bg:oklch(0.98_0.01_220)] [--v3-card:oklch(1_0_0)] [--v3-line:oklch(0.9_0.02_220)] [--v3-text:oklch(0.24_0.03_230)] [--v3-muted:oklch(0.51_0.03_230)] [--v3-cyan:oklch(0.76_0.13_210)] [--v3-gold:oklch(0.79_0.11_78)] dark:[--v3-bg:oklch(0.2_0.04_230)] dark:[--v3-card:oklch(0.25_0.04_230)] dark:[--v3-line:oklch(0.36_0.04_230)] dark:[--v3-text:oklch(0.94_0.01_230)] dark:[--v3-muted:oklch(0.73_0.03_230)]">
-      <div
-        className="rounded-3xl border p-6 shadow-sm md:p-8"
-        style={{
-          background:
-            "radial-gradient(130% 90% at 80% -15%, color-mix(in oklab, var(--v3-cyan) 8%, transparent 92%), transparent), var(--v3-bg)",
-          borderColor: "var(--v3-line)",
-          color: "var(--v3-text)",
-        }}
-      >
-        <header
-          className="flex flex-wrap items-end justify-between gap-5 border-b pb-5"
-          style={{ borderColor: "var(--v3-line)" }}
-        >
-          <div>
-            <p className="text-xs" style={{ color: "var(--v3-muted)" }}>
-              Coaching ICA
-            </p>
-            <h1 className="mt-1 text-4xl font-bold tracking-tight md:text-5xl">
-              {board.session.targetLang || targetLang}
-            </h1>
-            <div className="mt-2 flex items-center gap-2">
-              <Badge className="rounded-full" variant="outline">
-                {board.session.level}
-              </Badge>
-              <span className="text-sm" style={{ color: "var(--v3-muted)" }}>
-                Semana {selectedPeriod} de {durationPeriods}
+    <section className="coaching-premium mx-auto w-full max-w-6xl">
+      <div style={{ color: "var(--v3-text)" }}>
+        {/* Cabecera premium: idioma, semana, coaches, clase y el recorrido de 12 semanas */}
+        <header className="coaching-hero relative overflow-hidden rounded-[32px] px-5 pt-6 pb-5 text-white md:px-8 md:pt-8 md:pb-7">
+          <span className="coaching-hero-glow pointer-events-none absolute -top-24 -right-16 size-72 rounded-full" aria-hidden="true" />
+          <div className="relative flex flex-wrap items-start justify-between gap-5">
+            <div className="min-w-0">
+              <p className="m-0 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-black tracking-[0.14em] uppercase" style={{ color: "var(--ica-gold)" }}>
+                <CrownIcon className="size-3.5" strokeWidth={2.8} aria-hidden="true" />
+                Coaching ICA
+              </p>
+              <h1 className="m-0 mt-3 font-display text-4xl leading-none font-black tracking-tight md:text-6xl">
+                {langName(board.session.targetLang || targetLang)}
+              </h1>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="rounded-full px-2.5 py-0.5 text-xs font-black" style={{ background: "var(--ica-gold)", color: "#4a3200" }}>
+                  {board.session.level}
+                </span>
+                <span className="text-sm font-bold text-white/80">
+                  {t("Semana {n} de {total}", { n: selectedPeriod, total: durationPeriods })}
+                </span>
+                <span className="text-sm font-bold text-white/50">·</span>
+                <span className="flex items-center gap-1.5 text-sm font-bold text-white/80">
+                  <span className="flex -space-x-1.5">
+                    <span className="flex size-6 items-center justify-center rounded-full border-2 border-[#1b2450] text-[11px] font-black" style={{ background: "var(--ica-i)" }}>L</span>
+                    {!isSecondaryCoachPrimary && secondaryCoachDisplayName ? (
+                      <span className="flex size-6 items-center justify-center rounded-full border-2 border-[#1b2450] text-[11px] font-black" style={{ background: "var(--ica-c)" }}>
+                        {secondaryCoachDisplayName.slice(0, 1).toUpperCase()}
+                      </span>
+                    ) : null}
+                  </span>
+                  {coachLineLabel}
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              {/* Anillo de semanas */}
+              <span className="relative hidden size-20 md:inline-flex" aria-hidden="true">
+                <svg viewBox="0 0 80 80" className="size-20 -rotate-90">
+                  <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="8" />
+                  <circle
+                    cx="40"
+                    cy="40"
+                    r="34"
+                    fill="none"
+                    stroke="var(--ica-gold)"
+                    strokeWidth="8"
+                    strokeLinecap="round"
+                    strokeDasharray={`${(Math.min(selectedPeriod, durationPeriods) / durationPeriods) * 213.6} 213.6`}
+                  />
+                </svg>
+                <span className="absolute inset-0 flex flex-col items-center justify-center leading-none">
+                  <span className="text-xl font-black">{selectedPeriod}</span>
+                  <span className="text-[10px] font-bold text-white/60">/{durationPeriods}</span>
+                </span>
               </span>
             </div>
           </div>
-          <div className="text-sm" style={{ color: "var(--v3-muted)" }}>
-            <div className="flex items-center gap-2">
-              <span className="inline-flex size-6 items-center justify-center rounded-full border border-cyan-400/30 bg-cyan-400/20 text-xs font-semibold text-cyan-300">
-                L
+
+          {/* Clase: enlace bien visible */}
+          <div className="relative mt-5">
+            {hasClassLink ? (
+              <a
+                href={classJoinUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`ica-press inline-flex h-12 items-center gap-2.5 rounded-2xl px-5 text-base font-black ${classLinkState === "live" ? "animate-pulse" : ""}`}
+                style={
+                  classLinkState === "live"
+                    ? { background: "#ef4444", color: "#fff", boxShadow: "0 4px 0 #b91c1c" }
+                    : { background: "var(--ica-gold)", color: "#4a3200", boxShadow: "0 4px 0 var(--ica-gold-edge)" }
+                }
+              >
+                <VideoIcon className="size-5" strokeWidth={2.6} aria-hidden="true" />
+                {classLinkState === "live" ? t("Clase en vivo ahora") : t("Link a tu clase")}
+              </a>
+            ) : (
+              <span className="inline-flex h-12 items-center gap-2.5 rounded-2xl bg-white/10 px-5 text-base font-bold text-white/60">
+                <VideoOffIcon className="size-5" strokeWidth={2.4} aria-hidden="true" />
+                {t("Sin link para tu clase")}
               </span>
-              {!isSecondaryCoachPrimary && secondaryCoachDisplayName ? (
-                <span className="inline-flex size-6 items-center justify-center rounded-full border border-amber-500/35 bg-amber-500/15 text-xs font-semibold text-amber-300">
-                  {secondaryCoachDisplayName.slice(0, 1).toUpperCase()}
-                </span>
-              ) : null}
-              <p>{coachLineLabel}</p>
+            )}
+          </div>
+
+          {/* Recorrido: una casilla por semana */}
+          <div className="relative mt-6">
+            <div className="mb-2 flex items-center justify-between text-xs font-extrabold text-white/70">
+              <span className="tracking-[0.1em] uppercase">{titleRecorrido}</span>
+              <span>{tn(Math.max(0, durationPeriods - selectedPeriod), "Queda {n} semana", "Quedan {n} semanas")}</span>
             </div>
-            <div className="mt-2 text-end">
-              {hasClassLink ? (
-                <a
-                  href={classJoinUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${classLinkState === "live" ? "animate-pulse" : ""}`}
-                  style={{
-                    borderColor:
-                      classLinkState === "live"
-                        ? "color-mix(in oklab, #ef4444 48%, var(--v3-line) 52%)"
-                        : "color-mix(in oklab, var(--v3-cyan) 35%, var(--v3-line) 65%)",
-                    background:
-                      classLinkState === "live"
-                        ? "color-mix(in oklab, #ef4444 12%, transparent 88%)"
-                        : "color-mix(in oklab, var(--v3-cyan) 8%, transparent 92%)",
-                    color: "var(--v3-text)",
-                  }}
-                >
-                  <span
-                    className="inline-block size-2 rounded-full"
-                    style={{
-                      background:
-                        classLinkState === "live"
-                          ? "#ef4444"
-                          : "var(--v3-cyan)",
+            <div
+              className="grid grid-cols-6 gap-1.5 md:[grid-template-columns:repeat(var(--weeks),minmax(0,1fr))]"
+              style={{ "--weeks": durationPeriods } as CSSProperties}
+            >
+              {Array.from({ length: durationPeriods }, (_, idx) => {
+                const period = idx + 1;
+                const isSelected = period === selectedPeriod;
+                const activation = periodActivationByNumber.get(period);
+                const isActivated = Boolean(activation);
+                const isClosed = Boolean(activation?.endedAt);
+                const isActive = currentActivePeriod === period;
+                return (
+                  <button
+                    key={`period-${period}`}
+                    type="button"
+                    className={`flex h-10 min-w-0 items-center justify-center rounded-xl text-sm font-black tabular-nums transition md:h-12 ${isActivated ? "hover:-translate-y-0.5" : "cursor-not-allowed"} ${isSelected ? "ring-2 ring-white ring-offset-2 ring-offset-[#1b2450]" : ""}`}
+                    style={
+                      !isActivated
+                        ? { background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.35)" }
+                        : isClosed
+                          ? { background: "var(--ica-gold)", color: "#4a3200", boxShadow: "0 3px 0 var(--ica-gold-edge)" }
+                          : isActive
+                            ? { background: "#ffffff", color: "#1b2450", boxShadow: "0 3px 0 rgba(255,255,255,0.4)" }
+                            : { background: "rgba(255,255,255,0.22)", color: "#fff" }
+                    }
+                    onClick={() => {
+                      if (!activatedPeriods.has(period)) return;
+                      void loadBoard(period);
                     }}
-                  />
-                  {classLinkState === "live"
-                    ? "Clase en vivo ahora"
-                    : "Link a tu clase"}
-                </a>
-              ) : (
-                <span
-                  className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium opacity-80"
-                  style={{
-                    borderColor:
-                      "color-mix(in oklab, var(--v3-muted) 30%, var(--v3-line) 70%)",
-                    background:
-                      "color-mix(in oklab, var(--v3-line) 55%, transparent 45%)",
-                    color: "var(--v3-muted)",
-                  }}
-                >
-                  <span
-                    className="inline-block size-2 rounded-full"
-                    style={{
-                      background:
-                        "color-mix(in oklab, var(--v3-muted) 70%, transparent 30%)",
-                    }}
-                  />
-                  Sin link para tu clase
-                </span>
-              )}
+                    disabled={!activatedPeriods.has(period)}
+                    aria-label={t("Semana {n}", { n: period })}
+                    aria-current={isSelected ? "true" : undefined}
+                  >
+                    {isClosed ? <CheckIcon className="size-4" strokeWidth={3.4} aria-hidden="true" /> : period}
+                  </button>
+                );
+              })}
             </div>
+            {isSelectedPeriodClosed ? (
+              <p className="m-0 mt-3 text-xs font-bold" style={{ color: "var(--ica-gold)" }}>
+                {t("Semana cerrada: solo lectura para alumno y coach.")}
+              </p>
+            ) : null}
           </div>
         </header>
 
+        {mode === "coach" && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-2xl font-extrabold"
+              onClick={() => void handleActivateNextWeek()}
+              disabled={savingPeriodAction || !board.periodState.nextPeriodEligible}
+            >
+              {savingPeriodAction ? t("Activando...") : t("Activar siguiente semana")}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="rounded-2xl font-extrabold"
+              onClick={() => void handleCloseCurrentWeek()}
+              disabled={savingPeriodAction || !board.periodState.currentActivePeriod}
+            >
+              {savingPeriodAction ? t("Cerrando...") : t("Cerrar semana activa")}
+            </Button>
+          </div>
+        )}
+
         {mode === "coach" && !isSelectedPeriodClosed ? (
           <section
-            className="mt-5 rounded-2xl border p-4"
+            className="mt-5 rounded-3xl border-2 p-4"
             style={{
               borderColor:
                 "color-mix(in oklab, var(--v3-cyan) 35%, var(--v3-line) 65%)",
@@ -1273,12 +1340,12 @@ export function CoachingV3SessionBoard({
                 style={{ color: "var(--v3-cyan)" }}
               />
               <p className="text-sm font-semibold">
-                Te toca · semana {selectedPeriod}
+                {t("Te toca · semana {n}", { n: selectedPeriod })}
               </p>
             </div>
             {coachTodos.length === 0 ? (
               <p className="text-sm" style={{ color: "var(--v3-muted)" }}>
-                Todo al día. ✓
+                {t("Todo al día. ✓")}
               </p>
             ) : (
               <ul className="grid gap-1.5 md:grid-cols-2">
@@ -1322,109 +1389,19 @@ export function CoachingV3SessionBoard({
           </section>
         ) : null}
 
-        <section className="mt-7">
-          <div className="mb-3 flex items-center justify-between">
-            <p className="text-sm font-medium">{titleRecorrido}</p>
-            <span className="text-xs" style={{ color: "var(--v3-muted)" }}>
-              Quedan {Math.max(0, durationPeriods - selectedPeriod)} semanas
-            </span>
-          </div>
-          <div
-            className="grid gap-1.5 pb-1"
-            style={{
-              gridTemplateColumns: `repeat(${durationPeriods}, minmax(0, 1fr))`,
-            }}
-          >
-            {Array.from({ length: durationPeriods }, (_, idx) => {
-              const period = idx + 1;
-              const isSelected = period === selectedPeriod;
-              const activation = periodActivationByNumber.get(period);
-              const isActivated = Boolean(activation);
-              const isClosed = Boolean(activation?.endedAt);
-              const isActive = currentActivePeriod === period;
-              return (
-                <button
-                  key={`period-${period}`}
-                  type="button"
-                  className={`rounded-md px-1 pb-2 pt-1 text-center transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70 ${isSelected ? `ring-1 ${isClosed ? "ring-amber-400/60" : "ring-cyan-400/60"} ring-offset-1 ring-offset-transparent` : ""}`}
-                  onClick={() => {
-                    if (!activatedPeriods.has(period)) return;
-                    void loadBoard(period);
-                  }}
-                  disabled={!activatedPeriods.has(period)}
-                  title={`Semana ${period}`}
-                >
-                  <span
-                    className="block h-2 rounded-full"
-                    style={{
-                      background: !isActivated
-                        ? "color-mix(in oklab, var(--v3-line) 65%, transparent 35%)"
-                        : isActive
-                          ? "var(--v3-cyan)"
-                          : isClosed
-                            ? "var(--v3-gold)"
-                            : "color-mix(in oklab, var(--v3-cyan) 75%, var(--v3-line) 25%)",
-                    }}
-                  />
-                  <span
-                    className="mt-1 block text-[11px]"
-                    style={{
-                      color: !isActivated
-                        ? "color-mix(in oklab, var(--v3-muted) 55%, transparent 45%)"
-                        : isSelected
-                          ? "var(--v3-text)"
-                          : "var(--v3-muted)",
-                    }}
-                  >
-                    {period}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {isSelectedPeriodClosed ? (
-            <p className="mt-3 text-xs" style={{ color: "var(--v3-gold)" }}>
-              Semana cerrada: solo lectura para alumno y coach.
-            </p>
-          ) : null}
-
-          {mode === "coach" && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void handleActivateNextWeek()}
-                disabled={
-                  savingPeriodAction || !board.periodState.nextPeriodEligible
-                }
-              >
-                {savingPeriodAction
-                  ? "Activando..."
-                  : "Activar siguiente semana"}
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={() => void handleCloseCurrentWeek()}
-                disabled={
-                  savingPeriodAction || !board.periodState.currentActivePeriod
-                }
-              >
-                {savingPeriodAction ? "Cerrando..." : "Cerrar semana activa"}
-              </Button>
-            </div>
-          )}
-        </section>
-
         <section ref={focusSectionRef} className="mt-10 scroll-mt-4">
-          <div className="mb-4 flex items-baseline justify-between gap-3">
-            <h2 className="text-2xl font-semibold tracking-tight">
-              Los tres focos
-            </h2>
-            <p className="text-xs" style={{ color: "var(--v3-muted)" }}>
-              Un foco nuevo se abre cuando uno llega a dominado.
-            </p>
+          <div className="mb-4 flex items-center gap-3">
+            <IconTile tone="gold" size={44}>
+              <TargetGlyph size={28} />
+            </IconTile>
+            <div className="min-w-0">
+              <h2 className="m-0 text-2xl leading-tight md:text-[28px]">
+                {t("Los tres focos")}
+              </h2>
+              <p className="m-0 text-sm font-semibold" style={{ color: "var(--v3-muted)" }}>
+                {t("Un foco nuevo se abre cuando uno llega a dominado.")}
+              </p>
+            </div>
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">
@@ -1437,7 +1414,7 @@ export function CoachingV3SessionBoard({
                     style={{
                       borderColor: "var(--v3-line)",
                       background:
-                        "color-mix(in oklab, var(--v3-card) 88%, black 12%)",
+                        "color-mix(in oklab, var(--v3-card) 55%, transparent)",
                     }}
                     onClick={() => {
                       if (
@@ -1452,15 +1429,15 @@ export function CoachingV3SessionBoard({
                       className="text-sm font-medium"
                       style={{ color: "var(--v3-muted)" }}
                     >
-                      Hueco libre
+                      {t("Hueco libre")}
                     </p>
                     <p
                       className="mt-2 text-xs"
                       style={{ color: "var(--v3-muted)" }}
                     >
                       {mode === "coach"
-                        ? "Escribe un foco gramatical y la IA prepara sola su ejercicio de Entrenado."
-                        : "Se abre un foco nuevo cuando uno de los otros llegue a dominado."}
+                        ? t("Escribe un foco gramatical y la IA prepara sola su ejercicio de Entrenado.")
+                        : t("Se abre un foco nuevo cuando uno de los otros llegue a dominado.")}
                     </p>
                     {mode === "coach" && canAddFocus && (
                       <Button
@@ -1473,7 +1450,7 @@ export function CoachingV3SessionBoard({
                           openCreateFocus();
                         }}
                       >
-                        <CirclePlusIcon className="size-4" /> Añadir foco
+                        <CirclePlusIcon className="size-4" /> {t("Añadir foco")}
                       </Button>
                     )}
                   </Card>
@@ -1497,7 +1474,7 @@ export function CoachingV3SessionBoard({
                 selectedPhaseInfo.key === "phaseTrained";
               const canUseTrainedActions =
                 trainedPhaseSelected && focus.phaseExplained;
-              const trainButtonLabel = focusAttempt ? "Reintentar" : "Entrenar";
+              const trainButtonLabel = focusAttempt ? t("Reintentar") : t("Entrenar");
               const trainReady = focusExercise?.status === "ready";
               const trainPreparing =
                 focusExercise?.status === "pending" ||
@@ -1514,17 +1491,17 @@ export function CoachingV3SessionBoard({
                 const trainingState = getTrainingState(focusExercise);
                 const nextPhaseIdx = PHASE_KEYS.findIndex((key) => !focus[key]);
                 const nextPhaseLabel =
-                  nextPhaseIdx >= 0 ? PHASE_LABELS[nextPhaseIdx] : null;
+                  nextPhaseIdx >= 0 ? t(PHASE_LABELS[nextPhaseIdx]) : null;
                 const nextPhaseHint =
                   nextPhaseIdx === 0
-                      ? "Cuando se lo expliques en clase, marca «Explicado»: así se le abre el ejercicio."
+                      ? t("Cuando se lo expliques en clase, marca «Explicado»: así se le abre el ejercicio.")
                       : nextPhaseIdx === 1
-                       ? "Se marca automáticamente al superar el ejercicio. Solo si falla la generación y hay un enlace externo podrás marcarlo manualmente."
+                       ? t("Se marca automáticamente al superar el ejercicio. Solo si falla la generación y hay un enlace externo podrás marcarlo manualmente.")
                       : nextPhaseIdx === 2
-                        ? "Marca «Entendido» cuando el alumno te lo explique a ti."
+                        ? t("Marca «Entendido» cuando el alumno te lo explique a ti.")
                         : nextPhaseIdx === 3
-                          ? "Marca «Dominado» cuando le salga solo en clase."
-                          : "Foco dominado. Deja el hueco libre para uno nuevo.";
+                          ? t("Marca «Dominado» cuando le salga solo en clase.")
+                          : t("Foco dominado. Deja el hueco libre para uno nuevo.");
                 const linkOpen =
                   externalLinkOpenByFocusId[focus.id] ?? hasExternalTraining;
 
@@ -1542,7 +1519,7 @@ export function CoachingV3SessionBoard({
                         className="text-xs"
                         style={{ color: "var(--v3-muted)" }}
                       >
-                        Foco {idx + 1} · desde semana {focus.periodNumber}
+                        {t("Foco {n} · desde semana {week}", { n: idx + 1, week: focus.periodNumber })}
                       </span>
                       <div className="flex items-center gap-1.5">
                         <span className="text-sm font-semibold">
@@ -1552,7 +1529,7 @@ export function CoachingV3SessionBoard({
                           size="icon"
                           variant="outline"
                           className="size-7 rounded-full"
-                          title="Nota del foco"
+                          aria-label={t("Nota del foco")}
                           onClick={() => setOpenFocusComment(focus.id)}
                         >
                           <MessageCircleIcon className="size-3.5" />
@@ -1561,7 +1538,7 @@ export function CoachingV3SessionBoard({
                           size="icon"
                           variant="outline"
                           className="size-7 rounded-full"
-                          title="Editar foco"
+                          aria-label={t("Editar foco")}
                           disabled={!canEditSelectedPeriod}
                           onClick={() => openEditFocus(focus)}
                         >
@@ -1595,18 +1572,18 @@ export function CoachingV3SessionBoard({
                             onClick={() =>
                               void handleToggleFocus(focus, phaseKey)
                             }
-                            title={
+                            aria-label={
                               done
                                 ? clickable
-                                  ? `Desmarcar ${PHASE_LABELS[phaseIdx]}`
-                                  : PHASE_LABELS[phaseIdx]
+                                  ? t("Desmarcar {phase}", { phase: t(PHASE_LABELS[phaseIdx]) })
+                                  : t(PHASE_LABELS[phaseIdx])
                                 : clickable
                                   ? phaseKey === "phaseTrained" && hasExternalFallback
-                                    ? "Marcar Entrenado con enlace externo"
-                                    : `Marcar ${PHASE_LABELS[phaseIdx]}`
+                                    ? t("Marcar Entrenado con enlace externo")
+                                    : t("Marcar {phase}", { phase: t(PHASE_LABELS[phaseIdx]) })
                                   : phaseKey === "phaseTrained" && !done
-                                    ? "Se marca al superar el ejercicio; para marcarlo manualmente, debe fallar la generación y haber un enlace externo"
-                                  : "Primero marca la fase anterior"
+                                    ? t("Se marca al superar el ejercicio; para marcarlo manualmente, debe fallar la generación y haber un enlace externo")
+                                  : t("Primero marca la fase anterior")
                             }
                             className={`flex flex-col items-center gap-1 rounded-lg border px-1 py-2 text-[11px] font-medium transition disabled:cursor-not-allowed ${clickable ? "hover:-translate-y-0.5" : ""} ${isNext && clickable ? "animate-pulse" : ""}`}
                             style={{
@@ -1644,7 +1621,7 @@ export function CoachingV3SessionBoard({
                                 phaseIdx + 1
                               )}
                             </span>
-                            {PHASE_LABELS[phaseIdx]}
+                            {t(PHASE_LABELS[phaseIdx])}
                           </button>
                         );
                       })}
@@ -1655,7 +1632,7 @@ export function CoachingV3SessionBoard({
                     >
                       {nextPhaseLabel ? (
                         <b style={{ color: "var(--v3-text)" }}>
-                          Siguiente: {nextPhaseLabel}.{" "}
+                          {t("Siguiente: {phase}.", { phase: nextPhaseLabel })}{" "}
                         </b>
                       ) : null}
                       {nextPhaseHint}
@@ -1689,14 +1666,14 @@ export function CoachingV3SessionBoard({
                         )}
                         <span>
                           {trainingState === "ready"
-                            ? "Ejercicio listo"
+                            ? t("Ejercicio listo")
                             : trainingState === "generating"
-                              ? "Preparando el ejercicio…"
+                              ? t("Preparando el ejercicio…")
                               : trainingState === "stuck"
-                                ? "El ejercicio se ha quedado atascado"
+                                ? t("El ejercicio se ha quedado atascado")
                                 : trainingState === "error"
-                                  ? "No se pudo generar el ejercicio"
-                                  : "Sin ejercicio todavía"}
+                                  ? t("No se pudo generar el ejercicio")
+                                  : t("Sin ejercicio todavía")}
                         </span>
                       </div>
                       <p
@@ -1705,22 +1682,22 @@ export function CoachingV3SessionBoard({
                       >
                         {trainingState === "ready"
                           ? focus.phaseExplained
-                            ? "El alumno ya lo tiene en Entrenado."
-                            : "Se le abrirá al alumno cuando marques «Explicado»."
+                            ? t("El alumno ya lo tiene en Entrenado.")
+                            : t("Se le abrirá al alumno cuando marques «Explicado».")
                           : trainingState === "generating"
-                            ? "La IA lo está creando con tu plantilla (≈1 min). Puedes seguir trabajando."
-                            : "Vuelve a generarlo: no tienes que hacer nada más."}
+                            ? t("La IA lo está creando con tu plantilla (≈1 min). Puedes seguir trabajando.")
+                            : t("Vuelve a generarlo: no tienes que hacer nada más.")}
                       </p>
                       {focusAttempt ? (
                         <p className="mt-1 text-xs">
                           {(attemptCountByFocusId.get(focus.id) || 1) > 1
-                            ? `Último de ${attemptCountByFocusId.get(focus.id)} intentos: `
-                            : "Entregado: "}
+                            ? t("Último de {n} intentos:", { n: attemptCountByFocusId.get(focus.id) || 0 }) + " "
+                            : t("Entregado:") + " "}
                           <b>
                             {focusAttempt.scoreCorrect}/{focusAttempt.scoreTotal}
                           </b>{" "}
                           ·{" "}
-                          {focusAttempt.passed ? "superado" : "no superado"}
+                          {focusAttempt.passed ? t("superado") : t("no superado")}
                           {formatShortDateTime(focusAttempt.submittedAt)
                             ? ` · ${formatShortDateTime(focusAttempt.submittedAt)}`
                             : ""}
@@ -1734,7 +1711,7 @@ export function CoachingV3SessionBoard({
                             className="h-8"
                             onClick={() => setPreviewFocusId(focus.id)}
                           >
-                            <EyeIcon className="size-3.5" /> Ver ejercicio
+                            <EyeIcon className="size-3.5" /> {t("Ver ejercicio")}
                           </Button>
                         ) : null}
                         {focusAttempt ? (
@@ -1744,8 +1721,7 @@ export function CoachingV3SessionBoard({
                             className="h-8"
                             onClick={() => setOpenReviewFocusId(focus.id)}
                           >
-                            <ListChecksIcon className="size-3.5" /> Ver
-                            respuestas
+                            <ListChecksIcon className="size-3.5" /> {t("Ver respuestas")}
                           </Button>
                         ) : null}
                         {trainingState !== "generating" ? (
@@ -1769,16 +1745,16 @@ export function CoachingV3SessionBoard({
                           >
                             <RefreshCwIcon className="size-3.5" />
                             {trainingState === "ready"
-                              ? "Rehacer"
+                              ? t("Rehacer")
                               : trainingState === "missing"
-                                ? "Generar"
-                                : "Reintentar"}
+                                ? t("Generar")
+                                : t("Reintentar")}
                           </Button>
                         ) : null}
                       </div>
                       {trainingState === "error" && focusExercise?.error ? (
                         <details className="mt-2 text-[11px]" style={{ color: "var(--v3-muted)" }}>
-                          <summary className="cursor-pointer">Detalle técnico</summary>
+                          <summary className="cursor-pointer">{t("Detalle técnico")}</summary>
                           <p className="mt-1 break-words">{focusExercise.error}</p>
                         </details>
                       ) : null}
@@ -1797,8 +1773,8 @@ export function CoachingV3SessionBoard({
                     >
                       <LinkIcon className="size-3" />
                       {hasExternalTraining
-                        ? "Link externo guardado"
-                        : "Añadir link externo (opcional)"}
+                        ? t("Link externo guardado")
+                        : t("Añadir link externo (opcional)")}
                       <ChevronDownIcon
                         className={`size-3 transition ${linkOpen ? "rotate-180" : ""}`}
                       />
@@ -1814,7 +1790,7 @@ export function CoachingV3SessionBoard({
                             }))
                           }
                           disabled={!canEditSelectedPeriod}
-                          placeholder="https://… (se usa si no hay ejercicio)"
+                          placeholder={t("https://… (se usa si no hay ejercicio)")}
                           className="h-8"
                         />
                         <Button
@@ -1831,7 +1807,7 @@ export function CoachingV3SessionBoard({
                         >
                           {savingExternalTrainingUrlFocusId === focus.id
                             ? "…"
-                            : "Guardar"}
+                            : t("Guardar")}
                         </Button>
                       </div>
                     ) : null}
@@ -1853,7 +1829,7 @@ export function CoachingV3SessionBoard({
                       className="text-xs"
                       style={{ color: "var(--v3-muted)" }}
                     >
-                      Abierto en semana {focus.periodNumber}
+                      {t("Abierto en semana {n}", { n: focus.periodNumber })}
                     </span>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-semibold">
@@ -1916,7 +1892,7 @@ export function CoachingV3SessionBoard({
                               fontWeight: isManuallySelected || isCurrent ? 600 : 400,
                             }}
                           >
-                            {phaseLabel}
+                            {t(phaseLabel)}
                           </span>
                         </button>
                       );
@@ -1928,9 +1904,9 @@ export function CoachingV3SessionBoard({
                     style={{ color: "var(--v3-muted)" }}
                   >
                     <b style={{ color: "var(--v3-text)" }}>
-                      {selectedPhaseInfo.label}.
+                      {t(selectedPhaseInfo.label)}.
                     </b>{" "}
-                    {selectedPhaseInfo.description}
+                    {t(selectedPhaseInfo.description)}
                   </p>
 
                   {mode === "student" && canUseTrainedActions && (
@@ -1971,8 +1947,8 @@ export function CoachingV3SessionBoard({
                           style={{ color: "var(--v3-muted)" }}
                         >
                           {trainPreparing
-                            ? "Tu entrenamiento se está preparando."
-                            : "Tu entrenamiento aún no está disponible. Tu coach lo está preparando."}
+                            ? t("Tu entrenamiento se está preparando.")
+                            : t("Tu entrenamiento aún no está disponible. Tu coach lo está preparando.")}
                         </p>
                       )}
                     </>
@@ -1986,7 +1962,7 @@ export function CoachingV3SessionBoard({
           {allCompletedUntilSelected.length > 0 && (
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <span className="text-xs" style={{ color: "var(--v3-muted)" }}>
-                Ya dominados:
+                {t("Ya dominados:")}
               </span>
               {allCompletedUntilSelected.map((focus) => (
                 (() => {
@@ -2033,7 +2009,7 @@ export function CoachingV3SessionBoard({
                         href={trainingHref}
                         target={trainingIsExternal ? "_blank" : undefined}
                         rel={trainingIsExternal ? "noopener noreferrer" : undefined}
-                        title={`Ver el entrenamiento de «${focus.focusTitle}»`}
+                        aria-label={t("Ver el entrenamiento de «{focus}»", { focus: focus.focusTitle })}
                         onClick={(event) => {
                           if (trainingIsExternal) return;
                           event.preventDefault();
@@ -2052,14 +2028,18 @@ export function CoachingV3SessionBoard({
         </section>
 
         <section className="mt-10">
-          <div className="mb-4 flex items-baseline justify-between gap-3">
-            <h2 className="text-2xl font-semibold tracking-tight">
-              Tareas semanales
-            </h2>
-            <p className="text-xs" style={{ color: "var(--v3-muted)" }}>
-              Seis tareas entre las dos clases. Al completarlas se abre tu
-              reporte.
-            </p>
+          <div className="mb-4 flex items-center gap-3">
+            <IconTile tone="i" size={44}>
+              <ListChecksIcon className="size-6" strokeWidth={2.4} aria-hidden="true" />
+            </IconTile>
+            <div className="min-w-0">
+              <h2 className="m-0 text-2xl leading-tight md:text-[28px]">
+                {t("Tareas semanales")}
+              </h2>
+              <p className="m-0 text-sm font-semibold" style={{ color: "var(--v3-muted)" }}>
+                {t("Seis tareas entre las dos clases. Al completarlas se abre tu reporte.")}
+              </p>
+            </div>
           </div>
 
           <Card
@@ -2072,16 +2052,16 @@ export function CoachingV3SessionBoard({
           >
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium">Semana {selectedPeriod}</p>
+                <p className="text-sm font-medium">{t("Semana {n}", { n: selectedPeriod })}</p>
                 <p className="text-xs" style={{ color: "var(--v3-muted)" }}>
-                  Tres tareas por clase. Una sola cuenta.
+                  {t("Tres tareas por clase. Una sola cuenta.")}
                 </p>
               </div>
               <p className="text-sm">
                 <b className="text-4xl font-bold leading-none">
                   {completedTasks}
                 </b>{" "}
-                de 6 tareas
+                {t("de 6 tareas")}
               </p>
             </div>
 
@@ -2128,7 +2108,7 @@ export function CoachingV3SessionBoard({
                         {done ? <CheckIcon className="size-5" /> : idx + 1}
                       </span>
                       <span style={{ color: "var(--v3-muted)" }}>
-                        Clase {idx < 3 ? 1 : 2}
+                        {t("Clase {n}", { n: idx < 3 ? 1 : 2 })}
                       </span>
                     </div>
                   );
@@ -2158,7 +2138,7 @@ export function CoachingV3SessionBoard({
                       <LockIcon className="size-5" />
                     )}
                   </button>
-                  <span style={{ color: "var(--v3-muted)" }}>Reporte</span>
+                  <span style={{ color: "var(--v3-muted)" }}>{t("Reporte")}</span>
                 </div>
               </div>
             </div>
@@ -2169,12 +2149,12 @@ export function CoachingV3SessionBoard({
             >
               <p className="text-sm" style={{ color: "var(--v3-muted)" }}>
                 <LockIcon className="mr-2 inline size-4 align-text-bottom" />
-                Siguiente:{" "}
+                {t("Siguiente:")}{" "}
                 <b style={{ color: "var(--v3-text)" }}>
-                  {nextPendingTask?.title || "Todas las tareas completas"}
+                  {nextPendingTask ? t(nextPendingTask.title) : t("Todas las tareas completas")}
                 </b>
                 {nextPendingTask
-                  ? `, de la clase ${nextPendingTask.classIndex}.`
+                  ? t(", de la clase {n}.", { n: nextPendingTask.classIndex })
                   : "."}
               </p>
             </div>
@@ -2182,13 +2162,18 @@ export function CoachingV3SessionBoard({
         </section>
 
         <section ref={classesSectionRef} className="mt-10 scroll-mt-4">
-          <div className="mb-4 flex items-baseline justify-between gap-3">
-            <h2 className="text-2xl font-semibold tracking-tight">
-              {titleClases}
-            </h2>
-            <p className="text-xs" style={{ color: "var(--v3-muted)" }}>
-              {classesSubtitle}
-            </p>
+          <div className="mb-4 flex items-center gap-3">
+            <IconTile tone="a" size={44}>
+              <VideoIcon className="size-6" strokeWidth={2.4} aria-hidden="true" />
+            </IconTile>
+            <div className="min-w-0">
+              <h2 className="m-0 text-2xl leading-tight md:text-[28px]">
+                {titleClases}
+              </h2>
+              <p className="m-0 text-sm font-semibold" style={{ color: "var(--v3-muted)" }}>
+                {classesSubtitle}
+              </p>
+            </div>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
@@ -2243,7 +2228,7 @@ export function CoachingV3SessionBoard({
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-lg font-semibold">Clase {slot}</h3>
+                      <h3 className="text-lg font-semibold">{t("Clase {n}", { n: slot })}</h3>
                       {classRoleLabel ? (
                         <p
                           className="text-xs"
@@ -2270,7 +2255,7 @@ export function CoachingV3SessionBoard({
                     >
                       <iframe
                         src={embedUrl}
-                        title={`Clase ${slot} semana ${selectedPeriod}`}
+                        title={t("Clase {n} semana {week}", { n: slot, week: selectedPeriod })}
                         className="aspect-video w-full"
                         allow="autoplay; fullscreen; picture-in-picture"
                         allowFullScreen
@@ -2290,8 +2275,8 @@ export function CoachingV3SessionBoard({
                         <PlayCircleIcon className="size-7" />
                       </span>
                       {classRow?.loomUrl
-                        ? "Abrir grabacion en Loom"
-                        : "Grabacion pendiente"}
+                        ? t("Abrir grabación en Loom")
+                        : t("Grabación pendiente")}
                     </div>
                   )}
 
@@ -2336,15 +2321,15 @@ export function CoachingV3SessionBoard({
                                 <div>
                                   <p className="text-base font-semibold leading-tight">
                                     {isAssigned
-                                      ? task.title
-                                      : "Pendiente de asignar"}
+                                      ? t(task.title)
+                                      : t("Pendiente de asignar")}
                                   </p>
                                   <p className="text-xs text-muted-foreground">
                                     {isAssigned
                                       ? isDone
-                                        ? "Hecha"
-                                        : "Por completar"
-                                      : "Pendiente de asignar por tu coach"}
+                                        ? t("Hecha")
+                                        : t("Por completar")
+                                      : t("Pendiente de asignar por tu coach")}
                                   </p>
                                 </div>
                               </div>
@@ -2364,7 +2349,7 @@ export function CoachingV3SessionBoard({
                                       }))
                                     }
                                     rows={3}
-                                    placeholder="Escribe tu respuesta..."
+                                    placeholder={t("Escribe tu respuesta...")}
                                     disabled={!canEditSelectedPeriod}
                                   />
                                   <div className="mt-2 flex items-center gap-2">
@@ -2391,12 +2376,12 @@ export function CoachingV3SessionBoard({
                                     >
                                       {savingClassKey ===
                                       `${key}-r${localIndex}`
-                                        ? "Guardando..."
-                                        : "Guardar"}
+                                        ? t("Guardando...")
+                                        : t("Guardar")}
                                     </Button>
                                     {task.done ? (
                                       <span className="text-xs text-cyan-300">
-                                        Hecha
+                                        {t("Hecha")}
                                       </span>
                                     ) : null}
                                   </div>
@@ -2419,13 +2404,13 @@ export function CoachingV3SessionBoard({
                         <p className="flex items-center gap-2">
                           <CalendarIcon className="size-4 shrink-0" style={{ color: "var(--v3-muted)" }} />
                           {formatShortDateTime(classRow?.scheduledAt || null) || (
-                            <span className="text-amber-600 dark:text-amber-400">Sin fecha</span>
+                            <span className="text-amber-600 dark:text-amber-400">{t("Sin fecha")}</span>
                           )}
                         </p>
                         <p className="flex items-center gap-2">
                           <UserIcon className="size-4 shrink-0" style={{ color: "var(--v3-muted)" }} />
                           {classCoachName || (
-                            <span style={{ color: "var(--v3-muted)" }}>Sin coach asignado</span>
+                            <span style={{ color: "var(--v3-muted)" }}>{t("Sin coach asignado")}</span>
                           )}
                           {classRoleLabel ? (
                             <span style={{ color: "var(--v3-muted)" }}>· {classRoleLabel}</span>
@@ -2434,14 +2419,14 @@ export function CoachingV3SessionBoard({
                         <p className="flex items-center gap-2">
                           <VideoIcon className="size-4 shrink-0" style={{ color: "var(--v3-muted)" }} />
                           {classRow?.loomUrl ? (
-                            "Grabación subida"
+                            t("Grabación subida")
                           ) : (
-                            <span className="text-amber-600 dark:text-amber-400">Grabación pendiente</span>
+                            <span className="text-amber-600 dark:text-amber-400">{t("Grabación pendiente")}</span>
                           )}
                         </p>
                         <p className="flex items-center gap-2">
                           <ListChecksIcon className="size-4 shrink-0" style={{ color: "var(--v3-muted)" }} />
-                          Tareas respondidas: {classTasks.filter((task) => task.done).length}/3
+                          {t("Tareas respondidas: {n}/3", { n: classTasks.filter((task) => task.done).length })}
                         </p>
                       </div>
 
@@ -2458,7 +2443,7 @@ export function CoachingV3SessionBoard({
                         }
                       >
                         <PencilIcon className="size-3.5" />
-                        {classEditOpen ? "Cerrar edición" : "Editar fecha, coach y grabación"}
+                        {classEditOpen ? t("Cerrar edición") : t("Editar fecha, coach y grabación")}
                         <ChevronDownIcon className={`size-3.5 transition ${classEditOpen ? "rotate-180" : ""}`} />
                       </Button>
 
@@ -2472,10 +2457,10 @@ export function CoachingV3SessionBoard({
                             [key]: { ...draft, classRole: event.target.value },
                           }))
                         }
-                        placeholder="Tipo de clase (ej: Sesión de control)"
+                        placeholder={t("Tipo de clase (ej: Sesión de control)")}
                         disabled={!canEditSelectedPeriod}
                       />
-                      <select
+                      <AppSelect
                         value={draft.assignedCoachUserId}
                         onChange={(event) =>
                           setClassDrafts((prev) => ({
@@ -2490,7 +2475,7 @@ export function CoachingV3SessionBoard({
                         style={{ borderColor: "var(--v3-line)" }}
                         disabled={!canEditSelectedPeriod}
                       >
-                        <option value="">Sin coach asignado</option>
+                        <option value="">{t("Sin coach asignado")}</option>
                         {[
                           ...new Map(
                             [
@@ -2516,7 +2501,7 @@ export function CoachingV3SessionBoard({
                             {name}
                           </option>
                         ))}
-                      </select>
+                      </AppSelect>
                       <div className="grid gap-2 sm:grid-cols-2">
                         <Input
                           type="date"
@@ -2555,13 +2540,13 @@ export function CoachingV3SessionBoard({
                             [key]: { ...draft, loomUrl: event.target.value },
                           }))
                         }
-                        placeholder="Link Loom de la clase"
+                        placeholder={t("Link Loom de la clase")}
                         disabled={!canEditSelectedPeriod}
                       />
                       </div>
                       ) : null}
                       <p className="pt-1 text-xs font-medium" style={{ color: "var(--v3-muted)" }}>
-                        Tareas de esta clase (el alumno las responde en su tablero)
+                        {t("Tareas de esta clase (el alumno las responde en su tablero)")}
                       </p>
                       <Accordion type="single" collapsible>
                         {[
@@ -2601,7 +2586,7 @@ export function CoachingV3SessionBoard({
                                     )}
                                   </span>
                                   <span className="text-sm font-medium">
-                                    Tarea {item.absoluteIndex}
+                                    {t("Tarea {n}", { n: item.absoluteIndex })}
                                   </span>
                                 </div>
                               </AccordionTrigger>
@@ -2618,7 +2603,7 @@ export function CoachingV3SessionBoard({
                                     }))
                                   }
                                   rows={2}
-                                  placeholder={`Pregunta de tarea ${item.absoluteIndex}`}
+                                  placeholder={t("Pregunta de tarea {n}", { n: item.absoluteIndex })}
                                   disabled={
                                     isAnswered || !canEditSelectedPeriod
                                   }
@@ -2629,7 +2614,7 @@ export function CoachingV3SessionBoard({
                                     style={{ borderColor: "var(--v3-line)" }}
                                   >
                                     <p className="font-medium text-foreground">
-                                      Respuesta del alumno
+                                      {t("Respuesta del alumno")}
                                     </p>
                                     <p className="mt-1 text-muted-foreground">
                                       {item.responseValue}
@@ -2637,7 +2622,7 @@ export function CoachingV3SessionBoard({
                                   </div>
                                 ) : (
                                   <p className="text-xs text-muted-foreground">
-                                    Sin respuesta del alumno.
+                                    {t("Sin respuesta del alumno.")}
                                   </p>
                                 )}
                               </AccordionContent>
@@ -2655,8 +2640,8 @@ export function CoachingV3SessionBoard({
                         }
                       >
                         {savingClassKey === key
-                          ? "Guardando..."
-                          : `Guardar clase ${slot}`}
+                          ? t("Guardando...")
+                          : t("Guardar clase {n}", { n: slot })}
                       </Button>
                     </div>
                   )}
@@ -2699,16 +2684,16 @@ export function CoachingV3SessionBoard({
                   </span>
                   <div>
                     <h3 className="text-3xl font-semibold leading-tight">
-                      Tu reporte se abre con las seis tareas
+                      {t("Tu reporte se abre con las seis tareas")}
                     </h3>
                     <p
                       className="mt-1 text-sm"
                       style={{ color: "var(--v3-muted)" }}
                     >
-                      Te faltan {pendingTaskLabels.length}:{" "}
+                      {t("Te faltan {n}:", { n: pendingTaskLabels.length })}{" "}
                       {pendingTaskLabels.length > 0
                         ? `${pendingTaskLabels.join(", ")}.`
-                        : "ninguna tarea."}
+                        : t("ninguna tarea.")}
                     </p>
                   </div>
                 </div>
@@ -2716,12 +2701,12 @@ export function CoachingV3SessionBoard({
                 <>
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="text-xl font-semibold">
-                      Reporte de la semana {selectedPeriod}
+                      {t("Reporte de la semana {n}", { n: selectedPeriod })}
                     </h3>
                     <Badge variant="outline" className="rounded-full">
                       {reportStatus === "available"
-                        ? "Disponible"
-                        : "En preparación"}
+                        ? t("Disponible")
+                        : t("En preparación")}
                     </Badge>
                   </div>
 
@@ -2731,8 +2716,8 @@ export function CoachingV3SessionBoard({
                       style={{ color: "var(--v3-muted)" }}
                     >
                       {mode === "coach"
-                        ? "Semana completa. El reporte de la semana aún está en preparación."
-                        : "Aún no está disponible. Tu profe lo subirá pronto."}
+                        ? t("Semana completa. El reporte de la semana aún está en preparación.")
+                        : t("Aún no está disponible. Tu profe lo subirá pronto.")}
                     </p>
                   )}
 
@@ -2752,7 +2737,7 @@ export function CoachingV3SessionBoard({
                           >
                             <img
                               src={board.periodReport.reportImageUrl}
-                              alt={`Imagen del reporte de la semana ${selectedPeriod}`}
+                              alt={t("Imagen del reporte de la semana {n}", { n: selectedPeriod })}
                               className="max-h-56 w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
                             />
                             <div className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100">
@@ -2767,7 +2752,7 @@ export function CoachingV3SessionBoard({
                             className="inline-flex items-center gap-1 text-sm text-primary underline underline-offset-2"
                           >
                             <DownloadIcon className="size-3.5" />
-                            Descargar imagen
+                            {t("Descargar imagen")}
                           </a>
                         </>
                       ) : (
@@ -2775,7 +2760,7 @@ export function CoachingV3SessionBoard({
                           className="text-sm"
                           style={{ color: "var(--v3-muted)" }}
                         >
-                          Aún no hay imagen de reporte para esta semana.
+                          {t("Aún no hay imagen de reporte para esta semana.")}
                         </p>
                       )}
                     </div>
@@ -2789,7 +2774,7 @@ export function CoachingV3SessionBoard({
                   style={{ borderColor: "var(--v3-line)" }}
                 >
                   <p className="text-sm font-medium">
-                    Editar reporte de la semana
+                    {t("Editar reporte de la semana")}
                   </p>
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 relative">
@@ -2826,8 +2811,8 @@ export function CoachingV3SessionBoard({
                           {reportDraftImageFile ||
                           (board.periodReport?.reportImageUrl &&
                             !removeReportImage)
-                            ? "Cambiar fichero"
-                            : "Subir fichero"}
+                            ? t("Cambiar fichero")
+                            : t("Subir fichero")}
                         </label>
                       </Button>
                       <span className="max-w-[240px] truncate text-xs text-muted-foreground">
@@ -2835,13 +2820,13 @@ export function CoachingV3SessionBoard({
                           ? reportDraftImageFile.name
                           : board.periodReport?.reportImageUrl &&
                               !removeReportImage
-                            ? "Imagen actual cargada"
-                            : "Sin fichero"}
+                            ? t("Imagen actual cargada")
+                            : t("Sin fichero")}
                       </span>
                     </div>
                     {reportDraftImageFile && (
                       <p className="text-xs text-muted-foreground">
-                        Nueva imagen: {reportDraftImageFile.name}
+                        {t("Nueva imagen: {name}", { name: reportDraftImageFile.name })}
                       </p>
                     )}
                     {!reportDraftImageFile &&
@@ -2854,7 +2839,7 @@ export function CoachingV3SessionBoard({
                             rel="noreferrer"
                             className="text-xs"
                           >
-                            Ver imagen actual
+                            {t("Ver imagen actual")}
                           </a>
                           <Button
                             type="button"
@@ -2863,13 +2848,13 @@ export function CoachingV3SessionBoard({
                             onClick={() => setRemoveReportImage(true)}
                             disabled={!canEditSelectedPeriod}
                           >
-                            Quitar imagen
+                            {t("Quitar imagen")}
                           </Button>
                         </div>
                       )}
                     {removeReportImage && (
                       <p className="text-xs text-muted-foreground">
-                        La imagen se eliminará al guardar.
+                        {t("La imagen se eliminará al guardar.")}
                       </p>
                     )}
                   </div>
@@ -2882,7 +2867,7 @@ export function CoachingV3SessionBoard({
                         savingReport || !userId || !canEditSelectedPeriod
                       }
                     >
-                      {savingReport ? "Guardando..." : "Guardar reporte"}
+                      {savingReport ? t("Guardando...") : t("Guardar reporte")}
                     </Button>
                   </div>
                 </div>
@@ -2902,11 +2887,11 @@ export function CoachingV3SessionBoard({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Comentario del foco</DialogTitle>
+            <DialogTitle>{t("Comentario del foco")}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             {selectedFocuses.find((focus) => focus.id === openFocusComment)
-              ?.focusComment || "Sin comentario para este foco."}
+              ?.focusComment || t("Sin comentario para este foco.")}
           </p>
         </DialogContent>
       </Dialog>
@@ -2921,12 +2906,12 @@ export function CoachingV3SessionBoard({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editingFocusId ? "Editar foco" : `Nuevo foco · semana ${selectedPeriod}`}
+              {editingFocusId ? t("Editar foco") : t("Nuevo foco · semana {n}", { n: selectedPeriod })}
             </DialogTitle>
             <DialogDescription>
               {editingFocusId
-                ? "Si cambias el foco, la IA vuelve a preparar su ejercicio."
-                : "Escribe el punto gramatical que habéis trabajado. La IA prepara sola el ejercicio de Entrenado (≈1 min) y el alumno lo verá cuando marques «Explicado»."}
+                ? t("Si cambias el foco, la IA vuelve a preparar su ejercicio.")
+                : t("Escribe el punto gramatical que han trabajado. La IA prepara sola el ejercicio de Entrenado (≈1 min) y el alumno lo verá cuando marques «Explicado».")}
             </DialogDescription>
           </DialogHeader>
           <form
@@ -2938,22 +2923,22 @@ export function CoachingV3SessionBoard({
           >
             <div className="space-y-1.5">
               <label className="text-sm font-medium" htmlFor="focus-title">
-                Foco gramatical
+                {t("Foco gramatical")}
               </label>
               <Input
                 id="focus-title"
                 autoFocus
                 value={focusDraftTitle}
                 onChange={(event) => setFocusDraftTitle(event.target.value)}
-                placeholder="Ej.: Can · Could · Should · Would"
+                placeholder={t("Ej.: Can · Could · Should · Would")}
                 disabled={!canEditSelectedPeriod}
               />
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium" htmlFor="focus-comment">
-                Nota para el alumno{" "}
+                {t("Nota para el alumno")}{" "}
                 <span className="font-normal text-muted-foreground">
-                  (opcional)
+                  {t("(opcional)")}
                 </span>
               </label>
               <Textarea
@@ -2961,7 +2946,7 @@ export function CoachingV3SessionBoard({
                 value={focusDraftComment}
                 onChange={(event) => setFocusDraftComment(event.target.value)}
                 rows={3}
-                placeholder="Ej.: Se te escapa el «to» detrás de can. La IA también usa esta nota para afinar el ejercicio."
+                placeholder={t("Ej.: Se te escapa el «to» detrás de can. La IA también usa esta nota para afinar el ejercicio.")}
                 disabled={!canEditSelectedPeriod}
               />
             </div>
@@ -2985,7 +2970,7 @@ export function CoachingV3SessionBoard({
                   onClick={() => void handleDeleteFocus()}
                 >
                   <Trash2Icon className="size-4" />
-                  {deletingFocus ? "Eliminando..." : "Eliminar foco"}
+                  {deletingFocus ? t("Eliminando...") : t("Eliminar foco")}
                 </Button>
               ) : (
                 <span />
@@ -2997,10 +2982,10 @@ export function CoachingV3SessionBoard({
                 }
               >
                 {savingFocus
-                  ? "Guardando..."
+                  ? t("Guardando...")
                   : editingFocusId
-                    ? "Guardar cambios"
-                    : "Crear foco y preparar ejercicio"}
+                    ? t("Guardar cambios")
+                    : t("Crear foco y preparar ejercicio")}
               </Button>
             </DialogFooter>
           </form>
@@ -3015,10 +3000,9 @@ export function CoachingV3SessionBoard({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>¿Rehacer el ejercicio?</DialogTitle>
+            <DialogTitle>{t("¿Rehacer el ejercicio?")}</DialogTitle>
             <DialogDescription>
-              La IA prepara uno nuevo para este foco (≈1 min). El actual se
-              sustituye; los intentos del alumno se conservan.
+              {t("La IA prepara uno nuevo para este foco (≈1 min). El actual se sustituye; los intentos del alumno se conservan.")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -3027,7 +3011,7 @@ export function CoachingV3SessionBoard({
               variant="outline"
               onClick={() => setConfirmRegenerateFocusId(null)}
             >
-              Cancelar
+              {t("Cancelar")}
             </Button>
             <Button
               type="button"
@@ -3039,7 +3023,7 @@ export function CoachingV3SessionBoard({
                 if (target) void handleRegenerateTraining(target);
               }}
             >
-              <RefreshCwIcon className="size-4" /> Rehacer
+              <RefreshCwIcon className="size-4" /> {t("Rehacer")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3054,13 +3038,12 @@ export function CoachingV3SessionBoard({
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>
-              Vista previa ·{" "}
+              {t("Vista previa ·")}{" "}
               {board.focuses.find((row) => row.id === previewFocusId)
-                ?.focusTitle || "Ejercicio"}
+                ?.focusTitle || t("Ejercicio")}
             </DialogTitle>
             <DialogDescription>
-              Así lo verá el alumno. Puedes probarlo: lo que respondas aquí no
-              se guarda.
+              {t("Así lo verá el alumno. Puedes probarlo: lo que respondas aquí no se guarda.")}
             </DialogDescription>
           </DialogHeader>
           {(() => {
@@ -3075,7 +3058,7 @@ export function CoachingV3SessionBoard({
               />
             ) : (
               <p className="text-sm text-muted-foreground">
-                Este ejercicio no tiene el formato esperado. Pulsa «Rehacer».
+                {t("Este ejercicio no tiene el formato esperado. Pulsa «Rehacer».")}
               </p>
             );
           })()}
@@ -3090,12 +3073,12 @@ export function CoachingV3SessionBoard({
       >
         <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Imagen del reporte</DialogTitle>
+            <DialogTitle>{t("Imagen del reporte")}</DialogTitle>
           </DialogHeader>
           {reportImagePreviewUrl ? (
             <img
               src={reportImagePreviewUrl}
-              alt={`Imagen ampliada del reporte de la semana ${selectedPeriod}`}
+              alt={t("Imagen ampliada del reporte de la semana {n}", { n: selectedPeriod })}
               className="max-h-[75vh] w-full rounded-md object-contain"
             />
           ) : null}
@@ -3111,24 +3094,24 @@ export function CoachingV3SessionBoard({
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>
-              Respuestas del alumno
+              {t("Respuestas del alumno")}
               {openReviewFocusId
                 ? ` · ${board.focuses.find((row) => row.id === openReviewFocusId)?.focusTitle || ""}`
                 : ""}
             </DialogTitle>
             <DialogDescription>
               {openReviewAttempt
-                ? `${openReviewAttempt.passed ? "Superado" : "No superado"} · ${openReviewAttempt.scoreCorrect}/${openReviewAttempt.scoreTotal}`
-                : "Sin intento seleccionado."}
+                ? `${openReviewAttempt.passed ? t("Superado") : t("No superado")} · ${openReviewAttempt.scoreCorrect}/${openReviewAttempt.scoreTotal}`
+                : t("Sin intento seleccionado.")}
             </DialogDescription>
           </DialogHeader>
 
           {openReviewAttempt && (
             <Tabs defaultValue="reconocer" className="w-full">
               <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="reconocer">Reconocer</TabsTrigger>
-                <TabsTrigger value="construir">Construir</TabsTrigger>
-                <TabsTrigger value="conversacion">Conversación</TabsTrigger>
+                <TabsTrigger value="reconocer">{t("Reconocer")}</TabsTrigger>
+                <TabsTrigger value="construir">{t("Construir")}</TabsTrigger>
+                <TabsTrigger value="conversacion">{t("Conversación")}</TabsTrigger>
               </TabsList>
 
               {(["reconocer", "construir", "conversacion"] as const).map(
@@ -3154,14 +3137,14 @@ export function CoachingV3SessionBoard({
                   const legacyBlockOf = (
                     title: string,
                   ): "reconocer" | "construir" | "conversacion" => {
-                    const t = normalize(title);
+                    const norm = normalize(title);
                     if (reviewExercise) {
-                      if (t === normalize(reviewExercise.construir.titulo)) return "construir";
-                      if (t === normalize(reviewExercise.conversacion.titulo)) return "conversacion";
-                      if (t === normalize(reviewExercise.reconocer.titulo)) return "reconocer";
+                      if (norm === normalize(reviewExercise.construir.titulo)) return "construir";
+                      if (norm === normalize(reviewExercise.conversacion.titulo)) return "conversacion";
+                      if (norm === normalize(reviewExercise.reconocer.titulo)) return "reconocer";
                     }
-                    if (t.includes("constru")) return "construir";
-                    if (t.includes("conversa") || t.includes("dialog")) return "conversacion";
+                    if (norm.includes("constru")) return "construir";
+                    if (norm.includes("conversa") || norm.includes("dialog")) return "conversacion";
                     return "reconocer";
                   };
                   const legacyFailures =
@@ -3173,7 +3156,7 @@ export function CoachingV3SessionBoard({
                               legacyBlockOf(String(row.block || "")) === blockId,
                           )
                           .map((row) => ({
-                            question: String(row.question || "Pregunta"),
+                            question: String(row.question || t("Pregunta")),
                             unit: undefined as string | undefined,
                             mine: String(row.mine || "—"),
                             found: null as string | null | undefined,
@@ -3191,13 +3174,12 @@ export function CoachingV3SessionBoard({
                     >
                       {answers.length === 0 ? (
                         <p className="text-xs text-muted-foreground">
-                          Este intento se hizo antes de guardar todas las
-                          respuestas: aquí solo salen los fallos.
+                          {t("Este intento se hizo antes de guardar todas las respuestas: aquí solo salen los fallos.")}
                         </p>
                       ) : null}
                       {rows.length === 0 ? (
                         <p className="text-sm text-muted-foreground">
-                          Sin fallos en esta sección.
+                          {t("Sin fallos en esta sección.")}
                         </p>
                       ) : (
                         rows.map((row, rowIdx) => (
@@ -3219,26 +3201,26 @@ export function CoachingV3SessionBoard({
                                 {row.question}
                                 {row.unit ? (
                                   <span className="block text-xs font-normal text-muted-foreground">
-                                    Se corrige: {row.unit}
+                                    {t("Se corrige: {unit}", { unit: row.unit })}
                                   </span>
                                 ) : null}
                               </span>
                             </p>
                             <p className="mt-1 pl-5 text-sm">
                               <span className="text-xs text-muted-foreground">
-                                Escribió:{" "}
+                                {t("Escribió:")}{" "}
                               </span>
                               {row.mine}
                               {row.found && row.found !== row.mine ? (
                                 <span className="text-xs text-muted-foreground">
                                   {" "}
-                                  (encontrado: «{row.found}»)
+                                  {t("(encontrado: «{found}»)", { found: row.found })}
                                 </span>
                               ) : null}
                             </p>
                             {!row.ok ? (
                               <p className="pl-5 text-xs text-emerald-700 dark:text-emerald-300">
-                                Esperado: {row.expected}
+                                {t("Esperado: {answer}", { answer: row.expected })}
                               </p>
                             ) : null}
                           </div>
@@ -3254,13 +3236,12 @@ export function CoachingV3SessionBoard({
           {openReviewAttempt && (
             <div className="space-y-1 rounded-md border bg-muted/20 p-3 text-xs">
               <p>
-                Total: {openReviewAttempt.scoreCorrect}/
-                {openReviewAttempt.scoreTotal}
+                {t("Total: {n}/{total}", { n: openReviewAttempt.scoreCorrect, total: openReviewAttempt.scoreTotal })}
               </p>
-              <p>Umbral: {openReviewAttempt.scoreThreshold}</p>
+              <p>{t("Umbral: {n}", { n: openReviewAttempt.scoreThreshold })}</p>
               <p>
-                Resultado:{" "}
-                {openReviewAttempt.passed ? "Superado" : "No superado"}
+                {t("Resultado:")}{" "}
+                {openReviewAttempt.passed ? t("Superado") : t("No superado")}
               </p>
             </div>
           )}
@@ -3271,7 +3252,7 @@ export function CoachingV3SessionBoard({
               variant="outline"
               onClick={() => setOpenReviewFocusId(null)}
             >
-              Cerrar
+              {t("Cerrar")}
             </Button>
           </DialogFooter>
         </DialogContent>

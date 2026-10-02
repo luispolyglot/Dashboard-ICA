@@ -9,6 +9,7 @@ import {
   RotateCcwIcon,
   RotateCwIcon,
   SquareIcon,
+  StarIcon,
   Volume2Icon,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -52,6 +53,7 @@ import {
 } from '../services/masterNotesOfflineStore'
 import type { MasterNote } from '../types'
 import { formatDate } from '../utils'
+import { langName, t } from '@/i18n'
 
 function getCurrentPath(): string {
   if (typeof window === 'undefined') return DASHBOARD_ROUTES.home
@@ -124,7 +126,7 @@ export function OfflineSafeView() {
         setNotesError(null)
       } catch {
         if (!isMounted) return
-        setNotesError('No se pudo cargar tu caché local de notas maestras')
+        setNotesError(t('No se pudo cargar tu caché local de notas maestras'))
       } finally {
         if (!isMounted) return
         setLoadingNotes(false)
@@ -235,7 +237,7 @@ export function OfflineSafeView() {
       const target = (note.targetLang || '').trim() || 'Sin idioma objetivo'
       const native = (note.nativeLang || '').trim() || 'Sin idioma nativo'
       const key = `${target}::${native}`
-      const label = `${target} -> ${native}`
+      const label = `${langName(t(target))} -> ${langName(t(native))}`
 
       const current = groupsMap.get(key)
       if (current) {
@@ -371,7 +373,7 @@ export function OfflineSafeView() {
 
     return {
       title: note.name,
-      artist: 'Nota maestra',
+      artist: t('Nota maestra'),
       album: 'ICADEMY Offline',
     }
   }, [notesById])
@@ -552,18 +554,17 @@ export function OfflineSafeView() {
 
   return (
     <section className='mx-auto w-full max-w-3xl flex-1 px-5 pt-8 pb-24 lg:pb-8'>
-      <h2 className='mb-2 font-serif text-2xl font-bold lg:text-3xl'>
-        Modo seguro offline
+      <h2 className='mb-2 font-display tracking-tight text-2xl font-extrabold lg:text-3xl'>
+        {t('Modo seguro offline')}
       </h2>
       <p className='mb-5 text-sm text-muted-foreground'>
-        Detectamos problemas de conectividad. Te llevamos a un modo seguro para
-        mantener disponible Notas Maestras cuando no hay red.
+        {t('Detectamos problemas de conectividad. Te llevamos a un modo seguro para mantener disponible Notas Maestras cuando no hay red.')}
       </p>
 
       <Card className='rounded-2xl'>
         <CardContent className='space-y-4'>
           <div className='flex flex-wrap items-center gap-2'>
-            <p className='text-sm font-semibold'>Estado de red:</p>
+            <p className='text-sm font-semibold'>{t('Estado de red:')}</p>
             <Badge
               variant='outline'
               className={
@@ -572,23 +573,23 @@ export function OfflineSafeView() {
                   : 'border-amber-500/30 bg-amber-500/10 text-amber-700'
               }
             >
-              {isOnline ? 'Conexión disponible' : 'Sin conexión'}
+              {isOnline ? t('Conexión disponible') : t('Sin conexión')}
             </Badge>
           </div>
 
           <p className='text-sm text-muted-foreground'>
             {autoReturnBlocked
-              ? 'No pudimos cargar la pantalla anterior después de varios intentos. Puedes reintentar o volver al inicio.'
-              : 'Si la conexión vuelve, puedes reintentar para regresar a la pantalla anterior.'}
+              ? t('No pudimos cargar la pantalla anterior después de varios intentos. Puedes reintentar o volver al inicio.')
+              : t('Si la conexión vuelve, puedes reintentar para regresar a la pantalla anterior.')}
           </p>
 
           <div className='flex flex-wrap gap-2'>
             <Button type='button' onClick={handleRetry} disabled={!isOnline}>
-              Reintentar y volver
+              {t('Reintentar y volver')}
             </Button>
             {autoReturnBlocked ? (
               <Button type='button' variant='outline' onClick={handleGoHome}>
-                Ir al inicio
+                {t('Ir al inicio')}
               </Button>
             ) : null}
             <Button
@@ -596,7 +597,7 @@ export function OfflineSafeView() {
               variant='outline'
               onClick={() => navigate(DASHBOARD_ROUTES.masterNotes)}
             >
-              Ir a Notas maestras
+              {t('Ir a Notas maestras')}
             </Button>
           </div>
         </CardContent>
@@ -616,26 +617,26 @@ export function OfflineSafeView() {
           }
         >
           <TabsList>
-            <TabsTrigger value='notes'>Mis Notas Maestras</TabsTrigger>
+            <TabsTrigger value='notes'>{t('Mis Notas Maestras')}</TabsTrigger>
             <TabsTrigger value='playlists'>
-              Mis Listas de Reproducción
+              {t('Mis Listas de Reproducción')}
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value='notes' className='space-y-3'>
             <p className='text-xs font-semibold tracking-wide text-muted-foreground'>
-              Notas maestras cerradas en caché local
+              {t('Notas maestras cerradas en caché local')}
             </p>
 
             {languageGroups.length > 1 && (
               <div className='flex items-center gap-2'>
-                <p className='text-xs text-muted-foreground'>Idioma:</p>
+                <p className='text-xs text-muted-foreground'>{t('Idioma:')}</p>
                 <Select
                   value={selectedGroupKey}
                   onValueChange={setSelectedGroupKey}
                 >
                   <SelectTrigger size='sm' className='min-w-56'>
-                    <SelectValue placeholder='Selecciona idioma' />
+                    <SelectValue placeholder={t('Selecciona idioma')} />
                   </SelectTrigger>
                   <SelectContent>
                     {languageGroups.map((group) => (
@@ -662,7 +663,7 @@ export function OfflineSafeView() {
                   >
                     <PlayIcon className='mr-1 size-4' />
                     <span className='min-w-0 break-words'>
-                      {`Reproducir todas una vez desde: ${selectedPlayAllStartNote?.name || '...'}`}
+                      {t('Reproducir todas una vez desde: {note}', { note: selectedPlayAllStartNote?.name || '...' })}
                     </span>
                     <ChevronDownIcon className='ml-1 size-4' />
                   </Button>
@@ -671,7 +672,7 @@ export function OfflineSafeView() {
                   {loopingClosed && !activePlayerPlaylistId && (
                     <DropdownMenuItem onClick={() => disableLoopPlayback(true)}>
                       <SquareIcon className='mr-2 size-4' />
-                      Detener reproducción total
+                      {t('Detener reproducción total')}
                     </DropdownMenuItem>
                   )}
                   {visibleNotes.map((note) => (
@@ -691,13 +692,13 @@ export function OfflineSafeView() {
 
             {loadingNotes && (
               <p className='text-sm text-muted-foreground'>
-                Cargando notas offline...
+                {t('Cargando notas offline...')}
               </p>
             )}
 
             {!loadingNotes && !notesError && visibleNotes.length === 0 && (
               <p className='text-sm text-muted-foreground'>
-                Aún no hay notas cerradas guardadas en este dispositivo.
+                {t('Aún no hay notas cerradas guardadas en este dispositivo.')}
               </p>
             )}
 
@@ -708,12 +709,12 @@ export function OfflineSafeView() {
                   <CardContent className='flex flex-wrap items-center justify-between gap-3'>
                     <div>
                       <div className='flex flex-wrap items-center gap-2'>
-                        <p className='font-semibold'>⭐ {note.name}</p>
+                        <p className='flex items-center gap-1.5 font-semibold'><StarIcon className='size-4 shrink-0 fill-amber-400 text-amber-500' aria-hidden='true' />{note.name}</p>
                         <Badge
                           variant='outline'
                           className='border-amber-500/30 bg-amber-500/10 text-amber-700'
                         >
-                          Cerrada
+                          {t('Cerrada')}
                         </Badge>
                         <Badge
                           variant='outline'
@@ -724,14 +725,14 @@ export function OfflineSafeView() {
                           }
                         >
                           {note.audioAvailable
-                            ? 'Audio offline listo'
-                            : 'Audio offline pendiente'}
+                            ? t('Audio offline listo')
+                            : t('Audio offline pendiente')}
                         </Badge>
                       </div>
                       <div className='mt-1 text-xs text-muted-foreground'>
-                        Duración: {formatDuration(note.totalDurationMs)}
+                        {t('Duración: {time}', { time: formatDuration(note.totalDurationMs) })}
                         {note.closedAt
-                          ? ` · Cerrada el: ${formatDate(note.closedAt)}`
+                          ? ` · ${t('Cerrada el: {date}', { date: formatDate(note.closedAt) })}`
                           : ''}
                       </div>
                     </div>
@@ -744,7 +745,7 @@ export function OfflineSafeView() {
                           disabled={!note.audioAvailable}
                         >
                           <Volume2Icon className='mr-1 size-4' />
-                          Escuchar
+                          {t('Escuchar')}
                         </Button>
                       ) : (
                         <>
@@ -753,13 +754,14 @@ export function OfflineSafeView() {
                             onClick={() => void handlePlay(note)}
                           >
                             <SquareIcon className='mr-1 size-4' />
-                            Detener
+                            {t('Detener')}
                           </Button>
                           <Button
                             type='button'
                             size='icon'
                             variant='outline'
                             onClick={seekBack10}
+                            aria-label={t('Retroceder 10 segundos')}
                           >
                             <RotateCcwIcon className='size-4' />
                           </Button>
@@ -768,6 +770,7 @@ export function OfflineSafeView() {
                             size='icon'
                             variant='outline'
                             onClick={togglePause}
+                            aria-label={isPaused ? t('Reanudar') : t('Pausar')}
                           >
                             {isPaused ? (
                               <PlayIcon className='size-4' />
@@ -780,6 +783,7 @@ export function OfflineSafeView() {
                             size='icon'
                             variant='outline'
                             onClick={seekForward10}
+                            aria-label={t('Adelantar 10 segundos')}
                           >
                             <RotateCwIcon className='size-4' />
                           </Button>
@@ -808,18 +812,18 @@ export function OfflineSafeView() {
 
           <TabsContent value='playlists' className='space-y-3'>
             <p className='text-xs font-semibold tracking-wide text-muted-foreground'>
-              Listas de reproducción disponibles offline
+              {t('Listas de reproducción disponibles offline')}
             </p>
 
             {playlistsLoading && (
               <p className='text-sm text-muted-foreground'>
-                Cargando listas offline...
+                {t('Cargando listas offline...')}
               </p>
             )}
 
             {!playlistsLoading && playlists.length === 0 && (
               <p className='text-sm text-muted-foreground'>
-                Aún no hay listas guardadas offline para este usuario.
+                {t('Aún no hay listas guardadas offline para este usuario.')}
               </p>
             )}
 
@@ -846,7 +850,7 @@ export function OfflineSafeView() {
                         <div>
                           <p className='font-semibold'>{playlist.name}</p>
                           <p className='text-xs text-muted-foreground'>
-                            {ids.length} notas ({playableCount} reproducibles)
+                            {t('{n} notas ({playable} reproducibles)', { n: ids.length, playable: playableCount })}
                           </p>
                         </div>
 
@@ -868,7 +872,7 @@ export function OfflineSafeView() {
                             ) : (
                               <Volume2Icon className='mr-1 size-4' />
                             )}
-                            {isThisPlaying ? 'Detener' : 'Escuchar'}
+                            {isThisPlaying ? t('Detener') : t('Escuchar')}
                           </Button>
 
                           <Button
@@ -876,7 +880,7 @@ export function OfflineSafeView() {
                             size='icon'
                             variant='outline'
                             onClick={() => handleEditPlaylistClick(playlist.id)}
-                            aria-label='Editar cola offline de lista'
+                            aria-label={t('Editar cola offline de lista')}
                           >
                             <PencilIcon className='size-4' />
                           </Button>
@@ -908,8 +912,8 @@ export function OfflineSafeView() {
 
         <MasterNotePlaylistPlayerDock
           open={Boolean(activePlayerPlaylist && loopIds.length > 0)}
-          playlistName={activePlayerPlaylist?.name || 'Lista offline'}
-          noteName={activeLoopNote?.name || 'Sin nota en reproducción'}
+          playlistName={activePlayerPlaylist?.name || t('Lista offline')}
+          noteName={activeLoopNote?.name || t('Sin nota en reproducción')}
           progressSec={positionSec}
           durationSec={durationSec}
           currentIndex={loopIndex}

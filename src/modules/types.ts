@@ -76,6 +76,8 @@ export interface LeaderboardEntry {
   preguntica_points?: number | null
   instagram_points?: number | null
   total_points?: number
+  /** Insignia destacada del alumno ("categoria:rango"), cuando el servidor la devuelva. */
+  featured_badge?: string | null
 }
 
 export interface PhraseGenerationEntry {
@@ -588,8 +590,18 @@ export interface IcaChallengeReviewItem {
   targetLang: string | null
 }
 
+export interface IcaChallengeRivalWord {
+  target: string
+  native: string
+  phrase: string | null
+  phraseTranslation: string | null
+  targetLang: string | null
+}
+
 export interface IcaChallengeReview {
   items: IcaChallengeReviewItem[]
+  /** Palabras del baúl del rival (solo con el desafío terminado y cada uno con sus palabras). */
+  rivalWords?: IcaChallengeRivalWord[]
   me: { correct: number; answered: number }
   rival: { correct: number; answered: number; done: boolean }
   wordSource: IcaChallengeWordSource

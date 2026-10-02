@@ -1,10 +1,19 @@
 import { useEffect, useState } from 'react'
-import { BellIcon, SmartphoneIcon } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import type { ReactNode } from 'react'
+import {
+  AudioLinesIcon,
+  BellIcon,
+  BellOffIcon,
+  BellRingIcon,
+  CalendarDaysIcon,
+  ClockIcon,
+  GraduationCapIcon,
+  HourglassIcon,
+  PresentationIcon,
+  SmartphoneIcon,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -36,6 +45,8 @@ import {
 } from '../services/coachingNotificationPreferences'
 import { fetchCoachingAccess } from '../services/coaching'
 import { DASHBOARD_ROUTES } from '../routes/paths'
+import { FlameIcon } from '../game/icons'
+import { GamePage, IconTile, ListRow, PageTitle, Panel, Pill, RowGroup, SectionLabel, type Tone } from '../game/ui'
 import type {
   CalendarIcademyTeacherNotificationPreference,
   CalendarIcademyTeacherNotificationPreferenceInput,
@@ -45,6 +56,7 @@ import type {
   PushReminderPreferencesInput,
   PushSubscriptionDevice,
 } from '../types'
+import { t } from '@/i18n'
 
 const CALENDAR_REMINDER_OPTIONS = [10, 20, 30, 60, 120]
 const COACHING_CLASS_REMINDER_OPTIONS: Array<10 | 30 | 60> = [10, 30, 60]
@@ -269,12 +281,12 @@ export function ManageNotificationsView() {
         await ensurePushOnCurrentDevice()
       }
       await saveReminderPreferences(next)
-      toast.success('Preferencias de notificaciones actualizadas.')
+      toast.success(t('Preferencias de notificaciones actualizadas.'))
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
-          : 'No se pudieron actualizar las notificaciones.'
+          : t('No se pudieron actualizar las notificaciones.')
       toast.error(message)
     }
   }
@@ -312,12 +324,12 @@ export function ManageNotificationsView() {
         await ensurePushOnCurrentDevice()
       }
       await saveTeacherReminderPreferences(next)
-      toast.success('Preferencias de profesor actualizadas.')
+      toast.success(t('Preferencias de profesor actualizadas.'))
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
-          : 'No se pudieron actualizar las notificaciones de profesor.'
+          : t('No se pudieron actualizar las notificaciones de profesor.')
       toast.error(message)
     }
   }
@@ -356,12 +368,12 @@ export function ManageNotificationsView() {
         await ensurePushOnCurrentDevice()
       }
       await saveCoachingNotificationPreferences(next)
-      toast.success('Preferencias de coaching actualizadas.')
+      toast.success(t('Preferencias de coaching actualizadas.'))
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
-          : 'No se pudieron actualizar las notificaciones de coaching.'
+          : t('No se pudieron actualizar las notificaciones de coaching.')
       toast.error(message)
     }
   }
@@ -372,12 +384,12 @@ export function ManageNotificationsView() {
     try {
       await enablePushOnCurrentDevice()
       await refreshPushStatus()
-      toast.success('Notificaciones activadas en este dispositivo.')
+      toast.success(t('Notificaciones activadas en este dispositivo.'))
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
-          : 'No se pudo activar push en este dispositivo.'
+          : t('No se pudo activar push en este dispositivo.')
       toast.error(message)
     } finally {
       setIsUpdatingPushDevice(false)
@@ -390,409 +402,307 @@ export function ManageNotificationsView() {
     try {
       await disablePushOnCurrentDevice()
       await refreshPushStatus()
-      toast.success('Notificaciones desactivadas en este dispositivo.')
+      toast.success(t('Notificaciones desactivadas en este dispositivo.'))
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
-          : 'No se pudo desactivar push en este dispositivo.'
+          : t('No se pudo desactivar push en este dispositivo.')
       toast.error(message)
     } finally {
       setIsUpdatingPushDevice(false)
     }
   }
 
+  const hourSelect = (
+    id: string,
+    value: number,
+    disabled: boolean,
+    onChange: (hour: number) => void,
+  ) => (
+    <Select value={String(value)} onValueChange={(next) => onChange(Number(next))} disabled={disabled}>
+      <SelectTrigger id={id} className='h-10 min-w-24 rounded-xl'>
+        <SelectValue placeholder={t('Selecciona una hora')} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          <SelectLabel>{t('Hora local')}</SelectLabel>
+          {REMINDER_HOUR_OPTIONS.map((hour) => (
+            <SelectItem key={hour} value={String(hour)}>
+              {formatReminderHour(hour)}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  )
+
+  const minutesSelect = (
+    id: string,
+    value: number,
+    options: number[],
+    disabled: boolean,
+    onChange: (minutes: number) => void,
+  ) => (
+    <Select value={String(value)} onValueChange={(next) => onChange(Number(next))} disabled={disabled}>
+      <SelectTrigger id={id} className='h-10 min-w-32 rounded-xl'>
+        <SelectValue placeholder={t('Selecciona minutos')} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          <SelectLabel>{t('Minutos antes')}</SelectLabel>
+          {options.map((minutes) => (
+            <SelectItem key={minutes} value={String(minutes)}>
+              {t('{n} min antes', { n: minutes })}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  )
+
+  const deviceTone = pushPermission === 'unsupported' ? 'neutral' : isCurrentDeviceActive ? 'ok' : 'gold'
+  const showTeacher = !isLoadingTeacherReminderPrefs && Boolean(teacherReminderPrefs)
+  const showCoaching =
+    !isLoadingCoachingNotificationPrefs && (isCoachingAdmin || isCoachingUser) && Boolean(coachingNotificationPrefs)
+
   return (
-    <section className='mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-5 py-8'>
-      <h2 className='mb-1 font-serif text-3xl font-bold'>🔔 Notificaciones</h2>
-      <p className='mb-6 text-sm text-muted-foreground'>
-        Configura recordatorios push de rachas y avisos de hábito.
-      </p>
+    <GamePage className='gap-6 lg:max-w-2xl'>
+      <PageTitle
+        icon={
+          <IconTile tone='gold' size={48} solid>
+            <BellIcon className='size-6' strokeWidth={2.6} aria-hidden='true' />
+          </IconTile>
+        }
+        subtitle={t('Recordatorios para no perder tus rachas.')}
+      >
+        {t('Notificaciones')}
+      </PageTitle>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className='flex items-center gap-2'>
-            <BellIcon className='h-4 w-4' />
-            Preferencias push
-          </CardTitle>
-        </CardHeader>
-        <CardContent className='space-y-4'>
-          <div className='rounded-lg border border-border bg-muted/30 px-3 py-2'>
-            <div className='mb-2 flex items-center justify-between gap-2'>
-              <p className='text-sm font-medium'>
-                Notificaciones push en este dispositivo
-              </p>
-              <p className='text-xs text-muted-foreground'>
-                Dispositivos activos: {activePushDevicesCount}
-              </p>
-            </div>
-
-            {pushPermission === 'unsupported' ? (
-              <p className='text-sm text-muted-foreground'>
-                Este navegador no soporta notificaciones push.
-              </p>
-            ) : (
-              <div className='flex flex-wrap items-center gap-2'>
-                <Button
-                  type='button'
-                  variant={isCurrentDeviceActive ? 'outline' : 'default'}
-                  onClick={() => void handleEnablePushOnDevice()}
-                  disabled={isUpdatingPushDevice}
-                >
-                  <SmartphoneIcon />
-                  {isCurrentDeviceActive
-                    ? 'Push activo'
-                    : 'Activar en este dispositivo'}
-                </Button>
-
-                {isCurrentDeviceActive && (
-                  <Button
-                    type='button'
-                    variant='outline'
-                    onClick={() => void handleDisablePushOnDevice()}
-                    disabled={isUpdatingPushDevice}
-                  >
-                    Desactivar en este dispositivo
-                  </Button>
-                )}
-
-                {pushPermission === 'denied' && (
-                  <p className='text-xs text-amber-600'>
-                    El navegador bloqueó permisos. Debes habilitarlos
-                    manualmente.
-                  </p>
-                )}
-              </div>
-            )}
+      {/* Este dispositivo */}
+      <Panel tone={deviceTone} className='flex flex-col gap-3 px-4 py-4'>
+        <div className='flex items-center gap-3'>
+          <IconTile tone={deviceTone} size={48}>
+            <SmartphoneIcon className='size-6' strokeWidth={2.4} aria-hidden='true' />
+          </IconTile>
+          <div className='min-w-0 flex-1'>
+            <p className='m-0 text-base leading-tight font-extrabold'>{t('Este dispositivo')}</p>
+            <p className='m-0 mt-0.5 text-xs font-semibold text-muted-foreground'>
+              {pushPermission === 'unsupported'
+                ? t('Este navegador no permite notificaciones.')
+                : t('{n} dispositivos con avisos', { n: activePushDevicesCount })}
+            </p>
           </div>
+          {pushPermission !== 'unsupported' ? (
+            <Pill tone={isCurrentDeviceActive ? 'ok' : 'neutral'}>
+              {isCurrentDeviceActive ? t('Activas') : t('Apagadas')}
+            </Pill>
+          ) : null}
+        </div>
+        {pushPermission !== 'unsupported' ? (
+          isCurrentDeviceActive ? (
+            <Button
+              type='button'
+              variant='outline'
+              className='h-11 w-full rounded-2xl font-extrabold'
+              onClick={() => void handleDisablePushOnDevice()}
+              disabled={isUpdatingPushDevice}
+            >
+              <BellOffIcon className='size-4' strokeWidth={2.6} aria-hidden='true' />
+              {t('Desactivar en este dispositivo')}
+            </Button>
+          ) : (
+            <Button
+              type='button'
+              variant='gold'
+              className='h-11 w-full rounded-2xl font-extrabold'
+              onClick={() => void handleEnablePushOnDevice()}
+              disabled={isUpdatingPushDevice}
+            >
+              <BellRingIcon className='size-4' strokeWidth={2.6} aria-hidden='true' />
+              {t('Activar en este dispositivo')}
+            </Button>
+          )
+        ) : null}
+        {pushPermission === 'denied' ? (
+          <p
+            className='m-0 rounded-xl px-3 py-2 text-xs font-bold'
+            style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
+          >
+            {t('El navegador ha bloqueado los avisos. Actívalos en los ajustes del navegador.')}
+          </p>
+        ) : null}
+      </Panel>
 
-          <div className='space-y-3'>
-            <div className='rounded-lg border p-3'>
-              <div className='flex flex-wrap items-center justify-between gap-3'>
-                <div className='space-y-1'>
-                  <p className='text-sm font-semibold'>
-                    Recordatorios de clases del calendario
-                  </p>
-                  <p className='text-xs text-muted-foreground'>
-                    Esta preferencia se configura en Calendario ICADEMY.
-                  </p>
-                </div>
-                <Button type='button' variant='outline' asChild>
-                  <Link
-                    to={`${DASHBOARD_ROUTES.calendarIcademy}?navigatefrom=notifications`}
-                  >
-                    Ir a Calendario ICADEMY
-                  </Link>
-                </Button>
-              </div>
-            </div>
-
-            {!isLoadingTeacherReminderPrefs && teacherReminderPrefs && (
-              <div className='rounded-lg border p-3'>
-                <div className='flex flex-wrap items-center justify-between gap-3'>
-                  <div className='space-y-1'>
-                    <p className='text-sm font-semibold'>
-                      Recordatorios como profesor ICADEMY
-                    </p>
-                    <p className='text-xs text-muted-foreground'>
-                      Te avisa antes de tus clases asignadas como profesor.
-                    </p>
-                  </div>
-                  <div className='flex items-center gap-2'>
-                    <Label htmlFor='manage-teacher-reminder-switch'>Avisar</Label>
-                    <Switch
-                      id='manage-teacher-reminder-switch'
-                      checked={teacherReminderPrefs.notificationsEnabled}
-                      disabled={isSavingTeacherReminderPrefs}
-                      onCheckedChange={(checked) =>
-                        void handleUpdateTeacherReminderPreferences({
-                          notificationsEnabled: checked,
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-
-                <div className='mt-3 flex items-center gap-2'>
-                  <Label htmlFor='manage-teacher-reminder-minutes'>Anticipación</Label>
-                  <Select
-                    value={String(teacherReminderPrefs.minutesBefore)}
-                    onValueChange={(value) =>
-                      void handleUpdateTeacherReminderPreferences({
-                        minutesBefore: Number(value),
-                      })
-                    }
-                    disabled={
-                      isSavingTeacherReminderPrefs ||
-                      !teacherReminderPrefs.notificationsEnabled
-                    }
-                  >
-                    <SelectTrigger id='manage-teacher-reminder-minutes'>
-                      <SelectValue placeholder='Selecciona minutos' />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectLabel>Minutos antes</SelectLabel>
-                        {CALENDAR_REMINDER_OPTIONS.map((minutes) => (
-                          <SelectItem key={minutes} value={String(minutes)}>
-                            {minutes} min antes
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+      {/* Rachas */}
+      <div>
+        <SectionLabel>{t('Rachas')}</SectionLabel>
+        <RowGroup>
+          <ReminderRow
+            id='manage-ica-reminder-switch'
+            icon={<FlameIcon size={30} />}
+            iconTone='fire'
+            title={t('Racha ICA')}
+            text={t('Si aún no has completado I·C·A hoy.')}
+            checked={reminderPrefs.icaStreakEnabled}
+            disabled={isLoadingReminderPrefs || isSavingReminderPrefs}
+            onCheckedChange={(checked) => void handleUpdateReminderPreferences({ icaStreakEnabled: checked })}
+          >
+            {hourSelect('manage-ica-reminder-hour', reminderPrefs.icaStreakHour, isLoadingReminderPrefs || isSavingReminderPrefs, (hour) =>
+              void handleUpdateReminderPreferences({ icaStreakHour: hour }),
             )}
+          </ReminderRow>
+          <ReminderRow
+            id='manage-flash-reminder-switch'
+            icon={<FlameIcon size={30} tone='flash' />}
+            iconTone='i'
+            title={t('Racha de flashcards')}
+            text={t('Si aún no has acertado tus 10 flashcards hoy.')}
+            checked={reminderPrefs.flashcardsStreakEnabled}
+            disabled={isLoadingReminderPrefs || isSavingReminderPrefs}
+            onCheckedChange={(checked) => void handleUpdateReminderPreferences({ flashcardsStreakEnabled: checked })}
+          >
+            {hourSelect('manage-flash-reminder-hour', reminderPrefs.flashcardsStreakHour, isLoadingReminderPrefs || isSavingReminderPrefs, (hour) =>
+              void handleUpdateReminderPreferences({ flashcardsStreakHour: hour }),
+            )}
+          </ReminderRow>
+          <ReminderRow
+            id='manage-habit-reminder-switch'
+            icon={<HourglassIcon className='size-6' strokeWidth={2.4} aria-hidden='true' />}
+            iconTone='c'
+            title={t('Si dejas de entrar')}
+            text={t('Te avisamos tras 36 horas, 3 días y 7 días sin entrar.')}
+            checked={reminderPrefs.habitLossEnabled}
+            disabled={isLoadingReminderPrefs || isSavingReminderPrefs}
+            onCheckedChange={(checked) => void handleUpdateReminderPreferences({ habitLossEnabled: checked })}
+          />
+        </RowGroup>
+      </div>
 
-            {!isLoadingCoachingNotificationPrefs &&
-              (isCoachingAdmin || isCoachingUser) &&
-              coachingNotificationPrefs && (
-                <>
-                  {isCoachingUser && (
-                    <div className='rounded-lg border p-3'>
-                      <div className='flex flex-wrap items-center justify-between gap-3'>
-                        <div className='space-y-1'>
-                          <p className='text-sm font-semibold'>
-                            Coaching: sesión activa
-                          </p>
-                          <p className='text-xs text-muted-foreground'>
-                            Te avisa cuando tu coach activa semana, agenda tu
-                            clase y deja feedback en tu nota maestra.
-                          </p>
-                        </div>
-                        <div className='flex items-center gap-2'>
-                          <Label htmlFor='manage-coaching-active-session-switch'>
-                            Avisar
-                          </Label>
-                          <Switch
-                            id='manage-coaching-active-session-switch'
-                            checked={coachingNotificationPrefs.activeSessionEnabled}
-                            disabled={isSavingCoachingNotificationPrefs}
-                            onCheckedChange={(checked) =>
-                              void handleUpdateCoachingNotificationPreferences({
-                                activeSessionEnabled: checked,
-                              })
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      <div className='mt-3 flex items-center gap-2'>
-                        <Label htmlFor='manage-coaching-class-reminder-minutes'>
-                          Clase: anticipación
-                        </Label>
-                        <Select
-                          value={String(
-                            coachingNotificationPrefs.classScheduleReminderMinutes,
-                          )}
-                          onValueChange={(value) =>
-                            void handleUpdateCoachingNotificationPreferences({
-                              classScheduleReminderMinutes: Number(value) as
-                                | 10
-                                | 30
-                                | 60,
-                            })
-                          }
-                          disabled={
-                            isSavingCoachingNotificationPrefs ||
-                            !coachingNotificationPrefs.activeSessionEnabled
-                          }
-                        >
-                          <SelectTrigger id='manage-coaching-class-reminder-minutes'>
-                            <SelectValue placeholder='Selecciona minutos' />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              <SelectLabel>Minutos antes</SelectLabel>
-                              {COACHING_CLASS_REMINDER_OPTIONS.map((minutes) => (
-                                <SelectItem key={minutes} value={String(minutes)}>
-                                  {minutes} min antes
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  )}
-
-                  {isCoachingAdmin && (
-                    <div className='rounded-lg border p-3'>
-                      <div className='flex flex-wrap items-center justify-between gap-3'>
-                        <div className='space-y-1'>
-                          <p className='text-sm font-semibold'>
-                            Coaching: cierre de nota maestra
-                          </p>
-                          <p className='text-xs text-muted-foreground'>
-                            Te avisa cuando un alumno cierra una nota maestra
-                            dentro de una semana de coaching activada.
-                          </p>
-                        </div>
-                        <div className='flex items-center gap-2'>
-                          <Label htmlFor='manage-coaching-note-close-switch'>
-                            Avisar
-                          </Label>
-                          <Switch
-                            id='manage-coaching-note-close-switch'
-                            checked={coachingNotificationPrefs.masterNoteClosedEnabled}
-                            disabled={isSavingCoachingNotificationPrefs}
-                            onCheckedChange={(checked) =>
-                              void handleUpdateCoachingNotificationPreferences({
-                                masterNoteClosedEnabled: checked,
-                              })
-                            }
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </>
+      {/* Clases */}
+      <div>
+        <SectionLabel>{t('Clases')}</SectionLabel>
+        <RowGroup>
+          <ListRow
+            to={`${DASHBOARD_ROUTES.calendarIcademy}?navigatefrom=notifications`}
+            icon={
+              <IconTile tone='a' size={44}>
+                <CalendarDaysIcon className='size-6' strokeWidth={2.4} aria-hidden='true' />
+              </IconTile>
+            }
+            title={t('Clases del calendario')}
+            text={t('Se eligen en el Calendario ICADEMY.')}
+          />
+          {showTeacher && teacherReminderPrefs ? (
+            <ReminderRow
+              id='manage-teacher-reminder-switch'
+              icon={<PresentationIcon className='size-6' strokeWidth={2.4} aria-hidden='true' />}
+              iconTone='primary'
+              title={t('Tus clases como profesor')}
+              text={t('Antes de las clases que tienes asignadas.')}
+              checked={teacherReminderPrefs.notificationsEnabled}
+              disabled={isSavingTeacherReminderPrefs}
+              onCheckedChange={(checked) => void handleUpdateTeacherReminderPreferences({ notificationsEnabled: checked })}
+            >
+              {minutesSelect(
+                'manage-teacher-reminder-minutes',
+                teacherReminderPrefs.minutesBefore,
+                CALENDAR_REMINDER_OPTIONS,
+                isSavingTeacherReminderPrefs,
+                (minutes) => void handleUpdateTeacherReminderPreferences({ minutesBefore: minutes }),
               )}
+            </ReminderRow>
+          ) : null}
+        </RowGroup>
+      </div>
 
-            <div className='rounded-lg border p-3'>
-              <div className='flex flex-wrap items-center justify-between gap-3'>
-                <div className='space-y-1'>
-                  <p className='text-sm font-semibold'>
-                    Racha ICA no completada hoy
-                  </p>
-                  <p className='text-xs text-muted-foreground'>
-                    Te avisa si hoy aún no cerraste la racha de creación ICA.
-                  </p>
-                </div>
-                <div className='flex items-center gap-2'>
-                  <Label htmlFor='manage-ica-reminder-switch'>Avisar</Label>
-                  <Switch
-                    id='manage-ica-reminder-switch'
-                    checked={reminderPrefs.icaStreakEnabled}
-                    disabled={isLoadingReminderPrefs || isSavingReminderPrefs}
-                    onCheckedChange={(checked) =>
-                      void handleUpdateReminderPreferences({
-                        icaStreakEnabled: checked,
-                      })
-                    }
-                  />
-                </div>
-              </div>
+      {/* Coaching */}
+      {showCoaching && coachingNotificationPrefs ? (
+        <div>
+          <SectionLabel>{t('Coaching')}</SectionLabel>
+          <RowGroup>
+            {isCoachingUser ? (
+              <ReminderRow
+                id='manage-coaching-active-session-switch'
+                icon={<GraduationCapIcon className='size-6' strokeWidth={2.4} aria-hidden='true' />}
+                iconTone='gold'
+                title={t('Tu coaching')}
+                text={t('Cuando tu coach activa la semana, agenda tu clase o te deja feedback.')}
+                checked={coachingNotificationPrefs.activeSessionEnabled}
+                disabled={isSavingCoachingNotificationPrefs}
+                onCheckedChange={(checked) => void handleUpdateCoachingNotificationPreferences({ activeSessionEnabled: checked })}
+              >
+                {minutesSelect(
+                  'manage-coaching-class-reminder-minutes',
+                  coachingNotificationPrefs.classScheduleReminderMinutes,
+                  COACHING_CLASS_REMINDER_OPTIONS,
+                  isSavingCoachingNotificationPrefs,
+                  (minutes) =>
+                    void handleUpdateCoachingNotificationPreferences({
+                      classScheduleReminderMinutes: minutes as 10 | 30 | 60,
+                    }),
+                )}
+              </ReminderRow>
+            ) : null}
+            {isCoachingAdmin ? (
+              <ReminderRow
+                id='manage-coaching-note-close-switch'
+                icon={<AudioLinesIcon className='size-6' strokeWidth={2.4} aria-hidden='true' />}
+                iconTone='gold'
+                title={t('Notas maestras de tus alumnos')}
+                text={t('Cuando un alumno cierra una nota maestra en una semana de coaching.')}
+                checked={coachingNotificationPrefs.masterNoteClosedEnabled}
+                disabled={isSavingCoachingNotificationPrefs}
+                onCheckedChange={(checked) => void handleUpdateCoachingNotificationPreferences({ masterNoteClosedEnabled: checked })}
+              />
+            ) : null}
+          </RowGroup>
+        </div>
+      ) : null}
+    </GamePage>
+  )
+}
 
-              <div className='mt-3 flex items-center gap-2'>
-                <Label htmlFor='manage-ica-reminder-hour'>Hora</Label>
-                <Select
-                  value={String(reminderPrefs.icaStreakHour)}
-                  onValueChange={(value) =>
-                    void handleUpdateReminderPreferences({
-                      icaStreakHour: Number(value),
-                    })
-                  }
-                  disabled={
-                    isLoadingReminderPrefs ||
-                    isSavingReminderPrefs ||
-                    !reminderPrefs.icaStreakEnabled
-                  }
-                >
-                  <SelectTrigger id='manage-ica-reminder-hour'>
-                    <SelectValue placeholder='Selecciona una hora' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectLabel>Hora local</SelectLabel>
-                      {REMINDER_HOUR_OPTIONS.map((hour) => (
-                        <SelectItem key={hour} value={String(hour)}>
-                          {formatReminderHour(hour)}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className='rounded-lg border p-3'>
-              <div className='flex flex-wrap items-center justify-between gap-3'>
-                <div className='space-y-1'>
-                  <p className='text-sm font-semibold'>
-                    Racha Flashcards no completada hoy
-                  </p>
-                  <p className='text-xs text-muted-foreground'>
-                    Te avisa si hoy aún no cerraste la racha de flashcards.
-                  </p>
-                </div>
-                <div className='flex items-center gap-2'>
-                  <Label htmlFor='manage-flash-reminder-switch'>Avisar</Label>
-                  <Switch
-                    id='manage-flash-reminder-switch'
-                    checked={reminderPrefs.flashcardsStreakEnabled}
-                    disabled={isLoadingReminderPrefs || isSavingReminderPrefs}
-                    onCheckedChange={(checked) =>
-                      void handleUpdateReminderPreferences({
-                        flashcardsStreakEnabled: checked,
-                      })
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className='mt-3 flex items-center gap-2'>
-                <Label htmlFor='manage-flash-reminder-hour'>Hora</Label>
-                <Select
-                  value={String(reminderPrefs.flashcardsStreakHour)}
-                  onValueChange={(value) =>
-                    void handleUpdateReminderPreferences({
-                      flashcardsStreakHour: Number(value),
-                    })
-                  }
-                  disabled={
-                    isLoadingReminderPrefs ||
-                    isSavingReminderPrefs ||
-                    !reminderPrefs.flashcardsStreakEnabled
-                  }
-                >
-                  <SelectTrigger id='manage-flash-reminder-hour'>
-                    <SelectValue placeholder='Selecciona una hora' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectLabel>Hora local</SelectLabel>
-                      {REMINDER_HOUR_OPTIONS.map((hour) => (
-                        <SelectItem key={hour} value={String(hour)}>
-                          {formatReminderHour(hour)}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className='rounded-lg border p-3'>
-              <div className='flex flex-wrap items-center justify-between gap-3'>
-                <div className='space-y-1'>
-                  <p className='text-sm font-semibold'>
-                    Aviso de pérdida de hábito
-                  </p>
-                  <p className='text-xs text-muted-foreground'>
-                    Recibes avisos tras 36h, 72h y 7 dias sin actividad en la
-                    app.
-                  </p>
-                </div>
-                <div className='flex items-center gap-2'>
-                  <Label htmlFor='manage-habit-reminder-switch'>Avisar</Label>
-                  <Switch
-                    id='manage-habit-reminder-switch'
-                    checked={reminderPrefs.habitLossEnabled}
-                    disabled={isLoadingReminderPrefs || isSavingReminderPrefs}
-                    onCheckedChange={(checked) =>
-                      void handleUpdateReminderPreferences({
-                        habitLossEnabled: checked,
-                      })
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </section>
+/** Fila de un aviso: icono, qué hace, interruptor y (si está activo) cuándo. */
+function ReminderRow({
+  id,
+  icon,
+  iconTone,
+  title,
+  text,
+  checked,
+  disabled,
+  onCheckedChange,
+  children,
+}: {
+  id: string
+  icon: ReactNode
+  iconTone: Tone
+  title: string
+  text: string
+  checked: boolean
+  disabled?: boolean
+  onCheckedChange: (checked: boolean) => void
+  children?: ReactNode
+}) {
+  return (
+    <div className='py-3'>
+      <div className='flex items-center gap-3'>
+        <IconTile tone={checked ? iconTone : 'neutral'} size={44}>
+          {icon}
+        </IconTile>
+        <label htmlFor={id} className='min-w-0 flex-1 cursor-pointer'>
+          <span className='block leading-tight font-extrabold'>{title}</span>
+          <span className='mt-0.5 block text-xs font-semibold text-muted-foreground'>{text}</span>
+        </label>
+        <Switch id={id} checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} />
+      </div>
+      {checked && children ? (
+        <div className='ica-pop mt-2.5 ml-14 flex items-center gap-2'>
+          <ClockIcon className='size-4 text-muted-foreground' strokeWidth={2.6} aria-hidden='true' />
+          {children}
+        </div>
+      ) : null}
+    </div>
   )
 }

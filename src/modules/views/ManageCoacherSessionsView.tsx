@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeftIcon, EyeIcon, RefreshCwIcon } from 'lucide-react'
+import { ArrowLeftIcon, RefreshCwIcon, UsersIcon } from 'lucide-react'
+import { EmptyState, IconTile, ListRow, PageTitle, Panel, Pill, RowGroup, SectionLabel } from '../game/ui'
+import { UserInitial } from '../game/ranking'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   fetchCoachingManagedUsers,
   type CoachingManagedUser,
@@ -51,92 +52,72 @@ export function ManageCoacherSessionsView({
   const coachDisplayName =
     sessions[0]?.coachDisplayName || sessions[0]?.coachUserId || coachUserId
 
+  const statusLabel = (status: string) =>
+    status === 'active' ? 'Activa' : status === 'draft' ? 'Borrador' : status === 'finished' ? 'Terminada' : status
+
   return (
-    <section className='mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-5 py-8'>
-      <div className='mb-6 flex flex-wrap items-center justify-between gap-3'>
-        <div>
-          <h2 className='mb-1 font-serif text-3xl font-bold'>
-            Sesiones del coacher
-          </h2>
-          <p className='text-sm text-muted-foreground'>{coachDisplayName}</p>
-        </div>
+    <section className='mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 px-4 pt-2 pb-8 lg:py-8'>
+      <PageTitle
+        icon={
+          <IconTile tone='c' size={48}>
+            <UsersIcon className='size-6' strokeWidth={2.4} />
+          </IconTile>
+        }
+        subtitle={coachDisplayName}
+        right={
+          <span className='flex gap-2'>
+            <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => navigate(-1)} aria-label='Volver'>
+              <ArrowLeftIcon className='size-5' strokeWidth={2.6} />
+            </Button>
+            <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => void loadData()} disabled={loading} aria-label='Recargar'>
+              <RefreshCwIcon className={loading ? 'size-5 animate-spin' : 'size-5'} strokeWidth={2.6} />
+            </Button>
+          </span>
+        }
+      >
+        Alumnos del coacher
+      </PageTitle>
 
-        <div className='flex flex-wrap gap-2'>
-          <Button type='button' variant='outline' onClick={() => navigate(-1)}>
-            <ArrowLeftIcon className='h-4 w-4' />
-            Volver
-          </Button>
-          <Button type='button' variant='ghost' onClick={() => void loadData()}>
-            <RefreshCwIcon className='h-4 w-4' />
-            Recargar
-          </Button>
-        </div>
+      {error ? (
+        <Panel tone='bad' className='text-sm font-bold'>
+          {error}
+        </Panel>
+      ) : null}
+
+      <div>
+        <SectionLabel>{sessions.length === 1 ? '1 sesión' : `${sessions.length} sesiones`}</SectionLabel>
+        {loading && sessions.length === 0 ? (
+          <div className='flex flex-col gap-2' aria-hidden='true'>
+            {Array.from({ length: 3 }, (_, index) => (
+              <div key={index} className='h-16 animate-pulse rounded-2xl bg-muted' />
+            ))}
+          </div>
+        ) : sessions.length === 0 ? (
+          <Panel>
+            <EmptyState title='Sin alumnos asignados' text='Cuando asignes alumnos a este coacher, aparecerán aquí.' />
+          </Panel>
+        ) : (
+          <RowGroup>
+            {sessions.map((row) => (
+              <ListRow
+                key={row.id}
+                onClick={() => navigate(getManageCoachingUserRoute(row.userId, row.id))}
+                icon={<UserInitial name={row.userDisplayName} size={40} />}
+                title={row.userDisplayName}
+                text={
+                  <span className='flex flex-wrap items-center gap-1.5'>
+                    <Pill tone='i'>
+                      {row.targetLang} {row.level}
+                    </Pill>
+                    <Pill tone={row.status === 'active' ? 'ok' : 'neutral'}>{statusLabel(row.status)}</Pill>
+                    <span>{formatDateTime(row.updatedAt)}</span>
+                  </span>
+                }
+              />
+            ))}
+          </RowGroup>
+        )}
       </div>
-
-      {error && <p className='mb-4 text-sm text-destructive'>{error}</p>}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Sesiones asignadas ({sessions.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <p className='text-sm text-muted-foreground'>
-              Cargando sesiones...
-            </p>
-          ) : sessions.length === 0 ? (
-            <p className='text-sm text-muted-foreground'>
-              Este coacher no tiene sesiones asignadas.
-            </p>
-          ) : (
-            <div className='overflow-x-auto'>
-              <table className='w-full min-w-180 table-fixed text-left text-sm'>
-                <thead>
-                  <tr className='border-b text-muted-foreground'>
-                    <th className='pb-2 font-medium'>Usuario</th>
-                    <th className='pb-2 font-medium'>Idioma</th>
-                    <th className='pb-2 font-medium'>Nivel</th>
-                    <th className='pb-2 font-medium'>Estado</th>
-                    <th className='pb-2 font-medium'>Actualizado</th>
-                    <th className='pb-2 font-medium'>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sessions.map((row) => (
-                    <tr
-                      key={row.id}
-                      className='border-b align-middle last:border-b-0'
-                    >
-                      <td className='py-2'>{row.userDisplayName}</td>
-                      <td className='py-2'>{row.targetLang}</td>
-                      <td className='py-2'>{row.level}</td>
-                      <td className='py-2'>{row.status}</td>
-                      <td className='py-2 text-xs text-muted-foreground'>
-                        {formatDateTime(row.updatedAt)}
-                      </td>
-                      <td className='py-2'>
-                        <Button
-                          type='button'
-                          variant='outline'
-                          size='icon'
-                          aria-label='Ver sesión de usuario'
-                          onClick={() =>
-                            navigate(
-                              getManageCoachingUserRoute(row.userId, row.id),
-                            )
-                          }
-                        >
-                          <EyeIcon className='h-4 w-4' />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </section>
   )
 }

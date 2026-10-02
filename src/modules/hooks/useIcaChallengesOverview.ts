@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { t } from '@/i18n'
 import { supabase } from '@/lib/supabase'
 import type {
   IcaChallengeAvailableUser,
@@ -63,6 +64,8 @@ type UseIcaChallengesOverviewResult = {
     scope: IcaChallengeScope
     config: IcaOwnWordsChallengeConfig
     durationSeconds?: number
+    /** 4.º desafío con un «desafío extra» (2 ICA Coins). */
+    extraSlot?: boolean
   }) => Promise<void>
   respondInvitation: (challengeId: string, accept: boolean) => Promise<void>
   cancelInvitation: (challengeId: string) => Promise<void>
@@ -70,31 +73,136 @@ type UseIcaChallengesOverviewResult = {
   refresh: () => Promise<void>
 }
 
+// DATOS PRECARGADOS: al pulsar «Desafiar» en el perfil de un icademer, el perfil espera un
+// momento mientras se cargan los datos de Desafíos (prefetchIcaChallengesOverview) y la página
+// abre ya con ellos, directamente en «Retar a …», sin pasar por «Cargando desafíos…».
+
+type OverviewSnapshot = {
+  currentUserId: string | null
+  enrollment: IcaChallengeEnrollment | null
+  challenges: IcaChallengeRecord[]
+  playsByChallengeId: Record<string, IcaChallengePlayRecord[]>
+  userProfiles: Record<string, { displayName: string; username: string | null; avatarUrl: string | null }>
+  challengeTypes: IcaChallengeTypeRecord[]
+  availableUsers: IcaChallengeAvailableUser[]
+  myActiveChallengesCount: number
+  myLevel: string | null
+  myWordCount: number | null
+  minWordsToJoin: number
+}
+
+/** Cuánto vale una precarga (después se vuelve a pedir). */
+const SNAPSHOT_FRESH_MS = 30_000
+let lastSnapshot: { key: string; at: number; data: OverviewSnapshot } | null = null
+let inflightSnapshot: { key: string; promise: Promise<OverviewSnapshot> } | null = null
+
+async function fetchOverviewSnapshot(targetLang: string, nativeLang: string): Promise<OverviewSnapshot> {
+  const [
+    {
+      data: { user },
+    },
+    enrollmentData,
+    challengesData,
+    challengeTypesData,
+    availableUsersData,
+  ] = await Promise.all([
+    supabase?.auth.getUser() ?? Promise.resolve({ data: { user: null }, error: null }),
+    fetchMyIcaChallengeEnrollment(targetLang, nativeLang),
+    listMyIcaChallenges(targetLang, nativeLang),
+    listIcaChallengeTypes(),
+    listAvailableIcaChallengeUsers({
+      targetLang,
+      nativeLang,
+      scope: 'global',
+    }),
+  ])
+  const challengeIds = challengesData.map((challenge) => challenge.id)
+  const playsData = await listIcaChallengePlaysByChallengeIds(challengeIds)
+  const userIds = Array.from(
+    new Set(
+      challengesData
+        .flatMap((challenge) => [challenge.challengerUserId, challenge.challengedUserId])
+        .concat(availableUsersData.rows.map((row) => row.userId)),
+    ),
+  )
+  const profilesData = await listIcaChallengeProfilesByIds(userIds)
+  return {
+    currentUserId: user?.id ?? null,
+    enrollment: enrollmentData,
+    challenges: challengesData,
+    playsByChallengeId: playsData,
+    userProfiles: profilesData,
+    challengeTypes: challengeTypesData,
+    availableUsers: availableUsersData.rows,
+    myActiveChallengesCount: availableUsersData.myActiveChallengesCount,
+    myLevel: availableUsersData.myLevel,
+    myWordCount: availableUsersData.myWordCount,
+    minWordsToJoin: availableUsersData.minWordsToJoin,
+  }
+}
+
+/**
+ * Carga los datos de Desafíos. Si ya se están cargando, espera a esa misma carga, salvo con
+ * `force` (después de retar, aceptar, etc., hay que pedirlos de nuevo).
+ */
+function loadOverviewSnapshot(targetLang: string, nativeLang: string, force = false): Promise<OverviewSnapshot> {
+  const key = `${targetLang}|${nativeLang}`
+  if (!force && inflightSnapshot?.key === key) return inflightSnapshot.promise
+  const promise = fetchOverviewSnapshot(targetLang, nativeLang)
+    .then((data) => {
+      lastSnapshot = { key, at: Date.now(), data }
+      return data
+    })
+    .finally(() => {
+      if (inflightSnapshot?.promise === promise) inflightSnapshot = null
+    })
+  inflightSnapshot = { key, promise }
+  return promise
+}
+
+function freshSnapshot(targetLang?: string, nativeLang?: string): OverviewSnapshot | null {
+  if (!targetLang || !nativeLang || !lastSnapshot) return null
+  if (lastSnapshot.key !== `${targetLang}|${nativeLang}`) return null
+  return Date.now() - lastSnapshot.at < SNAPSHOT_FRESH_MS ? lastSnapshot.data : null
+}
+
+/** Precarga Desafíos (p. ej. al pulsar «Desafiar» en un perfil). No falla nunca. */
+export async function prefetchIcaChallengesOverview(targetLang?: string | null, nativeLang?: string | null): Promise<void> {
+  if (!targetLang || !nativeLang) return
+  try {
+    await loadOverviewSnapshot(targetLang, nativeLang)
+  } catch {
+    // Si falla, la página lo vuelve a intentar al abrirse.
+  }
+}
+
 export function useIcaChallengesOverview({
   targetLang,
   nativeLang,
 }: UseIcaChallengesOverviewParams): UseIcaChallengesOverviewResult {
-  const [enrollment, setEnrollment] = useState<IcaChallengeEnrollment | null>(null)
-  const [challenges, setChallenges] = useState<IcaChallengeRecord[]>([])
+  // Si hay datos precargados (de hace menos de 30 s), la página abre ya con ellos.
+  const [initial] = useState(() => freshSnapshot(targetLang, nativeLang))
+  const [enrollment, setEnrollment] = useState<IcaChallengeEnrollment | null>(initial?.enrollment ?? null)
+  const [challenges, setChallenges] = useState<IcaChallengeRecord[]>(initial?.challenges ?? [])
   const [playsByChallengeId, setPlaysByChallengeId] = useState<
     Record<string, IcaChallengePlayRecord[]>
-  >({})
+  >(initial?.playsByChallengeId ?? {})
   const [userProfiles, setUserProfiles] = useState<
     Record<string, { displayName: string; username: string | null; avatarUrl: string | null }>
-  >({})
-  const [challengeTypes, setChallengeTypes] = useState<IcaChallengeTypeRecord[]>([])
-  const [availableUsers, setAvailableUsers] = useState<IcaChallengeAvailableUser[]>([])
-  const [myActiveChallengesCount, setMyActiveChallengesCount] = useState(0)
-  const [myLevel, setMyLevel] = useState<string | null>(null)
-  const [myWordCount, setMyWordCount] = useState<number | null>(null)
-  const [minWordsToJoin, setMinWordsToJoin] = useState(20)
+  >(initial?.userProfiles ?? {})
+  const [challengeTypes, setChallengeTypes] = useState<IcaChallengeTypeRecord[]>(initial?.challengeTypes ?? [])
+  const [availableUsers, setAvailableUsers] = useState<IcaChallengeAvailableUser[]>(initial?.availableUsers ?? [])
+  const [myActiveChallengesCount, setMyActiveChallengesCount] = useState(initial?.myActiveChallengesCount ?? 0)
+  const [myLevel, setMyLevel] = useState<string | null>(initial?.myLevel ?? null)
+  const [myWordCount, setMyWordCount] = useState<number | null>(initial?.myWordCount ?? null)
+  const [minWordsToJoin, setMinWordsToJoin] = useState(initial?.minWordsToJoin ?? 20)
   const [stats, setStats] = useState<IcaChallengeStats | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(!initial)
   const [isSavingEnrollment, setIsSavingEnrollment] = useState(false)
   const [isCreatingChallenge, setIsCreatingChallenge] = useState(false)
   const [isResponding, setIsResponding] = useState(false)
   const [isCancelling, setIsCancelling] = useState(false)
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(initial?.currentUserId ?? null)
   const [error, setError] = useState<string | null>(null)
 
   const refreshAvailableUsers = useCallback(
@@ -126,7 +234,7 @@ export function useIcaChallengesOverview({
   // La pantalla de «Cargando…» solo sale la primera vez (o al cambiar de idioma).
   // Después, al aceptar, rechazar o retar, los datos se actualizan por detrás sin
   // que la pantalla parpadee.
-  const loadedKeyRef = useRef<string | null>(null)
+  const loadedKeyRef = useRef<string | null>(initial ? `${targetLang}|${nativeLang}` : null)
 
   const refresh = useCallback(async () => {
     if (!targetLang || !nativeLang) {
@@ -148,47 +256,19 @@ export function useIcaChallengesOverview({
     if (firstLoad) setIsLoading(true)
     setError(null)
     try {
-      const [
-        {
-          data: { user },
-        },
-        enrollmentData,
-        challengesData,
-        challengeTypesData,
-        availableUsersData,
-      ] = await Promise.all([
-        supabase?.auth.getUser() ?? Promise.resolve({ data: { user: null }, error: null }),
-        fetchMyIcaChallengeEnrollment(targetLang, nativeLang),
-        listMyIcaChallenges(targetLang, nativeLang),
-        listIcaChallengeTypes(),
-        listAvailableIcaChallengeUsers({
-          targetLang,
-          nativeLang,
-          scope: 'global',
-        }),
-      ])
-
-      setCurrentUserId(user?.id ?? null)
-      setEnrollment(enrollmentData)
-      setChallenges(challengesData)
-      const challengeIds = challengesData.map((challenge) => challenge.id)
-      const playsData = await listIcaChallengePlaysByChallengeIds(challengeIds)
-      const userIds = Array.from(
-        new Set(
-          challengesData
-            .flatMap((challenge) => [challenge.challengerUserId, challenge.challengedUserId])
-            .concat(availableUsersData.rows.map((row) => row.userId)),
-        ),
-      )
-      const profilesData = await listIcaChallengeProfilesByIds(userIds)
-      setPlaysByChallengeId(playsData)
-      setUserProfiles(profilesData)
-      setChallengeTypes(challengeTypesData)
-      setAvailableUsers(availableUsersData.rows)
-      setMyActiveChallengesCount(availableUsersData.myActiveChallengesCount)
-      setMyLevel(availableUsersData.myLevel)
-      setMyWordCount(availableUsersData.myWordCount)
-      setMinWordsToJoin(availableUsersData.minWordsToJoin)
+      // La primera vez se aprovecha la precarga (si la hay); después, siempre datos nuevos.
+      const data = await loadOverviewSnapshot(targetLang, nativeLang, !firstLoad)
+      setCurrentUserId(data.currentUserId)
+      setEnrollment(data.enrollment)
+      setChallenges(data.challenges)
+      setPlaysByChallengeId(data.playsByChallengeId)
+      setUserProfiles(data.userProfiles)
+      setChallengeTypes(data.challengeTypes)
+      setAvailableUsers(data.availableUsers)
+      setMyActiveChallengesCount(data.myActiveChallengesCount)
+      setMyLevel(data.myLevel)
+      setMyWordCount(data.myWordCount)
+      setMinWordsToJoin(data.minWordsToJoin)
       // El aviso de la barra de abajo y la cabecera se pone al día.
       void refreshIcaChallengeAlerts(true)
       // El balance (racha de victorias) no bloquea la pantalla si falla.
@@ -196,7 +276,7 @@ export function useIcaChallengesOverview({
         .then(setStats)
         .catch(() => setStats(null))
     } catch {
-      setError('No pudimos cargar los desafíos ICA.')
+      setError(t('No pudimos cargar los desafíos ICA.'))
     } finally {
       loadedKeyRef.current = loadKey
       setIsLoading(false)
@@ -237,6 +317,7 @@ export function useIcaChallengesOverview({
       scope: IcaChallengeScope
       config: IcaOwnWordsChallengeConfig
       durationSeconds?: number
+      extraSlot?: boolean
     }) => {
       if (!targetLang || !nativeLang) return
       setIsCreatingChallenge(true)
@@ -249,6 +330,7 @@ export function useIcaChallengesOverview({
           nativeLang,
           durationSeconds: input.durationSeconds,
           config: input.config,
+          extraSlot: input.extraSlot,
         })
         await refresh()
       } finally {

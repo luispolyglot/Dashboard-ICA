@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { setUiLang, t, uiLangForNative } from '@/i18n'
 import type { CSSProperties, RefObject } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
@@ -11,6 +12,7 @@ import { getCalendarIcademyCatalogEntry } from '../constants/calendarIcademyCata
 import { useIcaTestsOverview } from '../hooks/useIcaTestsOverview'
 import { LangEditModal } from '../components/LangEditModal'
 import { MobileBottomNav } from '../components/MobileBottomNav'
+import { MonthlyRecapHost } from '../game/monthlyRecap'
 import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
 
@@ -31,6 +33,12 @@ import {
   OFFLINE_SAFE_ROUTE_TRIGGER_EVENT,
 } from '../offline/events'
 import { LanguageSetup } from '../views/LanguageSetup'
+import { CycleCelebration } from '../game/CycleCelebration'
+import { ChallengesUnlockWatcher } from '../game/ChallengesUnlocked'
+import { prefetchAchievementStats } from '../game/achievements'
+import { fetchMonthlyStreakLeaderboard } from '../services/leaderboard'
+import { StreakDayCelebrationHost } from '../game/StreakDayCelebration'
+import { StreakRewardsWatcher } from '../game/StreakExtras'
 
 /* Último resumen de coaching de la barra superior, guardado en este navegador:
    al recargar, el botón «Coaching» sale al momento en vez de tardar ~2 s. */
@@ -144,6 +152,21 @@ export function DashboardLayout() {
   const [flightQueue, setFlightQueue] = useState(0)
   const [activeFlight, setActiveFlight] = useState(0)
   const { user } = useAuth()
+
+  // Se piden por detrás, al abrir la app, los datos de pantallas muy visitadas
+  // (ranking, insignias): así, al entrar en ellas, salen al momento.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void fetchMonthlyStreakLeaderboard(250).catch(() => undefined)
+      prefetchAchievementStats(user?.id)
+    }, 1200)
+    return () => window.clearTimeout(timer)
+  }, [user?.id])
+
+  // La interfaz va en el idioma nativo del alumno (español → español; el resto → inglés).
+  useEffect(() => {
+    if (config?.nativeLang) setUiLang(uiLangForNative(config.nativeLang))
+  }, [config?.nativeLang])
   const [hasPendingCoachingReview, setHasPendingCoachingReview] = useState(
     () => readStoredCoachingNav(user?.id)?.hasPendingReviews ?? false,
   )
@@ -257,10 +280,22 @@ export function DashboardLayout() {
       if (newCompletions > 0) {
         setFlightQueue((value) => value + newCompletions)
       }
+
+      // Modo juego: al cerrar el ciclo ICA, avisar de que el cofre está listo.
+      if (!previous.ica && currentMilestones.ica) {
+        toast.success(t('¡Ciclo ICA completado!'), {
+          description: t('Tu cofre del ciclo te espera en Inicio.'),
+          action: {
+            label: t('Abrir'),
+            onClick: () => navigate(DASHBOARD_ROUTES.home),
+          },
+          duration: 8000,
+        })
+      }
     }
 
     previousMilestonesRef.current = currentMilestones
-  }, [dailyProgress, loading])
+  }, [dailyProgress, loading, navigate])
 
   useEffect(() => {
     if (loading || hasCheckedCalendarNotificationsRef.current) return
@@ -296,8 +331,8 @@ export function DashboardLayout() {
 
           const whenLabel =
             reminder.minutesUntilStart <= 0
-              ? 'Comienza en breve'
-              : `Empieza en ${reminder.minutesUntilStart} min`
+              ? t('Comienza en breve')
+              : t('Empieza en {n} min', { n: reminder.minutesUntilStart })
           const catalogEntry = getCalendarIcademyCatalogEntry(
             reminder.entry.classKey,
           )
@@ -305,10 +340,14 @@ export function DashboardLayout() {
             ? `${catalogEntry.flag} ${catalogEntry.className}`
             : reminder.entry.className
 
-          toast.info(`Clase ICADEMY: ${classLabel}`, {
-            description: `${whenLabel} · ${reminder.entry.sessionTime} · con ${reminder.entry.teacher}`,
+          toast.info(t('Clase ICADEMY: {label}', { label: classLabel }), {
+            description: t('{when} · {time} · con {teacher}', {
+              when: whenLabel,
+              time: reminder.entry.sessionTime,
+              teacher: reminder.entry.teacher,
+            }),
             action: {
-              label: 'Abrir',
+              label: t('Abrir'),
               onClick: () => navigate(DASHBOARD_ROUTES.calendarIcademy),
             },
             duration: 12000,
@@ -337,7 +376,7 @@ export function DashboardLayout() {
   }, [activeFlight, flightQueue])
 
   if (loading) {
-    return <FullscreenLoading label='Cargando...' />
+    return <FullscreenLoading label={t('Cargando...')} />
   }
 
   if (!config) {
@@ -375,13 +414,21 @@ export function DashboardLayout() {
         <IcaTestsAvailableModal config={config} cards={cards} />
         <PregunticaMonthlyTokensModal />
 
-        <main className='flex flex-1 overflow-y-auto pb-20 md:pb-0'>
-          <Outlet />
+        {/* En columna: así cada pantalla crece con su contenido y el scroll llega hasta el final.
+            Abajo deja sitio a la barra del móvil (y a la zona segura del iPhone). */}
+        <main className='flex flex-1 flex-col overflow-y-auto pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:pb-0'>
+          <Outlet context={{ profileAlerts: { icaTest: canHighlightCurrentMonth, coaching: hasPendingCoachingReview } }} />
         </main>
         <MobileBottomNav
           shouldHighlightProfileButton={canHighlightCurrentMonth}
           shouldHighlightCoachingProfileButton={hasPendingCoachingReview}
         />
+
+        <CycleCelebration />
+        <ChallengesUnlockWatcher />
+        <StreakDayCelebrationHost />
+        <MonthlyRecapHost />
+        <StreakRewardsWatcher />
 
         <BoltFlightFx
           trigger={activeFlight}

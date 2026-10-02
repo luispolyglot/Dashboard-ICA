@@ -1,23 +1,28 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import {
-  InfoIcon,
+  ArrowLeftRightIcon,
+  CalendarDaysIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   KeyboardIcon,
-  Link2Icon,
   Loader2Icon,
-  MicIcon,
   SearchIcon,
   SparklesIcon,
   TextCursorInputIcon,
-  Trash2Icon,
+  TimerIcon,
   TrophyIcon,
-  UsersIcon,
-  Volume2Icon,
+  XIcon,
 } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
+import { useAuth } from '@/auth/AuthContext'
+import { claimChallengeWinCoin } from '../game/fichas'
+import { CHALLENGE_WIN_REWARD_SINCE } from '../game/rules'
+import { getUiLang, langName, t, tn } from '@/i18n'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -27,27 +32,20 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useIcaChallengesOverview } from '../hooks/useIcaChallengesOverview'
+import { ICA_CHALLENGES_LOCAL, prepareChallengesDemo, seedVirtualChallenge } from '../services/icaChallengesLocal'
 import {
   getChallengeWordSource,
   getIcaChallengeConfigLabel,
   hasCompletedMyPart,
   isLightningChallenge,
+  translateChallengeMessage,
 } from '../services/icaChallenges'
 import { getIcaChallengePlayRoute } from '../routes/paths'
-import { ICA_CHALLENGES_LOCAL, resetIcaChallengesLocal } from '../services/icaChallengesLocal'
 import {
   availableTypesForTile,
   CHALLENGE_MODE_TILES,
+  ModeGlyphBadge,
   ModeTileGrid,
   ScopeToggle,
   tileForTypeId,
@@ -56,6 +54,15 @@ import {
 } from '../components/IcaChallenges/ChallengeModePicker'
 import { JoinWordsGate } from '../components/IcaChallenges/JoinWordsGate'
 import { ChallengeStatsCard, WinStreakChip } from '../components/IcaChallenges/ChallengeStats'
+import {
+  buyChallengeSlot,
+  coinsText,
+  consumeChallengeSlot,
+  unusedChallengeSlots,
+  useFichas,
+} from '../game/fichas'
+import { FichaIcon, FlameIcon, SwordsIcon } from '../game/icons'
+import { EXTRA_CHALLENGE_COST } from '../game/rules'
 import type {
   IcaChallengePlayRecord,
   IcaChallengeRecord,
@@ -70,22 +77,25 @@ type IcaChallengesViewProps = {
 }
 
 type TabKey = 'active' | 'pending' | 'history'
+
+const USERS_PAGE = 5
+const USERS_MORE = 10
 type ModalStep = 'type' | 'rules'
 
 function getChallengeStatusLabel(status: string): string {
   switch (status) {
     case 'created':
-      return 'Pendiente'
+      return t('Pendiente')
     case 'in_progress':
-      return 'En curso'
+      return t('En curso')
     case 'completed':
-      return 'Finalizado'
+      return t('Finalizado')
     case 'cancelled':
-      return 'Cancelado'
+      return t('Cancelado')
     case 'expired':
-      return 'Vencido'
+      return t('Vencido')
     case 'not_accepted':
-      return 'No aceptado'
+      return t('No aceptado')
     default:
       return status
   }
@@ -94,23 +104,23 @@ function getChallengeStatusLabel(status: string): string {
 function getResultLabel(challenge: IcaChallengeRecord, currentUserId: string | null): string {
   const resultType = challenge.resultType
   if ((resultType === 'challenger_win' || resultType === 'challenged_win') && currentUserId) {
-    return challenge.winnerUserId === currentUserId ? 'Ganaste' : 'Perdiste'
+    return challenge.winnerUserId === currentUserId ? t('Ganaste') : t('Perdiste')
   }
   switch (resultType) {
     case 'challenger_win':
-      return 'Ganó el retador'
+      return t('Ganó el retador')
     case 'challenged_win':
-      return 'Ganó el retado'
+      return t('Ganó el retado')
     case 'draw':
-      return 'Empate'
+      return t('Empate')
     case 'cancelled':
-      return 'Cancelado'
+      return t('Cancelado')
     case 'expired':
-      return 'Vencido'
+      return t('Vencido')
     case 'not_accepted':
-      return 'No aceptado'
+      return t('No aceptado')
     default:
-      return 'Pendiente'
+      return t('Pendiente')
   }
 }
 
@@ -149,7 +159,56 @@ const OUTCOME_STYLE: Record<'won' | 'lost' | 'draw', { card: string; pill: strin
 
 function getChallengeTypePitch(type: IcaChallengeTypeRecord): string {
   const value = type.config.pitch
-  return typeof value === 'string' && value.trim() ? value.trim() : 'Modo de desafío ICA.'
+  // El texto llega del catálogo de modos (en español): se traduce al pintar.
+  return typeof value === 'string' && value.trim() ? t(value.trim()) : t('Modo de desafío ICA.')
+}
+
+/** Nombre del idioma dentro de una frase: «polaco» en español, «Polish» en inglés. */
+function inLang(name: string): string {
+  const label = langName(name)
+  return getUiLang() === 'en' ? label : label.toLowerCase()
+}
+
+/**
+ * Explicación de cada modo con los idiomas de quien reta («Ves la palabra en español y la
+ * escribes en francés»). Sin datos de rondas ni de turnos: eso ya se ve en la ventana.
+ */
+function getModePitch(type: IcaChallengeTypeRecord, nativeLang: string, targetLang: string): string {
+  const native = inLang(nativeLang)
+  const target = inLang(targetLang)
+  switch (type.id) {
+    case 'ica-own-words':
+      return t('Lees la palabra en {native} y eliges la correcta entre 4 opciones.', { native })
+    case 'ica-writing':
+      return t('Ves la palabra en {native} y la escribes en {target}.', { native, target })
+    case 'ica-lightning':
+      return t('Escribe en {target} todas las palabras que puedas antes de que acabe la cuenta atrás. Gana quien acierte más.', { target })
+    case 'ica-listen':
+      return t('Escuchas una palabra ICA en {target} y eliges qué significa.', { target })
+    case 'ica-speak':
+      return t('Ves la palabra en {native} y la dices en voz alta en {target}.', { native, target })
+    case 'ica-pairs':
+      return t('Une cada palabra ICA con su significado. Si empatan, gana quien tarde menos.')
+    default:
+      return getChallengeTypePitch(type)
+  }
+}
+
+/** Reglas fijas de los desafíos (no se eligen): 5 s por palabra en Lectura y 1 día para jugar. */
+const READING_SECONDS = 5
+const CHALLENGE_DAYS = 1
+
+/** Un dato fijo del desafío: un dibujo pequeño, el valor y debajo qué es («5 s · por palabra»). */
+function FixedRule({ icon, value, label }: { icon: ReactNode; value: string; label: string }) {
+  return (
+    <div className='flex flex-col items-center gap-0.5 rounded-2xl border-2 border-border bg-card px-2 py-2.5 text-center'>
+      <span className='text-primary' aria-hidden='true'>
+        {icon}
+      </span>
+      <span className='font-display text-lg leading-tight font-extrabold tabular-nums'>{value}</span>
+      <span className='text-[11px] leading-tight font-semibold text-muted-foreground'>{label}</span>
+    </div>
+  )
 }
 
 function getChallengeTypeSeconds(type: IcaChallengeTypeRecord): number | null {
@@ -163,16 +222,27 @@ function getChallengeTypeSessionSeconds(type: IcaChallengeTypeRecord): number {
 }
 
 function formatTimeLeft(dateIso: string | null): string {
-  if (!dateIso) return 'Sin plazo'
+  if (!dateIso) return t('Sin plazo')
   const diffMs = new Date(dateIso).getTime() - Date.now()
-  if (!Number.isFinite(diffMs)) return 'Sin plazo'
-  if (diffMs <= 0) return 'Caducado'
+  if (!Number.isFinite(diffMs)) return t('Sin plazo')
+  if (diffMs <= 0) return t('Caducado')
 
   const totalMinutes = Math.floor(diffMs / 60000)
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
   if (hours > 0) return `${hours} h ${minutes} min`
   return `${minutes} min`
+}
+
+/** Plazo corto para las filas de Pendientes: «quedan 21 h» o «quedan 40 min». */
+function formatAcceptWindow(dateIso: string | null): string {
+  if (!dateIso) return t('Sin plazo')
+  const diffMs = new Date(dateIso).getTime() - Date.now()
+  if (!Number.isFinite(diffMs)) return t('Sin plazo')
+  if (diffMs <= 0) return t('Caducado')
+  const totalMinutes = Math.floor(diffMs / 60000)
+  const hours = Math.floor(totalMinutes / 60)
+  return hours > 0 ? t('quedan {n} h', { n: hours }) : t('quedan {n} min', { n: totalMinutes })
 }
 
 function getOpponentUserId(challenge: IcaChallengeRecord, currentUserId: string | null): string {
@@ -208,14 +278,14 @@ function renderLightningProgress(input: {
   return (
     <div className='mt-3 grid grid-cols-2 gap-2 border-t pt-3 text-center'>
       {[
-        { label: 'Tú', userId: input.userId },
-        { label: input.rivalName.split(' ')[0] || 'Rival', userId: input.rivalUserId },
+        { label: t('Tú'), userId: input.userId },
+        { label: input.rivalName.split(' ')[0] || t('Rival'), userId: input.rivalUserId },
       ].map((item) => (
         <div key={item.label} className='rounded-lg bg-muted/30 px-2 py-1.5'>
           <p className='truncate text-xs text-muted-foreground'>{item.label}</p>
-          <p className='font-serif text-lg leading-tight'>
+          <p className='font-display font-extrabold text-lg leading-tight'>
             {played(item.userId) ? count(item.userId) : '–'}
-            <span className='ml-1 text-xs font-sans text-muted-foreground'>aciertos</span>
+            <span className='ml-1 text-xs font-sans text-muted-foreground'>{t('aciertos')}</span>
           </p>
         </div>
       ))}
@@ -257,8 +327,8 @@ function renderOwnWordsProgress(input: {
 
   return (
     <div className='mt-3 space-y-2 border-t pt-3'>
-      {renderRow('Tú', input.userId)}
-      {renderRow(input.rivalName.split(' ')[0] || 'Rival', input.rivalUserId)}
+      {renderRow(t('Tú'), input.userId)}
+      {renderRow(input.rivalName.split(' ')[0] || t('Rival'), input.rivalUserId)}
     </div>
   )
 }
@@ -273,24 +343,6 @@ function getInitials(name: string): string {
     .slice(0, 2)
 }
 
-const AVATAR_PALETTE = [
-  'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-200 dark:border-rose-800/50',
-  'bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-200 dark:border-sky-800/50',
-  'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-800/50',
-  'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-200 dark:border-amber-800/50',
-  'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-200 dark:border-violet-800/50',
-  'bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-200 dark:border-cyan-800/50',
-]
-
-function hashText(value: string): number {
-  let hash = 0
-  for (let i = 0; i < value.length; i += 1) {
-    hash = (hash << 5) - hash + value.charCodeAt(i)
-    hash |= 0
-  }
-  return Math.abs(hash)
-}
-
 function renderAvatar(name: string, avatarUrl: string | null, seed: string) {
   if (avatarUrl) {
     return (
@@ -302,12 +354,10 @@ function renderAvatar(name: string, avatarUrl: string | null, seed: string) {
     )
   }
 
-  const paletteClass = AVATAR_PALETTE[hashText(seed || name) % AVATAR_PALETTE.length]
-
+  // El mismo color para todos (como en el ranking).
+  void seed
   return (
-    <span
-      className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-xs font-semibold ${paletteClass}`}
-    >
+    <span className='inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-border bg-muted text-xs font-extrabold text-foreground'>
       {getInitials(name)}
     </span>
   )
@@ -338,27 +388,25 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
     respondInvitation,
     cancelInvitation,
     refreshAvailableUsers,
-    refresh,
+    refresh: refreshOverview,
   } = useIcaChallengesOverview({
     targetLang,
     nativeLang,
   })
 
   // ?tab=pending abre «Pendientes» (así llega el aviso de «reto nuevo»).
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get('tab')
   const [tab, setTab] = useState<TabKey>(
     tabParam === 'pending' || tabParam === 'history' ? tabParam : 'active',
   )
   const autoTabDoneRef = useRef(false)
   const [search, setSearch] = useState('')
-  const [rounds, setRounds] = useState<1 | 2 | 5 | 10>(2)
-  const [responseSeconds, setResponseSeconds] = useState(5)
-  const [durationDays, setDurationDays] = useState<1 | 2 | 3>(1)
+  // Rondas: solo «1 ronda de 10 palabras» o «2 rondas de 5». Segundos y duración son fijos.
+  const [rounds, setRounds] = useState<1 | 2>(2)
   // Global = cada uno con sus palabras · Por idioma = mezcla de baúles (mismo idioma y nivel parecido)
   const [challengeScope, setChallengeScope] = useState<IcaChallengeScope>('global')
   const [scopeTouched, setScopeTouched] = useState(false)
-  const [showScopeInfo, setShowScopeInfo] = useState(false)
 
   const [isChallengeModalOpen, setIsChallengeModalOpen] = useState(false)
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
@@ -369,12 +417,21 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
   const [pendingChallengeToCancel, setPendingChallengeToCancel] =
     useState<IcaChallengeRecord | null>(null)
 
+  // Desafío extra: con 3 en curso, 2 ICA Coins para retar a una 4.ª persona.
+  const { user: authUser } = useAuth()
+  const { total: coinBalance, entries: coinEntries } = useFichas(authUser?.id)
+  const extraPasses = unusedChallengeSlots(coinEntries)
+  const [useExtraForNext, setUseExtraForNext] = useState(false)
+  const [extraOfferUserId, setExtraOfferUserId] = useState<string | null>(null)
+
   const isEnrolled = Boolean(enrollment?.isActive)
   // Hacen falta 20 palabras en el Baúl ICA de este idioma para entrar en los retos.
   const wordsLocked = myWordCount !== null && myWordCount < minWordsToJoin
   const selectedUser = availableUsers.find((user) => user.userId === selectedUserId) ?? null
   const selectedType = challengeTypes.find((type) => type.id === selectedTypeId) ?? null
   const maxActiveLimitReached = myActiveChallengesCount >= 3
+  // Solo un hueco extra: la 4.ª persona.
+  const extraSlotPossible = myActiveChallengesCount === 3
 
   const challengeTypeById = useMemo(
     () =>
@@ -412,6 +469,17 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
     [challenges, currentUserId],
   )
 
+  // Con quién ya tienes un desafío en marcha (no se puede tener dos con la misma persona).
+  const activeRivalIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const challenge of challenges) {
+      if (challenge.status !== 'created' && challenge.status !== 'in_progress') continue
+      ids.add(challenge.challengerUserId)
+      ids.add(challenge.challengedUserId)
+    }
+    return ids
+  }, [challenges])
+
   const inProgressChallenges = useMemo(
     () => challenges.filter((challenge) => challenge.status === 'in_progress'),
     [challenges],
@@ -435,6 +503,17 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
       ),
     [challenges],
   )
+
+  // Cada desafío ganado da 1 ICA Coin (aunque no abras el resultado; nunca dos veces).
+  useEffect(() => {
+    if (!currentUserId) return
+    for (const challenge of historyChallenges) {
+      // Solo los ganados desde que existe el premio (no los de antes).
+      const finishedAt = Date.parse(challenge.finalizedAt || challenge.updatedAt || '')
+      if (!(finishedAt >= CHALLENGE_WIN_REWARD_SINCE)) continue
+      if (getOutcome(challenge, currentUserId) === 'won') claimChallengeWinCoin(currentUserId, challenge.id)
+    }
+  }, [currentUserId, historyChallenges])
 
   // Por idioma: solo icademers de tu mismo idioma y con nivel parecido.
   const scopedUsers = useMemo(
@@ -461,6 +540,11 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
       return display.includes(query) || username.includes(query)
     })
   }, [scopedUsers, search])
+
+  // Lista de personas: de 5 en 5 (con «Ver más personas»). Al buscar, se ven todas las que coinciden.
+  const [userLimit, setUserLimit] = useState(USERS_PAGE)
+  const visibleUsers = search.trim() ? filteredUsers : filteredUsers.slice(0, userLimit)
+  const hiddenUsersCount = filteredUsers.length - visibleUsers.length
 
   const activePips = useMemo(
     () =>
@@ -491,13 +575,14 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
     }
 
     return {
-      displayName: 'Usuario',
+      displayName: t('Usuario'),
       username: null,
       avatarUrl: null,
     }
   }
 
-  const startChallengeFlow = (userId: string) => {
+  const startChallengeFlow = (userId: string, withExtraSlot = false) => {
+    setUseExtraForNext(withExtraSlot)
     setSelectedUserId(userId)
     setSelectedTypeId(null)
     setSelectedTileId(null)
@@ -505,18 +590,120 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
     setIsChallengeModalOpen(true)
   }
 
+  // Modo local de prueba: un icademer virtual te reta (botón o ?reto-virtual[=parejas] en la dirección).
+  const receiveVirtualChallenge = async (mode?: string | null) => {
+    try {
+      const { botName, modeName } = await seedVirtualChallenge(mode)
+      await refreshOverview()
+      setTab('pending')
+      toast.success(t('{name} te ha retado a {mode}.', { name: botName, mode: t(modeName) }))
+    } catch (seedError) {
+      toast.error(seedError instanceof Error ? seedError.message : t('No se pudo crear el reto de prueba.'))
+    }
+  }
+  const prepareDemo = async () => {
+    try {
+      const { free } = await prepareChallengesDemo()
+      await refreshOverview()
+      await refreshAvailableUsers('global')
+      setTab('pending')
+      toast.success(t('Demo lista: Sofía y Piotr te han retado y tienes {n} icademers libres para retar.', { n: free }))
+    } catch (demoError) {
+      toast.error(demoError instanceof Error ? demoError.message : t('No se pudo preparar la demo.'))
+    }
+  }
+  const demoParam = searchParams.get('demo-desafios')
+  const demoHandledRef = useRef(false)
+  useEffect(() => {
+    if (!ICA_CHALLENGES_LOCAL || demoParam === null || isLoading || demoHandledRef.current) return
+    demoHandledRef.current = true
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous)
+        next.delete('demo-desafios')
+        return next
+      },
+      { replace: true },
+    )
+    void prepareDemo()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoParam, isLoading])
+
+  const virtualParam = searchParams.get('reto-virtual')
+  const virtualHandledRef = useRef(false)
+  useEffect(() => {
+    if (!ICA_CHALLENGES_LOCAL || virtualParam === null || isLoading || virtualHandledRef.current) return
+    virtualHandledRef.current = true
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous)
+        next.delete('reto-virtual')
+        return next
+      },
+      { replace: true },
+    )
+    void receiveVirtualChallenge(virtualParam || null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [virtualParam, isLoading])
+
+  // ?retar=<id>: llega desde el perfil de un icademer en el ranking. Se abre el reto con esa
+  // persona (o se explica por qué ahora no se puede) y se quita el parámetro.
+  const retarParam = searchParams.get('retar')
+  const retarHandledRef = useRef<string | null>(null)
+  // useLayoutEffect: la ventana «Retar a …» se abre antes de pintar la página (sin parpadeo).
+  useLayoutEffect(() => {
+    if (!retarParam || isLoading || retarHandledRef.current === retarParam) return
+    retarHandledRef.current = retarParam
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous)
+        next.delete('retar')
+        return next
+      },
+      { replace: true },
+    )
+    const rival = availableUsers.find((item) => item.userId === retarParam)
+    if (!isEnrolled) {
+      toast.error(t('Activa Desafíos ICA para poder retar.'))
+      return
+    }
+    if (!rival) {
+      toast.error(t('Ahora mismo no se puede desafiar a este icademer.'))
+      return
+    }
+    const onlyMyLimit =
+      !rival.canChallenge &&
+      extraSlotPossible &&
+      !activeRivalIds.has(rival.userId) &&
+      (rival.blockedReason === 'Tu máximo de desafíos activos es 3.' || !rival.blockedReason)
+    if (!rival.canChallenge && !onlyMyLimit) {
+      toast.error(translateChallengeMessage(rival.blockedReason || t('Ahora mismo no se puede desafiar a este icademer.')))
+      return
+    }
+    // Con alguien de tu idioma y nivel se juega «Por idioma»; si no, «Global».
+    setScopeTouched(true)
+    setChallengeScope(rival.samePair && rival.mixedAllowed ? 'language' : 'global')
+    if (onlyMyLimit) {
+      if (extraPasses > 0) startChallengeFlow(rival.userId, true)
+      else setExtraOfferUserId(rival.userId)
+      return
+    }
+    startChallengeFlow(rival.userId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retarParam, isLoading, availableUsers, isEnrolled])
+
   const handleEnrollmentToggle = async (next: boolean) => {
     try {
       await setEnrollmentActive(next)
-      toast.success(next ? 'Inscripción activa en Desafíos ICA.' : 'Te diste de baja de Desafíos ICA.')
+      toast.success(next ? t('Inscripción activa en Desafíos ICA.') : t('Te diste de baja de Desafíos ICA.'))
       if (next) {
         await refreshAvailableUsers('global')
       }
     } catch (toggleError) {
       toast.error(
         toggleError instanceof Error
-          ? toggleError.message
-          : 'No se pudo actualizar tu inscripción.',
+          ? translateChallengeMessage(toggleError.message)
+          : t('No se pudo actualizar tu inscripción.'),
       )
     }
   }
@@ -524,21 +711,21 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
   const handleRespondInvitation = async (challengeId: string, accept: boolean) => {
     try {
       await respondInvitation(challengeId, accept)
-      toast.success(accept ? 'Desafío aceptado. ¡Te toca empezar!' : 'Desafío rechazado.')
+      toast.success(accept ? t('Desafío aceptado. ¡Te toca empezar!') : t('Desafío rechazado.'))
       // Al aceptar, se pasa a «Activos», donde está el botón para jugar.
       if (accept) setTab('active')
     } catch (respondError) {
       toast.error(
         respondError instanceof Error
-          ? respondError.message
-          : 'No se pudo responder el desafío.',
+          ? translateChallengeMessage(respondError.message)
+          : t('No se pudo responder el desafío.'),
       )
     }
   }
 
   const handleCreateChallenge = async () => {
     if (!selectedUser || !selectedType) {
-      toast.error('Elige un modo antes de enviar.')
+      toast.error(t('Elige un modo antes de enviar.'))
       return
     }
 
@@ -552,22 +739,25 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
         scope: challengeScope,
         config: {
           rounds,
-          responseSeconds,
+          responseSeconds: READING_SECONDS,
           wordSource,
         },
-        durationSeconds: durationDays * 24 * 60 * 60,
+        durationSeconds: CHALLENGE_DAYS * 24 * 60 * 60,
+        extraSlot: useExtraForNext,
       })
+      if (useExtraForNext) consumeChallengeSlot(authUser?.id)
+      setUseExtraForNext(false)
 
       setIsChallengeModalOpen(false)
       setModalStep('type')
       setSelectedUserId(null)
       setSelectedTypeId(null)
       setSelectedTileId(null)
-      toast.success('Reto enviado. Avisamos al competidor por notificación.')
+      toast.success(t('Reto enviado. Avisamos al competidor por notificación.'))
       setTab('pending')
     } catch (createError) {
       // El servidor ya manda el motivo en castellano ("Nivel demasiado distinto", etc.).
-      const message = createError instanceof Error ? createError.message : 'No se pudo crear el desafío.'
+      const message = createError instanceof Error ? translateChallengeMessage(createError.message) : t('No se pudo crear el desafío.')
       toast.error(message)
     }
   }
@@ -583,17 +773,22 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
       await cancelInvitation(pendingChallengeToCancel.id)
       setIsCancelModalOpen(false)
       setPendingChallengeToCancel(null)
-      toast.success('Reto cancelado correctamente.')
+      toast.success(t('Reto cancelado correctamente.'))
     } catch (cancelError) {
       toast.error(
-        cancelError instanceof Error ? cancelError.message : 'No se pudo cancelar el reto.',
+        cancelError instanceof Error ? translateChallengeMessage(cancelError.message) : t('No se pudo cancelar el reto.'),
       )
     }
   }
 
+  const getChallengeTypeLabel = (challenge: IcaChallengeRecord): string => {
+    const challengeType = challengeTypeById[challenge.challengeSlug]
+    return challengeType?.name ? t(challengeType.name) : challenge.challengeSlug
+  }
+
   const renderChallengeChip = (challenge: IcaChallengeRecord) => {
     const challengeType = challengeTypeById[challenge.challengeSlug]
-    const label = challengeType?.name || challenge.challengeSlug
+    const label = challengeType?.name ? t(challengeType.name) : challenge.challengeSlug
     const isMixed = getChallengeWordSource(challenge) === 'mixed'
     const tile = tileForTypeId(challenge.challengeSlug)
     const Icon = tile?.icon
@@ -601,7 +796,7 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
       <Badge variant='outline' className='h-auto max-w-full gap-1 whitespace-normal text-left text-xs'>
         {Icon && <Icon className='h-3 w-3 shrink-0' />}
         {label}
-        {isMixed ? ' · Por idioma' : ' · Global'}
+        {isMixed ? ` · ${t('Por idioma')}` : ` · ${t('Global')}`}
       </Badge>
     )
   }
@@ -611,152 +806,113 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
       <section className='mx-auto flex min-h-[55vh] w-full max-w-4xl items-center justify-center p-4'>
         <div className='inline-flex items-center gap-2 text-sm text-muted-foreground'>
           <Loader2Icon className='h-4 w-4 animate-spin' />
-          Cargando desafíos...
+          {t('Cargando desafíos...')}
         </div>
       </section>
     ) : (
-    <section className='mx-auto w-full max-w-4xl flex-1 p-4 pb-24 lg:pb-4'>
-      <div className='mb-6 flex flex-wrap items-end justify-between gap-3'>
-        <div>
-          <h2 className='font-serif text-3xl font-bold'>Desafíos ICA</h2>
-          <p className='text-sm text-muted-foreground'>
-            Reta a otros icademers y juega en turnos asincrónicos.
+    <section className='mx-auto w-full max-w-2xl flex-1 px-4 pt-2 pb-28 lg:py-8'>
+      {ICA_CHALLENGES_LOCAL ? (
+        // Solo en el modo local de prueba (tu PC): para enseñar Desafíos ICA con icademers virtuales.
+        <div className='mb-4 rounded-2xl border-2 border-dashed px-3 py-3' style={{ borderColor: 'var(--ica-gold)', background: 'var(--ica-gold-soft)' }}>
+          <p className='m-0 text-xs font-black tracking-[0.08em] uppercase' style={{ color: 'var(--ica-gold-ink)' }}>
+            {t('Modo prueba · icademers virtuales')}
           </p>
+          <div className='mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2'>
+            <Button type='button' className='h-10 gap-2 rounded-xl font-extrabold' onClick={() => void prepareDemo()}>
+              <SwordsIcon size={18} />
+              {t('Preparar demo')}
+            </Button>
+            <Button type='button' variant='outline' className='h-10 rounded-xl border-2 font-extrabold' onClick={() => void receiveVirtualChallenge()}>
+              {t('Que me rete alguien más')}
+            </Button>
+          </div>
         </div>
-        <WinStreakChip stats={stats} />
+      ) : null}
+      <div className='mb-5 flex items-center gap-3'>
+        <span className='flex size-12 shrink-0 items-center justify-center rounded-2xl' style={{ background: 'var(--ica-a-soft)' }}>
+          <SwordsIcon size={32} />
+        </span>
+        <div className='min-w-0 flex-1'>
+          <h1 className='m-0 font-display text-2xl leading-tight font-extrabold tracking-tight lg:text-3xl'>{t('Desafíos ICA')}</h1>
+          <div className='mt-1'>
+            <WinStreakChip stats={stats} />
+          </div>
+        </div>
+        {/* Activo / en pausa: arriba, a la vista */}
+        <label className='flex shrink-0 cursor-pointer flex-col items-center gap-1'>
+          <Switch
+            checked={isEnrolled && !wordsLocked}
+            disabled={isLoading || isSavingEnrollment || wordsLocked}
+            onCheckedChange={(checked) => void handleEnrollmentToggle(checked)}
+            aria-label={t('Activar inscripción a desafíos ICA')}
+          />
+          <span className={cn('text-[11px] font-extrabold', isEnrolled && !wordsLocked ? 'text-primary' : 'text-muted-foreground')}>
+            {wordsLocked ? t('Bloqueado') : isEnrolled ? t('Activo') : t('En pausa')}
+          </span>
+        </label>
       </div>
-
-      {ICA_CHALLENGES_LOCAL && (
-        <div className='mb-4 rounded-xl border border-violet-400/50 bg-violet-500/10 px-3 py-2.5 text-sm'>
-          <p className='font-medium'>Modo local de prueba</p>
-          <p className='mt-0.5 text-xs text-muted-foreground'>
-            Juegas contra rivales de prueba y los desafíos se guardan solo en este navegador (no en Supabase).
-            «Añadir a mi baúl» sí guarda la palabra de verdad.
-          </p>
-          <Button
-            type='button'
-            size='sm'
-            variant='outline'
-            className='mt-2'
-            onClick={() => {
-              resetIcaChallengesLocal()
-              void refresh()
-            }}
-          >
-            Empezar de cero
-          </Button>
-        </div>
-      )}
 
       {wordsLocked && myWordCount !== null && (
         <JoinWordsGate wordCount={myWordCount} minWords={minWordsToJoin} targetLang={targetLang} />
       )}
 
-      <div className='mb-4 rounded-2xl border bg-card p-4'>
-        <div className='flex items-center gap-3'>
-          <span
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
-              isEnrolled ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
-            }`}
-          >
-            <UsersIcon className='h-5 w-5' />
-          </span>
-          <div className='min-w-0 flex-1'>
-            <p className='font-serif text-lg font-semibold leading-tight'>Disponible para retos</p>
-            <p className='text-xs text-muted-foreground'>
-              {wordsLocked
-                ? `Se activa al llegar a ${minWordsToJoin} palabras`
-                : isEnrolled
-                  ? 'Puedes retar y que te reten'
-                  : 'En pausa · no puedes retar ni recibir retos'}
-            </p>
-          </div>
-          <Switch
-            checked={isEnrolled}
-            disabled={isLoading || isSavingEnrollment || (wordsLocked && !isEnrolled)}
-            onCheckedChange={(checked) => void handleEnrollmentToggle(checked)}
-            aria-label='Activar inscripción a desafíos ICA'
-          />
-        </div>
-        <div className='mt-3 flex flex-wrap items-center gap-2 text-xs'>
-          <span className='rounded-full border bg-muted/30 px-2.5 py-1'>
-            {nativeLang} → {targetLang}
-          </span>
-          {myLevel && (
-            <span className='rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 font-medium text-primary'>
-              Nivel {myLevel}
-            </span>
-          )}
-          <span className='inline-flex items-center gap-2 rounded-full border bg-muted/30 px-2.5 py-1'>
-            <span className='flex items-center gap-1'>{activePips}</span>
-            {myActiveChallengesCount} de 3 en curso
-          </span>
-        </div>
-      </div>
+      {!isEnrolled && !wordsLocked ? (
+        <p className='mb-5 rounded-2xl bg-muted/70 px-4 py-3 text-sm font-semibold text-muted-foreground'>
+          {t('Estás en pausa: activa el interruptor para retar y que te reten.')}
+        </p>
+      ) : null}
 
-      <Card>
-        <CardContent>
+      <div>
           {isEnrolled && !wordsLocked && (
-            <div className='mb-4 space-y-3'>
-              <ScopeToggle
-                value={challengeScope}
-                onChange={(scope) => {
-                  setScopeTouched(true)
-                  setChallengeScope(scope)
-                }}
-                targetLang={targetLang}
-              />
-              <div className='relative'>
-                <SearchIcon className='pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground' />
-                <Input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder='Buscar por nombre o @usuario'
-                  className='h-9 pl-9 text-sm'
-                />
-              </div>
-
-              <div className='flex items-center justify-between gap-2 px-1'>
-                <p className='text-xs font-medium text-muted-foreground'>Icademers disponibles ahora</p>
-                {/* La explicación va plegada: en el móvil ocupaba media pantalla. */}
-                <button
-                  type='button'
-                  onClick={() => setShowScopeInfo((value) => !value)}
-                  aria-expanded={showScopeInfo}
-                  className='inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground transition hover:text-foreground'
+            <div className='mb-6'>
+              <div className='mb-2 flex items-center justify-between gap-2'>
+                <p className='ica-label m-0'>{t('Reta a un icademer')}</p>
+                <span
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-extrabold',
+                    maxActiveLimitReached ? 'bg-[var(--ica-a-soft)] text-[var(--ica-a-ink)]' : 'bg-muted text-muted-foreground',
+                  )}
                 >
-                  <InfoIcon className='h-3.5 w-3.5' />
-                  ¿Cómo funciona?
-                </button>
+                  <span className='flex items-center gap-1'>{activePips}</span>
+                  {maxActiveLimitReached
+                    ? t('{n} en curso (máximo)', { n: myActiveChallengesCount })
+                    : t('{n} de 3 en curso', { n: myActiveChallengesCount })}
+                </span>
               </div>
-              {showScopeInfo && (
-                <p className='rounded-lg bg-muted/30 px-3 py-2 text-xs leading-relaxed text-muted-foreground'>
-                  {challengeScope === 'language'
-                    ? `Juegan con las mismas palabras: la mitad de tu baúl y la mitad del suyo. Solo ves icademers con tu mismo nivel o uno parecido${myLevel ? ` (tú: ${myLevel})` : ''}, y sus palabras te sirven para la inmersión.`
-                    : 'Cada uno juega con las palabras de su propio Baúl ICA, sea cual sea su idioma.'}
-                </p>
-              )}
-
-              {maxActiveLimitReached && (
-                <p className='rounded-lg border border-sky-200/70 bg-sky-50/80 px-3 py-2 text-xs text-sky-800 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-200'>
-                  Ya alcanzaste el máximo de desafíos activos (3). Finaliza uno para volver a retar.
-                </p>
-              )}
-
-              <div className='max-h-[26rem] overflow-y-auto rounded-lg border'>
+              <div className='mb-2 flex items-center gap-1.5'>
+                <ScopeToggle
+                  value={challengeScope}
+                  onChange={(scope) => {
+                    setScopeTouched(true)
+                    setChallengeScope(scope)
+                  }}
+                  targetLang={targetLang}
+                />
+                <div className='relative ml-auto min-w-0 flex-1 sm:max-w-56'>
+                  <SearchIcon className='pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground' />
+                  <Input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder={t('Buscar')}
+                    aria-label={t('Buscar por nombre o @usuario')}
+                    className='h-9 rounded-full pl-8 text-sm'
+                  />
+                </div>
+              </div>
+              <div className='ica-group'>
                 {filteredUsers.length === 0 ? (
                   <p className='px-3 py-4 text-sm text-muted-foreground'>
                     {search.trim()
-                      ? 'No encontramos icademers para esa búsqueda.'
+                      ? t('No encontramos icademers para esa búsqueda.')
                       : challengeScope === 'language'
-                        ? `Ahora mismo no hay icademers de ${targetLang} con un nivel parecido al tuyo. Prueba en «Global».`
-                        : 'No hay icademers disponibles ahora mismo.'}
+                        ? t('Ahora mismo no hay icademers de {lang} con un nivel parecido al tuyo. Prueba en «Global».', { lang: langName(targetLang) })
+                        : t('No hay icademers disponibles ahora mismo.')}
                   </p>
                 ) : (
-                  filteredUsers.map((user) => (
+                  visibleUsers.map((user) => (
                     <div
                       key={user.userId}
-                      className='grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b px-3 py-3 last:border-b-0'
+                      className='grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b-2 border-border py-3 last:border-b-0'
                     >
                       {renderAvatar(
                         user.displayName,
@@ -764,22 +920,22 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                         user.userId,
                       )}
                       <div>
-                        <p className='flex flex-wrap items-center gap-1.5 font-medium leading-tight'>
+                        <p className='flex flex-wrap items-center gap-1.5 font-bold leading-tight'>
                           {user.displayName}
                           {user.winStreak > 0 && (
                             <span
-                              className='inline-flex items-center gap-0.5 rounded-full border border-amber-300 bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800 dark:border-amber-400/40 dark:text-amber-200'
-                              title={`${user.winStreak} ${user.winStreak === 1 ? 'victoria seguida' : 'victorias seguidas'}`}
+                              className='inline-flex items-center gap-0.5 rounded-full border-2 border-amber-300 bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-extrabold text-amber-800 dark:border-amber-400/40 dark:text-amber-200'
+                              aria-label={tn(user.winStreak, '{n} victoria seguida', '{n} victorias seguidas')}
                             >
-                              🔥 {user.winStreak}
+                              <FlameIcon size={12} /> {user.winStreak}
                             </span>
                           )}
                         </p>
                         <p className='text-xs text-muted-foreground'>
                           {user.username ? `@${user.username} · ` : ''}
                           {user.nativeLang && user.targetLang
-                            ? `${user.nativeLang} -> ${user.targetLang}`
-                            : `${nativeLang} -> ${targetLang}`}
+                            ? `${langName(user.nativeLang)} → ${langName(user.targetLang)}`
+                            : `${langName(nativeLang)} → ${langName(targetLang)}`}
                         </p>
                         {user.level && (
                           <span className='mt-1 inline-flex rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary'>
@@ -788,36 +944,109 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                         )}
                         {user.blockedReason &&
                           user.blockedReason !== 'Tu máximo de desafíos activos es 3.' && (
-                          <p className='text-xs text-amber-600'>{user.blockedReason}</p>
+                          <p className='text-xs text-amber-600'>{translateChallengeMessage(user.blockedReason)}</p>
                           )}
                       </div>
-                      <Button
-                        type='button'
-                        size='sm'
-                        variant={user.canChallenge ? 'default' : 'outline'}
-                        disabled={!isEnrolled || !user.canChallenge || isCreatingChallenge}
-                        onClick={() => startChallengeFlow(user.userId)}
-                      >
-                        {user.canChallenge ? 'Desafiar' : 'No disponible'}
-                      </Button>
+                      {(() => {
+                        // Solo le frena tu máximo de 3: puede ser tu 4.º reto con un desafío extra.
+                        const onlyMyLimit =
+                          !user.canChallenge &&
+                          extraSlotPossible &&
+                          !activeRivalIds.has(user.userId) &&
+                          (user.blockedReason === 'Tu máximo de desafíos activos es 3.' || !user.blockedReason)
+                        if (onlyMyLimit) {
+                          return (
+                            <Button
+                              type='button'
+                              size='sm'
+                              variant='outline'
+                              className='gap-1 rounded-xl border-2 border-amber-300 font-extrabold text-amber-800 dark:border-amber-400/50 dark:text-amber-300'
+                              disabled={!isEnrolled || isCreatingChallenge}
+                              onClick={() => {
+                                if (extraPasses > 0) startChallengeFlow(user.userId, true)
+                                else setExtraOfferUserId(user.userId)
+                              }}
+                            >
+                              <FichaIcon size={14} />
+                              {extraPasses > 0 ? t('Desafío extra') : `${t('Extra')} · ${EXTRA_CHALLENGE_COST}`}
+                            </Button>
+                          )
+                        }
+                        return (
+                          <Button
+                            type='button'
+                            size='sm'
+                            variant={user.canChallenge ? 'default' : 'outline'}
+                            className='rounded-xl font-extrabold'
+                            disabled={!isEnrolled || !user.canChallenge || isCreatingChallenge}
+                            onClick={() => startChallengeFlow(user.userId)}
+                          >
+                            {user.canChallenge ? t('Desafiar') : t('No disponible')}
+                          </Button>
+                        )
+                      })()}
                     </div>
                   ))
                 )}
               </div>
+              {/* Con muchas personas no hace falta bajar hasta el final: se ven de 5 en 5 */}
+              {hiddenUsersCount > 0 || userLimit > USERS_PAGE ? (
+                <div className='mt-2 flex gap-2'>
+                  {hiddenUsersCount > 0 ? (
+                    <Button
+                      type='button'
+                      variant='outline'
+                      className='h-11 flex-1 rounded-2xl font-extrabold'
+                      onClick={() => setUserLimit((value) => value + USERS_MORE)}
+                    >
+                      <ChevronDownIcon className='size-4' strokeWidth={2.8} aria-hidden='true' />
+                      {t('Ver más personas ({n})', { n: hiddenUsersCount })}
+                    </Button>
+                  ) : null}
+                  {userLimit > USERS_PAGE ? (
+                    <Button
+                      type='button'
+                      variant='ghost'
+                      className='h-11 rounded-2xl font-extrabold text-muted-foreground'
+                      onClick={() => setUserLimit(USERS_PAGE)}
+                    >
+                      <ChevronUpIcon className='size-4' strokeWidth={2.8} aria-hidden='true' />
+                      {t('Ver menos')}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           )}
 
-          <Tabs value={tab} onValueChange={(value) => setTab(value as TabKey)} className='mb-4'>
-            <TabsList className='grid w-full grid-cols-3'>
-              <TabsTrigger value='active'>
-                Activos ({inProgressChallenges.length})
-              </TabsTrigger>
-              <TabsTrigger value='pending'>
-                Pendientes ({incomingChallenges.length + outgoingChallenges.length})
-              </TabsTrigger>
-              <TabsTrigger value='history'>Historial</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          {/* Con el idioma bloqueado (menos de 20 palabras) no se ve ningún desafío. */}
+          {!wordsLocked ? (
+          <>
+          <div className='mb-4 grid grid-cols-3 gap-2' role='tablist' aria-label={t('Tus desafíos')}>
+            {(
+              [
+                { value: 'active', label: t('Activos ({n})', { n: inProgressChallenges.length }) },
+                { value: 'pending', label: t('Pendientes ({n})', { n: incomingChallenges.length + outgoingChallenges.length }) },
+                { value: 'history', label: t('Historial') },
+              ] as const
+            ).map((item) => (
+              <button
+                key={item.value}
+                type='button'
+                role='tab'
+                aria-selected={tab === item.value}
+                onClick={() => setTab(item.value)}
+                className={cn(
+                  'h-11 rounded-2xl border-2 px-1 text-xs font-extrabold transition-colors sm:text-sm',
+                  tab === item.value
+                    ? 'border-primary/50 bg-primary/10 text-primary'
+                    : 'border-border text-muted-foreground hover:bg-muted',
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
 
           <div className='space-y-3'>
             {tab === 'active' && (
@@ -825,7 +1054,7 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                 {inProgressChallenges.length > 0 ? (
                   <>
                   <p className='pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground'>
-                    En curso
+                    {t('En curso')}
                   </p>
                   {inProgressChallenges.map((challenge) => {
                     const rivalId = getOpponentUserId(challenge, currentUserId)
@@ -836,11 +1065,11 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                       hasCompletedMyPart(challenge, currentUserId, playsByChallengeId[challenge.id])
                     const knownType = Boolean(challengeTypeById[challenge.challengeSlug]?.isPlayable)
                     const canOpenPlayView = alreadyPlayed || isMyTurn
-                    const ctaLabel = alreadyPlayed ? 'Ver partida' : 'Jugar ahora'
+                    const ctaLabel = alreadyPlayed ? t('Ver partida') : t('Jugar ahora')
                     const score = getScores(challenge, currentUserId)
 
                     return (
-                      <div key={challenge.id} className='rounded-xl border p-3'>
+                      <div key={challenge.id} className='rounded-2xl border-2 border-border p-3'>
                         <div className='mb-2 flex items-center justify-between gap-2'>
                           <div className='flex min-w-0 items-center gap-3'>
                             {renderAvatar(rival.displayName, rival.avatarUrl, rivalId)}
@@ -849,13 +1078,13 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                               <p className='mt-1 font-medium'>{rival.displayName}</p>
                               <p className='text-xs text-muted-foreground'>
                                 {isMyTurn
-                                  ? `Te toca · ${formatTimeLeft(challenge.turnExpiresAt)}`
-                                  : `Turno de tu rival · ${formatTimeLeft(challenge.turnExpiresAt)}`}
+                                  ? `${t('Te toca')} · ${formatTimeLeft(challenge.turnExpiresAt)}`
+                                  : `${t('Turno de tu rival')} · ${formatTimeLeft(challenge.turnExpiresAt)}`}
                               </p>
                             </div>
                           </div>
                           <div className='text-right'>
-                            <p className='font-serif text-xl'>
+                            <p className='font-display font-extrabold text-xl'>
                               {score.mine} · {score.rival}
                             </p>
                             <Badge variant='secondary'>{getChallengeStatusLabel(challenge.status)}</Badge>
@@ -864,7 +1093,7 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                         <p className='mb-3 text-xs text-muted-foreground'>
                           {knownType
                             ? getIcaChallengeConfigLabel(challenge)
-                            : 'Configuración disponible próximamente'}
+                            : t('Configuración disponible próximamente')}
                         </p>
                         {knownType &&
                           (isLightningChallenge(challenge)
@@ -882,11 +1111,13 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                               }))}
                         <div className='mt-3 flex justify-end'>
                           {canOpenPlayView ? (
-                            <Button type='button' size='sm' asChild>
+                            <Button type='button' size='sm'
+                          className='rounded-xl font-extrabold' asChild>
                               <Link to={getIcaChallengePlayRoute(challenge.id)}>{ctaLabel}</Link>
                             </Button>
                           ) : (
-                            <Button type='button' size='sm' disabled>
+                            <Button type='button' size='sm'
+                          className='rounded-xl font-extrabold' disabled>
                               {ctaLabel}
                             </Button>
                           )}
@@ -896,18 +1127,20 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                   })}
                   </>
                 ) : (
-                  <p className='rounded-lg border px-3 py-4 text-sm text-muted-foreground'>
-                    No tienes desafíos en curso ahora mismo.
+                  <p className='rounded-2xl border-2 border-dashed border-border px-3 py-4 text-sm font-semibold text-muted-foreground'>
+                    {t('No tienes desafíos en curso ahora mismo.')}
                   </p>
                 )}
               </>
             )}
 
             {tab === 'pending' && (
+              // Pendientes, en filas sencillas: quién, qué reto y cuánto queda; un botón por fila.
               <>
-                {incomingChallenges.length > 0 && (
-                  <p className='text-xs font-medium uppercase tracking-wide text-muted-foreground'>
-                    Te han retado
+                {incomingChallenges.length > 0 && <p className='ica-label m-0'>{t('Te han retado')}</p>}
+                {incomingChallenges.length > 0 && wordsLocked && (
+                  <p className='m-0 text-xs font-semibold text-muted-foreground'>
+                    {t('Para aceptar necesitas {n} palabras en tu Baúl ICA.', { n: minWordsToJoin })}
                   </p>
                 )}
                 {incomingChallenges.map((challenge) => {
@@ -915,95 +1148,79 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                   const rival = resolveUser(rivalId)
 
                   return (
-                    <div key={challenge.id} className='rounded-xl border border-amber-300/50 bg-amber-50/20 p-3 dark:border-amber-900/50 dark:bg-amber-950/10'>
-                      <div className='mb-2 flex items-center justify-between gap-2'>
-                        <div className='flex min-w-0 items-center gap-3'>
-                          {renderAvatar(rival.displayName, rival.avatarUrl, rivalId)}
-                          <div className='min-w-0'>
-                            {renderChallengeChip(challenge)}
-                            <p className='mt-1 font-medium'>{rival.displayName}</p>
-                            <p className='text-xs text-muted-foreground'>
-                              Pendiente de tu respuesta · {formatTimeLeft(challenge.acceptUntil)}
-                            </p>
-                          </div>
-                        </div>
-                        <Badge variant='secondary'>{getChallengeStatusLabel(challenge.status)}</Badge>
-                      </div>
-                      <p className='mb-3 text-xs text-muted-foreground'>
-                        {getIcaChallengeConfigLabel(challenge)}
-                      </p>
-
-                      {wordsLocked && (
-                        <p className='mb-2 text-xs text-muted-foreground'>
-                          Para aceptar necesitas {minWordsToJoin} palabras en tu Baúl ICA.
+                    <div
+                      key={challenge.id}
+                      className='flex items-center gap-3 rounded-2xl border-2 p-3'
+                      style={{
+                        borderColor: 'color-mix(in oklab, var(--primary) 40%, transparent)',
+                        background: 'color-mix(in oklab, var(--primary) 7%, var(--card))',
+                      }}
+                    >
+                      {renderAvatar(rival.displayName, rival.avatarUrl, rivalId)}
+                      <div className='min-w-0 flex-1'>
+                        <p className='m-0 truncate font-extrabold'>{rival.displayName}</p>
+                        <p className='m-0 truncate text-xs font-semibold text-muted-foreground'>
+                          {formatAcceptWindow(challenge.acceptUntil)} · {getChallengeTypeLabel(challenge)}
                         </p>
-                      )}
-                      <div className='flex gap-2'>
-                        <Button
-                          type='button'
-                          size='sm'
-                          disabled={isResponding || wordsLocked}
-                          onClick={() => void handleRespondInvitation(challenge.id, true)}
-                        >
-                          Aceptar
-                        </Button>
-                        <Button
-                          type='button'
-                          size='sm'
-                          variant='outline'
-                          disabled={isResponding}
-                          onClick={() => void handleRespondInvitation(challenge.id, false)}
-                        >
-                          Rechazar
-                        </Button>
                       </div>
+                      <Button
+                        type='button'
+                        size='sm'
+                        className='shrink-0 rounded-xl font-extrabold'
+                        disabled={isResponding || wordsLocked}
+                        onClick={() => void handleRespondInvitation(challenge.id, true)}
+                      >
+                        {t('Aceptar')}
+                      </Button>
+                      <Button
+                        type='button'
+                        size='icon-sm'
+                        variant='ghost'
+                        className='shrink-0 text-muted-foreground'
+                        disabled={isResponding}
+                        aria-label={t('Rechazar el reto de {name}', { name: rival.displayName })}
+                        onClick={() => void handleRespondInvitation(challenge.id, false)}
+                      >
+                        <XIcon className='size-4' strokeWidth={2.6} />
+                      </Button>
                     </div>
                   )
                 })}
 
                 {outgoingChallenges.length > 0 && (
-                  <p className='pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground'>
-                    Esperando aceptación
-                  </p>
+                  <p className={cn('ica-label m-0', incomingChallenges.length > 0 && 'pt-2')}>{t('Tus retos enviados')}</p>
                 )}
                 {outgoingChallenges.map((challenge) => {
                   const rivalId = getOpponentUserId(challenge, currentUserId)
                   const rival = resolveUser(rivalId)
 
                   return (
-                    <div key={challenge.id} className='rounded-xl border p-3'>
-                      <div className='mb-2 flex items-center justify-between gap-2'>
-                        <div className='flex min-w-0 items-center gap-3'>
-                          {renderAvatar(rival.displayName, rival.avatarUrl, rivalId)}
-                          <div className='min-w-0'>
-                            {renderChallengeChip(challenge)}
-                            <p className='mt-1 font-medium'>{rival.displayName}</p>
-                            <p className='text-xs text-muted-foreground'>
-                              Esperando aceptación · {formatTimeLeft(challenge.acceptUntil)}
-                            </p>
-                          </div>
-                        </div>
-                        <Badge variant='secondary'>{getChallengeStatusLabel(challenge.status)}</Badge>
+                    <div key={challenge.id} className='flex items-center gap-3 rounded-2xl border-2 border-border p-3'>
+                      {renderAvatar(rival.displayName, rival.avatarUrl, rivalId)}
+                      <div className='min-w-0 flex-1'>
+                        <p className='m-0 truncate font-extrabold'>{rival.displayName}</p>
+                        <p className='m-0 truncate text-xs font-semibold text-muted-foreground'>
+                          {formatAcceptWindow(challenge.acceptUntil)} · {getChallengeTypeLabel(challenge)}
+                        </p>
                       </div>
-                      <div className='mt-2 flex justify-end'>
-                        <Button
-                          type='button'
-                          size='sm'
-                          variant='destructive'
-                          disabled={isCancelling}
-                          onClick={() => openCancelModal(challenge)}
-                        >
-                          Cancelar reto
-                          <Trash2Icon className='ml-1 h-3.5 w-3.5' />
-                        </Button>
-                      </div>
+                      <Button
+                        type='button'
+                        size='sm'
+                        variant='ghost'
+                        className='shrink-0 rounded-xl font-extrabold text-muted-foreground'
+                        disabled={isCancelling}
+                        aria-label={t('Cancelar el reto a {name}', { name: rival.displayName })}
+                        onClick={() => openCancelModal(challenge)}
+                      >
+                        {t('Cancelar')}
+                      </Button>
                     </div>
                   )
                 })}
 
                 {incomingChallenges.length === 0 && outgoingChallenges.length === 0 && (
-                  <p className='rounded-lg border px-3 py-4 text-sm text-muted-foreground'>
-                    No tienes retos pendientes.
+                  <p className='rounded-2xl border-2 border-dashed border-border px-3 py-4 text-sm font-semibold text-muted-foreground'>
+                    {t('No tienes retos pendientes.')}
                   </p>
                 )}
               </>
@@ -1031,7 +1248,7 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                       : `${statusLabel} · ${resultLabel}`
 
                   return (
-                    <div key={challenge.id} className={`rounded-xl border p-3 ${outcomeStyle?.card ?? ''}`}>
+                    <div key={challenge.id} className={`rounded-2xl border-2 p-3 ${outcomeStyle?.card ?? 'border-border'}`}>
                       <div className='flex items-center justify-between gap-2'>
                         <div className='flex min-w-0 items-center gap-3'>
                           {renderAvatar(rival.displayName, rival.avatarUrl, rivalId)}
@@ -1049,18 +1266,19 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                               className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${outcomeStyle.pill}`}
                             >
                               {outcome === 'won' && <TrophyIcon className='h-3 w-3' />}
-                              {outcomeStyle.label}
+                              {t(outcomeStyle.label)}
                             </span>
                           )}
-                          <p className={`font-serif text-lg ${outcomeStyle?.score ?? ''}`}>
+                          <p className={`font-display font-extrabold text-lg ${outcomeStyle?.score ?? ''}`}>
                             {score.mine} · {score.rival}
                           </p>
                         </div>
                       </div>
                       {canReview && (
                         <div className='mt-2 flex justify-end'>
-                          <Button type='button' size='sm' variant='outline' asChild>
-                            <Link to={getIcaChallengePlayRoute(challenge.id)}>Ver palabras</Link>
+                          <Button type='button' size='sm'
+                          className='rounded-xl font-extrabold' variant='outline' asChild>
+                            <Link to={getIcaChallengePlayRoute(challenge.id)}>{t('Ver palabras')}</Link>
                           </Button>
                         </div>
                       )}
@@ -1069,15 +1287,16 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                 })}
 
                 {historyChallenges.length === 0 && (
-                  <p className='rounded-lg border px-3 py-4 text-sm text-muted-foreground'>
-                    Aún no tienes historial de desafíos.
+                  <p className='rounded-2xl border-2 border-dashed border-border px-3 py-4 text-sm font-semibold text-muted-foreground'>
+                    {t('Aún no tienes historial de desafíos.')}
                   </p>
                 )}
               </>
             )}
           </div>
-        </CardContent>
-      </Card>
+          </>
+          ) : null}
+      </div>
 
       <Dialog
         open={isChallengeModalOpen}
@@ -1091,7 +1310,7 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
         <DialogContent className='max-h-[88vh] max-w-[calc(100%-2rem)] overflow-y-auto sm:max-w-2xl'>
           <DialogHeader>
             <DialogTitle>
-              {selectedUser ? `Retar a ${selectedUser.displayName}` : 'Elegir desafío'}
+              {selectedUser ? t('Retar a {name}', { name: selectedUser.displayName }) : t('Elegir desafío')}
             </DialogTitle>
             <DialogDescription className='flex flex-wrap items-center gap-1.5'>
               <span
@@ -1101,11 +1320,11 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                     : 'bg-muted text-foreground'
                 }`}
               >
-                {challengeScope === 'language' ? 'Por idioma · mezcla de baúles ICA' : 'Global · cada uno con sus palabras'}
+                {challengeScope === 'language' ? t('Por idioma · mezcla de baúles ICA') : t('Global · cada uno con sus palabras')}
               </span>
               {challengeScope === 'language' && selectedUser?.level && (
                 <span className='text-xs'>
-                  Tú: {myLevel || '—'} · {selectedUser.displayName.split(' ')[0]}: {selectedUser.level}
+                  {t('Tú')}: {myLevel || '—'} · {selectedUser.displayName.split(' ')[0]}: {selectedUser.level}
                 </span>
               )}
             </DialogDescription>
@@ -1136,13 +1355,17 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
             const countdownType = challengeTypes.find((type) => type.id === 'ica-lightning')
             return (
               <div className='space-y-4'>
-                <div className={`flex items-center gap-3 rounded-2xl border p-3 ${tile?.tone.tile ?? 'bg-muted/20'}`}>
-                  <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tile?.tone.icon ?? ''}`}>
-                    <TileIcon className='h-5 w-5' />
-                  </span>
+                <div className='flex items-center gap-3 rounded-3xl border-2 border-border bg-card p-3'>
+                  {tile ? (
+                    <ModeGlyphBadge tile={tile} size='sm' />
+                  ) : (
+                    <span className='flex size-11 shrink-0 items-center justify-center rounded-2xl bg-muted'>
+                      <TileIcon className='h-5 w-5' />
+                    </span>
+                  )}
                   <div className='min-w-0'>
-                    <p className='font-serif text-lg font-semibold leading-tight'>{tile?.label ?? selectedType.name}</p>
-                    <p className='text-sm text-muted-foreground'>{getChallengeTypePitch(selectedType)}</p>
+                    <p className='font-display text-lg font-extrabold leading-tight'>{t(tile?.label ?? selectedType.name)}</p>
+                    <p className='text-sm text-muted-foreground'>{getModePitch(selectedType, nativeLang, targetLang)}</p>
                   </div>
                 </div>
 
@@ -1157,144 +1380,80 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                   />
                 )}
 
-                {isLightning ? (
-                  <div className='space-y-1'>
-                    <Label>Duración del desafío</Label>
-                    <Select
-                      value={String(durationDays)}
-                      onValueChange={(value) => setDurationDays(Number(value) as 1 | 2 | 3)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {[1, 2, 3].map((value) => (
-                          <SelectItem key={value} value={String(value)}>
-                            {value} día{value === 1 ? '' : 's'} para jugar
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ) : (
-                  <div className='grid grid-cols-2 gap-3 md:grid-cols-3'>
-                    <div className='space-y-1'>
-                      <Label>Rondas</Label>
-                      {isPairs ? (
-                        <Select
-                          value={rounds === 1 ? '1' : '2'}
-                          onValueChange={(value) => setRounds(Number(value) as 1 | 2)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value='1'>1 con los 2 tableros</SelectItem>
-                            <SelectItem value='2'>2 de 1 tablero</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Select
-                          value={String(rounds)}
-                          onValueChange={(value) => setRounds(Number(value) as 1 | 2 | 5 | 10)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value='1'>1 de 10 palabras</SelectItem>
-                            <SelectItem value='2'>2 de 5 palabras</SelectItem>
-                            <SelectItem value='5'>5 de 2 palabras</SelectItem>
-                            <SelectItem value='10'>10 de 1 palabra</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </div>
-
-                    {selectedType.id === 'ica-own-words' ? (
-                      <div className='space-y-1'>
-                        <Label>Segundos</Label>
-                        <Select
-                          value={String(responseSeconds)}
-                          onValueChange={(value) => setResponseSeconds(Number(value))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {[3, 4, 5, 6, 7, 8].map((value) => (
-                              <SelectItem key={value} value={String(value)}>
-                                {value}s por palabra
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    ) : (
-                      <div className='space-y-1'>
-                        <Label>Segundos</Label>
-                        <p className='flex h-9 items-center rounded-md border bg-muted/20 px-3 text-sm'>
-                          {getChallengeTypeSeconds(selectedType) ?? '—'}s por {isPairs ? 'tablero' : 'palabra'}
-                        </p>
-                      </div>
-                    )}
-
-                    <div className='col-span-2 space-y-1 md:col-span-1'>
-                      <Label>Duración</Label>
-                      <Select
-                        value={String(durationDays)}
-                        onValueChange={(value) => setDurationDays(Number(value) as 1 | 2 | 3)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[1, 2, 3].map((value) => (
-                            <SelectItem key={value} value={String(value)}>
-                              {value} día{value === 1 ? '' : 's'} para jugar
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                {/* Rondas: las dos únicas opciones */}
+                {!isLightning ? (
+                  <div className='space-y-1.5'>
+                    <p className='m-0 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground'>{t('Rondas')}</p>
+                    <div className='grid grid-cols-2 gap-2' role='radiogroup' aria-label={t('Rondas')}>
+                      {([1, 2] as const).map((value) => {
+                        const active = rounds === value
+                        return (
+                          <button
+                            key={value}
+                            type='button'
+                            role='radio'
+                            aria-checked={active}
+                            onClick={() => setRounds(value)}
+                            className={`flex flex-col items-center rounded-2xl border-2 px-2 py-2.5 text-center transition-colors ${
+                              active ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted/50'
+                            }`}
+                          >
+                            <span className='font-display text-base leading-tight font-extrabold'>
+                              {value === 1 ? t('1 ronda') : t('2 rondas')}
+                            </span>
+                            <span className='text-xs font-semibold text-muted-foreground'>
+                              {value === 1 ? t('de 10 palabras') : t('de 5 palabras')}
+                            </span>
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
-                )}
+                ) : null}
+
+                {/* Lo que no se elige: los segundos y el día para jugar */}
+                <div className='grid grid-cols-2 gap-2'>
+                  <FixedRule
+                    icon={<TimerIcon className='size-5' strokeWidth={2.4} />}
+                    value={t('{n} s', {
+                      n: isLightning
+                        ? getChallengeTypeSessionSeconds(selectedType)
+                        : selectedType.id === 'ica-own-words'
+                          ? READING_SECONDS
+                          : (getChallengeTypeSeconds(selectedType) ?? '—'),
+                    })}
+                    label={isLightning ? t('en total') : isPairs ? t('por tablero') : t('por palabra')}
+                  />
+                  <FixedRule
+                    icon={<CalendarDaysIcon className='size-5' strokeWidth={2.4} />}
+                    value={tn(CHALLENGE_DAYS, '{n} día', '{n} días')}
+                    label={t('para jugar')}
+                  />
+                </div>
 
                 {selectedType.kind === 'write' && (
-                  <p className='flex items-start gap-2 text-xs text-muted-foreground'>
-                    <KeyboardIcon className='mt-0.5 h-3.5 w-3.5 shrink-0' />
-                    Las tildes y letras especiales cuentan. Añade el teclado de {targetLang} en tu móvil para
-                    escribirlas rápido.
-                  </p>
-                )}
-                {selectedType.kind === 'speak' && (
-                  <p className='flex items-start gap-2 text-xs text-muted-foreground'>
-                    <MicIcon className='mt-0.5 h-3.5 w-3.5 shrink-0' />
-                    Los dos necesitan micrófono. Funciona en Chrome (Android y ordenador) y en Safari (iPhone).
-                  </p>
-                )}
-                {selectedType.kind === 'listen' && (
-                  <p className='flex items-start gap-2 text-xs text-muted-foreground'>
-                    <Volume2Icon className='mt-0.5 h-3.5 w-3.5 shrink-0' />
-                    Con sonido: cada palabra se escucha en {targetLang}.
-                  </p>
-                )}
-                {isPairs && (
-                  <p className='flex items-start gap-2 text-xs text-muted-foreground'>
-                    <Link2Icon className='mt-0.5 h-3.5 w-3.5 shrink-0' />
-                    Toca una palabra y luego su significado. Al unir la última pareja se corrige el tablero.
+                  // Importante para no perder puntos: va destacado.
+                  <p className='m-0 flex items-start gap-2 rounded-2xl border-2 border-rose-300 bg-rose-50 px-3 py-2.5 text-sm font-semibold text-rose-800 dark:border-rose-400/40 dark:bg-rose-500/10 dark:text-rose-200'>
+                    <KeyboardIcon className='mt-0.5 size-4 shrink-0' />
+                    <span>
+                      {t('Las tildes y letras especiales cuentan. Añade el teclado de {lang} en tu móvil para escribirlas rápido.', {
+                        lang: inLang(targetLang),
+                      })}
+                    </span>
                   </p>
                 )}
                 {selectedType.kind === 'cloze' && (
                   <p className='flex items-start gap-2 text-xs text-muted-foreground'>
                     <TextCursorInputIcon className='mt-0.5 h-3.5 w-3.5 shrink-0' />
-                    Sale una frase de ejemplo con un hueco y eliges la palabra que falta entre 4 opciones.
+                    {t('Sale una frase de ejemplo con un hueco y eliges la palabra que falta entre 4 opciones.')}
                   </p>
                 )}
 
                 <div className='grid grid-cols-[auto_1fr] gap-2'>
-                  <Button type='button' variant='outline' onClick={() => setModalStep('type')}>
-                    Volver
+                  {/* Vuelve a los modos sin cerrar la ventana (sigues retando a la misma persona). */}
+                  <Button type='button' variant='outline' className='gap-1.5' onClick={() => setModalStep('type')}>
+                    <ArrowLeftRightIcon className='size-4' aria-hidden='true' />
+                    {t('Cambiar de modo')}
                   </Button>
                   <Button
                     type='button'
@@ -1302,12 +1461,52 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                     onClick={() => void handleCreateChallenge()}
                   >
                     {isCreatingChallenge && <Loader2Icon className='mr-2 h-4 w-4 animate-spin' />}
-                    Enviar reto
+                    {t('Enviar reto')}
                   </Button>
                 </div>
               </div>
             )
           })()}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={extraOfferUserId !== null} onOpenChange={(open) => (open ? null : setExtraOfferUserId(null))}>
+        <DialogContent className='max-w-md'>
+          <DialogHeader>
+            <DialogTitle className='flex items-center gap-2'>
+              <SwordsIcon size={26} />
+              {t('Desafío extra')}
+            </DialogTitle>
+            <DialogDescription>
+              {t('Ya tienes 3 desafíos en curso. Por {coins} puedes retar a una 4.ª persona.', {
+                coins: coinsText(EXTRA_CHALLENGE_COST),
+              })}{' '}
+              {t('Tienes {n} ICA Coins.', { n: coinBalance ?? 0 })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className='grid grid-cols-2 gap-2'>
+            <Button type='button' variant='outline' className='h-11 rounded-2xl border-2 font-bold' onClick={() => setExtraOfferUserId(null)}>
+              {t('Ahora no')}
+            </Button>
+            <Button
+              type='button'
+              className='h-11 gap-1.5 rounded-2xl font-extrabold'
+              disabled={(coinBalance ?? 0) < EXTRA_CHALLENGE_COST}
+              onClick={() => {
+                const userId = extraOfferUserId
+                if (!userId) return
+                if (!buyChallengeSlot(authUser?.id, coinBalance ?? 0)) {
+                  toast.error(t('Necesitas {coins}.', { coins: coinsText(EXTRA_CHALLENGE_COST) }))
+                  return
+                }
+                setExtraOfferUserId(null)
+                startChallengeFlow(userId, true)
+              }}
+            >
+              <FichaIcon size={18} />
+              {t('Usar {n}', { n: EXTRA_CHALLENGE_COST })}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -1320,9 +1519,9 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
       >
         <DialogContent className='max-w-md'>
           <DialogHeader>
-            <DialogTitle>¿Cancelar este reto?</DialogTitle>
+            <DialogTitle>{t('¿Cancelar este reto?')}</DialogTitle>
             <DialogDescription>
-              Se quitará de pendientes y tu rival ya no podrá aceptarlo.
+              {t('Se quitará de pendientes y tu rival ya no podrá aceptarlo.')}
             </DialogDescription>
           </DialogHeader>
           <div className='flex gap-2'>
@@ -1334,10 +1533,10 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                 setPendingChallengeToCancel(null)
               }}
             >
-              Volver
+              {t('Volver')}
             </Button>
             <Button type='button' disabled={isCancelling} onClick={() => void confirmCancelInvitation()}>
-              Sí, cancelar
+              {t('Sí, cancelar')}
             </Button>
           </div>
         </DialogContent>

@@ -1,15 +1,34 @@
+import { AppSelect } from '@/components/ui/app-select'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeftIcon,
+  BookOpenIcon,
+  CalendarHeartIcon,
   CalendarIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  FileTextIcon,
+  GlobeIcon,
+  GraduationCapIcon,
+  InfoIcon,
   PlusIcon,
   RefreshCwIcon,
+  UserIcon,
+  VideoIcon,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { EmptyState, IconTile, PageTitle, Panel, Pill, SectionLabel, StatTile, tone, type Tone } from '../game/ui'
+import {
+  ClassFlag,
+  DateBadge,
+  getLanguageName,
+  getLanguageTone,
+  type CalendarClassMeta,
+} from '../components/calendar-icademy/calendarIcademyUi'
 import { useAuth } from '@/auth/AuthContext'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -68,7 +87,7 @@ type EditClassDraft = {
   scheduledTime: string
 }
 
-const WEEKDAY_LABELS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
+const WEEKDAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 const OWNER_SUPPORT_COACH_USER_ID = '68890bd8-894d-422d-b865-08806acdb312'
 const OWNER_SUPPORT_COACH_LABEL = 'Luis'
 
@@ -305,6 +324,77 @@ function mapClassSessions(rows: CoachingManagedUser[]): CoachingCalendarEntry[] 
   })
 }
 
+const LANGUAGE_FLAGS: Record<string, string> = {
+  pl: '\u{1F1F5}\u{1F1F1}',
+  fr: '\u{1F1EB}\u{1F1F7}',
+  en: '\u{1F1EC}\u{1F1E7}',
+  it: '\u{1F1EE}\u{1F1F9}',
+  de: '\u{1F1E9}\u{1F1EA}',
+}
+
+/** «Italiano», «Inglés», «English»... → código de idioma (para el color y la bandera). */
+function coachingLangCode(targetLang: string): string {
+  const clean = targetLang
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+  if (clean.startsWith('ital')) return 'it'
+  if (clean.startsWith('ingl') || clean.startsWith('engl')) return 'en'
+  if (clean.startsWith('fran') || clean.startsWith('fren')) return 'fr'
+  if (clean.startsWith('pola') || clean.startsWith('poli')) return 'pl'
+  if (clean.startsWith('alem') || clean.startsWith('germ') || clean.startsWith('deut')) return 'de'
+  return clean.slice(0, 2)
+}
+
+function coachingLangMeta(targetLang: string): CalendarClassMeta {
+  const code = coachingLangCode(targetLang)
+  return {
+    classKey: code,
+    className: targetLang,
+    languageCode: code,
+    flag: LANGUAGE_FLAGS[code] || null,
+    tone: getLanguageTone(code),
+  }
+}
+
+const BUTTON_BY_TONE: Partial<Record<Tone, 'i' | 'c' | 'a' | 'gold' | 'success'>> = {
+  i: 'i',
+  c: 'c',
+  a: 'a',
+  gold: 'gold',
+  ok: 'success',
+}
+
+function buttonVariantForTone(value: Tone) {
+  return BUTTON_BY_TONE[value] || 'default'
+}
+
+/** «18:00» → «18h», «19:30» → «19h30» (como en el Calendario ICADEMY). */
+function formatHourLabel(time: string): string {
+  return time.endsWith(':00') ? `${time.slice(0, 2)}h` : time.replace(':', 'h')
+}
+
+/** «W03» → «Semana 3»; «W03-C2» → «Semana 3 · clase 2». */
+function formatWeekLabel(weekKey: string): string {
+  const match = weekKey.match(/W(\d+)(?:\D+(\d))?/i)
+  if (!match) return weekKey
+  const week = Number(match[1])
+  return match[2] && match[2] !== '1' ? `Semana ${week} · clase ${match[2]}` : `Semana ${week}`
+}
+
+function formatLongDay(dateKey: string): string {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const label = new Date(year || 2000, (month || 1) - 1, day || 1)
+    .toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' })
+    .replace(',', '')
+  return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
+function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] || name
+}
+
 export function ManageCoachingCalendarView() {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -323,6 +413,7 @@ export function ManageCoachingCalendarView() {
   const [editingSelectedClass, setEditingSelectedClass] = useState(false)
   const [editClassDraft, setEditClassDraft] = useState<EditClassDraft | null>(null)
   const [deletingSelectedClass, setDeletingSelectedClass] = useState(false)
+  const [pickedDay, setPickedDay] = useState<string | null>(null)
 
   const loadData = async () => {
     setLoading(true)
@@ -1047,180 +1138,417 @@ export function ManageCoachingCalendarView() {
     }
   }
 
-  return (
-    <section className='mx-auto w-full max-w-7xl flex-1 overflow-y-auto px-5 py-8'>
-      <div className='mb-6 flex flex-wrap items-start justify-between gap-3'>
-        <div>
-          <h2 className='mb-1 font-serif text-3xl font-bold'>
-            Calendario Coaching
-          </h2>
-          <p className='text-sm text-muted-foreground'>
-            Vista de clases programadas de coaching por coacher y alumno.
+  const monthCellsWithEntries = calendarCells
+  const monthLabel = formatMonthName(selectedMonth)
+  const shiftMonth = (delta: number) => {
+    const [year, month] = selectedMonth.split('-').map(Number)
+    const date = new Date(year || 2000, (month || 1) - 1 + delta, 1)
+    setSelectedMonth(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`)
+    setPickedDay(null)
+  }
+  // Día elegido: el que tocaste; si no, hoy (si es este mes) o el primer día con clases.
+  const selectedDay =
+    pickedDay && pickedDay.startsWith(selectedMonth)
+      ? pickedDay
+      : todayDateKey.startsWith(selectedMonth)
+        ? todayDateKey
+        : entries.find((entry) => entry.dateKey.startsWith(selectedMonth))?.dateKey ||
+          `${selectedMonth}-01`
+  const selectedDayEntries = entriesByDate.get(selectedDay) || []
+  const nextEntry = entries.find((entry) => new Date(entry.scheduledAt).getTime() >= Date.now() - 60 * 60 * 1000) || null
+  const monthEntriesCount = entries.filter((entry) => entry.dateKey.startsWith(selectedMonth)).length
+  const monthStudentsCount = new Set(
+    entries.filter((entry) => entry.dateKey.startsWith(selectedMonth)).map((entry) => entry.studentUserId),
+  ).size
+  const legendLanguages = Array.from(
+    new Set(entries.filter((entry) => entry.dateKey.startsWith(selectedMonth)).map((entry) => coachingLangCode(entry.targetLang))),
+  )
+
+  const renderClassRow = (entry: CoachingCalendarEntry) => {
+    const meta = coachingLangMeta(entry.targetLang)
+    const colors = tone(meta.tone)
+    const isMine = isSuperAdmin && entry.coachUserId === currentUserId
+    return (
+      <button
+        key={entry.id}
+        type='button'
+        onClick={() => setSelectedEntry(entry)}
+        className='flex w-full items-center gap-3 rounded-2xl px-1 py-2.5 text-left transition-colors hover:bg-muted/60'
+      >
+        <span
+          className='flex h-11 w-[62px] shrink-0 items-center justify-center rounded-2xl text-sm font-black tabular-nums'
+          style={{ background: colors.soft, color: colors.ink }}
+        >
+          {formatHourLabel(entry.timeLabel)}
+        </span>
+        <span className='min-w-0 flex-1'>
+          <span className='flex items-center gap-1.5'>
+            <ClassFlag meta={meta} className='text-base' />
+            <span className='truncate text-[15px] font-extrabold'>{entry.studentName}</span>
+            {isMine ? <Pill tone='ok'>Tú</Pill> : null}
+          </span>
+          <span className='mt-0.5 block text-xs font-semibold text-muted-foreground'>
+            {entry.targetLang} {entry.level} · {formatWeekLabel(entry.sessionWeekKey)}
+          </span>
+          {entry.coachDisplayName ? (
+            <span className='block text-xs font-bold text-muted-foreground'>con {entry.coachDisplayName}</span>
+          ) : null}
+        </span>
+        <ChevronRightIcon className='size-5 shrink-0 text-muted-foreground' strokeWidth={2.6} aria-hidden='true' />
+      </button>
+    )
+  }
+
+  const renderHero = () => {
+    if (!nextEntry) return null
+    const meta = coachingLangMeta(nextEntry.targetLang)
+    const colors = tone(meta.tone)
+    const isToday = nextEntry.dateKey === todayDateKey
+    return (
+      <div
+        className='ica-panel flex flex-wrap items-center gap-4 p-4 sm:p-5'
+        style={{ background: `color-mix(in oklab, ${colors.solid} 9%, var(--card))`, borderColor: `color-mix(in oklab, ${colors.solid} 35%, var(--border))` }}
+      >
+        <DateBadge dateKey={nextEntry.dateKey} tone={meta.tone} size={68} />
+        <div className='min-w-0 flex-1'>
+          <p className='m-0 text-[11px] font-black tracking-[0.08em] uppercase' style={{ color: colors.ink }}>
+            Próxima clase de coaching
+          </p>
+          <p className='m-0 mt-0.5 flex items-center gap-2 text-xl leading-tight font-black'>
+            <ClassFlag meta={meta} />
+            <span className='truncate'>{nextEntry.studentName}</span>
+          </p>
+          <p className='m-0 mt-0.5 text-sm font-bold' style={{ color: colors.ink }}>
+            {isToday ? 'Hoy' : formatLongDay(nextEntry.dateKey)} · {formatHourLabel(nextEntry.timeLabel)} ·{' '}
+            {formatWeekLabel(nextEntry.sessionWeekKey)}
+          </p>
+          <p className='m-0 mt-0.5 text-xs font-semibold text-muted-foreground'>
+            {nextEntry.targetLang} {nextEntry.level}
+            {nextEntry.coachDisplayName ? ` · con ${nextEntry.coachDisplayName}` : ''}
           </p>
         </div>
-
-        <div className='flex flex-wrap gap-2'>
-          <Button type='button' variant='outline' onClick={() => navigate(-1)}>
-            <ArrowLeftIcon className='h-4 w-4' />
-            Volver
-          </Button>
-          <Button type='button' variant='ghost' onClick={() => void loadData()}>
-            <RefreshCwIcon className='h-4 w-4' />
-            Recargar
+        <div className='flex w-full gap-2 sm:w-auto'>
+          {nextEntry.classJoinUrl ? (
+            <Button asChild size='lg' variant={buttonVariantForTone(meta.tone)} className='flex-1 rounded-2xl sm:flex-none'>
+              <a href={nextEntry.classJoinUrl} target='_blank' rel='noopener noreferrer'>
+                <VideoIcon className='size-5' strokeWidth={2.6} aria-hidden='true' />
+                Entrar
+              </a>
+            </Button>
+          ) : null}
+          <Button type='button' size='lg' variant='outline' className='flex-1 rounded-2xl sm:flex-none' onClick={() => setSelectedEntry(nextEntry)}>
+            <InfoIcon className='size-5' strokeWidth={2.6} aria-hidden='true' />
+            Detalles
           </Button>
         </div>
       </div>
+    )
+  }
 
-      {isSuperAdmin && (
-        <div className='mb-4 flex flex-wrap gap-3 text-xs text-muted-foreground'>
-          <p className='inline-flex items-center gap-2'>
-            <span className='inline-block h-2.5 w-2.5 rounded-full bg-emerald-500' />
-            Mis clases
-          </p>
-          <p className='inline-flex items-center gap-2'>
-            <span className='inline-block h-2.5 w-2.5 rounded-full bg-sky-500' />
-            Clases de otros coachers
+  const renderMonthHeader = () => (
+    <div className='mb-3 flex items-center gap-2'>
+      <p className='m-0 flex-1 text-lg font-extrabold'>{monthLabel}</p>
+      <span className='flex shrink-0 gap-2'>
+        <button
+          type='button'
+          onClick={() => shiftMonth(-1)}
+          className='flex size-10 items-center justify-center rounded-2xl border-2 border-border text-muted-foreground hover:bg-muted'
+          aria-label='Mes anterior'
+        >
+          <ChevronLeftIcon className='size-5' strokeWidth={2.6} />
+        </button>
+        <button
+          type='button'
+          onClick={() => shiftMonth(1)}
+          className='flex size-10 items-center justify-center rounded-2xl border-2 border-border text-muted-foreground hover:bg-muted'
+          aria-label='Mes siguiente'
+        >
+          <ChevronRightIcon className='size-5' strokeWidth={2.6} />
+        </button>
+      </span>
+    </div>
+  )
+
+  const renderLegend = () =>
+    legendLanguages.length > 0 ? (
+      <div className='mt-3 flex flex-wrap gap-x-4 gap-y-1.5'>
+        {legendLanguages.map((code) => (
+          <span key={code} className='flex items-center gap-1.5 text-xs font-bold text-muted-foreground'>
+            <span className='size-2.5 rounded-full' style={{ background: tone(getLanguageTone(code)).solid }} />
+            {getLanguageName(code)}
+          </span>
+        ))}
+      </div>
+    ) : null
+
+  // Ordenador: casillas redondeadas con un chip por clase (bandera, hora y alumno)
+  const renderMonthGrid = () => (
+    <div>
+      {renderMonthHeader()}
+      <div className='grid grid-cols-7 gap-2'>
+        {WEEKDAY_LABELS.map((label) => (
+          <div key={label} className='pb-1 text-center text-xs font-extrabold tracking-[0.08em] text-muted-foreground uppercase'>
+            {label}
+          </div>
+        ))}
+        {monthCellsWithEntries.map((cell) => {
+          const dayNumber = Number(cell.dateKey.slice(-2))
+          const dayEntries = entriesByDate.get(cell.dateKey) || []
+          const isSelected = cell.dateKey === selectedDay
+          const isToday = cell.dateKey === todayDateKey
+          const isPastDay = cell.dateKey < todayDateKey
+          const visibleEntries = dayEntries.slice(0, 3)
+          const hiddenCount = dayEntries.length - visibleEntries.length
+
+          const inner = (
+            <>
+              <span className='flex items-center justify-between gap-1'>
+                <span
+                  className={cn(
+                    'flex size-7 items-center justify-center rounded-full text-sm font-extrabold tabular-nums',
+                    !isToday && dayEntries.length === 0 && 'text-muted-foreground',
+                  )}
+                  style={isToday ? { background: 'var(--primary)', color: 'var(--primary-foreground)' } : undefined}
+                >
+                  {dayNumber}
+                </span>
+                {isToday ? <span className='text-[10px] font-black tracking-[0.08em] text-primary uppercase'>Hoy</span> : null}
+              </span>
+              <span className='flex flex-col gap-1'>
+                {visibleEntries.map((entry) => {
+                  const meta = coachingLangMeta(entry.targetLang)
+                  const colors = tone(meta.tone)
+                  return (
+                    <span
+                      key={entry.id}
+                      className='flex min-w-0 items-center gap-1 rounded-lg px-1 py-0.5 text-[11px] leading-4 font-extrabold'
+                      style={{ background: colors.soft, color: colors.ink }}
+                      title={`${entry.studentName} · ${entry.targetLang} ${entry.level} · ${formatHourLabel(entry.timeLabel)}`}
+                    >
+                      <ClassFlag meta={meta} className='text-xs' />
+                      <span className='shrink-0 tabular-nums'>{formatHourLabel(entry.timeLabel)}</span>
+                      <span className='truncate font-bold opacity-80'>{firstName(entry.studentName)}</span>
+                    </span>
+                  )
+                })}
+                {hiddenCount > 0 ? (
+                  <span className='px-1.5 text-[11px] font-extrabold text-muted-foreground'>+{hiddenCount} más</span>
+                ) : null}
+              </span>
+            </>
+          )
+
+          if (!cell.inCurrentMonth) {
+            return (
+              <div key={cell.dateKey} className='flex min-h-[6.75rem] flex-col gap-1 rounded-2xl p-1.5 opacity-35'>
+                {inner}
+              </div>
+            )
+          }
+
+          return (
+            <button
+              key={cell.dateKey}
+              type='button'
+              onClick={() => setPickedDay(cell.dateKey)}
+              aria-pressed={isSelected}
+              className={cn(
+                'flex min-h-[6.75rem] min-w-0 flex-col gap-1 rounded-2xl border-2 bg-card p-1.5 text-left transition-colors hover:border-primary/50',
+                isSelected ? 'border-primary' : 'border-border',
+                isPastDay && !isSelected && 'opacity-60',
+              )}
+              style={
+                isSelected
+                  ? { background: 'color-mix(in oklab, var(--primary) 9%, var(--card))', boxShadow: '0 3px 0 var(--primary-edge)' }
+                  : { boxShadow: '0 3px 0 var(--border)' }
+              }
+            >
+              {inner}
+            </button>
+          )
+        })}
+      </div>
+      {renderLegend()}
+    </div>
+  )
+
+  // Móvil: el mes en círculos con puntos de color por idioma
+  const renderMonthCircles = () => (
+    <div>
+      {renderMonthHeader()}
+      <div className='grid grid-cols-7 gap-1.5'>
+        {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((day) => (
+          <div key={day} className='pb-1 text-center text-xs font-extrabold text-muted-foreground'>
+            {day}
+          </div>
+        ))}
+        {monthCellsWithEntries.map((cell) => {
+          const dayNumber = Number(cell.dateKey.slice(-2))
+          if (!cell.inCurrentMonth) {
+            return (
+              <div key={cell.dateKey} className='flex aspect-square items-center justify-center text-sm font-bold text-muted-foreground opacity-35'>
+                {dayNumber}
+              </div>
+            )
+          }
+          const dayEntries = entriesByDate.get(cell.dateKey) || []
+          const isSelected = cell.dateKey === selectedDay
+          const isToday = cell.dateKey === todayDateKey
+          const hasClasses = dayEntries.length > 0
+          const dotTones = Array.from(new Set(dayEntries.map((entry) => coachingLangMeta(entry.targetLang).tone))).slice(0, 3)
+          return (
+            <button
+              key={cell.dateKey}
+              type='button'
+              onClick={() => setPickedDay(cell.dateKey)}
+              aria-pressed={isSelected}
+              className={cn(
+                'relative flex aspect-square items-center justify-center rounded-full text-sm font-extrabold tabular-nums transition-colors',
+                isToday && 'ring-2 ring-primary ring-offset-2 ring-offset-background',
+                cell.dateKey < todayDateKey && !isSelected && 'opacity-55',
+              )}
+              style={{
+                background: isSelected
+                  ? 'var(--primary)'
+                  : hasClasses
+                    ? 'color-mix(in oklab, var(--primary) 10%, var(--card))'
+                    : 'transparent',
+                color: isSelected ? 'var(--primary-foreground)' : hasClasses ? 'var(--foreground)' : 'var(--muted-foreground)',
+              }}
+            >
+              {dayNumber}
+              {dotTones.length > 0 ? (
+                <span className='absolute bottom-[14%] left-1/2 flex -translate-x-1/2 gap-0.5'>
+                  {dotTones.map((dotTone) => (
+                    <span
+                      key={dotTone}
+                      className='size-1.5 rounded-full'
+                      style={{ background: isSelected ? 'var(--primary-foreground)' : tone(dotTone).solid }}
+                    />
+                  ))}
+                </span>
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+      {renderLegend()}
+    </div>
+  )
+
+  const canAddOnSelectedDay = selectedDay >= todayDateKey
+
+  const renderDayPanel = () => (
+    <div className='ica-panel p-4'>
+      <div className='flex items-center gap-3'>
+        <DateBadge dateKey={selectedDay} tone='primary' size={56} />
+        <div className='min-w-0 flex-1'>
+          <p className='m-0 text-lg leading-tight font-extrabold'>{formatLongDay(selectedDay)}</p>
+          <p className='m-0 mt-0.5 text-sm font-semibold text-muted-foreground'>
+            {selectedDay === todayDateKey ? 'Hoy · ' : ''}
+            {selectedDayEntries.length === 0
+              ? 'Sin clases'
+              : `${selectedDayEntries.length} ${selectedDayEntries.length === 1 ? 'clase' : 'clases'}`}
           </p>
         </div>
-      )}
-
-      {(error || feedback) && (
-        <p
-          className={`mb-4 text-sm ${error ? 'text-destructive' : 'text-muted-foreground'}`}
-        >
-          {error || feedback}
+      </div>
+      {selectedDayEntries.length > 0 ? (
+        <div className='mt-2 divide-y-2 divide-border'>{selectedDayEntries.map((entry) => renderClassRow(entry))}</div>
+      ) : (
+        <p className='m-0 mt-3 rounded-2xl bg-muted px-3 py-3 text-sm font-semibold text-muted-foreground'>
+          Este día no hay clases de coaching.
         </p>
       )}
+      {canAddOnSelectedDay ? (
+        <Button
+          type='button'
+          variant='outline'
+          size='lg'
+          className='mt-3 w-full rounded-2xl'
+          onClick={() => handleOpenAssignModal(selectedDay)}
+        >
+          <PlusIcon className='size-5' strokeWidth={2.6} aria-hidden='true' />
+          Añadir clase este día
+        </Button>
+      ) : null}
+    </div>
+  )
 
-      <Card>
-        <CardHeader className='gap-4'>
-          <div className='flex flex-wrap items-center justify-between gap-3'>
-            <CardTitle>
-              Calendario mensual - {formatMonthName(selectedMonth)}
-            </CardTitle>
-            <select
-              className='h-10 min-w-56 rounded-md border bg-background px-3 text-sm'
-              value={selectedMonth}
-              onChange={(event) => setSelectedMonth(event.target.value)}
-            >
-              {availableMonths.map((month) => (
-                <option key={month} value={month}>
-                  {formatMonthName(month)}
-                </option>
-              ))}
-            </select>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <p className='text-sm text-muted-foreground'>Cargando calendario...</p>
-          ) : entries.length === 0 ? (
-            <p className='text-sm text-muted-foreground'>
-              No hay clases de coaching programadas por ahora.
-            </p>
-          ) : (
-            <div className='overflow-x-auto'>
-              <div className='min-w-225 overflow-hidden rounded-lg border'>
-                <div className='grid grid-cols-7 border-b bg-muted/40'>
-                  {WEEKDAY_LABELS.map((label) => (
-                    <div
-                      key={label}
-                      className='px-2 py-2 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground'
-                    >
-                      {label}
-                    </div>
-                  ))}
-                </div>
+  const renderStats = () => (
+    <div className='grid grid-cols-2 gap-3'>
+      <StatTile tone='i' value={String(monthEntriesCount)} label={`clases en ${monthLabel.split(' ')[0].toLowerCase()}`} />
+      <StatTile tone='c' value={String(monthStudentsCount)} label={monthStudentsCount === 1 ? 'alumno' : 'alumnos'} />
+    </div>
+  )
 
-                <div className='grid grid-cols-7'>
-                  {calendarCells.map((cell, index) => {
-                    const dayEntries = entriesByDate.get(cell.dateKey) || []
-                    const isOutOfMonth = !cell.inCurrentMonth
-                    const isWeekend = index % 7 >= 5
-                    const isToday = cell.dateKey === todayDateKey
-                    const canAddClass = cell.inCurrentMonth && cell.dateKey >= todayDateKey
+  return (
+    <section className='mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 pt-2 pb-8 lg:py-8'>
+      <PageTitle
+        icon={
+          <IconTile tone='c' size={48} className='hidden sm:flex'>
+            <CalendarHeartIcon className='size-6' strokeWidth={2.4} />
+          </IconTile>
+        }
+        subtitle={isSuperAdmin ? 'Todas las clases, por alumno y coacher.' : 'Tus clases, por alumno.'}
+        right={
+          <span className='flex gap-2'>
+            <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => navigate(-1)} aria-label='Volver'>
+              <ArrowLeftIcon className='size-5' strokeWidth={2.6} />
+            </Button>
+            <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => void loadData()} aria-label='Recargar'>
+              <RefreshCwIcon className='size-5' strokeWidth={2.6} />
+            </Button>
+          </span>
+        }
+      >
+        Calendario Coaching
+      </PageTitle>
 
-                    return (
-                      <div
-                        key={`${cell.dateKey}-${index}`}
-                        className={[
-                          'min-h-40 border-r border-b p-2 last:border-r-0',
-                          isOutOfMonth ? 'bg-muted/40' : '',
-                          isWeekend ? 'bg-muted/20' : '',
-                        ].join(' ')}
-                      >
-                        <div className='mb-2 flex items-center justify-between gap-1'>
-                          <p className='text-sm font-semibold'>
-                            {Number(cell.dateKey.slice(-2))}
-                          </p>
-                          <div className='flex items-center gap-1'>
-                            {isToday && (
-                              <Badge className='h-auto px-1.5 py-0 text-[10px]'>
-                                Hoy
-                              </Badge>
-                            )}
-                            {canAddClass && (
-                              <Button
-                                type='button'
-                                size='icon'
-                                variant='outline'
-                                className='h-6 w-6'
-                                aria-label='Asignar clase'
-                                onClick={() => handleOpenAssignModal(cell.dateKey)}
-                              >
-                                <PlusIcon className='h-3.5 w-3.5' />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
+      {error || feedback ? (
+        <Panel tone={error ? 'bad' : 'neutral'} className='text-sm font-bold'>
+          {error || feedback}
+        </Panel>
+      ) : null}
 
-                        <div className='flex max-h-28 flex-col gap-1 overflow-y-auto pr-0.5'>
-                          {dayEntries.map((entry) => {
-                            const isMine = entry.coachUserId === currentUserId
-                            const toneClass = isSuperAdmin
-                              ? isMine
-                                ? 'border-emerald-300 bg-emerald-500/10'
-                                : 'border-sky-300 bg-sky-500/10'
-                              : 'border-primary/30 bg-primary/10'
-
-                            return (
-                              <button
-                                key={entry.id}
-                                type='button'
-                                className={`w-full rounded-sm border border-l-4 px-1.5 py-1.5 text-left text-[11px] leading-tight transition-colors hover:bg-accent/35 ${toneClass}`}
-                                onClick={() => setSelectedEntry(entry)}
-                              >
-                                <p className='truncate font-semibold'>
-                                  {entry.timeLabel} - {entry.studentName}
-                                </p>
-                                <div className='mt-0.5 flex items-end justify-between gap-1'>
-                                  <p className='truncate text-muted-foreground'>
-                                    {entry.targetLang}
-                                    {isSuperAdmin
-                                      ? ` - ${entry.coachDisplayName || entry.coachUserId || 'Sin coach'}`
-                                      : ''}
-                                  </p>
-                                  <Badge
-                                    variant='default'
-                                    className='h-auto bg-amber-500 px-1 py-0 text-[9px] font-semibold text-black'
-                                  >
-                                    {entry.sessionWeekKey}
-                                  </Badge>
-                                </div>
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
+      {loading ? (
+        <Panel>
+          <p className='m-0 text-sm font-semibold text-muted-foreground'>Cargando calendario...</p>
+        </Panel>
+      ) : entries.length === 0 ? (
+        <Panel>
+          <EmptyState
+            icon={
+              <IconTile tone='c' size={64}>
+                <CalendarHeartIcon className='size-8' strokeWidth={2.4} />
+              </IconTile>
+            }
+            title='Todavía no hay clases'
+            text='Cuando programes clases de coaching, aparecerán aquí.'
+          />
+          <Button type='button' size='lg' className='mt-3 w-full rounded-2xl' onClick={() => handleOpenAssignModal(todayDateKey)}>
+            <PlusIcon className='size-5' strokeWidth={2.6} aria-hidden='true' />
+            Añadir una clase
+          </Button>
+        </Panel>
+      ) : (
+        <div className='grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]'>
+          <div className='flex min-w-0 flex-col gap-6'>
+            {renderHero()}
+            <div className='hidden lg:block'>{renderMonthGrid()}</div>
+            <div className='flex flex-col gap-4 lg:hidden'>
+              {renderMonthCircles()}
+              {renderDayPanel()}
             </div>
-          )}
-        </CardContent>
-      </Card>
-
+          </div>
+          <aside className='flex flex-col gap-6 lg:sticky lg:top-6'>
+            <div className='hidden lg:block'>{renderDayPanel()}</div>
+            <div>
+              <SectionLabel>Este mes</SectionLabel>
+              {renderStats()}
+            </div>
+          </aside>
+        </div>
+      )}
       <Dialog
         open={assignModalOpen}
         onOpenChange={(open) => {
@@ -1240,7 +1568,7 @@ export function ManageCoachingCalendarView() {
             {isSuperAdmin && (
               <div className='space-y-1.5'>
                 <Label htmlFor='assign-coach-select'>Coacher</Label>
-                <select
+                <AppSelect
                   id='assign-coach-select'
                   className='h-10 w-full rounded-md border bg-background px-3 text-sm'
                   value={assignDraft?.coachUserId || ''}
@@ -1280,13 +1608,13 @@ export function ManageCoachingCalendarView() {
                       {coach.name}
                     </option>
                   ))}
-                </select>
+                </AppSelect>
               </div>
             )}
 
             <div className='space-y-1.5'>
               <Label htmlFor='assign-student-select'>Alumno</Label>
-              <select
+              <AppSelect
                 id='assign-student-select'
                 className='h-10 w-full rounded-md border bg-background px-3 text-sm'
                 value={assignDraft?.sessionId || ''}
@@ -1327,12 +1655,12 @@ export function ManageCoachingCalendarView() {
                       {row.userDisplayName} - {row.targetLang} ({row.level})
                     </option>
                   ))}
-              </select>
+              </AppSelect>
             </div>
 
             <div className='space-y-1.5'>
               <Label htmlFor='assign-week-select'>Semana</Label>
-              <select
+              <AppSelect
                 id='assign-week-select'
                 className='h-10 w-full rounded-md border bg-background px-3 text-sm'
                 value={assignDraft?.weekKey || ''}
@@ -1354,7 +1682,7 @@ export function ManageCoachingCalendarView() {
                     {weekKey}
                   </option>
                 ))}
-              </select>
+              </AppSelect>
               {selectedManagedSession && (
                 <p className='text-xs text-muted-foreground'>
                   Puedes asignar desde {weekKeyFromNumber(minAssignableWeek)} en
@@ -1438,7 +1766,7 @@ export function ManageCoachingCalendarView() {
       >
         <DialogContent className='sm:max-w-lg'>
           <DialogHeader>
-            <DialogTitle>Clase de coaching 🗓️</DialogTitle>
+            <DialogTitle>Clase de coaching</DialogTitle>
             <DialogDescription>
               {selectedEntry
                 ? new Date(selectedEntry.scheduledAt).toLocaleString('es-ES', {
@@ -1455,21 +1783,25 @@ export function ManageCoachingCalendarView() {
 
           {selectedEntry && (
             <div className='space-y-3 text-sm'>
-              <p className='rounded-md bg-muted/40 px-3 py-2'>
-                <span className='font-medium'>👤 Alumno:</span>{' '}
+              <p className='flex items-center gap-2 rounded-xl bg-muted/40 px-3 py-2'>
+                <UserIcon className='size-4 shrink-0 text-muted-foreground' aria-hidden='true' />
+                <span className='font-bold'>Alumno:</span>
                 {selectedEntry.studentName}
               </p>
-              <p>
-                <span className='font-medium'>🌍 Idioma:</span>{' '}
+              <p className='flex items-center gap-2'>
+                <GlobeIcon className='size-4 shrink-0 text-muted-foreground' aria-hidden='true' />
+                <span className='font-bold'>Idioma:</span>
                 {selectedEntry.targetLang} ({selectedEntry.level})
               </p>
-              <p>
-                <span className='font-medium'>📚 Semana:</span>{' '}
+              <p className='flex items-center gap-2'>
+                <BookOpenIcon className='size-4 shrink-0 text-muted-foreground' aria-hidden='true' />
+                <span className='font-bold'>Semana:</span>
                 {selectedEntry.sessionWeekKey}
               </p>
               {isSuperAdmin && (
-                <p>
-                  <span className='font-medium'>🧑‍🏫 Coacher:</span>{' '}
+                <p className='flex items-center gap-2'>
+                  <GraduationCapIcon className='size-4 shrink-0 text-muted-foreground' aria-hidden='true' />
+                  <span className='font-bold'>Coacher:</span>{' '}
                   {selectedEntry.coachDisplayName ||
                     selectedEntry.coachUserId ||
                     'Sin coach asignado'}
@@ -1504,8 +1836,8 @@ export function ManageCoachingCalendarView() {
               </div>
 
               {selectedEntry.report && (
-                <p className='rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground'>
-                  <span className='mr-1'>📝</span>
+                <p className='flex items-start gap-2 rounded-xl border-2 border-border bg-muted/30 p-2 text-xs text-muted-foreground'>
+                  <FileTextIcon className='mt-px size-3.5 shrink-0' aria-hidden='true' />
                   {selectedEntry.report}
                 </p>
               )}
@@ -1518,7 +1850,7 @@ export function ManageCoachingCalendarView() {
 
                   <div className='space-y-1.5'>
                     <Label htmlFor='edit-week-select'>Semana</Label>
-                    <select
+                    <AppSelect
                       id='edit-week-select'
                       className='h-10 w-full rounded-md border bg-background px-3 text-sm'
                       value={editClassDraft.weekKey}
@@ -1538,7 +1870,7 @@ export function ManageCoachingCalendarView() {
                           {weekKey}
                         </option>
                       ))}
-                    </select>
+                    </AppSelect>
                   </div>
 
                   <div className='space-y-1.5'>

@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  CalendarClockIcon,
+  CheckIcon,
+  LockIcon,
+  RotateCcwIcon,
+  SaveIcon,
+  TimerIcon,
+  TriangleAlertIcon,
+  XIcon,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { t, langName } from "@/i18n";
 import {
   Dialog,
   DialogContent,
@@ -39,6 +43,9 @@ import {
   startIcaTestAttempt,
 } from "../services/icaTests";
 import { IcaTestResultCard } from "../components/IcaTestResultCard";
+import { IcaTestGlyph, IcaTestStateCard } from "../components/IcaTestParts";
+import { TrophyIcon } from "../game/icons";
+import { GameProgress, IconTile, Pill } from "../game/ui";
 import { DASHBOARD_ROUTES, getIcaTestMonthRoute } from "../routes/paths";
 import type {
   IcaTestAnswer,
@@ -75,52 +82,52 @@ function getScoreLiteral(
 ): { title: string; message: string } {
   if (total <= 0) {
     return {
-      title: "Resultado registrado",
-      message: "Completaste el test ICA.",
+      title: t("Resultado registrado"),
+      message: t("Completaste el test ICA."),
     };
   }
 
   const ratio = score / total;
   if (ratio === 1) {
     return {
-      title: "Perfección total",
-      message: "Clavaste las 15 respuestas. Nivel altísimo.",
+      title: t("Perfección total"),
+      message: t("Clavaste las {total} respuestas. Nivel altísimo.", { total }),
     };
   }
 
   if (ratio >= 0.8) {
     return {
-      title: "Excelente resultado",
-      message: "Muy sólido. Estás muy cerca de la puntuación perfecta.",
+      title: t("Excelente resultado"),
+      message: t("Muy sólido. Estás muy cerca de la puntuación perfecta."),
     };
   }
 
   if (ratio >= 0.6) {
     return {
-      title: "Buen avance",
-      message: "Vas por buen camino. Reintentar puede consolidarte.",
+      title: t("Buen avance"),
+      message: t("Vas por buen camino. Reintentar puede consolidarte."),
     };
   }
 
   if (ratio >= 0.4) {
     return {
-      title: "Base construida",
-      message: "Ya hay progreso. Refuerza vocabulario y vuelve a intentarlo.",
+      title: t("Base construida"),
+      message: t("Ya hay progreso. Refuerza vocabulario y vuelve a intentarlo."),
     };
   }
 
   return {
-    title: "Punto de partida",
-    message: "Este resultado te marca exactamente qué reforzar.",
+    title: t("Punto de partida"),
+    message: t("Este resultado te marca exactamente qué reforzar."),
   };
 }
 
 function getOfficialBlockedMessage(test: IcaTestRecord): string {
   if (test.status === "completed") {
-    return `Puntuación guardada: ${test.score}/${test.totalQuestions}.`;
+    return t("Puntuación guardada: {score}/{total}.", { score: test.score, total: test.totalQuestions });
   }
 
-  return "Este intento se cerró por salida/recarga y quedó fallido.";
+  return t("Este intento se cerró por salida/recarga y quedó fallido.");
 }
 
 type IcaTestErrorReviewItem = {
@@ -142,7 +149,7 @@ function buildIcaTestErrorReviewItems(
         answer.selectedOptionIndex !== null &&
         question?.options[answer.selectedOptionIndex]
           ? question.options[answer.selectedOptionIndex]
-          : "Sin respuesta (tiempo agotado)";
+          : t("Sin respuesta (tiempo agotado)");
 
       return {
         questionNumber: answer.questionIndex + 1,
@@ -270,7 +277,7 @@ export function IcaTestMonthView({
       setStoredTest(null);
       setAttempt(null);
       setIsLoadingStoredTest(false);
-      setLoadError("Mes de test inválido.");
+      setLoadError(t("Mes de test inválido."));
       return;
     }
 
@@ -288,7 +295,7 @@ export function IcaTestMonthView({
       })
       .catch(() => {
         if (!active) return;
-        setLoadError("No pudimos cargar el estado del test ICA.");
+        setLoadError(t("No pudimos cargar el estado del test ICA."));
       })
       .finally(() => {
         if (!active) return;
@@ -462,7 +469,7 @@ export function IcaTestMonthView({
     try {
       const questions = buildIcaTestQuestions(wordPool.pool);
       if (questions.length !== ICA_TEST_TOTAL_QUESTIONS) {
-        throw new Error("No pudimos generar las 12 preguntas del test ICA.");
+        throw new Error(t("No pudimos generar las 12 preguntas del test ICA."));
       }
 
       const started = await startIcaTestAttempt({
@@ -480,12 +487,12 @@ export function IcaTestMonthView({
         error.message === "ICA_TEST_ALREADY_STARTED"
       ) {
         setSaveError(
-          "Este test ya fue iniciado. Recarga para ver su estado final.",
+          t("Este test ya fue iniciado. Recarga para ver su estado final."),
         );
       } else if (error instanceof Error) {
         setSaveError(error.message);
       } else {
-        setSaveError("No pudimos iniciar el test ICA.");
+        setSaveError(t("No pudimos iniciar el test ICA."));
       }
     } finally {
       setIsStarting(false);
@@ -534,16 +541,16 @@ export function IcaTestMonthView({
         error.message === "ICA_TEST_ATTEMPT_NOT_RUNNING"
       ) {
         setSaveError(
-          "El intento ya no está en curso. Recarga para ver el estado final.",
+          t("El intento ya no está en curso. Recarga para ver el estado final."),
         );
         return;
       }
       if (error instanceof Error && error.message) {
-        setSaveError(`No pudimos guardar tu respuesta: ${error.message}`);
+        setSaveError(t("No pudimos guardar tu respuesta: {error}", { error: error.message }));
         return;
       }
       setSaveError(
-        "No pudimos guardar tu respuesta. Reintenta; si persiste, recarga.",
+        t("No pudimos guardar tu respuesta. Reintenta; si persiste, recarga."),
       );
     },
     onFinish: async (answers) => {
@@ -629,28 +636,53 @@ export function IcaTestMonthView({
     <Dialog open={errorReviewOpen} onOpenChange={setErrorReviewOpen}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{errorReviewTitle || "Detalle de errores"}</DialogTitle>
+          <DialogTitle>{errorReviewTitle || t("Detalle de errores")}</DialogTitle>
           <DialogDescription>
-            Revisión de preguntas incorrectas: opción elegida vs respuesta
-            correcta.
+            {t("Lo que elegiste y la respuesta correcta de cada fallo.")}
           </DialogDescription>
         </DialogHeader>
-        <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1 text-sm">
+        <div className="flex max-h-[55vh] flex-col gap-2.5 overflow-y-auto pr-1">
           {errorReviewItems.map((item) => (
             <div
               key={`error-review-${item.questionNumber}-${item.correctOption}`}
-              className="rounded-md border border-destructive/30 bg-destructive/5 p-3"
+              className="rounded-2xl border-2 border-border p-3.5"
             >
-              <p className="font-semibold">Pregunta #{item.questionNumber}</p>
-              <p className="text-muted-foreground">
-                Enunciado: {item.promptNative}
+              <div className="mb-2 flex items-center gap-2">
+                <Pill tone="neutral">{t("Pregunta {n}", { n: item.questionNumber })}</Pill>
+              </div>
+              <p className="m-0 text-lg leading-tight font-black">
+                {item.promptNative}
               </p>
-              <p className="text-muted-foreground">
-                Elegiste: {item.selectedOption}
-              </p>
-              <p className="text-emerald-700 dark:text-emerald-300">
-                Correcta: {item.correctOption}
-              </p>
+              <div className="mt-2.5 flex flex-col gap-1.5 text-sm font-bold">
+                <p
+                  className="m-0 flex items-start gap-2 rounded-xl px-2.5 py-1.5"
+                  style={{
+                    background: "var(--ica-bad-soft)",
+                    color: "var(--ica-bad-ink)",
+                  }}
+                >
+                  <XIcon
+                    className="mt-0.5 size-4 shrink-0"
+                    strokeWidth={3}
+                    aria-hidden="true"
+                  />
+                  <span>{t("Elegiste: {option}", { option: item.selectedOption })}</span>
+                </p>
+                <p
+                  className="m-0 flex items-start gap-2 rounded-xl px-2.5 py-1.5"
+                  style={{
+                    background: "var(--ica-ok-soft)",
+                    color: "var(--ica-ok-ink)",
+                  }}
+                >
+                  <CheckIcon
+                    className="mt-0.5 size-4 shrink-0"
+                    strokeWidth={3}
+                    aria-hidden="true"
+                  />
+                  <span>{t("Correcta: {option}", { option: item.correctOption })}</span>
+                </p>
+              </div>
             </div>
           ))}
         </div>
@@ -658,105 +690,121 @@ export function IcaTestMonthView({
     </Dialog>
   );
 
+  // Botón de "Ver errores" (se repite en los tres resultados)
+  const errorsButton = (onClick: () => void) => (
+    <Button
+      type="button"
+      variant="destructive"
+      size="lg"
+      className="w-full max-w-xs"
+      onClick={onClick}
+    >
+      <XIcon data-icon="inline-start" className="size-5" strokeWidth={2.8} />
+      {t("Ver errores")}
+    </Button>
+  );
+
+  // Reintentar + aviso de que no cambia el resultado original
+  const redoButton = (to: string, label = t("Reintentar")) => (
+    <div className="flex w-full flex-col gap-1">
+      <Button type="button" variant="outline" size="xl" className="w-full" asChild>
+        <Link to={to}>
+          <RotateCcwIcon data-icon="inline-start" className="size-5" strokeWidth={2.6} />
+          {label}
+        </Link>
+      </Button>
+      <p className="m-0 text-xs font-bold text-muted-foreground">
+        {t("No afecta al resultado original")}
+      </p>
+    </div>
+  );
+
+  const backToTestsLink = (label = t("Volver a Tests ICA")) => (
+    <Button type="button" variant="outline" size="lg" asChild>
+      <Link to={DASHBOARD_ROUTES.testsIca}>{label}</Link>
+    </Button>
+  );
+
   if (!monthDate) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Ruta inválida</CardTitle>
-          <CardDescription>El formato esperado es MMYYYY.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button type="button" variant="outline" asChild>
-            <Link to={DASHBOARD_ROUTES.testsIca}>Volver a Tests ICA</Link>
-          </Button>
-        </CardContent>
-      </Card>
+      <IcaTestStateCard
+        tone="bad"
+        icon={<TriangleAlertIcon className="size-10" strokeWidth={2.4} />}
+        title={t("Ruta inválida")}
+        text={t("El formato esperado es MMYYYY.")}
+      >
+        {backToTestsLink()}
+      </IcaTestStateCard>
     );
   }
 
   if (isLoadingStoredTest) {
     return (
-      <p className="text-sm text-muted-foreground">Cargando test ICA...</p>
+      <section className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-3 px-4 pt-2 pb-8 lg:py-8">
+        <div className="h-44 animate-pulse rounded-3xl bg-muted/70" />
+        <p className="m-0 text-center text-sm font-bold text-muted-foreground">
+          {t("Cargando test ICA...")}
+        </p>
+      </section>
     );
   }
 
   if (loadError) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>No pudimos abrir este test</CardTitle>
-          <CardDescription>{loadError}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button type="button" variant="outline" asChild>
-            <Link to={DASHBOARD_ROUTES.testsIca}>Volver a Tests ICA</Link>
-          </Button>
-        </CardContent>
-      </Card>
+      <IcaTestStateCard
+        tone="bad"
+        icon={<TriangleAlertIcon className="size-10" strokeWidth={2.4} />}
+        title={t("No pudimos abrir este test")}
+        text={loadError}
+      >
+        {backToTestsLink()}
+      </IcaTestStateCard>
     );
   }
 
   if (mode === "redo" && !storedTest) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Este test no existe aún</CardTitle>
-          <CardDescription>
-            Solo puedes reintentar tests ICA que ya estén completados y
-            guardados.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button type="button" variant="outline" asChild>
-            <Link to={DASHBOARD_ROUTES.testsIca}>Ver Tests ICA</Link>
-          </Button>
-        </CardContent>
-      </Card>
+      <IcaTestStateCard
+        tone="c"
+        icon={<IcaTestGlyph size={48} />}
+        title={t("Este test no existe aún")}
+        text={t("Solo puedes reintentar tests ICA que ya estén completados y guardados.")}
+      >
+        {backToTestsLink(t("Ver Tests ICA"))}
+      </IcaTestStateCard>
     );
   }
 
   if (isOfficialBlockedByFeature) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Test no disponible</CardTitle>
-          <CardDescription>
-            Los Tests ICA oficiales comienzan en mayo de 2026.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <IcaTestStateCard
+        icon={<LockIcon className="size-10" strokeWidth={2.4} />}
+        title={t("Test no disponible")}
+        text={t("Los Tests ICA oficiales comienzan en mayo de 2026.")}
+      />
     );
   }
 
   if (isOfficialBlockedByDate) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Test bloqueado</CardTitle>
-          <CardDescription>
-            Solo puedes rendir el test del mes actual.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button type="button" variant="outline" asChild>
-            <Link to={DASHBOARD_ROUTES.testsIca}>Volver a Tests ICA</Link>
-          </Button>
-        </CardContent>
-      </Card>
+      <IcaTestStateCard
+        icon={<LockIcon className="size-10" strokeWidth={2.4} />}
+        title={t("Test bloqueado")}
+        text={t("Solo puedes hacer el test del mes actual.")}
+      >
+        {backToTestsLink()}
+      </IcaTestStateCard>
     );
   }
 
   if (isOfficialBlockedByWindow) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Fuera de ventana mensual</CardTitle>
-          <CardDescription>
-            El test oficial se habilita entre los días {windowStartDay} y 28 de
-            cada mes.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <IcaTestStateCard
+        tone="i"
+        icon={<CalendarClockIcon className="size-10" strokeWidth={2.4} />}
+        title={t("Fuera de la ventana del mes")}
+        text={t("El test oficial se abre entre los días {start} y 28 de cada mes.", { start: windowStartDay })}
+      />
     );
   }
 
@@ -765,15 +813,15 @@ export function IcaTestMonthView({
     const title =
       storedTest.status === "completed"
         ? result.title
-        : "Intento oficial cerrado";
+        : t("Intento oficial cerrado");
     const message =
       storedTest.status === "completed"
         ? result.message
-        : "Este intento se cerró por salida o recarga antes de completarlo.";
+        : t("Este intento se cerró por salida o recarga antes de completarlo.");
 
     return (
-      <section className="relative mx-auto flex min-h-[68vh] w-full max-w-3xl flex-1 items-center justify-center p-4 pb-24 lg:pb-4">
-        <div ref={handlePerfectCardRef} className="w-full max-w-xl">
+      <section className="relative mx-auto flex w-full max-w-xl flex-1 flex-col items-center px-4 pt-2 pb-8 lg:py-8">
+        <div ref={handlePerfectCardRef} className="w-full">
           <IcaTestResultCard
             monthLabel={getIcaTestMonthLabel(monthDate)}
             title={title}
@@ -790,37 +838,22 @@ export function IcaTestMonthView({
               buildIcaTestErrorReviewItems(
                 storedTest.questions,
                 storedTest.answers,
-              ).length > 0 ? (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={() =>
+              ).length > 0
+                ? errorsButton(() =>
                     openErrorReview(
-                      `Errores · ${getIcaTestMonthLabel(monthDate)}`,
+                      `${t("Errores")} · ${getIcaTestMonthLabel(monthDate)}`,
                       storedTest.questions,
                       storedTest.answers,
-                    )
-                  }
-                >
-                  Ver errores
-                </Button>
-              ) : null
+                    ),
+                  )
+                : null
             }
             actions={
-              <div className="flex flex-wrap justify-center gap-2">
-                <div className="flex flex-col gap-1">
-                  <Button type="button" variant="outline" asChild>
-                    <Link to={getIcaTestMonthRoute(storedTest.monthCode, true)}>
-                      Reintentar
-                    </Link>
-                  </Button>
-                  <div className="text-sm text-amber-900 dark:text-amber-100">
-                    No afecta al resultado original
-                  </div>
-                </div>
-                <Button type="button" asChild>
-                  <Link to={DASHBOARD_ROUTES.testsIca}>Ver Tests ICA</Link>
+              <div className="flex flex-col gap-3">
+                <Button type="button" size="xl" variant="c" className="w-full" asChild>
+                  <Link to={DASHBOARD_ROUTES.testsIca}>{t("Ver Tests ICA")}</Link>
                 </Button>
+                {redoButton(getIcaTestMonthRoute(storedTest.monthCode, true))}
               </div>
             }
           />
@@ -832,106 +865,162 @@ export function IcaTestMonthView({
 
   if (isOfficialBlockedByWords && wordPool) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>No hay palabras suficientes</CardTitle>
-          <CardDescription>
-            Necesitas al menos {ICA_TEST_REQUIRED_WORDS} palabras ICA.
-            Priorizamos frases de hasta {ICA_TEST_MAX_WORDS_PER_ITEM} palabras
-            y, si no alcanza, ampliamos el filtro automáticamente.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-1 text-sm text-muted-foreground">
-          <p>Disponibles: {wordPool.availableWords}</p>
-          <p>Mes actual: {wordPool.fromCurrentMonth}</p>
-          <p>Mes anterior: {wordPool.fromPreviousMonth}</p>
-          <p>Meses anteriores: {wordPool.fromOlderMonths}</p>
-          <p>Frases de más de 4 palabras: {wordPool.overWordLimit}</p>
-        </CardContent>
-      </Card>
+      <IcaTestStateCard
+        tone="gold"
+        icon={<IcaTestGlyph size={48} />}
+        title={t("No hay palabras suficientes")}
+        text={t("Necesitas al menos {required} palabras ICA. Priorizamos frases de hasta {max} palabras y, si no alcanza, ampliamos el filtro automáticamente.", { required: ICA_TEST_REQUIRED_WORDS, max: ICA_TEST_MAX_WORDS_PER_ITEM })}
+      >
+        <div className="w-full max-w-sm">
+          <div className="mb-1.5 flex items-baseline justify-between text-sm font-extrabold">
+            <span>{t("Disponibles")}</span>
+            <span className="tabular-nums" style={{ color: "var(--ica-gold-ink)" }}>
+              {wordPool.availableWords}/{ICA_TEST_REQUIRED_WORDS}
+            </span>
+          </div>
+          <GameProgress
+            value={wordPool.availableWords / ICA_TEST_REQUIRED_WORDS}
+            color="var(--ica-gold)"
+            height={14}
+          />
+        </div>
+        <div className="mt-2 grid w-full max-w-sm grid-cols-2 gap-2 text-left">
+          {[
+            { label: t("Mes actual"), value: wordPool.fromCurrentMonth },
+            { label: t("Mes anterior"), value: wordPool.fromPreviousMonth },
+            { label: t("Meses anteriores"), value: wordPool.fromOlderMonths },
+            {
+              label: t("Frases de más de {max} palabras", { max: ICA_TEST_MAX_WORDS_PER_ITEM }),
+              value: wordPool.overWordLimit,
+            },
+          ].map((item) => (
+            <div key={item.label} className="rounded-2xl bg-muted px-3 py-2.5">
+              <p className="m-0 text-2xl leading-none font-black tabular-nums">
+                {item.value}
+              </p>
+              <p className="m-0 mt-1 text-xs font-bold text-muted-foreground">
+                {item.label}
+              </p>
+            </div>
+          ))}
+        </div>
+      </IcaTestStateCard>
     );
   }
 
   if (mode === "official" && !attempt) {
+    const rules = [
+      {
+        key: "lock",
+        tone: "bad" as const,
+        icon: <LockIcon className="size-5" strokeWidth={2.6} />,
+        text: t("No podrás salir del test sin terminarlo."),
+      },
+      {
+        key: "save",
+        tone: "i" as const,
+        icon: <SaveIcon className="size-5" strokeWidth={2.6} />,
+        text: t("Cada respuesta se guarda al momento."),
+      },
+      {
+        key: "points",
+        tone: "gold" as const,
+        icon: <TrophyIcon size={24} />,
+        text: t("Suma puntos al ranking del mes: cada acierto vale 0,1 puntos."),
+      },
+      {
+        key: "timer",
+        tone: "a" as const,
+        icon: <TimerIcon className="size-5" strokeWidth={2.6} />,
+        text: t("Tienes {n} segundos por pregunta. Si se acaba el tiempo, cuenta como fallo y pasas a la siguiente.", { n: ICA_TEST_SECONDS_PER_QUESTION }),
+      },
+    ];
+
     return (
-      <section className="mx-auto w-full max-w-2xl flex-1 p-4 pb-24 lg:pb-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="capitalize">
-              Antes de comenzar · {getIcaTestMonthLabel(monthDate)}
-            </CardTitle>
-            <CardDescription>
-              Este intento oficial es único. Si sales, cierras o refrescas la
-              página, perderás la posibilidad de hacerlo y quedará fallado.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-lg border border-amber-300/70 bg-amber-50/60 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-              <strong>⚠️ IMPORTANTE</strong>
-              <ul className="list-inside list-disc mt-2">
-                <li>No podrás navegar fuera del test sin finalizarlo.</li>
-                <li>
-                  Cada respuesta se guarda en tiempo real en la base de datos.
+      <section className="mx-auto flex w-full max-w-xl flex-1 flex-col px-4 pt-2 pb-8 lg:py-8">
+        <div className="ica-panel overflow-hidden">
+          <div
+            className="flex flex-col items-center gap-2 px-5 pt-6 pb-5 text-center"
+            style={{ background: "var(--ica-c-soft)" }}
+          >
+            <span className="ica-bob">
+              <IcaTestGlyph size={72} />
+            </span>
+            <p
+              className="m-0 text-xs font-extrabold tracking-[0.08em] uppercase"
+              style={{ color: "var(--ica-c-ink)" }}
+            >
+              {t("Antes de empezar")}
+            </p>
+            <h1
+              className="m-0 font-display text-2xl leading-tight font-extrabold tracking-tight first-letter:uppercase"
+              style={{ color: "var(--ica-c-ink)" }}
+            >
+              {t("Test ICA de {month}", { month: getIcaTestMonthLabel(monthDate) })}
+            </h1>
+            <p className="m-0 max-w-sm text-sm font-semibold text-muted-foreground">
+              {t("Este intento oficial es único. Si sales, cierras o refrescas la página, perderás la posibilidad de hacerlo y quedará fallado.")}
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-4 px-5 pt-2 pb-5">
+            <ul className="m-0 flex list-none flex-col divide-y-2 divide-border p-0">
+              {rules.map((rule) => (
+                <li key={rule.key} className="flex items-center gap-3 py-3">
+                  <IconTile tone={rule.tone} size={42}>
+                    {rule.icon}
+                  </IconTile>
+                  <span className="text-sm font-bold">{rule.text}</span>
                 </li>
-                <li>
-                  El ICA Test suma puntos para el leaderboard mensual y cada
-                  respuesta correcta vale 0,1 puntos.
-                </li>
-                <li>
-                  <strong>Posees 6 segundos</strong> para responder cada
-                  pregunta. Si el tiempo se agota, la pregunta contará como
-                  incorrecta y avanzarás a la siguiente.
-                </li>
-              </ul>
-            </div>
+              ))}
+            </ul>
+
             {saveError && (
-              <p className="text-sm text-destructive">{saveError}</p>
+              <p
+                className="m-0 text-sm font-bold"
+                style={{ color: "var(--ica-bad-ink)" }}
+              >
+                {saveError}
+              </p>
             )}
             <Button
               type="button"
+              size="xl"
+              variant="c"
+              className="w-full"
               onClick={() => void handleStartOfficialAttempt()}
               disabled={isStarting || isFinalizing}
             >
-              {isStarting ? "Iniciando..." : "Entiendo y comenzar test oficial"}
+              {isStarting ? t("Iniciando...") : t("Entiendo y comenzar test oficial")}
             </Button>
             {!hasAcceptedDisclaimer && (
-              <p className="text-xs text-muted-foreground">
-                Al iniciar aceptas las condiciones de bloqueo y cierre por
-                salida.
+              <p className="m-0 text-center text-xs font-semibold text-muted-foreground">
+                {t("Al iniciar aceptas las condiciones de bloqueo y cierre por salida.")}
               </p>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </section>
     );
   }
 
   if (mode === "official" && attempt?.status === "failed") {
     return (
-      <section className="relative mx-auto flex min-h-[68vh] w-full max-w-3xl flex-1 items-center justify-center p-4 pb-24 lg:pb-4">
-        <div className="w-full max-w-xl">
+      <section className="relative mx-auto flex w-full max-w-xl flex-1 flex-col items-center px-4 pt-2 pb-8 lg:py-8">
+        <div className="w-full">
           <IcaTestResultCard
             monthLabel={getIcaTestMonthLabel(monthDate)}
-            title="Intento oficial cerrado"
+            title={t("Intento oficial cerrado")}
             score={attempt.score}
             totalQuestions={attempt.totalQuestions}
-            message="Saliste o recargaste durante el test. Este mes ya no admite un nuevo intento oficial."
+            message={t("Saliste o recargaste durante el test. Este mes ya no admite un nuevo intento oficial.")}
             note={getOfficialBlockedMessage(attempt)}
             actions={
-              <div className="flex flex-wrap justify-center gap-2">
-                <div className="flex flex-col gap-1">
-                  <Button type="button" variant="outline" asChild>
-                    <Link to={getIcaTestMonthRoute(monthCode, true)}>
-                      Reintentar
-                    </Link>
-                  </Button>
-                  <div className="text-sm text-amber-900 dark:text-amber-100">
-                    No afecta al resultado original
-                  </div>
-                </div>
-                <Button type="button" asChild>
-                  <Link to={DASHBOARD_ROUTES.testsIca}>Volver a Tests ICA</Link>
+              <div className="flex flex-col gap-3">
+                <Button type="button" size="xl" variant="c" className="w-full" asChild>
+                  <Link to={DASHBOARD_ROUTES.testsIca}>{t("Volver a Tests ICA")}</Link>
                 </Button>
+                {redoButton(getIcaTestMonthRoute(monthCode, true))}
               </div>
             }
           />
@@ -944,8 +1033,8 @@ export function IcaTestMonthView({
     const result = getScoreLiteral(attempt.score, attempt.totalQuestions);
 
     return (
-      <section className="relative mx-auto flex min-h-[68vh] w-full max-w-3xl flex-1 items-center justify-center p-4 pb-24 lg:pb-4">
-        <div ref={handlePerfectCardRef} className="w-full max-w-xl">
+      <section className="relative mx-auto flex w-full max-w-xl flex-1 flex-col items-center px-4 pt-2 pb-8 lg:py-8">
+        <div ref={handlePerfectCardRef} className="w-full">
           <IcaTestResultCard
             monthLabel={getIcaTestMonthLabel(monthDate)}
             title={result.title}
@@ -953,38 +1042,31 @@ export function IcaTestMonthView({
             totalQuestions={attempt.totalQuestions}
             message={result.message}
             leaderboardPoints={attempt.score / 10}
-            note={`Se usaron ${getIcaTestWordsUsed(activeQuestions).length} palabras entre preguntas y opciones.`}
+            note={t("Se usaron {n} palabras entre preguntas y opciones.", { n: getIcaTestWordsUsed(activeQuestions).length })}
             isSaving={isFinalizing}
             errorMessage={saveError}
             errorReviewAction={
               attempt.score < attempt.totalQuestions &&
               buildIcaTestErrorReviewItems(activeQuestions, attempt.answers)
-                .length > 0 ? (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={() =>
+                .length > 0
+                ? errorsButton(() =>
                     openErrorReview(
-                      `Errores · ${getIcaTestMonthLabel(monthDate)}`,
+                      `${t("Errores")} · ${getIcaTestMonthLabel(monthDate)}`,
                       activeQuestions,
                       attempt.answers,
-                    )
-                  }
-                >
-                  Ver errores
-                </Button>
-              ) : null
+                    ),
+                  )
+                : null
             }
             actions={
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button type="button" asChild>
-                  <Link to={DASHBOARD_ROUTES.testsIca}>Volver a Tests ICA</Link>
+              <div className="flex flex-col gap-3">
+                <Button type="button" size="xl" variant="c" className="w-full" asChild>
+                  <Link to={DASHBOARD_ROUTES.testsIca}>{t("Volver a Tests ICA")}</Link>
                 </Button>
-                <Button type="button" variant="outline" asChild>
-                  <Link to={getIcaTestMonthRoute(monthCode, true)}>
-                    Reintentar otra vez
-                  </Link>
-                </Button>
+                {redoButton(
+                  getIcaTestMonthRoute(monthCode, true),
+                  t("Reintentar otra vez"),
+                )}
               </div>
             }
           />
@@ -998,40 +1080,32 @@ export function IcaTestMonthView({
     const result = getScoreLiteral(score, totalQuestions);
 
     return (
-      <section className="relative mx-auto flex min-h-[68vh] w-full max-w-3xl flex-1 items-center justify-center p-4 pb-24 lg:pb-4">
-        <div ref={handlePerfectCardRef} className="w-full max-w-xl">
+      <section className="relative mx-auto flex w-full max-w-xl flex-1 flex-col items-center px-4 pt-2 pb-8 lg:py-8">
+        <div ref={handlePerfectCardRef} className="w-full">
           <IcaTestResultCard
-            monthLabel={`${getIcaTestMonthLabel(monthDate)} · Reintentar`}
+            monthLabel={`${getIcaTestMonthLabel(monthDate)} · ${t("Reintento")}`}
             title={result.title}
             score={score}
             totalQuestions={totalQuestions}
             message={result.message}
-            note="Este resultado no cambia el original."
+            note={t("Este resultado no cambia el original.")}
             errorReviewAction={
               score < totalQuestions &&
               buildIcaTestErrorReviewItems(activeQuestions, answers).length >
-                0 ? (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={() =>
+                0
+                ? errorsButton(() =>
                     openErrorReview(
-                      `Errores · ${getIcaTestMonthLabel(monthDate)} · Reintentar`,
+                      `${t("Errores")} · ${getIcaTestMonthLabel(monthDate)} · ${t("Reintento")}`,
                       activeQuestions,
                       answers,
-                    )
-                  }
-                >
-                  Ver errores
-                </Button>
-              ) : null
+                    ),
+                  )
+                : null
             }
             actions={
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button type="button" asChild>
-                  <Link to={DASHBOARD_ROUTES.testsIca}>Volver a Tests ICA</Link>
-                </Button>
-              </div>
+              <Button type="button" size="xl" variant="c" className="w-full" asChild>
+                <Link to={DASHBOARD_ROUTES.testsIca}>{t("Volver a Tests ICA")}</Link>
+              </Button>
             }
           />
         </div>
@@ -1042,15 +1116,12 @@ export function IcaTestMonthView({
 
   if (!shouldStartRunner || !currentQuestion) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>No pudimos preparar el test</CardTitle>
-          <CardDescription>
-            Intenta recargar. Si persiste, revisa que tengas palabras ICA
-            válidas.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      <IcaTestStateCard
+        tone="bad"
+        icon={<TriangleAlertIcon className="size-10" strokeWidth={2.4} />}
+        title={t("No pudimos preparar el test")}
+        text={t("Intenta recargar. Si sigue pasando, revisa que tengas palabras ICA válidas.")}
+      />
     );
   }
 
@@ -1088,14 +1159,19 @@ export function IcaTestMonthView({
   const timerSegmentAngle =
     (360 - timerSegmentCount * timerSegmentGapDeg) / timerSegmentCount;
 
+  // Verde con tiempo, naranja a mitad y rojo al final
   const timerColor =
-    timerSeconds >= 5 ? "#22c55e" : timerSeconds >= 3 ? "#f97316" : "#ef4444";
-  const timerTextClass =
     timerSeconds >= 5
-      ? "text-emerald-600 dark:text-emerald-400"
+      ? "var(--ica-ok)"
       : timerSeconds >= 3
-        ? "text-orange-600 dark:text-orange-400"
-        : "text-red-600 dark:text-red-400";
+        ? "var(--ica-fire)"
+        : "var(--ica-bad-strong)";
+  const timerInk =
+    timerSeconds >= 5
+      ? "var(--ica-ok-ink)"
+      : timerSeconds >= 3
+        ? "var(--ica-fire-ink)"
+        : "var(--ica-bad-ink)";
 
   const polarToCartesian = (angleDeg: number) => {
     const angleRad = (angleDeg * Math.PI) / 180;
@@ -1126,89 +1202,112 @@ export function IcaTestMonthView({
   );
 
   return (
-    <section className="mx-auto w-full max-w-3xl flex-1 p-4 pb-24 lg:pb-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="capitalize">
-            {mode === "redo" ? "Reintentar test ICA" : "Test ICA oficial"} ·{" "}
+    <section className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-4 px-4 pt-2 pb-8 lg:py-8">
+      {/* Cabecera: tipo de test, mes y pregunta actual */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <Pill tone={mode === "redo" ? "neutral" : "c"} solid={mode !== "redo"}>
+            {mode === "redo" ? t("Reintentar test ICA") : t("Test ICA oficial")}
+          </Pill>
+          <p className="m-0 mt-1 truncate text-sm font-bold text-muted-foreground first-letter:uppercase">
             {getIcaTestMonthLabel(monthDate)}
-          </CardTitle>
-          <CardDescription>
-            Pregunta {currentQuestionIndex + 1} de {totalQuestions}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {mode === "official" && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-              No cierres ni recargues. Si sales del test oficial, el intento se
-              marcará como fallido.
-            </div>
-          )}
+          </p>
+        </div>
+        <p className="m-0 shrink-0 text-sm font-extrabold text-muted-foreground tabular-nums">
+          {t("Pregunta")}{" "}
+          <span className="text-lg font-black text-foreground">
+            {currentQuestionIndex + 1}
+          </span>{" "}
+          {t("de {total}", { total: totalQuestions })}
+        </p>
+      </div>
 
-          <div className="h-2 rounded-full bg-muted">
-            <div
-              className="h-2 rounded-full bg-primary transition-all"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
+      <GameProgress
+        value={progressPercent / 100}
+        color="var(--ica-c)"
+        height={16}
+        label={t("Progreso del test")}
+      />
 
-          {saveError && <p className="text-sm text-destructive">{saveError}</p>}
+      {mode === "official" && (
+        <p
+          className="m-0 flex items-start gap-2 rounded-2xl px-3 py-2 text-xs font-bold"
+          style={{
+            background: "var(--ica-bad-soft)",
+            color: "var(--ica-bad-ink)",
+          }}
+        >
+          <TriangleAlertIcon
+            className="mt-px size-4 shrink-0"
+            strokeWidth={2.6}
+            aria-hidden="true"
+          />
+          {t("No cierres ni recargues. Si sales del test oficial, el intento se marcará como fallido.")}
+        </p>
+      )}
 
-          <div className="rounded-lg border bg-card p-4">
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <p className="mb-2 text-sm text-muted-foreground">
-                  Elige la equivalencia en {targetLang}:
-                </p>
-                <p className="text-2xl font-semibold">
-                  {currentQuestion.promptNative}
-                </p>
-              </div>
+      {saveError && (
+        <p className="m-0 text-sm font-bold" style={{ color: "var(--ica-bad-ink)" }}>
+          {saveError}
+        </p>
+      )}
 
-              <div className="flex flex-col shrink-0 items-center gap-3 rounded-lg border bg-muted/30 px-3 py-2">
-                <p>Tiempo</p>
-                <div className="relative h-12 w-12">
-                  <svg className="h-12 w-12" viewBox="0 0 44 44">
-                    {timerSegments.map((segment) => (
-                      <path
-                        key={segment.key}
-                        d={segment.d}
-                        fill="none"
-                        stroke={
-                          segment.active ? timerColor : "hsl(var(--muted))"
-                        }
-                        strokeWidth="4"
-                        strokeLinecap="round"
-                        style={{ transition: "stroke 200ms ease" }}
-                      />
-                    ))}
-                  </svg>
-                  <span
-                    className={`absolute inset-0 flex items-center justify-center text-xs font-bold ${timerTextClass}`}
-                  >
-                    {timeLeft}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
+      {/* La pregunta en grande con el reloj */}
+      <div className="ica-panel flex items-center gap-4 px-5 py-6">
+        <div className="min-w-0 flex-1">
+          <p className="m-0 mb-1.5 text-sm font-bold text-muted-foreground">
+            {t("Elige la equivalencia en {lang}:", { lang: langName(targetLang) })}
+          </p>
+          <p className="m-0 font-display text-3xl leading-tight font-extrabold tracking-tight break-words">
+            {currentQuestion.promptNative}
+          </p>
+        </div>
 
-          <div className="grid gap-2">
-            {currentQuestion.options.map((option, index) => (
-              <Button
-                key={`${currentQuestion.promptLexicardId}-${option}`}
-                type="button"
-                variant="outline"
-                className="h-auto justify-start py-3 text-left"
-                onClick={() => answerQuestion(index, false)}
-                disabled={isAnswering || isFinalizing}
-              >
-                {option}
-              </Button>
+        <div
+          className="relative size-16 shrink-0"
+          role="timer"
+          aria-label={t("Quedan {n} segundos", { n: timeLeft })}
+        >
+          <svg className="size-16" viewBox="0 0 44 44" aria-hidden="true">
+            {timerSegments.map((segment) => (
+              <path
+                key={segment.key}
+                d={segment.d}
+                fill="none"
+                stroke={segment.active ? timerColor : "var(--muted)"}
+                strokeWidth="5"
+                strokeLinecap="round"
+                style={{ transition: "stroke 200ms ease" }}
+              />
             ))}
-          </div>
-        </CardContent>
-      </Card>
+          </svg>
+          <span
+            className="absolute inset-0 flex items-center justify-center text-xl font-black tabular-nums"
+            style={{ color: timerInk }}
+          >
+            {timeLeft}
+          </span>
+        </div>
+      </div>
+
+      {/* Respuestas: botones grandes con canto */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {currentQuestion.options.map((option, index) => (
+          <button
+            key={`${currentQuestion.promptLexicardId}-${option}`}
+            type="button"
+            onClick={() => answerQuestion(index, false)}
+            disabled={isAnswering || isFinalizing}
+            className="ica-press flex min-h-16 w-full items-center gap-3 rounded-2xl border-2 border-border bg-card px-4 py-3 text-left text-lg leading-tight font-extrabold transition-colors hover:bg-muted/50 disabled:opacity-60 dark:bg-transparent"
+            style={{ boxShadow: "0 4px 0 var(--border)" }}
+          >
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-xl border-2 border-border text-sm font-black text-muted-foreground">
+              {index + 1}
+            </span>
+            <span className="min-w-0 break-words">{option}</span>
+          </button>
+        ))}
+      </div>
 
       <Dialog
         open={leaveDialogOpen}
@@ -1227,22 +1326,21 @@ export function IcaTestMonthView({
           }}
         >
           <DialogHeader>
-            <DialogTitle>¿Salir del test oficial?</DialogTitle>
+            <DialogTitle>{t("¿Salir del test oficial?")}</DialogTitle>
             <DialogDescription>
-              Si sales del test ICA, perderás este intento oficial del mes y
-              quedará marcado como fallido.
+              {t("Si sales del test ICA, perderás este intento oficial del mes y quedará marcado como fallido.")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={handleCancelLeave}>
-              Continuar test
-            </Button>
             <Button
               type="button"
-              variant="destructive"
+              variant="danger"
               onClick={handleConfirmLeave}
             >
-              Sí, salir y marcar fallido
+              {t("Sí, salir y marcar fallido")}
+            </Button>
+            <Button type="button" variant="c" onClick={handleCancelLeave}>
+              {t("Continuar test")}
             </Button>
           </DialogFooter>
         </DialogContent>

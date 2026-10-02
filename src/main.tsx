@@ -7,6 +7,7 @@ import { Toaster } from './components/ui/sonner'
 import { registerPushServiceWorker } from './modules/services/pushNotifications'
 import { TooltipProvider } from './components/ui/tooltip'
 import { ThemeProvider } from './theme/ThemeContext'
+import { I18nRoot } from './i18n'
 import './index.css'
 
 void registerPushServiceWorker()
@@ -17,8 +18,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <ThemeProvider>
         <TooltipProvider disableHoverableContent delayDuration={200}>
           <AuthProvider>
-            <App />
-            <Toaster position='top-right' richColors closeButton />
+            <I18nRoot>
+              <App />
+            </I18nRoot>
+            <Toaster position='top-right' closeButton />
           </AuthProvider>
         </TooltipProvider>
       </ThemeProvider>

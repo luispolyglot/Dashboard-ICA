@@ -7,14 +7,30 @@
  * 4. Si falla alguna palabra, suena la versión correcta. Al final: «18 de 25».
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import {
+  AlertTriangleIcon,
+  CheckIcon,
+  MicIcon,
+  PauseIcon,
+  PlayIcon,
+  RotateCcwIcon,
+  SkipForwardIcon,
+  Volume2Icon,
+  XIcon,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { GameProgress, IconTile, Pill, tone } from '../../game/ui'
+import { TargetGlyph, TrophyIcon } from '../../game/icons'
+import { formatMasterNoteLabel } from '../../services/masterNotes'
 import {
   prepareNoteChallenge,
   type ChallengePhraseInput,
   type PreparedChallenge,
 } from '../../services/challengeChunks'
+import { recordChallengePlay } from '../../services/challengeUnlocks'
 import {
   checkAnswer,
   isIOSDevice,
@@ -30,9 +46,16 @@ import {
   warmUpMicrophone,
   type WordMark,
 } from './challengeEngine'
+import { getUiLang, langName, t, tn } from '@/i18n'
+
+/** Nombre de idioma dentro de una frase: «en italiano» / "in Italian". */
+const langInSentence = (name: string): string =>
+  getUiLang() === 'en' ? langName(name) : name.toLowerCase()
 
 type Props = {
   open: boolean
+  /** Para guardar la partida (cuenta para el punto diario del ranking). */
+  noteId?: string
   noteName: string
   phrases: ChallengePhraseInput[]
   targetLang: string
@@ -59,6 +82,7 @@ type WakeLockSentinelLike = { release: () => Promise<void> }
 
 export function NotaDesafianteOverlay({
   open,
+  noteId,
   noteName,
   phrases,
   targetLang,
@@ -113,7 +137,7 @@ export function NotaDesafianteOverlay({
         if (!active) return
         setPrepared(result)
         if (!result.rounds.length) {
-          setErrorMessage('Ninguna frase de esta nota puede entrar en el desafío.')
+          setErrorMessage(t('Ninguna frase de esta nota puede entrar en el desafío.'))
           setPhase('error')
           return
         }
@@ -122,7 +146,7 @@ export function NotaDesafianteOverlay({
       .catch((error) => {
         if (!active) return
         setErrorMessage(
-          error instanceof Error ? error.message : 'No se pudo preparar el desafío.',
+          error instanceof Error ? error.message : t('No se pudo preparar el desafío.'),
         )
         setPhase('error')
       })
@@ -185,6 +209,8 @@ export function NotaDesafianteOverlay({
         releaseWakeLock()
         const total = rounds.length
         const correct = resultsRef.current.filter((value) => value === true).length
+        // Se guarda la partida: escuchar una nota + hacer su nota desafiante suma el punto del día.
+        if (noteId) void recordChallengePlay(noteId, correct, total)
         await wait(300)
         if (!cancelled()) await speakAsync(`Has acertado ${correct} de ${total}.`, nativeLang)
         return
@@ -230,7 +256,7 @@ export function NotaDesafianteOverlay({
             correct: false,
             marks: round.target.split(/\s+/).map((word) => ({ word, ok: false })),
             heard: '',
-            note: 'No has respondido.',
+            note: t('No has respondido.'),
           }
           break
         }
@@ -247,7 +273,7 @@ export function NotaDesafianteOverlay({
             correct: false,
             marks: round.target.split(/\s+/).map((word) => ({ word, ok: false })),
             heard: '',
-            note: 'No se ha entendido la respuesta.',
+            note: t('No se ha entendido la respuesta.'),
           }
           break
         }
@@ -362,26 +388,29 @@ export function NotaDesafianteOverlay({
   // abajo, scroll) quede por encima y el botón «Salir» siempre se pueda tocar.
   return createPortal(
     <div
-      className='fixed inset-0 z-100 flex flex-col bg-[#0A1128] text-slate-100'
+      className='fixed inset-0 z-100 flex flex-col bg-background text-foreground'
       style={{
         paddingTop: 'env(safe-area-inset-top)',
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}
     >
-      <div className='flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-5 py-3'>
-        <div className='min-w-0'>
-          <p className='text-[11px] font-semibold tracking-[0.12em] text-sky-300 uppercase'>
-            🎯 Nota desafiante
-          </p>
-          <p className='truncate font-serif text-lg font-bold'>{noteName}</p>
+      <div className='flex shrink-0 items-center justify-between gap-3 border-b-2 border-border px-4 py-3'>
+        <div className='flex min-w-0 items-center gap-3'>
+          <IconTile tone='a' size={40} className='rounded-xl'>
+            <TargetGlyph size={26} />
+          </IconTile>
+          <div className='min-w-0'>
+            <p className='m-0 text-[11px] font-extrabold tracking-[0.1em] uppercase' style={{ color: tone('a').ink }}>
+              {t('Nota desafiante')}
+            </p>
+            <p className='m-0 truncate font-display text-lg leading-tight font-extrabold tracking-tight'>
+              {formatMasterNoteLabel(noteName)}
+            </p>
+          </div>
         </div>
-        <Button
-          type='button'
-          variant='ghost'
-          className='text-slate-300 hover:text-white'
-          onClick={close}
-        >
-          ✕ Salir
+        <Button type='button' variant='outline' onClick={close}>
+          <XIcon className='size-4' strokeWidth={2.8} />
+          {t('Salir')}
         </Button>
       </div>
 
@@ -389,248 +418,165 @@ export function NotaDesafianteOverlay({
       <div className='flex min-h-0 flex-1 overflow-y-auto px-5 py-8'>
         <div className='m-auto w-full max-w-xl'>
           {phase === 'preparing' && (
-            <div className='text-center'>
-              <p className='mb-3 font-serif text-2xl font-bold'>Preparando tu desafío…</p>
-              <p className='mb-5 text-sm text-slate-400'>
+            <div className='flex flex-col items-center text-center'>
+              <span className='ica-bob mb-5'>
+                <TargetGlyph size={84} />
+              </span>
+              <p className='m-0 mb-2 font-display text-3xl font-black tracking-tight'>{t('Preparando tu desafío…')}</p>
+              <p className='m-0 mb-6 text-base font-semibold text-muted-foreground'>
                 {progress.total > 0
-                  ? `Dividiendo frases en trozos: ${progress.done} de ${progress.total}`
-                  : 'Leyendo las frases de la nota'}
+                  ? t('Dividiendo frases en trozos: {done} de {total}', { done: progress.done, total: progress.total })
+                  : t('Leyendo las frases de la nota')}
               </p>
-              <div className='mx-auto h-2 w-64 overflow-hidden rounded-full bg-white/10'>
-                <div
-                  className='h-full rounded-full bg-sky-400 transition-all'
-                  style={{
-                    width: `${progress.total ? (progress.done / progress.total) * 100 : 15}%`,
-                  }}
-                />
-              </div>
+              <GameProgress
+                className='max-w-72'
+                value={progress.total ? progress.done / progress.total : 0.15}
+                color='var(--ica-a)'
+                height={16}
+              />
             </div>
           )}
 
           {phase === 'error' && (
-            <div className='text-center'>
-              <p className='mb-3 font-serif text-2xl font-bold'>No se puede empezar</p>
-              <p className='mb-6 text-sm text-slate-300'>{errorMessage}</p>
+            <div className='flex flex-col items-center text-center'>
+              <IconTile tone='bad' size={80} className='mb-5 rounded-3xl'>
+                <AlertTriangleIcon className='size-10' strokeWidth={2.4} />
+              </IconTile>
+              <p className='m-0 mb-2 font-display text-3xl font-black tracking-tight'>{t('No se puede empezar')}</p>
+              <p className='m-0 mb-6 max-w-md text-base font-semibold text-muted-foreground'>{errorMessage}</p>
               {prepared && prepared.excluded.length > 0 && (
                 <ExcludedList excluded={prepared.excluded} />
               )}
-              <div className='flex flex-wrap justify-center gap-2'>
+              <div className='flex w-full max-w-sm flex-col gap-3'>
                 {rounds.length > 0 && (
-                  <Button type='button' onClick={() => void start()}>
-                    Reintentar
+                  <Button type='button' size='xl' variant='a' className='w-full' onClick={() => void start()}>
+                    <RotateCcwIcon className='size-5' strokeWidth={2.6} />
+                    {t('Reintentar')}
                   </Button>
                 )}
                 <Button
                   type='button'
-                  variant={rounds.length > 0 ? 'outline' : 'default'}
-                  className={rounds.length > 0 ? 'border-white/20 bg-transparent text-slate-200' : undefined}
+                  size={rounds.length > 0 ? 'lg' : 'xl'}
+                  variant={rounds.length > 0 ? 'outline' : 'a'}
+                  className='w-full'
                   onClick={close}
                 >
-                  Volver a la nota
+                  {t('Volver a la nota')}
                 </Button>
               </div>
             </div>
           )}
 
           {phase === 'mic' && (
-            <div className='text-center'>
-              <div className='mx-auto mb-5 flex h-20 w-20 animate-pulse items-center justify-center rounded-full border-2 border-sky-400 bg-sky-400/15 text-3xl'>
-                🎙️
-              </div>
-              <p className='mb-2 font-serif text-2xl font-bold'>Preparando el micrófono…</p>
-              <p className='text-sm text-slate-400'>
-                Si te pide permiso para el micrófono o el reconocimiento de voz, pulsa «Permitir».
+            <div className='flex flex-col items-center text-center'>
+              <StatusCircle kind='listening' live className='mb-6' />
+              <p className='m-0 mb-2 font-display text-3xl font-black tracking-tight'>{t('Preparando el micrófono…')}</p>
+              <p className='m-0 max-w-md text-base font-semibold text-muted-foreground'>
+                {t('Si te pide permiso para el micrófono o el reconocimiento de voz, pulsa «Permitir».')}
               </p>
             </div>
           )}
 
           {phase === 'intro' && prepared && (
-            <div className='text-center'>
-              <p className='mb-2 font-serif text-3xl font-bold'>
-                {rounds.length} trozos · {phraseCount}{' '}
-                {phraseCount === 1 ? 'frase' : 'frases'}
+            <div className='flex flex-col items-center text-center'>
+              <span className='mb-4'>
+                <TargetGlyph size={88} />
+              </span>
+              <p className='m-0 font-display text-3xl leading-tight font-black tracking-tight'>
+                {t('¿Te la sabes de memoria?')}
               </p>
-              <p className='mb-6 text-sm text-slate-400'>Unos {Math.max(1, Math.round((rounds.length * 12) / 60))} minutos</p>
 
-              <ol className='mx-auto mb-6 max-w-md space-y-2 text-left text-sm text-slate-300'>
-                <li>🔊 Oirás un trozo de tu frase en {nativeLang.toLowerCase()}.</li>
-                <li>🔔 Tras el pitido, dilo en voz alta en {targetLang.toLowerCase()}, de memoria.</li>
-                <li>✅ Si no falla ninguna palabra, es correcto. Si no, oirás la versión buena.</li>
+              <div className='mt-5 grid w-full grid-cols-3 gap-2'>
+                <IntroStat value={rounds.length} label={t('trozos')} />
+                <IntroStat value={phraseCount} label={phraseCount === 1 ? t('frase') : t('frases')} />
+                <IntroStat value={`~${Math.max(1, Math.round((rounds.length * 12) / 60))}`} label={t('minutos')} />
+              </div>
+
+              <ol className='ica-group m-0 mt-5 w-full list-none divide-y-2 divide-border text-left'>
+                <IntroStep
+                  icon={<Volume2Icon className='size-6' strokeWidth={2.4} />}
+                  toneName='i'
+                  text={t('Oirás un trozo de tu frase en {lang}.', { lang: langInSentence(nativeLang) })}
+                />
+                <IntroStep
+                  icon={<MicIcon className='size-6' strokeWidth={2.4} />}
+                  toneName='a'
+                  text={t('Tras el pitido, dilo en voz alta en {lang}, de memoria.', { lang: langInSentence(targetLang) })}
+                />
+                <IntroStep
+                  icon={<CheckIcon className='size-6' strokeWidth={3} />}
+                  toneName='ok'
+                  text={t('Si no falla ninguna palabra, es correcto. Si no, oirás la versión buena.')}
+                />
               </ol>
 
               {prepared.excluded.length > 0 && (
-                <div className='mb-6'>
+                <div className='mt-4 w-full'>
                   <button
                     type='button'
-                    className='text-xs text-amber-300 underline underline-offset-2'
+                    className='text-sm font-extrabold underline underline-offset-4'
+                    style={{ color: 'var(--ica-gold-ink)' }}
                     onClick={() => setShowExcluded((value) => !value)}
                   >
-                    {prepared.excluded.length}{' '}
-                    {prepared.excluded.length === 1 ? 'frase queda fuera' : 'frases quedan fuera'} ·
-                    ver por qué
+                    {tn(prepared.excluded.length, '{n} frase queda fuera · ver por qué', '{n} frases quedan fuera · ver por qué')}
                   </button>
                   {showExcluded && <ExcludedList excluded={prepared.excluded} />}
                 </div>
               )}
 
               {!isSpeechRecognitionSupported() ? (
-                <p className='mb-4 text-sm text-amber-300'>
+                <p
+                  className='m-0 mt-5 w-full rounded-2xl px-4 py-3 text-sm font-bold'
+                  style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
+                >
                   {isIOSDevice()
-                    ? 'Aquí no funciona el reconocimiento de voz. Abre icademy.app en Safari.'
-                    : 'Tu navegador no tiene reconocimiento de voz. Abre la app en Google Chrome.'}
+                    ? t('Aquí no funciona el reconocimiento de voz. Abre icademy.app en Safari.')
+                    : t('Tu navegador no tiene reconocimiento de voz. Abre la app en Google Chrome.')}
                 </p>
               ) : (
-                <p className='mb-4 text-xs text-slate-500'>
-                  Mejor con auriculares. Te pedirá permiso para usar el micrófono.
+                <p className='m-0 mt-5 text-sm font-semibold text-muted-foreground'>
+                  {t('Mejor con auriculares. Te pedirá permiso para usar el micrófono.')}
                 </p>
               )}
 
               <Button
                 type='button'
-                className='h-12 px-10 text-base font-bold'
+                size='xl'
+                variant='a'
+                className='mt-5 w-full'
                 disabled={!isSpeechRecognitionSupported()}
                 onClick={() => void start()}
               >
-                Empezar desafío
+                {t('Empezar desafío')}
               </Button>
             </div>
           )}
 
           {(phase === 'running' || phase === 'paused') && current && (
-            <div>
-              <div className='mb-6 flex items-center justify-between text-xs text-slate-400'>
-                <span>
-                  Trozo {Math.min(index + 1, rounds.length)} de {rounds.length}
-                </span>
-                <span className='font-semibold text-emerald-300'>✓ {score}</span>
-              </div>
-              <div className='mb-8 h-1.5 overflow-hidden rounded-full bg-white/10'>
-                <div
-                  className='h-full rounded-full bg-sky-400 transition-all'
-                  style={{ width: `${(index / rounds.length) * 100}%` }}
-                />
-              </div>
-
-              <p className='mb-1 text-xs tracking-wider text-slate-400 uppercase'>Oye</p>
-              <p className='mb-8 text-xl leading-snug text-slate-100'>{current.native}</p>
-
-              {step !== 'feedback' ? (
-                <div className='flex flex-col items-center gap-3 py-4'>
-                  <div
-                    className={cn(
-                      'flex h-20 w-20 items-center justify-center rounded-full border-2 text-3xl transition-all',
-                      step === 'listening' && phase === 'running'
-                        ? 'animate-pulse border-sky-400 bg-sky-400/15 shadow-[0_0_40px_rgba(56,189,248,0.45)]'
-                        : 'border-white/15 bg-white/5',
-                    )}
-                    aria-hidden='true'
-                  >
-                    {step === 'listening' ? '🎙️' : '🔊'}
-                  </div>
-                  <p className='text-sm text-slate-300'>
-                    {phase === 'paused'
-                      ? 'En pausa'
-                      : step === 'listening'
-                        ? `Tu turno: dilo en ${targetLang.toLowerCase()}`
-                        : 'Escucha…'}
-                  </p>
-                  {interim && step === 'listening' && (
-                    <p className='text-center text-sm text-slate-500 italic'>{interim}</p>
-                  )}
-                </div>
-              ) : (
-                feedback && (
-                  <div className='py-2'>
-                    <span
-                      className={cn(
-                        'mb-4 inline-block rounded-full border-[1.5px] px-3 py-0.5 text-sm font-bold',
-                        feedback.correct
-                          ? 'border-emerald-400 text-emerald-300'
-                          : feedback.almost
-                            ? 'border-amber-400 text-amber-300'
-                            : 'border-rose-400 text-rose-300',
-                      )}
-                    >
-                      {feedback.correct ? '✓ Correcto' : feedback.almost ? 'Casi' : 'Incorrecto'}
-                    </span>
-                    <p className='mb-1 text-xs tracking-wider text-slate-400 uppercase'>
-                      {feedback.correct ? 'Has dicho' : 'Correcto sería'}
-                    </p>
-                    <p className='mb-3 font-serif text-2xl leading-snug font-bold'>
-                      {feedback.marks.map((mark, position) => (
-                        <span
-                          key={`${position}-${mark.word}`}
-                          className={cn(!mark.ok && 'text-rose-300 underline decoration-rose-400/70 underline-offset-4')}
-                        >
-                          {mark.word}{' '}
-                        </span>
-                      ))}
-                    </p>
-                    {!feedback.correct && (
-                      <p className='text-sm text-slate-400'>
-                        {feedback.note || `Has dicho: «${feedback.heard}»`}
-                      </p>
-                    )}
-                  </div>
-                )
-              )}
-
-              <div className='mt-8 flex flex-wrap justify-center gap-2'>
-                {phase === 'running' ? (
-                  <Button type='button' variant='outline' className='border-white/20 bg-transparent text-slate-200' onClick={pause}>
-                    ⏸ Pausa
-                  </Button>
-                ) : (
-                  <Button type='button' onClick={resume}>
-                    ▶ Seguir
-                  </Button>
-                )}
-                <Button type='button' variant='outline' className='border-white/20 bg-transparent text-slate-200' onClick={skip}>
-                  Saltar trozo
-                </Button>
-              </div>
-            </div>
+            <ChallengeTurnView
+              round={current}
+              index={index}
+              total={rounds.length}
+              score={score}
+              step={step}
+              paused={phase === 'paused'}
+              interim={interim}
+              feedback={feedback}
+              targetLang={targetLang}
+              onPause={pause}
+              onResume={resume}
+              onSkip={skip}
+            />
           )}
 
           {phase === 'finished' && (
-            <div className='text-center'>
-              <p className='mb-1 text-xs tracking-wider text-slate-400 uppercase'>Resultado</p>
-              <p className='mb-2 font-serif text-6xl font-bold'>
-                {score} <span className='text-3xl text-slate-400'>de {rounds.length}</span>
-              </p>
-              <p className='mb-8 text-sm text-slate-300'>
-                {score === rounds.length
-                  ? '¡Perfecto! Te sabes tu nota maestra de memoria.'
-                  : score >= rounds.length * 0.7
-                    ? 'Muy bien. Repasa los trozos que han fallado.'
-                    : 'Escucha otra vez tu nota maestra y vuelve a intentarlo.'}
-              </p>
-
-              {failedRounds.length > 0 && (
-                <div className='mx-auto mb-8 max-w-md rounded-xl border border-white/10 bg-white/5 p-4 text-left'>
-                  <p className='mb-2 text-xs font-semibold tracking-wider text-slate-400 uppercase'>
-                    Para repasar
-                  </p>
-                  <ul className='space-y-2 text-sm'>
-                    {failedRounds.map(({ round, position }) => (
-                      <li key={position}>
-                        <span className='font-semibold'>{round.target}</span>
-                        <span className='text-slate-400'> — {round.native}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <div className='flex flex-wrap justify-center gap-2'>
-                <Button type='button' onClick={() => void start()}>
-                  Repetir desafío
-                </Button>
-                <Button type='button' variant='outline' className='border-white/20 bg-transparent text-slate-200' onClick={close}>
-                  Volver a la nota
-                </Button>
-              </div>
-            </div>
+            <ChallengeResultView
+              score={score}
+              total={rounds.length}
+              failed={failedRounds}
+              onRepeat={() => void start()}
+              onClose={close}
+            />
           )}
         </div>
       </div>
@@ -639,16 +585,294 @@ export function NotaDesafianteOverlay({
   )
 }
 
+// ---------------------------------------------------------------- piezas (solo presentación)
+
+/** Resultado de un trozo (lo que se enseña tras contestar). */
+export type ChallengeFeedback = Feedback
+
+type ChallengeRound = { target: string; native: string }
+
+/** Círculo grande del turno: altavoz (escucha), micrófono (tu turno) o pausa. */
+function StatusCircle({
+  kind,
+  live = false,
+  className,
+}: {
+  kind: 'prompt' | 'listening' | 'paused'
+  live?: boolean
+  className?: string
+}) {
+  const colors = kind === 'listening' ? tone('a') : kind === 'prompt' ? tone('i') : tone('neutral')
+  const size = 112
+  return (
+    <span
+      className={cn('relative flex items-center justify-center rounded-full', className)}
+      style={{
+        width: size,
+        height: size,
+        background: kind === 'paused' ? 'var(--muted)' : colors.solid,
+        color: kind === 'paused' ? 'var(--muted-foreground)' : '#fff',
+        boxShadow: `0 7px 0 ${kind === 'paused' ? 'var(--border)' : colors.edge}`,
+      }}
+      aria-hidden='true'
+    >
+      {live ? (
+        <span
+          className='absolute -inset-3 animate-pulse rounded-full border-[7px]'
+          style={{ borderColor: `color-mix(in oklab, ${colors.solid} 28%, transparent)` }}
+        />
+      ) : null}
+      {kind === 'listening' ? (
+        <MicIcon className='size-12' strokeWidth={2.4} />
+      ) : kind === 'prompt' ? (
+        <Volume2Icon className='size-12' strokeWidth={2.4} />
+      ) : (
+        <PauseIcon className='size-11 fill-current' strokeWidth={2.4} />
+      )}
+    </span>
+  )
+}
+
+function IntroStat({ value, label }: { value: ReactNode; label: string }) {
+  return (
+    <div className='ica-panel flex flex-col items-center px-2 py-3'>
+      <span className='text-3xl leading-none font-black tabular-nums' style={{ color: tone('a').ink }}>
+        {value}
+      </span>
+      <span className='mt-1 text-xs font-extrabold text-muted-foreground'>{label}</span>
+    </div>
+  )
+}
+
+function IntroStep({ icon, toneName, text }: { icon: ReactNode; toneName: 'i' | 'a' | 'ok'; text: string }) {
+  return (
+    <li className='flex items-center gap-3 py-3'>
+      <IconTile tone={toneName} size={44}>
+        {icon}
+      </IconTile>
+      <span className='text-sm leading-snug font-bold'>{text}</span>
+    </li>
+  )
+}
+
+/** Un turno del desafío: progreso, el trozo que oyes, tu turno o la corrección, y los controles. */
+export function ChallengeTurnView({
+  round,
+  index,
+  total,
+  score,
+  step,
+  paused,
+  interim,
+  feedback,
+  targetLang,
+  onPause,
+  onResume,
+  onSkip,
+}: {
+  round: ChallengeRound
+  index: number
+  total: number
+  score: number
+  step: Step
+  paused: boolean
+  interim: string
+  feedback: ChallengeFeedback | null
+  targetLang: string
+  onPause: () => void
+  onResume: () => void
+  onSkip: () => void
+}) {
+  const verdict = feedback
+    ? feedback.correct
+      ? { tone: tone('ok'), label: `✓ ${t('Correcto')}` }
+      : feedback.almost
+        ? { tone: tone('gold'), label: t('Casi') }
+        : { tone: tone('bad'), label: t('Incorrecto') }
+    : null
+
+  return (
+    <div className='flex flex-col gap-6'>
+      {/* Progreso */}
+      <div>
+        <div className='mb-2 flex items-center justify-between gap-3'>
+          <p className='m-0 text-sm font-extrabold text-muted-foreground tabular-nums'>
+            {t('Trozo {n} de {total}', { n: Math.min(index + 1, total), total })}
+          </p>
+          <Pill tone='ok' className='text-sm'>
+            ✓ {score}
+          </Pill>
+        </div>
+        <GameProgress
+          value={total > 0 ? index / total : 0}
+          color='var(--ica-a)'
+          height={16}
+          label={t('Progreso del desafío')}
+        />
+      </div>
+
+      {/* Lo que oyes, en tu idioma */}
+      <div className='ica-panel px-5 py-4'>
+        <p className='ica-label m-0 mb-1'>{t('Oye')}</p>
+        <p className='m-0 font-display text-2xl leading-snug font-extrabold tracking-tight'>{round.native}</p>
+      </div>
+
+      {step !== 'feedback' || !feedback || !verdict ? (
+        <div className='flex flex-col items-center gap-4 py-2 text-center'>
+          <StatusCircle
+            kind={paused ? 'paused' : step === 'listening' ? 'listening' : 'prompt'}
+            live={!paused && step === 'listening'}
+          />
+          <p
+            className='m-0 text-xl font-black tracking-tight'
+            style={{ color: paused ? undefined : step === 'listening' ? tone('a').ink : tone('i').ink }}
+          >
+            {paused ? t('En pausa') : step === 'listening' ? t('Tu turno: dilo en {lang}', { lang: langInSentence(targetLang) }) : t('Escucha…')}
+          </p>
+          {interim && step === 'listening' && (
+            <p className='m-0 text-base font-semibold text-muted-foreground italic'>{interim}</p>
+          )}
+        </div>
+      ) : (
+        <div
+          className='rounded-3xl border-2 px-5 py-4'
+          style={{
+            background: verdict.tone.soft,
+            borderColor: `color-mix(in oklab, ${verdict.tone.solid} 40%, transparent)`,
+            boxShadow: `0 4px 0 color-mix(in oklab, ${verdict.tone.solid} 30%, transparent)`,
+          }}
+        >
+          <span
+            className='inline-flex rounded-full px-3 py-1 text-sm font-black text-white'
+            style={{ background: verdict.tone.solid }}
+          >
+            {verdict.label}
+          </span>
+          <p className='m-0 mt-3 text-xs font-extrabold tracking-[0.08em] uppercase' style={{ color: verdict.tone.ink }}>
+            {feedback.correct ? t('Has dicho') : t('Correcto sería')}
+          </p>
+          <p className='m-0 mt-1 font-display text-2xl leading-snug font-black tracking-tight'>
+            {feedback.marks.map((mark, position) => (
+              <span
+                key={`${position}-${mark.word}`}
+                className={cn(!mark.ok && 'underline decoration-[3px] underline-offset-4')}
+                style={!mark.ok ? { color: 'var(--ica-bad-ink)', textDecorationColor: 'var(--ica-bad-strong)' } : undefined}
+              >
+                {mark.word}{' '}
+              </span>
+            ))}
+          </p>
+          {!feedback.correct && (
+            <p className='m-0 mt-2 text-sm font-semibold text-muted-foreground'>
+              {feedback.note || t('Has dicho: «{heard}»', { heard: feedback.heard })}
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className='flex flex-wrap justify-center gap-3'>
+        {!paused ? (
+          <Button type='button' size='lg' variant='outline' onClick={onPause}>
+            <PauseIcon className='size-4 fill-current' strokeWidth={2.4} />
+            {t('Pausa')}
+          </Button>
+        ) : (
+          <Button type='button' size='lg' variant='a' onClick={onResume}>
+            <PlayIcon className='size-4 fill-current' strokeWidth={2.4} />
+            {t('Seguir')}
+          </Button>
+        )}
+        <Button type='button' size='lg' variant='outline' onClick={onSkip}>
+          <SkipForwardIcon className='size-4' strokeWidth={2.6} />
+          {t('Saltar trozo')}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/** Pantalla final: aciertos en grande y los trozos para repasar. */
+export function ChallengeResultView({
+  score,
+  total,
+  failed,
+  onRepeat,
+  onClose,
+}: {
+  score: number
+  total: number
+  failed: Array<{ round: ChallengeRound; position: number }>
+  onRepeat: () => void
+  onClose: () => void
+}) {
+  const perfect = total > 0 && score === total
+  const good = score >= total * 0.7
+  const ink = perfect || good ? tone('ok').ink : tone('a').ink
+
+  return (
+    <div className='flex flex-col items-center text-center'>
+      <span className='mb-4'>{perfect ? <TrophyIcon size={88} /> : <TargetGlyph size={84} />}</span>
+      <p className='ica-label m-0'>{t('Resultado')}</p>
+      <p className='m-0 mt-1 text-7xl leading-none font-black tracking-tight tabular-nums' style={{ color: ink }}>
+        {score}
+        <span className='ml-2 text-3xl font-extrabold text-muted-foreground'>{t('de {total}', { total })}</span>
+      </p>
+      <GameProgress
+        className='mt-5 max-w-72'
+        value={total > 0 ? score / total : 0}
+        color={perfect || good ? 'var(--ica-ok)' : 'var(--ica-a)'}
+        height={16}
+      />
+      <p className='m-0 mt-4 max-w-md text-base font-bold text-muted-foreground'>
+        {perfect
+          ? t('¡Perfecto! Te sabes tu nota maestra de memoria.')
+          : good
+            ? t('Muy bien. Repasa los trozos que han fallado.')
+            : t('Escucha otra vez tu nota maestra y vuelve a intentarlo.')}
+      </p>
+
+      {failed.length > 0 && (
+        <div className='mt-6 w-full text-left'>
+          <p className='ica-label m-0 mb-2'>{t('Para repasar')}</p>
+          <ul className='ica-group m-0 list-none divide-y-2 divide-border'>
+            {failed.map(({ round, position }) => (
+              <li key={position} className='py-3'>
+                <span className='block leading-snug font-extrabold'>{round.target}</span>
+                <span className='mt-0.5 block text-sm font-semibold text-muted-foreground'>{round.native}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className='mt-6 flex w-full max-w-sm flex-col gap-3'>
+        <Button type='button' size='xl' variant='a' className='w-full' onClick={onRepeat}>
+          <RotateCcwIcon className='size-5' strokeWidth={2.6} />
+          {t('Repetir desafío')}
+        </Button>
+        <Button type='button' size='lg' variant='outline' className='w-full' onClick={onClose}>
+          {t('Volver a la nota')}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function ExcludedList({ excluded }: { excluded: PreparedChallenge['excluded'] }) {
   return (
-    <ul className='mx-auto mt-3 mb-6 max-w-md space-y-2 rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-left text-xs text-slate-300'>
+    <ul
+      className='m-0 mt-3 mb-6 w-full max-w-md list-none space-y-2 rounded-2xl p-4 text-left text-sm'
+      style={{ background: 'var(--ica-gold-soft)' }}
+    >
       {excluded.map((item) => (
         <li key={item.phraseIndex}>
-          <span className='font-semibold text-slate-100'>
+          <span className='font-extrabold'>
             #{item.phraseIndex + 1} {item.target}
           </span>
           <br />
-          <span className='text-amber-200/90'>{item.reason}</span>
+          <span className='font-semibold' style={{ color: 'var(--ica-gold-ink)' }}>
+            {t(item.reason)}
+          </span>
         </li>
       ))}
     </ul>

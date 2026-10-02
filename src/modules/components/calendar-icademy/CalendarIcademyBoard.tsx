@@ -1,8 +1,24 @@
+import { getUiLang, langName, t, tn, uiLocale } from '@/i18n'
 import { useEffect, useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
-import { Badge } from '@/components/ui/badge'
+import type { CSSProperties, ReactNode } from 'react'
+import {
+  CalendarDaysIcon,
+  CalendarHeartIcon,
+  CalendarPlusIcon,
+  CalendarXIcon,
+  Check,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  GlobeIcon,
+  InfoIcon,
+  ListIcon,
+  PlusIcon,
+  Volume1,
+  VolumeOff,
+  XIcon,
+} from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -11,28 +27,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Label } from '@/components/ui/label'
-import { getCalendarIcademyCatalogEntry } from '../../constants/calendarIcademyCatalog'
 import { cn } from '@/lib/utils'
+import useBreakpoints from '@/modules/hooks/useBreakpoints'
+import {
+  EmptyState,
+  GamePage,
+  IconTile,
+  PageTitle,
+  Panel,
+  Pill,
+  RowGroup,
+  SectionLabel,
+  SegmentedTabs,
+  tone,
+  type Tone,
+} from '../../game/ui'
 import type { CalendarIcademyEntry } from '../../types'
 import {
   CALENDAR_ICADEMY_TIMEZONE,
@@ -40,8 +51,14 @@ import {
   parseCalendarIcademySessionDateTime,
 } from '../../utils/calendarIcademyTime'
 import { useCalendarIcademyExport } from '../../hooks/useCalendarIcademyExport'
-import { CalendarPlus, Check, Volume1, VolumeOff } from 'lucide-react'
-import { toast } from 'sonner'
+import {
+  ClassFlag,
+  DateBadge,
+  FlagTile,
+  getClassMeta,
+  getLanguageName,
+  getLanguageTone,
+} from './calendarIcademyUi'
 
 type CalendarIcademyBoardProps = {
   title: string
@@ -52,7 +69,12 @@ type CalendarIcademyBoardProps = {
   emptyMessage: string
   allowMonthNavigation?: boolean
   lockToCurrentMonth?: boolean
+  /** Botones grandes debajo del título (los usa la gestión de admin). */
   topActions?: ReactNode
+  /** Algo pequeño a la derecha del título (p. ej. la campana de recordatorios). */
+  headerRight?: ReactNode
+  /** Filas extra para la sección «Ajustes» (p. ej. recordatorios). */
+  settingsRows?: ReactNode
   onEntryClick?: (entry: CalendarIcademyEntry) => void
   onLocalTimePreferenceChange?: (enabled: boolean) => void
   canMuteEntry?: (entry: CalendarIcademyEntry) => boolean
@@ -71,65 +93,35 @@ type ClassOption = {
   languageCode: string
 }
 
-type LanguageTone = {
-  badgeClassName: string
-  activeFilterClassName: string
-  rowClassName: string
-  legendClassName: string
-}
+type Scope = 'mine' | 'all'
+type MobileView = 'agenda' | 'month'
 
-const WEEKDAY_LABELS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
+const WEEKDAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+const WEEKDAY_INITIALS = ['L', 'M', 'X', 'J', 'V', 'S', 'D']
 const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab']
+const WEEKDAY_PLURAL = ['domingos', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábados']
 const SELECTED_CLASSES_STORAGE_KEY = 'calendar-icademy-selected-classes'
 const LOCAL_TIME_STORAGE_KEY = 'calendar-icademy-show-local-time'
 const SPECIAL_ALWAYS_ALLOWED_CLASS_KEY = 'destripando_niveles'
+const MAX_NON_SPECIAL_CLASSES = 2
+// Duración de una clase (la misma que se usa al exportar)
+const CLASS_DURATION_MS = 60 * 60 * 1000
+// Días que enseña la agenda hacia delante aunque cambie el mes
+const AGENDA_MIN_DAYS_AHEAD = 13
+// Días con clase que enseña la agenda antes de «Ver más días»
+const AGENDA_PAGE_DAYS = 7
 
-const LANGUAGE_TONES: Record<string, LanguageTone> = {
-  pl: {
-    badgeClassName: 'border-cyan-300/70 bg-cyan-500/10 text-cyan-700',
-    activeFilterClassName: 'border-cyan-400/80 bg-cyan-500/15 text-cyan-700',
-    rowClassName: 'border-l-cyan-500 bg-cyan-500/10',
-    legendClassName: 'bg-cyan-500',
-  },
-  fr: {
-    badgeClassName: 'border-blue-300/70 bg-blue-500/10 text-blue-700',
-    activeFilterClassName: 'border-blue-400/80 bg-blue-500/15 text-blue-700',
-    rowClassName: 'border-l-blue-500 bg-blue-500/10',
-    legendClassName: 'bg-blue-500',
-  },
-  en: {
-    badgeClassName: 'border-red-300/70 bg-red-500/10 text-red-700',
-    activeFilterClassName: 'border-red-400/80 bg-red-500/15 text-red-700',
-    rowClassName: 'border-l-red-500 bg-red-500/10',
-    legendClassName: 'bg-red-500',
-  },
-  it: {
-    badgeClassName: 'border-emerald-300/70 bg-emerald-500/10 text-emerald-700',
-    activeFilterClassName:
-      'border-emerald-400/80 bg-emerald-500/15 text-emerald-700',
-    rowClassName: 'border-l-emerald-500 bg-emerald-500/10',
-    legendClassName: 'bg-emerald-500',
-  },
-  de: {
-    badgeClassName: 'border-amber-300/70 bg-amber-500/10 text-amber-700',
-    activeFilterClassName: 'border-amber-400/80 bg-amber-500/15 text-amber-700',
-    rowClassName: 'border-l-amber-500 bg-amber-500/10',
-    legendClassName: 'bg-amber-500',
-  },
-  destripando_niveles: {
-    badgeClassName: 'border-violet-300/70 bg-violet-500/10 text-violet-700',
-    activeFilterClassName:
-      'border-violet-400/80 bg-violet-500/15 text-violet-700',
-    rowClassName: 'border-l-violet-500 bg-violet-500/10',
-    legendClassName: 'bg-violet-500',
-  },
-}
-
-const DEFAULT_TONE: LanguageTone = {
-  badgeClassName: 'border-border bg-muted text-foreground',
-  activeFilterClassName: 'border-primary/60 bg-primary/10 text-foreground',
-  rowClassName: 'border-l-primary bg-muted/60',
-  legendClassName: 'bg-primary',
+// Botón de juego del color de cada idioma
+const BUTTON_BY_TONE: Record<Tone, 'i' | 'c' | 'a' | 'gold' | 'fire' | 'success' | 'default'> = {
+  i: 'i',
+  c: 'c',
+  a: 'a',
+  gold: 'gold',
+  fire: 'fire',
+  ok: 'success',
+  bad: 'a',
+  primary: 'default',
+  neutral: 'default',
 }
 
 function getMonthKey(sessionDate: string): string {
@@ -139,7 +131,7 @@ function getMonthKey(sessionDate: string): string {
 function formatMonthName(monthKey: string): string {
   const date = new Date(`${monthKey}-01T00:00:00`)
   if (Number.isNaN(date.getTime())) return monthKey
-  const label = date.toLocaleDateString('es-ES', {
+  const label = date.toLocaleDateString(uiLocale(), {
     month: 'long',
   })
   return label.charAt(0).toUpperCase() + label.slice(1)
@@ -148,7 +140,7 @@ function formatMonthName(monthKey: string): string {
 function formatSessionDayLabel(sessionDate: string): string {
   const date = new Date(`${sessionDate}T00:00:00`)
   if (Number.isNaN(date.getTime())) return sessionDate
-  return `${DAY_NAMES[date.getDay()]} ${date.getDate()}`
+  return `${t(DAY_NAMES[date.getDay()])} ${date.getDate()}`
 }
 
 function formatSessionTimeLabel(sessionTime: string): string {
@@ -176,7 +168,7 @@ function getDateKeyInTimezone(date: Date, timeZone?: string): string {
 }
 
 function formatTimeLabelInTimezone(date: Date, timeZone?: string): string {
-  const formatter = new Intl.DateTimeFormat('es-ES', {
+  const formatter = new Intl.DateTimeFormat(uiLocale(), {
     timeZone,
     hour: '2-digit',
     minute: '2-digit',
@@ -185,19 +177,37 @@ function formatTimeLabelInTimezone(date: Date, timeZone?: string): string {
   const parts = formatter.formatToParts(date)
   const hour = parts.find((part) => part.type === 'hour')?.value || '00'
   const minute = parts.find((part) => part.type === 'minute')?.value || '00'
-  return minute === '00' ? `${hour}h` : `${hour}:${minute}`
+  return minute === '00' ? `${hour}h` : `${hour}h${minute}`
 }
 
-function formatDayLabelInTimezone(date: Date, timeZone?: string): string {
-  const formatter = new Intl.DateTimeFormat('es-ES', {
-    timeZone,
-    weekday: 'short',
+/** Día de la fecha (sin hora): suma o resta días a una clave AAAA-MM-DD. */
+function shiftDateKey(dateKey: string, days: number): string {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const date = new Date(Date.UTC(year || 2000, (month || 1) - 1, (day || 1) + days))
+  return date.toISOString().slice(0, 10)
+}
+
+function weekdayOfDateKey(dateKey: string): number {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  return new Date(year || 2000, (month || 1) - 1, day || 1).getDay()
+}
+
+/** «Miércoles 30» (y «de octubre» si no es el mes que se está viendo). */
+function formatLongDayLabel(dateKey: string, withMonth = false): string {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const date = new Date(year || 2000, (month || 1) - 1, day || 1)
+  const label = date.toLocaleDateString(uiLocale(), {
+    weekday: 'long',
     day: 'numeric',
+    ...(withMonth ? { month: 'long' } : {}),
   })
-  const label = formatter.format(date).replace('.', '')
-  const [weekday, day] = label.split(' ')
-  if (!weekday || !day) return label
-  return `${weekday.charAt(0).toUpperCase() + weekday.slice(1)} ${day}`
+  const clean = label.replace(',', '')
+  return clean.charAt(0).toUpperCase() + clean.slice(1)
+}
+
+function joinWithY(items: string[]): string {
+  if (items.length <= 1) return items.join('')
+  return t('{a} y {b}', { a: items.slice(0, -1).join(', '), b: items[items.length - 1] })
 }
 
 function buildCalendarCells(monthKey: string): CalendarCell[] {
@@ -238,6 +248,11 @@ function buildCalendarCells(monthKey: string): CalendarCell[] {
   return cells
 }
 
+/**
+ * CALENDARIO ICADEMY: la próxima clase en grande, tus clases (eliges hasta 2 + Destripando
+ * Niveles), la agenda por días y el mes con puntos de color por idioma. Lo usan el alumno
+ * y la gestión de admin (con navegación de meses).
+ */
 export function CalendarIcademyBoard({
   title,
   description,
@@ -248,6 +263,8 @@ export function CalendarIcademyBoard({
   allowMonthNavigation = false,
   lockToCurrentMonth = false,
   topActions,
+  headerRight,
+  settingsRows,
   onEntryClick,
   onLocalTimePreferenceChange,
   canMuteEntry,
@@ -270,14 +287,20 @@ export function CalendarIcademyBoard({
     }
   })
   const [selectedMonth, setSelectedMonth] = useState<string>('')
-  const [activeTab, setActiveTab] = useState<'calendar' | 'my-classes'>(
-    'calendar',
-  )
+  // Qué clases se ven en la agenda y el mes: solo las tuyas o todas
+  const [scope, setScope] = useState<Scope>('mine')
+  const [mobileView, setMobileView] = useState<MobileView>('agenda')
+  const [pickedDay, setPickedDay] = useState<string | null>(null)
+  const [showPastDays, setShowPastDays] = useState(false)
+  const [agendaDaysLimit, setAgendaDaysLimit] = useState(AGENDA_PAGE_DAYS)
+  // Las pastillas para cambiar de clase se pliegan cuando ya has elegido
+  const [isPickerOpen, setIsPickerOpen] = useState(false)
   const [showLocalTime, setShowLocalTime] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false
     return window.localStorage.getItem(LOCAL_TIME_STORAGE_KEY) === '1'
   })
   const [nowTimestamp, setNowTimestamp] = useState(() => Date.now())
+  const { isLg } = useBreakpoints()
   const localTimezone =
     typeof Intl !== 'undefined'
       ? Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -291,11 +314,11 @@ export function CalendarIcademyBoard({
     const byClassKey = new Map<string, ClassOption>()
     for (const entry of entries) {
       if (!byClassKey.has(entry.classKey)) {
-        const catalogEntry = getCalendarIcademyCatalogEntry(entry.classKey)
+        const meta = getClassMeta(entry.classKey, entry)
         byClassKey.set(entry.classKey, {
           classKey: entry.classKey,
-          className: catalogEntry?.className || entry.className,
-          languageCode: catalogEntry?.languageCode || entry.languageCode,
+          className: meta.className,
+          languageCode: meta.languageCode,
         })
       }
     }
@@ -390,20 +413,11 @@ export function CalendarIcademyBoard({
     return buildCalendarCells(selectedMonth)
   }, [selectedMonth])
 
-  const visibleDateKeys = useMemo(
-    () => new Set(calendarCells.map((cell) => cell.dateKey)),
-    [calendarCells],
-  )
-
-  const entriesForGrid = useMemo(
-    () => entries.filter((entry) => visibleDateKeys.has(entry.sessionDate)),
-    [entries, visibleDateKeys],
-  )
-
+  // Todas las clases agrupadas por día (ordenadas por hora)
   const entriesByDate = useMemo(() => {
     const grouped = new Map<string, CalendarIcademyEntry[]>()
 
-    for (const entry of entriesForGrid) {
+    for (const entry of entries) {
       const list = grouped.get(entry.sessionDate)
       if (list) {
         list.push(entry)
@@ -422,7 +436,20 @@ export function CalendarIcademyBoard({
     }
 
     return grouped
-  }, [entriesForGrid])
+  }, [entries])
+
+  // Momento exacto (hora de España) de cada clase
+  const entryTimes = useMemo(() => {
+    const times = new Map<string, number>()
+    for (const entry of entries) {
+      const sessionDateTime = parseCalendarIcademySessionDateTime({
+        sessionDate: entry.sessionDate,
+        sessionTime: entry.sessionTime,
+      })
+      if (sessionDateTime) times.set(entry.id, sessionDateTime.getTime())
+    }
+    return times
+  }, [entries])
 
   const selectedSessions = useMemo(() => {
     if (selectedClassKeys.length === 0) return []
@@ -435,6 +462,7 @@ export function CalendarIcademyBoard({
       })
   }, [entriesForMonth, selectedClassKeys])
 
+  // Resumen de cada clase elegida: qué días, a qué hora y con quién
   const selectedClassSummaries = useMemo(() => {
     return selectedClassKeys
       .map((classKey) => {
@@ -448,38 +476,36 @@ export function CalendarIcademyBoard({
 
         if (sessions.length === 0) return null
 
-        const firstSession = sessions[0]
-        const catalogEntry = getCalendarIcademyCatalogEntry(classKey)
-        const sessionDateTime = parseCalendarIcademySessionDateTime({
-          sessionDate: firstSession.sessionDate,
-          sessionTime: firstSession.sessionTime,
-        })
-        const weekdayLabel =
-          effectiveTimezone && sessionDateTime
-            ? formatDayLabelInTimezone(
-                sessionDateTime,
-                effectiveTimezone,
-              ).split(' ')[0]
-            : formatSessionDayLabel(firstSession.sessionDate).split(' ')[0]
-        const hourLabel =
-          effectiveTimezone && sessionDateTime
-            ? formatTimeLabelInTimezone(sessionDateTime, effectiveTimezone)
-            : formatSessionTimeLabel(firstSession.sessionTime)
+        const weekdays = new Set<number>()
+        const hours: string[] = []
+        for (const session of sessions) {
+          const sessionDateTime = parseCalendarIcademySessionDateTime({
+            sessionDate: session.sessionDate,
+            sessionTime: session.sessionTime,
+          })
+          const dateKey =
+            effectiveTimezone && sessionDateTime
+              ? getDateKeyInTimezone(sessionDateTime, effectiveTimezone)
+              : session.sessionDate
+          weekdays.add(weekdayOfDateKey(dateKey))
+          const hour =
+            effectiveTimezone && sessionDateTime
+              ? formatTimeLabelInTimezone(sessionDateTime, effectiveTimezone)
+              : formatSessionTimeLabel(session.sessionTime)
+          if (!hours.includes(hour)) hours.push(hour)
+        }
+        const orderedWeekdays = Array.from(weekdays)
+          .sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7))
+          .map((day) => t(WEEKDAY_PLURAL[day]))
         const teachers = Array.from(
           new Set(sessions.map((item) => item.teacher)),
         ).join(' / ')
-        const className = catalogEntry?.className || firstSession.className
-        const languageCode =
-          catalogEntry?.languageCode || firstSession.languageCode
-        const flag = catalogEntry?.flag || '🌐'
 
         return {
           classKey,
-          className,
-          flag,
-          label: `${weekdayLabel} ${hourLabel}`,
+          label: `${orderedWeekdays.length > 3 ? t('Varios días') : t('Los {days}', { days: joinWithY(orderedWeekdays) })} · ${hours.slice(0, 3).join(' / ')}`,
           teachers,
-          languageCode,
+          sessionsCount: sessions.length,
         }
       })
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
@@ -511,15 +537,6 @@ export function CalendarIcademyBoard({
     onShowLocalTimeChange: setShowLocalTime,
   })
 
-  const languageLegend = useMemo(() => {
-    const byLanguage = new Set<string>()
-    for (const item of classOptions) {
-      byLanguage.add(item.languageCode)
-    }
-
-    return Array.from(byLanguage.values()).sort((a, b) => a.localeCompare(b))
-  }, [classOptions])
-
   const handleToggleClass = (classKey: string) => {
     setSelectedClassKeys((prev) => {
       if (prev.includes(classKey)) {
@@ -534,473 +551,923 @@ export function CalendarIcademyBoard({
         (item) => item !== SPECIAL_ALWAYS_ALLOWED_CLASS_KEY,
       )
 
-      if (nonSpecialSelected.length >= 2) return prev
+      if (nonSpecialSelected.length >= MAX_NON_SPECIAL_CLASSES) return prev
 
       return [...prev, classKey]
     })
   }
 
-  const showAllClasses = selectedClassKeys.length === 0
+  const hasSelection = selectedClassKeys.length > 0
+  const showOnlyMine = hasSelection && scope === 'mine'
   const nonSpecialSelectedCount = selectedClassKeys.filter(
     (item) => item !== SPECIAL_ALWAYS_ALLOWED_CLASS_KEY,
   ).length
   const now = new Date()
   const todayKey = getCalendarIcademyTodayKey(now)
-  const todayKeyForDisplay = getDateKeyInTimezone(now, effectiveTimezone)
+  // «Hoy» en la zona en la que se leen las horas (España o la tuya)
+  const displayTodayKey = effectiveTimezone
+    ? getDateKeyInTimezone(now, effectiveTimezone)
+    : todayKey
+
+  const isInScope = (entry: CalendarIcademyEntry): boolean =>
+    !showOnlyMine || selectedClassKeys.includes(entry.classKey)
 
   const getEntryTimeLabel = (entry: CalendarIcademyEntry): string => {
     if (!effectiveTimezone) return formatSessionTimeLabel(entry.sessionTime)
-    const sessionDateTime = parseCalendarIcademySessionDateTime({
-      sessionDate: entry.sessionDate,
-      sessionTime: entry.sessionTime,
-    })
-    if (!sessionDateTime) return formatSessionTimeLabel(entry.sessionTime)
-    return formatTimeLabelInTimezone(sessionDateTime, effectiveTimezone)
+    const time = entryTimes.get(entry.id)
+    if (time === undefined) return formatSessionTimeLabel(entry.sessionTime)
+    return formatTimeLabelInTimezone(new Date(time), effectiveTimezone)
   }
 
-  const getEntryDayLabel = (entry: CalendarIcademyEntry): string => {
-    if (!effectiveTimezone) return formatSessionDayLabel(entry.sessionDate)
-    const sessionDateTime = parseCalendarIcademySessionDateTime({
-      sessionDate: entry.sessionDate,
-      sessionTime: entry.sessionTime,
-    })
-    if (!sessionDateTime) return formatSessionDayLabel(entry.sessionDate)
-    return formatDayLabelInTimezone(sessionDateTime, effectiveTimezone)
+  const getEntryDisplayDateKey = (entry: CalendarIcademyEntry): string => {
+    if (!effectiveTimezone) return entry.sessionDate
+    const time = entryTimes.get(entry.id)
+    if (time === undefined) return entry.sessionDate
+    return getDateKeyInTimezone(new Date(time), effectiveTimezone)
   }
 
-  const isEntryToday = (entry: CalendarIcademyEntry): boolean => {
-    if (!effectiveTimezone) return entry.sessionDate === todayKey
-    const sessionDateTime = parseCalendarIcademySessionDateTime({
-      sessionDate: entry.sessionDate,
-      sessionTime: entry.sessionTime,
-    })
-    if (!sessionDateTime) return false
-    return (
-      getDateKeyInTimezone(sessionDateTime, effectiveTimezone) ===
-      todayKeyForDisplay
-    )
+  const getRelativeDayLabel = (dateKey: string): string => {
+    if (dateKey === displayTodayKey) return t('Hoy')
+    if (dateKey === shiftDateKey(displayTodayKey, 1)) return t('Mañana')
+    return formatLongDayLabel(dateKey, getMonthKey(dateKey) !== getMonthKey(displayTodayKey))
   }
+
+  // Estado de una clase: ya pasó, está en directo o empieza pronto
+  const getEntryStatus = (entry: CalendarIcademyEntry) => {
+    const time = entryTimes.get(entry.id)
+    if (time === undefined) return { isPast: false, isLive: false, countdown: null as string | null }
+    const minutesUntil = Math.floor((time - nowTimestamp) / 60000)
+    const isPast = time + CLASS_DURATION_MS <= nowTimestamp
+    const isLive = !isPast && minutesUntil <= 0
+    const countdown = isLive
+      ? t('En directo')
+      : minutesUntil > 0 && minutesUntil <= 120
+        ? t('En {n} min', { n: minutesUntil })
+        : null
+    return { isPast, isLive, countdown }
+  }
+
+  // La próxima clase: de las tuyas si has elegido; si no (o no quedan), de todas
+  const { nextEntry, nextIsMine } = useMemo(() => {
+    const upcoming = entries
+      .filter((entry) => {
+        const time = entryTimes.get(entry.id)
+        return time !== undefined && time + CLASS_DURATION_MS > nowTimestamp
+      })
+      .sort((a, b) => (entryTimes.get(a.id) || 0) - (entryTimes.get(b.id) || 0))
+    const mine = upcoming.find((entry) => selectedClassKeys.includes(entry.classKey))
+    if (mine) return { nextEntry: mine, nextIsMine: true }
+    return { nextEntry: upcoming[0] ?? null, nextIsMine: false }
+  }, [entries, entryTimes, nowTimestamp, selectedClassKeys])
+
+  // Agenda: días con clases del mes (y, al final del mes, las dos semanas siguientes)
+  const agenda = useMemo(() => {
+    const isCurrentMonth = selectedMonth === getMonthKey(todayKey)
+    const lastAgendaDay = shiftDateKey(todayKey, AGENDA_MIN_DAYS_AHEAD)
+    const dayKeys = Array.from(entriesByDate.keys())
+      .filter((dateKey) => {
+        if (getMonthKey(dateKey) === selectedMonth) return true
+        return isCurrentMonth && dateKey > todayKey && dateKey <= lastAgendaDay
+      })
+      .sort((a, b) => a.localeCompare(b))
+
+    const days = dayKeys
+      .map((dateKey) => ({
+        dateKey,
+        entries: (entriesByDate.get(dateKey) || []).filter(
+          (entry) => !showOnlyMine || selectedClassKeys.includes(entry.classKey),
+        ),
+      }))
+      .filter((day) => day.entries.length > 0)
+
+    return {
+      past: days.filter((day) => day.dateKey < todayKey),
+      upcoming: days.filter((day) => day.dateKey >= todayKey),
+    }
+  }, [entriesByDate, selectedClassKeys, selectedMonth, showOnlyMine, todayKey])
+
+  // Día elegido en el mes: el que toques; si no, hoy o el siguiente con clase
+  const defaultDay = useMemo(() => {
+    if (!selectedMonth) return todayKey
+    const monthDays = Array.from(entriesByDate.keys())
+      .filter((dateKey) => getMonthKey(dateKey) === selectedMonth)
+      .sort((a, b) => a.localeCompare(b))
+    if (getMonthKey(todayKey) === selectedMonth) {
+      return monthDays.find((dateKey) => dateKey >= todayKey) || todayKey
+    }
+    return monthDays[0] || `${selectedMonth}-01`
+  }, [entriesByDate, selectedMonth, todayKey])
+  const selectedDay =
+    pickedDay && getMonthKey(pickedDay) === selectedMonth ? pickedDay : defaultDay
+  const selectedDayEntries = (entriesByDate.get(selectedDay) || []).filter(isInScope)
+
+  const languageLegend = useMemo(() => {
+    const byLanguage = new Set<string>()
+    for (const item of classOptions) {
+      if (!showOnlyMine || selectedClassKeys.includes(item.classKey)) {
+        byLanguage.add(item.languageCode)
+      }
+    }
+
+    return Array.from(byLanguage.values()).sort((a, b) => a.localeCompare(b))
+  }, [classOptions, selectedClassKeys, showOnlyMine])
 
   const currentMonthLabel = selectedMonth
     ? formatMonthName(selectedMonth)
     : formatMonthName(getMonthKey(new Date().toISOString().slice(0, 10)))
+  const currentYearLabel = (selectedMonth || todayKey).slice(0, 4)
+
+  // Meses a los que se puede ir con las flechas (solo en la gestión)
+  const previousMonth = [...availableMonths].reverse().find((month) => month < selectedMonth)
+  const nextMonth = availableMonths.find((month) => month > selectedMonth)
+
+  // ---------- Piezas ----------
+
+  const scopeToggle = hasSelection ? (
+    <button
+      type='button'
+      onClick={() => setScope(showOnlyMine ? 'all' : 'mine')}
+      className='shrink-0 rounded-xl px-2 py-1 text-sm font-extrabold text-primary transition-colors hover:bg-primary/10'
+    >
+      {showOnlyMine ? t('Ver todas') : t('Solo las mías')}
+    </button>
+  ) : null
+
+  const renderClassRow = (entry: CalendarIcademyEntry) => {
+    const meta = getClassMeta(entry.classKey, entry)
+    const colors = tone(meta.tone)
+    const status = getEntryStatus(entry)
+    const isMine = selectedClassKeys.includes(entry.classKey)
+    const canMuteCurrentEntry = canMuteEntry ? canMuteEntry(entry) : false
+    const isMuted = isEntryMuted ? isEntryMuted(entry) : false
+
+    const content = (
+      <>
+        <span
+          className='flex h-12 w-[4.25rem] shrink-0 items-center justify-center rounded-2xl text-base leading-none font-black tabular-nums'
+          style={{ background: colors.soft, color: colors.ink }}
+        >
+          {getEntryTimeLabel(entry)}
+        </span>
+        <span className='min-w-0 flex-1'>
+          <span className='flex items-center gap-1.5 leading-tight font-extrabold'>
+            <ClassFlag meta={meta} className='text-lg' />
+            <span className='truncate'>{t(meta.className)}</span>
+          </span>
+          <span className='mt-1 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-muted-foreground'>
+            <span className='truncate'>{t('con {teacher}', { teacher: entry.teacher })}</span>
+            {status.countdown ? (
+              <Pill tone={status.isLive ? 'a' : 'primary'} solid>
+                {status.countdown}
+              </Pill>
+            ) : null}
+            {!showOnlyMine && isMine ? <Pill tone='ok'>{t('Tuya')}</Pill> : null}
+            {isMuted ? <Pill tone='neutral'>{t('Silenciada')}</Pill> : null}
+          </span>
+        </span>
+      </>
+    )
+
+    return (
+      <div
+        key={entry.id}
+        className={cn('flex items-center gap-2 py-3', status.isPast && 'opacity-55')}
+      >
+        {onEntryClick ? (
+          <button
+            type='button'
+            onClick={() => onEntryClick(entry)}
+            className='flex min-w-0 flex-1 items-center gap-3 text-left transition-opacity active:opacity-70'
+          >
+            {content}
+          </button>
+        ) : (
+          <div className='flex min-w-0 flex-1 items-center gap-3'>{content}</div>
+        )}
+        {canMuteCurrentEntry && onToggleEntryMute ? (
+          <button
+            type='button'
+            onClick={() => onToggleEntryMute(entry)}
+            aria-label={isMuted ? t('Cancelar silencio') : t('Silenciar sesión')}
+            className='ica-press flex size-10 shrink-0 items-center justify-center rounded-2xl border-2 border-border bg-card text-muted-foreground dark:bg-transparent'
+            style={{ boxShadow: '0 3px 0 var(--border)' }}
+          >
+            {isMuted ? (
+              <Volume1 className='size-5' strokeWidth={2.4} />
+            ) : (
+              <VolumeOff className='size-5' strokeWidth={2.4} />
+            )}
+          </button>
+        ) : onEntryClick ? (
+          <ChevronRightIcon className='size-5 shrink-0 text-muted-foreground' aria-hidden='true' />
+        ) : null}
+      </div>
+    )
+  }
+
+  // Bloque protagonista: la próxima clase
+  const renderHero = () => {
+    if (!nextEntry) {
+      return (
+        <div
+          className='flex items-center gap-4 rounded-3xl px-5 py-4'
+          style={{ background: tone('neutral').soft }}
+        >
+          <IconTile tone='neutral' size={56}>
+            <CalendarXIcon className='size-7' strokeWidth={2.4} />
+          </IconTile>
+          <div className='min-w-0'>
+            <p className='m-0 text-xl leading-tight font-black tracking-tight'>
+              {t('No quedan clases programadas')}
+            </p>
+            <p className='m-0 mt-1 text-sm font-semibold text-muted-foreground'>
+              {t('Las próximas clases aparecerán aquí en cuanto se publiquen.')}
+            </p>
+          </div>
+        </div>
+      )
+    }
+
+    const meta = getClassMeta(nextEntry.classKey, nextEntry)
+    const colors = tone(meta.tone)
+    const status = getEntryStatus(nextEntry)
+    const displayDateKey = getEntryDisplayDateKey(nextEntry)
+    const isSpecial = nextEntry.classKey === SPECIAL_ALWAYS_ALLOWED_CLASS_KEY
+    const canFollow =
+      isSpecial || nonSpecialSelectedCount < MAX_NON_SPECIAL_CLASSES
+
+    return (
+      <div
+        className='rounded-3xl px-5 py-4'
+        style={{ background: colors.soft }}
+        data-testid='calendar-next-class'
+      >
+        <div className='flex flex-col gap-4'>
+          <div className='flex min-w-0 flex-1 items-center gap-4'>
+            <DateBadge dateKey={displayDateKey} tone={meta.tone} size={68} />
+            <div className='min-w-0 flex-1'>
+              <p
+                className='m-0 text-xs font-extrabold tracking-[0.08em] uppercase'
+                style={{ color: colors.ink }}
+              >
+                {nextIsMine ? t('Tu próxima clase') : t('Próxima clase en ICADEMY')}
+              </p>
+              <p
+                className='m-0 flex items-center gap-2 text-2xl leading-tight font-black tracking-tight'
+                style={{ color: colors.ink }}
+              >
+                <ClassFlag meta={meta} />
+                <span className='truncate'>{t(meta.className)}</span>
+              </p>
+              <p className='m-0 mt-0.5 text-sm font-extrabold' style={{ color: colors.ink }}>
+                {getRelativeDayLabel(displayDateKey)} · {getEntryTimeLabel(nextEntry)}
+                {effectiveTimezone ? '' : ` ${t('(España)')}`}
+              </p>
+              <p className='m-0 mt-1 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-muted-foreground'>
+                {t('con {teacher}', { teacher: nextEntry.teacher })}
+                {status.countdown ? (
+                  <Pill tone={status.isLive ? 'a' : meta.tone} solid>
+                    {status.countdown}
+                  </Pill>
+                ) : null}
+              </p>
+            </div>
+          </div>
+
+          <div className='flex gap-2'>
+            {hasSelection ? (
+              <Button
+                type='button'
+                size='lg'
+                variant={BUTTON_BY_TONE[meta.tone]}
+                className='min-w-0 flex-1 lg:max-w-xs'
+                onClick={startExportFlow}
+                disabled={selectedSessions.length === 0}
+              >
+                <CalendarPlusIcon data-icon='inline-start' strokeWidth={2.6} />
+                <span className='truncate'>{t('Añadir al calendario')}</span>
+              </Button>
+            ) : (
+              <Button
+                type='button'
+                size='lg'
+                variant={BUTTON_BY_TONE[meta.tone]}
+                className='min-w-0 flex-1 lg:max-w-xs'
+                onClick={() => handleToggleClass(nextEntry.classKey)}
+                disabled={!canFollow}
+              >
+                <PlusIcon data-icon='inline-start' strokeWidth={2.8} />
+                {t('Seguir esta clase')}
+              </Button>
+            )}
+            {onEntryClick ? (
+              <Button
+                type='button'
+                size='lg'
+                variant='outline'
+                onClick={() => onEntryClick(nextEntry)}
+                aria-label={t('Detalles de la clase')}
+                className='px-3.5 sm:px-5'
+              >
+                <InfoIcon className='size-5' strokeWidth={2.6} />
+                <span className='hidden sm:inline'>{t('Detalles')}</span>
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Pastillas grandes para elegir clases (hacen de filtro de idiomas)
+  const renderClassPills = () => (
+    <div>
+      <div className='flex flex-wrap gap-2'>
+        {classOptions.map((option) => {
+          const meta = getClassMeta(option.classKey, option)
+          const colors = tone(meta.tone)
+          const isSelected = selectedClassKeys.includes(option.classKey)
+          const isSpecialClass = option.classKey === SPECIAL_ALWAYS_ALLOWED_CLASS_KEY
+          const isDisabled =
+            !isSelected &&
+            !isSpecialClass &&
+            nonSpecialSelectedCount >= MAX_NON_SPECIAL_CLASSES
+          const style: CSSProperties = isSelected
+            ? {
+                background: colors.soft,
+                borderColor: colors.solid,
+                color: colors.ink,
+                boxShadow: `0 3px 0 ${colors.edge}`,
+              }
+            : { boxShadow: '0 3px 0 var(--border)' }
+
+          return (
+            <button
+              key={option.classKey}
+              type='button'
+              aria-pressed={isSelected}
+              disabled={isDisabled}
+              onClick={() => handleToggleClass(option.classKey)}
+              className={cn(
+                'ica-press flex h-11 items-center gap-2 rounded-2xl border-2 px-3 text-sm font-extrabold disabled:cursor-not-allowed disabled:opacity-40',
+                !isSelected && 'border-border bg-card dark:bg-transparent',
+              )}
+              style={style}
+            >
+              <ClassFlag meta={meta} className='text-lg' />
+              {t(meta.className)}
+              {isSelected ? (
+                <Check className='size-4' strokeWidth={3} aria-hidden='true' />
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+      <p className='m-0 mt-3 text-xs font-semibold text-muted-foreground'>
+        {nonSpecialSelectedCount >= MAX_NON_SPECIAL_CLASSES
+          ? t('Ya sigues 2 clases. Quita una para cambiarla; Destripando Niveles siempre se puede añadir.')
+          : t('Máximo 2 clases + Destripando Niveles, que siempre está disponible.')}
+      </p>
+    </div>
+  )
+
+  // Tus clases: las que sigues (con sus días y hora) o un aviso amable para elegirlas
+  const renderMyClasses = () =>
+    hasSelection ? (
+      <RowGroup>
+        {selectedClassKeys.map((classKey) => {
+          const option = classOptions.find((item) => item.classKey === classKey)
+          const meta = getClassMeta(classKey, option)
+          const summary = selectedClassSummaries.find((item) => item.classKey === classKey)
+          return (
+            <div key={classKey} className='flex items-center gap-3 py-3'>
+              <FlagTile meta={meta} size={48} />
+              <span className='min-w-0 flex-1'>
+                <span className='block truncate leading-tight font-extrabold'>{t(meta.className)}</span>
+                <span className='mt-0.5 block text-xs font-semibold text-muted-foreground'>
+                  {summary
+                    ? `${summary.label} · ${t('con {teacher}', { teacher: summary.teachers })}`
+                    : t('Sin clases en {month}', {
+                        month: getUiLang() === 'en' ? currentMonthLabel : currentMonthLabel.toLowerCase(),
+                      })}
+                </span>
+              </span>
+              <button
+                type='button'
+                onClick={() => handleToggleClass(classKey)}
+                aria-label={t('Dejar de seguir {name}', { name: t(meta.className) })}
+                className='flex size-9 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground'
+              >
+                <XIcon className='size-5' strokeWidth={2.6} />
+              </button>
+            </div>
+          )
+        })}
+        {!isLg ? (
+          <button
+            type='button'
+            onClick={() => setIsPickerOpen((prev) => !prev)}
+            aria-expanded={isPickerOpen}
+            className='flex w-full items-center gap-3 py-3 text-left transition-opacity active:opacity-70'
+          >
+            <IconTile tone='primary' size={48}>
+              <PlusIcon
+                className={cn('size-6 transition-transform', isPickerOpen && 'rotate-45')}
+                strokeWidth={2.8}
+              />
+            </IconTile>
+            <span className='min-w-0 flex-1 leading-tight font-extrabold text-primary'>
+              {isPickerOpen ? t('Listo') : t('Cambiar o añadir clases')}
+            </span>
+          </button>
+        ) : null}
+      </RowGroup>
+    ) : (
+      <Panel tone='i' className='flex items-center gap-3'>
+        <IconTile tone='i' solid size={48}>
+          <CalendarHeartIcon className='size-6' strokeWidth={2.4} />
+        </IconTile>
+        <span className='min-w-0 flex-1'>
+          <span className='block leading-tight font-extrabold'>{t('Elige las clases que quieres seguir')}</span>
+          <span className='mt-1 block text-sm font-semibold text-muted-foreground'>
+            {t('Toca abajo tus clases y verás aquí cuándo son. Mientras, te enseñamos todas.')}
+          </span>
+        </span>
+      </Panel>
+    )
+
+  const renderMonthHeader = () => (
+    <div className='mb-3 flex items-center gap-2'>
+      <p className='m-0 flex-1 text-lg font-extrabold'>
+        {currentMonthLabel}{' '}
+        <span className='font-bold text-muted-foreground'>{currentYearLabel}</span>
+      </p>
+      {scopeToggle}
+      {allowMonthNavigation ? (
+        <span className='flex shrink-0 gap-2'>
+          <button
+            type='button'
+            onClick={() => previousMonth && setSelectedMonth(previousMonth)}
+            disabled={!previousMonth}
+            className='flex size-10 items-center justify-center rounded-2xl border-2 border-border text-muted-foreground hover:bg-muted disabled:opacity-40'
+            aria-label={t('Mes anterior')}
+          >
+            <ChevronLeftIcon className='size-5' strokeWidth={2.6} />
+          </button>
+          <button
+            type='button'
+            onClick={() => nextMonth && setSelectedMonth(nextMonth)}
+            disabled={!nextMonth}
+            className='flex size-10 items-center justify-center rounded-2xl border-2 border-border text-muted-foreground hover:bg-muted disabled:opacity-40'
+            aria-label={t('Mes siguiente')}
+          >
+            <ChevronRightIcon className='size-5' strokeWidth={2.6} />
+          </button>
+        </span>
+      ) : null}
+    </div>
+  )
+
+  const renderLegend = () =>
+    languageLegend.length > 0 ? (
+      <div className='mt-3 flex flex-wrap gap-x-4 gap-y-1.5'>
+        {languageLegend.map((languageCode) => (
+          <span
+            key={languageCode}
+            className='flex items-center gap-1.5 text-xs font-bold text-muted-foreground'
+          >
+            <span
+              className='size-2.5 rounded-full'
+              style={{ background: tone(getLanguageTone(languageCode)).solid }}
+            />
+            {langName(getLanguageName(languageCode))}
+          </span>
+        ))}
+      </div>
+    ) : null
+
+  // Móvil: el mes en círculos (como Rachas) con puntos de color por idioma
+  const renderMonthCircles = () => (
+    <div>
+      {renderMonthHeader()}
+      <div className='grid grid-cols-7 gap-1.5'>
+        {WEEKDAY_INITIALS.map((day, index) => (
+          <div key={index} className='pb-1 text-center text-xs font-extrabold text-muted-foreground'>
+            {getUiLang() === 'en' ? t(WEEKDAY_LABELS[index]).charAt(0) : day}
+          </div>
+        ))}
+        {calendarCells.map((cell) => {
+          const dayNumber = Number(cell.dateKey.slice(-2))
+          const dayEntries = (entriesByDate.get(cell.dateKey) || []).filter(isInScope)
+          if (!cell.inCurrentMonth) {
+            return (
+              <div
+                key={cell.dateKey}
+                className='flex aspect-square items-center justify-center text-sm font-bold text-muted-foreground opacity-35'
+              >
+                {dayNumber}
+              </div>
+            )
+          }
+          const isSelected = cell.dateKey === selectedDay
+          const isToday = cell.dateKey === todayKey
+          const hasClasses = dayEntries.length > 0
+          const dotTones = Array.from(
+            new Set(dayEntries.map((entry) => getClassMeta(entry.classKey, entry).tone)),
+          ).slice(0, 3)
+          return (
+            <button
+              key={cell.dateKey}
+              type='button'
+              onClick={() => setPickedDay(cell.dateKey)}
+              aria-pressed={isSelected}
+              aria-label={`${formatLongDayLabel(cell.dateKey)}: ${tn(dayEntries.length, '{n} clase', '{n} clases')}`}
+              className={cn(
+                'relative flex aspect-square items-center justify-center rounded-full text-sm font-extrabold tabular-nums transition-colors',
+                isToday && 'ring-2 ring-primary ring-offset-2 ring-offset-background',
+                cell.dateKey < todayKey && !isSelected && 'opacity-55',
+              )}
+              style={{
+                background: isSelected
+                  ? 'var(--primary)'
+                  : hasClasses
+                    ? 'color-mix(in oklab, var(--primary) 10%, var(--card))'
+                    : 'transparent',
+                color: isSelected
+                  ? 'var(--primary-foreground)'
+                  : hasClasses
+                    ? 'var(--foreground)'
+                    : 'var(--muted-foreground)',
+              }}
+            >
+              {dayNumber}
+              {dotTones.length > 0 ? (
+                <span className='absolute bottom-[14%] left-1/2 flex -translate-x-1/2 gap-0.5'>
+                  {dotTones.map((dotTone) => (
+                    <span
+                      key={dotTone}
+                      className='size-1.5 rounded-full'
+                      style={{ background: isSelected ? 'var(--primary-foreground)' : tone(dotTone).solid }}
+                    />
+                  ))}
+                </span>
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+      {renderLegend()}
+    </div>
+  )
+
+  // Ordenador: el mes en casillas redondeadas con chips de color por clase
+  const renderMonthGrid = () => (
+    <div>
+      {renderMonthHeader()}
+      <div className='grid grid-cols-7 gap-2'>
+        {WEEKDAY_LABELS.map((label) => (
+          <div
+            key={label}
+            className='pb-1 text-center text-xs font-extrabold tracking-[0.08em] text-muted-foreground uppercase'
+          >
+            {t(label)}
+          </div>
+        ))}
+        {calendarCells.map((cell) => {
+          const dayNumber = Number(cell.dateKey.slice(-2))
+          const dayEntries = (entriesByDate.get(cell.dateKey) || []).filter(isInScope)
+          const isSelected = cell.dateKey === selectedDay
+          const isToday = cell.dateKey === todayKey
+          const isPastDay = cell.dateKey < todayKey
+          const visibleEntries = dayEntries.slice(0, 3)
+          const hiddenCount = dayEntries.length - visibleEntries.length
+
+          const inner = (
+            <>
+              <span className='flex items-center justify-between gap-1'>
+                <span
+                  className={cn(
+                    'flex size-7 items-center justify-center rounded-full text-sm font-extrabold tabular-nums',
+                    !isToday && dayEntries.length === 0 && 'text-muted-foreground',
+                  )}
+                  style={
+                    isToday
+                      ? { background: 'var(--primary)', color: 'var(--primary-foreground)' }
+                      : undefined
+                  }
+                >
+                  {dayNumber}
+                </span>
+                {isToday ? (
+                  <span className='text-[10px] font-black tracking-[0.08em] text-primary uppercase'>{t('Hoy')}</span>
+                ) : null}
+              </span>
+              <span className='flex flex-col gap-1'>
+                {visibleEntries.map((entry) => {
+                  const meta = getClassMeta(entry.classKey, entry)
+                  const colors = tone(meta.tone)
+                  return (
+                    <span
+                      key={entry.id}
+                      className='flex min-w-0 items-center gap-1 rounded-lg px-1 py-0.5 text-[11px] leading-4 font-extrabold'
+                      style={{ background: colors.soft, color: colors.ink }}
+                      aria-label={`${t(meta.className)} · ${getEntryTimeLabel(entry)} · ${t('con {teacher}', { teacher: entry.teacher })}`}
+                    >
+                      <ClassFlag meta={meta} className='text-xs' />
+                      <span className='truncate tabular-nums'>{getEntryTimeLabel(entry)}</span>
+                    </span>
+                  )
+                })}
+                {hiddenCount > 0 ? (
+                  <span className='px-1.5 text-[11px] font-extrabold text-muted-foreground'>
+                    {t('+{n} más', { n: hiddenCount })}
+                  </span>
+                ) : null}
+              </span>
+            </>
+          )
+
+          if (!cell.inCurrentMonth) {
+            return (
+              <div
+                key={cell.dateKey}
+                className='flex min-h-[6.75rem] flex-col gap-1 rounded-2xl p-1.5 opacity-35'
+              >
+                {inner}
+              </div>
+            )
+          }
+
+          return (
+            <button
+              key={cell.dateKey}
+              type='button'
+              onClick={() => setPickedDay(cell.dateKey)}
+              aria-pressed={isSelected}
+              aria-label={`${formatLongDayLabel(cell.dateKey)}: ${tn(dayEntries.length, '{n} clase', '{n} clases')}`}
+              className={cn(
+                'flex min-h-[6.75rem] min-w-0 flex-col gap-1 rounded-2xl border-2 bg-card p-1.5 text-left transition-colors hover:border-primary/50',
+                isSelected ? 'border-primary' : 'border-border',
+                isPastDay && !isSelected && 'opacity-60',
+              )}
+              style={
+                isSelected
+                  ? {
+                      background: 'color-mix(in oklab, var(--primary) 9%, var(--card))',
+                      boxShadow: '0 3px 0 var(--primary-edge)',
+                    }
+                  : { boxShadow: '0 3px 0 var(--border)' }
+              }
+            >
+              {inner}
+            </button>
+          )
+        })}
+      </div>
+      {renderLegend()}
+    </div>
+  )
+
+  // Las clases del día elegido (panel lateral en ordenador, debajo del mes en el móvil)
+  const renderDayPanel = () => (
+    <div className='ica-panel p-4'>
+      <div className='flex items-center gap-3'>
+        <DateBadge dateKey={selectedDay} tone='primary' size={56} />
+        <div className='min-w-0'>
+          <p className='m-0 text-lg leading-tight font-extrabold'>
+            {formatLongDayLabel(selectedDay)}
+          </p>
+          <p className='m-0 mt-0.5 text-sm font-semibold text-muted-foreground'>
+            {selectedDay === todayKey ? `${t('Hoy')} · ` : ''}
+            {selectedDayEntries.length === 0
+              ? t('Sin clases')
+              : tn(selectedDayEntries.length, '{n} clase', '{n} clases')}
+          </p>
+        </div>
+      </div>
+      {selectedDayEntries.length > 0 ? (
+        <div className='mt-2 divide-y-2 divide-border'>
+          {selectedDayEntries.map((entry) => renderClassRow(entry))}
+        </div>
+      ) : (
+        <p className='m-0 mt-3 rounded-2xl bg-muted px-3 py-3 text-sm font-semibold text-muted-foreground'>
+          {showOnlyMine
+            ? t('Este día no tienes clases. Toca «Ver todas» para ver las demás.')
+            : t('Este día no hay clases.')}
+        </p>
+      )}
+    </div>
+  )
+
+  const renderAgendaDay = (day: { dateKey: string; entries: CalendarIcademyEntry[] }) => {
+    const isToday = day.dateKey === todayKey
+    const isTomorrow = day.dateKey === shiftDateKey(todayKey, 1)
+    return (
+      <div key={day.dateKey}>
+        <p className='m-0 mb-2 flex items-center gap-2 text-sm font-extrabold'>
+          {isToday ? <Pill tone='primary' solid>{t('HOY')}</Pill> : null}
+          {isTomorrow ? <Pill tone='primary'>{t('MAÑANA')}</Pill> : null}
+          <span>
+            {formatLongDayLabel(day.dateKey, getMonthKey(day.dateKey) !== selectedMonth)}
+          </span>
+        </p>
+        <RowGroup>{day.entries.map((entry) => renderClassRow(entry))}</RowGroup>
+      </div>
+    )
+  }
+
+  // Móvil: agenda por días (próximas primero; las pasadas, plegadas)
+  const renderAgenda = () => (
+    <div className='flex flex-col gap-5'>
+      {agenda.past.length > 0 ? (
+        <button
+          type='button'
+          onClick={() => setShowPastDays((prev) => !prev)}
+          className='self-start rounded-xl px-2 py-1 text-sm font-extrabold text-muted-foreground transition-colors hover:bg-muted'
+        >
+          {showPastDays
+            ? t('Ocultar días anteriores')
+            : t('Ver días anteriores ({n})', { n: agenda.past.length })}
+        </button>
+      ) : null}
+      {showPastDays ? (
+        <div className='flex flex-col gap-5 opacity-80'>{agenda.past.map(renderAgendaDay)}</div>
+      ) : null}
+      {agenda.upcoming.length > 0 ? (
+        <>
+          {agenda.upcoming.slice(0, agendaDaysLimit).map(renderAgendaDay)}
+          {agenda.upcoming.length > agendaDaysLimit ? (
+            <Button
+              type='button'
+              variant='outline'
+              size='lg'
+              className='w-full'
+              onClick={() => setAgendaDaysLimit((prev) => prev + AGENDA_PAGE_DAYS)}
+            >
+              {t('Ver más días ({n})', { n: agenda.upcoming.length - agendaDaysLimit })}
+            </Button>
+          ) : null}
+        </>
+      ) : (
+        <EmptyState
+          icon={
+            <IconTile tone='neutral' size={64}>
+              <CalendarXIcon className='size-8' strokeWidth={2.4} />
+            </IconTile>
+          }
+          title={t('No hay más clases programadas')}
+          text={t('Cuando se publiquen nuevas clases, aparecerán aquí.')}
+          action={
+            showOnlyMine ? (
+              <Button type='button' variant='outline' onClick={() => setScope('all')}>
+                {t('Ver todas las clases')}
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
+    </div>
+  )
+
+  const hasLocalTimeRow = canUseLocalTime
+  const renderSettings = () =>
+    settingsRows || hasLocalTimeRow ? (
+      <div>
+        <SectionLabel>{t('Ajustes')}</SectionLabel>
+        <RowGroup>
+          {settingsRows}
+          {hasLocalTimeRow ? (
+            <div className='flex items-center gap-3 py-3'>
+              <IconTile tone='i' size={48}>
+                <GlobeIcon className='size-6' strokeWidth={2.4} />
+              </IconTile>
+              <Label
+                htmlFor='calendar-local-time-switch'
+                className='min-w-0 flex-1 flex-col items-start gap-0.5 leading-tight'
+              >
+                <span className='block font-extrabold'>{t('Ver horario en mi zona')}</span>
+                <span className='block text-xs font-semibold text-muted-foreground'>
+                  {localTimezone} · {t('si no, en hora de España')}
+                </span>
+              </Label>
+              <Switch
+                id='calendar-local-time-switch'
+                checked={showLocalTime}
+                onCheckedChange={setShowLocalTime}
+              />
+            </div>
+          ) : null}
+        </RowGroup>
+      </div>
+    ) : null
+
+  const hasEntries = !loading && entries.length > 0
 
   return (
-    <section className='mx-auto w-full max-w-7xl flex-1 overflow-y-auto px-5 py-8'>
-      <div className='mb-6 flex flex-wrap items-start justify-between gap-3'>
-        <div>
-          <h2 className='mb-1 font-serif text-3xl font-bold'>{title}</h2>
-          <p className='text-sm text-muted-foreground'>{description}</p>
+    <GamePage wide className='max-w-xl gap-6 pb-10 lg:max-w-5xl'>
+      <PageTitle subtitle={description} right={headerRight}>
+        {title}
+      </PageTitle>
+
+      {topActions ? <div className='-mt-2 flex flex-wrap gap-2'>{topActions}</div> : null}
+
+      {error ? (
+        <Panel tone='bad' className='text-sm font-bold'>
+          {error}
+        </Panel>
+      ) : null}
+
+      {loading ? (
+        <div className='flex flex-col gap-3' aria-busy='true'>
+          <div className='h-28 animate-pulse rounded-3xl bg-muted' />
+          <p className='m-0 text-center text-sm font-semibold text-muted-foreground'>
+            {t('Cargando calendario...')}
+          </p>
         </div>
-        {topActions}
-      </div>
+      ) : entries.length === 0 ? (
+        <Panel>
+          <EmptyState
+            icon={
+              <IconTile tone='i' size={64}>
+                <CalendarDaysIcon className='size-8' strokeWidth={2.4} />
+              </IconTile>
+            }
+            title={t('Todavía no hay clases')}
+            text={emptyMessage}
+          />
+        </Panel>
+      ) : null}
 
-      {error && <p className='mb-4 text-sm text-destructive'>{error}</p>}
+      {hasEntries && !isLg ? (
+        <>
+          {renderHero()}
 
-      <Card>
-        <Tabs
-          value={activeTab}
-          onValueChange={(value) =>
-            setActiveTab(value as 'calendar' | 'my-classes')
-          }
-        >
-          <CardHeader className='gap-4'>
-            <div className='flex flex-wrap items-center justify-between gap-3'>
-              <CardTitle>Calendario mensual - {currentMonthLabel}</CardTitle>
-              {allowMonthNavigation && availableMonths.length > 0 && (
-                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                  <SelectTrigger>
-                    <SelectValue placeholder='Selecciona mes' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectLabel>Meses con clases</SelectLabel>
-                      {availableMonths.map((month) => (
-                        <SelectItem key={month} value={month}>
-                          {formatMonthName(month)}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
+          <div>
+            <SectionLabel>{t('Tus clases')}</SectionLabel>
+            {renderMyClasses()}
+            {!hasSelection || isPickerOpen ? (
+              <>
+                <p className='ica-label m-0 mt-5 mb-2'>
+                  {hasSelection ? t('Toca para cambiar o añadir') : t('Clases disponibles')}
+                </p>
+                {renderClassPills()}
+              </>
+            ) : null}
+          </div>
 
-            <div className='flex flex-wrap items-center justify-between gap-3'>
-              <TabsList>
-                <TabsTrigger value='calendar'>Calendario</TabsTrigger>
-                <TabsTrigger value='my-classes'>Mis clases</TabsTrigger>
-              </TabsList>
-
-              <div className='flex flex-wrap items-center gap-2'>
-                {activeTab === 'my-classes' && (
-                  <Button
-                    variant='secondary'
-                    size='sm'
-                    onClick={startExportFlow}
-                    disabled={selectedSessions.length === 0}
-                  >
-                    <CalendarPlus />
-                    Exportar
-                  </Button>
-                )}
-
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant='outline' size='sm'>
-                      Filtrar clases
-                      {selectedClassKeys.length > 0
-                        ? ` (${selectedClassKeys.length})`
-                        : ''}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align='end' className='w-72'>
-                    <DropdownMenuLabel>
-                      Maximo 2 clases + Destripando Niveles siempre disponible
-                    </DropdownMenuLabel>
-                    <DropdownMenuCheckboxItem
-                      checked={showAllClasses}
-                      onSelect={(event) => event.preventDefault()}
-                      onCheckedChange={() => setSelectedClassKeys([])}
-                    >
-                      Todas las clases
-                    </DropdownMenuCheckboxItem>
-                    <DropdownMenuSeparator />
-                    {classOptions.map((option) => {
-                      const isSelected = selectedClassKeys.includes(
-                        option.classKey,
-                      )
-                      const isSpecialClass =
-                        option.classKey === SPECIAL_ALWAYS_ALLOWED_CLASS_KEY
-                      const isDisabled =
-                        !isSelected &&
-                        !isSpecialClass &&
-                        nonSpecialSelectedCount >= 2
-                      const catalogEntry = getCalendarIcademyCatalogEntry(
-                        option.classKey,
-                      )
-                      const flag = catalogEntry?.flag || '🌐'
-
-                      return (
-                        <DropdownMenuCheckboxItem
-                          key={option.classKey}
-                          checked={isSelected}
-                          disabled={isDisabled}
-                          onSelect={(event) => event.preventDefault()}
-                          onCheckedChange={() =>
-                            handleToggleClass(option.classKey)
-                          }
-                        >
-                          {flag} {option.className}
-                        </DropdownMenuCheckboxItem>
-                      )
-                    })}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+          <div className='flex flex-col gap-4'>
+            <SegmentedTabs
+              ariaLabel={t('Cómo ver el calendario')}
+              value={mobileView}
+              onChange={setMobileView}
+              options={[
+                { value: 'agenda', label: t('Agenda'), icon: <ListIcon className='size-5' strokeWidth={2.6} /> },
+                { value: 'month', label: t('Mes'), icon: <CalendarDaysIcon className='size-5' strokeWidth={2.6} /> },
+              ]}
+            />
+            {mobileView === 'agenda' ? (
+              <div>
+                <SectionLabel right={scopeToggle}>
+                  {showOnlyMine ? t('Tus próximas clases') : t('Próximas clases')}
+                </SectionLabel>
+                {renderAgenda()}
               </div>
-            </div>
-
-            {canUseLocalTime && (
-              <div className='flex items-center justify-end gap-2'>
-                <Label
-                  htmlFor='calendar-local-time-switch'
-                  className='text-xs text-muted-foreground'
-                >
-                  Ver horario en mi zona ({localTimezone})
-                </Label>
-                <Switch
-                  id='calendar-local-time-switch'
-                  checked={showLocalTime}
-                  onCheckedChange={setShowLocalTime}
-                />
+            ) : (
+              <div className='flex flex-col gap-4'>
+                {renderMonthCircles()}
+                {renderDayPanel()}
               </div>
             )}
-          </CardHeader>
+          </div>
 
-          <CardContent>
-            <TabsContent value='calendar' className='mt-0 space-y-4'>
-              {languageLegend.length > 0 && (
-                <div className='flex flex-wrap gap-3'>
-                  {languageLegend.map((languageCode) => {
-                    const tone = LANGUAGE_TONES[languageCode] || DEFAULT_TONE
-                    return (
-                      <div
-                        key={languageCode}
-                        className='flex items-center gap-2 text-xs text-muted-foreground'
-                      >
-                        <span
-                          className={cn(
-                            'size-2.5 rounded-full',
-                            tone.legendClassName,
-                          )}
-                        />
-                        <span className='uppercase'>{languageCode}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+          {renderSettings()}
+        </>
+      ) : null}
 
-              {loading ? (
-                <p className='text-sm text-muted-foreground'>
-                  Cargando calendario...
-                </p>
-              ) : entries.length === 0 ? (
-                <p className='text-sm text-muted-foreground'>{emptyMessage}</p>
-              ) : (
-                <div className='overflow-x-auto'>
-                  <div className='min-w-225 overflow-hidden rounded-lg border'>
-                    <div className='grid grid-cols-7 border-b bg-muted/40'>
-                      {WEEKDAY_LABELS.map((label) => (
-                        <div
-                          key={label}
-                          className='px-2 py-2 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground'
-                        >
-                          {label}
-                        </div>
-                      ))}
-                    </div>
+      {hasEntries && isLg ? (
+        <div className='grid grid-cols-[minmax(0,1fr)_340px] items-start gap-6'>
+          <div className='flex min-w-0 flex-col gap-6'>
+            {renderHero()}
+            <div>
+              <SectionLabel>
+                {hasSelection ? t('Cambiar o añadir clases') : t('Elige tus clases')}
+              </SectionLabel>
+              {renderClassPills()}
+            </div>
+            {renderMonthGrid()}
+          </div>
+          <aside className='sticky top-6 flex flex-col gap-6'>
+            {renderDayPanel()}
+            <div>
+              <SectionLabel>{t('Tus clases')}</SectionLabel>
+              {renderMyClasses()}
+            </div>
+            {renderSettings()}
+          </aside>
+        </div>
+      ) : null}
 
-                    <div className='grid grid-cols-7'>
-                      {calendarCells.map((cell, index) => {
-                        const isWeekend = index % 7 >= 5
-                        const dayEntries = entriesByDate.get(cell.dateKey) || []
-                        const isOutOfMonth = !cell.inCurrentMonth
-                        const isToday = cell.dateKey === todayKey
-
-                        return (
-                          <div
-                            key={`${cell.dateKey}-${index}`}
-                            className={cn(
-                              'relative min-h-36 border-r border-b p-2 last:border-r-0',
-                              isWeekend && 'bg-muted/25',
-                              isOutOfMonth && 'bg-muted/40',
-                            )}
-                          >
-                            {isToday && (
-                              <Badge className='absolute top-1 right-1 h-auto px-1.5 py-0 text-[10px]'>
-                                Hoy
-                              </Badge>
-                            )}
-
-                            <>
-                              <p
-                                className={cn(
-                                  'mb-2 text-sm font-semibold',
-                                  isOutOfMonth && 'text-muted-foreground/70',
-                                )}
-                              >
-                                {Number(cell.dateKey.slice(-2))}
-                              </p>
-
-                              <div className='flex flex-col gap-1'>
-                                {dayEntries.map((entry) => {
-                                  const catalogEntry =
-                                    getCalendarIcademyCatalogEntry(
-                                      entry.classKey,
-                                    )
-                                  const sessionDateTime =
-                                    parseCalendarIcademySessionDateTime({
-                                      sessionDate: entry.sessionDate,
-                                      sessionTime: entry.sessionTime,
-                                    })
-                                  const entryDateKeyForDisplay = sessionDateTime
-                                    ? getDateKeyInTimezone(
-                                        sessionDateTime,
-                                        effectiveTimezone,
-                                      )
-                                    : entry.sessionDate
-                                  const isPastEntry =
-                                    entryDateKeyForDisplay < todayKeyForDisplay
-                                  const className =
-                                    catalogEntry?.className || entry.className
-                                  const languageCode =
-                                    catalogEntry?.languageCode ||
-                                    entry.languageCode
-                                  const flag = catalogEntry?.flag || '🌐'
-                                  const tone =
-                                    LANGUAGE_TONES[languageCode] || DEFAULT_TONE
-                                  const isDimmed =
-                                    selectedClassKeys.length > 0 &&
-                                    !selectedClassKeys.includes(entry.classKey)
-
-                                  const content = (
-                                    <div
-                                      className={cn(
-                                        'rounded-sm border border-border border-l-2 px-1.5 py-0.5 text-left text-[11px] leading-tight',
-                                        tone.rowClassName,
-                                        isDimmed && 'opacity-25',
-                                        isPastEntry && 'opacity-60 saturate-75',
-                                        isOutOfMonth &&
-                                          'opacity-45 saturate-50',
-                                        onEntryClick &&
-                                          !isPastEntry &&
-                                          'cursor-pointer transition-colors hover:bg-accent/40',
-                                      )}
-                                    >
-                                      <div className='grid grid-cols-[auto_1fr] items-center gap-1'>
-                                        <span className='font-bold'>
-                                          {getEntryTimeLabel(entry)}
-                                        </span>
-                                        <p className='truncate font-medium'>
-                                          {flag} {className}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  )
-
-                                  if (!onEntryClick) {
-                                    return <div key={entry.id}>{content}</div>
-                                  }
-
-                                  return (
-                                    <button
-                                      key={entry.id}
-                                      type='button'
-                                      className='w-full'
-                                      onClick={() => onEntryClick(entry)}
-                                    >
-                                      {content}
-                                    </button>
-                                  )
-                                })}
-                              </div>
-                            </>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value='my-classes' className='mt-0 space-y-4'>
-              {selectedClassKeys.length === 0 && (
-                <p className='rounded-lg border border-dashed p-4 text-sm text-muted-foreground'>
-                  No has seleccionado clases todavia. Usa el menu de filtros
-                  para elegir tus clases favoritas.
-                </p>
-              )}
-
-              {selectedClassKeys.length > 0 &&
-                selectedSessions.length === 0 && (
-                  <p className='rounded-lg border border-dashed p-4 text-sm text-muted-foreground'>
-                    No hay clases programadas este mes para tu seleccion actual.
-                  </p>
-                )}
-
-              {selectedClassKeys.length > 0 && selectedSessions.length > 0 && (
-                <>
-                  <div className='flex flex-col gap-1 text-sm text-muted-foreground'>
-                    <p className='font-medium text-lg text-foreground'>{`🧑‍🏫 Tus clases para ${currentMonthLabel}`}</p>
-                    {selectedClassSummaries.map((summary) => (
-                      <p key={`summary-${summary.classKey}`}>
-                        <span className='font-medium text-foreground'>
-                          {summary.flag} {summary.className}
-                        </span>{' '}
-                        - {summary.label} · {summary.teachers}
-                      </p>
-                    ))}
-                  </div>
-
-                  <div className='grid gap-2 md:grid-cols-2 xl:grid-cols-5'>
-                    {selectedSessions.map((entry) => {
-                      const catalogEntry = getCalendarIcademyCatalogEntry(
-                        entry.classKey,
-                      )
-                      const className =
-                        catalogEntry?.className || entry.className
-                      const languageCode =
-                        catalogEntry?.languageCode || entry.languageCode
-                      const flag = catalogEntry?.flag || '🌐'
-                      const tone = LANGUAGE_TONES[languageCode] || DEFAULT_TONE
-                      const isTodaySession = isEntryToday(entry)
-                      const sessionDateTime =
-                        parseCalendarIcademySessionDateTime({
-                          sessionDate: entry.sessionDate,
-                          sessionTime: entry.sessionTime,
-                        })
-                      const minutesUntilSession = sessionDateTime
-                        ? Math.floor(
-                            (sessionDateTime.getTime() - nowTimestamp) / 60000,
-                          )
-                        : null
-                      const showCountdown =
-                        minutesUntilSession !== null &&
-                        minutesUntilSession > 0 &&
-                        minutesUntilSession <= 120
-                      const canMuteCurrentEntry = canMuteEntry
-                        ? canMuteEntry(entry)
-                        : false
-                      const isMuted = isEntryMuted ? isEntryMuted(entry) : false
-
-                      return (
-                        <div
-                          key={`selected-${entry.id}`}
-                          className={cn(
-                            'rounded-lg border border-border border-l-4 bg-card p-3',
-                            tone.rowClassName,
-                            isMuted && 'opacity-70',
-                          )}
-                        >
-                          <div className='mb-1'>
-                            <div className='flex flex-wrap items-center gap-1.5'>
-                              <Badge
-                                variant='outline'
-                                className={cn(
-                                  'h-auto px-1.5 py-0 text-[10px] font-semibold uppercase',
-                                  tone.badgeClassName,
-                                )}
-                              >
-                                {flag} {className}
-                              </Badge>
-                              {isTodaySession && (
-                                <Badge className='h-auto px-1.5 py-0 text-[10px]'>
-                                  Hoy
-                                </Badge>
-                              )}
-                              {showCountdown && (
-                                <Badge
-                                  variant='secondary'
-                                  className='h-auto px-1.5 py-0 text-[10px]'
-                                >
-                                  En {minutesUntilSession} min
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                          <p className='text-xl font-bold leading-none'>
-                            {getEntryDayLabel(entry)}
-                          </p>
-                          <p className='mt-1 text-base text-muted-foreground'>
-                            {getEntryTimeLabel(entry)} · con {entry.teacher}
-                          </p>
-                          {canMuteCurrentEntry && onToggleEntryMute && (
-                            <div className='mt-2'>
-                              <Button
-                                type='button'
-                                size='sm'
-                                variant={isMuted ? 'outline' : 'secondary'}
-                                onClick={() => onToggleEntryMute(entry)}
-                              >
-                                {isMuted ? <Volume1 /> : <VolumeOff />}
-                                {isMuted
-                                  ? 'Cancelar silencio'
-                                  : 'Silenciar sesion'}
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </>
-              )}
-            </TabsContent>
-          </CardContent>
-        </Tabs>
-      </Card>
+      {!hasEntries && !loading ? renderSettings() : null}
 
       <Dialog
         open={isTimeZoneModalOpen}
@@ -1010,38 +1477,39 @@ export function CalendarIcademyBoard({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Zona horaria para exportar</DialogTitle>
+            <DialogTitle>{t('Zona horaria para exportar')}</DialogTitle>
             <DialogDescription>
-              Detectamos que no estas en {CALENDAR_ICADEMY_TIMEZONE}. Elige si
-              quieres exportar con hora de Espana o con tu hora local.
+              {t('Detectamos que no estás en {zone}. Elige si quieres exportar con hora de España o con tu hora local.', {
+                zone: CALENDAR_ICADEMY_TIMEZONE,
+              })}
             </DialogDescription>
           </DialogHeader>
 
-          <div className='rounded-lg border bg-muted/30 p-3'>
+          <div className='flex items-center gap-3 rounded-2xl border-2 border-border bg-muted/40 p-3'>
+            <IconTile tone='i' size={44}>
+              <GlobeIcon className='size-5' strokeWidth={2.4} />
+            </IconTile>
             <Label
               htmlFor='calendar-export-local-time-switch'
-              className='text-sm font-medium'
+              className='min-w-0 flex-1 flex-col items-start gap-1 leading-tight'
             >
-              Usar mi zona local ({localTimezone})
+              <span className='block font-extrabold'>{t('Usar mi zona local ({zone})', { zone: localTimezone ?? '' })}</span>
+              <span className='block text-xs font-semibold text-muted-foreground'>
+                {t('Si lo activas, el archivo usa tu hora local. Si no, la hora de España.')}
+              </span>
             </Label>
-            <div className='mt-2 flex items-center justify-between gap-3'>
-              <p className='text-xs text-muted-foreground'>
-                Si lo activas, el export se genera con tu zona local. Si no, se
-                mantiene en horario de Espana.
-              </p>
-              <Switch
-                id='calendar-export-local-time-switch'
-                checked={timeZoneChoiceUseLocal}
-                onCheckedChange={setTimeZoneChoiceUseLocal}
-              />
-            </div>
+            <Switch
+              id='calendar-export-local-time-switch'
+              checked={timeZoneChoiceUseLocal}
+              onCheckedChange={setTimeZoneChoiceUseLocal}
+            />
           </div>
 
           <DialogFooter>
             <Button variant='outline' onClick={cancelTimeZoneStep}>
-              Cancelar
+              {t('Cancelar')}
             </Button>
-            <Button onClick={() => confirmTimeZoneStep()}>Continuar</Button>
+            <Button onClick={() => confirmTimeZoneStep()}>{t('Continuar')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1054,22 +1522,22 @@ export function CalendarIcademyBoard({
       >
         <DialogContent className='max-h-[85vh] overflow-y-auto sm:max-w-xl'>
           <DialogHeader>
-            <DialogTitle>Exportar clases a calendario</DialogTitle>
+            <DialogTitle>{t('Añadir clases a tu calendario')}</DialogTitle>
             <DialogDescription>
-              Revisa tus clases y exporta a tu calendario ({exportTimeZone}).
+              {t('Marca las clases que quieres y descarga el archivo para tu calendario ({zone}).', { zone: exportTimeZone })}
             </DialogDescription>
           </DialogHeader>
 
           <div className='flex items-center justify-between gap-2'>
             <Button variant='ghost' size='sm' onClick={selectAllEntries}>
-              Marcar todas
+              {t('Marcar todas')}
             </Button>
             <Button variant='ghost' size='sm' onClick={clearSelectedEntries}>
-              Limpiar seleccion
+              {t('Limpiar selección')}
             </Button>
           </div>
 
-          <div className='space-y-2'>
+          <div className='flex flex-col gap-2'>
             {sessionOptions.map((option) => {
               const isChecked = selectedEntryIds.includes(option.entryId)
               const entryDate = new Date(`${option.sessionDate}T00:00:00`)
@@ -1080,38 +1548,38 @@ export function CalendarIcademyBoard({
               const matchingEntry = selectedSessions.find(
                 (entry) => entry.id === option.entryId,
               )
-              const catalogEntry = getCalendarIcademyCatalogEntry(
-                matchingEntry?.classKey || '',
-              )
-              const flag = catalogEntry?.flag || '🌐'
+              const meta = getClassMeta(matchingEntry?.classKey || '', {
+                className: option.className,
+                languageCode: matchingEntry?.languageCode || '',
+              })
 
               return (
                 <button
                   key={`export-option-${option.entryId}`}
                   type='button'
                   onClick={() => toggleEntrySelection(option.entryId)}
+                  aria-pressed={isChecked}
                   className={cn(
-                    'flex w-full items-start justify-between rounded-lg border px-3 py-2 text-left transition-colors hover:bg-accent/40',
-                    isChecked && 'border-primary/50 bg-primary/5',
+                    'flex w-full items-center gap-3 rounded-2xl border-2 px-3 py-2.5 text-left transition-colors hover:bg-muted/60',
+                    isChecked ? 'border-[var(--ica-ok)]' : 'border-border',
                   )}
+                  style={isChecked ? { background: 'var(--ica-ok-soft)' } : undefined}
                 >
-                  <div>
-                    <p className='font-medium'>
-                      {flag} {option.className}
-                    </p>
-                    <p className='text-xs text-muted-foreground'>
-                      {dayLabel} · {timeLabel} · con {option.teacher}
-                    </p>
-                  </div>
+                  <FlagTile meta={meta} size={40} />
+                  <span className='min-w-0 flex-1'>
+                    <span className='block truncate font-extrabold'>{t(option.className)}</span>
+                    <span className='block text-xs font-semibold text-muted-foreground'>
+                      {dayLabel} · {timeLabel} · {t('con {teacher}', { teacher: option.teacher })}
+                    </span>
+                  </span>
                   <span
                     className={cn(
-                      'mt-0.5 inline-flex size-5 items-center justify-center rounded-full border',
-                      isChecked
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-border text-transparent',
+                      'flex size-7 shrink-0 items-center justify-center rounded-full border-2',
+                      isChecked ? 'border-transparent text-white' : 'border-border text-transparent',
                     )}
+                    style={isChecked ? { background: 'var(--ica-ok)' } : undefined}
                   >
-                    <Check className='size-3.5' />
+                    <Check className='size-4' strokeWidth={3} />
                   </span>
                 </button>
               )
@@ -1120,26 +1588,26 @@ export function CalendarIcademyBoard({
 
           <DialogFooter>
             <Button variant='outline' onClick={cancelSelectionStep}>
-              Cancelar
+              {t('Cancelar')}
             </Button>
             <Button
               disabled={!canExport}
               onClick={() => {
                 const exported = exportSelectedAsIcs('icademy-clases')
                 if (exported) {
-                  toast.success(`Calendario exportado (${exported.filename})`)
+                  toast.success(t('Calendario exportado ({file})', { file: exported.filename }))
                   cancelSelectionStep()
                 } else {
-                  toast.error('No hay clases seleccionadas para exportar.')
+                  toast.error(t('No hay clases seleccionadas para exportar.'))
                 }
               }}
             >
-              <CalendarPlus />
+              <CalendarPlusIcon />
               {exportButtonLabel}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section>
+    </GamePage>
   )
 }

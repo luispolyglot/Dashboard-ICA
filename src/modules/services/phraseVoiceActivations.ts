@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { supabase } from '../../lib/supabase'
 import { runInBatches } from '../../lib/utils'
 import { notifyCreationMetricsChanged } from './creationMetricsSync'
@@ -94,7 +95,7 @@ export async function createSignedActivationAudioUrl(
     .createSignedUrl(storagePath, expiresInSeconds)
 
   if (error || !data?.signedUrl) {
-    throw error || new Error('No se pudo generar URL firmada')
+    throw error || new Error(t('No se pudo generar URL firmada'))
   }
 
   return data.signedUrl
@@ -119,22 +120,22 @@ export async function uploadPhraseVoiceActivation({
 
   const userId = await getCurrentUserId()
   if (!userId) {
-    throw new Error('Debes iniciar sesión para activar una frase')
+    throw new Error(t('Debes iniciar sesión para activar una frase'))
   }
   if (!phraseGenerationId) {
-    throw new Error('No se encontró la frase para activar')
+    throw new Error(t('No se encontró la frase para activar'))
   }
 
   if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-    throw new Error('Formato de audio no permitido')
+    throw new Error(t('Formato de audio no permitido'))
   }
 
   if (audioBlob.size <= 0 || audioBlob.size > MAX_AUDIO_BYTES) {
-    throw new Error('El audio debe pesar menos de 10 MB')
+    throw new Error(t('El audio debe pesar menos de 10 MB'))
   }
 
   if (durationMs <= 0 || durationMs > MAX_AUDIO_DURATION_MS) {
-    throw new Error('La grabación debe durar entre 1 y 120 segundos')
+    throw new Error(t('La grabación debe durar entre 1 y 120 segundos'))
   }
 
   const activationId = crypto.randomUUID()
@@ -172,7 +173,7 @@ export async function uploadPhraseVoiceActivation({
 
   if (insertError || !inserted) {
     await supabase.storage.from(BUCKET).remove([storagePath])
-    throw insertError || new Error('No se pudo registrar la activación de voz')
+    throw insertError || new Error(t('No se pudo registrar la activación de voz'))
   }
 
   notifyCreationMetricsChanged()
@@ -222,5 +223,5 @@ export function getPhraseActivationErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
     return error.message
   }
-  return 'No se pudo completar la acción de activación'
+  return t('No se pudo completar la acción de activación')
 }

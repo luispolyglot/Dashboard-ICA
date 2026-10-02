@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Noto+Serif:ital,wght@0,100..900;1,100..900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Cinzel:wght@600;700&family=Noto+Serif:ital,wght@0,100..900;1,100..900&family=Nunito:wght@800;900&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -10,23 +10,24 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --background: oklch(97.1% 0.012 218);
+  /* Modo claro con profundidad: fondo gris azulado suave y superficies blancas encima */
+  --background: #eef3f8;
   --foreground: oklch(26.5% 0.03 240);
-  --card: oklch(99.2% 0.008 214);
+  --card: #ffffff;
   --card-foreground: oklch(26.5% 0.03 240);
-  --popover: oklch(99.4% 0.007 215);
+  --popover: #ffffff;
   --popover-foreground: oklch(26.5% 0.03 240);
   --primary: oklch(72.5% 0.126 216);
   --primary-foreground: oklch(98.1% 0.01 220);
   --secondary: oklch(93.8% 0.024 208);
   --secondary-foreground: oklch(31% 0.032 237);
-  --muted: oklch(94.8% 0.017 220);
+  --muted: #e5ecf3;
   --muted-foreground: oklch(46.2% 0.028 236);
   --accent: oklch(94.2% 0.032 196);
   --accent-foreground: oklch(29.8% 0.03 236);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(88.2% 0.018 222);
-  --input: oklch(89.1% 0.018 219);
+  --border: #d8e1eb;
+  --input: #d3dde8;
   --ring: oklch(67% 0.128 216);
   --chart-1: oklch(75% 0.13 214);
   --chart-2: oklch(71% 0.119 176);
@@ -34,19 +35,76 @@
   --chart-4: oklch(67% 0.165 54);
   --chart-5: oklch(61% 0.14 27);
   --radius: 0.625rem;
-  --sidebar: oklch(98% 0.011 218);
+  --sidebar: #ffffff;
   --sidebar-foreground: oklch(26.5% 0.03 240);
   --sidebar-primary: oklch(66% 0.132 216);
   --sidebar-primary-foreground: oklch(98.1% 0.01 220);
   --sidebar-accent: oklch(93.5% 0.025 211);
   --sidebar-accent-foreground: oklch(30% 0.03 237);
-  --sidebar-border: oklch(88.2% 0.018 222);
+  --sidebar-border: #d8e1eb;
   --sidebar-ring: oklch(67% 0.128 216);
   --surface-glow-1: oklch(90% 0.06 208 / 0.45);
   --surface-glow-2: oklch(94% 0.085 85 / 0.34);
   --scrollbar-track: oklch(93.5% 0.015 220 / 0.78);
   --scrollbar-thumb: oklch(67% 0.13 214 / 0.95);
   --scrollbar-thumb-hover: oklch(62% 0.14 214 / 1);
+  --border-strong: #c3cfdc;
+  /* Borde inferior "3D" de tarjetas y botones: se hunden al pulsarlos */
+  --edge: #cdd8e4;
+  --primary-edge: color-mix(in oklab, var(--primary) 72%, black);
+  --panel-shadow: 0 4px 0 var(--edge), 0 10px 24px -14px rgb(15 34 51 / 0.18);
+  --pop-shadow: 0 6px 0 var(--edge), 0 30px 60px -24px rgb(15 34 51 / 0.35);
+  /* Colores de juego: un color por fase ICA + recompensas */
+  /* Marca ICA (del logo oficial de ICADEMY): el camino del día y el logo. */
+  --ica-brand: #87def9;
+  --ica-brand-tile: #3fc1ec;
+  --ica-brand-deep: #0b84b5;
+  --ica-brand-ink: #0a3a55;
+  --ica-brand-sub: #1f5f7c;
+  --ica-logo: #0a72a3;
+  --ica-road-done: #0b84b5;
+  --ica-road-todo: rgba(255, 255, 255, 0.8);
+  /* Reto del día: morado «de minijuego», para distinguirlo del azul de I·C·A. */
+  --ica-reto: #a259f0;
+  --ica-reto-edge: #7a35c9;
+  /* I, C y A en tres azules de la marca (2 oct, opción A de Luis): celeste, azul y azul oscuro. */
+  /* «Tú» en el ranking: azul ICA más oscuro (el celeste de la I parecía de dentista). */
+  --ica-me: #0b6f99;
+  --ica-me-edge: #074e6d;
+  --ica-me-soft: #e3f0f7;
+  --ica-me-ink: #0b5f86;
+  /* Un poco más cerca del azul de la C (antes #3fc1ec, demasiado celeste). */
+  --ica-i: #3aaeee;
+  --ica-i-edge: #0b84b5;
+  --ica-i-soft: #e3f6fd;
+  --ica-i-ink: #0b6f99;
+  --ica-c: #3b82f6;
+  --ica-c-edge: #2563eb;
+  --ica-c-soft: #e8f0ff;
+  --ica-c-ink: #1d4ed8;
+  --ica-a: #1e5fb4;
+  --ica-a-edge: #163f80;
+  --ica-a-soft: #e4ecf8;
+  --ica-a-ink: #163f80;
+  /* Naranja algo apagado (2 oct): que no resalte tanto al lado del azul ICA. */
+  --ica-fire: #f2955a;
+  --ica-fire-edge: #d07a42;
+  --ica-fire-soft: #fff3e0;
+  --ica-fire-ink: #a04b00;
+  --ica-gold: #ffc72c;
+  --ica-gold-edge: #e0a500;
+  --ica-gold-soft: #fff6d9;
+  --ica-gold-ink: #7a5000;
+  --ica-ok: #1faf5b;
+  --ica-ok-edge: #0e6b35;
+  --ica-ok-strong: #138a45;
+  --ica-ok-soft: #e6f7ec;
+  --ica-ok-ink: #13773d;
+  --ica-bad-strong: #cc5a5e;
+  --ica-bad-edge: #9a4245;
+  --ica-bad-soft: #fdecec;
+  --ica-bad-ink: #b4232a;
+  --ica-navy: #0f2233;
 }
 
 body {
@@ -71,6 +129,14 @@ button:disabled {
 
 .dark {
   --background: oklch(20.5% 0.03 245);
+  --ica-brand: #136a8c;
+  --ica-brand-tile: #2aa9d6;
+  --ica-brand-deep: #87def9;
+  --ica-brand-ink: #f2fbff;
+  --ica-brand-sub: #bfe9f8;
+  --ica-logo: #1597cc;
+  --ica-road-done: #ffffff;
+  --ica-road-todo: rgba(255, 255, 255, 0.35);
   --foreground: oklch(95.8% 0.01 216);
   --card: oklch(24.5% 0.034 243);
   --card-foreground: oklch(95.8% 0.01 216);
@@ -106,11 +172,36 @@ button:disabled {
   --scrollbar-track: oklch(27.5% 0.028 243 / 0.82);
   --scrollbar-thumb: oklch(63% 0.12 214 / 0.95);
   --scrollbar-thumb-hover: oklch(68% 0.13 213 / 1);
+  --border-strong: oklch(45% 0.03 243 / 0.9);
+  --edge: oklch(15.5% 0.03 245);
+  --panel-shadow: 0 4px 0 var(--edge);
+  --pop-shadow: 0 6px 0 var(--edge), 0 30px 60px -20px rgb(0 0 0 / 0.6);
+  --ica-me-soft: #0f2e3d;
+  --ica-me-ink: #87def9;
+  --ica-i-soft: #0f2f3e;
+  --ica-i-ink: #87def9;
+  --ica-c-soft: #172e55;
+  --ica-c-ink: #9ec1ff;
+  --ica-a-soft: #15284a;
+  --ica-a-ink: #a9c4f0;
+  --ica-fire-soft: #3d2710;
+  --ica-fire-ink: #ffc37a;
+  --ica-gold-soft: #3a2f10;
+  --ica-gold-ink: #ffd978;
+  --ica-ok-soft: #123a26;
+  --ica-ok-ink: #7be0a6;
+  --ica-bad-soft: #44191c;
+  --ica-bad-ink: #ff9ea1;
+  --ica-navy: #050e18;
 }
 
 @theme inline {
   --font-sans: 'Geist', sans-serif;
-  --font-heading: 'Noto Serif', serif;
+  /* Títulos con la letra redonda (Geist). La serif queda solo para las letras I, C y A de la marca. */
+  --font-heading: 'Geist', sans-serif;
+  --font-display: 'Geist', sans-serif;
+  /* Letras I·C·A: la misma letra redonda y gruesa del logo de ICADEMY. */
+  --font-ica: 'Nunito', ui-rounded, system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -157,10 +248,7 @@ button:disabled {
   }
   body {
     @apply bg-background text-foreground;
-    background-image:
-      radial-gradient(54rem 30rem at -16% -18%, var(--surface-glow-1), transparent),
-      radial-gradient(42rem 26rem at 112% 2%, var(--surface-glow-2), transparent),
-      linear-gradient(180deg, color-mix(in oklch, var(--color-background), white 3%) 0%, var(--color-background) 52%);
+
   }
   html {
     @apply font-sans;
@@ -267,7 +355,477 @@ button:disabled {
   }
 }
 
+@keyframes ica-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes ica-chest-shake {
+  0%,
+  100% {
+    transform: rotate(0) scale(1);
+  }
+
+  15% {
+    transform: rotate(-8deg) scale(1.04);
+  }
+
+  30% {
+    transform: rotate(7deg) scale(1.06);
+  }
+
+  45% {
+    transform: rotate(-6deg) scale(1.08);
+  }
+
+  60% {
+    transform: rotate(5deg) scale(1.1);
+  }
+
+  80% {
+    transform: rotate(-2deg) scale(1.12);
+  }
+}
+
+/* Monedas que salen del cofre: cada una con su dirección (--bx, --by) */
+@keyframes ica-coin-burst {
+  0% {
+    transform: translate(0, 0) scale(0.3);
+    opacity: 0;
+  }
+
+  55% {
+    transform: translate(var(--bx), var(--by)) scale(1.15);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translate(var(--bx), calc(var(--by) + 14px)) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Monedas que vuelan al contador de arriba (--dx, --dy) */
+@keyframes ica-coin-fly {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+
+  20% {
+    transform: translate(calc(var(--dx) * -0.06), -26px) scale(1.15);
+  }
+
+  100% {
+    transform: translate(var(--dx), var(--dy)) scale(0.55);
+    opacity: 0.9;
+  }
+}
+
+@keyframes ica-shake {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+
+  20% {
+    translate: -6px 0;
+  }
+
+  40% {
+    translate: 5px 0;
+  }
+
+  60% {
+    translate: -4px 0;
+  }
+
+  80% {
+    translate: 2px 0;
+  }
+}
+
+@keyframes ica-wiggle {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+
+  25% {
+    transform: rotate(-7deg);
+  }
+
+  75% {
+    transform: rotate(7deg);
+  }
+}
+
+@keyframes ica-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes ica-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* Halo dorado que late detrás del cofre listo para abrir */
+@keyframes ica-glow-pulse {
+  0%,
+  100% {
+    transform: scale(0.88);
+    opacity: 0.5;
+  }
+
+  50% {
+    transform: scale(1.1);
+    opacity: 0.95;
+  }
+}
+
+/* Destellos que aparecen y desaparecen */
+@keyframes ica-twinkle {
+  0%,
+  100% {
+    transform: scale(0.3) rotate(0deg);
+    opacity: 0;
+  }
+
+  50% {
+    transform: scale(1) rotate(45deg);
+    opacity: 1;
+  }
+}
+
+/* Brillo que cruza las insignias de rubí y diamante */
+@keyframes ica-shine {
+  0%,
+  55% {
+    transform: translateX(-120%) skewX(-18deg);
+  }
+
+  85%,
+  100% {
+    transform: translateX(220%) skewX(-18deg);
+  }
+}
+
+/* Insignia que aparece en grande: entra girando y rebota */
+@keyframes ica-badge-reveal {
+  0% {
+    transform: scale(0.3) rotate(-25deg);
+    opacity: 0;
+  }
+
+  60% {
+    transform: scale(1.12) rotate(6deg);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1) rotate(0);
+  }
+}
+
+@keyframes ica-badge-glow {
+  0%,
+  100% {
+    transform: scale(0.85);
+    opacity: 0.45;
+  }
+
+  50% {
+    transform: scale(1.08);
+    opacity: 0.85;
+  }
+}
+
+/* Racha diaria completada: la llama sube, el anillo se expande y el número cambia */
+@keyframes ica-streak-ring {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.7;
+  }
+
+  100% {
+    transform: scale(2.1);
+    opacity: 0;
+  }
+}
+
+@keyframes ica-streak-old {
+  0%,
+  35% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translateY(-110%);
+    opacity: 0;
+  }
+}
+
+@keyframes ica-streak-new {
+  0%,
+  35% {
+    transform: translateY(110%);
+    opacity: 0;
+  }
+
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes ica-streak-day {
+  0% {
+    transform: scale(0.4);
+  }
+
+  70% {
+    transform: scale(1.25);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes ica-fade-up {
+  0% {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* COACHING ICA: zona premium (mismos colores que la app, con cabecera azul noche y oro) */
+.coaching-premium {
+  --v3-bg: transparent;
+  --v3-card: var(--card);
+  --v3-line: var(--border);
+  --v3-text: var(--foreground);
+  --v3-muted: var(--muted-foreground);
+  --v3-cyan: var(--primary);
+  --v3-gold: var(--ica-gold);
+}
+
+.coaching-premium [data-slot='card'] {
+  border-width: 2px;
+  border-radius: 1.5rem;
+  box-shadow: var(--panel-shadow);
+}
+
+.coaching-premium h2 {
+  font-family: var(--font-display, inherit);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.coaching-hero {
+  background:
+    radial-gradient(120% 120% at 100% 0%, rgb(139 92 246 / 0.35), transparent 55%),
+    linear-gradient(135deg, #1b2450 0%, #241b5c 55%, #3a1752 100%);
+  box-shadow: 0 6px 0 #11173a, 0 24px 50px -24px rgb(36 27 92 / 0.6);
+}
+
+.coaching-hero-glow {
+  background: radial-gradient(closest-side, rgb(255 199 44 / 0.28), transparent);
+}
+
+/* Barra deslizante con el color de la app */
+.ica-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--range-color) 0%,
+    var(--range-color) var(--range-pct),
+    color-mix(in oklab, var(--range-color) 18%, var(--card)) var(--range-pct)
+  );
+  outline: none;
+}
+
+.ica-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: #fff;
+  border: 4px solid var(--range-color);
+  box-shadow: 0 2px 0 color-mix(in oklab, var(--range-color) 60%, black);
+  cursor: pointer;
+}
+
+.ica-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #fff;
+  border: 4px solid var(--range-color);
+  box-shadow: 0 2px 0 color-mix(in oklab, var(--range-color) 60%, black);
+  cursor: pointer;
+}
+
 @layer utilities {
+  .ica-streak-ring {
+    animation: ica-streak-ring 1.6s ease-out infinite;
+  }
+
+  .ica-streak-old {
+    animation: ica-streak-old 1.1s cubic-bezier(0.5, 0, 0.3, 1) both;
+  }
+
+  .ica-streak-new {
+    animation: ica-streak-new 1.1s cubic-bezier(0.2, 1.3, 0.4, 1) both;
+  }
+
+  .ica-streak-day {
+    animation: ica-streak-day 0.5s cubic-bezier(0.2, 1.5, 0.4, 1) 0.9s both;
+  }
+
+  .ica-fade-up {
+    animation: ica-fade-up 0.45s ease-out both;
+  }
+
+  .ica-badge-reveal {
+    animation: ica-badge-reveal 0.7s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  }
+
+  .ica-badge-glow {
+    background: radial-gradient(circle, color-mix(in oklab, var(--ica-gold) 70%, transparent) 0%, transparent 70%);
+    animation: ica-badge-glow 2s ease-in-out infinite;
+  }
+
+  .ica-bob {
+    animation: ica-bob 1.2s ease-in-out infinite;
+  }
+
+  .ica-wiggle {
+    animation: ica-wiggle 1s ease-in-out infinite;
+  }
+
+  .ica-chest-shake {
+    animation: ica-chest-shake 0.85s ease-in-out both;
+  }
+
+  .ica-coin-burst {
+    animation: ica-coin-burst 0.7s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  }
+
+  .ica-coin-fly {
+    animation: ica-coin-fly 0.75s cubic-bezier(0.55, 0, 0.75, 0.4) both;
+  }
+
+  /* Al tocar algo bloqueado: tiembla de lado a lado (usa «translate» para no pisar otras animaciones) */
+  .ica-shake {
+    animation: ica-shake 0.4s ease-in-out;
+  }
+
+  .ica-pop {
+    animation: ica-pop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+  }
+
+  .ica-sheet-up {
+    animation: ica-sheet-up 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  .ica-glow-pulse {
+    animation: ica-glow-pulse 1.8s ease-in-out infinite;
+  }
+
+  .ica-twinkle {
+    animation: ica-twinkle 1.7s ease-in-out infinite;
+  }
+
+  .ica-shine {
+    animation: ica-shine 3.2s ease-in-out infinite;
+  }
+
+  /* Superficie con profundidad: blanca en modo claro, con borde y canto inferior */
+  .ica-panel {
+    background: var(--card);
+    border: 2px solid var(--border);
+    border-radius: 1.5rem;
+    box-shadow: var(--panel-shadow);
+  }
+
+  /* Grupo de filas: en modo claro es una tarjeta blanca; en modo oscuro se queda plano (como gusta) */
+  .ica-group {
+    background: var(--card);
+    border: 2px solid var(--border);
+    border-radius: 1.5rem;
+    box-shadow: var(--panel-shadow);
+    padding-inline: 1rem;
+  }
+
+  .dark .ica-group {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    padding-inline: 0;
+  }
+
+  /* Etiqueta de sección: mayúsculas pequeñas y gruesas */
+  .ica-label {
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  /* Botón "que se pulsa": borde inferior grueso que desaparece al tocarlo */
+  .ica-press {
+    transition: transform 60ms ease, box-shadow 60ms ease;
+  }
+
+  .ica-press:active:not(:disabled) {
+    transform: translateY(4px);
+    box-shadow: none !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ica-bob,
+    .ica-wiggle,
+    .ica-pop,
+    .ica-sheet-up,
+    .ica-glow-pulse,
+    .ica-twinkle,
+    .ica-shine {
+      animation: none;
+    }
+  }
+
 
   .shadow-inital-letter {
     text-shadow: 1px 1px 5px white, -1px -1px 5px white;
@@ -310,5 +868,100 @@ button:disabled {
   .score-scale-pop {
     transform-origin: center;
     animation: score-scale-pop 1.2s ease-in-out infinite;
+  }
+}
+
+/* Desplegables que se abren al pasar el ratón (racha e ICA Coins arriba a la derecha). */
+@keyframes ica-hover-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.ica-hover-panel {
+  transform-origin: top right;
+  animation: ica-hover-panel-in 0.16s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ica-hover-panel {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------------------------------------
+   Camino de Inicio (2 oct 2026, elegido por Luis: «sin recuadro»). Va directamente sobre el
+   fondo de la app; solo las fichas llevan el azul ICA.
+   ------------------------------------------------------------------------------------------ */
+.ica-path-skin {
+  background: transparent;
+  --ica-brand: var(--background);
+  --ica-brand-ink: var(--foreground);
+  --ica-brand-sub: var(--muted-foreground);
+  --ica-road-done: #0b84b5;
+  --ica-road-todo: var(--border-strong);
+  --ica-path-line: #7fcfee;
+  --ica-path-ring: rgb(63 193 236 / 0.35);
+  --ica-chip-bg: #0b84b5;
+  --ica-chip-ink: #ffffff;
+  /* Las fichas bloqueadas siguen siendo azuladas (no grises). */
+  --ica-tile-base: #87def9;
+  /* Fichas blancas sobre fondo claro: un borde suave para que no se pierdan. */
+  --ica-white-tile-border: 2px solid #bfe9f8;
+  --ica-badge-ring: #bfe9f8;
+}
+.dark .ica-path-skin {
+  --ica-road-done: #87def9;
+  --ica-road-todo: rgb(255 255 255 / 0.22);
+  --ica-path-line: rgb(135 222 249 / 0.75);
+  --ica-path-ring: rgb(135 222 249 / 0.3);
+  --ica-chip-bg: #ffffff;
+  --ica-chip-ink: #0b84b5;
+  --ica-tile-base: #136a8c;
+  --ica-white-tile-border: none;
+  --ica-badge-ring: var(--ica-brand);
+}
+
+/* Al avanzar, el tramo nuevo del camino se pinta de un paso al siguiente (máscara de IcaPath). */
+@keyframes ica-road-fill {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.ica-road-fill {
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
+  animation: ica-road-fill 1.1s cubic-bezier(0.45, 0, 0.35, 1) 0.35s forwards;
+}
+
+/* Al tocar un paso bloqueado, el paso que toca hacer da un salto suave: «estoy aquí». */
+@keyframes ica-nudge {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    filter: none;
+  }
+  45% {
+    transform: translateY(-8px) scale(1.05);
+    filter: drop-shadow(0 0 10px rgb(63 193 236 / 0.6));
+  }
+}
+.ica-nudge {
+  animation: ica-nudge 0.9s cubic-bezier(0.45, 0, 0.35, 1) 1 !important;
+  z-index: 5;
+}
+@media (prefers-reduced-motion: reduce) {
+  @keyframes ica-nudge-calm {
+    50% {
+      filter: drop-shadow(0 0 14px rgb(63 193 236 / 0.9));
+    }
+  }
+  .ica-nudge {
+    animation: ica-nudge-calm 0.85s ease 1 !important;
   }
 }

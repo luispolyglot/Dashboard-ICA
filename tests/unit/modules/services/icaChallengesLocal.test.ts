@@ -46,10 +46,13 @@ describe('Desafíos ICA · modo local de prueba', () => {
   it('flujo completo', async () => {
     // --- Con menos de 20 palabras no se puede retar ni aceptar ---
     registerIcaChallengesLocalContext({ cards: fewCards, targetLang: 'Polaco', nativeLang: 'Español' })
-    const initial = await localListChallenges()
+    const all = await localListChallenges()
+    // Dos retos pendientes de ejemplo: Escucha (de Jorge) y Escritura (de Tomás).
+    expect(all).toHaveLength(2)
+    expect(all.map((c) => c.challengeSlug).sort()).toEqual(['ica-listen', 'ica-writing'])
+    const initial = all.filter((c) => c.challengerUserId === 'local-bot-jorge')
     expect(initial).toHaveLength(1)
     expect(initial[0].status).toBe('created')
-    expect(initial[0].challengerUserId).toBe('local-bot-jorge')
 
     let users: any = await localInvoke({ action: 'list-available-users', targetLang: 'Polaco', nativeLang: 'Español', scope: 'global' })
     expect(users.myWordCount).toBe(8)

@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useTheme } from "@/theme/ThemeContext";
 import type { AppConfig, LeaderboardEntry } from "../types";
+import { langName, t } from "@/i18n";
 
 type UserMenuProps = {
   onLogout: () => Promise<void>;
@@ -87,21 +88,20 @@ export function UserMenu({
         <Button
           variant="outline"
           size="icon"
-          aria-label="Abrir menu de usuario"
+          aria-label={t("Abrir menu de usuario")}
         >
           <UserIcon />
         </Button>
       )}
     </DropdownMenuTrigger>
   );
-
-  return (
+return (
     <>
       <DropdownMenu>
         {showTooltip ? (
           <Tooltip>
             <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-            <TooltipContent>Menu de usuario</TooltipContent>
+            <TooltipContent>{t("Menu de usuario")}</TooltipContent>
           </Tooltip>
         ) : (
           trigger
@@ -114,18 +114,18 @@ export function UserMenu({
         >
           <DropdownMenuLabel className="space-y-1">
             <div className="text-xs font-medium text-muted-foreground">
-              Sesión
+              {t("Sesión")}
             </div>
             <div className="truncate text-sm font-semibold">
-              {user?.email || "Sin email"}
+              {user?.email || t("Sin email")}
             </div>
           </DropdownMenuLabel>
 
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="pt-0 text-xs font-normal text-muted-foreground">
             {config
-              ? `${config.nativeLang} -> ${config.targetLang}`
-              : "Configura idiomas"}
+              ? `${langName(config.nativeLang)} -> ${langName(config.targetLang)}`
+              : t("Configura idiomas")}
           </DropdownMenuLabel>
           <DropdownMenuItem
             onSelect={(event) => {
@@ -134,13 +134,13 @@ export function UserMenu({
             }}
           >
             <LanguagesIcon />
-            Cambiar idiomas
+            {t("Cambiar idiomas")}
           </DropdownMenuItem>
 
           <DropdownMenuSeparator />
 
           <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
-            Tema ({resolvedTheme === "dark" ? "Oscuro" : "Claro"})
+            {t("Tema")} ({resolvedTheme === "dark" ? t("Oscuro") : t("Claro")})
           </DropdownMenuLabel>
           <DropdownMenuRadioGroup
             value={theme}
@@ -148,11 +148,11 @@ export function UserMenu({
           >
             <DropdownMenuRadioItem value="light">
               <SunIcon />
-              Claro
+              {t("Claro")}
             </DropdownMenuRadioItem>
             <DropdownMenuRadioItem value="dark">
               <MoonIcon />
-              Oscuro
+              {t("Oscuro")}
             </DropdownMenuRadioItem>
           </DropdownMenuRadioGroup>
 
@@ -164,7 +164,7 @@ export function UserMenu({
                 onSelect={() => setIsLeaderboardModalOpen(true)}
               >
                 <TrophyIcon />
-                Leaderboard
+                {t('Leaderboard')}
               </DropdownMenuItem>
 
               <DropdownMenuSeparator />
@@ -180,7 +180,7 @@ export function UserMenu({
             className="text-destructive focus:text-destructive"
           >
             <LogOutIcon />
-            {isLoggingOut ? "Cerrando sesión..." : "Cerrar sesión"}
+            {isLoggingOut ? t("Cerrando sesión...") : t("Cerrar sesión")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -192,14 +192,14 @@ export function UserMenu({
         >
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Leaderboard</DialogTitle>
+              <DialogTitle>{t('Leaderboard')}</DialogTitle>
               <DialogDescription>
-                Racha ICA y promedio mensual.
+                {t("Racha ICA y promedio mensual.")}
               </DialogDescription>
             </DialogHeader>
 
             {mobileLeaderboard.loading && (
-              <p className="text-sm text-muted-foreground">Cargando...</p>
+              <p className="text-sm text-muted-foreground">{t("Cargando...")}</p>
             )}
             {!mobileLeaderboard.loading && mobileLeaderboard.error && (
               <p className="text-sm text-destructive">
@@ -210,7 +210,7 @@ export function UserMenu({
               !mobileLeaderboard.error &&
               mobileLeaderboard.rows.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  Todavía no hay datos suficientes este mes.
+                  {t("Todavía no hay datos suficientes este mes.")}
                 </p>
               )}
 
@@ -219,7 +219,7 @@ export function UserMenu({
               mobileLeaderboard.rows.length > 0 && (
                 <div className="max-h-[60dvh] space-y-1 overflow-y-auto pr-1">
                   <div className="flex items-center justify-end px-2 text-[11px] font-medium text-muted-foreground">
-                    <span>Racha ICA · % de eficacia</span>
+                    <span>{t("Racha ICA · % de eficacia")}</span>
                   </div>
                   {mobileLeaderboard.rows.map((row) => (
                     <div
@@ -235,7 +235,7 @@ export function UserMenu({
                           {rankBadge(row.rank)}
                         </span>
                         <span className="truncate text-xs max-w-36">
-                          {row.display_name || row.username || "Usuario"}
+                          {row.display_name || row.username || t("Usuario")}
                         </span>
                       </div>
                       <span className="text-xs font-semibold">

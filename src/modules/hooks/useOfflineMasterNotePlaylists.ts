@@ -6,6 +6,7 @@ import {
   type OfflineMasterNotePlaylistItem,
 } from '../services/masterNotesOfflineStore'
 import { buildPlaylistItemsByPlaylistId } from '../services/masterNotePlaylistItems'
+import { t } from '@/i18n'
 
 type UseOfflineMasterNotePlaylistsParams = {
   targetLang?: string
@@ -45,7 +46,7 @@ export function useOfflineMasterNotePlaylists({
       setItems(itemRows.filter((item) => playlistIds.has(item.playlistId)))
       setError(null)
     } catch {
-      setError('No se pudieron cargar las listas offline')
+      setError(t('No se pudieron cargar las listas offline'))
     } finally {
       setLoading(false)
     }

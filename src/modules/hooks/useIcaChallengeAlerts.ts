@@ -5,6 +5,7 @@
  * mientras está abierta y cuando se juega o se responde un reto.
  */
 import { useEffect, useState } from 'react'
+import { t, tn } from '@/i18n'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchMyIcaChallengeAlerts, type IcaChallengeAlerts } from '../services/icaChallenges'
 import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocal'
@@ -88,10 +89,10 @@ export function challengesRouteForAlerts(alerts: IcaChallengeAlerts): string {
 export function describeIcaChallengeAlerts(alerts: IcaChallengeAlerts): string {
   const parts: string[] = []
   if (alerts.invites > 0) {
-    parts.push(alerts.invites === 1 ? '1 reto nuevo' : `${alerts.invites} retos nuevos`)
+    parts.push(tn(alerts.invites, '{n} reto nuevo', '{n} retos nuevos'))
   }
   if (alerts.myTurn > 0) {
-    parts.push(alerts.myTurn === 1 ? 'te toca jugar' : `te toca jugar en ${alerts.myTurn}`)
+    parts.push(alerts.myTurn === 1 ? t('te toca jugar') : t('te toca jugar en {n}', { n: alerts.myTurn }))
   }
   return parts.join(' · ')
 }

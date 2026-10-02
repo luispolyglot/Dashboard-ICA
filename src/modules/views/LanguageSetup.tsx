@@ -1,30 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { LANGUAGES } from '../constants'
+import { IcaLogo } from '../game/IcaLogo'
+import { LanguageCard, LanguageListPicker } from '../components/LanguagePicker'
 import type { AppConfig } from '../types'
+import { t } from '@/i18n'
 
 type LanguageSetupProps = {
   onSave: (config: AppConfig) => Promise<void>
 }
 
+// Qué se ve: el resumen con los dos idiomas o la lista para elegir uno
+type SetupStep = 'overview' | 'target' | 'native'
+
 export function LanguageSetup({ onSave }: LanguageSetupProps) {
-  const [nativeLang, setNativeLang] = useState('Español')
+  const [nativeLang, setNativeLang] = useState(t('Español'))
   const [targetLang, setTargetLang] = useState('Polaco')
+  const [step, setStep] = useState<SetupStep>('overview')
 
   const availableTargetLanguages = useMemo(
     () => LANGUAGES.filter((language) => language !== nativeLang),
@@ -37,57 +29,55 @@ export function LanguageSetup({ onSave }: LanguageSetupProps) {
   }, [availableTargetLanguages, targetLang])
 
   return (
-    <section className='flex min-h-screen items-center justify-center p-4'>
-      <Card className='w-full max-w-xl'>
-        <CardHeader>
-          <CardTitle className='text-3xl'>Configura tus idiomas</CardTitle>
-          <CardDescription>
-            Elige tu idioma materno y el que aprendes.
-          </CardDescription>
-        </CardHeader>
-
-        <CardContent className='space-y-5'>
-          <div className='space-y-2'>
-            <Label>Tu idioma materno</Label>
-            <Select value={nativeLang} onValueChange={setNativeLang}>
-              <SelectTrigger className='w-full'>
-                <SelectValue placeholder='Selecciona idioma' />
-              </SelectTrigger>
-              <SelectContent>
-                {LANGUAGES.map((language) => (
-                  <SelectItem key={language} value={language}>
-                    {language}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+    <section className='flex min-h-screen items-center justify-center bg-background px-4 py-8'>
+      <div className='flex w-full max-w-md flex-col gap-6'>
+        <div className='flex flex-col items-center gap-4 text-center'>
+          <IcaLogo size={44} />
+          <div>
+            <h1 className='m-0 font-display text-3xl leading-tight font-extrabold tracking-tight'>{t('Configura tus idiomas')}</h1>
+            <p className='m-0 mt-1 text-base font-semibold text-muted-foreground'>
+              {t('Elige el idioma que aprendes y tu idioma materno.')}
+            </p>
           </div>
+        </div>
 
-          <div className='space-y-2'>
-            <Label>Idioma que aprendes</Label>
-            <Select value={targetLang} onValueChange={setTargetLang}>
-              <SelectTrigger className='w-full'>
-                <SelectValue placeholder='Selecciona idioma' />
-              </SelectTrigger>
-              <SelectContent>
-                {availableTargetLanguages.map((language) => (
-                  <SelectItem key={language} value={language}>
-                    {language}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        {step === 'target' ? (
+          <LanguageListPicker
+            title={t('¿Qué idioma aprendes?')}
+            value={targetLang}
+            options={availableTargetLanguages}
+            listClassName='max-h-[60dvh]'
+            onBack={() => setStep('overview')}
+            onPick={(language) => {
+              setTargetLang(language)
+              setStep('overview')
+            }}
+          />
+        ) : step === 'native' ? (
+          <LanguageListPicker
+            title={t('¿Cuál es tu idioma materno?')}
+            value={nativeLang}
+            options={LANGUAGES}
+            listClassName='max-h-[60dvh]'
+            onBack={() => setStep('overview')}
+            onPick={(language) => {
+              setNativeLang(language)
+              setStep('overview')
+            }}
+          />
+        ) : (
+          <>
+            <div className='flex flex-col gap-3'>
+              <LanguageCard label={t('Idioma que aprendes')} language={targetLang} tone='primary' onClick={() => setStep('target')} />
+              <LanguageCard label={t('Tu idioma materno')} language={nativeLang} onClick={() => setStep('native')} />
+            </div>
 
-          <Button
-            type='button'
-            onClick={() => onSave({ nativeLang, targetLang })}
-            className='w-full'
-          >
-            Empezar
-          </Button>
-        </CardContent>
-      </Card>
+            <Button type='button' size='xl' onClick={() => onSave({ nativeLang, targetLang })} className='w-full'>
+              {t('Empezar')}
+            </Button>
+          </>
+        )}
+      </div>
     </section>
   )
 }

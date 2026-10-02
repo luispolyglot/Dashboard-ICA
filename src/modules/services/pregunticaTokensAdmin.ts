@@ -64,7 +64,7 @@ export async function fetchPregunticaTokensAdminOverview(): Promise<PregunticaTo
     if (status === 403) {
       throw new PregunticaTokensAdminError('No tienes permisos para ver esta sección.', 403)
     }
-    throw new PregunticaTokensAdminError('No se pudieron cargar las fichas de PreguntICA.', status)
+    throw new PregunticaTokensAdminError('No se pudieron cargar las ICA Coins.', status)
   }
 
   const rows = (data || []) as PregunticaTokensAdminRow[]
@@ -85,7 +85,7 @@ export async function updatePregunticaManualTokensForUser(
   }
 
   if (!Number.isInteger(manualTokens) || manualTokens < 0) {
-    throw new PregunticaTokensAdminError('Las fichas manuales deben ser un entero no negativo.')
+    throw new PregunticaTokensAdminError('Las ICA Coins a mano deben ser un número entero (0 o más).')
   }
 
   const { data, error } = await supabase.rpc('set_preguntica_manual_tokens', {
@@ -96,9 +96,9 @@ export async function updatePregunticaManualTokensForUser(
   if (error) {
     const status = getErrorStatus(error)
     if (status === 403) {
-      throw new PregunticaTokensAdminError('No tienes permisos para editar fichas manuales.', 403)
+      throw new PregunticaTokensAdminError('No tienes permisos para cambiar ICA Coins.', 403)
     }
-    throw new PregunticaTokensAdminError('No se pudieron actualizar las fichas manuales.', status)
+    throw new PregunticaTokensAdminError('No se pudieron actualizar las ICA Coins.', status)
   }
 
   const row = (Array.isArray(data)
@@ -106,7 +106,7 @@ export async function updatePregunticaManualTokensForUser(
     : data) as PregunticaManualUpdateRow | undefined
 
   if (!row) {
-    throw new PregunticaTokensAdminError('Respuesta inválida al actualizar fichas manuales.')
+    throw new PregunticaTokensAdminError('Respuesta inválida al actualizar las ICA Coins.')
   }
 
   return {

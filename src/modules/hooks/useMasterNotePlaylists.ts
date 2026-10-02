@@ -8,6 +8,7 @@ import {
   replaceMasterNotePlaylistItems,
 } from '../services/masterNotePlaylists'
 import { buildPlaylistItemsByPlaylistId } from '../services/masterNotePlaylistItems'
+import { t } from '@/i18n'
 
 type UseMasterNotePlaylistsParams = {
   targetLang?: string
@@ -41,7 +42,7 @@ export function useMasterNotePlaylists({
       setItems(bundle.items)
       setError(null)
     } catch {
-      setError('No se pudieron cargar las listas de reproducción')
+      setError(t('No se pudieron cargar las listas de reproducción'))
     } finally {
       setLoading(false)
     }

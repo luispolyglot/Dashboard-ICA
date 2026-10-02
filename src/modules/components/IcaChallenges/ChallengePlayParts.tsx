@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { langName, t } from '@/i18n'
 import { LANG_CODES } from '../../constants'
 import type {
   IcaChallengePairsResult,
@@ -70,20 +71,20 @@ export function useCountdown(input: {
 export function TimerBar({ remainingMs, fraction }: { remainingMs: number | null; fraction: number }) {
   if (remainingMs === null) return null
   const seconds = Math.ceil(remainingMs / 1000)
-  const tone =
-    fraction > 0.5 ? 'bg-emerald-500' : fraction > 0.25 ? 'bg-amber-500' : 'bg-red-500'
+  const tone = fraction > 0.5 ? 'var(--ica-ok)' : fraction > 0.25 ? 'var(--ica-gold-edge)' : 'var(--ica-a)'
   return (
-    <div className='flex items-center gap-3' aria-label={`Quedan ${seconds} segundos`}>
-      <div className='h-2 flex-1 overflow-hidden rounded-full bg-muted'>
+    <div className='flex items-center gap-3' aria-label={t('Quedan {n} segundos', { n: seconds })}>
+      <div className='h-3.5 flex-1 overflow-hidden rounded-full bg-muted'>
         <div
-          className={`h-full rounded-full transition-[width] duration-100 ease-linear ${tone}`}
-          style={{ width: `${fraction * 100}%` }}
+          className='h-full rounded-full transition-[width] duration-100 ease-linear'
+          style={{ width: `${fraction * 100}%`, background: tone }}
         />
       </div>
       <span
-        className={`w-9 text-right font-mono text-sm tabular-nums ${
-          fraction <= 0.25 ? 'font-semibold text-red-500' : 'text-muted-foreground'
+        className={`w-9 text-right text-sm font-extrabold tabular-nums ${
+          fraction <= 0.25 ? '' : 'text-muted-foreground'
         }`}
+        style={fraction <= 0.25 ? { color: 'var(--ica-a)' } : undefined}
       >
         {seconds}s
       </span>
@@ -97,8 +98,8 @@ export function TimerBar({ remainingMs, fraction }: { remainingMs: number | null
 
 export function PromptCard({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className='rounded-2xl border border-primary/25 bg-gradient-to-b from-primary/10 to-transparent px-4 py-6 text-center'>
-      <p className='mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground'>
+    <div className='rounded-3xl border-2 border-border bg-card px-4 py-7 text-center'>
+      <p className='mb-2 text-xs font-extrabold uppercase tracking-[0.1em] text-muted-foreground'>
         {label}
       </p>
       {children}
@@ -108,7 +109,7 @@ export function PromptCard({ label, children }: { label: string; children: React
 
 export function BigWord({ children }: { children: ReactNode }) {
   return (
-    <p className='break-words font-serif text-3xl font-semibold leading-tight sm:text-4xl'>{children}</p>
+    <p className='break-words font-display tracking-tight text-4xl font-extrabold leading-tight sm:text-5xl'>{children}</p>
   )
 }
 
@@ -137,23 +138,24 @@ export function QuestionPrompt({
 }) {
   if (data.kind === 'listen') {
     return (
-      <PromptCard label={`Escucha en ${targetLang}`}>
+      <PromptCard label={t('Escucha en {lang}', { lang: langName(targetLang) })}>
         <button
           type='button'
           onClick={onReplayAudio}
-          className='mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-primary/40 bg-primary/15 text-primary transition hover:bg-primary/25 active:scale-95'
-          aria-label='Escuchar otra vez'
+          className='mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-primary text-primary-foreground transition active:translate-y-1'
+          style={{ boxShadow: '0 5px 0 color-mix(in oklab, var(--primary) 70%, black)' }}
+          aria-label={t('Escuchar otra vez')}
         >
           <Volume2Icon className='h-9 w-9' />
         </button>
-        <p className='mt-3 text-xs text-muted-foreground'>Toca para escuchar otra vez</p>
+        <p className='mt-3 text-xs text-muted-foreground'>{t('Toca para escuchar otra vez')}</p>
       </PromptCard>
     )
   }
 
   if (data.kind === 'cloze') {
     return (
-      <PromptCard label='¿Qué palabra ICA falta?'>
+      <PromptCard label={t('¿Qué palabra ICA falta?')}>
         <ClozePhrase before={data.before} after={data.after} />
       </PromptCard>
     )
@@ -164,10 +166,10 @@ export function QuestionPrompt({
 
   const label =
     data.kind === 'write'
-      ? `Escríbela en ${targetLang}`
+      ? t('Escríbela en {lang}', { lang: langName(targetLang) })
       : data.kind === 'speak'
-        ? `Dila en ${targetLang}`
-        : `En ${nativeLang}`
+        ? t('Dila en {lang}', { lang: langName(targetLang) })
+        : t('En {lang}', { lang: langName(nativeLang) })
 
   return (
     <PromptCard label={label}>
@@ -199,23 +201,27 @@ export function OptionsGrid({
       {options.map((option, index) => {
         const isCorrect = showResult && index === correctIndex
         const isWrongPick = showResult && pickedIndex === index && index !== correctIndex
+        const tone = isCorrect ? 'ok' : isWrongPick ? 'bad' : null
         return (
-          <Button
+          <button
             key={`${option}-${index}`}
             type='button'
-            variant='outline'
             disabled={disabled}
             onClick={() => onPick(index)}
-            className={`h-auto min-h-12 whitespace-normal break-words px-4 py-3 text-base ${
-              isCorrect
-                ? 'border-emerald-500 bg-emerald-500/15 text-emerald-700 disabled:opacity-100 dark:border-emerald-500 dark:bg-emerald-500/20 dark:text-emerald-300'
-                : isWrongPick
-                  ? 'border-red-500 bg-red-500/15 text-red-700 disabled:opacity-100 dark:border-red-500 dark:bg-red-500/20 dark:text-red-300'
-                  : ''
-            }`}
+            className='min-h-14 w-full rounded-2xl border-2 px-4 py-3 text-base font-bold break-words transition-[transform,box-shadow] active:translate-y-[3px] disabled:cursor-default'
+            style={
+              tone
+                ? {
+                    borderColor: `var(--ica-${tone === 'ok' ? 'ok' : 'a'})`,
+                    background: `var(--ica-${tone}-soft)`,
+                    color: `var(--ica-${tone}-ink)`,
+                    boxShadow: `0 3px 0 var(--ica-${tone === 'ok' ? 'ok' : 'a'})`,
+                  }
+                : { borderColor: 'var(--border)', background: 'var(--card)', boxShadow: '0 3px 0 var(--border)' }
+            }
           >
             {option}
-          </Button>
+          </button>
         )
       })}
     </div>
@@ -228,7 +234,7 @@ export function WriteAnswerForm({
   disabled,
   onSubmit,
   onSkip,
-  submitLabel = 'Comprobar',
+  submitLabel = t('Comprobar'),
   autoFocusKey,
 }: {
   hint: string
@@ -266,7 +272,7 @@ export function WriteAnswerForm({
     <form ref={formRef} onSubmit={handleSubmit} className='space-y-2'>
       {hint && (
         <p className='text-center text-sm text-muted-foreground'>
-          Empieza por <span className='font-semibold text-foreground'>{hint.replace('…', '')}</span>…
+          {t('Empieza por')} <span className='font-semibold text-foreground'>{hint.replace('…', '')}</span>…
         </p>
       )}
       <div className='flex gap-2'>
@@ -281,11 +287,11 @@ export function WriteAnswerForm({
           autoComplete='off'
           spellCheck={false}
           enterKeyHint='send'
-          placeholder={`Escribe en ${targetLang}`}
-          className='h-12 text-lg'
-          aria-label={`Respuesta en ${targetLang}`}
+          placeholder={t('Escribe en {lang}', { lang: langName(targetLang) })}
+          className='h-14 rounded-2xl border-2 text-lg font-bold'
+          aria-label={t('Respuesta en {lang}', { lang: langName(targetLang) })}
         />
-        <Button type='submit' disabled={disabled} className='h-12 px-4' aria-label={submitLabel}>
+        <Button type='submit' disabled={disabled} className='h-14 rounded-2xl px-4 font-extrabold' aria-label={submitLabel}>
           <CornerDownLeftIcon className='h-4 w-4 sm:mr-1' />
           <span className='hidden sm:inline'>{submitLabel}</span>
         </Button>
@@ -293,7 +299,7 @@ export function WriteAnswerForm({
       <div className='flex justify-center'>
         <Button type='button' variant='ghost' size='sm' disabled={disabled} onClick={onSkip}>
           <SkipForwardIcon className='mr-1 h-3.5 w-3.5' />
-          No la sé
+          {t('No la sé')}
         </Button>
       </div>
     </form>
@@ -331,17 +337,17 @@ export function SpeakPanel({
         </span>
       </div>
       <p className='min-h-[1.5rem] text-lg font-medium'>
-        {heard || (listening ? 'Te escucho…' : status === 'starting' ? 'Abriendo el micrófono…' : ' ')}
+        {heard || (listening ? t('Te escucho…') : status === 'starting' ? t('Abriendo el micrófono…') : ' ')}
       </p>
       {message && <p className='text-sm text-amber-600 dark:text-amber-400'>{message}</p>}
       <div className='flex justify-center gap-2'>
         <Button type='button' variant='outline' size='sm' disabled={disabled || listening} onClick={onRetry}>
           <RotateCcwIcon className='mr-1 h-3.5 w-3.5' />
-          Repetir
+          {t('Repetir')}
         </Button>
         <Button type='button' variant='ghost' size='sm' disabled={disabled} onClick={onSkip}>
           <SkipForwardIcon className='mr-1 h-3.5 w-3.5' />
-          No la sé
+          {t('No la sé')}
         </Button>
       </div>
     </div>
@@ -354,11 +360,11 @@ export function SpeakPanel({
 
 /** Un color por pareja (el mismo a los dos lados), para ver de un vistazo qué está unido. */
 const PAIR_TONES = [
-  { dot: 'bg-sky-500', item: 'border-sky-400 bg-sky-500/15 text-sky-900 dark:border-sky-400/70 dark:text-sky-100' },
-  { dot: 'bg-violet-500', item: 'border-violet-400 bg-violet-500/15 text-violet-900 dark:border-violet-400/70 dark:text-violet-100' },
-  { dot: 'bg-amber-500', item: 'border-amber-400 bg-amber-500/15 text-amber-900 dark:border-amber-400/70 dark:text-amber-100' },
-  { dot: 'bg-emerald-500', item: 'border-emerald-400 bg-emerald-500/15 text-emerald-900 dark:border-emerald-400/70 dark:text-emerald-100' },
-  { dot: 'bg-rose-500', item: 'border-rose-400 bg-rose-500/15 text-rose-900 dark:border-rose-400/70 dark:text-rose-100' },
+  { dot: 'bg-sky-500', item: 'border-sky-400 bg-sky-500/15 text-sky-900 shadow-[0_3px_0_var(--color-sky-400)] dark:border-sky-400/70 dark:text-sky-100' },
+  { dot: 'bg-violet-500', item: 'border-violet-400 bg-violet-500/15 text-violet-900 shadow-[0_3px_0_var(--color-violet-400)] dark:border-violet-400/70 dark:text-violet-100' },
+  { dot: 'bg-amber-500', item: 'border-amber-400 bg-amber-500/15 text-amber-900 shadow-[0_3px_0_var(--color-amber-400)] dark:border-amber-400/70 dark:text-amber-100' },
+  { dot: 'bg-emerald-500', item: 'border-emerald-400 bg-emerald-500/15 text-emerald-900 shadow-[0_3px_0_var(--color-emerald-400)] dark:border-emerald-400/70 dark:text-emerald-100' },
+  { dot: 'bg-rose-500', item: 'border-rose-400 bg-rose-500/15 text-rose-900 shadow-[0_3px_0_var(--color-rose-400)] dark:border-rose-400/70 dark:text-rose-100' },
 ]
 
 type PairSelection = { side: 'left' | 'right'; index: number } | null
@@ -470,24 +476,24 @@ export function PairsBoard({
   }
 
   const itemClass = (tone: (typeof PAIR_TONES)[number] | null, isSelected: boolean) =>
-    `relative flex min-h-14 w-full items-center justify-center rounded-xl border px-2.5 py-2 text-center text-[15px] font-medium leading-snug break-words transition active:scale-[0.97] disabled:cursor-default ${
+    `relative flex min-h-14 w-full items-center justify-center rounded-2xl border-2 px-2.5 py-2 text-center text-[15px] font-bold leading-snug break-words transition active:translate-y-[3px] disabled:cursor-default ${
       tone
         ? tone.item
         : isSelected
-          ? 'border-primary bg-primary/15 ring-2 ring-primary/60'
-          : 'border-border bg-card hover:border-primary/50 hover:bg-primary/5'
+          ? 'border-primary bg-primary/12 text-primary shadow-[0_3px_0_var(--primary)]'
+          : 'border-border bg-card shadow-[0_3px_0_var(--border)] hover:border-primary/50'
     }`
 
   const matchedCount = matches.filter((value) => value !== null).length
 
   return (
     <div>
-      <div className='mb-2 grid grid-cols-2 gap-2 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground'>
-        <span>{targetLang}</span>
-        <span>{nativeLang}</span>
+      <div className='mb-2 grid grid-cols-2 gap-2 text-center text-xs font-extrabold uppercase tracking-[0.1em] text-muted-foreground'>
+        <span>{langName(targetLang)}</span>
+        <span>{langName(nativeLang)}</span>
       </div>
-      <div className='grid grid-cols-2 gap-2'>
-        <div className='space-y-2'>
+      <div className='grid grid-cols-2 gap-2.5'>
+        <div className='space-y-2.5'>
           {words.map((word, index) => {
             const tone = matches[index] !== null ? PAIR_TONES[index % PAIR_TONES.length] : null
             const isSelected = selected?.side === 'left' && selected.index === index
@@ -506,7 +512,7 @@ export function PairsBoard({
             )
           })}
         </div>
-        <div className='space-y-2'>
+        <div className='space-y-2.5'>
           {options.map((option, index) => {
             const owner = matches.findIndex((value) => value === index)
             const tone = owner >= 0 ? PAIR_TONES[owner % PAIR_TONES.length] : null
@@ -529,8 +535,8 @@ export function PairsBoard({
       </div>
       <p className='mt-3 text-center text-xs text-muted-foreground'>
         {matchedCount === 0
-          ? 'Toca una palabra y después su significado'
-          : `${matchedCount} de ${words.length} parejas · toca una pareja para soltarla`}
+          ? t('Toca una palabra y después su significado')
+          : t('{n} de {total} parejas · toca una pareja para soltarla', { n: matchedCount, total: words.length })}
       </p>
     </div>
   )
@@ -559,10 +565,12 @@ export function PairsResult({
       >
         {perfect ? <CheckIcon className='h-4 w-4' /> : null}
         {perfect
-          ? '¡Tablero perfecto!'
-          : `${correctCount} de ${words.length} parejas${timedOut ? ' · se acabó el tiempo' : ''}`}
+          ? t('¡Tablero perfecto!')
+          : timedOut
+            ? t('{n} de {total} parejas · se acabó el tiempo', { n: correctCount, total: words.length })
+            : t('{n} de {total} parejas', { n: correctCount, total: words.length })}
       </p>
-      <ul className='divide-y rounded-xl border'>
+      <ul className='divide-y-2 rounded-2xl border-2'>
         {words.map((word, index) => {
           const ok = result.correct[index]
           const chosen = result.chosen[index]
@@ -615,22 +623,21 @@ export function FeedbackCard({
 }) {
   return (
     <div
-      className={`rounded-2xl border px-4 py-5 text-center ${
-        isCorrect
-          ? 'border-emerald-500/60 bg-emerald-500/10'
-          : 'border-red-500/50 bg-red-500/10'
-      }`}
+      className='rounded-3xl border-2 px-4 py-5 text-center'
+      style={{
+        borderColor: isCorrect ? 'var(--ica-ok)' : 'var(--ica-a)',
+        background: isCorrect ? 'var(--ica-ok-soft)' : 'var(--ica-bad-soft)',
+      }}
       role='status'
     >
       <p
-        className={`mb-2 inline-flex items-center gap-1.5 text-sm font-semibold ${
-          isCorrect ? 'text-emerald-600 dark:text-emerald-300' : 'text-red-600 dark:text-red-300'
-        }`}
+        className='mb-2 inline-flex items-center gap-1.5 text-base font-extrabold'
+        style={{ color: isCorrect ? 'var(--ica-ok-ink)' : 'var(--ica-bad-ink)' }}
       >
         {isCorrect ? <CheckIcon className='h-4 w-4' /> : <XIcon className='h-4 w-4' />}
-        {isCorrect ? '¡Correcto!' : timedOut ? 'Se acabó el tiempo' : 'No era esa'}
+        {isCorrect ? t('¡Correcto!') : timedOut ? t('Se acabó el tiempo') : t('No era esa')}
       </p>
-      <p className='break-words font-serif text-2xl font-semibold'>{reveal.target}</p>
+      <p className='break-words font-display tracking-tight text-3xl font-extrabold'>{reveal.target}</p>
       <p className='text-sm text-muted-foreground'>{reveal.native}</p>
       {kind === 'cloze' && reveal.phrase && (
         <div className='mt-3 rounded-lg bg-background/60 px-3 py-2 text-sm'>
@@ -642,7 +649,7 @@ export function FeedbackCard({
       )}
       {!isCorrect && myAnswer && (kind === 'write' || kind === 'speak') && (
         <p className='mt-2 text-xs text-muted-foreground'>
-          {kind === 'speak' ? 'He entendido' : 'Has escrito'}: «{myAnswer}»
+          {kind === 'speak' ? t('He entendido') : t('Has escrito')}: «{myAnswer}»
         </p>
       )}
     </div>
@@ -665,7 +672,7 @@ export function ReviewList({
   onAdd: (item: IcaChallengeReviewItem) => void
 }) {
   return (
-    <ul className='divide-y rounded-xl border'>
+    <ul className='divide-y-2 rounded-2xl border-2'>
       {items.map((item) => {
         const addState = canAdd(item)
         return (
@@ -676,7 +683,7 @@ export function ReviewList({
                   ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300'
                   : 'bg-red-500/15 text-red-600 dark:text-red-300'
               }`}
-              aria-label={item.isCorrect ? 'Acertada' : 'Fallada'}
+              aria-label={item.isCorrect ? t('Acertada') : t('Fallada')}
             >
               {item.isCorrect ? <CheckIcon className='h-4 w-4' /> : <XIcon className='h-4 w-4' />}
             </span>
@@ -687,29 +694,29 @@ export function ReviewList({
               </p>
               {!item.isCorrect && item.myAnswer && item.myAnswer !== item.target && (
                 <p className='truncate text-xs text-muted-foreground'>
-                  {item.kind === 'pairs' ? 'La uniste con' : 'Tu respuesta:'} «{item.myAnswer}»
+                  {item.kind === 'pairs' ? t('La uniste con') : t('Tu respuesta:')} «{item.myAnswer}»
                 </p>
               )}
               {!item.isCorrect && !item.myAnswer && (item.timedOut || item.kind === 'pairs') && (
                 <p className='text-xs text-muted-foreground'>
-                  {item.kind === 'pairs' ? 'Sin unir' : 'Sin respuesta a tiempo'}
+                  {item.kind === 'pairs' ? t('Sin unir') : t('Sin respuesta a tiempo')}
                 </p>
               )}
               {item.fromRival && (
                 <p className='text-[11px] font-medium uppercase tracking-wide text-primary/80'>
-                  Del baúl de {rivalFirstName}
+                  {t('Del baúl de {name}', { name: rivalFirstName })}
                 </p>
               )}
             </div>
             {addState === 'add' && (
               <Button type='button' size='sm' variant='outline' onClick={() => onAdd(item)} className='shrink-0'>
                 <PlusIcon className='mr-1 h-3.5 w-3.5' />
-                <span className='hidden sm:inline'>Añadir a mi baúl</span>
-                <span className='sm:hidden'>Añadir</span>
+                <span className='hidden sm:inline'>{t('Añadir a mi baúl')}</span>
+                <span className='sm:hidden'>{t('Añadir')}</span>
               </Button>
             )}
             {addState === 'owned' && (
-              <span className='shrink-0 text-[11px] text-muted-foreground'>En tu baúl</span>
+              <span className='shrink-0 text-[11px] text-muted-foreground'>{t('En tu baúl')}</span>
             )}
           </li>
         )

@@ -709,6 +709,154 @@ async function listAvailableUsers(input: {
 }
 
 // ---------------------------------------------------------------------------
+// Perfil de otro icademer (al tocar su nombre en el ranking)
+// ---------------------------------------------------------------------------
+
+function shiftDay(isoDay: string, days: number): string {
+  const date = new Date(`${isoDay}T12:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+/** Racha más larga (los días salvados con CongeladICA mantienen la racha pero no suman). */
+function longestStreakOf(completedDays: string[], savedDays: string[] = []): number {
+  const completed = new Set(completedDays)
+  const sorted = [...new Set([...completedDays, ...savedDays])].sort()
+  let best = 0
+  let run = 0
+  let previous: string | null = null
+  for (const day of sorted) {
+    const consecutive = previous !== null && shiftDay(previous, 1) === day
+    run = consecutive ? run : 0
+    if (completed.has(day)) run += 1
+    best = Math.max(best, run)
+    previous = day
+  }
+  return best
+}
+
+/**
+ * Lo que se ve en el perfil de otro icademer: nombre, idioma que aprende, nivel, los datos de
+ * sus insignias y si se le puede retar ahora mismo (con el motivo si no se puede).
+ * Ranking y eficacia los calcula la app con las fotos de cada mes (son públicas).
+ */
+async function getPublicProfile(input: { adminClient: AdminClient; userId: string; profileUserId: string }) {
+  const profileUserId = input.profileUserId
+  if (!profileUserId) return jsonResponse(400, { ok: false, error: 'Falta el icademer.' })
+  const isMe = profileUserId === input.userId
+
+  const [{ data: profileRow, error: profileError }, settingsByUser] = await Promise.all([
+    input.adminClient.from('profiles').select('id, display_name, username').eq('id', profileUserId).maybeSingle(),
+    fetchSettingsByUser(input.adminClient, [input.userId, profileUserId]),
+  ])
+  if (profileError) return jsonResponse(500, { ok: false, error: profileError.message })
+  if (!profileRow) return jsonResponse(404, { ok: false, error: 'No encontramos a este icademer.' })
+  const profileFields = profileRow as Record<string, unknown>
+
+  const setting = settingsByUser.get(profileUserId)
+  const targetLang = setting?.targetLang || null
+  const nativeLang = setting?.nativeLang || null
+  const levels =
+    targetLang && nativeLang
+      ? await fetchLevelsForPair({
+          adminClient: input.adminClient,
+          userIds: [profileUserId],
+          targetLang,
+          nativeLang,
+          settingsByUser,
+        })
+      : new Map<string, string | null>()
+
+  // --- Datos de sus insignias ---
+  const [metricsResult, vocabResult, winsResult] = await Promise.all([
+    input.adminClient
+      .from('daily_metrics')
+      .select('day, creation_goal_completed, review_goal_completed, creation_streak_saved_at')
+      .eq('user_id', profileUserId),
+    input.adminClient.from('lexicards').select('id', { count: 'exact', head: true }).eq('user_id', profileUserId),
+    input.adminClient
+      .from('ica_challenges')
+      .select('id', { count: 'exact', head: true })
+      .eq('winner_user_id', profileUserId),
+  ])
+  const metricRows = (metricsResult.data || []) as Array<Record<string, unknown>>
+  const creationDays = metricRows.filter((row) => row.creation_goal_completed === true).map((row) => toText(row.day))
+  const savedDays = metricRows.filter((row) => row.creation_streak_saved_at).map((row) => toText(row.day))
+  const reviewDays = metricRows.filter((row) => row.review_goal_completed === true).map((row) => toText(row.day))
+  const stats = {
+    icaStreakBest: metricsResult.error ? null : longestStreakOf(creationDays, savedDays),
+    flashStreakBest: metricsResult.error ? null : longestStreakOf(reviewDays),
+    vocab: vocabResult.error ? null : vocabResult.count || 0,
+    wins: winsResult.error ? null : winsResult.count || 0,
+  }
+
+  // --- ¿Se le puede retar? (las mismas reglas que al crear un desafío Global) ---
+  let blockedReason: string | null = null
+  let blockedCode: string | null = null
+  if (isMe) {
+    blockedReason = 'Eres tú.'
+    blockedCode = 'ICA_CHALLENGE_SELF'
+  } else {
+    const [myEnrollment, rivalEnrollment] = await Promise.all([
+      input.adminClient.from('users_ica_challenges').select('id').eq('user_id', input.userId).eq('is_active', true).limit(1),
+      input.adminClient.from('users_ica_challenges').select('id').eq('user_id', profileUserId).eq('is_active', true).limit(1),
+    ])
+    const myPair = await resolvePlayerPair(input.adminClient, { scope: 'global', target_lang: null, native_lang: null }, input.userId)
+    const rivalPair = targetLang && nativeLang ? { targetLang, nativeLang } : null
+    if ((myEnrollment.data || []).length === 0) {
+      blockedCode = 'ICA_CHALLENGE_NOT_ENROLLED'
+      blockedReason = 'Activa Desafíos ICA para poder retar.'
+    } else if ((rivalEnrollment.data || []).length === 0) {
+      blockedCode = 'ICA_CHALLENGE_RIVAL_NOT_ENROLLED'
+      blockedReason = 'Todavía no juega a Desafíos ICA.'
+    } else {
+      const [myWords, rivalWords] = await Promise.all([
+        myPair ? countWordsForPair(input.adminClient, input.userId, myPair) : Promise.resolve(0),
+        rivalPair ? countWordsForPair(input.adminClient, profileUserId, rivalPair) : Promise.resolve(0),
+      ])
+      if (wordsMissingToJoin(myWords) > 0) {
+        blockedCode = 'ICA_CHALLENGE_MIN_WORDS'
+        blockedReason = notEnoughWordsToJoinMessage(myWords, 'retar')
+      } else if (wordsMissingToJoin(rivalWords) > 0) {
+        blockedCode = 'ICA_CHALLENGE_RIVAL_MIN_WORDS'
+        blockedReason = `Aún no tiene ${MIN_WORDS_TO_JOIN} palabras en su Baúl ICA.`
+      } else {
+        const [myActive, rivalActive, activePair] = await Promise.all([
+          countActiveChallenges(input.adminClient, input.userId),
+          countActiveChallenges(input.adminClient, profileUserId),
+          hasActivePairChallenge(input.adminClient, input.userId, profileUserId),
+        ])
+        if (activePair) {
+          blockedCode = 'ICA_CHALLENGE_ACTIVE_PAIR_EXISTS'
+          blockedReason = 'Ya tienen un desafío activo entre ustedes.'
+        } else if (myActive >= MAX_ACTIVE_CHALLENGES) {
+          blockedCode = 'ICA_CHALLENGE_ACTIVE_LIMIT_REACHED'
+          blockedReason = 'Ya tienes 3 desafíos activos. Termina uno para retar de nuevo.'
+        } else if (rivalActive >= MAX_ACTIVE_CHALLENGES) {
+          blockedCode = 'ICA_CHALLENGE_OPPONENT_ACTIVE_LIMIT_REACHED'
+          blockedReason = 'Ya tiene 3 desafíos activos.'
+        }
+      }
+    }
+  }
+
+  return jsonResponse(200, {
+    ok: true,
+    profile: {
+      userId: profileUserId,
+      displayName: toText(profileFields.display_name) || 'Usuario',
+      username: toText(profileFields.username) || null,
+      targetLang,
+      nativeLang,
+      level: levels.get(profileUserId) ?? null,
+      isMe,
+    },
+    stats,
+    challenge: { canChallenge: blockedReason === null, blockedReason, blockedCode },
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Crear un desafío (cualquier modo)
 // ---------------------------------------------------------------------------
 
@@ -2126,8 +2274,35 @@ async function reviewGame(ctx: GameContext) {
     })
     .filter((item): item is NonNullable<typeof item> => item !== null)
 
+  // Con el desafío terminado, las palabras del baúl del rival (para poder añadirlas al tuyo).
+  let rivalWords: Array<Record<string, unknown>> = []
+  if (finished && ctx.settings.wordSource !== 'mixed') {
+    const { data: rivalRows } = await ctx.adminClient
+      .from('desafio_preguntas')
+      .select('respuesta')
+      .eq('desafio_id', ctx.challenge.id)
+      .eq('usuario_id', ctx.rivalId)
+    const seen = new Set<string>()
+    rivalWords = ((rivalRows || []) as Array<Record<string, unknown>>)
+      .map((row) => (isRecord(row.respuesta) ? row.respuesta : {}) as Partial<StoredAnswer>)
+      .filter((answer) => {
+        const key = toText(answer.target).trim().toLowerCase()
+        if (!key || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .map((answer) => ({
+        target: toText(answer.target),
+        native: toText(answer.native),
+        phrase: toText(answer.phrase) || null,
+        phraseTranslation: toText(answer.phraseTranslation) || null,
+        targetLang: toText(answer.language) || null,
+      }))
+  }
+
   return {
     items,
+    rivalWords,
     me: { correct: scoreOf(ctx.myPlays), answered: ctx.myPlays.length },
     rival: { correct: scoreOf(ctx.rivalPlays), answered: ctx.rivalPlays.length, done: isRivalDone(ctx) },
     wordSource: ctx.settings.wordSource,
@@ -2180,6 +2355,14 @@ Deno.serve(async (req) => {
       targetLang: toText(payload.targetLang),
       nativeLang: toText(payload.nativeLang),
       scope: toScope(payload.scope),
+    })
+  }
+
+  if (action === 'public-profile') {
+    return getPublicProfile({
+      adminClient: auth.adminClient,
+      userId: auth.userId,
+      profileUserId: toText(payload.profileUserId),
     })
   }
 

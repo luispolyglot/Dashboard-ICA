@@ -8,6 +8,8 @@ import {
 } from '@/modules/services/coaching'
 import { useDashboardContext } from '@/modules/context/DashboardContext'
 import { useAuth } from '../auth/AuthContext'
+import { t } from '@/i18n'
+import { peekQuick, storeQuick } from '@/modules/services/quickCache'
 
 function FullscreenMessage({ message }: { message: string }) {
   return (
@@ -23,11 +25,11 @@ export function PrivateRoute() {
 
   if (!hasSupabaseConfig) {
     return (
-      <FullscreenMessage message='Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY para habilitar autenticación.' />
+      <FullscreenMessage message={t('Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY para habilitar autenticación.')} />
     )
   }
 
-  if (loading) return <FullscreenLoading label='Cargando sesión...' />
+  if (loading) return <FullscreenLoading label={t('Cargando sesión...')} />
   if (isPasswordRecovery) return <Navigate to='/reset-password' replace />
   if (!user) return <Navigate to='/login' state={{ from: location }} replace />
   return <Outlet />
@@ -40,212 +42,95 @@ export function PublicOnlyRoute() {
     return <Outlet />
   }
 
-  if (loading) return <FullscreenLoading label='Cargando sesión...' />
+  if (loading) return <FullscreenLoading label={t('Cargando sesión...')} />
   if (user) return <Navigate to='/' replace />
   return <Outlet />
 }
 
-export function AnalyticsAdminRoute() {
-  const { user, loading, hasSupabaseConfig } = useAuth()
-  const [checking, setChecking] = useState(true)
-  const [hasAccess, setHasAccess] = useState(false)
-  const location = useLocation()
+/**
+ * Comprueba un permiso recordando la última respuesta: si la última vez se podía entrar,
+ * la pantalla sale al momento y el permiso se confirma por detrás (si ya no se puede,
+ * se vuelve a Inicio). Los datos los protege siempre el servidor.
+ */
+function useCachedAccess(cacheKey: string | null, check: () => Promise<boolean>, ready: boolean) {
+  const [state, setState] = useState(() => {
+    const cached = cacheKey ? peekQuick<boolean>(cacheKey) : undefined
+    return { checking: cached !== true, allowed: cached === true }
+  })
 
   useEffect(() => {
-    let isMounted = true
-
-    const run = async () => {
-      if (!user) {
-        if (isMounted) {
-          setHasAccess(false)
-          setChecking(false)
-        }
-        return
-      }
-
-      setChecking(true)
-      const allowed = await checkAdminAccess()
-
-      if (isMounted) {
-        setHasAccess(allowed)
-        setChecking(false)
-      }
+    if (!ready) return
+    if (!cacheKey) {
+      setState({ checking: false, allowed: false })
+      return
     }
-
-    if (!loading) {
-      void run()
-    }
-
+    let active = true
+    void check()
+      .catch(() => false)
+      .then((allowed) => {
+        if (!active) return
+        storeQuick(cacheKey, allowed)
+        setState({ checking: false, allowed })
+      })
     return () => {
-      isMounted = false
+      active = false
     }
-  }, [loading, user?.id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cacheKey, ready])
+
+  return state
+}
+
+function GuardedOutlet({
+  checking,
+  allowed,
+  label,
+}: {
+  checking: boolean
+  allowed: boolean
+  label: string
+}) {
+  const { user, loading, hasSupabaseConfig } = useAuth()
+  const location = useLocation()
 
   if (!hasSupabaseConfig) {
     return (
-      <FullscreenMessage message='Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY para habilitar autenticación.' />
+      <FullscreenMessage message={t('Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY para habilitar autenticación.')} />
     )
   }
-
-  if (loading || checking)
-    return <FullscreenLoading label='Verificando permisos de admin...' />
+  if (loading) return <FullscreenLoading label={t('Cargando sesión...')} />
   if (!user) return <Navigate to='/login' state={{ from: location }} replace />
-  if (!hasAccess) return <Navigate to='/' replace />
-  return <Outlet />
+  if (allowed) return <Outlet />
+  if (checking) return <FullscreenLoading label={label} />
+  return <Navigate to='/' replace />
+}
+
+export function AnalyticsAdminRoute() {
+  const { user, loading } = useAuth()
+  const access = useCachedAccess(user ? `guard-admin:${user.id}` : null, checkAdminAccess, !loading)
+  return <GuardedOutlet {...access} label={t('Verificando permisos de admin...')} />
 }
 
 export function SuperAdminRoute() {
-  const { user, loading, hasSupabaseConfig } = useAuth()
-  const [checking, setChecking] = useState(true)
-  const [hasAccess, setHasAccess] = useState(false)
-  const location = useLocation()
-
-  useEffect(() => {
-    let isMounted = true
-
-    const run = async () => {
-      if (!user) {
-        if (isMounted) {
-          setHasAccess(false)
-          setChecking(false)
-        }
-        return
-      }
-
-      setChecking(true)
-      const allowed = await checkSuperAdminAccess()
-
-      if (isMounted) {
-        setHasAccess(allowed)
-        setChecking(false)
-      }
-    }
-
-    if (!loading) {
-      void run()
-    }
-
-    return () => {
-      isMounted = false
-    }
-  }, [loading, user?.id])
-
-  if (!hasSupabaseConfig) {
-    return (
-      <FullscreenMessage message='Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY para habilitar autenticación.' />
-    )
-  }
-
-  if (loading || checking) {
-    return <FullscreenLoading label='Verificando permisos de super admin...' />
-  }
-  if (!user) return <Navigate to='/login' state={{ from: location }} replace />
-  if (!hasAccess) return <Navigate to='/' replace />
-  return <Outlet />
+  const { user, loading } = useAuth()
+  const access = useCachedAccess(user ? `guard-super-admin:${user.id}` : null, checkSuperAdminAccess, !loading)
+  return <GuardedOutlet {...access} label={t('Verificando permisos de super admin...')} />
 }
 
 export function CoachingMemberRoute() {
-  const { user, loading, hasSupabaseConfig } = useAuth()
+  const { user, loading } = useAuth()
   const { loading: dashboardLoading } = useDashboardContext()
-  const [checking, setChecking] = useState(true)
-  const [hasAccess, setHasAccess] = useState(false)
-  const location = useLocation()
-
-  useEffect(() => {
-    let isMounted = true
-
-    const run = async () => {
-      if (!user) {
-        if (isMounted) {
-          setHasAccess(false)
-          setChecking(false)
-        }
-        return
-      }
-
-      if (dashboardLoading) {
-        return
-      }
-
-      setChecking(true)
-      const memberships = await fetchMyCoachingDashboard()
-      const allowed = memberships.length > 0
-      if (isMounted) {
-        setHasAccess(allowed)
-        setChecking(false)
-      }
-    }
-
-    if (!loading && !dashboardLoading) {
-      void run()
-    }
-
-    return () => {
-      isMounted = false
-    }
-  }, [loading, dashboardLoading, user?.id])
-
-  if (!hasSupabaseConfig) {
-    return (
-      <FullscreenMessage message='Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY para habilitar autenticación.' />
-    )
-  }
-
-  if (loading || dashboardLoading || checking) {
-    return <FullscreenLoading label='Verificando acceso a coaching...' />
-  }
-
-  if (!user) return <Navigate to='/login' state={{ from: location }} replace />
-  if (!hasAccess) return <Navigate to='/' replace />
-  return <Outlet />
+  const access = useCachedAccess(
+    user ? `guard-coaching-member:${user.id}` : null,
+    async () => (await fetchMyCoachingDashboard()).length > 0,
+    !loading && !dashboardLoading,
+  )
+  if (dashboardLoading) return <FullscreenLoading label={t('Verificando acceso a coaching...')} />
+  return <GuardedOutlet {...access} label={t('Verificando acceso a coaching...')} />
 }
 
 export function CoachingAdminRoute() {
-  const { user, loading, hasSupabaseConfig } = useAuth()
-  const [checking, setChecking] = useState(true)
-  const [hasAccess, setHasAccess] = useState(false)
-  const location = useLocation()
-
-  useEffect(() => {
-    let isMounted = true
-
-    const run = async () => {
-      if (!user) {
-        if (isMounted) {
-          setHasAccess(false)
-          setChecking(false)
-        }
-        return
-      }
-
-      setChecking(true)
-      const allowed = await checkCoachingAdminAccess()
-      if (isMounted) {
-        setHasAccess(allowed)
-        setChecking(false)
-      }
-    }
-
-    if (!loading) {
-      void run()
-    }
-
-    return () => {
-      isMounted = false
-    }
-  }, [loading, user?.id])
-
-  if (!hasSupabaseConfig) {
-    return (
-      <FullscreenMessage message='Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY para habilitar autenticación.' />
-    )
-  }
-
-  if (loading || checking) {
-    return <FullscreenLoading label='Verificando permisos de coaching...' />
-  }
-
-  if (!user) return <Navigate to='/login' state={{ from: location }} replace />
-  if (!hasAccess) return <Navigate to='/' replace />
-  return <Outlet />
+  const { user, loading } = useAuth()
+  const access = useCachedAccess(user ? `guard-coaching-admin:${user.id}` : null, checkCoachingAdminAccess, !loading)
+  return <GuardedOutlet {...access} label={t('Verificando permisos de coaching...')} />
 }

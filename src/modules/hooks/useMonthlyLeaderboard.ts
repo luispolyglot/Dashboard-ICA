@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@/auth/AuthContext'
-import { fetchMonthlyStreakLeaderboard } from '../services/leaderboard'
+import { fetchMonthlyStreakLeaderboard, peekMonthlyStreakLeaderboard } from '../services/leaderboard'
 import type { LeaderboardEntry } from '../types'
 
 type UseMonthlyLeaderboardResult = {
@@ -11,8 +11,8 @@ type UseMonthlyLeaderboardResult = {
 
 export function useMonthlyLeaderboard(limit = 200): UseMonthlyLeaderboardResult {
   const { user } = useAuth()
-  const [rows, setRows] = useState<LeaderboardEntry[]>([])
-  const [loading, setLoading] = useState(true)
+  const [rows, setRows] = useState<LeaderboardEntry[]>(() => peekMonthlyStreakLeaderboard(limit) ?? [])
+  const [loading, setLoading] = useState(() => peekMonthlyStreakLeaderboard(limit) === undefined)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -20,7 +20,7 @@ export function useMonthlyLeaderboard(limit = 200): UseMonthlyLeaderboardResult 
     const REFRESH_MS = 60 * 1000
 
     const fetchRows = async (withLoading: boolean): Promise<void> => {
-      if (withLoading && active) {
+      if (withLoading && active && peekMonthlyStreakLeaderboard(limit) === undefined) {
         setLoading(true)
       }
 

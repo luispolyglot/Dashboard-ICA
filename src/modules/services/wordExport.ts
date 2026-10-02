@@ -1,13 +1,48 @@
 import type { Lexicard } from '../types'
+import { t } from '@/i18n'
 
 export function formatWordsForExport(ownerName: string, cards: Lexicard[]): string {
-  const title = `PALABRAS ICA [${ownerName}]`
+  const title = t('PALABRAS ICA [{name}]', { name: ownerName })
   const lines = cards.map((card, index) => `${index + 1}. ${card.target} = ${card.native}`)
   return [title, '', ...lines].join('\n')
 }
 
-export async function copyWordsToClipboard(ownerName: string, cards: Lexicard[]): Promise<void> {
-  const text = formatWordsForExport(ownerName, cards)
+export type WordPromptContext = {
+  targetLang: string
+  nativeLang: string
+  level?: string | null
+}
+
+/**
+ * Prompt listo para pegar en ChatGPT o Claude debajo de tus palabras:
+ * te hace practicarlas con el método ICA (frases, diálogo y preguntas para hablar).
+ */
+export function buildWordsPrompt({ targetLang, nativeLang, level }: WordPromptContext): string {
+  const levelText = level ? t('mi nivel ({level})', { level }) : t('mi nivel')
+  return [
+    '---',
+    t('Eres mi profesor/a de {target}. Arriba tienes mis palabras ICA: las he sacado de lo que veo y escucho cada día. Mi idioma nativo es {native}.', {
+      target: targetLang,
+      native: nativeLang,
+    }),
+    t('Quiero activarlas con el método ICA (Inmersión, Creación, Activación). Hazlo así:'),
+    t('1. Dime cuáles son las 10 palabras más útiles para hablar en mi día a día.'),
+    t('2. Crea 5 frases cortas y naturales que mezclen varias de mis palabras, con su traducción. Usa solo gramática de {level}.', { level: levelText }),
+    t('3. Escribe un diálogo realista de 6 a 8 líneas que use el máximo de mis palabras.'),
+    t('4. Después, hazme preguntas de una en una para que responda en {target} usando estas palabras. Corrígeme con amabilidad: explica el error en una línea y dame la versión natural.', {
+      target: targetLang,
+    }),
+    t('Nada de teoría larga: quiero practicar hablando.'),
+  ].join('\n')
+}
+
+export async function copyWordsToClipboard(
+  ownerName: string,
+  cards: Lexicard[],
+  promptContext?: WordPromptContext,
+): Promise<void> {
+  const words = formatWordsForExport(ownerName, cards)
+  const text = promptContext ? `${words}\n\n${buildWordsPrompt(promptContext)}` : words
   await navigator.clipboard.writeText(text)
 }
 
@@ -21,7 +56,7 @@ export async function downloadWordsAsDocx(ownerName: string, cards: Lexicard[]):
           new Paragraph({
             children: [
               new TextRun({
-                text: `PALABRAS ICA [${ownerName}]`,
+                text: t('PALABRAS ICA [{name}]', { name: ownerName }),
                 bold: true,
               }),
             ],
@@ -42,7 +77,7 @@ export async function downloadWordsAsDocx(ownerName: string, cards: Lexicard[]):
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `palabras-ica-${ownerName.toLowerCase().replace(/\s+/g, '-')}.docx`
+  link.download = `${t('palabras-ica')}-${ownerName.toLowerCase().replace(/\s+/g, '-')}.docx`
   link.click()
   URL.revokeObjectURL(url)
 }
@@ -116,7 +151,7 @@ export async function downloadWordsAsPdf(ownerName: string, cards: Lexicard[]): 
 
     if (pages.length === 0) {
       pageContext.font = titleFont
-      pageContext.fillText(`PALABRAS ICA [${ownerName}]`, marginPx, marginPx)
+      pageContext.fillText(t('PALABRAS ICA [{name}]', { name: ownerName }), marginPx, marginPx)
     }
 
     pageContext.font = bodyFont
@@ -140,5 +175,5 @@ export async function downloadWordsAsPdf(ownerName: string, cards: Lexicard[]): 
     pdf.addImage(imageData, 'PNG', 0, 0, pageWidth, pageHeight)
   })
 
-  pdf.save(`palabras-ica-${ownerName.toLowerCase().replace(/\s+/g, '-')}.pdf`)
+  pdf.save(`${t('palabras-ica')}-${ownerName.toLowerCase().replace(/\s+/g, '-')}.pdf`)
 }

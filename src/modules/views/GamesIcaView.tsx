@@ -1,6 +1,11 @@
 import { useEffect } from 'react'
+import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { LockIcon } from 'lucide-react'
+import { GOAL, getTodayProgress } from '../constants'
+import { useDashboardContext } from '../context/DashboardContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
+import { useChallengeEnabled } from '../services/challengeChunks'
 import { useFeatureFlagsStore } from '../stores/featureFlagsStore'
 import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocal'
 import { ChallengeAlertPill } from '../components/IcaChallenges/ChallengeAlertBadge'
@@ -9,6 +14,15 @@ import {
   describeIcaChallengeAlerts,
   useIcaChallengeAlerts,
 } from '../hooks/useIcaChallengeAlerts'
+import { CardsIcon, MicGlyph, SwordsIcon, TargetGlyph } from '../game/icons'
+import {
+  CHALLENGE_NOTE_MIN_CLOSED_NOTES,
+  FLASHCARDS_MIN_ACTIVATED_WORDS,
+  PREGUNTICA_EXTRA_COST,
+} from '../game/rules'
+import { useActivatedWords } from '../game/useActivatedWords'
+import { useClosedMasterNotes } from '../game/useClosedMasterNotes'
+import { t } from '@/i18n'
 
 type GamesIcaViewProps = {
   flashcardsReady: boolean
@@ -29,6 +43,71 @@ function parseProgress(value: string): { current: number; total: number } {
   return { current, total }
 }
 
+
+function ProgressBar({ pct, color = 'var(--primary)' }: { pct: number; color?: string }) {
+  return (
+    <span className='block h-2 w-full overflow-hidden rounded-full bg-muted'>
+      <span
+        className='block h-full rounded-full transition-all duration-700'
+        style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: color }}
+      />
+    </span>
+  )
+}
+
+/** Tarjeta compacta de un juego (4 en pantalla, 2×2 en el móvil). */
+function GameTile({
+  icon,
+  title,
+  status,
+  progress,
+  locked = false,
+  onClick,
+  disabled = false,
+  color,
+  badge,
+}: {
+  icon: ReactNode
+  title: string
+  status: ReactNode
+  progress?: number
+  locked?: boolean
+  onClick: () => void
+  disabled?: boolean
+  color: string
+  badge?: ReactNode
+}) {
+  return (
+    <button
+      type='button'
+      onClick={onClick}
+      disabled={disabled}
+      className='relative flex min-h-[156px] flex-col items-start gap-1.5 rounded-3xl border-2 border-border bg-card p-4 text-left transition-colors hover:bg-muted/50 active:bg-muted disabled:cursor-not-allowed disabled:opacity-60 lg:min-h-[176px] lg:p-5'
+    >
+      <span
+        className='flex size-12 items-center justify-center rounded-2xl'
+        style={{ background: `color-mix(in oklab, ${color} 16%, transparent)` }}
+        aria-hidden='true'
+      >
+        {icon}
+      </span>
+      {badge ? <span className='absolute top-3 right-3'>{badge}</span> : null}
+      {locked ? (
+        <span className='absolute top-3 right-3 flex size-7 items-center justify-center rounded-full bg-muted text-muted-foreground'>
+          <LockIcon className='size-3.5' aria-hidden='true' />
+        </span>
+      ) : null}
+      <span className='mt-1 font-display text-lg leading-tight font-extrabold'>{title}</span>
+      <span className='text-xs leading-snug font-semibold text-muted-foreground'>{status}</span>
+      {progress !== undefined ? (
+        <span className='mt-auto w-full pt-1'>
+          <ProgressBar pct={progress} color={color} />
+        </span>
+      ) : null}
+    </button>
+  )
+}
+
 export function GamesIcaView({
   flashcardsReady,
   flashcardsCount,
@@ -36,6 +115,7 @@ export function GamesIcaView({
   pregunticaProgress,
 }: GamesIcaViewProps) {
   const navigate = useNavigate()
+  const { dailyProgress, config } = useDashboardContext()
   const loadFlags = useFeatureFlagsStore((state) => state.loadFlags)
   const icaChallengesFlag = useFeatureFlagsStore(
     (state) => state.flags['ica-challenges'],
@@ -44,109 +124,92 @@ export function GamesIcaView({
   const icaChallengesEnabled = icaChallengesFlag || ICA_CHALLENGES_LOCAL
   const challengeAlerts = useIcaChallengeAlerts()
   const challengeAlertText = describeIcaChallengeAlerts(challengeAlerts)
+  const challengeNoteEnabled = useChallengeEnabled()
+  const { activatedWords, flashcardsUnlocked } = useActivatedWords()
+  const { count: closedNotes } = useClosedMasterNotes(config?.targetLang, config?.nativeLang)
   const progress = parseProgress(pregunticaProgress)
-  const progressPct = Math.max(0, Math.min(100, (progress.current / progress.total) * 100))
+  const pregunticaPct = (progress.current / progress.total) * 100
+  const reviewedToday = Math.min(getTodayProgress(dailyProgress).reviewCorrect, GOAL)
+  const flashcardsOpen = flashcardsReady && flashcardsUnlocked
+  const challengeReady = closedNotes !== null && closedNotes >= CHALLENGE_NOTE_MIN_CLOSED_NOTES
 
   useEffect(() => {
     void loadFlags()
   }, [loadFlags])
 
   return (
-    <section className='mx-auto flex w-full max-w-6xl flex-1 items-center justify-center p-4 pb-24'>
-      <div className='w-full max-w-5xl'>
-        <div>
-          <h2 className='mb-1 font-serif text-2xl font-bold lg:text-3xl'>🎮 Juegos ICA</h2>
-          <p className='text-sm text-muted-foreground'>
-            Elige tu forma de entrenar hoy: refuerza memoria, juega desafíos o practica
-            expresión real.
-          </p>
-        </div>
+    <section className='mx-auto flex w-full max-w-4xl flex-1 flex-col px-4 pt-4 pb-28 lg:py-10'>
+      <h2 className='mb-1 font-display tracking-tight text-2xl font-extrabold lg:text-3xl'>{t('Juegos ICA')}</h2>
+      <p className='text-sm text-muted-foreground'>
+        {t('Refuerza tu memoria, reta a otros icademers o practica expresión real.')}
+      </p>
 
-        <div className={`mt-6 grid gap-4 ${icaChallengesEnabled ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
-        <button
-          type='button'
-          onClick={() => navigate(DASHBOARD_ROUTES.flashcards)}
+      <div className='mt-5 grid grid-cols-2 gap-3 lg:gap-4'>
+        <GameTile
+          icon={<CardsIcon size={30} />}
+          title={t('Flashcards')}
+          color='var(--primary)'
           disabled={!flashcardsReady}
-          className='group relative min-h-52 overflow-hidden rounded-[22px] border border-slate-800 bg-[linear-gradient(160deg,#ffffff,#eef3f9)] p-6 text-left transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60 dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
-        >
-          <p className='text-3xl' aria-hidden='true'>
-            📚
-          </p>
-          <h2 className='mt-5 font-serif text-2xl font-bold text-slate-700 dark:text-slate-100'>
-            Flashcards
-          </h2>
-          <p className='mt-1 text-sm text-slate-500'>
-            Repetición espaciada para consolidar tu baúl ICA.
-          </p>
-          <p className='mt-3 text-xs font-medium text-slate-600 dark:text-slate-300'>
-            {flashcardsReady
-              ? `${flashcardsCount} palabras listas para practicar`
-              : 'Añade palabras ICA para desbloquearlo'}
-          </p>
-        </button>
+          locked={flashcardsReady && !flashcardsUnlocked}
+          onClick={() => navigate(DASHBOARD_ROUTES.flashcards)}
+          status={
+            flashcardsOpen
+              ? t('{reviewedToday} de {GOAL} hoy · {flashcardsCount} palabras', { reviewedToday, GOAL, flashcardsCount })
+              : !flashcardsReady
+                ? t('Añade palabras ICA para empezar')
+                : t('Se abren con {FLASHCARDS_MIN_ACTIVATED_WORDS} palabras activadas (llevas {n})', { FLASHCARDS_MIN_ACTIVATED_WORDS, n: Math.min(activatedWords, FLASHCARDS_MIN_ACTIVATED_WORDS) })
+          }
+          progress={
+            flashcardsOpen
+              ? (reviewedToday / GOAL) * 100
+              : (activatedWords / FLASHCARDS_MIN_ACTIVATED_WORDS) * 100
+          }
+        />
 
-        {icaChallengesEnabled && (
-          <button
-            type='button'
+        {icaChallengesEnabled ? (
+          <GameTile
+            icon={<SwordsIcon size={32} />}
+            title={t('Desafíos ICA')}
+            color='var(--ica-a)'
             onClick={() => navigate(challengesRouteForAlerts(challengeAlerts))}
-            className='group relative min-h-52 overflow-hidden rounded-[22px] border border-slate-800 bg-[linear-gradient(160deg,#ffffff,#eef3f9)] p-6 text-left transition hover:-translate-y-0.5 hover:shadow-xl dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
-          >
-            {challengeAlertText && (
-              <span className='absolute right-4 top-4'>
-                <ChallengeAlertPill text={challengeAlertText} />
-              </span>
-            )}
-            <p className='text-3xl' aria-hidden='true'>⚔️</p>
-            <h2 className='mt-5 font-serif text-2xl font-bold text-slate-700 dark:text-slate-100'>
-              Desafíos ICA
-            </h2>
-            <p className='mt-1 text-sm text-slate-500'>
-              Retos 1 vs 1 con turnos por rondas y notificaciones.
-            </p>
-            <p className='mt-3 text-xs font-medium text-slate-600 dark:text-slate-300'>
-              Compite con tus propias palabras ICA
-            </p>
-          </button>
-        )}
+            status={challengeAlertText ? t('¡Tienes retos esperando!') : t('Retos 1 vs 1 con tus palabras ICA')}
+            badge={challengeAlertText ? <ChallengeAlertPill text={String(challengeAlerts.total)} /> : undefined}
+          />
+        ) : null}
 
-        <button
-          type='button'
+        <GameTile
+          icon={<MicGlyph size={30} />}
+          title={t('PreguntICA')}
+          color='var(--ica-c)'
+          locked={!pregunticaUnlocked}
           onClick={() => navigate(DASHBOARD_ROUTES.preguntica)}
-          className='group relative min-h-52 overflow-hidden rounded-[22px] border border-slate-800 bg-[linear-gradient(160deg,#ffffff,#eef3f9)] p-6 text-left transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-75 dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
-        >
-          <p className='text-3xl' aria-hidden='true'>🎙️</p>
-          <h2 className='mt-5 font-serif text-2xl font-bold text-slate-700 dark:text-slate-100'>
-            PreguntICA
-          </h2>
-          <p className='mt-1 text-sm text-slate-500'>
-            Responde una pregunta semanal usando tus palabras ICA.
-          </p>
-          <p className='mt-2 text-xs text-slate-600 dark:text-slate-300'>
-            <strong>{pregunticaProgress}</strong> <strong>palabras activadas</strong>
-          </p>
-          <div className='mt-2 flex items-center gap-2'>
-            <div className='h-2 flex-1 overflow-hidden rounded-full border border-slate-300/70 bg-slate-200/70 dark:border-slate-600 dark:bg-slate-800'>
-              <span
-                className={`block h-full rounded-full transition-all duration-700 ${
-                  progressPct >= 100
-                    ? 'bg-gradient-to-r from-amber-400 to-yellow-300 animate-pulse'
-                    : 'bg-primary/75'
-                }`}
-                style={{ width: `${progressPct}%` }}
-              />
-            </div>
-            <span className='text-xs' aria-hidden='true'>
-              {pregunticaUnlocked ? '🔓' : '🔒'}
-            </span>
-          </div>
-          <p className='mt-3 text-xs font-medium text-slate-600 dark:text-slate-300'>
-            {pregunticaUnlocked
-              ? 'Desbloqueada esta semana'
-              : 'Activa 20 palabras para desbloquearla'}
-          </p>
-        </button>
-        </div>
+          status={
+            pregunticaUnlocked
+              ? t('Desbloqueada esta semana · extra: {PREGUNTICA_EXTRA_COST} ICA Coins', { PREGUNTICA_EXTRA_COST })
+              : t('{pregunticaProgress} palabras activadas esta semana', { pregunticaProgress })
+          }
+          progress={pregunticaPct}
+        />
+
+        {challengeNoteEnabled ? (
+          <GameTile
+            icon={<TargetGlyph size={30} />}
+            title={t('Nota desafiante')}
+            color='var(--ica-gold-edge)'
+            locked={closedNotes !== null && !challengeReady}
+            onClick={() => navigate(DASHBOARD_ROUTES.notaDesafiante)}
+            status={
+              closedNotes === null
+                ? t('Elige una nota maestra terminada')
+                : challengeReady
+                  ? t('Elige una nota maestra terminada')
+                  : t('Se abre con {CHALLENGE_NOTE_MIN_CLOSED_NOTES} notas maestras terminadas (llevas {closedNotes})', { CHALLENGE_NOTE_MIN_CLOSED_NOTES, closedNotes })
+            }
+            progress={closedNotes === null || challengeReady ? undefined : (closedNotes / CHALLENGE_NOTE_MIN_CLOSED_NOTES) * 100}
+          />
+        ) : null}
       </div>
+
     </section>
   )
 }

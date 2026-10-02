@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { t } from '@/i18n'
 import type {
   CoachingNotificationPreference,
   CoachingNotificationPreferenceInput,
@@ -41,7 +42,7 @@ function getErrorStatus(error: unknown): number | null {
 async function getCurrentUserId(): Promise<string> {
   if (!supabase) {
     throw new CoachingNotificationPreferencesRequestError(
-      'Supabase no está configurado.',
+      t('Supabase no está configurado.'),
     )
   }
 
@@ -52,7 +53,7 @@ async function getCurrentUserId(): Promise<string> {
 
   if (error || !user) {
     throw new CoachingNotificationPreferencesRequestError(
-      'Necesitas iniciar sesión para configurar notificaciones.',
+      t('Necesitas iniciar sesión para configurar notificaciones.'),
       401,
     )
   }
@@ -97,7 +98,7 @@ export async function fetchMyCoachingNotificationPreference(): Promise<CoachingN
 
   if (error) {
     throw new CoachingNotificationPreferencesRequestError(
-      'No se pudieron cargar tus preferencias de coaching.',
+      t('No se pudieron cargar tus preferencias de coaching.'),
       getErrorStatus(error),
     )
   }
@@ -130,7 +131,7 @@ export async function upsertMyCoachingNotificationPreference(
 
   if (error || !data) {
     throw new CoachingNotificationPreferencesRequestError(
-      'No se pudieron guardar tus preferencias de coaching.',
+      t('No se pudieron guardar tus preferencias de coaching.'),
       getErrorStatus(error),
     )
   }

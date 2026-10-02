@@ -1,6 +1,18 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { ComponentType } from 'react'
-import { CopyIcon } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ComponentType, CSSProperties, ReactNode } from 'react'
+import {
+  CheckIcon,
+  CopyIcon,
+  HistoryIcon,
+  ListChecksIcon,
+  MicIcon,
+  PenLineIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  SearchIcon,
+  SparklesIcon,
+  XIcon,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -13,8 +25,20 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
+import { langName, t, tn } from '@/i18n'
+import {
+  GamePage,
+  GameProgress,
+  IconTile,
+  PageTitle,
+  PhaseLetter,
+  Pill,
+  SectionLabel,
+  tone,
+  type Tone,
+} from '../game/ui'
 import { ActivatePhraseInMasterNoteModal } from '../components/ActivatePhraseInMasterNoteModal'
 import {
   storeChallengeForNewPhrase,
@@ -45,14 +69,24 @@ import type {
   StudyLevel,
 } from '../types'
 import { getEffectiveStudyLevel } from '../utils/studyLevel'
+import { DailyLimitNotice } from '../game/DailyLimitNotice'
+import { PendingActivationCard } from '../components/PendingActivationCard'
+import { usePendingActivationPhrase } from '../hooks/usePendingActivationPhrase'
+import type { DailyLimitsState } from '../game/limits'
 
 type PhraseViewProps = {
   cards: Lexicard[]
   config: AppConfig
   onPhraseGenerated: () => Promise<DailyProgressEntry>
+  /** La C de hoy está hecha: solo entonces se recuerda la frase por activar. */
+  creationDoneToday?: boolean
   metaTrackerProfile: MetaTrackerProfile | null
   onActivationWordsTotalChange: (activationWordsTotal: number) => void
   LevelBadge: ComponentType<{ level: StudyLevel; size?: 'normal' | 'small' }>
+  /** Límite diario de frases nuevas (si no se pasa, no hay límite). */
+  dailyLimits?: DailyLimitsState
+  /** Se llama al crear una frase nueva (no al pedir otra versión). */
+  onNewPhraseCreated?: () => void
 }
 
 const IMPORTANCE_DOT = {
@@ -65,19 +99,220 @@ const IMPORTANCE_DOT = {
 
 const MAX_EXTRA_GENERATIONS = 2
 
+type PhraseMode = 'automatic' | 'manual' | 'manualPhrase'
+
+// Las tres formas de crear la frase (pestañas grandes).
+const MODES: Array<{ value: PhraseMode; label: string; hint: string; icon: typeof SparklesIcon }> = [
+  { value: 'automatic', label: 'Automática', hint: 'La IA escribe una frase natural con tus últimas palabras ICA.', icon: SparklesIcon },
+  { value: 'manual', label: 'Elijo palabras', hint: 'Tú eliges de 5 a 8 palabras y la IA crea la frase con ellas.', icon: ListChecksIcon },
+  { value: 'manualPhrase', label: 'La escribo yo', hint: 'Escribes tú la frase usando al menos 5 palabras ICA.', icon: PenLineIcon },
+]
+
+type WordTileState = 'idle' | 'selected' | 'detected'
+
+/** Ficha grande de una palabra ICA (como una ficha de juego). Borde dorado si ya la usaste en frases. */
+function WordTile({
+  target,
+  native,
+  dotClass,
+  usage,
+  state = 'idle',
+  onClick,
+  onRemove,
+}: {
+  target: string
+  native: string
+  dotClass: string
+  usage: number
+  state?: WordTileState
+  onClick?: () => void
+  onRemove?: () => void
+}) {
+  let style: CSSProperties
+  if (state === 'selected') {
+    style = { background: 'var(--ica-c)', borderColor: 'var(--ica-c-edge)', color: '#fff', boxShadow: '0 3px 0 var(--ica-c-edge)' }
+  } else if (state === 'detected') {
+    style = {
+      background: 'var(--ica-c-soft)',
+      borderColor: 'var(--ica-c)',
+      color: 'var(--ica-c-ink)',
+      boxShadow: '0 3px 0 color-mix(in oklab, var(--ica-c) 45%, transparent)',
+    }
+  } else if (usage >= 3) {
+    style = { background: 'var(--ica-gold-soft)', borderColor: 'var(--ica-gold)', boxShadow: '0 3px 0 var(--ica-gold-edge)' }
+  } else if (usage >= 1) {
+    style = { borderColor: 'var(--ica-gold)', boxShadow: '0 3px 0 color-mix(in oklab, var(--ica-gold) 60%, transparent)' }
+  } else {
+    style = { borderColor: 'var(--border)', boxShadow: '0 3px 0 var(--border)' }
+  }
+
+  const content = (
+    <>
+      {state === 'detected' ? (
+        <CheckIcon className='size-4 shrink-0' strokeWidth={3.2} aria-hidden='true' />
+      ) : (
+        <span className={cn('size-2 shrink-0 rounded-full', dotClass)} aria-hidden='true' />
+      )}
+      <span className='flex min-w-0 flex-col'>
+        <span className='text-[15px] leading-tight font-extrabold break-words'>{target}</span>
+        <span
+          className={cn(
+            'text-xs leading-tight font-semibold break-words',
+            state === 'selected' ? 'text-white/80' : state === 'detected' ? 'opacity-75' : 'text-muted-foreground',
+          )}
+        >
+          {native}
+        </span>
+      </span>
+      {onRemove ? (
+        <button
+          type='button'
+          onClick={onRemove}
+          aria-label={t('Quitar {word}', { word: target })}
+          className='-mr-1 ml-0.5 flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground'
+        >
+          <XIcon className='size-4' strokeWidth={3} aria-hidden='true' />
+        </button>
+      ) : null}
+    </>
+  )
+
+  const classes = cn(
+    'inline-flex max-w-full min-h-12 items-center gap-2 rounded-2xl border-2 bg-card px-3 py-1.5 text-left dark:bg-transparent',
+    onClick && 'ica-press cursor-pointer',
+  )
+
+  if (onClick) {
+    return (
+      <button type='button' onClick={onClick} aria-pressed={state === 'selected'} className={classes} style={style}>
+        {content}
+      </button>
+    )
+  }
+  return (
+    <div className={classes} style={style}>
+      {content}
+    </div>
+  )
+}
+
+/** Leyenda del borde dorado. */
+function UsageLegend() {
+  return (
+    <p className='m-0 mt-3 flex items-center gap-2 text-xs font-semibold text-muted-foreground'>
+      <span className='size-3.5 shrink-0 rounded-[5px] border-2' style={{ borderColor: 'var(--ica-gold)' }} aria-hidden='true' />
+      {t('Borde dorado: ya la usaste en otras frases.')}
+    </p>
+  )
+}
+
+/** Bloque de la revisión IA (texto con fondo suave del color que toque). */
+function ReviewBlock({ label, tone: toneKey, children }: { label?: ReactNode; tone?: Tone; children: ReactNode }) {
+  const colors = toneKey ? tone(toneKey) : null
+  return (
+    <div className='rounded-2xl p-3.5' style={{ background: colors ? colors.soft : 'var(--muted)' }}>
+      {label ? (
+        <p
+          className='m-0 text-[11px] font-extrabold tracking-[0.08em] uppercase'
+          style={{ color: colors ? colors.ink : 'var(--muted-foreground)' }}
+        >
+          {label}
+        </p>
+      ) : null}
+      <div className='mt-1 text-sm font-semibold' style={colors ? { color: colors.ink } : undefined}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+/** Longitud del principio común de dos palabras. */
+function commonPrefixLength(a: string, b: string): number {
+  const max = Math.min(a.length, b.length)
+  let index = 0
+  while (index < max && a[index] === b[index]) index += 1
+  return index
+}
+
+/**
+ * ¿Es la misma palabra aunque cambie la terminación? En polaco, alemán, ruso… las palabras
+ * cambian según el caso («liść» → «liściu», «klawisz» → «klawisza»). Se da por buena si
+ * empiezan igual y solo cambia el final. Las palabras cortas tienen que ser exactas.
+ */
+function sameWordForm(term: string, token: string): boolean {
+  if (term === token) return true
+  if (term.length < 4 || token.length < 3) return false
+  if (token.length > term.length + 3) return false
+  return commonPrefixLength(term, token) >= Math.max(3, term.length - 2)
+}
+
+/** Resalta en la frase las palabras ICA usadas, también si aparecen declinadas o conjugadas. */
+function highlightUsedWords(phrase: string, words: string[] | undefined): ReactNode {
+  const terms = Array.from(new Set((words || []).map((word) => word.trim()).filter(Boolean))).sort(
+    (a, b) => b.length - a.length,
+  )
+  if (!terms.length) return phrase
+  const normalize = (value: string) => value.normalize('NFC').toLocaleLowerCase()
+  const tokens = Array.from(phrase.matchAll(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu)).map((match) => ({
+    text: normalize(match[0]),
+    start: match.index ?? 0,
+    end: (match.index ?? 0) + match[0].length,
+  }))
+  const used = new Array(tokens.length).fill(false)
+  const spans: Array<{ start: number; end: number }> = []
+  for (const term of terms) {
+    const parts = normalize(term).split(/\s+/).filter(Boolean)
+    if (!parts.length) continue
+    for (let index = 0; index + parts.length <= tokens.length; index += 1) {
+      let fits = true
+      for (let offset = 0; offset < parts.length; offset += 1) {
+        if (used[index + offset] || !sameWordForm(parts[offset], tokens[index + offset].text)) {
+          fits = false
+          break
+        }
+      }
+      if (!fits) continue
+      for (let offset = 0; offset < parts.length; offset += 1) used[index + offset] = true
+      spans.push({ start: tokens[index].start, end: tokens[index + parts.length - 1].end })
+    }
+  }
+  if (!spans.length) return phrase
+  spans.sort((a, b) => a.start - b.start)
+  const nodes: ReactNode[] = []
+  let cursor = 0
+  for (const span of spans) {
+    if (span.start > cursor) nodes.push(phrase.slice(cursor, span.start))
+    nodes.push(
+      <mark
+        key={`${span.start}-${span.end}`}
+        className='rounded-lg px-1 font-extrabold'
+        style={{ background: 'color-mix(in oklab, var(--ica-c) 20%, transparent)', color: 'var(--ica-c-ink)' }}
+      >
+        {phrase.slice(span.start, span.end)}
+      </mark>,
+    )
+    cursor = span.end
+  }
+  if (cursor < phrase.length) nodes.push(phrase.slice(cursor))
+  return nodes
+}
+
 export function PhraseView({
   cards,
   config,
   onPhraseGenerated,
+  creationDoneToday = false,
   metaTrackerProfile,
   onActivationWordsTotalChange,
-  LevelBadge,
+  dailyLimits,
+  onNewPhraseCreated,
 }: PhraseViewProps) {
   const challengeEnabled = useChallengeEnabled()
+  // Límite diario de frases nuevas (2, o 4 con el día ampliado).
+  // "No me convence, genera otra" no cuenta como frase nueva.
+  const phraseLimitReached = dailyLimits?.isAtLimit('phrases') ?? false
   const [wordCount, setWordCount] = useState(5)
-  const [mode, setMode] = useState<'automatic' | 'manual' | 'manualPhrase'>(
-    'automatic',
-  )
+  const [mode, setMode] = useState<PhraseMode>('automatic')
   const [automaticSelectedIds, setAutomaticSelectedIds] = useState<string[]>([])
   const [manualSelectedIds, setManualSelectedIds] = useState<string[]>([])
   const [manualQuery, setManualQuery] = useState('')
@@ -98,10 +333,21 @@ export function PhraseView({
   const [copyingResult, setCopyingResult] = useState(false)
   const [resultCopied, setResultCopied] = useState(false)
   const [resultPhraseId, setResultPhraseId] = useState<string | null>(null)
+  const pendingActivationPhrase = usePendingActivationPhrase(config.targetLang, resultPhraseId)
   const [activateModalOpen, setActivateModalOpen] = useState(false)
   const [extraGenerationsCount, setExtraGenerationsCount] = useState(0)
   const [levelUpCelebration, setLevelUpCelebration] =
     useState<MetaTrackerLevelUpCelebration | null>(null)
+  const resultRef = useRef<HTMLDivElement | null>(null)
+
+  // Al salir la frase, la llevamos a la vista (la tarjeta de resultado queda abajo).
+  useEffect(() => {
+    if (!result) return
+    const node = resultRef.current
+    if (node && typeof node.scrollIntoView === 'function') {
+      node.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [result])
 
   const level = getEffectiveStudyLevel(config.targetLang, metaTrackerProfile)
   const trackerSnapshot = metaTrackerProfile?.confirmedAt
@@ -194,17 +440,9 @@ export function PhraseView({
     }
   }, [cards, config.nativeLang, config.targetLang])
 
-  const getUsageAuraClass = (lexicardId: string, active?: boolean): string => {
-    const usageCount =
-      wordUsageCounts[lexicardId] ?? activationCountsByCardId[lexicardId] ?? 0
-    if (usageCount >= 3) {
-      return `!border-amber-400/90 ring-1 ring-amber-300/60 ${!active && 'bg-amber-500/12'} shadow-[0_0_30px_-8px_rgba(251,191,36,0.95)]`
-    }
-    if (usageCount >= 1) {
-      return `!border-amber-400/70 ring-1 ring-amber-300/35 ${!active && 'bg-amber-500/8'} shadow-[0_0_26px_-10px_rgba(251,191,36,0.75)]`
-    }
-    return ''
-  }
+  // Veces que la palabra ya salió en frases (borde dorado en su ficha).
+  const getUsageCount = (lexicardId: string): number =>
+    wordUsageCounts[lexicardId] ?? activationCountsByCardId[lexicardId] ?? 0
 
   const searchableManualPool =
     manualQuery.trim() || manualOnlyNotActivated ? allWords : manualPool
@@ -245,6 +483,13 @@ export function PhraseView({
       return
     }
 
+    if (!isRegeneration && phraseLimitReached && dailyLimits) {
+      toast.info(
+        t('Hoy ya creaste {n} frases nuevas, el máximo del día.', { n: dailyLimits.limits.phrases }),
+      )
+      return
+    }
+
     if (
       mode === 'manualPhrase' &&
       (!manualPhraseTarget.trim() || !manualPhraseNative.trim())
@@ -266,7 +511,7 @@ export function PhraseView({
     })
 
     if (hasLanguageMismatch) {
-      toast.error('Detectamos palabras de otro idioma. Recarga e intenta de nuevo.')
+      toast.error(t('Detectamos palabras de otro idioma. Recarga e intenta de nuevo.'))
       console.error('Blocked phrase generation due to language mismatch in selected words', {
         targetLang: config.targetLang,
         nativeLang: config.nativeLang,
@@ -325,6 +570,9 @@ export function PhraseView({
             nativeLang: config.nativeLang,
             source: mode === 'manualPhrase' ? 'manual' : 'generated',
           })
+        if (!isRegeneration) {
+          onNewPhraseCreated?.()
+        }
         await onPhraseGenerated()
         setResultPhraseId(phraseGenerationId)
         // Nota desafiante: guardar los trozos de la frase (sin bloquear la pantalla).
@@ -459,7 +707,7 @@ export function PhraseView({
       )
 
       if (!suggestion) {
-        toast.error('No pudimos revisar la frase por ahora. Intenta de nuevo.')
+        toast.error(t('No pudimos revisar la frase por ahora. Intenta de nuevo.'))
         return
       }
 
@@ -467,7 +715,7 @@ export function PhraseView({
       setManualSuggestionModalOpen(true)
     } catch (error) {
       console.error(error)
-      toast.error('No pudimos generar sugerencia por ahora. Intenta de nuevo.')
+      toast.error(t('No pudimos generar sugerencia por ahora. Intenta de nuevo.'))
     } finally {
       setManualSuggestionLoading(false)
     }
@@ -483,392 +731,609 @@ export function PhraseView({
     setManualSuggestionModalOpen(false)
   }
 
+  // --- Datos para pintar ---
+  const isManualPhrase = mode === 'manualPhrase'
+  const limitUsed = dailyLimits
+    ? Math.min(dailyLimits.used.phrases, dailyLimits.limits.phrases)
+    : 0
+  const limitMax = dailyLimits?.limits.phrases ?? 0
+  const detectedCount = manualDetectedWords.length
+  const detectedIds = new Set(manualDetectedWords.map((word) => word.id))
+  const enoughDetected = detectedCount >= minWordsRequired
+  const primaryDisabled =
+    loading ||
+    (phraseLimitReached && !(mode === 'manualPhrase' && manualPhraseApproved)) ||
+    (mode !== 'manualPhrase' && selectedWords.length < minWordsRequired) ||
+    (mode === 'manualPhrase' &&
+      !manualPhraseApproved &&
+      (selectedWords.length < minWordsRequired ||
+        !manualPhraseTarget.trim() ||
+        !manualPhraseNative.trim()))
+  const activeMode = MODES.find((item) => item.value === mode) ?? MODES[0]
+  const wordsInView =
+    mode === 'manualPhrase'
+      ? manualPhraseGuidePool
+      : mode === 'manual'
+        ? [...filteredManualPool, ...selectedWords]
+        : selectedWords
+  const showUsageLegend = wordsInView.some((word) => getUsageCount(word.id) >= 1)
+  const regenerationsLeft = MAX_EXTRA_GENERATIONS - extraGenerationsCount
+
+  const renderTile = (
+    word: Lexicard,
+    options: { state?: WordTileState; onClick?: () => void; onRemove?: () => void } = {},
+  ) => (
+    <WordTile
+      key={word.id}
+      target={word.target}
+      native={word.native}
+      dotClass={IMPORTANCE_DOT[getImportance(word.importance).key]}
+      usage={getUsageCount(word.id)}
+      state={options.state}
+      onClick={options.onClick}
+      onRemove={options.onRemove}
+    />
+  )
+
   return (
-    <section className='mx-auto w-full max-w-2xl flex-1 flex flex-col justify-center items-center p-4 pb-24'>
-      <div className='mb-4 w-full flex items-start justify-between gap-3'>
-        <div>
-          <h2 className='mb-1 font-serif text-2xl lg:text-3xl font-bold'>
-            🧩 Creación de Frases ICA
-          </h2>
-          <p className='text-sm text-muted-foreground'>
-            Genera una frase natural en {config.targetLang} usando tus palabras
-            ICA.
-          </p>
+    <GamePage>
+      {/* Cabecera de la fase C */}
+      <PageTitle
+        icon={<PhaseLetter letter='C' size={48} />}
+        subtitle={t('Crea una frase en {lang} con tus palabras ICA', { lang: langName(config.targetLang) })}
+        right={
+          <Button asChild variant='outline' size='sm'>
+            <Link to={DASHBOARD_ROUTES.phraseHistory} aria-label={t('Historial de frases')}>
+              <HistoryIcon strokeWidth={2.6} aria-hidden='true' />
+              {t('Historial')}
+            </Link>
+          </Button>
+        }
+      >
+        {t('Creación')}
+      </PageTitle>
+
+      {/* Si hoy ya se hizo la C y esa frase aún no se grabó, se recuerda aquí con un botón directo */}
+      {!result && creationDoneToday && pendingActivationPhrase ? (
+        <PendingActivationCard
+          phrase={pendingActivationPhrase}
+          targetLang={config.targetLang}
+          nativeLang={config.nativeLang}
+        />
+      ) : null}
+
+      {/* Contador del día (como el saldo de ICA Coins) */}
+      <div className='-mt-1 rounded-3xl px-5 py-4' style={{ background: 'var(--ica-c-soft)' }}>
+        <div className='flex items-center gap-4'>
+          <div className='min-w-0 flex-1'>
+            <p
+              className='m-0 text-xs font-extrabold tracking-[0.08em] uppercase'
+              style={{ color: 'var(--ica-c-ink)' }}
+            >
+              {dailyLimits ? t('Frases nuevas hoy') : t('Tu frase del día')}
+            </p>
+            {dailyLimits ? (
+              <p
+                className='m-0 mt-1 leading-none font-black tabular-nums'
+                style={{ color: 'var(--ica-c-ink)' }}
+              >
+                <span className='text-5xl'>{limitUsed}</span>
+                <span className='text-2xl opacity-60'> / {limitMax}</span>
+              </p>
+            ) : (
+              <p
+                className='m-0 mt-1 text-2xl leading-tight font-black tracking-tight'
+                style={{ color: 'var(--ica-c-ink)' }}
+              >
+                {t('Adaptada a tu nivel')}
+              </p>
+            )}
+          </div>
+          <div className='flex shrink-0 flex-col items-center gap-1.5'>
+            <span
+              className='flex h-12 min-w-16 items-center justify-center rounded-2xl px-2.5 text-lg font-black text-white'
+              style={{ background: 'var(--ica-c)', boxShadow: '0 4px 0 var(--ica-c-edge)' }}
+            >
+              {level}
+            </span>
+            <span
+              className='text-[11px] font-extrabold tracking-[0.06em] uppercase'
+              style={{ color: 'var(--ica-c-ink)' }}
+            >
+              {t('Tu nivel')}
+            </span>
+          </div>
         </div>
-        <Button asChild variant='outline' size='sm' className='hidden lg:flex'>
-          <Link to={DASHBOARD_ROUTES.phraseHistory}>📜 Historial</Link>
-        </Button>
+        {dailyLimits ? (
+          <>
+            <GameProgress
+              value={limitMax > 0 ? limitUsed / limitMax : 0}
+              color='var(--ica-c)'
+              className='mt-4 bg-card'
+              label={t('Frases nuevas de hoy')}
+            />
+            <div className='mt-2 flex flex-wrap items-center gap-2'>
+              <p className='m-0 text-xs font-semibold text-muted-foreground'>
+                {t('Pedir otra versión no cuenta.')}
+              </p>
+              {dailyLimits.boosted ? (
+                <Pill tone='c' solid>
+                  {t('DÍA AMPLIADO')}
+                </Pill>
+              ) : null}
+            </div>
+          </>
+        ) : null}
       </div>
 
-      <div className='w-full mb-6 flex items-center gap-2'>
-        <LevelBadge level={level} />
-        <span className='text-xs text-muted-foreground'>
-          · CEFR · Adaptado a tu nivel
-        </span>
-        <Button asChild variant='outline' size='sm' className='flex lg:hidden'>
-          <Link to={DASHBOARD_ROUTES.phraseHistory}>📜 Historial</Link>
-        </Button>
-      </div>
-
-      <div className='w-full mb-6'>
-        <Tabs
-          value={mode}
-          onValueChange={(value) =>
-            setMode(value as 'automatic' | 'manual' | 'manualPhrase')
-          }
+      {/* Cómo quieres crearla */}
+      <div>
+        <div
+          role='tablist'
+          aria-label={t('Cómo quieres crear la frase')}
+          className='grid grid-cols-3 gap-2'
         >
-          <TabsList className='grid w-full grid-cols-3'>
-            <TabsTrigger value='automatic'>La IA la crea</TabsTrigger>
-            <TabsTrigger value='manual'>Elijo palabras</TabsTrigger>
-            <TabsTrigger value='manualPhrase'>La escribo yo</TabsTrigger>
-          </TabsList>
-        </Tabs>
+          {MODES.map((item) => {
+            const active = mode === item.value
+            const Icon = item.icon
+            return (
+              <button
+                key={item.value}
+                type='button'
+                role='tab'
+                aria-selected={active}
+                aria-label={t(item.label)}
+                onClick={() => setMode(item.value)}
+                className={cn(
+                  'ica-press flex min-h-[84px] min-w-0 flex-col items-center justify-center gap-1.5 rounded-2xl border-2 px-1.5 py-2.5 text-center transition-colors',
+                  !active && 'border-border bg-card text-muted-foreground hover:bg-muted dark:bg-transparent',
+                )}
+                style={
+                  active
+                    ? {
+                        borderColor: 'var(--ica-c)',
+                        background: 'var(--ica-c-soft)',
+                        color: 'var(--ica-c-ink)',
+                        boxShadow: '0 4px 0 var(--ica-c-edge)',
+                      }
+                    : { boxShadow: '0 4px 0 var(--border)' }
+                }
+              >
+                <Icon className='size-6' strokeWidth={2.6} aria-hidden='true' />
+                <span className='text-[13px] leading-tight font-extrabold'>{t(item.label)}</span>
+              </button>
+            )
+          })}
+        </div>
+        <p className='m-0 mt-3 text-sm font-semibold text-muted-foreground'>{t(activeMode.hint)}</p>
       </div>
 
+      {/* La IA la crea: con cuántas palabras */}
       {mode === 'automatic' && (
-        <div className='mb-6 w-full'>
-          <Label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
-            Utiliza las últimas:
-          </Label>
-          <div className='flex gap-2'>
+        <div>
+          <SectionLabel>{t('Usa tus últimas')}</SectionLabel>
+          <div className='grid grid-cols-4 gap-2'>
             {[5, 6, 7, 8].map((n) => {
               const available = automaticPool.length >= n
               const active = wordCount === n
 
               return (
-                <Button
+                <button
                   key={n}
                   type='button'
                   onClick={() => available && setWordCount(n)}
-                  variant={active ? 'default' : 'outline'}
-                  className='h-auto flex-1 py-3'
                   disabled={!available}
+                  aria-pressed={active}
+                  className={cn(
+                    'ica-press flex h-[72px] flex-col items-center justify-center rounded-2xl border-2 disabled:opacity-40',
+                    !active && 'border-border bg-card dark:bg-transparent',
+                  )}
+                  style={
+                    active
+                      ? {
+                          background: 'var(--ica-c)',
+                          borderColor: 'var(--ica-c-edge)',
+                          color: '#fff',
+                          boxShadow: '0 4px 0 var(--ica-c-edge)',
+                        }
+                      : { boxShadow: '0 4px 0 var(--border)' }
+                  }
                 >
-                  <div className='text-center'>
-                    <div className='text-2xl font-bold'>{n}</div>
-                    <div
-                      className={`text-[10px] ${active ? 'text-background' : 'text-muted-foreground'}`}
-                    >
-                      palabras
-                    </div>
-                  </div>
-                </Button>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {mode === 'manual' && (
-        <div className='mb-6 w-full rounded-xl border border-border bg-muted/30 p-3.5'>
-          <label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
-            Selecciona palabras (5-8,{' '}
-            {!manualOnlyNotActivated ? 'últimas 25 por defecto' : 'todas'})
-          </label>
-
-          <Input
-            value={manualQuery}
-            onChange={(event) => setManualQuery(event.target.value)}
-            placeholder='Buscar palabra entre todas...'
-            className='mb-3'
-          />
-
-          <label className='mb-3 inline-flex items-center gap-2 text-xs text-muted-foreground'>
-            <input
-              type='checkbox'
-              checked={manualOnlyNotActivated}
-              onChange={(event) =>
-                setManualOnlyNotActivated(event.target.checked)
-              }
-              className='h-4 w-4 accent-primary'
-            />
-            Mostrar solo palabras no activadas
-          </label>
-
-          <div className='flex max-h-44 flex-wrap gap-1.5 overflow-y-auto py-4'>
-            {filteredManualPool.map((word) => {
-              const active = manualSelectedIds.includes(word.id)
-              const importance = getImportance(word.importance)
-              return (
-                <Button
-                  key={word.id}
-                  type='button'
-                  onClick={() => toggleCustomWord(word.id)}
-                  variant={active ? 'default' : 'outline'}
-                  size='sm'
-                  className={getUsageAuraClass(word.id, active)}
-                >
+                  <span className='text-2xl leading-none font-black tabular-nums'>{n}</span>
                   <span
-                    className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importance.key]}`}
-                  />
-                  {word.target}
-                </Button>
+                    className={cn(
+                      'mt-1 text-[11px] font-bold',
+                      active ? 'text-white/85' : 'text-muted-foreground',
+                    )}
+                  >
+                    {t('palabras')}
+                  </span>
+                </button>
               )
             })}
           </div>
-          <p className='mt-2 text-[11px] text-muted-foreground'>
-            Seleccionadas: {selectedWords.length}/8
-          </p>
         </div>
       )}
 
-      {mode === 'manualPhrase' && (
-        <div className='mb-6 w-full rounded-xl border border-border bg-muted/30 p-3.5'>
-          <label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
-            Escribe tu frase manual en ambos idiomas
-          </label>
-
-          <div className='space-y-3'>
-            <div>
-              <Label className='mb-1 block text-xs text-muted-foreground'>
-                {config.targetLang}
-              </Label>
-              <textarea
-                value={manualPhraseTarget}
-                onChange={(event) => {
-                  setManualPhraseApproved(false)
-                  setManualSuggestionReview(null)
-                  setManualPhraseTarget(event.target.value)
-                }}
-                placeholder={`Escribe la frase en ${config.targetLang}...`}
-                className='min-h-22 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
-              />
-            </div>
-
-            <div>
-              <Label className='mb-1 block text-xs text-muted-foreground'>
-                {config.nativeLang}
-              </Label>
-              <textarea
-                value={manualPhraseNative}
-                onChange={(event) => {
-                  setManualPhraseApproved(false)
-                  setManualSuggestionReview(null)
-                  setManualPhraseNative(event.target.value)
-                }}
-                placeholder={`Escribe la frase en ${config.nativeLang}...`}
-                className='min-h-22 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
-              />
-            </div>
-
-            <div>
-              <Label className='mb-1 block text-xs text-muted-foreground'>
-                Últimas 10 palabras ICA
-              </Label>
-              <div className='flex max-h-28 flex-wrap gap-1.5 overflow-y-auto rounded-md border border-border/70 bg-background/70 p-2'>
-                {manualPhraseGuidePool.map((word) => {
-                  const importance = getImportance(word.importance)
-                  return (
-                    <div
-                      key={word.id}
-                      className={`inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2.5 py-1 text-xs ${getUsageAuraClass(word.id)}`}
-                    >
-                      <span
-                        className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importance.key]}`}
-                      />
-                      <span className='font-semibold'>{word.target}</span>
-                      <span className='text-muted-foreground'>({word.native})</span>
-                    </div>
-                  )
-                })}
-                {manualPhraseGuidePool.length === 0 ? (
-                  <p className='text-xs text-muted-foreground'>
-                    Aun no hay palabras ICA para mostrar.
-                  </p>
-                ) : null}
-              </div>
-            </div>
-          </div>
-
-          <p className='mt-3 text-[11px] text-muted-foreground'>
-            Detectadas automáticamente: {manualDetectedWords.length}. Se aprueba
-            con mínimo {minWordsRequired} palabras ICA.
-          </p>
-
-          <Button
-            type='button'
-            onClick={() => void handleManualPhraseSuggestion()}
-            variant='outline'
-            className='mt-3 w-full'
-            disabled={
-              manualSuggestionLoading ||
-              !manualPhraseTarget.trim() ||
-              !manualPhraseNative.trim() ||
-              manualDetectedWords.length === 0
+      {/* Elijo palabras: buscador y fichas para tocar */}
+      {mode === 'manual' && (
+        <div className='ica-panel p-4'>
+          <SectionLabel
+            right={
+              <Pill tone={selectedWords.length >= minWordsRequired ? 'ok' : 'c'}>
+                {selectedWords.length}/8
+              </Pill>
             }
           >
-            {manualSuggestionLoading
-              ? 'Analizando frase...'
-              : '🧠 Revisar gramática con IA'}
-          </Button>
+            {t('Elige de 5 a 8 palabras')}
+          </SectionLabel>
+
+          <div className='relative'>
+            <SearchIcon
+              className='pointer-events-none absolute top-1/2 left-3.5 size-4.5 -translate-y-1/2 text-muted-foreground'
+              strokeWidth={2.6}
+              aria-hidden='true'
+            />
+            <Input
+              value={manualQuery}
+              onChange={(event) => setManualQuery(event.target.value)}
+              placeholder={t('Buscar palabra entre todas...')}
+              className='pl-10'
+              aria-label={t('Buscar palabra')}
+            />
+          </div>
+
+          <button
+            type='button'
+            role='switch'
+            aria-checked={manualOnlyNotActivated}
+            onClick={() => setManualOnlyNotActivated((prev) => !prev)}
+            className='mt-3 flex items-center gap-2.5 text-left text-sm font-bold'
+          >
+            <span
+              className='relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors'
+              style={{ background: manualOnlyNotActivated ? 'var(--ica-c)' : 'var(--border-strong)' }}
+              aria-hidden='true'
+            >
+              <span
+                className='absolute size-4.5 rounded-full bg-white transition-[left]'
+                style={{ left: manualOnlyNotActivated ? 19 : 3 }}
+              />
+            </span>
+            {t('Mostrar solo palabras no activadas')}
+          </button>
+
+          <p className='m-0 mt-3 mb-2 text-xs font-semibold text-muted-foreground'>
+            {manualOnlyNotActivated || manualQuery.trim()
+              ? t('Buscando entre todas tus palabras')
+              : t('Tus últimas 25 palabras')}
+          </p>
+          {/* Lista desplazable: se difumina abajo para indicar que hay más */}
+          <div
+            className='-mx-1 flex max-h-80 flex-wrap gap-2 overflow-y-auto px-1 pt-1 pb-6'
+            style={{
+              maskImage: 'linear-gradient(to bottom, #000 calc(100% - 2.5rem), transparent)',
+              WebkitMaskImage: 'linear-gradient(to bottom, #000 calc(100% - 2.5rem), transparent)',
+            }}
+          >
+            {filteredManualPool.map((word) =>
+              renderTile(word, {
+                state: manualSelectedIds.includes(word.id) ? 'selected' : 'idle',
+                onClick: () => toggleCustomWord(word.id),
+              }),
+            )}
+            {filteredManualPool.length === 0 ? (
+              <p className='m-0 py-2 text-sm font-semibold text-muted-foreground'>
+                {t('No hay palabras con ese filtro.')}
+              </p>
+            ) : null}
+          </div>
+          {showUsageLegend ? <UsageLegend /> : null}
         </div>
       )}
 
-      <div className='mb-6 w-full'>
-        <label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
-          {mode === 'manualPhrase'
-            ? 'Palabras ICA detectadas'
-            : 'Palabras seleccionadas'}
-        </label>
-        <div className='flex flex-wrap gap-1.5'>
-          {selectedWords.map((word) => {
-            const importance = getImportance(word.importance)
-            return (
-              <div
-                key={word.id}
-                className={`inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-3 py-1.5 ${getUsageAuraClass(word.id)}`}
-              >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importance.key]}`}
-                />
-                <span className='text-sm font-semibold'>{word.target}</span>
-                <span className='text-xs text-muted-foreground'>
-                  ({word.native})
-                </span>
-                {mode === 'manual' && (
-                  <Button
-                    type='button'
-                    onClick={() => removeSelectedWord(word.id)}
-                    variant='outline'
-                    size='xs'
-                  >
-                    x
-                  </Button>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      </div>
+      {/* La escribo yo: palabras para usar, frase y detección */}
+      {mode === 'manualPhrase' && (
+        <>
+          <div>
+            <SectionLabel>{t('Usa al menos 5 de tus palabras')}</SectionLabel>
+            {manualPhraseGuidePool.length > 0 ? (
+              <>
+                <div className='flex flex-wrap gap-2'>
+                  {manualPhraseGuidePool.map((word) =>
+                    renderTile(word, { state: detectedIds.has(word.id) ? 'detected' : 'idle' }),
+                  )}
+                </div>
+                <p className='m-0 mt-3 text-xs font-semibold text-muted-foreground'>
+                  {t('Tus últimas 10 palabras ICA: se marcan al usarlas en tu frase.')}
+                </p>
+                {showUsageLegend ? <UsageLegend /> : null}
+              </>
+            ) : (
+              <p className='m-0 text-sm font-semibold text-muted-foreground'>
+                {t('Aún no hay palabras ICA para mostrar.')}
+              </p>
+            )}
+          </div>
 
+          <div className='ica-panel p-4'>
+            <label htmlFor='phrase-manual-target' className='mb-2 flex items-center gap-2'>
+              <Pill tone='c' solid>
+                {langName(config.targetLang)}
+              </Pill>
+              <span className='text-xs font-bold text-muted-foreground'>{t('Tu frase')}</span>
+            </label>
+            <Textarea
+              id='phrase-manual-target'
+              value={manualPhraseTarget}
+              onChange={(event) => {
+                setManualPhraseApproved(false)
+                setManualSuggestionReview(null)
+                setManualPhraseTarget(event.target.value)
+              }}
+              placeholder={t('Escribe la frase en {lang}...', { lang: langName(config.targetLang) })}
+              className='min-h-28 rounded-2xl text-lg font-bold md:text-lg'
+            />
+
+            <label htmlFor='phrase-manual-native' className='mt-4 mb-2 flex items-center gap-2'>
+              <Pill tone='neutral'>{langName(config.nativeLang)}</Pill>
+              <span className='text-xs font-bold text-muted-foreground'>{t('Su traducción')}</span>
+            </label>
+            <Textarea
+              id='phrase-manual-native'
+              value={manualPhraseNative}
+              onChange={(event) => {
+                setManualPhraseApproved(false)
+                setManualSuggestionReview(null)
+                setManualPhraseNative(event.target.value)
+              }}
+              placeholder={t('Escribe la frase en {lang}...', { lang: langName(config.nativeLang) })}
+              className='min-h-20 rounded-2xl'
+            />
+
+            {/* Paso opcional: revisión con IA */}
+            <div className='mt-3 flex flex-wrap items-center justify-between gap-2'>
+              <span className='text-xs font-semibold text-muted-foreground'>{t('Opcional')}</span>
+              <Button
+                type='button'
+                onClick={() => void handleManualPhraseSuggestion()}
+                variant='outline'
+                size='sm'
+                disabled={
+                  manualSuggestionLoading ||
+                  !manualPhraseTarget.trim() ||
+                  !manualPhraseNative.trim() ||
+                  manualDetectedWords.length === 0
+                }
+              >
+                <SparklesIcon strokeWidth={2.6} aria-hidden='true' />
+                {manualSuggestionLoading ? t('Analizando frase...') : t('Revisar gramática con IA')}
+              </Button>
+            </div>
+          </div>
+
+          {/* Detección en directo */}
+          <div>
+            <div className='flex items-center gap-4'>
+              <p
+                className='m-0 shrink-0 leading-none font-black tabular-nums'
+                style={{ color: enoughDetected ? 'var(--ica-ok-ink)' : 'var(--ica-c-ink)' }}
+              >
+                <span className='text-4xl'>{detectedCount}</span>
+                <span className='text-xl opacity-60'>/{minWordsRequired}</span>
+              </p>
+              <div className='min-w-0 flex-1'>
+                <GameProgress
+                  value={Math.min(1, detectedCount / minWordsRequired)}
+                  color={enoughDetected ? 'var(--ica-ok)' : 'var(--ica-c)'}
+                  label={t('Palabras ICA detectadas')}
+                />
+                <p className='m-0 mt-1.5 text-xs font-bold text-muted-foreground'>
+                  {t('Detectadas automáticamente: {n}.', { n: detectedCount })}{' '}
+                  {enoughDetected
+                    ? t('¡Ya puedes guardarla!')
+                    : tn(minWordsRequired - detectedCount, 'Te falta {n} para guardarla.', 'Te faltan {n} para guardarla.')}
+                </p>
+              </div>
+            </div>
+            {selectedWords.length > 0 ? (
+              <div className='mt-3 flex flex-wrap gap-2'>
+                {selectedWords.map((word) => renderTile(word, { state: 'detected' }))}
+              </div>
+            ) : null}
+          </div>
+        </>
+      )}
+
+      {/* Palabras con las que se creará la frase */}
+      {mode !== 'manualPhrase' && (
+        <div>
+          <SectionLabel
+            right={
+              <Pill tone='c'>
+                {tn(selectedWords.length, '{n} palabra', '{n} palabras')}
+              </Pill>
+            }
+          >
+            {mode === 'manual' ? t('Tu selección') : t('Palabras seleccionadas')}
+          </SectionLabel>
+          {selectedWords.length > 0 ? (
+            <div className='flex flex-wrap gap-2'>
+              {selectedWords.map((word) =>
+                renderTile(word, {
+                  onRemove: mode === 'manual' ? () => removeSelectedWord(word.id) : undefined,
+                }),
+              )}
+            </div>
+          ) : (
+            <p className='m-0 text-sm font-semibold text-muted-foreground'>
+              {mode === 'manual'
+                ? t('Toca palabras de la lista para elegirlas.')
+                : t('Aún no hay palabras para crear la frase.')}
+            </p>
+          )}
+          {mode === 'automatic' && showUsageLegend ? <UsageLegend /> : null}
+        </div>
+      )}
+
+      {/* Sin palabras suficientes: ir a Inmersión */}
+      {cards.length < minWordsRequired ? (
+        <div
+          className='flex items-center gap-3 rounded-3xl px-4 py-3.5'
+          style={{ background: 'var(--ica-i-soft)' }}
+        >
+          <PhaseLetter letter='I' size={40} />
+          <p className='m-0 min-w-0 flex-1 text-sm font-bold' style={{ color: 'var(--ica-i-ink)' }}>
+            {t('Necesitas al menos {n} palabras ICA para crear una frase.', { n: minWordsRequired })}
+          </p>
+          <Button asChild variant='i' size='sm'>
+            <Link to={DASHBOARD_ROUTES.newIcaWords}>
+              <PlusIcon strokeWidth={3} aria-hidden='true' />
+              {t('Añadir')}
+            </Link>
+          </Button>
+        </div>
+      ) : null}
+
+      {/* Límite del día alcanzado */}
+      {dailyLimits && phraseLimitReached && !loading && (
+        <DailyLimitNotice kind='phrases' state={dailyLimits} className='w-full' />
+      )}
+
+      {/* Botón principal */}
       <Button
         type='button'
         onClick={handlePrimaryAction}
-        variant={
-          mode === 'manualPhrase' && manualPhraseApproved ? 'outline' : 'default'
-        }
-        disabled={
-          loading ||
-          (mode !== 'manualPhrase' &&
-            selectedWords.length < minWordsRequired) ||
-          (mode === 'manualPhrase' &&
-            !manualPhraseApproved &&
-            (selectedWords.length < minWordsRequired ||
-              !manualPhraseTarget.trim() ||
-              !manualPhraseNative.trim()))
-        }
-        className='h-11 w-full gap-2 text-base font-bold'
+        variant={isManualPhrase && manualPhraseApproved ? 'outline' : 'c'}
+        size='xl'
+        disabled={primaryDisabled}
+        className='w-full'
       >
         {loading ? (
           <>
-            <span className='inline-block h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground border-t-foreground' />
-            {mode === 'manualPhrase'
-              ? 'Registrando frase...'
-              : `Generando ${level}...`}
+            <span className='inline-block size-4.5 animate-spin rounded-full border-[3px] border-white/40 border-t-white' />
+            {isManualPhrase ? t('Registrando frase...') : t('Generando {level}...', { level })}
           </>
-        ) : mode === 'manualPhrase' ? (
+        ) : isManualPhrase ? (
           manualPhraseApproved ? (
-            '🔄 Escribir otra frase'
+            <>
+              <PenLineIcon strokeWidth={2.6} aria-hidden='true' />
+              {t('Escribir otra frase')}
+            </>
           ) : (
-            `✅ Guardar frase manual · ${selectedWords.length}/${minWordsRequired}`
+            t('Guardar frase · {n}/{min}', { n: selectedWords.length, min: minWordsRequired })
           )
         ) : (
-          `⚡ Generar Frase · ${level}`
+          <>
+            <SparklesIcon strokeWidth={2.6} aria-hidden='true' />
+            {t('Generar frase · {level}', { level })}
+          </>
         )}
       </Button>
 
+      {/* Resultado: la frase y, justo debajo, el siguiente paso (Activación) */}
       {result && (
-        <article className='mt-7 overflow-hidden rounded-2xl border border-primary/30'>
-          <div className='bg-linear-to-br from-primary/15 to-background p-5'>
-            <div className='mb-3 flex items-center justify-between'>
-              <div className='flex items-center gap-2'>
-                <span className='text-[11px] font-semibold uppercase tracking-wider text-primary'>
-                  {config.targetLang}
-                </span>
-                <LevelBadge level={level} size='small' />
+        <div ref={resultRef} className='ica-pop flex scroll-mt-4 flex-col gap-4'>
+          <article className='ica-panel p-5'>
+            <div className='flex items-center gap-3'>
+              <span
+                className='hidden size-9 shrink-0 items-center justify-center rounded-full sm:flex'
+                style={{ background: 'var(--ica-c-soft)', color: 'var(--ica-c)' }}
+                aria-hidden='true'
+              >
+                <CheckIcon className='size-5' strokeWidth={3.2} />
+              </span>
+              <div className='min-w-0 flex-1'>
+                <p className='m-0 text-base leading-tight font-black tracking-tight whitespace-nowrap sm:text-lg'>
+                  {isManualPhrase ? t('¡Frase guardada!') : t('¡Frase creada!')}
+                </p>
+                <p className='m-0 text-xs font-bold text-muted-foreground'>
+                  {langName(config.targetLang)}
+                  {result.words_used?.length
+                    ? ` · ${tn(result.words_used.length, '{n} palabra ICA', '{n} palabras ICA')}`
+                    : ''}
+                </p>
               </div>
+              {mode !== 'manualPhrase' && extraGenerationsCount < MAX_EXTRA_GENERATIONS ? (
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='sm'
+                  className='shrink-0 rounded-xl'
+                  onClick={() => void handleGenerate({ isRegeneration: true })}
+                  disabled={loading}
+                  aria-label={t('Quedan {n}', { n: regenerationsLeft })}
+                >
+                  <RefreshCwIcon className={loading ? 'animate-spin' : undefined} strokeWidth={2.6} aria-hidden='true' />
+                  {t('No me convence')}
+                </Button>
+              ) : null}
             </div>
-            <p className='font-serif text-2xl font-bold leading-relaxed'>
-              {result.phrase}
-            </p>
-            <RomanizationHint
-              text={result.phrase}
-              language={config.targetLang}
-            />
-            <SpeakButton
-              text={result.phrase}
-              langName={config.targetLang}
-              color='#3B82F6'
-              label={`Escuchar ${config.targetLang}`}
-              className='mt-3'
-            />
-            <Button
-              type='button'
-              onClick={() => void handleCopyResultPhrase()}
-              variant='outline'
-              size='sm'
-              className='mt-2'
-            >
-              <CopyIcon />
-              {copyingResult
-                ? 'Copiando...'
-                : resultCopied
-                  ? 'Copiadas'
-                  : 'Copiar frases'}
-            </Button>
-          </div>
 
-          <div className='border-t border-border bg-muted/20 p-5'>
-            <span className='mb-2 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground'>
-              {config.nativeLang}
-            </span>
-            <p className='text-base leading-relaxed text-muted-foreground'>
+            <p className='m-0 mt-4 font-display text-2xl leading-snug font-extrabold tracking-tight break-words'>
+              {highlightUsedWords(result.phrase, result.words_used)}
+            </p>
+            <RomanizationHint text={result.phrase} language={config.targetLang} />
+
+            <p className='m-0 mt-3 text-[11px] font-extrabold tracking-[0.08em] text-muted-foreground uppercase'>
+              {langName(config.nativeLang)}
+            </p>
+            <p className='m-0 mt-0.5 text-base leading-relaxed font-semibold text-muted-foreground'>
               {result.translation}
             </p>
-          </div>
 
-          {result.words_used && (
-            <div className='border-t border-border bg-muted/20 px-5 py-3.5'>
-              <div className='flex flex-wrap gap-1.5'>
+            {result.words_used && result.words_used.length > 0 && (
+              <div className='mt-3 flex flex-wrap gap-1.5'>
                 {result.words_used.map((word) => (
-                  <span
-                    key={word}
-                    className='rounded-md bg-primary/30 px-2.5 py-0.5 text-xs font-semibold text-white'
-                  >
+                  <Pill key={word} tone='c'>
+                    <CheckIcon className='size-3' strokeWidth={3.4} aria-hidden='true' />
                     {word}
-                  </span>
+                  </Pill>
                 ))}
               </div>
-            </div>
-          )}
+            )}
 
-          {resultPhraseId && (
-            <div className='border-t border-border bg-muted/20 p-5'>
+            <div className='mt-4 flex flex-wrap items-end justify-between gap-2 border-t-2 border-border pt-1'>
+              <SpeakButton
+                text={result.phrase}
+                langName={config.targetLang}
+                color='#3B82F6'
+                label={t('Escuchar {lang}', { lang: langName(config.targetLang) })}
+                className='mt-3'
+              />
               <Button
                 type='button'
-                onClick={openActivateModal}
-                className='h-11 w-full text-base font-bold'
+                onClick={() => void handleCopyResultPhrase()}
+                variant='outline'
+                size='sm'
               >
-                🗣️ Activar frase
+                {resultCopied ? (
+                  <CheckIcon strokeWidth={3} aria-hidden='true' />
+                ) : (
+                  <CopyIcon aria-hidden='true' />
+                )}
+                {copyingResult
+                  ? t('Copiando...')
+                  : resultCopied
+                    ? t('Copiadas')
+                    : t('Copiar frases')}
+              </Button>
+            </div>
+          </article>
+
+          {resultPhraseId && (
+            <div>
+              <p className='ica-label m-0 mb-2' style={{ color: 'var(--ica-a-ink)' }}>
+                {t('Siguiente paso · Activación')}
+              </p>
+              <Button type='button' onClick={openActivateModal} variant='a' size='xl' className='w-full'>
+                <MicIcon strokeWidth={2.6} aria-hidden='true' />
+                {t('Activar frase')}
               </Button>
             </div>
           )}
-        </article>
+        </div>
       )}
-
-      {result &&
-        mode !== 'manualPhrase' &&
-        extraGenerationsCount < MAX_EXTRA_GENERATIONS && (
-          <Button
-            type='button'
-            onClick={() => void handleGenerate({ isRegeneration: true })}
-            disabled={loading}
-            variant='outline'
-            className='mt-2 w-full'
-          >
-            🔄 No me convence, genera otra sin repetir esta
-          </Button>
-        )}
 
       <ActivatePhraseInMasterNoteModal
         open={activateModalOpen}
@@ -886,135 +1351,118 @@ export function PhraseView({
         }}
       />
 
+      {/* Revisión IA de la frase escrita a mano */}
       <Dialog
         open={manualSuggestionModalOpen}
         onOpenChange={setManualSuggestionModalOpen}
       >
-        <DialogContent className='sm:max-w-lg'>
+        <DialogContent className='max-h-[88vh] overflow-y-auto sm:max-w-lg'>
           <DialogHeader>
-            <DialogTitle>Revisión IA de tu frase</DialogTitle>
+            <div className='flex items-center gap-3'>
+              <IconTile tone='c' size={40}>
+                <SparklesIcon className='size-5' strokeWidth={2.6} aria-hidden='true' />
+              </IconTile>
+              <DialogTitle>{t('Revisión IA de tu frase')}</DialogTitle>
+            </div>
             <DialogDescription>
-              Te mostramos feedback en ambos idiomas y una sugerencia opcional.
-              La IA puede flexionar palabras ICA para que la gramática sea natural.
+              {t('Te mostramos feedback en ambos idiomas y una sugerencia opcional. La IA puede flexionar palabras ICA para que la gramática sea natural.')}
             </DialogDescription>
           </DialogHeader>
 
-          <div className='space-y-3'>
-            <div className='rounded-md border border-border/70 bg-muted/20 p-3'>
-              <p className='text-[11px] uppercase tracking-wider text-muted-foreground'>
-                Frase actual ({config.targetLang})
+          <div className='space-y-2.5'>
+            <ReviewBlock label={t('Frase actual ({lang})', { lang: langName(config.targetLang) })}>
+              <p className='m-0 text-base font-extrabold text-foreground'>
+                {manualPhraseTarget.trim()}
               </p>
-              <p className='mt-1 text-sm'>{manualPhraseTarget.trim()}</p>
-            </div>
+            </ReviewBlock>
 
-            <div className='rounded-md border border-border/70 bg-muted/20 p-3'>
-              <p className='text-[11px] uppercase tracking-wider text-muted-foreground'>
-                Comentario IA
-              </p>
-              <p className='mt-1 text-sm'>{manualSuggestionReview?.comment}</p>
-            </div>
+            <ReviewBlock label={t('Comentario IA')}>
+              <p className='m-0 text-foreground'>{manualSuggestionReview?.comment}</p>
+            </ReviewBlock>
 
             {manualSuggestionReview?.issues?.length ? (
-              <div className='rounded-md border border-amber-500/30 bg-amber-500/10 p-3'>
-                <p className='text-[11px] uppercase tracking-wider text-amber-700 dark:text-amber-300'>
-                  Posibles errores
-                </p>
-                <ul className='mt-1 list-disc space-y-1 pl-5 text-sm text-amber-800 dark:text-amber-200'>
+              <ReviewBlock label={t('Posibles errores')} tone='gold'>
+                <ul className='m-0 list-disc space-y-1 pl-5'>
                   {manualSuggestionReview.issues.map((issue) => (
                     <li key={issue}>{issue}</li>
                   ))}
                 </ul>
-              </div>
+              </ReviewBlock>
             ) : null}
 
             {manualSuggestionReview?.diagnostics?.suggestionRejectedReason ? (
-              <div className='rounded-md border border-amber-500/30 bg-amber-500/10 p-3'>
-                <p className='text-[11px] uppercase tracking-wider text-amber-700 dark:text-amber-300'>
-                  Nota ICA
-                </p>
-                <p className='mt-1 text-sm text-amber-800 dark:text-amber-200'>
+              <ReviewBlock label={t('Nota ICA')} tone='gold'>
+                <p className='m-0'>
                   {manualSuggestionReview.diagnostics.suggestionRejectedReason}
                 </p>
                 {manualSuggestionReview.diagnostics.missingRequiredWords.length >
                 0 ? (
-                  <p className='mt-1 text-xs text-amber-800 dark:text-amber-200'>
-                    Formas ICA exactas no visibles en sugerencia:{' '}
-                    {manualSuggestionReview.diagnostics.missingRequiredWords.join(
-                      ', ',
-                    )}
+                  <p className='m-0 mt-1 text-xs'>
+                    {t('Formas ICA exactas no visibles en sugerencia: {words}', {
+                      words: manualSuggestionReview.diagnostics.missingRequiredWords.join(', '),
+                    })}
                   </p>
                 ) : null}
                 {manualSuggestionReview.diagnostics.suggestionCandidate ? (
-                  <p className='mt-2 text-xs text-amber-800 dark:text-amber-200'>
-                    Borrador IA descartado: "
-                    {manualSuggestionReview.diagnostics.suggestionCandidate}"
+                  <p className='m-0 mt-2 text-xs'>
+                    {t('Borrador IA descartado: "{text}"', {
+                      text: manualSuggestionReview.diagnostics.suggestionCandidate,
+                    })}
                   </p>
                 ) : null}
-              </div>
+              </ReviewBlock>
             ) : null}
 
             {manualSuggestionReview?.targetFeedback?.length ? (
-              <div className='rounded-md border border-border/70 bg-muted/20 p-3'>
-                <p className='text-[11px] uppercase tracking-wider text-muted-foreground'>
-                  Feedback ({config.targetLang})
-                </p>
-                <ul className='mt-1 list-disc space-y-1 pl-5 text-sm'>
+              <ReviewBlock label={t('Feedback ({lang})', { lang: langName(config.targetLang) })}>
+                <ul className='m-0 list-disc space-y-1 pl-5 text-foreground'>
                   {manualSuggestionReview.targetFeedback.map((item) => (
                     <li key={item}>{item}</li>
                   ))}
                 </ul>
-              </div>
+              </ReviewBlock>
             ) : null}
 
             {manualSuggestionReview?.nativeFeedback?.length ? (
-              <div className='rounded-md border border-border/70 bg-muted/20 p-3'>
-                <p className='text-[11px] uppercase tracking-wider text-muted-foreground'>
-                  Feedback ({config.nativeLang})
-                </p>
-                <ul className='mt-1 list-disc space-y-1 pl-5 text-sm'>
+              <ReviewBlock label={t('Feedback ({lang})', { lang: langName(config.nativeLang) })}>
+                <ul className='m-0 list-disc space-y-1 pl-5 text-foreground'>
                   {manualSuggestionReview.nativeFeedback.map((item) => (
                     <li key={item}>{item}</li>
                   ))}
                 </ul>
-              </div>
+              </ReviewBlock>
             ) : null}
 
             {manualSuggestionReview?.suggestion ? (
-              <div className='rounded-md border border-primary/30 bg-primary/5 p-3'>
-                <p className='text-[11px] uppercase tracking-wider text-primary'>
-                  Sugerencia ({config.targetLang})
-                </p>
-                <p className='mt-1 text-sm font-semibold'>
+              <ReviewBlock label={t('Sugerencia ({lang})', { lang: langName(config.targetLang) })} tone='c'>
+                <p className='m-0 text-base font-extrabold'>
                   {manualSuggestionReview.suggestion}
                 </p>
-                <p className='mt-1 text-xs text-primary/80'>
-                  Si te convence, puedes aplicarla con "Usar sugerencia".
+                <p className='m-0 mt-1 text-xs opacity-80'>
+                  {t('Si te convence, puedes aplicarla con "Usar sugerencia".')}
                 </p>
-              </div>
+              </ReviewBlock>
             ) : manualSuggestionReview?.status === 'perfect' ? (
-              <div className='rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3'>
-                <p className='text-sm font-semibold text-emerald-700 dark:text-emerald-300'>
-                  Tu frase ya esta muy bien. No necesitas cambiarla.
+              <ReviewBlock tone='ok'>
+                <p className='m-0 flex items-center gap-2 font-extrabold'>
+                  <CheckIcon className='size-4' strokeWidth={3.2} aria-hidden='true' />
+                  {t('Tu frase ya está muy bien. No necesitas cambiarla.')}
                 </p>
-              </div>
+              </ReviewBlock>
             ) : (
-              <div className='rounded-md border border-amber-500/30 bg-amber-500/10 p-3'>
-                <p className='text-sm font-semibold text-amber-800 dark:text-amber-200'>
-                  No pudimos darte una sugerencia de {config.targetLang} que
-                  respete exactamente todas tus palabras ICA. Puedes reintentar.
+              <ReviewBlock tone='gold'>
+                <p className='m-0 font-bold'>
+                  {t('No pudimos darte una sugerencia de {lang} que respete exactamente todas tus palabras ICA. Puedes reintentar.', {
+                    lang: langName(config.targetLang),
+                  })}
                 </p>
-              </div>
+              </ReviewBlock>
             )}
 
             {manualSuggestionReview?.nativeSuggestion ? (
-              <div className='rounded-md border border-primary/30 bg-primary/5 p-3'>
-                <p className='text-[11px] uppercase tracking-wider text-primary'>
-                  Sugerencia ({config.nativeLang})
-                </p>
-                <p className='mt-1 text-sm'>
-                  {manualSuggestionReview.nativeSuggestion}
-                </p>
-              </div>
+              <ReviewBlock label={t('Sugerencia ({lang})', { lang: langName(config.nativeLang) })} tone='c'>
+                <p className='m-0'>{manualSuggestionReview.nativeSuggestion}</p>
+              </ReviewBlock>
             ) : null}
           </div>
 
@@ -1027,18 +1475,19 @@ export function PhraseView({
                 setManualSuggestionReview(null)
               }}
             >
-              Descartar
+              {t('Descartar')}
             </Button>
             <Button
               type='button'
+              variant='c'
               onClick={handleUseManualSuggestion}
               disabled={!manualSuggestionReview?.suggestion}
             >
-              Usar sugerencia
+              {t('Usar sugerencia')}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section>
+    </GamePage>
   )
 }

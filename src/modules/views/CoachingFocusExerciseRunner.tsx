@@ -11,6 +11,19 @@ import {
   type ExerciseData,
 } from "./coachingV2ExerciseLogic";
 import type { CoachingV2AttemptAnswer } from "../services/coaching";
+import { t } from "@/i18n";
+
+/* Los textos "Hueco N (verbo)" y "en blanco" se guardan en español (los ve el coach);
+   aquí solo se traducen al enseñarlos. */
+function displayQuestion(question: string): string {
+  const match = question.match(/^Hueco (\d+) \((.*)\)$/);
+  if (!match) return question;
+  return t("Hueco {n} ({verb})", { n: match[1], verb: match[2] });
+}
+
+function displayAnswer(answer: string): string {
+  return answer === "en blanco" ? t("en blanco") : answer;
+}
 
 /* Ejercicio de foco (fase Entrenado): los tres bloques + resultado.
    Lo usan el alumno (guarda su intento) y el coach (vista previa, sin guardar). */
@@ -392,7 +405,7 @@ export function CoachingFocusExerciseRunner({
         setAttemptFeedback(
           err instanceof Error
             ? err.message
-            : "No se pudo guardar el resultado del ejercicio.",
+            : t("No se pudo guardar el resultado del ejercicio."),
         );
       })
       .finally(() => {
@@ -423,15 +436,15 @@ export function CoachingFocusExerciseRunner({
                 className="rounded-md border border-primary/20 bg-card/80 p-2"
               >
                 <p className="text-xs text-muted-foreground">
-                  Bloque {idx + 1}
+                  {t("Bloque {n}", { n: idx + 1 })}
                 </p>
                 <p className="font-medium">{block.titulo}</p>
                 <Badge variant={idx === step ? "default" : "outline"}>
                   {idx < step
-                    ? "Respondido"
+                    ? t("Respondido")
                     : idx === step
-                      ? "Actual"
-                      : "Pendiente"}
+                      ? t("Actual")
+                      : t("Pendiente")}
                 </Badge>
               </div>
             ))}
@@ -534,7 +547,7 @@ export function CoachingFocusExerciseRunner({
                     </div>
 
                     <label htmlFor={`${key}-input`} className="sr-only">
-                      Respuesta libre del item {itemIdx + 1}
+                      {t("Respuesta libre del item {n}", { n: itemIdx + 1 })}
                     </label>
                     <Input
                       id={`${key}-input`}
@@ -545,7 +558,7 @@ export function CoachingFocusExerciseRunner({
                           [key]: event.target.value,
                         }))
                       }
-                      placeholder="Escribe tu frase"
+                      placeholder={t("Escribe tu frase")}
                       disabled={isDone}
                     />
 
@@ -556,11 +569,11 @@ export function CoachingFocusExerciseRunner({
                           size="sm"
                           onClick={() => evaluateBuildItem(itemIdx)}
                         >
-                          Comprobar
+                          {t("Comprobar")}
                         </Button>
                         {warnings[key] && (
                           <p className="text-xs text-destructive">
-                            Escribe una respuesta antes de comprobar.
+                            {t("Escribe una respuesta antes de comprobar.")}
                           </p>
                         )}
                       </div>
@@ -590,7 +603,7 @@ export function CoachingFocusExerciseRunner({
                                 if (ok) {
                                   return (
                                     <>
-                                      En tu frase:{" "}
+                                      {t("En tu frase:")}{" "}
                                       <b className="font-medium text-emerald-700 dark:text-emerald-300">
                                         «{hit}»
                                       </b>
@@ -602,16 +615,16 @@ export function CoachingFocusExerciseRunner({
                                   <>
                                     {hit ? (
                                       <>
-                                        Has escrito{" "}
+                                        {t("Has escrito")}{" "}
                                         <b className="font-medium text-rose-700 dark:text-rose-300">
                                           «{hit}»
                                         </b>
                                         .{" "}
                                       </>
                                     ) : (
-                                      "No encuentro esta forma en tu frase. "
+                                      t("No encuentro esta forma en tu frase.") + " "
                                     )}
-                                    Aquí va{" "}
+                                    {t("Aquí va")}{" "}
                                     <b className="font-medium text-emerald-700 dark:text-emerald-300">
                                       {good}
                                     </b>
@@ -624,8 +637,7 @@ export function CoachingFocusExerciseRunner({
                         })}
                         {item.ejemplo && (
                           <p className="rounded-md bg-muted p-2">
-                            Una forma de decirlo entre muchas (el resto
-                            de palabras es libre):{" "}
+                            {t("Una forma de decirlo entre muchas (el resto de palabras es libre):")}{" "}
                             <span className="font-medium text-foreground">
                               {item.ejemplo}
                             </span>
@@ -698,7 +710,7 @@ export function CoachingFocusExerciseRunner({
                                       ? "border-rose-600 bg-rose-100 text-rose-950 dark:border-rose-500 dark:bg-rose-950/60 dark:text-rose-100"
                                       : ""
                                 }`}
-                                aria-label={`Hueco ${index + 1} (${item.verbo})`}
+                                aria-label={t("Hueco {n} ({verb})", { n: index + 1, verb: item.verbo })}
                               />
                               {result === false && (
                                 <span className="text-xs text-emerald-700 dark:text-emerald-300">
@@ -720,8 +732,8 @@ export function CoachingFocusExerciseRunner({
                   disabled={!dialogCanSubmit}
                 >
                   {dialogCanSubmit
-                    ? "Corregir conversacion"
-                    : "Completa todos los huecos"}
+                    ? t("Corregir conversacion")
+                    : t("Completa todos los huecos")}
                 </Button>
               )}
 
@@ -750,9 +762,9 @@ export function CoachingFocusExerciseRunner({
             >
               {blockDone
                 ? step === 2
-                  ? "Ver resultado"
-                  : `Seguir a ${blockList[step + 1]?.titulo || "siguiente bloque"}`
-                : "Responde todo el bloque para continuar"}
+                  ? t("Ver resultado")
+                  : t("Seguir a {block}", { block: blockList[step + 1]?.titulo || t("siguiente bloque") })
+                : t("Responde todo el bloque para continuar")}
             </Button>
           )}
 
@@ -760,7 +772,7 @@ export function CoachingFocusExerciseRunner({
             <div className="space-y-4 rounded-md border border-primary/20 bg-card/85 p-4 shadow-sm">
               {attemptSaving && (
                 <p className="text-xs text-muted-foreground">
-                  Guardando tu resultado...
+                  {t("Guardando tu resultado...")}
                 </p>
               )}
               {attemptFeedback && (
@@ -770,17 +782,17 @@ export function CoachingFocusExerciseRunner({
               )}
               <div>
                 <p className="text-3xl font-semibold">
-                  {correctCount} de {totalUnits}
+                  {t("{n} de {total}", { n: correctCount, total: totalUnits })}
                 </p>
                 <p className="text-sm text-muted-foreground">
                   {passed
-                    ? `Superado: necesitabas ${data.umbral} de ${totalUnits}. El foco pasa a Entrenado.`
-                    : `No superado: te faltan ${Math.max(0, data.umbral - correctCount)} aciertos para llegar a ${data.umbral} de ${totalUnits}. Repásalo y vuelve a intentarlo.`}
+                    ? t("Superado: necesitabas {need} de {total}. El foco pasa a Entrenado.", { need: data.umbral, total: totalUnits })
+                    : t("No superado: te faltan {n} aciertos para llegar a {need} de {total}. Repásalo y vuelve a intentarlo.", { n: Math.max(0, data.umbral - correctCount), need: data.umbral, total: totalUnits })}
                 </p>
               </div>
 
               <div className="space-y-2">
-                <p className="text-sm font-medium">Por bloque</p>
+                <p className="text-sm font-medium">{t("Por bloque")}</p>
                 {blockScore.map((row) => (
                   <p
                     key={`block-score-${row.id}`}
@@ -792,7 +804,7 @@ export function CoachingFocusExerciseRunner({
               </div>
 
               <div className="space-y-2">
-                <p className="text-sm font-medium">Por etiqueta</p>
+                <p className="text-sm font-medium">{t("Por etiqueta")}</p>
                 {tagScore.map((row) => (
                   <p
                     key={`tag-score-${row.tag}`}
@@ -805,10 +817,10 @@ export function CoachingFocusExerciseRunner({
               </div>
 
               <div className="space-y-2">
-                <p className="text-sm font-medium">Tus fallos</p>
+                <p className="text-sm font-medium">{t("Tus fallos")}</p>
                 {failures.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No hubo fallos.
+                    {t("No hubo fallos.")}
                   </p>
                 ) : (
                   failures.map((row, idx) => (
@@ -817,12 +829,12 @@ export function CoachingFocusExerciseRunner({
                       className="rounded-md border p-2 text-xs"
                     >
                       <p className="font-medium">{row.block}</p>
-                      <p>{row.question}</p>
+                      <p>{displayQuestion(row.question)}</p>
                       <p className="text-destructive">
-                        Escribiste: {row.mine}
+                        {t("Escribiste: {answer}", { answer: displayAnswer(row.mine) })}
                       </p>
                       <p className="text-emerald-700 dark:text-emerald-300">
-                        Esperado: {row.expected}
+                        {t("Esperado: {answer}", { answer: row.expected })}
                       </p>
                       {row.why && (
                         <p className="text-muted-foreground">{row.why}</p>
@@ -848,7 +860,7 @@ export function CoachingFocusExerciseRunner({
                   setAttemptFeedback(null);
                 }}
               >
-                Repetir ejercicio
+                {t("Repetir ejercicio")}
               </Button>
             </div>
           )}
