@@ -3,6 +3,8 @@ import type { TouchEvent as ReactTouchEvent } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { MobileProfileSheet } from './MobileProfileSheet'
 import { PendingReviewDot } from './PendingReviewDot'
+import { ChallengeAlertBadge } from './IcaChallenges/ChallengeAlertBadge'
+import { describeIcaChallengeAlerts, useIcaChallengeAlerts } from '../hooks/useIcaChallengeAlerts'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 
 // Deslizar hacia arriba sobre la tab bar (al menos estos px) abre el perfil
@@ -19,6 +21,8 @@ export function MobileBottomNav({
 }: MobileBottomNavProps) {
   const location = useLocation()
   const [profileOpen, setProfileOpen] = useState(false)
+  // Retos nuevos o turnos pendientes en Desafíos ICA: globito encima del mando.
+  const challengeAlerts = useIcaChallengeAlerts()
   const touchStartYRef = useRef<number | null>(null)
 
   // Si se navega a otra pantalla, el panel de perfil se cierra
@@ -95,8 +99,12 @@ export function MobileBottomNav({
           </NavLink>
 
           <NavLink to={DASHBOARD_ROUTES.gamesIca} className={linkClassName}>
-            <span className='text-lg leading-none' aria-hidden='true'>
-              🎮
+            <span className='relative inline-flex text-lg leading-none'>
+              <span aria-hidden='true'>🎮</span>
+              <ChallengeAlertBadge
+                count={challengeAlerts.total}
+                title={`Desafíos ICA: ${describeIcaChallengeAlerts(challengeAlerts)}`}
+              />
             </span>
             <span className='text-[11px] font-medium'>Juegos ICA</span>
           </NavLink>

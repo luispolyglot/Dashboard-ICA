@@ -235,6 +235,22 @@ export async function playSuccessChime(): Promise<void> {
   }
 }
 
+/**
+ * ✅ Acierto corto y suave (Desafíos ICA): dos notas rápidas y bajitas, un "tin-tin" de
+ * 0,2 s. Suena en cada palabra, así que no puede cansar (Luis: el arpegio largo cansaba).
+ */
+export async function playSoftCorrect(): Promise<void> {
+  try {
+    const ctx = await getAudioContext()
+    const now = ctx.currentTime + 0.01
+    scheduleNote(ctx, 1318.5, now, 0.09, 'sine', 0.13)
+    scheduleNote(ctx, 1760, now + 0.07, 0.13, 'sine', 0.11)
+    await wait(220)
+  } catch {
+    // Sin audio: el juego sigue igual.
+  }
+}
+
 /** ❌ Fallo: dos notas graves que bajan, suaves (no castiga, pero se nota la diferencia). */
 export async function playFailTone(): Promise<void> {
   try {

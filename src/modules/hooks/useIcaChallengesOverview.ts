@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type {
   IcaChallengeAvailableUser,
@@ -6,13 +6,15 @@ import type {
   IcaChallengePlayRecord,
   IcaChallengeRecord,
   IcaChallengeScope,
+  IcaChallengeStats,
   IcaChallengeTypeRecord,
   IcaOwnWordsChallengeConfig,
 } from '../types'
 import {
   cancelIcaChallengeInvitation,
-  createIcaOwnWordsChallenge,
+  createIcaChallenge,
   fetchMyIcaChallengeEnrollment,
+  fetchMyIcaChallengeStats,
   listIcaChallengeProfilesByIds,
   listIcaChallengeTypes,
   listIcaChallengePlaysByChallengeIds,
@@ -21,6 +23,7 @@ import {
   respondIcaChallengeInvitation,
   upsertMyIcaChallengeEnrollment,
 } from '../services/icaChallenges'
+import { refreshIcaChallengeAlerts } from './useIcaChallengeAlerts'
 
 type UseIcaChallengesOverviewParams = {
   targetLang?: string
@@ -38,6 +41,14 @@ type UseIcaChallengesOverviewResult = {
   challengeTypes: IcaChallengeTypeRecord[]
   availableUsers: IcaChallengeAvailableUser[]
   myActiveChallengesCount: number
+  /** Tu nivel real (barra de progreso) en este par de idiomas. */
+  myLevel: string | null
+  /** Palabras de tu Baúl ICA en este idioma (null = aún no se sabe). */
+  myWordCount: number | null
+  /** Palabras necesarias para entrar en los retos (20). */
+  minWordsToJoin: number
+  /** Victorias, derrotas y racha de victorias seguidas. */
+  stats: IcaChallengeStats | null
   isLoading: boolean
   isSavingEnrollment: boolean
   isCreatingChallenge: boolean
@@ -46,8 +57,8 @@ type UseIcaChallengesOverviewResult = {
   currentUserId: string | null
   error: string | null
   setEnrollmentActive: (active: boolean) => Promise<void>
-  createOwnWordsChallenge: (input: {
-    challengeTypeId?: string
+  createChallenge: (input: {
+    challengeTypeId: string
     challengedUserId: string
     scope: IcaChallengeScope
     config: IcaOwnWordsChallengeConfig
@@ -74,6 +85,10 @@ export function useIcaChallengesOverview({
   const [challengeTypes, setChallengeTypes] = useState<IcaChallengeTypeRecord[]>([])
   const [availableUsers, setAvailableUsers] = useState<IcaChallengeAvailableUser[]>([])
   const [myActiveChallengesCount, setMyActiveChallengesCount] = useState(0)
+  const [myLevel, setMyLevel] = useState<string | null>(null)
+  const [myWordCount, setMyWordCount] = useState<number | null>(null)
+  const [minWordsToJoin, setMinWordsToJoin] = useState(20)
+  const [stats, setStats] = useState<IcaChallengeStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSavingEnrollment, setIsSavingEnrollment] = useState(false)
   const [isCreatingChallenge, setIsCreatingChallenge] = useState(false)
@@ -98,12 +113,20 @@ export function useIcaChallengesOverview({
         })
         setAvailableUsers(data.rows)
         setMyActiveChallengesCount(data.myActiveChallengesCount)
+        setMyLevel(data.myLevel)
+        setMyWordCount(data.myWordCount)
+        setMinWordsToJoin(data.minWordsToJoin)
       } catch {
         setAvailableUsers([])
       }
     },
     [nativeLang, targetLang],
   )
+
+  // La pantalla de «Cargando…» solo sale la primera vez (o al cambiar de idioma).
+  // Después, al aceptar, rechazar o retar, los datos se actualizan por detrás sin
+  // que la pantalla parpadee.
+  const loadedKeyRef = useRef<string | null>(null)
 
   const refresh = useCallback(async () => {
     if (!targetLang || !nativeLang) {
@@ -120,7 +143,9 @@ export function useIcaChallengesOverview({
       return
     }
 
-    setIsLoading(true)
+    const loadKey = `${targetLang}|${nativeLang}`
+    const firstLoad = loadedKeyRef.current !== loadKey
+    if (firstLoad) setIsLoading(true)
     setError(null)
     try {
       const [
@@ -161,9 +186,19 @@ export function useIcaChallengesOverview({
       setChallengeTypes(challengeTypesData)
       setAvailableUsers(availableUsersData.rows)
       setMyActiveChallengesCount(availableUsersData.myActiveChallengesCount)
+      setMyLevel(availableUsersData.myLevel)
+      setMyWordCount(availableUsersData.myWordCount)
+      setMinWordsToJoin(availableUsersData.minWordsToJoin)
+      // El aviso de la barra de abajo y la cabecera se pone al día.
+      void refreshIcaChallengeAlerts(true)
+      // El balance (racha de victorias) no bloquea la pantalla si falla.
+      void fetchMyIcaChallengeStats()
+        .then(setStats)
+        .catch(() => setStats(null))
     } catch {
       setError('No pudimos cargar los desafíos ICA.')
     } finally {
+      loadedKeyRef.current = loadKey
       setIsLoading(false)
     }
   }, [nativeLang, targetLang])
@@ -195,9 +230,9 @@ export function useIcaChallengesOverview({
     [nativeLang, refreshAvailableUsers, targetLang],
   )
 
-  const createOwnWordsChallenge = useCallback(
+  const createChallenge = useCallback(
     async (input: {
-      challengeTypeId?: string
+      challengeTypeId: string
       challengedUserId: string
       scope: IcaChallengeScope
       config: IcaOwnWordsChallengeConfig
@@ -206,7 +241,7 @@ export function useIcaChallengesOverview({
       if (!targetLang || !nativeLang) return
       setIsCreatingChallenge(true)
       try {
-        await createIcaOwnWordsChallenge({
+        await createIcaChallenge({
           challengeTypeId: input.challengeTypeId,
           challengedUserId: input.challengedUserId,
           scope: input.scope,
@@ -220,14 +255,30 @@ export function useIcaChallengesOverview({
         setIsCreatingChallenge(false)
       }
     },
-    [nativeLang, refresh, refreshAvailableUsers, targetLang],
+    [nativeLang, refresh, targetLang],
   )
 
   const respondInvitation = useCallback(async (challengeId: string, accept: boolean) => {
     setIsResponding(true)
+    // Se ve al momento: el reto sale de «Pendientes» sin esperar al servidor.
+    setChallenges((previous) =>
+      previous.map((challenge) =>
+        challenge.id === challengeId
+          ? {
+              ...challenge,
+              status: accept ? 'in_progress' : 'not_accepted',
+              resultType: accept ? challenge.resultType : 'not_accepted',
+            }
+          : challenge,
+      ),
+    )
     try {
       await respondIcaChallengeInvitation(challengeId, accept)
       await refresh()
+    } catch (respondError) {
+      // Si falla (p. ej. el reto ya caducó), se vuelve a lo que diga el servidor.
+      void refresh()
+      throw respondError
     } finally {
       setIsResponding(false)
     }
@@ -235,9 +286,17 @@ export function useIcaChallengesOverview({
 
   const cancelInvitation = useCallback(async (challengeId: string) => {
     setIsCancelling(true)
+    setChallenges((previous) =>
+      previous.map((challenge) =>
+        challenge.id === challengeId ? { ...challenge, status: 'cancelled', resultType: 'cancelled' } : challenge,
+      ),
+    )
     try {
       await cancelIcaChallengeInvitation(challengeId)
       await refresh()
+    } catch (cancelError) {
+      void refresh()
+      throw cancelError
     } finally {
       setIsCancelling(false)
     }
@@ -252,6 +311,10 @@ export function useIcaChallengesOverview({
       challengeTypes,
       availableUsers,
       myActiveChallengesCount,
+      myLevel,
+      myWordCount,
+      minWordsToJoin,
+      stats,
       isLoading,
       isSavingEnrollment,
       isCreatingChallenge,
@@ -260,7 +323,7 @@ export function useIcaChallengesOverview({
       currentUserId,
       error,
       setEnrollmentActive,
-      createOwnWordsChallenge,
+      createChallenge,
       respondInvitation,
       cancelInvitation,
       refreshAvailableUsers,
@@ -272,7 +335,7 @@ export function useIcaChallengesOverview({
       playsByChallengeId,
       userProfiles,
       challengeTypes,
-      createOwnWordsChallenge,
+      createChallenge,
       currentUserId,
       enrollment,
       error,
@@ -280,6 +343,10 @@ export function useIcaChallengesOverview({
       isCancelling,
       isLoading,
       myActiveChallengesCount,
+      myLevel,
+      myWordCount,
+      minWordsToJoin,
+      stats,
       isResponding,
       isSavingEnrollment,
       refresh,

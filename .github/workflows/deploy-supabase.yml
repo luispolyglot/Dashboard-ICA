@@ -1,0 +1,144 @@
+name: Deploy Supabase
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Supabase
+    if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ github.ref == 'refs/heads/main' && secrets.PROD_PROJECT_ID || secrets.DEV_PROJECT_ID }}
+      SUPABASE_DB_PASSWORD: ${{ github.ref == 'refs/heads/main' && secrets.PROD_DB_PASSWORD || secrets.DEV_DB_PASSWORD }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Detect Supabase changes
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          full_deploy=false
+          base_sha=""
+
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            base_sha="${{ github.event.before }}"
+            if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]]; then
+              full_deploy=true
+            elif ! git cat-file -e "$base_sha^{commit}" 2>/dev/null; then
+              full_deploy=true
+            fi
+          else
+            base_sha="$(git rev-parse "$GITHUB_SHA^" 2>/dev/null || true)"
+            if [[ -z "$base_sha" ]]; then
+              full_deploy=true
+            fi
+          fi
+
+          migrations_changed=false
+          declare -A changed_functions=()
+          shared_changed=false
+
+          if [[ "$full_deploy" == "true" ]]; then
+            migrations_changed=true
+            shared_changed=true
+          else
+            while IFS= read -r changed_file; do
+              [[ -z "$changed_file" ]] && continue
+
+              if [[ "$changed_file" == supabase/migrations/*.sql ]]; then
+                migrations_changed=true
+              fi
+
+              case "$changed_file" in
+                supabase/config.toml|supabase/functions/_shared/*)
+                  shared_changed=true
+                  ;;
+                supabase/functions/*/*)
+                  relative_path="${changed_file#supabase/functions/}"
+                  function_name="${relative_path%%/*}"
+                  if [[ "$function_name" != "_shared" && -d "supabase/functions/$function_name" ]]; then
+                    changed_functions["$function_name"]=1
+                  fi
+                  ;;
+              esac
+            done < <(git diff --name-only "$base_sha" "$GITHUB_SHA")
+          fi
+
+          if [[ "$shared_changed" == "true" ]]; then
+            shopt -s nullglob
+            for function_dir in supabase/functions/*/; do
+              function_name="${function_dir%/}"
+              function_name="${function_name##*/}"
+              [[ "$function_name" == "_shared" ]] && continue
+              changed_functions["$function_name"]=1
+            done
+          fi
+
+          if (( ${#changed_functions[@]} == 0 )); then
+            functions_json='[]'
+          else
+            functions_json="$(printf '%s\n' "${!changed_functions[@]}" | sort | jq -R . | jq -s -c .)"
+          fi
+
+          echo "Migrations changed: $migrations_changed"
+          echo "Functions to deploy: $functions_json"
+          echo "migrations=$migrations_changed" >> "$GITHUB_OUTPUT"
+          echo "functions=$functions_json" >> "$GITHUB_OUTPUT"
+
+      - name: Validate deployment secrets
+        if: steps.changes.outputs.migrations == 'true' || steps.changes.outputs.functions != '[]'
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$SUPABASE_ACCESS_TOKEN" ]] || { echo "Missing SUPABASE_ACCESS_TOKEN secret" >&2; exit 1; }
+          [[ -n "$SUPABASE_PROJECT_REF" ]] || { echo "Missing project ID secret for this branch" >&2; exit 1; }
+          if [[ "${{ steps.changes.outputs.migrations }}" == "true" && -z "$SUPABASE_DB_PASSWORD" ]]; then
+            echo "Missing database password secret for this branch" >&2
+            exit 1
+          fi
+
+      - name: Link Supabase project
+        if: steps.changes.outputs.migrations == 'true'
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Apply database migrations
+        if: steps.changes.outputs.migrations == 'true'
+        run: supabase db push --include-all --yes
+
+      - name: Deploy changed Edge Functions
+        if: steps.changes.outputs.functions != '[]'
+        env:
+          FUNCTIONS_JSON: ${{ steps.changes.outputs.functions }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          while IFS= read -r function_name; do
+            [[ -z "$function_name" ]] && continue
+            echo "Deploying function: $function_name"
+            supabase functions deploy "$function_name" --project-ref "$SUPABASE_PROJECT_REF"
+          done < <(jq -r '.[]' <<< "$FUNCTIONS_JSON")
