@@ -21,6 +21,7 @@ import {
   type CorrectorLibre,
 } from './coaching-exercise-corrector.ts'
 import { COACHING_EXERCISE_TEMPLATE_EXAMPLE } from './coaching-exercise-template.ts'
+import { getModelRequestConfig, isClaudeSonnet55, makeStrictTool } from './anthropic-model.ts'
 
 type Json = Record<string, unknown>
 
@@ -73,14 +74,25 @@ const strList = (value: unknown): string[] =>
         .filter(Boolean)
     : []
 
-const strMap = (value: unknown): Record<string, string> =>
+const strMap = (
+  value: unknown,
+  keyField = 'clave',
+  valueField = 'valor',
+): Record<string, string> =>
   isRecord(value)
     ? Object.fromEntries(
         Object.entries(value)
           .filter(([key, item]) => key.trim() && typeof item === 'string' && item.trim())
           .map(([key, item]) => [key.trim(), String(item).trim()]),
       )
-    : {}
+    : Array.isArray(value)
+      ? Object.fromEntries(
+          value
+            .filter(isRecord)
+            .map((item): [string, string] => [str(item[keyField]), str(item[valueField])])
+            .filter(([key, item]) => Boolean(key && item)),
+        )
+      : {}
 
 export type FocusExerciseSubmittedAnswer = {
   block: 'reconocer' | 'construir' | 'conversacion'
@@ -348,6 +360,7 @@ export function createAnthropicToolCaller(input: {
 }): ToolCaller {
   const baseUrl = input.baseUrl || 'https://api.anthropic.com'
   const doFetch = input.fetchImpl || fetch
+  const isSonnet55 = isClaudeSonnet55(input.model)
   return async ({ system, prompt, tool, maxTokens, temperature }) => {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 110_000)
@@ -363,12 +376,12 @@ export function createAnthropicToolCaller(input: {
         },
         body: JSON.stringify({
           model: input.model,
-          max_tokens: maxTokens,
-          temperature,
+          ...getModelRequestConfig(input.model, maxTokens),
+          ...(isSonnet55 ? {} : { temperature }),
           system,
           messages: [{ role: 'user', content: prompt }],
-          tools: [tool],
-          tool_choice: { type: 'tool', name: tool.name },
+          tools: [isSonnet55 ? makeStrictTool(tool) : tool],
+          tool_choice: isSonnet55 ? { type: 'auto' } : { type: 'tool', name: tool.name },
         }),
       })
       if (!response.ok) {
@@ -377,13 +390,24 @@ export function createAnthropicToolCaller(input: {
       }
       const data = (await response.json()) as {
         stop_reason?: string
-        content?: Array<{ type: string; name?: string; input?: unknown }>
+        content?: Array<{ type: string; name?: string; input?: unknown; text?: string }>
       }
       if (data.stop_reason === 'max_tokens') {
         throw new Error('La respuesta de la IA se cortó (max_tokens).')
       }
       const block = data.content?.find((item) => item.type === 'tool_use' && item.name === tool.name)
-      return block && isRecord(block.input) ? block.input : null
+      if (block && isRecord(block.input)) return block.input
+
+      // Sonnet 5.5 accepts tool_choice:auto and may answer in text despite the prompt.
+      const text = data.content?.filter((item) => item.type === 'text').map((item) => item.text || '').join('\n')
+      if (!text) return null
+      try {
+        const cleaned = text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim()
+        const parsed = JSON.parse(cleaned)
+        return isRecord(parsed) ? parsed : null
+      } catch {
+        return null
+      }
     } finally {
       clearTimeout(timer)
     }
@@ -401,8 +425,22 @@ const PLAN_TOOL: ToolDefinition = {
     type: 'object',
     properties: {
       foco_subtitulo: { type: 'string' },
-      etiquetas: { type: 'object', additionalProperties: { type: 'string' } },
-      equivalencias: { type: 'object', additionalProperties: { type: 'string' } },
+      etiquetas: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: { clave: { type: 'string' }, valor: { type: 'string' } },
+          required: ['clave', 'valor'],
+        },
+      },
+      equivalencias: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: { numero: { type: 'string' }, palabra: { type: 'string' } },
+          required: ['numero', 'palabra'],
+        },
+      },
       libre: {
         type: 'object',
         properties: {
@@ -586,20 +624,26 @@ function contextPrompt(input: FocusExerciseInput): string {
 }
 
 function planPrompt(input: FocusExerciseInput): string {
+  const toEntries = (value: unknown, keyField: string, valueField: string) =>
+    Object.entries(strMap(value, keyField, valueField)).map(([key, item]) => ({
+      [keyField]: key,
+      [valueField]: item,
+    }))
+
   return [
     contextPrompt(input),
     '',
     'TAREA: prepara la cabecera y las reglas del corrector. Así lo hizo la plantilla para inglés (foco de modales):',
     pretty({
       foco_subtitulo: T.foco_subtitulo,
-      etiquetas: T.etiquetas,
-      equivalencias: T.equivalencias,
+      etiquetas: toEntries(T.etiquetas, 'clave', 'valor'),
+      equivalencias: toEntries(T.equivalencias, 'numero', 'palabra'),
       libre: T.libre,
     }),
     '',
     '- foco_subtitulo: una frase que dice qué se entrena y qué se corrige (estilo de la plantilla).',
-    '- etiquetas: de 2 a 4 claves cortas en minúsculas y sin tildes → nombre corto de la dificultad. Son los "puntos débiles" del foco que luego verá el alumno en su resultado.',
-    '- equivalencias: cifras 1-12 → palabra en el idioma objetivo (para no penalizar "3" frente a "three").',
+    '- etiquetas: lista de objetos {clave, valor}; de 2 a 4 claves cortas en minúsculas y sin tildes → nombre corto de la dificultad. Son los "puntos débiles" del foco que luego verá el alumno en su resultado.',
+    '- equivalencias: lista de objetos {numero, palabra}; cifras 1-12 → palabra en el idioma objetivo (para no penalizar "3" frente a "three").',
     '- libre.prohibidas: palabras que NUNCA pueden ocupar el hueco del verbo libre en este foco (en la plantilla "to", porque detrás de un modal no va).',
     '- libre.no_verbo: palabras que no son verbos pero podrían colarse como tal: pronombres sujeto y objeto, artículos, posesivos, restos de contracciones y formas del verbo auxiliar que no toca.',
     '- libre.no_termina: terminaciones que el verbo libre NO puede tener en este foco (en la plantilla "ing"). Nunca una sola letra (una "s" rechazaría verbos como discuss o focus). Puede ir vacía.',
@@ -695,7 +739,7 @@ type Plan = {
 
 function cleanPlan(raw: Json | null, input: FocusExerciseInput): Plan | null {
   if (!raw) return null
-  const etiquetasRaw = strMap(raw.etiquetas)
+  const etiquetasRaw = strMap(raw.etiquetas, 'clave', 'valor')
   const etiquetas = Object.fromEntries(
     Object.entries(etiquetasRaw).map(([key, value]) => [
       key
@@ -713,7 +757,7 @@ function cleanPlan(raw: Json | null, input: FocusExerciseInput): Plan | null {
   return {
     foco_subtitulo: str(raw.foco_subtitulo, `Practicas ${input.focusTitle}.`),
     etiquetas,
-    equivalencias: strMap(raw.equivalencias),
+    equivalencias: strMap(raw.equivalencias, 'numero', 'palabra'),
     libre: {
       prohibidas: strList(libreRaw.prohibidas).map((w) => w.toLowerCase()),
       no_verbo: strList(libreRaw.no_verbo).map((w) => w.toLowerCase()),

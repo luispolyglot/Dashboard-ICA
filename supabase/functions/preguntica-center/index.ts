@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { CORS_HEADERS, jsonResponse } from '../_shared/http.ts'
+import { getModelRequestConfig, isClaudeSonnet55 } from '../_shared/anthropic-model.ts'
 import {
   DEFAULT_LEVEL_FAMILY,
   LANG_TO_FAMILY,
@@ -572,8 +573,8 @@ async function callAnthropic(system: string, userPrompt: string): Promise<string
     },
     body: JSON.stringify({
       model,
-      max_tokens: 1200,
-      temperature: 0.2,
+      ...getModelRequestConfig(model, 1200),
+      ...(isClaudeSonnet55(model) ? {} : { temperature: 0.2 }),
       system,
       messages: [{ role: 'user', content: userPrompt }],
     }),

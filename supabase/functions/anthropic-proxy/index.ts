@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { PRONUNCIATION_MAX_WORDS, buildPronunciationPrompt, parsePronunciationReply, pronunciationMaxTokens } from '../_shared/pronunciation-prompt.ts'
 import { ensureCoachingAdmin, scopeAllows } from '../_shared/coaching-auth.ts'
+import { getModelRequestConfig, isClaudeSonnet55, makeStrictTool } from '../_shared/anthropic-model.ts'
 import {
   createAnthropicToolCaller,
   generateCoachingFocusExercise,
@@ -73,6 +74,7 @@ type AnthropicToolDefinition = {
   name: string
   description: string
   input_schema: Record<string, unknown>
+  strict?: boolean
 }
 
 // Modelo rápido y barato (Haiku) para las tareas cortas de todos los días:
@@ -621,11 +623,15 @@ async function callAnthropic(
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
   const model = options?.model || Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6'
   const baseUrl = Deno.env.get('ANTHROPIC_BASE_URL') || 'https://api.anthropic.com'
+  const isSonnet55 = isClaudeSonnet55(model)
 
   if (!apiKey) {
     throw new Error('Missing ANTHROPIC_API_KEY secret')
   }
 
+  const tool = options?.tool
+    ? isSonnet55 ? makeStrictTool(options.tool) : options.tool
+    : undefined
   const response = await fetch(`${baseUrl}/v1/messages`, {
     method: 'POST',
     headers: {
@@ -635,17 +641,20 @@ async function callAnthropic(
     },
     body: JSON.stringify({
       model,
-      max_tokens: options?.maxTokens ?? 1000,
-      temperature: options?.temperature ?? 0.2,
+      ...getModelRequestConfig(model, options?.maxTokens ?? 1000),
+      ...(isSonnet55 ? {} : { temperature: options?.temperature ?? 0.2 }),
       system,
       messages: [{ role: 'user', content: userPrompt }],
-      tools: options?.tool ? [options.tool] : undefined,
-      tool_choice: options?.tool ? { type: 'tool', name: options.tool.name } : undefined,
+      tools: tool ? [tool] : undefined,
+      tool_choice: tool
+        ? isSonnet55 ? { type: 'auto' } : { type: 'tool', name: tool.name }
+        : undefined,
     }),
   })
 
   if (!response.ok) {
-    throw new Error(`Anthropic error ${response.status}`)
+    const body = await response.text().catch(() => '')
+    throw new Error(`Anthropic error ${response.status}: ${body.slice(0, 500)}`)
   }
 
   const data = (await response.json()) as AnthropicResponse
@@ -1158,8 +1167,8 @@ Deno.serve(async (req) => {
               type: 'object',
               properties: {
                 status: { type: 'string' },
-                suggestion: { type: 'string' },
-                nativeSuggestion: { type: 'string' },
+                suggestion: { type: ['string', 'null'] },
+                nativeSuggestion: { type: ['string', 'null'] },
                 comment: { type: 'string' },
                 targetFeedback: {
                   type: 'array',
