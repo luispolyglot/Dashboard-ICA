@@ -45,7 +45,11 @@ import {
 } from '../services/coachingNotificationPreferences'
 import { fetchCoachingAccess } from '../services/coaching'
 import { DASHBOARD_ROUTES } from '../routes/paths'
-import { FlameIcon, StreakClockIcon } from '../game/icons'
+import { ChatBubblesIcon, FlameIcon, StreakClockIcon } from '../game/icons'
+import { chatLanguageLabel } from '../game/icademerChat'
+import { useIcademerChatStatus } from '../game/useIcademerChat'
+import { useDashboardContext } from '../context/DashboardContext'
+import { setIcademerChatNotifications } from '../services/icademerChat'
 import { GamePage, IconTile, ListRow, PageTitle, Panel, Pill, RowGroup, SectionLabel, type Tone } from '../game/ui'
 import type {
   CalendarIcademyTeacherNotificationPreference,
@@ -85,6 +89,13 @@ function formatReminderHour(hour: number): string {
 }
 
 export function ManageNotificationsView() {
+  // Chat de icademers de tu idioma: avisos sí o no (solo si estás dentro).
+  const { config } = useDashboardContext()
+  const chatLang = config?.targetLang ?? ''
+  const chatStatus = useIcademerChatStatus(chatLang)
+  const [chatNotifications, setChatNotifications] = useState<boolean | null>(null)
+  const [isSavingChat, setIsSavingChat] = useState(false)
+  const chatNotificationsOn = chatNotifications ?? chatStatus?.notificationsEnabled === true
   const [reminderPrefs, setReminderPrefs] = useState<PushReminderPreferences>(
     getDefaultReminderPreferences,
   )
@@ -592,6 +603,39 @@ export function ManageNotificationsView() {
           />
         </RowGroup>
       </div>
+
+      {/* Chat de icademers */}
+      {chatStatus?.isMember ? (
+        <div>
+          <SectionLabel>{t('Chat')}</SectionLabel>
+          <RowGroup>
+            <ReminderRow
+              id='manage-icademer-chat-switch'
+              icon={<ChatBubblesIcon size={30} />}
+              iconTone='i'
+              title={t('Icademers de {lang}', { lang: chatLanguageLabel(chatLang) })}
+              text={t('Cuando alguien escribe en el grupo.')}
+              checked={chatNotificationsOn}
+              disabled={isSavingChat}
+              onCheckedChange={(checked) => {
+                setIsSavingChat(true)
+                void (async () => {
+                  try {
+                    if (checked) await ensurePushOnCurrentDevice()
+                    await setIcademerChatNotifications(chatLang, checked)
+                    setChatNotifications(checked)
+                    toast.success(t('Preferencias de notificaciones actualizadas.'))
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : t('No se pudieron actualizar las notificaciones.'))
+                  } finally {
+                    setIsSavingChat(false)
+                  }
+                })()
+              }}
+            />
+          </RowGroup>
+        </div>
+      ) : null}
 
       {/* Clases */}
       <div>

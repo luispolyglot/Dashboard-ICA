@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { toast } from 'sonner'
-import { ClockIcon, LogOutIcon, SendIcon, UsersIcon } from 'lucide-react'
+import { BellIcon, ChevronDownIcon, ClockIcon, GlobeIcon, LogOutIcon, SendIcon, UsersIcon } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -15,21 +16,25 @@ import {
   mustWaitForOthers,
   nextQuarter,
   timeInViewerZone,
+  zoneCity,
   type ChatMessageKind,
 } from '../game/icademerChat'
 import { markChatInviteSeen } from '../game/useIcademerChat'
+import { enablePushOnCurrentDevice } from '../services/pushNotifications'
 import {
   fetchIcademerChat,
   fetchIcademerChatStatus,
   joinIcademerChat,
   leaveIcademerChat,
   sendIcademerChatMessage,
+  setIcademerChatNotifications,
   type IcademerChatMessage,
   type IcademerChatStatus,
 } from '../services/icademerChat'
 import { t, tn, uiLocale } from '@/i18n'
 
 const POLL_MS = 8000
+const COMPOSER_OPEN_KEY = 'ica-chat-composer-open-v1'
 
 // Colores para distinguir a la gente (sale siempre el mismo para cada persona).
 const SENDER_TONES = [
@@ -48,10 +53,10 @@ function toneFor(key: string): string {
   return SENDER_TONES[Math.abs(hash) % SENDER_TONES.length]
 }
 
-function messageText(message: Pick<IcademerChatMessage, 'kind' | 'timeValue'>): string {
-  const item = CHAT_MESSAGES.find((entry) => entry.kind === message.kind)
+function chatText(kind: ChatMessageKind, time?: string | null): string {
+  const item = CHAT_MESSAGES.find((entry) => entry.kind === kind)
   if (!item) return ''
-  return message.kind === 'hora' ? t(item.text, { time: message.timeValue ?? '' }) : t(item.text)
+  return kind === 'hora' ? t(item.text, { time: time ?? '' }) : t(item.text)
 }
 
 function clockLabel(iso: string): string {
@@ -60,10 +65,78 @@ function clockLabel(iso: string): string {
   return date.toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' })
 }
 
+function readComposerOpen(): boolean {
+  try {
+    return window.localStorage.getItem(COMPOSER_OPEN_KEY) !== '0'
+  } catch {
+    return true
+  }
+}
+
+/** Ventana de abajo (en el móvil) o centrada (en el ordenador) con una pregunta y dos botones. */
+function ChatSheet({
+  icon,
+  title,
+  text,
+  yes,
+  no,
+  onYes,
+  onNo,
+  busy,
+  danger,
+}: {
+  icon: ReactNode
+  title: string
+  text?: string
+  yes: string
+  no: string
+  onYes: () => void
+  onNo: () => void
+  busy?: boolean
+  danger?: boolean
+}) {
+  return (
+    <div
+      className='fixed inset-0 z-[110] flex items-end justify-center bg-black/50 sm:items-center'
+      role='dialog'
+      aria-modal='true'
+      aria-label={title}
+      onClick={(event) => {
+        if (event.target === event.currentTarget && !busy) onNo()
+      }}
+    >
+      <div className='ica-sheet-up w-full max-w-md rounded-t-[28px] bg-background px-5 pt-6 pb-[max(env(safe-area-inset-bottom),1.25rem)] text-center shadow-2xl sm:rounded-[28px]'>
+        <span className='mx-auto flex size-16 items-center justify-center rounded-3xl' style={{ background: 'var(--ica-i-soft)' }}>
+          {icon}
+        </span>
+        <h2 className='m-0 mt-3 font-display text-xl leading-tight font-extrabold tracking-tight text-balance'>{title}</h2>
+        {text ? <p className='m-0 mt-2 text-sm font-semibold text-muted-foreground'>{text}</p> : null}
+        <Button
+          type='button'
+          size='xl'
+          className='mt-5 w-full'
+          onClick={onYes}
+          disabled={busy}
+          style={danger ? { background: 'var(--ica-bad-strong)', boxShadow: '0 4px 0 var(--ica-bad-edge)' } : undefined}
+        >
+          {yes}
+        </Button>
+        <Button type='button' size='xl' variant='outline' className='mt-2 w-full' onClick={onNo} disabled={busy}>
+          {no}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 /**
  * CHAT DE ICADEMERS (uno por idioma objetivo). Chat cerrado: solo se pueden mandar los 8
  * mensajes de la lista (y una hora en cuartos). No se ve quién está dentro, solo cuántos son.
  * Como mucho 3 mensajes seguidos. Sirve para quedar en el Club de DinámICA.
+ *
+ * Horas: quien manda «¿A las…?» elige la hora en SU hora local; se guarda con su zona horaria
+ * y cada icademer la ve ya pasada a la suya (con la hora original en pequeño). Las
+ * notificaciones también llegan en la hora de cada uno.
  */
 export function IcademerChatView() {
   const { user } = useAuth()
@@ -71,6 +144,7 @@ export function IcademerChatView() {
   const targetLang = config?.targetLang ?? ''
   const language = chatLanguageLabel(targetLang)
   const viewerZone = useMemo(() => deviceTimeZone(), [])
+  const viewerCity = zoneCity(viewerZone)
 
   const [status, setStatus] = useState<IcademerChatStatus | null>(null)
   const [messages, setMessages] = useState<IcademerChatMessage[]>([])
@@ -82,7 +156,11 @@ export function IcademerChatView() {
   const [pickingTime, setPickingTime] = useState(false)
   const [hour, setHour] = useState(() => nextQuarter(new Date()).slice(0, 2))
   const [minute, setMinute] = useState(() => nextQuarter(new Date()).slice(3))
+  const [composerOpen, setComposerOpen] = useState(readComposerOpen)
+  const [askNotifications, setAskNotifications] = useState(false)
+  const [savingNotifications, setSavingNotifications] = useState(false)
   const [confirmLeave, setConfirmLeave] = useState(false)
+  const [leaving, setLeaving] = useState(false)
   const composerRef = useRef<HTMLDivElement | null>(null)
   const lastIdRef = useRef<string | null>(null)
 
@@ -110,6 +188,8 @@ export function IcademerChatView() {
         setMemberCount(next.memberCount)
         if (next.isMember) {
           markChatInviteSeen(user?.id, targetLang)
+          // Aún no ha dicho si quiere avisos de este grupo: se pregunta al entrar.
+          if (next.notificationsEnabled === null) setAskNotifications(true)
           await loadChat()
         }
       } catch (statusError) {
@@ -137,17 +217,30 @@ export function IcademerChatView() {
     const last = messages[messages.length - 1]?.id ?? null
     if (last && last !== lastIdRef.current) {
       lastIdRef.current = last
-      // El último mensaje y los botones para contestar, a la vista.
       composerRef.current?.scrollIntoView({ block: 'end' })
     }
   }, [messages])
+
+  const toggleComposer = () => {
+    setComposerOpen((open) => {
+      const next = !open
+      try {
+        window.localStorage.setItem(COMPOSER_OPEN_KEY, next ? '1' : '0')
+      } catch {
+        // Sin almacenamiento: se recuerda solo mientras la pantalla está abierta.
+      }
+      if (!next) setPickingTime(false)
+      return next
+    })
+  }
 
   const join = async () => {
     setJoining(true)
     try {
       await joinIcademerChat(targetLang)
       markChatInviteSeen(user?.id, targetLang)
-      setStatus((current) => (current ? { ...current, isMember: true } : current))
+      setStatus((current) => (current ? { ...current, isMember: true, notificationsEnabled: null } : current))
+      setAskNotifications(true)
       await loadChat()
     } catch (joinError) {
       toast.error(joinError instanceof Error ? joinError.message : t('No se pudo conectar con el chat.'))
@@ -156,19 +249,44 @@ export function IcademerChatView() {
     }
   }
 
-  const leave = async () => {
-    if (!confirmLeave) {
-      setConfirmLeave(true)
-      return
+  const answerNotifications = async (enabled: boolean) => {
+    setSavingNotifications(true)
+    try {
+      if (enabled) {
+        // Activa los avisos en este móvil u ordenador (pide permiso al navegador si hace falta).
+        try {
+          await enablePushOnCurrentDevice()
+        } catch (pushError) {
+          toast.error(pushError instanceof Error ? pushError.message : t('No se pudieron activar los avisos en este dispositivo.'))
+        }
+      }
+      await setIcademerChatNotifications(targetLang, enabled)
+      setStatus((current) => (current ? { ...current, notificationsEnabled: enabled } : current))
+      setAskNotifications(false)
+      toast.success(
+        enabled
+          ? t('Te avisaremos cuando alguien escriba.')
+          : t('Sin avisos de este grupo. Puedes activarlos en Perfil > Notificaciones.'),
+      )
+    } catch (saveError) {
+      toast.error(saveError instanceof Error ? saveError.message : t('No se pudo conectar con el chat.'))
+    } finally {
+      setSavingNotifications(false)
     }
+  }
+
+  const leave = async () => {
+    setLeaving(true)
     try {
       await leaveIcademerChat(targetLang)
-      setStatus((current) => (current ? { ...current, isMember: false } : current))
+      setStatus((current) => (current ? { ...current, isMember: false, notificationsEnabled: null } : current))
       setMessages([])
       setConfirmLeave(false)
       toast.success(t('Has salido del chat.'))
     } catch (leaveError) {
       toast.error(leaveError instanceof Error ? leaveError.message : t('No se pudo conectar con el chat.'))
+    } finally {
+      setLeaving(false)
     }
   }
 
@@ -203,10 +321,7 @@ export function IcademerChatView() {
     <section className='mx-auto flex w-full max-w-xl flex-1 flex-col gap-4 px-4 pt-2 pb-6 lg:py-8'>
       {/* Cabecera */}
       <div className='flex items-center gap-3'>
-        <span
-          className='flex size-14 shrink-0 items-center justify-center rounded-2xl'
-          style={{ background: 'var(--ica-i-soft)' }}
-        >
+        <span className='flex size-14 shrink-0 items-center justify-center rounded-2xl' style={{ background: 'var(--ica-i-soft)' }}>
           <ChatBubblesIcon size={38} />
         </span>
         <div className='min-w-0 flex-1'>
@@ -237,6 +352,7 @@ export function IcademerChatView() {
           <ul className='m-0 flex list-none flex-col gap-2 p-0 text-sm font-semibold text-muted-foreground'>
             <li>{t('Los mensajes son cerrados: eliges uno de la lista y, si quieres, una hora.')}</li>
             <li>{t('Sirve para quedar en el Club de DinámICA y ponerle nombre a la gente.')}</li>
+            <li>{t('Las horas se ajustan solas: cada uno las ve en su hora local.')}</li>
             <li>{t('Nadie ve quién está dentro: solo cuántos son.')}</li>
           </ul>
           {status && !status.canJoin ? (
@@ -261,10 +377,13 @@ export function IcademerChatView() {
             {messages.map((message, index) => {
               const previous = messages[index - 1]
               const sameSender = previous && previous.senderKey === message.senderKey
+              // «¿A las…?»: se enseña en la hora de quien lo lee; la original, en pequeño.
               const converted =
-                message.kind === 'hora' && message.timeValue
+                message.kind === 'hora' && message.timeValue && !message.isMe
                   ? timeInViewerZone(message.timeValue, message.timeZone, viewerZone, new Date(message.createdAt))
                   : null
+              const shownTime = converted ? converted.time : message.timeValue
+              const dayNote = converted?.dayShift === 1 ? t(' (del día siguiente)') : converted?.dayShift === -1 ? t(' (del día anterior)') : ''
               return (
                 <div
                   key={message.id}
@@ -284,11 +403,21 @@ export function IcademerChatView() {
                   >
                     <p className='m-0 flex items-center gap-1.5 text-[15px] leading-snug font-bold'>
                       {message.kind === 'hora' ? <ClockIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' /> : null}
-                      {messageText(message)}
+                      {chatText(message.kind, shownTime)}
                     </p>
-                    {converted ? (
-                      <p className={cn('m-0 text-xs font-semibold', message.isMe ? 'text-white/80' : 'text-muted-foreground')}>
-                        {t('Para ti: {time}', { time: converted })}
+                    {message.kind === 'hora' && converted ? (
+                      <p className='m-0 mt-0.5 text-xs font-semibold text-muted-foreground'>
+                        {t('En tu hora{day}. {name} propuso las {time} de {city}.', {
+                          day: dayNote,
+                          name: message.senderName.split(' ')[0],
+                          time: message.timeValue ?? '',
+                          city: zoneCity(message.timeZone),
+                        })}
+                      </p>
+                    ) : null}
+                    {message.kind === 'hora' && message.isMe ? (
+                      <p className='m-0 mt-0.5 text-xs font-semibold text-white/80'>
+                        {t('Hora de {city}. A cada uno le llega en la suya.', { city: zoneCity(message.timeZone) || viewerCity })}
                       </p>
                     ) : null}
                     <p
@@ -305,94 +434,144 @@ export function IcademerChatView() {
             })}
           </div>
 
-          {/* Mensajes que puedes mandar */}
-          <div ref={composerRef} className='scroll-mb-28 rounded-3xl border-2 border-border bg-card p-3 md:scroll-mb-6'>
-            <p className='m-0 mb-2 text-xs font-extrabold tracking-[0.08em] text-muted-foreground uppercase'>{t('Contesta')}</p>
-            {waitForOthers ? (
-              <p className='m-0 mb-2 text-xs font-bold' style={{ color: 'var(--ica-gold-ink)' }}>
-                {t('Ya has mandado {n} seguidos. Espera a que escriba otra persona.', { n: CHAT_MAX_IN_A_ROW })}
-              </p>
-            ) : null}
-            {pickingTime ? (
-              <div className='ica-pop mb-2 flex flex-wrap items-center gap-2 rounded-2xl bg-muted/70 p-2'>
-                <span className='text-sm font-extrabold'>{t('¿A las…?')}</span>
-                <Select value={hour} onValueChange={setHour}>
-                  <SelectTrigger className='h-10 w-20 rounded-xl' aria-label={t('Hora')}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: 24 }, (_, value) => String(value).padStart(2, '0')).map((value) => (
-                      <SelectItem key={value} value={value}>
-                        {value}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <span className='font-black'>:</span>
-                <div className='flex gap-1' role='group' aria-label={t('Minutos')}>
-                  {['00', '15', '30', '45'].map((value) => (
+          {/* Enviar mensaje: se puede plegar para leer con más sitio */}
+          <div ref={composerRef} className='scroll-mb-28 rounded-3xl border-2 border-border bg-card md:scroll-mb-6'>
+            <button
+              type='button'
+              onClick={toggleComposer}
+              aria-expanded={composerOpen}
+              className='flex w-full items-center gap-2 px-4 py-3 text-left'
+            >
+              <SendIcon className='size-4 shrink-0' strokeWidth={2.6} style={{ color: 'var(--ica-me)' }} aria-hidden='true' />
+              <span className='flex-1 text-sm font-extrabold'>{t('Enviar mensaje')}</span>
+              <span className='text-xs font-bold text-muted-foreground'>{composerOpen ? t('Ocultar') : t('Mostrar')}</span>
+              <ChevronDownIcon
+                className={cn('size-5 shrink-0 text-muted-foreground transition-transform', composerOpen && 'rotate-180')}
+                aria-hidden='true'
+              />
+            </button>
+
+            {composerOpen ? (
+              <div className='ica-pop px-3 pb-3'>
+                {waitForOthers ? (
+                  <p className='m-0 mb-2 text-xs font-bold' style={{ color: 'var(--ica-gold-ink)' }}>
+                    {t('Ya has mandado {n} seguidos. Espera a que escriba otra persona.', { n: CHAT_MAX_IN_A_ROW })}
+                  </p>
+                ) : null}
+                {pickingTime ? (
+                  <div className='ica-pop mb-2 flex flex-col gap-2 rounded-2xl bg-muted/70 p-2'>
+                    <div className='flex flex-wrap items-center gap-2'>
+                      <span className='text-sm font-extrabold'>{t('¿A las…?')}</span>
+                      <Select value={hour} onValueChange={setHour}>
+                        <SelectTrigger className='h-10 w-20 rounded-xl' aria-label={t('Hora')}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 24 }, (_, value) => String(value).padStart(2, '0')).map((value) => (
+                            <SelectItem key={value} value={value}>
+                              {value}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <span className='font-black'>:</span>
+                      <div className='flex gap-1' role='group' aria-label={t('Minutos')}>
+                        {['00', '15', '30', '45'].map((value) => (
+                          <button
+                            key={value}
+                            type='button'
+                            onClick={() => setMinute(value)}
+                            aria-pressed={minute === value}
+                            className={cn(
+                              'h-10 min-w-11 rounded-xl border-2 px-2 text-sm font-extrabold tabular-nums',
+                              minute === value ? 'border-transparent text-white' : 'border-border bg-card',
+                            )}
+                            style={minute === value ? { background: 'var(--ica-me)' } : undefined}
+                          >
+                            {value}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <p className='m-0 flex items-start gap-1.5 text-xs font-semibold text-muted-foreground'>
+                      <GlobeIcon className='mt-px size-3.5 shrink-0' strokeWidth={2.6} aria-hidden='true' />
+                      {t('Pon la hora de {city}, la tuya. A cada icademer le llega pasada a su hora local.', { city: viewerCity })}
+                    </p>
+                    <div className='flex justify-end gap-1'>
+                      <Button type='button' variant='outline' size='sm' onClick={() => setPickingTime(false)}>
+                        {t('Cancelar')}
+                      </Button>
+                      <Button type='button' size='sm' onClick={() => void send('hora')} disabled={sending || waitForOthers}>
+                        <SendIcon className='size-4' aria-hidden='true' />
+                        {t('Enviar')}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+                <div className='grid grid-cols-2 gap-2'>
+                  {CHAT_MESSAGES.map((item) => (
                     <button
-                      key={value}
+                      key={item.kind}
                       type='button'
-                      onClick={() => setMinute(value)}
-                      aria-pressed={minute === value}
+                      onClick={() => void send(item.kind)}
+                      disabled={sending || waitForOthers}
                       className={cn(
-                        'h-10 min-w-11 rounded-xl border-2 px-2 text-sm font-extrabold tabular-nums',
-                        minute === value ? 'border-transparent text-white' : 'border-border bg-card',
+                        'ica-press flex min-h-11 items-center gap-1.5 rounded-2xl border-2 px-3 py-2 text-left text-sm leading-tight font-extrabold disabled:opacity-50',
+                        item.kind === 'club' ? 'col-span-2 border-transparent text-white' : 'border-border bg-background',
+                        item.kind === 'animo' ? 'col-span-2' : '',
                       )}
-                      style={minute === value ? { background: 'var(--ica-me)' } : undefined}
+                      style={
+                        item.kind === 'club'
+                          ? { background: 'var(--ica-reto, #a259f0)', boxShadow: '0 3px 0 color-mix(in oklab, var(--ica-reto, #a259f0) 70%, black)' }
+                          : { boxShadow: '0 3px 0 var(--border)' }
+                      }
                     >
-                      {value}
+                      {item.kind === 'hora' ? <ClockIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' /> : null}
+                      {item.kind === 'hora' ? t('¿A las…?') : t(item.text)}
                     </button>
                   ))}
                 </div>
-                <div className='ml-auto flex gap-1'>
-                  <Button type='button' variant='outline' size='sm' onClick={() => setPickingTime(false)}>
-                    {t('Cancelar')}
-                  </Button>
-                  <Button type='button' size='sm' onClick={() => void send('hora')} disabled={sending || waitForOthers}>
-                    <SendIcon className='size-4' aria-hidden='true' />
-                    {t('Enviar')}
-                  </Button>
-                </div>
               </div>
             ) : null}
-            <div className='grid grid-cols-2 gap-2'>
-              {CHAT_MESSAGES.map((item) => (
-                <button
-                  key={item.kind}
-                  type='button'
-                  onClick={() => void send(item.kind)}
-                  disabled={sending || waitForOthers}
-                  className={cn(
-                    'ica-press flex min-h-11 items-center gap-1.5 rounded-2xl border-2 px-3 py-2 text-left text-sm leading-tight font-extrabold disabled:opacity-50',
-                    item.kind === 'club' ? 'col-span-2 border-transparent text-white' : 'border-border bg-background',
-                    item.kind === 'animo' ? 'col-span-2' : '',
-                    item.kind === 'hora' && pickingTime ? 'ring-2 ring-offset-1' : '',
-                  )}
-                  style={
-                    item.kind === 'club'
-                      ? { background: 'var(--ica-reto, #a259f0)', boxShadow: '0 3px 0 color-mix(in oklab, var(--ica-reto, #a259f0) 70%, black)' }
-                      : { boxShadow: '0 3px 0 var(--border)' }
-                  }
-                >
-                  {item.kind === 'hora' ? <ClockIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' /> : null}
-                  {item.kind === 'hora' ? t('¿A las…?') : t(item.text)}
-                </button>
-              ))}
-            </div>
-            <button
-              type='button'
-              onClick={() => void leave()}
-              onBlur={() => setConfirmLeave(false)}
-              className='mt-3 flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground'
-            >
-              <LogOutIcon className='size-3.5' aria-hidden='true' />
-              {confirmLeave ? t('Toca otra vez para salir del chat') : t('Salir del chat')}
-            </button>
           </div>
+
+          <button
+            type='button'
+            onClick={() => setConfirmLeave(true)}
+            className='flex items-center gap-1.5 self-start text-xs font-bold text-muted-foreground hover:text-foreground'
+          >
+            <LogOutIcon className='size-3.5' aria-hidden='true' />
+            {t('Salir del chat')}
+          </button>
         </>
       )}
+
+      {askNotifications && status?.isMember ? (
+        <ChatSheet
+          icon={<BellIcon className='size-8' strokeWidth={2.4} style={{ color: 'var(--ica-me)' }} aria-hidden='true' />}
+          title={t('¿Quieres recibir notificaciones de este grupo?')}
+          text={t('Te avisamos cuando alguien escriba en Icademers de {lang}. Puedes cambiarlo cuando quieras en Perfil > Notificaciones.', { lang: language })}
+          yes={t('Sí, avisarme')}
+          no={t('No')}
+          busy={savingNotifications}
+          onYes={() => void answerNotifications(true)}
+          onNo={() => void answerNotifications(false)}
+        />
+      ) : null}
+
+      {confirmLeave ? (
+        <ChatSheet
+          icon={<LogOutIcon className='size-8' strokeWidth={2.4} style={{ color: 'var(--ica-bad-strong)' }} aria-hidden='true' />}
+          title={t('¿Seguro que quieres salir del chat de Icademers de {lang}?', { lang: language })}
+          text={t('Dejarás de ver los mensajes y de recibir avisos. Puedes volver a entrar desde tu perfil.')}
+          yes={t('Sí, salir')}
+          no={t('No, quedarme')}
+          busy={leaving}
+          danger
+          onYes={() => void leave()}
+          onNo={() => setConfirmLeave(false)}
+        />
+      ) : null}
     </section>
   )
 }

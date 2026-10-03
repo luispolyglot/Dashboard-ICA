@@ -10,6 +10,8 @@ export type IcademerChatStatus = {
   canJoin: boolean
   memberCount: number
   unread: number
+  /** null: aún no se le ha preguntado (se pregunta al entrar). */
+  notificationsEnabled: boolean | null
 }
 
 export type IcademerChatMessage = {
@@ -60,11 +62,21 @@ export async function fetchIcademerChatStatus(targetLang: string): Promise<Icade
     canJoin: row.can_join === true,
     memberCount: Number(row.member_count || 0),
     unread: Number(row.unread || 0),
+    notificationsEnabled: typeof row.notifications_enabled === 'boolean' ? row.notifications_enabled : null,
   }
 }
 
 export async function joinIcademerChat(targetLang: string): Promise<void> {
   const { error } = await client().rpc('join_icademer_chat', { p_target_lang: chatLangKey(targetLang) })
+  if (error) throw chatError(error)
+}
+
+/** Sí o no a las notificaciones de este grupo. */
+export async function setIcademerChatNotifications(targetLang: string, enabled: boolean): Promise<void> {
+  const { error } = await client().rpc('set_icademer_chat_notifications', {
+    p_target_lang: chatLangKey(targetLang),
+    p_enabled: enabled,
+  })
   if (error) throw chatError(error)
 }
 
@@ -98,11 +110,17 @@ export async function sendIcademerChatMessage(input: {
   timeValue?: string
   timeZone?: string
 }): Promise<void> {
-  const { error } = await client().rpc('send_icademer_chat_message', {
+  const { data, error } = await client().rpc('send_icademer_chat_message', {
     p_target_lang: chatLangKey(input.targetLang),
     p_kind: input.kind,
     p_time_value: input.kind === 'hora' ? input.timeValue ?? null : null,
     p_time_zone: input.kind === 'hora' ? input.timeZone ?? null : null,
   })
   if (error) throw chatError(error)
+  // Avisa a los demás (función icademer-chat-push). Si falla, el mensaje ya está enviado.
+  if (data) {
+    void client()
+      .functions.invoke('icademer-chat-push', { body: { messageId: String(data) } })
+      .catch(() => undefined)
+  }
 }

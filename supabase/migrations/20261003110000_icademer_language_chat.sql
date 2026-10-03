@@ -11,6 +11,9 @@
 --    inicial del apellido de quien lo manda.
 --  - Como mucho 3 mensajes seguidos: el 4.º espera a que escriba otra persona.
 --  - Un mensaje cada 3 segundos como mucho.
+--  - Notificaciones por grupo: al entrar se pregunta (notifications_enabled null = sin preguntar).
+--    Las manda la función icademer-chat-push al enviar un mensaje (como mucho una cada 10 min por
+--    persona y solo si no ha leído el chat desde entonces).
 -- Las tablas solo se leen; todo se escribe con las funciones de abajo.
 
 begin;
@@ -20,6 +23,8 @@ create table if not exists public.icademer_chat_members (
   target_lang text not null,
   joined_at timestamptz not null default now(),
   last_read_at timestamptz not null default now(),
+  notifications_enabled boolean,
+  last_notified_at timestamptz,
   primary key (user_id, target_lang)
 );
 
@@ -34,6 +39,7 @@ create table if not exists public.icademer_chat_messages (
   time_value text,
   time_zone text,
   created_at timestamptz not null default now(),
+  push_sent_at timestamptz,
   constraint icademer_chat_messages_kind_check check (
     kind in ('hola', 'club', 'me_apunto', 'no_puedo', 'hora', 'genial', 'nos_vemos', 'animo')
   ),
@@ -111,6 +117,7 @@ begin
 
   return jsonb_build_object(
     'is_member', v_member.user_id is not null,
+    'notifications_enabled', v_member.notifications_enabled,
     'can_join', public.icademer_chat_can_join(v_user_id, v_lang),
     'member_count', v_count,
     'unread', v_unread
@@ -138,6 +145,26 @@ begin
   insert into public.icademer_chat_members (user_id, target_lang)
   values (v_user_id, v_lang)
   on conflict (user_id, target_lang) do nothing;
+end;
+$$;
+
+-- Sí o no a las notificaciones de este grupo (se pregunta al entrar y se cambia en Notificaciones).
+create or replace function public.set_icademer_chat_notifications(p_target_lang text, p_enabled boolean)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'NOT_AUTHENTICATED';
+  end if;
+  update public.icademer_chat_members
+  set notifications_enabled = coalesce(p_enabled, false)
+  where user_id = auth.uid() and target_lang = lower(trim(coalesce(p_target_lang, '')));
+  if not found then
+    raise exception 'CHAT_NOT_MEMBER';
+  end if;
 end;
 $$;
 
@@ -291,11 +318,13 @@ $$;
 revoke all on function public.get_my_icademer_chat_status(text) from public, anon;
 revoke all on function public.join_icademer_chat(text) from public, anon;
 revoke all on function public.leave_icademer_chat(text) from public, anon;
+revoke all on function public.set_icademer_chat_notifications(text, boolean) from public, anon;
 revoke all on function public.get_icademer_chat(text, integer) from public, anon;
 revoke all on function public.send_icademer_chat_message(text, text, text, text) from public, anon;
 grant execute on function public.get_my_icademer_chat_status(text) to authenticated;
 grant execute on function public.join_icademer_chat(text) to authenticated;
 grant execute on function public.leave_icademer_chat(text) to authenticated;
+grant execute on function public.set_icademer_chat_notifications(text, boolean) to authenticated;
 grant execute on function public.get_icademer_chat(text, integer) to authenticated;
 grant execute on function public.send_icademer_chat_message(text, text, text, text) to authenticated;
 

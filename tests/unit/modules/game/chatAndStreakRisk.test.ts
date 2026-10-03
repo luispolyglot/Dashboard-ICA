@@ -5,6 +5,7 @@ import {
   mustWaitForOthers,
   nextQuarter,
   timeInViewerZone,
+  zoneCity,
 } from '../../../../src/modules/game/icademerChat'
 import { getStreakRisk, msUntilMidnight } from '../../../../src/modules/game/streakRisk'
 
@@ -39,13 +40,17 @@ describe('chat de icademers', () => {
 
   it('la hora se pasa a la zona de quien lee', () => {
     const at = new Date('2026-10-03T12:00:00Z')
-    // Madrid (UTC+2 en octubre) → Ciudad de México (UTC-6): 8 horas menos.
-    expect(timeInViewerZone('18:45', 'Europe/Madrid', 'America/Mexico_City', at)).toBe('10:45')
+    // Madrid (UTC+2 en octubre) → Ciudad de México (UTC-6): 8 horas menos, mismo día.
+    expect(timeInViewerZone('18:45', 'Europe/Madrid', 'America/Mexico_City', at)).toEqual({ time: '10:45', dayShift: 0 })
     // Madrid → Varsovia: misma hora.
     expect(timeInViewerZone('18:45', 'Europe/Madrid', 'Europe/Warsaw', at)).toBe(null)
     expect(timeInViewerZone('18:45', null, 'Europe/Madrid', at)).toBe(null)
-    // Madrid → Canarias: una hora menos.
-    expect(timeInViewerZone('00:15', 'Europe/Madrid', 'Atlantic/Canary', at)).toBe('23:15')
+    // Madrid → Canarias: una hora menos y es el día anterior.
+    expect(timeInViewerZone('00:15', 'Europe/Madrid', 'Atlantic/Canary', at)).toEqual({ time: '23:15', dayShift: -1 })
+    // Ciudad de México 21:00 → Madrid: 05:00 del día siguiente.
+    expect(timeInViewerZone('21:00', 'America/Mexico_City', 'Europe/Madrid', at)).toEqual({ time: '05:00', dayShift: 1 })
+    expect(zoneCity('America/Mexico_City')).toBe('Ciudad de México')
+    expect(zoneCity('Asia/Tokyo')).toBe('Tokyo')
   })
 })
 

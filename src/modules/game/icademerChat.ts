@@ -69,23 +69,78 @@ function zoneOffsetMinutes(timeZone: string, at: Date): number | null {
   }
 }
 
+// Ciudades en español de las zonas más habituales de los icademers.
+const ZONE_CITY_ES: Record<string, string> = {
+  'Europe/Madrid': 'Madrid',
+  'Atlantic/Canary': 'Canarias',
+  'Europe/Warsaw': 'Varsovia',
+  'Europe/Vienna': 'Viena',
+  'Europe/Berlin': 'Berlín',
+  'Europe/Paris': 'París',
+  'Europe/Rome': 'Roma',
+  'Europe/London': 'Londres',
+  'Europe/Lisbon': 'Lisboa',
+  'America/Mexico_City': 'Ciudad de México',
+  'America/Bogota': 'Bogotá',
+  'America/Lima': 'Lima',
+  'America/Santiago': 'Santiago de Chile',
+  'America/Argentina/Buenos_Aires': 'Buenos Aires',
+  'America/Caracas': 'Caracas',
+  'America/Guayaquil': 'Ecuador',
+  'America/Montevideo': 'Montevideo',
+  'America/New_York': 'Nueva York',
+  'America/Los_Angeles': 'Los Ángeles',
+}
+
+/** Nombre corto de una zona horaria para enseñarlo: «Europe/Madrid» → «Madrid». */
+export function zoneCity(zone: string | null | undefined): string {
+  if (!zone) return ''
+  if (ZONE_CITY_ES[zone]) return ZONE_CITY_ES[zone]
+  const last = zone.split('/').pop() || zone
+  return last.replace(/_/g, ' ')
+}
+
+/** El día (AAAA-MM-DD) de un momento en una zona. */
+function dayInZone(zone: string, at: Date): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(at)
+  } catch {
+    return at.toISOString().slice(0, 10)
+  }
+}
+
+export type ConvertedTime = {
+  /** La hora en la zona de quien lee. */
+  time: string
+  /** -1: es el día anterior para quien lee; 1: el día siguiente; 0: el mismo día. */
+  dayShift: -1 | 0 | 1
+}
+
 /**
- * La hora de un mensaje «¿A las 18:45?» pasada a la zona de quien lo lee. null si es la misma
- * hora (misma zona o sin zona). Ej.: 18:45 de Madrid leída en Ciudad de México → «10:45».
+ * La hora de un mensaje «¿A las 18:45?» (escrita en la hora de quien la manda, el día que la
+ * manda) pasada a la hora de quien lo lee. null si es la misma (misma zona o sin zona).
+ * Ej.: 18:45 de Madrid leída en Ciudad de México → 10:45, mismo día.
  */
 export function timeInViewerZone(
   timeValue: string,
   senderZone: string | null | undefined,
   viewerZone: string,
-  at: Date,
-): string | null {
+  sentAt: Date,
+): ConvertedTime | null {
   if (!senderZone || senderZone === viewerZone) return null
-  const sender = zoneOffsetMinutes(senderZone, at)
-  const viewer = zoneOffsetMinutes(viewerZone, at)
+  const sender = zoneOffsetMinutes(senderZone, sentAt)
+  const viewer = zoneOffsetMinutes(viewerZone, sentAt)
   if (sender === null || viewer === null || sender === viewer) return null
   const [hours, minutes] = timeValue.split(':').map(Number)
-  const local = (((hours * 60 + minutes - sender + viewer) % 1440) + 1440) % 1440
-  return `${String(Math.floor(local / 60)).padStart(2, '0')}:${String(local % 60).padStart(2, '0')}`
+  // El momento exacto: ese día (en la zona de quien lo escribe) a esa hora.
+  const [year, month, day] = dayInZone(senderZone, sentAt).split('-').map(Number)
+  const instant = Date.UTC(year, month - 1, day, hours, minutes) - sender * 60000
+  const viewerLocal = new Date(instant + viewer * 60000)
+  const time = `${String(viewerLocal.getUTCHours()).padStart(2, '0')}:${String(viewerLocal.getUTCMinutes()).padStart(2, '0')}`
+  const senderDay = Date.UTC(year, month - 1, day)
+  const viewerDay = Date.UTC(viewerLocal.getUTCFullYear(), viewerLocal.getUTCMonth(), viewerLocal.getUTCDate())
+  const diff = Math.round((viewerDay - senderDay) / 86400000)
+  return { time, dayShift: diff < 0 ? -1 : diff > 0 ? 1 : 0 }
 }
 
 /** ¿Llevo ya 3 mensajes seguidos (los últimos son míos)? */
