@@ -40,12 +40,12 @@ export function useFeaturedBadge(userId: string | null | undefined) {
       return null
     }
     const { data, error } = await supabase
-      .from('profiles')
-      .select('featured_badge')
-      .eq('id', userId)
+      .from('ica_featured_badges')
+      .select('badge')
+      .eq('user_id', userId)
       .maybeSingle()
     if (error) throw error
-    const next = parseFeaturedBadge(data?.featured_badge)
+    const next = parseFeaturedBadge(data?.badge)
     setBadge(next)
     storeQuick(`${CACHE_PREFIX}${userId}`, next)
     return next

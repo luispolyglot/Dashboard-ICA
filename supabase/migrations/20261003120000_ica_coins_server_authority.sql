@@ -555,31 +555,64 @@ create trigger phrase_voice_activations_enforce_daily_limit
   for each row execute function public.ica_enforce_creation_daily_limit();
 
 -- Seed today's counters from persisted source rows so release doesn't reset a partially used day.
+with user_days as materialized (
+  select
+    p.id as user_id,
+    coalesce(tzn.name, 'UTC') as timezone_name,
+    (now() at time zone coalesce(tzn.name, 'UTC'))::date as local_day
+  from public.profiles p
+  left join pg_timezone_names tzn on tzn.name = nullif(trim(p.timezone), '')
+)
 insert into public.ica_daily_limit_usage (user_id, usage_day, usage_kind, source_id, created_at)
-select l.user_id, public.ica_local_date(l.user_id, l.created_at), 'words', l.id, now()
-from public.lexicards l
-where public.ica_local_date(l.user_id, l.created_at) = public.ica_local_today(l.user_id)
+select l.user_id, d.local_day, 'words', l.id, now()
+from user_days d
+join public.lexicards l
+  on l.user_id = d.user_id
+ and l.created_at >= d.local_day::timestamp at time zone d.timezone_name
+ and l.created_at < (d.local_day + 1)::timestamp at time zone d.timezone_name
 on conflict do nothing;
 
+with user_days as materialized (
+  select
+    p.id as user_id,
+    coalesce(tzn.name, 'UTC') as timezone_name,
+    (now() at time zone coalesce(tzn.name, 'UTC'))::date as local_day
+  from public.profiles p
+  left join pg_timezone_names tzn on tzn.name = nullif(trim(p.timezone), '')
+)
 insert into public.ica_daily_limit_usage (user_id, usage_day, usage_kind, source_id, created_at)
-select pg.user_id, public.ica_local_date(pg.user_id, pg.created_at), 'phrases', pg.id, now()
-from public.phrase_generations pg
+select pg.user_id, d.local_day, 'phrases', pg.id, now()
+from user_days d
+join public.phrase_generations pg
+  on pg.user_id = d.user_id
+ and pg.created_at >= d.local_day::timestamp at time zone d.timezone_name
+ and pg.created_at < (d.local_day + 1)::timestamp at time zone d.timezone_name
 where coalesce(pg.success, true)
   and not coalesce(pg.is_regeneration, false)
-  and public.ica_local_date(pg.user_id, pg.created_at) = public.ica_local_today(pg.user_id)
 on conflict do nothing;
 
+with user_days as materialized (
+  select
+    p.id as user_id,
+    coalesce(tzn.name, 'UTC') as timezone_name,
+    (now() at time zone coalesce(tzn.name, 'UTC'))::date as local_day
+  from public.profiles p
+  left join pg_timezone_names tzn on tzn.name = nullif(trim(p.timezone), '')
+)
 insert into public.ica_daily_limit_usage (user_id, usage_day, usage_kind, source_id, created_at)
-select pva.user_id, public.ica_local_today(pva.user_id), 'activations', pva.phrase_generation_id, now()
-from public.phrase_voice_activations pva
-where public.ica_local_date(pva.user_id, pva.created_at) = public.ica_local_today(pva.user_id)
-  and not exists (
-    select 1 from public.phrase_voice_activations earlier
-    where earlier.user_id = pva.user_id
-      and earlier.phrase_generation_id = pva.phrase_generation_id
-      and earlier.created_at < pva.created_at
-  )
-group by pva.user_id, pva.phrase_generation_id
+select pva.user_id, d.local_day, 'activations', pva.phrase_generation_id, now()
+from user_days d
+join public.phrase_voice_activations pva
+  on pva.user_id = d.user_id
+ and pva.created_at >= d.local_day::timestamp at time zone d.timezone_name
+ and pva.created_at < (d.local_day + 1)::timestamp at time zone d.timezone_name
+where not exists (
+  select 1 from public.phrase_voice_activations earlier
+  where earlier.user_id = pva.user_id
+    and earlier.phrase_generation_id = pva.phrase_generation_id
+    and earlier.created_at < pva.created_at
+)
+group by pva.user_id, d.local_day, pva.phrase_generation_id
 on conflict do nothing;
 
 -- Phrase logging is authenticated and tied to the user's own selected cards. Regeneration is
@@ -1331,32 +1364,6 @@ create index if not exists ica_timezone_change_log_user_recent_idx
 alter table public.ica_timezone_change_log enable row level security;
 revoke all on public.ica_timezone_change_log from public, anon, authenticated;
 
-create or replace function public.ica_guard_profile_timezone_update()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  if auth.uid() is not null
-    and current_setting('ica.allow_timezone_update', true) is distinct from 'true'
-    and tg_op = 'INSERT' and coalesce(new.timezone, 'UTC') <> 'UTC' then
-    raise exception 'USE_SET_MY_TIMEZONE';
-  end if;
-  if auth.uid() is not null and tg_op = 'UPDATE'
-    and new.timezone is distinct from old.timezone
-    and current_setting('ica.allow_timezone_update', true) is distinct from 'true' then
-    raise exception 'USE_SET_MY_TIMEZONE';
-  end if;
-  return new;
-end;
-$$;
-revoke all on function public.ica_guard_profile_timezone_update() from public, anon, authenticated;
-drop trigger if exists profiles_ica_timezone_guard on public.profiles;
-create trigger profiles_ica_timezone_guard
-  before insert or update of timezone on public.profiles
-  for each row execute function public.ica_guard_profile_timezone_update();
-
 create or replace function public.set_my_timezone(p_timezone text)
 returns text
 language plpgsql
@@ -1391,7 +1398,6 @@ begin
 
   insert into public.ica_timezone_change_log (user_id, previous_timezone, next_timezone)
   values (v_user_id, coalesce(previous_timezone, 'UTC'), resolved_timezone);
-  perform set_config('ica.allow_timezone_update', 'true', true);
   update public.profiles set timezone = resolved_timezone where id = v_user_id;
   update public.ica_daily_limit_usage u
   set usage_day = public.ica_local_date(v_user_id, u.created_at)
@@ -1403,18 +1409,26 @@ begin
   perform public.recompute_daily_creation_metrics_for_user_day(v_user_id, old_today_local - 1);
   perform public.recompute_daily_creation_metrics_for_user_day(v_user_id, new_today_local);
   perform public.recompute_daily_creation_metrics_for_user_day(v_user_id, new_today_local - 1);
-  perform set_config('ica.allow_timezone_update', 'false', true);
   return resolved_timezone;
 end;
 $$;
 revoke all on function public.set_my_timezone(text) from public, anon;
 grant execute on function public.set_my_timezone(text) to authenticated;
 
--- Featured badges are stored on the profile only after a database-side eligibility check.
-alter table public.profiles
-  add column if not exists featured_badge text,
-  add constraint profiles_featured_badge_format_check
-    check (featured_badge is null or featured_badge ~ '^(rachaICA|rachaFlash|ranking|eficacia|vocab|desafios):(bronce|plata|oro|rubi|diamante)$');
+-- Store featured badges separately so this migration does not take long-lived DDL locks
+-- on profiles, which is a hot table during normal app traffic.
+create table if not exists public.ica_featured_badges (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  badge text not null check (badge ~ '^(rachaICA|rachaFlash|ranking|eficacia|vocab|desafios):(bronce|plata|oro|rubi|diamante)$'),
+  updated_at timestamptz not null default now()
+);
+alter table public.ica_featured_badges enable row level security;
+drop policy if exists ica_featured_badges_select_own on public.ica_featured_badges;
+create policy ica_featured_badges_select_own
+  on public.ica_featured_badges for select to authenticated
+  using (auth.uid() = user_id);
+revoke all on public.ica_featured_badges from public, anon, authenticated;
+grant select on public.ica_featured_badges to authenticated;
 
 create or replace function public.ica_best_streak(p_user_id uuid, p_kind text)
 returns integer
@@ -1522,32 +1536,6 @@ end;
 $$;
 revoke all on function public.ica_featured_badge_earned(uuid, text) from public, anon, authenticated;
 
-create or replace function public.ica_guard_featured_badge_update()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  if auth.uid() is not null and new.featured_badge is not null
-    and current_setting('ica.allow_featured_badge_update', true) is distinct from 'true'
-    and tg_op = 'INSERT' then
-    raise exception 'USE_SET_MY_FEATURED_BADGE';
-  end if;
-  if auth.uid() is not null and tg_op = 'UPDATE'
-    and new.featured_badge is distinct from old.featured_badge
-    and current_setting('ica.allow_featured_badge_update', true) is distinct from 'true' then
-    raise exception 'USE_SET_MY_FEATURED_BADGE';
-  end if;
-  return new;
-end;
-$$;
-revoke all on function public.ica_guard_featured_badge_update() from public, anon, authenticated;
-drop trigger if exists profiles_ica_featured_badge_guard on public.profiles;
-create trigger profiles_ica_featured_badge_guard
-  before insert or update of featured_badge on public.profiles
-  for each row execute function public.ica_guard_featured_badge_update();
-
 create or replace function public.set_my_featured_badge(p_badge text)
 returns text
 language plpgsql
@@ -1561,10 +1549,13 @@ begin
   if p_badge is not null and not public.ica_featured_badge_earned(v_user_id, p_badge) then
     raise exception 'FEATURED_BADGE_NOT_EARNED';
   end if;
-  perform set_config('ica.allow_featured_badge_update', 'true', true);
-  update public.profiles set featured_badge = p_badge where id = v_user_id;
-  if not found then raise exception 'PROFILE_NOT_FOUND'; end if;
-  perform set_config('ica.allow_featured_badge_update', 'false', true);
+  if p_badge is null then
+    delete from public.ica_featured_badges where user_id = v_user_id;
+  else
+    insert into public.ica_featured_badges (user_id, badge)
+    values (v_user_id, p_badge)
+    on conflict (user_id) do update set badge = excluded.badge, updated_at = now();
+  end if;
   return p_badge;
 end;
 $$;
@@ -1581,7 +1572,7 @@ declare
   selected_badge text;
 begin
   if new.period = 'monthly' then
-    select p.featured_badge into selected_badge from public.profiles p where p.id = new.user_id;
+    select b.badge into selected_badge from public.ica_featured_badges b where b.user_id = new.user_id;
     new.payload := coalesce(new.payload, '{}'::jsonb) || jsonb_build_object('featured_badge', selected_badge);
   end if;
   return new;
@@ -1610,9 +1601,9 @@ as $$
   select core.rank, core.user_id, core.username, core.display_name, core.ica_streak_days,
     core.avg_percent, core.review_percent, core.creation_percent, core.is_creation_streak_frozen,
     core.ica_test_points, core.listening_points, core.preguntica_points, core.instagram_points,
-    core.total_points, p.featured_badge
+    core.total_points, fb.badge
   from public.get_monthly_streak_leaderboard_core(limit_count) core
-  left join public.profiles p on p.id = core.user_id
+  left join public.ica_featured_badges fb on fb.user_id = core.user_id
 $$;
 revoke all on function public.get_monthly_streak_leaderboard(integer) from public, anon;
 grant execute on function public.get_monthly_streak_leaderboard(integer) to authenticated;

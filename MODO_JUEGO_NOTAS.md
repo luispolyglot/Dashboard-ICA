@@ -236,7 +236,7 @@ Aplazado por Luis: un chat entre icademers al acabar un desafío (para animar a 
 
 ## Estado actualizado en esta rama · implementación para producción
 
-Las propuestas de las siguientes subsecciones describen la auditoría original y quedan como referencia histórica. Su implementación está en `20261003120000_ica_coins_server_authority.sql` y los cambios de cliente/Edge Functions de esta rama. ICA Coins usa el saldo/ledger existente de PreguntICA; las cantidades locales no se importan.
+Las propuestas de las siguientes subsecciones describen la auditoría original y quedan como referencia histórica. Su implementación está en `20261003120000_ica_coins_server_authority.sql`, `20261003130000_profiles_timezone_write_lockdown.sql` y los cambios de cliente/Edge Functions de esta rama. ICA Coins usa el saldo/ledger existente de PreguntICA; las cantidades locales no se importan.
 
 | Pieza | Estado en esta rama |
 |---|---|
@@ -244,11 +244,11 @@ Las propuestas de las siguientes subsecciones describen la auditoría original y
 | Cuarto desafío | El pase se cobra en servidor. Creación del reto, competidores y consumo se confirman en una sola transacción. El retador gasta su pase y la invitación reserva el espacio del destinatario. |
 | Límites diarios | Triggers cuentan palabras, frases nuevas y primeras grabaciones con timestamps de servidor; las regeneraciones del mismo conjunto y regrabaciones no gastan cuota. Las ampliaciones se leen del ledger. |
 | Flashcards y nota desafiante | Revisión valida en servidor las 20 palabras activadas y calcula la métrica sin fecha/deltas arbitrarios. La nota desafiante exige dos notas maestras cerradas y usa la zona/día del perfil. |
-| Reacciones e insignia destacada | Persistidas en Supabase; las reacciones se limitan a participantes y dos seguidas. La insignia destacada se valida contra métricas servidor y se devuelve en rankings. |
+| Reacciones e insignia destacada | Reacciones persistidas en Supabase, limitadas a participantes y dos seguidas. La selección se guarda en `ica_featured_badges`, se valida contra métricas servidor y se devuelve en rankings. |
 | Reto del día | Resultado mejor sincronizado por usuario y día local; no da monedas ni puntos. |
 | Zona horaria | Hasta cuatro cambios en 24 horas para facilitar viajes; las cuotas existentes se recalculan en la zona nueva. Escrituras directas del perfil quedan bloqueadas. |
 
-La migración se reconstruyó desde cero con `supabase db reset --local`. Antes de habilitar producción, aplicar migraciones, desplegar `ica-challenges-center` y publicar el cliente actualizado.
+Las migraciones se reconstruyeron desde cero con `supabase db reset --local`. Antes de habilitar producción, aplicar migraciones, desplegar `ica-challenges-center` y publicar el cliente actualizado.
 
 ### Histórico de la auditoría original: vista previa anterior
 
