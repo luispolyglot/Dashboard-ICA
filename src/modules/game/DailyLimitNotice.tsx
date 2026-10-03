@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { FichaIcon } from './icons'
 import type { DailyLimitsState } from './limits'
-import { LIMIT_PHASE, PHASE_BOOST_MULTIPLIER, PHASE_BOOST_WEEKLY_MAX, type DailyLimitKey } from './rules'
+import { LIMIT_PHASE, PHASE_BOOST_COST, PHASE_BOOST_MULTIPLIER, type DailyLimitKey } from './rules'
 import { t } from '@/i18n'
 
 const REACHED_TEXT: Record<DailyLimitKey, (limit: number) => string> = {
@@ -46,10 +46,6 @@ export function DailyLimitNotice({
         <p className='m-0 mt-2 text-xs font-bold' style={{ color: 'var(--ica-gold-ink)' }}>
           {t('Hoy ya tienes {phase} ampliada (×{n}).', { phase, n: PHASE_BOOST_MULTIPLIER })}
         </p>
-      ) : state.nextBoostPrice === null ? (
-        <p className='m-0 mt-2 text-xs font-bold' style={{ color: 'var(--ica-gold-ink)' }}>
-          {t('Esta semana ya usaste las {n} ampliaciones. El lunes vuelven.', { n: PHASE_BOOST_WEEKLY_MAX })}
-        </p>
       ) : (
         <Link
           to={DASHBOARD_ROUTES.fichas}
@@ -58,7 +54,7 @@ export function DailyLimitNotice({
           style={{ background: 'var(--ica-gold)', color: '#3a2a00' }}
         >
           <FichaIcon size={18} />
-          {t('Ampliar {phase} hoy · {n} ICA Coins', { phase, n: state.nextBoostPrice })}
+          {t('Ampliar {phase} hoy · {n} ICA Coins', { phase, n: PHASE_BOOST_COST })}
         </Link>
       )}
     </div>

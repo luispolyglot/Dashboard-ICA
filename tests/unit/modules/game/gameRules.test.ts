@@ -13,7 +13,6 @@ import {
   hasPhaseBoost,
   phaseBoostsToday,
   nextCoinProgress,
-  nextPhaseBoostPrice,
   readPreviewEntries,
   walletRoom,
   weekStartKey,
@@ -117,34 +116,19 @@ describe('modo juego: reglas', () => {
     expect(getPreviewDelta(readPreviewEntries(USER))).toBe(-15)
     expect(phaseBoostsToday(readPreviewEntries(USER))).toEqual({ words: true, phrases: false, activations: false })
 
-    // La 2.ª ampliación de la semana cuesta 20.
     expect(buyPhaseBoost(USER, 'activations', 100)).toBe(true)
-    expect(getPreviewDelta(readPreviewEntries(USER))).toBe(-35)
+    expect(getPreviewDelta(readPreviewEntries(USER))).toBe(-30)
     expect(phaseBoostsToday(readPreviewEntries(USER))).toEqual({ words: true, phrases: false, activations: true })
 
     vi.setSystemTime(new Date('2026-10-01T10:00:00'))
     expect(hasPhaseBoost(readPreviewEntries(USER), 'words')).toBe(false)
   })
 
-  it('ampliaciones de la semana: 15, 20 y 25; no hay 4.ª y el lunes vuelve a 15', () => {
+  it('la semana empieza el lunes', () => {
     // 30 sept 2026 es miércoles: la semana empieza el lunes 28.
     expect(weekStartKey('2026-09-30')).toBe('2026-09-28')
     expect(weekStartKey('2026-10-04')).toBe('2026-09-28')
     expect(weekStartKey('2026-10-05')).toBe('2026-10-05')
-
-    expect(nextPhaseBoostPrice(readPreviewEntries(USER))).toBe(15)
-    expect(buyPhaseBoost(USER, 'words', 100)).toBe(true)
-    expect(nextPhaseBoostPrice(readPreviewEntries(USER))).toBe(20)
-    expect(buyPhaseBoost(USER, 'phrases', 19)).toBe(false)
-    expect(buyPhaseBoost(USER, 'phrases', 20)).toBe(true)
-    vi.setSystemTime(new Date('2026-10-02T10:00:00'))
-    expect(buyPhaseBoost(USER, 'words', 100)).toBe(true)
-    expect(getPreviewDelta(readPreviewEntries(USER))).toBe(-60)
-    expect(nextPhaseBoostPrice(readPreviewEntries(USER))).toBe(null)
-    expect(buyPhaseBoost(USER, 'activations', 100)).toBe(false)
-
-    vi.setSystemTime(new Date('2026-10-05T10:00:00'))
-    expect(nextPhaseBoostPrice(readPreviewEntries(USER))).toBe(15)
   })
 
   it('desafíos ganados: como mucho 7 ICA Coins por semana; el lunes se reinicia', () => {

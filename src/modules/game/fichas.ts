@@ -8,7 +8,7 @@ import {
   EXTRA_CHALLENGE_COST,
   FLASH_STREAK_MILESTONES,
   STREAK_MILESTONES,
-  phaseBoostPrice,
+  PHASE_BOOST_COST,
   rollCycleChest,
   type DailyLimitKey,
 } from './rules'
@@ -152,25 +152,12 @@ export function phaseBoostsToday(entries: FichaPreviewEntry[], day = todayKey())
   }
 }
 
-/** Ampliaciones compradas esta semana (de lunes a domingo, las tres fases juntas). */
-export function phaseBoostsThisWeek(entries: FichaPreviewEntry[], day = todayKey()): number {
-  return entries.filter((entry) => (entry.type === 'phase_boost' || entry.type === 'day_boost') && isThisWeek(entry.day, day))
-    .length
-}
-
-/** Precio de la próxima ampliación esta semana: 15, 20, 25 (null si ya se compraron las 3). */
-export function nextPhaseBoostPrice(entries: FichaPreviewEntry[], day = todayKey()): number | null {
-  return phaseBoostPrice(phaseBoostsThisWeek(entries, day))
-}
-
-/** Amplía una fase solo hoy (precio de la semana: 15, 20 o 25). Si ya estaba ampliada, no cobra. */
+/** Amplía una fase solo hoy (PHASE_BOOST_COST ICA Coins). Si ya estaba ampliada, no cobra. */
 export function buyPhaseBoost(userId: string | null | undefined, phase: DailyLimitKey, totalBalance: number): boolean {
   const day = todayKey()
-  const entries = readPreviewEntries(userId)
-  if (hasPhaseBoost(entries, phase, day)) return true
-  const price = nextPhaseBoostPrice(entries, day)
-  if (price === null || totalBalance < price) return false
-  addEntry(userId, { type: 'phase_boost', delta: -price, day, phase })
+  if (hasPhaseBoost(readPreviewEntries(userId), phase, day)) return true
+  if (totalBalance < PHASE_BOOST_COST) return false
+  addEntry(userId, { type: 'phase_boost', delta: -PHASE_BOOST_COST, day, phase })
   return true
 }
 

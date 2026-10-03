@@ -13,7 +13,6 @@ import {
   coinsText,
   fichasFormatter,
   nextCoinProgress,
-  phaseBoostsThisWeek,
   unusedChallengeSlots,
   useFichas,
   type FichaPreviewEntry,
@@ -32,9 +31,8 @@ import {
   DAILY_LIMITS,
   EXTRA_CHALLENGE_COST,
   LIMIT_PHASE,
+  PHASE_BOOST_COST,
   PHASE_BOOST_MULTIPLIER,
-  PHASE_BOOST_WEEKLY_MAX,
-  PHASE_BOOST_WEEKLY_PRICES,
   PREGUNTICA_EXTRA_COST,
   RANKING_POINTS_PER_COIN,
   type DailyLimitKey,
@@ -198,7 +196,7 @@ export function FichasView() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { total, realBalance, entries } = useFichas(user?.id)
-  const { limits, used, boosted, nextBoostPrice } = useDailyLimits()
+  const { limits, used, boosted } = useDailyLimits()
   const [confirming, setConfirming] = useState<DailyLimitKey | 'challenge' | null>(null)
   const [openRow, setOpenRow] = useState<'ica' | 'flash' | 'ranking' | null>(null)
   const { completedDays, creationDays, savedCreationDays, creationSavesUsedThisMonth, creationSavesLimit, dailyProgress } =
@@ -214,21 +212,16 @@ export function FichasView() {
   const balance = total ?? 0
   const slots = unusedChallengeSlots(entries)
   const progress = nextCoinProgress(realBalance)
-  const boostsThisWeek = phaseBoostsThisWeek(entries)
   const winCoinsThisWeek = challengeWinCoinsThisWeek(entries)
   const walletPercent = Math.min(100, (balance / COIN_WALLET_CAP) * 100)
 
   // «Ampliar» una fase solo hoy: primer toque pide confirmar, el segundo compra.
   const tryBoost = (kind: DailyLimitKey) => {
     const phase = t(LIMIT_PHASE[kind].name)
-    if (nextBoostPrice === null) {
-      toast.error(t('Esta semana ya usaste las {n} ampliaciones. El lunes vuelven.', { n: PHASE_BOOST_WEEKLY_MAX }))
-      return
-    }
     if (confirming !== kind) {
-      if (balance < nextBoostPrice) {
+      if (balance < PHASE_BOOST_COST) {
         toast.error(
-          t('Necesitas {n} para ampliar {phase} (tienes {balance}).', { n: coinsText(nextBoostPrice), phase, balance }),
+          t('Necesitas {n} para ampliar {phase} (tienes {balance}).', { n: coinsText(PHASE_BOOST_COST), phase, balance }),
         )
         return
       }
@@ -351,10 +344,10 @@ export function FichasView() {
               })}
               right={
                 <PriceButton
-                  cost={nextBoostPrice ?? PHASE_BOOST_WEEKLY_PRICES[0]}
+                  cost={PHASE_BOOST_COST}
                   onClick={() => tryBoost(row.key)}
                   confirming={confirming === row.key}
-                  doneLabel={boosted[row.key] ? t('Activo hoy') : nextBoostPrice === null ? t('Hasta el lunes') : undefined}
+                  doneLabel={boosted[row.key] ? t('Activo hoy') : undefined}
                 />
               }
             />
@@ -378,18 +371,10 @@ export function FichasView() {
         {confirming ? (
           <p className='mt-1 text-xs font-semibold text-muted-foreground'>
             {t('Toca «Confirmar» para gastar {coins}.', {
-              coins: coinsText(confirming === 'challenge' ? EXTRA_CHALLENGE_COST : nextBoostPrice ?? 0),
+              coins: coinsText(confirming === 'challenge' ? EXTRA_CHALLENGE_COST : PHASE_BOOST_COST),
             })}
           </p>
-        ) : (
-          <p className='mt-1 text-xs font-semibold text-muted-foreground'>
-            {t('Ampliaciones: {prices} ICA Coins la 1.ª, 2.ª y 3.ª de la semana. Esta semana llevas {n} de {max}.', {
-              prices: PHASE_BOOST_WEEKLY_PRICES.join(', '),
-              n: boostsThisWeek,
-              max: PHASE_BOOST_WEEKLY_MAX,
-            })}
-          </p>
-        )}
+        ) : null}
       </div>
 
       {/* Límites de hoy */}

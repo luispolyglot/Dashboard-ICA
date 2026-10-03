@@ -18,19 +18,6 @@ export type DailyLimitKey = keyof typeof DAILY_LIMITS
 export const PHASE_BOOST_COST = 15
 export const PHASE_BOOST_MULTIPLIER = 2
 
-/**
- * Ampliaciones de la semana (de lunes a domingo, las tres fases juntas): la 1.ª cuesta 15,
- * la 2.ª 20 y la 3.ª 25; no hay 4.ª. Así quien gana mucho no puede ampliar cada día y los
- * límites del método (poco y bien trabajado) se mantienen (Luis, 3 oct: que la ICA Coin
- * no pierda valor).
- */
-export const PHASE_BOOST_WEEKLY_PRICES = [15, 20, 25] as const
-export const PHASE_BOOST_WEEKLY_MAX = PHASE_BOOST_WEEKLY_PRICES.length
-
-/** Precio de la próxima ampliación según cuántas llevas esta semana (null: ya no quedan). */
-export function phaseBoostPrice(boughtThisWeek: number): number | null {
-  return PHASE_BOOST_WEEKLY_PRICES[Math.max(0, boughtThisWeek)] ?? null
-}
 
 /**
  * Hucha: como mucho COIN_WALLET_CAP ICA Coins. Por encima, el cofre y los desafíos ganados
