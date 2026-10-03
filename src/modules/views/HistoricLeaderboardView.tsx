@@ -1,31 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarDaysIcon, TrophyIcon } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+import { EmptyState, IconTile, PageTitle, Panel, Pill, RowGroup } from "../game/ui";
+import { RankBadge, UserInitial } from "../game/ranking";
 import {
   fetchHistoricLeaderboardByMonth,
   fetchHistoricLeaderboardMonths,
   type HistoricLeaderboardEntry,
   type HistoricLeaderboardMonth,
 } from "../services/historicLeaderboard";
-import { ListLoading } from "@/components/ui/loading-state";
+import { t, uiLocale } from '@/i18n'
 
 type HistoricLeaderboardRowWithRankLabel = {
   row: HistoricLeaderboardEntry;
-  rankLabel: string;
+  rank: number;
 };
 
 function monthLabel(periodStart: string): string {
   const date = new Date(`${periodStart}T00:00:00`);
   if (Number.isNaN(date.getTime())) return periodStart;
 
-  const label = date.toLocaleDateString("es-ES", {
+  const label = date.toLocaleDateString(uiLocale(), {
     month: "long",
     year: "numeric",
   });
@@ -33,11 +28,10 @@ function monthLabel(periodStart: string): string {
   return label.slice(0, 1).toUpperCase() + label.slice(1);
 }
 
-function rankBadge(rank: number): string {
-  if (rank === 1) return "🥇";
-  if (rank === 2) return "🥈";
-  if (rank === 3) return "🥉";
-  return `#${rank}`;
+function dayLabel(isoDay: string): string {
+  const date = new Date(`${isoDay}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return isoDay;
+  return date.toLocaleDateString(uiLocale(), { day: "numeric", month: "long" });
 }
 
 function buildRowsWithSharedRank(
@@ -62,7 +56,7 @@ function buildRowsWithSharedRank(
 
     result.push({
       row,
-      rankLabel: rankBadge(sharedRank),
+      rank: sharedRank,
     });
 
     prevStreak = currentStreak;
@@ -74,11 +68,11 @@ function buildRowsWithSharedRank(
 
 export function HistoricLeaderboardView() {
   const [months, setMonths] = useState<HistoricLeaderboardMonth[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState<string>("");
-  const [rows, setRows] = useState<HistoricLeaderboardEntry[]>([]);
-  const [loadingMonths, setLoadingMonths] = useState(true);
-  const [loadingRows, setLoadingRows] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+const [selectedMonth, setSelectedMonth] = useState<string>("");
+const [rows, setRows] = useState<HistoricLeaderboardEntry[]>([]);
+const [loadingMonths, setLoadingMonths] = useState(true);
+const [loadingRows, setLoadingRows] = useState(false);
+const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -157,120 +151,96 @@ export function HistoricLeaderboardView() {
   );
 
   return (
-    <section className="mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-5 py-8">
-      <div className="mb-6">
-        <h2 className="mb-1 font-serif text-3xl font-bold">
-          Histórico leaderboard
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Ranking mensual cerrado para análisis de super admin.
-        </p>
-      </div>
+    <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 px-4 pt-2 pb-8 lg:py-8">
+      <PageTitle
+        icon={
+          <IconTile tone="gold" size={48}>
+            <TrophyIcon className="size-6" strokeWidth={2.4} />
+          </IconTile>
+        }
+        subtitle={t("Los rankings de los meses ya cerrados.")}
+      >
+        {t("Histórico del ranking")}
+      </PageTitle>
 
-      <Card>
-        <CardHeader className="gap-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <TrophyIcon className="h-4 w-4" />
-              Leaderboard histórico
-            </CardTitle>
-
-            <div className="w-full max-w-72">
-              <Select
-                value={selectedMonth}
-                onValueChange={(value) => setSelectedMonth(value)}
-                disabled={loadingMonths || months.length === 0}
+      {loadingMonths && months.length === 0 ? (
+        <div className="h-10 animate-pulse rounded-full bg-muted" aria-hidden="true" />
+      ) : months.length > 0 ? (
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1" role="group" aria-label={t("Mes")}>
+          {months.map((month) => {
+            const active = month.periodStart === selectedMonth;
+            return (
+              <button
+                key={month.periodStart}
+                type="button"
+                onClick={() => setSelectedMonth(month.periodStart)}
+                aria-pressed={active}
+                className={cn(
+                  "h-10 shrink-0 rounded-full border-2 px-4 text-sm font-extrabold whitespace-nowrap transition-colors",
+                  active ? "border-primary/50 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted",
+                )}
               >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      loadingMonths ? "Cargando meses..." : "Selecciona un mes"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {months.map((month) => (
-                    <SelectItem
-                      key={month.periodStart}
-                      value={month.periodStart}
-                    >
-                      {monthLabel(month.periodStart)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+                {monthLabel(month.periodStart)}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
-          {selectedPeriod && (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground">
-              <CalendarDaysIcon className="h-4 w-4" />
-              Periodo: {selectedPeriod.periodStart} - {selectedPeriod.periodEnd}
-            </p>
-          )}
+      {selectedPeriod ? (
+        <p className="m-0 flex items-center gap-2 text-xs font-bold text-muted-foreground">
+          <CalendarDaysIcon className="size-4" strokeWidth={2.4} />
+          {t("Del {from} al {to}", { from: dayLabel(selectedPeriod.periodStart), to: dayLabel(selectedPeriod.periodEnd) })}
+          {rows.length > 0 ? ` · ${t("{n} personas", { n: rows.length })}` : ""}
+        </p>
+      ) : null}
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
-        </CardHeader>
+      {error ? (
+        <Panel tone="bad" className="text-sm font-bold">
+          {error}
+        </Panel>
+      ) : null}
 
-        <CardContent>
-          {loadingMonths || loadingRows ? (
-            <ListLoading label="Cargando leaderboard..." rows={5} />
-          ) : months.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Aún no hay snapshots mensuales disponibles.
-            </p>
-          ) : rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No hay filas para el mes seleccionado.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-180 table-fixed text-left text-sm">
-                <thead className="table w-full table-fixed">
-                  <tr className="border-b text-muted-foreground">
-                    <th className="w-[8%] pb-2 font-medium">Rank</th>
-                    <th className="w-[27%] pb-2 font-medium">Usuario</th>
-                    <th className="w-[12%] pb-2 font-medium">Racha ICA</th>
-                    <th className="w-[13%] pb-2 font-medium">% de eficacia</th>
-                    <th className="w-[13%] pb-2 font-medium">% review</th>
-                    <th className="w-[13%] pb-2 font-medium">% creación</th>
-                    <th className="w-[14%] pb-2 font-medium">Score</th>
-                  </tr>
-                </thead>
-                <tbody className="block max-h-[58dvh] overflow-y-auto">
-                  {rowsWithSharedRank.map(({ row, rankLabel }) => (
-                    <tr
-                      key={`${row.periodStart}-${row.userId}`}
-                      className="table w-full table-fixed border-b align-middle last:border-b-0"
-                    >
-                      <td className="w-[8%] py-2">{rankLabel}</td>
-                      <td className="w-[27%] py-2">
-                        <p className="truncate font-medium">
-                          {row.displayName || row.username || "Usuario"}
-                        </p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {row.username}
-                        </p>
-                      </td>
-                      <td className="w-[12%] py-2">{row.icaStreakDays}</td>
-                      <td className="w-[13%] py-2">
-                        {Math.round(row.avgPercent)}%
-                      </td>
-                      <td className="w-[13%] py-2">
-                        {Math.round(row.reviewPercent)}%
-                      </td>
-                      <td className="w-[13%] py-2">
-                        {Math.round(row.creationPercent)}%
-                      </td>
-                      <td className="w-[14%] py-2">{row.score}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {loadingMonths || loadingRows ? (
+        <div className="flex flex-col gap-2" aria-hidden="true">
+          {Array.from({ length: 5 }, (_, index) => (
+            <div key={index} className="h-16 animate-pulse rounded-2xl bg-muted" />
+          ))}
+        </div>
+      ) : months.length === 0 ? (
+        <Panel>
+          <EmptyState title={t("Aún no hay meses cerrados")} text={t("Cuando cierre el primer ranking, aparecerá aquí.")} />
+        </Panel>
+      ) : rows.length === 0 ? (
+        <Panel>
+          <EmptyState title={t("Nadie en este mes")} />
+        </Panel>
+      ) : (
+        <RowGroup>
+          {rowsWithSharedRank.map(({ row, rank }) => {
+            const name = row.displayName || row.username || t("Usuario");
+            return (
+              <div key={`${row.periodStart}-${row.userId}`} className="flex items-center gap-3 py-3">
+                <RankBadge rank={rank} />
+                <UserInitial name={name} size={38} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-extrabold">{name}</span>
+                  <span className="mt-1 flex flex-wrap gap-1">
+                    <Pill tone="fire">{t("{n} días de racha", { n: row.icaStreakDays })}</Pill>
+                    <Pill tone="ok">{t("{n} % eficacia", { n: Math.round(row.avgPercent) })}</Pill>
+                    <Pill tone="i">{t("{n} % repaso", { n: Math.round(row.reviewPercent) })}</Pill>
+                    <Pill tone="c">{t("{n} % creación", { n: Math.round(row.creationPercent) })}</Pill>
+                  </span>
+                </span>
+                <span className="shrink-0 text-right">
+                  <span className="block text-lg leading-none font-black tabular-nums">{row.score}</span>
+                  <span className="text-[11px] font-bold text-muted-foreground">{t("puntos")}</span>
+                </span>
+              </div>
+            );
+          })}
+        </RowGroup>
+      )}
     </section>
   );
 }

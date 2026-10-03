@@ -125,7 +125,8 @@ export async function createChallenge(
   }
 
   const myActiveCount = await deps.countActiveChallenges(adminClient, userId)
-  if (myActiveCount >= deps.maxActiveChallenges) {
+  const useExtraSlot = body.useExtraSlot === true
+  if (myActiveCount >= deps.maxActiveChallenges && !(myActiveCount === deps.maxActiveChallenges && useExtraSlot)) {
     return jsonResponse(400, {
       code: 'ICA_CHALLENGE_ACTIVE_LIMIT_REACHED',
       error: 'Ya tienes 3 desafíos activos. Termina uno para retar de nuevo.',
@@ -264,45 +265,36 @@ export async function createChallenge(
 
   const expiresAt = new Date(Date.now() + durationSeconds * 1000).toISOString()
   const acceptUntil = deps.addSecondsToNow(deps.invitationWindowSeconds)
-  const { data: challenge, error: challengeError } = await adminClient
-    .from('ica_challenges')
-    .insert({
-      challenge_slug: challengeTypeId,
-      status: 'created',
-      result_type: 'pending',
-      scope,
-      target_lang: scope === 'language' ? targetLang : null,
-      native_lang: scope === 'language' ? nativeLang : null,
-      challenger_user_id: userId,
-      challenged_user_id: challengedUserId,
-      duration_seconds: durationSeconds,
-      expires_at: expiresAt,
-      accept_until: acceptUntil,
-      game_metadata: settingsToMetadata(settings, levelsMetadata ? { levels: levelsMetadata } : {}),
-      phases_json: [
+  // Capacidad, consumo del pase y creación de ambas filas se confirman en una transacción SQL.
+  // Las comprobaciones previas de modo/palabras son informativas; esta RPC repite los límites
+  // bajo locks para cerrar carreras entre dos solicitudes.
+  const { data: challengeIdValue, error: challengeError } = await adminClient.rpc(
+    'create_ica_challenge_with_pass',
+    {
+      p_user_id: userId,
+      p_challenged_user_id: challengedUserId,
+      p_challenge_slug: challengeTypeId,
+      p_scope: scope,
+      p_target_lang: targetLang,
+      p_native_lang: nativeLang,
+      p_duration_seconds: durationSeconds,
+      p_expires_at: expiresAt,
+      p_accept_until: acceptUntil,
+      p_game_metadata: settingsToMetadata(settings, levelsMetadata ? { levels: levelsMetadata } : {}),
+      p_phases_json: [
         { key: 'invitation', status: 'pending' },
         { key: 'duel', status: 'locked' },
       ],
-    })
-    .select('id')
-    .single()
+      p_use_extra_slot: useExtraSlot,
+    },
+  )
 
-  if (challengeError || !challenge) {
-    return jsonResponse(400, { error: challengeError?.message || 'No se pudo crear el desafío.' })
+  if (challengeError || !challengeIdValue) {
+    const message = challengeError?.message || 'No se pudo crear el desafío.'
+    return jsonResponse(400, { error: message })
   }
 
-  const challengeId = deps.toText((challenge as Record<string, unknown>).id)
-  const { error: competitorsError } = await adminClient.from('ica_challenge_competitors').insert([
-    {
-      challenge_id: challengeId,
-      user_id: userId,
-      competitor_order: 1,
-      invitation_status: 'accepted',
-      accepted_at: new Date().toISOString(),
-    },
-    { challenge_id: challengeId, user_id: challengedUserId, competitor_order: 2, invitation_status: 'pending' },
-  ])
-  if (competitorsError) return jsonResponse(400, { error: competitorsError.message })
+  const challengeId = deps.toText(challengeIdValue)
 
   await deps.sendPushToUser({
     adminClient,

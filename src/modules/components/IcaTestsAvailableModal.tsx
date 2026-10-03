@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
+import { t, langName } from '@/i18n'
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { TrophyIcon } from '../game/icons'
+import { Pill } from '../game/ui'
+import { IcaTestGlyph } from './IcaTestParts'
 import { useIcaTestsOverview } from '../hooks/useIcaTestsOverview'
 import { getIcaTestMonthLabel } from '../services/icaTests'
 import { getIcaTestMonthRoute } from '../routes/paths'
@@ -116,43 +119,42 @@ export function IcaTestsAvailableModal({
         setOpen(nextOpen)
       }}
     >
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Test ICA disponible</DialogTitle>
+      <DialogContent className='gap-5 sm:max-w-md'>
+        <div className='-mx-5 -mt-5 flex flex-col items-center gap-2 rounded-t-3xl px-5 pt-7 pb-5 text-center' style={{ background: 'var(--ica-c-soft)' }}>
+          <span className='ica-bob'>
+            <IcaTestGlyph size={72} />
+          </span>
+          <Pill tone='ok' solid>
+            {t('Ya disponible')}
+          </Pill>
+        </div>
+        <DialogHeader className='items-center text-center'>
+          <DialogTitle className='pr-0 text-2xl'>{t('Test ICA disponible')}</DialogTitle>
           <DialogDescription>
-            El test de{' '}
-            <span className='capitalize'>
+            {t('El test de')}{' '}
+            <b className='font-extrabold text-foreground'>
               {getIcaTestMonthLabel(currentMonthDate)}
-            </span>{' '}
-            ya está habilitado para {config.nativeLang} -&gt; {config.targetLang}.
+            </b>{' '}
+            {t('ya está habilitado para {pair}.', { pair: `${langName(config.nativeLang)} → ${langName(config.targetLang)}` })}
             <br />
-            Puedes hacerlo ahora o más tarde desde la sección Perfil.
+            {t('Puedes hacerlo ahora o más tarde desde la sección Perfil.')}
           </DialogDescription>
-          <div className='rounded-lg border border-amber-300/70 bg-amber-50/60 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100'>
-            <strong>⚠️ IMPORTANTE</strong>
-            <ul className='mt-2 list-inside list-disc'>
-              <li>
-                El ICA Test suma puntos para el leaderboard mensual y cada
-                respuesta correcta vale 0,1 puntos.
-              </li>
-            </ul>
-          </div>
         </DialogHeader>
-        <DialogFooter>
-          <Button
-            type='button'
-            variant='outline'
-            onClick={() => {
-              if (isDev) {
-                console.info('[ica-tests-modal] dismissed via more-later')
-              }
-              markDismissedForCurrentMonth()
-              setOpen(false)
-            }}
-          >
-            Más tarde
-          </Button>
-          <Button type='button' asChild>
+        <div
+          className='flex items-center gap-3 rounded-2xl border-2 px-3.5 py-3'
+          style={{
+            background: 'var(--ica-gold-soft)',
+            borderColor: 'color-mix(in oklab, var(--ica-gold) 45%, transparent)',
+          }}
+        >
+          <TrophyIcon size={34} />
+          <p className='m-0 text-sm font-bold' style={{ color: 'var(--ica-gold-ink)' }}>
+            <strong className='font-black'>{t('Importante:')}</strong>{' '}
+            {t('el Test ICA suma puntos para el ranking del mes y cada respuesta correcta vale 0,1 puntos.')}
+          </p>
+        </div>
+        <div className='flex flex-col gap-2'>
+          <Button type='button' size='xl' variant='c' className='w-full' asChild>
             <Link
               to={getIcaTestMonthRoute(currentMonthCode)}
               onClick={() => {
@@ -163,10 +165,25 @@ export function IcaTestsAvailableModal({
                 setOpen(false)
               }}
             >
-              Ir al test
+              {t('Ir al test')}
             </Link>
           </Button>
-        </DialogFooter>
+          <Button
+            type='button'
+            variant='ghost'
+            size='lg'
+            className='w-full text-muted-foreground'
+            onClick={() => {
+              if (isDev) {
+                console.info('[ica-tests-modal] dismissed via more-later')
+              }
+              markDismissedForCurrentMonth()
+              setOpen(false)
+            }}
+          >
+            {t('Más tarde')}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   )

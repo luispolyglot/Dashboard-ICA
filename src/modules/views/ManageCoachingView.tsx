@@ -1,9 +1,12 @@
+import { AppSelect } from '@/components/ui/app-select'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { t } from '@/i18n'
 import {
   ArchiveIcon,
   CalendarIcon,
   CheckCheckIcon,
+  CrownIcon,
   EyeIcon,
   MoreHorizontalIcon,
   PlayIcon,
@@ -53,6 +56,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { PendingReviewDot } from '../components/PendingReviewDot'
+import { GameProgress, Pill, SectionLabel } from '../game/ui'
 import { formatDateTime } from '../utils'
 import { ListLoading } from '@/components/ui/loading-state'
 import { useSoftLoading } from '../hooks/useSoftLoading'
@@ -480,18 +484,38 @@ export function ManageCoachingView() {
   }, [nextCoacherUserId, userToChangeCoacher])
 
   return (
-    <section className='mx-auto w-full max-w-7xl flex-1 overflow-y-auto px-5 py-8'>
-      <div className='mb-6 flex flex-wrap items-center justify-between gap-3'>
-        <div>
-          <h2 className='mb-1 font-serif text-3xl font-bold'>
-            Administrar Coaching
-          </h2>
-          <p className='text-sm text-muted-foreground'>
-            Gestiona sesiones de coaching por idioma, nivel y programa de 12
-            semanas.
-          </p>
+    <section className='coaching-premium mx-auto w-full max-w-6xl flex-1 px-4 py-6 lg:px-8'>
+      <header className='coaching-hero relative mb-5 overflow-hidden rounded-[32px] px-6 py-6 text-white md:px-8'>
+        <span className='coaching-hero-glow pointer-events-none absolute -top-20 -right-12 size-64 rounded-full' aria-hidden='true' />
+        <div className='relative flex flex-wrap items-end justify-between gap-5'>
+          <div className='min-w-0'>
+            <p
+              className='m-0 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[11px] font-black tracking-[0.14em] uppercase'
+              style={{ color: 'var(--ica-gold)' }}
+            >
+              <CrownIcon className='size-3.5' strokeWidth={2.8} aria-hidden='true' />
+              Coaching ICA
+            </p>
+            <h1 className='m-0 mt-3 font-display text-4xl leading-none font-black tracking-tight'>
+              {t('Tus alumnos')}
+            </h1>
+            <p className='m-0 mt-2 text-sm font-semibold text-white/75'>
+              {t('Programa de 12 semanas por idioma y nivel.')}
+            </p>
+          </div>
+          <div className='flex gap-2'>
+            <span className='flex min-w-24 flex-col items-center rounded-2xl bg-white/10 px-4 py-2.5'>
+              <span className='text-2xl leading-none font-black tabular-nums'>{users.filter((row) => row.status === 'active').length}</span>
+              <span className='mt-1 text-[11px] font-bold text-white/70'>{t('activos')}</span>
+            </span>
+            <span className='flex min-w-24 flex-col items-center rounded-2xl px-4 py-2.5' style={{ background: 'color-mix(in oklab, var(--ica-gold) 25%, transparent)' }}>
+              <span className='text-2xl leading-none font-black tabular-nums' style={{ color: 'var(--ica-gold)' }}>{users.reduce((sum, row) => sum + (row.pendingMasterNotesReviewCount || (row.hasPendingMasterNotesReview ? 1 : 0)), 0)}</span>
+              <span className='mt-1 text-[11px] font-bold text-white/70'>{t('por revisar')}</span>
+            </span>
+          </div>
         </div>
-        <div className='flex flex-wrap gap-2'>
+      </header>
+      <div className='mb-5 flex flex-wrap gap-2'>
           {isSuperAdmin && (
             <Button
               type='button'
@@ -529,7 +553,6 @@ export function ManageCoachingView() {
             <RefreshCwIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             Recargar
           </Button>
-        </div>
       </div>
 
       {(error || feedback) && (
@@ -544,8 +567,8 @@ export function ManageCoachingView() {
         <CardContent className='grid gap-3 pt-4 md:grid-cols-3'>
           <div className='space-y-1.5'>
             <Label>Filtrar por idioma</Label>
-            <select
-              className='h-10 w-full rounded-md border bg-background px-3 text-sm'
+            <AppSelect
+              className='h-11 w-full rounded-xl border-2 border-border bg-card px-3 text-sm font-bold'
               value={filterTargetLang}
               onChange={(event) => setFilterTargetLang(event.target.value)}
             >
@@ -555,13 +578,13 @@ export function ManageCoachingView() {
                   {language}
                 </option>
               ))}
-            </select>
+            </AppSelect>
           </div>
 
           <div className='space-y-1.5'>
             <Label>Filtrar por estado</Label>
-            <select
-              className='h-10 w-full rounded-md border bg-background px-3 text-sm'
+            <AppSelect
+              className='h-11 w-full rounded-xl border-2 border-border bg-card px-3 text-sm font-bold'
               value={filterStatus}
               onChange={(event) => setFilterStatus(event.target.value)}
             >
@@ -570,14 +593,14 @@ export function ManageCoachingView() {
               <option value='active'>Activo</option>
               <option value='completed'>Completado</option>
               <option value='cancelled'>Cancelado</option>
-            </select>
+            </AppSelect>
           </div>
 
           {isSuperAdmin && (
             <div className='space-y-1.5'>
               <Label>Filtrar por coach</Label>
-              <select
-                className='h-10 w-full rounded-md border bg-background px-3 text-sm'
+              <AppSelect
+                className='h-11 w-full rounded-xl border-2 border-border bg-card px-3 text-sm font-bold'
                 value={filterCoach}
                 onChange={(event) => setFilterCoach(event.target.value)}
               >
@@ -588,17 +611,15 @@ export function ManageCoachingView() {
                     {coachName}
                   </option>
                 ))}
-              </select>
+              </AppSelect>
             </div>
           )}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Sesiones de coaching ({filteredUsers.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div>
+        <SectionLabel>{t('Sesiones de coaching ({n})', { n: filteredUsers.length })}</SectionLabel>
+        <div>
           {loading ? (
             <ListLoading label='Cargando tabla...' />
           ) : filteredUsers.length === 0 ? (
@@ -606,168 +627,137 @@ export function ManageCoachingView() {
               No hay sesiones para los filtros seleccionados.
             </p>
           ) : (
-            <div className='overflow-x-auto'>
-              <table className='w-full min-w-200 table-fixed text-left text-sm'>
-                <thead>
-                  <tr className='border-b text-muted-foreground'>
-                    <th className='pb-2 font-medium'>Usuario</th>
-                    {isSuperAdmin && <th className='pb-2 font-medium'>ID</th>}
-                    <th className='pb-2 font-medium'>Idioma</th>
-                    <th className='pb-2 font-medium'>Nivel</th>
-                    <th className='pb-2 font-medium'>Coacher</th>
-                    <th className='pb-2 font-medium'>Estado</th>
-                    <th className='pb-2 font-medium'>Semanas</th>
-                    <th className='pb-2 font-medium'>Comenzó</th>
-                    <th className='pb-2 font-medium'>Activo</th>
-                    <th className='pb-2 font-medium'>Actualizado</th>
-                    <th className='pb-2 font-medium'>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredUsers.map((row) => {
-                    const pendingReviewCount =
-                      row.pendingMasterNotesReviewCount || 0
-                    const hasPendingReview =
-                      row.hasPendingMasterNotesReview || pendingReviewCount > 0
-                    const pendingReviewLabel =
-                      pendingReviewCount === 1
-                        ? '1 nota maestra pendiente de revisión'
-                        : `${pendingReviewCount} notas maestras pendientes de revisión`
-
-                    return (
-                      <tr
-                        key={row.id}
-                        className='border-b align-middle last:border-b-0'
+            <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-3'>
+              {filteredUsers.map((row) => {
+                const pendingReviewCount = row.pendingMasterNotesReviewCount || 0
+                const hasPendingReview = row.hasPendingMasterNotesReview || pendingReviewCount > 0
+                const pendingReviewLabel =
+                  pendingReviewCount === 1
+                    ? t('1 nota maestra pendiente de revisión')
+                    : t('{n} notas maestras pendientes de revisión', { n: pendingReviewCount })
+                const totalWeeks = row.durationPeriods || row.durationWeeks || 12
+                const week = row.weekActivation?.lastActivatedWeek || 0
+                const statusTone =
+                  row.status === 'active' ? 'ok' : row.status === 'draft' ? 'gold' : 'neutral'
+                return (
+                  <div key={row.id} className='ica-panel flex flex-col gap-3 px-4 py-4'>
+                    <div className='flex items-start gap-3'>
+                      <span
+                        className='flex size-12 shrink-0 items-center justify-center rounded-2xl text-xl font-black text-white'
+                        style={{ background: 'linear-gradient(135deg, #1b2450, #3a1752)', boxShadow: '0 3px 0 #11173a' }}
+                        aria-hidden='true'
                       >
-                        <td className='py-2'>
-                          <p className='inline-flex items-center gap-2 font-medium'>
-                            <span>{row.userDisplayName}</span>
-                            {hasPendingReview && (
-                              <PendingReviewDot
-                                useIconSpeaker
-                                title={pendingReviewLabel}
-                              />
-                            )}
-                          </p>
-                        </td>
-                        {isSuperAdmin && (
-                          <td className='py-2'>
-                            <p className='text-xs text-muted-foreground'>
-                              {row.userId}
-                            </p>
-                          </td>
-                        )}
-                        <td className='py-2'>
-                          <p>{row.targetLang}</p>
-                        </td>
-                        <td className='py-2'>{row.level}</td>
-                        <td className='py-2'>{row.coachDisplayName || '-'}</td>
-                        <td className='py-2'>
-                          {statusLabels[row.status] || row.status}
-                        </td>
-                        <td className='py-2 text-xs text-muted-foreground'>
-                          {row.weekActivation?.lastActivatedWeek
-                            ? `Semana ${row.weekActivation.lastActivatedWeek}`
-                            : '-'}
-                        </td>
-                        <td className='py-2 text-xs text-muted-foreground'>
-                          {row.activatedAt
-                            ? formatDateTime(row.activatedAt)
-                            : '-'}
-                        </td>
-                        <td className='py-2'>{row.isActive ? 'Sí' : 'No'}</td>
-                        <td className='py-2 text-xs text-muted-foreground'>
-                          {formatDateTime(row.updatedAt)}
-                        </td>
-                        <td className='py-2'>
-                          <div className='flex flex-wrap gap-2'>
-                            <Button
-                              type='button'
-                              variant='outline'
-                              size='icon'
-                              aria-label='Ver usuario coaching'
-                              onClick={() =>
-                                navigate(
-                                  getManageCoachingUserRoute(
-                                    row.userId,
-                                    row.id,
-                                  ),
-                                )
-                              }
-                            >
-                              <EyeIcon className='h-4 w-4' />
-                            </Button>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  type='button'
-                                  variant='outline'
-                                  size='icon'
-                                  aria-label='Más acciones de sesión'
-                                >
-                                  <MoreHorizontalIcon className='h-4 w-4' />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align='end'>
-                                {row.status === 'draft' && (
-                                  <DropdownMenuItem
-                                    onClick={() => void handleStartSession(row)}
-                                  >
-                                    <PlayIcon className='h-4 w-4' />
-                                    Comenzar
-                                  </DropdownMenuItem>
-                                )}
-                                {row.status !== 'draft' && (
-                                  <DropdownMenuItem
-                                    onClick={() => {
-                                      setUserToClose(row)
-                                      setCloseReason('')
-                                      setCloseModalOpen(true)
-                                    }}
-                                  >
-                                    <CheckCheckIcon className='h-4 w-4' />
-                                    Cerrar coaching
-                                  </DropdownMenuItem>
-                                )}
-                                {isSuperAdmin && (
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      handleOpenChangeCoacherModal(row)
-                                    }
-                                  >
-                                    <UserIcon className='h-4 w-4' />
-                                    Cambiar coacher
-                                  </DropdownMenuItem>
-                                )}
-                                <DropdownMenuItem
-                                  onClick={() => handleAskDeleteUser(row)}
-                                >
-                                  <ArchiveIcon className='h-4 w-4' />
-                                  Archivar
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  variant='destructive'
-                                  onClick={() => {
-                                    setUserToHardDelete(row)
-                                    setHardDeleteModalOpen(true)
-                                  }}
-                                >
-                                  <Trash2Icon className='h-4 w-4' />
-                                  Eliminar definitivo
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                        {row.userDisplayName.trim().charAt(0).toUpperCase() || '?'}
+                      </span>
+                      <div className='min-w-0 flex-1'>
+                        <p className='m-0 flex items-center gap-2 truncate text-base font-black'>
+                          <span className='truncate'>{row.userDisplayName}</span>
+                          {hasPendingReview ? <PendingReviewDot useIconSpeaker title={pendingReviewLabel} /> : null}
+                        </p>
+                        <p className='m-0 text-xs font-bold text-muted-foreground'>
+                          {row.targetLang} · {row.level} · {row.coachDisplayName || t('Sin coach')}
+                        </p>
+                        {isSuperAdmin ? (
+                          <p className='m-0 truncate text-[10px] text-muted-foreground/70'>{row.userId}</p>
+                        ) : null}
+                      </div>
+                      <Pill tone={statusTone}>{statusLabels[row.status] || row.status}</Pill>
+                    </div>
+
+                    <div>
+                      <div className='mb-1 flex justify-between text-xs font-extrabold text-muted-foreground'>
+                        <span>{week ? t('Semana {n} de {total}', { n: week, total: totalWeeks }) : t('Sin empezar')}</span>
+                        <span>{row.activatedAt ? formatDateTime(row.activatedAt) : '–'}</span>
+                      </div>
+                      <GameProgress value={week / totalWeeks} color='var(--ica-gold)' height={10} />
+                    </div>
+
+                    {hasPendingReview ? (
+                      <p
+                        className='m-0 rounded-xl px-3 py-1.5 text-xs font-bold'
+                        style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
+                      >
+                        {pendingReviewLabel}
+                      </p>
+                    ) : null}
+
+                    <div className='mt-auto flex items-center gap-2'>
+                      <Button
+                        type='button'
+                        className='h-11 flex-1 rounded-2xl font-extrabold'
+                        onClick={() => navigate(getManageCoachingUserRoute(row.userId, row.id))}
+                      >
+                        <EyeIcon className='size-4' aria-hidden='true' />
+                        {t('Abrir tablero')}
+                      </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type='button'
+                        variant='outline'
+                        size='icon'
+                        aria-label='Más acciones de sesión'
+                      >
+                        <MoreHorizontalIcon className='h-4 w-4' />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align='end'>
+                      {row.status === 'draft' && (
+                        <DropdownMenuItem
+                          onClick={() => void handleStartSession(row)}
+                        >
+                          <PlayIcon className='h-4 w-4' />
+                          Comenzar
+                        </DropdownMenuItem>
+                      )}
+                      {row.status !== 'draft' && (
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setUserToClose(row)
+                            setCloseReason('')
+                            setCloseModalOpen(true)
+                          }}
+                        >
+                          <CheckCheckIcon className='h-4 w-4' />
+                          Cerrar coaching
+                        </DropdownMenuItem>
+                      )}
+                      {isSuperAdmin && (
+                        <DropdownMenuItem
+                          onClick={() =>
+                            handleOpenChangeCoacherModal(row)
+                          }
+                        >
+                          <UserIcon className='h-4 w-4' />
+                          Cambiar coacher
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem
+                        onClick={() => handleAskDeleteUser(row)}
+                      >
+                        <ArchiveIcon className='h-4 w-4' />
+                        Archivar
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        variant='destructive'
+                        onClick={() => {
+                          setUserToHardDelete(row)
+                          setHardDeleteModalOpen(true)
+                        }}
+                      >
+                        <Trash2Icon className='h-4 w-4' />
+                        Eliminar definitivo
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {isSuperAdmin && (
         <Card className='mt-4'>
@@ -853,9 +843,9 @@ export function ManageCoachingView() {
           <div className='space-y-3'>
             <div className='space-y-1.5'>
               <Label htmlFor='coaching-coacher'>Coacher</Label>
-              <select
+              <AppSelect
                 id='coaching-coacher'
-                className='h-10 w-full rounded-md border bg-background px-3 text-sm'
+                className='h-11 w-full rounded-xl border-2 border-border bg-card px-3 text-sm font-bold'
                 value={createUserCoachUserId}
                 onChange={(event) =>
                   setCreateUserCoachUserId(event.target.value)
@@ -868,7 +858,7 @@ export function ManageCoachingView() {
                     {row.role === 'super_admin' ? '(super_admin)' : ''}
                   </option>
                 ))}
-              </select>
+              </AppSelect>
             </div>
 
             <div className='space-y-1.5'>
@@ -1081,9 +1071,9 @@ export function ManageCoachingView() {
 
             <div className='space-y-1.5'>
               <Label htmlFor='change-coacher-select'>Coacher</Label>
-              <select
+              <AppSelect
                 id='change-coacher-select'
-                className='h-10 w-full rounded-md border bg-background px-3 text-sm'
+                className='h-11 w-full rounded-xl border-2 border-border bg-card px-3 text-sm font-bold'
                 value={nextCoacherUserId}
                 onChange={(event) => setNextCoacherUserId(event.target.value)}
                 disabled={isChangingCoacher}
@@ -1095,7 +1085,7 @@ export function ManageCoachingView() {
                     {row.role === 'super_admin' ? '(super_admin)' : ''}
                   </option>
                 ))}
-              </select>
+              </AppSelect>
             </div>
           </div>
 
@@ -1141,9 +1131,9 @@ export function ManageCoachingView() {
           <div className='space-y-3'>
             <div className='space-y-1.5'>
               <Label htmlFor='create-admin-user'>Coacher</Label>
-              <select
+              <AppSelect
                 id='create-admin-user'
-                className='h-10 w-full rounded-md border bg-background px-3 text-sm'
+                className='h-11 w-full rounded-xl border-2 border-border bg-card px-3 text-sm font-bold'
                 value={createAdminUserId}
                 onChange={(event) => setCreateAdminUserId(event.target.value)}
               >
@@ -1158,7 +1148,7 @@ export function ManageCoachingView() {
                     {row.isAlreadyCoacher ? ' - Ya es coacher' : ''}
                   </option>
                 ))}
-              </select>
+              </AppSelect>
             </div>
           </div>
 

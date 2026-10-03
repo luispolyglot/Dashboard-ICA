@@ -1,5 +1,7 @@
 import { supabase } from '../../lib/supabase'
+import { t } from '@/i18n'
 import { runInBatches } from '../../lib/utils'
+import { PREGUNTICA_EXTRA_COST } from '../game/rules'
 
 const PREGUNTICA_AUDIO_BUCKET = 'preguntica-audios'
 
@@ -286,7 +288,7 @@ export type PickPregunticaQuestionResult = {
 
 function requireSupabase() {
   if (!supabase) {
-    throw new Error('Falta configurar Supabase')
+    throw new Error(t('Falta configurar Supabase'))
   }
   return supabase
 }
@@ -323,23 +325,23 @@ async function mapEdgeFunctionError(error: unknown, fallback: string): Promise<E
   const source = functionError || rawMessage
 
   if (source.includes('EMPTY_TRANSCRIPTION')) {
-    return new Error('No se detectó voz en el audio. Intenta grabar de nuevo y hablar un poco más fuerte.')
+    return new Error(t('No se detectó voz en el audio. Intenta grabar de nuevo y hablar un poco más fuerte.'))
   }
 
   if (source.includes('INVALID_RESPONSE_LENGTH')) {
-    return new Error('Tu respuesta no cumple el mínimo de caracteres requerido para tu nivel.')
+    return new Error(t('Tu respuesta no cumple el mínimo de caracteres requerido para tu nivel.'))
   }
 
   if (source.includes('ANALYSIS_LIMIT_REACHED')) {
-    return new Error('Ya usaste los 3 análisis disponibles para esta PreguntICA.')
+    return new Error(t('Ya usaste los 3 análisis disponibles para esta PreguntICA.'))
   }
 
   if (source.includes('NO_ICA_WORDS_AVAILABLE')) {
-    return new Error('No tienes suficientes palabras ICA para iniciar PreguntICA. Agrega más al Baúl y vuelve a intentar.')
+    return new Error(t('No tienes suficientes palabras ICA para iniciar PreguntICA. Agrega más al Baúl y vuelve a intentar.'))
   }
 
   if (source.includes('QUESTION_TRANSLATION_REQUIRED')) {
-    return new Error('No se pudo preparar la pregunta en tu idioma objetivo. Intenta de nuevo en unos segundos.')
+    return new Error(t('No se pudo preparar la pregunta en tu idioma objetivo. Intenta de nuevo en unos segundos.'))
   }
 
   if (functionError) {
@@ -456,7 +458,7 @@ export async function createPregunticaAttempt(
   if (error) throw error
 
   const row = Array.isArray(data) ? (data[0] as RpcAttemptRow | undefined) : (data as RpcAttemptRow | null)
-  if (!row) throw new Error('No se pudo crear el intento de PreguntICA')
+  if (!row) throw new Error(t('No se pudo crear el intento de PreguntICA'))
   return mapAttempt(row)
 }
 
@@ -483,7 +485,7 @@ export async function createPregunticaAttemptWithPromptData(input: {
   if (error) throw error
 
   const row = Array.isArray(data) ? (data[0] as RpcAttemptRow | undefined) : (data as RpcAttemptRow | null)
-  if (!row) throw new Error('No se pudo crear el intento de PreguntICA')
+  if (!row) throw new Error(t('No se pudo crear el intento de PreguntICA'))
   return mapAttempt(row)
 }
 
@@ -496,7 +498,7 @@ export async function completePregunticaAttempt(attemptId: string): Promise<Preg
   if (error) throw error
 
   const row = Array.isArray(data) ? (data[0] as RpcAttemptRow | undefined) : (data as RpcAttemptRow | null)
-  if (!row) throw new Error('No se pudo completar el intento')
+  if (!row) throw new Error(t('No se pudo completar el intento'))
   return mapAttempt(row)
 }
 
@@ -531,7 +533,7 @@ export async function pickPregunticaQuestion(
       | null)
 
   if (!row?.question_id || !row.question_es) {
-    throw new Error('No hay preguntas disponibles en el banco de PreguntICA')
+    throw new Error(t('No hay preguntas disponibles en el banco de PreguntICA'))
   }
 
   return {
@@ -622,7 +624,7 @@ export async function uploadPregunticaAttemptAudio(input: {
 
   const userId = session?.user?.id
   if (!userId) {
-    throw new Error('Debes iniciar sesión para subir audio')
+    throw new Error(t('Debes iniciar sesión para subir audio'))
   }
 
   const audioId = crypto.randomUUID()
@@ -688,8 +690,8 @@ export async function processPregunticaAttemptAudio(
     },
   )
 
-  if (error) throw await mapEdgeFunctionError(error, 'No se pudo analizar la respuesta')
-  if (!data) throw new Error('Respuesta vacía de preguntica-center')
+  if (error) throw await mapEdgeFunctionError(error, t('No se pudo analizar la respuesta'))
+  if (!data) throw new Error(t('Respuesta vacía de preguntica-center'))
   return data
 }
 
@@ -708,7 +710,7 @@ export async function refreshPregunticaSuggestions(
   )
 
   if (error) throw error
-  if (!data) throw new Error('Respuesta vacía de preguntica-center')
+  if (!data) throw new Error(t('Respuesta vacía de preguntica-center'))
   return data
 }
 
@@ -723,10 +725,10 @@ export async function preparePregunticaAttempt(
     } satisfies PrepareAttemptPayload,
   })
 
-  if (error) throw await mapEdgeFunctionError(error, 'No se pudo iniciar la PreguntICA')
-  if (!data) throw new Error('Respuesta vacía de preguntica-center')
+  if (error) throw await mapEdgeFunctionError(error, t('No se pudo iniciar la PreguntICA'))
+  if (!data) throw new Error(t('Respuesta vacía de preguntica-center'))
   if (!data.ok || !data.attempt) {
-    throw new Error(data.error || 'No se pudo iniciar la PreguntICA')
+    throw new Error(data.error || t('No se pudo iniciar la PreguntICA'))
   }
 
   const mapped = mapAttempt(data.attempt)
@@ -818,7 +820,7 @@ export async function createSignedPregunticaAudioUrl(
     .createSignedUrl(storagePath, expiresInSeconds)
 
   if (error || !data?.signedUrl) {
-    throw error || new Error('No se pudo generar la URL de audio')
+    throw error || new Error(t('No se pudo generar la URL de audio'))
   }
 
   return data.signedUrl
@@ -1050,7 +1052,8 @@ export async function redeemPregunticaTokensForWeek(
     p_week_start: weekStart,
     p_target_lang: normalizeLangKey(input.targetLang),
     p_native_lang: normalizeLangKey(input.nativeLang),
-    p_tokens_to_spend: 1,
+    // Precio del intento extra: PREGUNTICA_EXTRA_COST (el servidor lo comprueba en redeem_preguntica_tokens_for_week).
+    p_tokens_to_spend: PREGUNTICA_EXTRA_COST,
   })
 
   if (error) throw error
@@ -1074,7 +1077,7 @@ export async function redeemPregunticaTokensForWeek(
       | null)
 
   if (!row) {
-    throw new Error('No se pudo registrar el canje de fichas')
+    throw new Error(t('No se pudo registrar el canje de ICA Coins'))
   }
 
   return {

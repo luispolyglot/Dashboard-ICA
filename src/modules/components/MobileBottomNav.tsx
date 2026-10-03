@@ -1,14 +1,50 @@
-import { useEffect, useRef, useState } from 'react'
-import type { TouchEvent as ReactTouchEvent } from 'react'
+import type { ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { MobileProfileSheet } from './MobileProfileSheet'
+import { Gamepad2Icon, HouseIcon, PlusIcon, TrophyIcon, UserIcon } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { PendingReviewDot } from './PendingReviewDot'
 import { ChallengeAlertBadge } from './IcaChallenges/ChallengeAlertBadge'
 import { describeIcaChallengeAlerts, useIcaChallengeAlerts } from '../hooks/useIcaChallengeAlerts'
 import { DASHBOARD_ROUTES } from '../routes/paths'
+import { t } from '@/i18n'
 
-// Deslizar hacia arriba sobre la tab bar (al menos estos px) abre el perfil
-const SWIPE_UP_OPEN_THRESHOLD_PX = 40
+/** Pestaña de la barra de abajo: icono de línea y texto; la activa va en una píldora. */
+function TabItem({
+  icon: Icon,
+  label,
+  active,
+  alert,
+  badge,
+}: {
+  icon: LucideIcon
+  label: string
+  active: boolean
+  alert?: ReactNode
+  /** Globito ya posicionado (p. ej. retos pendientes). */
+  badge?: ReactNode
+}) {
+  return (
+    <span
+      className={cn(
+        'flex min-h-[52px] flex-col items-center justify-center gap-[3px] text-[11px] font-extrabold',
+        active ? 'text-primary' : 'text-muted-foreground',
+      )}
+    >
+      <span
+        className={cn(
+          'relative flex h-8 w-[46px] items-center justify-center rounded-xl border-2',
+          active ? 'border-primary/40 bg-primary/12' : 'border-transparent',
+        )}
+      >
+        <Icon className='size-6' strokeWidth={2.2} aria-hidden='true' />
+        {alert ? <span className='pointer-events-none absolute -top-1.5 -right-1.5'>{alert}</span> : null}
+        {badge}
+      </span>
+      {label}
+    </span>
+  )
+}
 
 type MobileBottomNavProps = {
   shouldHighlightProfileButton: boolean
@@ -20,34 +56,9 @@ export function MobileBottomNav({
   shouldHighlightCoachingProfileButton = false,
 }: MobileBottomNavProps) {
   const location = useLocation()
-  const [profileOpen, setProfileOpen] = useState(false)
   // Retos nuevos o turnos pendientes en Desafíos ICA: globito encima del mando.
   const challengeAlerts = useIcaChallengeAlerts()
-  const touchStartYRef = useRef<number | null>(null)
-
-  // Si se navega a otra pantalla, el panel de perfil se cierra
-  useEffect(() => {
-    setProfileOpen(false)
-  }, [location.pathname])
-
-  const handleTouchStart = (event: ReactTouchEvent<HTMLElement>) => {
-    touchStartYRef.current = event.touches[0]?.clientY ?? null
-  }
-
-  const handleTouchEnd = (event: ReactTouchEvent<HTMLElement>) => {
-    const startY = touchStartYRef.current
-    touchStartYRef.current = null
-    const endY = event.changedTouches[0]?.clientY
-    if (startY === null || endY === undefined) return
-    if (startY - endY >= SWIPE_UP_OPEN_THRESHOLD_PX) {
-      setProfileOpen(true)
-    }
-  }
-  const linkClassName = ({ isActive }: { isActive: boolean }) =>
-    `flex flex-col items-center gap-1 ${
-      isActive ? 'text-primary' : 'text-muted-foreground'
-    }`
-  const isOnProfileRoute = location.pathname === DASHBOARD_ROUTES.profile
+  const isOnProfileRoute = location.pathname.startsWith(DASHBOARD_ROUTES.profile)
   const isOnIcaTestsRoute = location.pathname.startsWith(DASHBOARD_ROUTES.testsIca)
   const isOnManageCoachingRoute = location.pathname.startsWith(
     DASHBOARD_ROUTES.manageCoaching,
@@ -57,89 +68,73 @@ export function MobileBottomNav({
     shouldHighlightCoachingProfileButton && !isOnManageCoachingRoute
   const shouldPulseProfileButton =
     (hasIcaProfileAlert || hasCoachingProfileAlert) &&
-    !isOnProfileRoute &&
-    !profileOpen
-  const isProfileActive = isOnProfileRoute || profileOpen
+    !isOnProfileRoute
+  const isProfileActive = isOnProfileRoute
   const profileAlertTitle = hasCoachingProfileAlert
     ? hasIcaProfileAlert
-      ? 'Tienes novedades: test ICA y coaching pendiente de revisión.'
-      : 'Tienes notas maestras pendientes de revisión en coaching.'
-    : 'Tienes un test ICA disponible este mes.'
+      ? t('Tienes novedades: test ICA y coaching pendiente de revisión.')
+      : t('Tienes notas maestras pendientes de revisión en coaching.')
+    : t('Tienes un test ICA disponible este mes.')
 
   return (
     <>
       <nav
-        className='fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/95 pb-[max(env(safe-area-inset-bottom),1.5rem)] pt-1.5 backdrop-blur md:hidden min-h-20'
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
+        aria-label={t('Navegación principal')}
+        className='fixed inset-x-0 bottom-0 z-40 border-t-2 border-border bg-card pb-[max(env(safe-area-inset-bottom),0.75rem)] md:hidden dark:bg-background'
       >
-        <div className='mx-auto grid max-w-md grid-cols-5 items-end px-3 pt-2'>
-          <NavLink to={DASHBOARD_ROUTES.home} className={linkClassName}>
-            <span className='text-lg leading-none' aria-hidden='true'>
-              🏠
-            </span>
-            <span className='text-[11px] font-medium'>Inicio</span>
+        <div className='mx-auto grid h-[74px] max-w-md grid-cols-5 items-center px-1.5'>
+          <NavLink to={DASHBOARD_ROUTES.home} end className='outline-none'>
+            {({ isActive }) => <TabItem icon={HouseIcon} label={t('Inicio')} active={isActive} />}
           </NavLink>
 
-          <NavLink to={DASHBOARD_ROUTES.streaks} className={linkClassName}>
-            <span className='text-lg leading-none' aria-hidden='true'>
-              📆
-            </span>
-            <span className='text-[11px] font-medium'>Rachas</span>
+          <NavLink to={DASHBOARD_ROUTES.leaderboard} className='outline-none'>
+            {({ isActive }) => <TabItem icon={TrophyIcon} label={t('Ranking')} active={isActive} />}
           </NavLink>
 
-          <NavLink
-            to={DASHBOARD_ROUTES.newIcaWords}
-            aria-label='Añadir palabras ICA'
-            className='mx-auto -mt-7 inline-flex h-14 w-14 items-center justify-center rounded-full border border-primary/40 bg-primary text-primary-foreground shadow-[0_12px_28px_-10px_var(--color-primary)]'
-          >
-            <span className='text-3xl leading-none' aria-hidden='true'>
-              ➕
-            </span>
-          </NavLink>
+          <div className='flex justify-center'>
+            <NavLink
+              to={DASHBOARD_ROUTES.newIcaWords}
+              aria-label={t('Añadir palabras ICA')}
+              className='-mt-7 flex size-[58px] items-center justify-center rounded-[20px] bg-primary text-primary-foreground transition-transform active:translate-y-1'
+              style={{ boxShadow: '0 5px 0 color-mix(in oklab, var(--primary) 70%, black)' }}
+            >
+              <PlusIcon className='size-8' strokeWidth={3} aria-hidden='true' />
+            </NavLink>
+          </div>
 
-          <NavLink to={DASHBOARD_ROUTES.gamesIca} className={linkClassName}>
-            <span className='relative inline-flex text-lg leading-none'>
-              <span aria-hidden='true'>🎮</span>
-              <ChallengeAlertBadge
-                count={challengeAlerts.total}
-                title={`Desafíos ICA: ${describeIcaChallengeAlerts(challengeAlerts)}`}
+          <NavLink to={DASHBOARD_ROUTES.gamesIca} className='outline-none'>
+            {({ isActive }) => (
+              <TabItem
+                icon={Gamepad2Icon}
+                label={t('Juegos')}
+                active={isActive}
+                badge={
+                  <ChallengeAlertBadge
+                    count={challengeAlerts.total}
+                    title={t('Desafíos ICA: {detail}', { detail: describeIcaChallengeAlerts(challengeAlerts) })}
+                  />
+                }
               />
-            </span>
-            <span className='text-[11px] font-medium'>Juegos ICA</span>
+            )}
           </NavLink>
 
-          <button
-            type='button'
-            onClick={() => setProfileOpen(true)}
-            aria-haspopup='dialog'
-            aria-expanded={profileOpen}
-            className={linkClassName({ isActive: isProfileActive })}
-          >
-            <span className='relative inline-flex h-7 w-7 items-center justify-center'>
-              {shouldPulseProfileButton && (
-                <span className='pointer-events-none absolute -right-1 -top-1'>
+          <NavLink to={DASHBOARD_ROUTES.profile} className='outline-none'>
+            <TabItem
+              icon={UserIcon}
+              label={t('Perfil')}
+              active={isProfileActive}
+              alert={
+                shouldPulseProfileButton ? (
                   <PendingReviewDot
                     title={profileAlertTitle}
                     useIconSpeaker={hasCoachingProfileAlert}
                   />
-                </span>
-              )}
-              <span className='text-base leading-none' aria-hidden='true'>
-                👤
-              </span>
-            </span>
-            <span className='text-[11px] font-medium'>Perfil</span>
-          </button>
+                ) : null
+              }
+            />
+          </NavLink>
         </div>
       </nav>
-
-      <MobileProfileSheet
-        open={profileOpen}
-        onOpenChange={setProfileOpen}
-        hasIcaTestAlert={hasIcaProfileAlert}
-        hasCoachingAlert={hasCoachingProfileAlert}
-      />
     </>
   )
 }

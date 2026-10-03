@@ -8,6 +8,7 @@
 import { useCallback, useRef, useState } from 'react'
 import confetti from 'canvas-confetti'
 import { Volume2Icon, VolumeXIcon } from 'lucide-react'
+import { t } from '@/i18n'
 import { playBeep, playFailTone, playSoftCorrect } from '../NotaDesafiante/challengeEngine'
 
 const MUTE_STORAGE_KEY = 'ica-challenges-muted'
@@ -58,14 +59,13 @@ export function useChallengeSounds() {
 
 export function SoundToggleButton({ muted, onToggle }: { muted: boolean; onToggle: () => void }) {
   const Icon = muted ? VolumeXIcon : Volume2Icon
-  const label = muted ? 'Activar sonidos' : 'Silenciar sonidos'
+  const label = muted ? t('Activar sonidos') : t('Silenciar sonidos')
   return (
     <button
       type='button'
       onClick={onToggle}
       aria-pressed={muted}
       aria-label={label}
-      title={label}
       className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition hover:bg-muted ${
         muted ? 'text-muted-foreground' : 'text-foreground'
       }`}
@@ -77,20 +77,36 @@ export function SoundToggleButton({ muted, onToggle }: { muted: boolean; onToggl
 
 const WIN_COLORS = ['#38bdf8', '#a78bfa', '#34d399', '#fb7185', '#fbbf24']
 
-/** Confeti al ganar: una explosión en el centro y dos cañones a los lados. Devuelve cómo pararlo. */
+/**
+ * Fuegos artificiales al ganar: tres explosiones pequeñas y rápidas (menos de un segundo),
+ * de puntitos redondos. Devuelve cómo pararlo.
+ */
 export function launchWinConfetti(): () => void {
-  const base = { colors: WIN_COLORS, zIndex: 1200, disableForReducedMotion: false, ticks: 260 }
+  const base = {
+    colors: WIN_COLORS,
+    zIndex: 1200,
+    disableForReducedMotion: false,
+    shapes: ['circle' as const],
+    particleCount: 26,
+    spread: 360,
+    startVelocity: 22,
+    gravity: 0.9,
+    decay: 0.9,
+    scalar: 0.7,
+    ticks: 90,
+  }
+  const bursts = [
+    { x: 0.5, y: 0.28 },
+    { x: 0.25, y: 0.38 },
+    { x: 0.75, y: 0.36 },
+  ]
+  const timers: number[] = []
   try {
-    void confetti({ ...base, particleCount: 110, spread: 100, startVelocity: 42, origin: { x: 0.5, y: 0.32 } })
+    bursts.forEach((origin, index) => {
+      timers.push(window.setTimeout(() => void confetti({ ...base, origin }), index * 220))
+    })
   } catch {
     return () => {}
   }
-  let bursts = 0
-  const intervalId = window.setInterval(() => {
-    bursts += 1
-    void confetti({ ...base, particleCount: 28, angle: 60, spread: 58, startVelocity: 52, origin: { x: 0, y: 0.72 } })
-    void confetti({ ...base, particleCount: 28, angle: 120, spread: 58, startVelocity: 52, origin: { x: 1, y: 0.72 } })
-    if (bursts >= 5) window.clearInterval(intervalId)
-  }, 240)
-  return () => window.clearInterval(intervalId)
+  return () => timers.forEach((id) => window.clearTimeout(id))
 }

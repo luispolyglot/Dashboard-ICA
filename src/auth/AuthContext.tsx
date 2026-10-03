@@ -5,6 +5,8 @@ import { hasSupabaseConfig, supabase } from '../lib/supabase'
 import { getSessionSafe } from '../lib/supabaseAuthSafe'
 import { recordBootstrapDiagnostic } from '@/modules/utils/bootstrapDiagnostics'
 import { checkLoginEmail, normalizeEmail } from './whitelist'
+import { t } from '@/i18n'
+import { clearQuickCache } from '@/modules/services/quickCache'
 
 type AuthContextValue = {
   user: User | null
@@ -96,6 +98,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (event === 'SIGNED_OUT') {
         setIsPasswordRecovery(false)
         isSigningOutForWhitelistRef.current = false
+        // Fuera la caché rápida de la cuenta que sale (permisos, admin, ranking…).
+        clearQuickCache()
       }
       setSession(nextSession)
       setUser(nextSession?.user ?? null)
@@ -138,23 +142,23 @@ export function AuthProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     if (!supabase || !user?.id) return
 
-    const timezone = detectUserTimezone()
-
-    void (async () => {
-      const { error: rpcError } = await supabase.rpc('set_my_timezone', {
-        p_timezone: timezone,
+    const syncTimezone = () => {
+      const timezone = detectUserTimezone()
+      void supabase!.rpc('set_my_timezone', { p_timezone: timezone }).then(({ error }) => {
+        if (error) console.warn('No se pudo sincronizar timezone de perfil', error)
       })
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') syncTimezone()
+    }
 
-      if (!rpcError) return
-
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert({ id: user.id, timezone }, { onConflict: 'id' })
-
-      if (profileError) {
-        console.warn('No se pudo sincronizar timezone de perfil', profileError)
-      }
-    })()
+    syncTimezone()
+    window.addEventListener('focus', syncTimezone)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', syncTimezone)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [user?.id])
 
   const value = useMemo<AuthContextValue>(
@@ -165,11 +169,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
       isPasswordRecovery,
       hasSupabaseConfig,
       signIn: async (email, password) => {
-        if (!supabase) throw new Error('Falta configurar Supabase')
+        if (!supabase) throw new Error(t('Falta configurar Supabase'))
         const normalizedEmail = normalizeEmail(email)
         const whitelist = await checkLoginEmail(normalizedEmail)
         if (!whitelist.allowed) {
-          throw new Error(whitelist.reason || 'Tu email no tiene acceso de login actualmente.')
+          throw new Error(whitelist.reason ? t(whitelist.reason) : t('Tu email no tiene acceso de login actualmente.'))
         }
 
         const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password })
@@ -179,11 +183,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const postCheck = await checkLoginEmail(normalizedEmail)
         if (!postCheck.allowed) {
           await supabase.auth.signOut()
-          throw new Error(postCheck.reason || 'Tu acceso fue deshabilitado.')
+          throw new Error(postCheck.reason ? t(postCheck.reason) : t('Tu acceso fue deshabilitado.'))
         }
       },
       signUp: async (email, password, nickname) => {
-        if (!supabase) throw new Error('Falta configurar Supabase')
+        if (!supabase) throw new Error(t('Falta configurar Supabase'))
         const cleanNickname = nickname.trim()
         const { data, error } = await supabase.auth.signUp({
           email: normalizeEmail(email),
@@ -197,53 +201,52 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const userId = data.user?.id
         const hasActiveSession = Boolean(data.session)
         if (userId && cleanNickname && hasActiveSession) {
-          const timezone = detectUserTimezone()
           const { error: profileError } = await supabase
             .from('profiles')
-            .upsert({ id: userId, display_name: cleanNickname, timezone }, { onConflict: 'id' })
+            .upsert({ id: userId, display_name: cleanNickname }, { onConflict: 'id' })
 
           if (profileError) throw profileError
         }
       },
       requestPasswordReset: async (email) => {
-        if (!supabase) throw new Error('Falta configurar Supabase')
+        if (!supabase) throw new Error(t('Falta configurar Supabase'))
         const normalizedEmail = normalizeEmail(email)
         await supabase.auth.resetPasswordForEmail(normalizedEmail, {
           redirectTo: `${window.location.origin}/reset-password`,
         })
       },
       updatePassword: async (password) => {
-        if (!supabase) throw new Error('Falta configurar Supabase')
+        if (!supabase) throw new Error(t('Falta configurar Supabase'))
         const { error } = await supabase.auth.updateUser({ password })
         if (error) throw error
         setIsPasswordRecovery(false)
       },
       changePassword: async (currentPassword, nextPassword) => {
-        if (!supabase) throw new Error('Falta configurar Supabase')
+        if (!supabase) throw new Error(t('Falta configurar Supabase'))
         const email = session?.user?.email || user?.email
-        if (!email) throw new Error('No se pudo verificar tu cuenta actual.')
+        if (!email) throw new Error(t('No se pudo verificar tu cuenta actual.'))
 
         const { error: reauthError } = await supabase.auth.signInWithPassword({
           email: normalizeEmail(email),
           password: currentPassword,
         })
         if (reauthError) {
-          throw new Error('La contraseña actual no es correcta.')
+          throw new Error(t('La contraseña actual no es correcta.'))
         }
 
         const { error: updateError } = await supabase.auth.updateUser({ password: nextPassword })
         if (updateError) throw updateError
       },
       updateDisplayName: async (displayName) => {
-        if (!supabase) throw new Error('Falta configurar Supabase')
+        if (!supabase) throw new Error(t('Falta configurar Supabase'))
 
         const cleanDisplayName = displayName.trim()
         if (cleanDisplayName.length < 3) {
-          throw new Error('El nombre debe tener al menos 3 caracteres.')
+          throw new Error(t('El nombre debe tener al menos 3 caracteres.'))
         }
 
         const currentUserId = user?.id || session?.user?.id
-        if (!currentUserId) throw new Error('No se pudo identificar el usuario actual.')
+        if (!currentUserId) throw new Error(t('No se pudo identificar el usuario actual.'))
 
         const { data, error } = await supabase.auth.updateUser({
           data: { display_name: cleanDisplayName },

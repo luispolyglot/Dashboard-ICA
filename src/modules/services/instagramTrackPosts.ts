@@ -1,3 +1,4 @@
+import { t, uiLocale } from '@/i18n'
 import { supabase } from '@/lib/supabase'
 import type { InstagramTrackPostEntry, InstagramTrackPostInput } from '../types'
 
@@ -34,7 +35,7 @@ export function getCurrentMonthDate(now = new Date()): string {
 export function getMonthLabel(value: string): string {
   const date = new Date(`${value}T00:00:00Z`)
   if (Number.isNaN(date.getTime())) return value
-  const label = date.toLocaleDateString('es-ES', {
+  const label = date.toLocaleDateString(uiLocale(), {
     month: 'long',
     year: 'numeric',
     timeZone: 'UTC',
@@ -44,28 +45,28 @@ export function getMonthLabel(value: string): string {
 }
 
 export function getTrackPostErrorMessage(error: unknown): string {
-  if (!(error instanceof Error)) return 'No se pudo guardar el link de Instagram.'
+  if (!(error instanceof Error)) return t('No se pudo guardar el link de Instagram.')
 
   if (
     error.message.includes('TRACK_POST_EDIT_WINDOW_EXPIRED')
     || error.message.includes('new row violates row-level security policy')
   ) {
-    return 'La ventana de 48 horas para este día ya cerró.'
+    return t('La ventana de 48 horas para este día ya cerró.')
   }
   if (error.message.includes('TRACK_POST_DAY_NOT_UNLOCKED')) {
-    return 'Ese día todavía no está desbloqueado.'
+    return t('Ese día todavía no está desbloqueado.')
   }
   if (error.message.includes('TRACK_POST_DAY_OUT_OF_RANGE')) {
-    return 'Solo se permiten días del 1 al 28.'
+    return t('Solo se permiten días del 1 al 28.')
   }
   if (error.message.includes('TRACK_POST_URL_INVALID')) {
-    return 'El link debe ser de Instagram (instagram.com).'
+    return t('El link debe ser de Instagram (instagram.com).')
   }
   if (error.message.includes('TRACK_POST_MONTH_INVALID')) {
-    return 'El mes seleccionado no es válido.'
+    return t('El mes seleccionado no es válido.')
   }
 
-  return error.message || 'No se pudo guardar el link de Instagram.'
+  return error.message || t('No se pudo guardar el link de Instagram.')
 }
 
 export function buildTrackPostDayDate(trackMonth: string, dayIndex: number): string {
@@ -152,12 +153,12 @@ export async function listInstagramTrackPostsByMonth(
 
 export async function upsertInstagramTrackPost(input: InstagramTrackPostInput): Promise<InstagramTrackPostEntry> {
   if (!supabase) {
-    throw new Error('Falta configurar Supabase')
+    throw new Error(t('Falta configurar Supabase'))
   }
 
   const userId = await getCurrentUserId()
   if (!userId) {
-    throw new Error('Necesitas iniciar sesión para guardar links.')
+    throw new Error(t('Necesitas iniciar sesión para guardar links.'))
   }
 
   const payload = {

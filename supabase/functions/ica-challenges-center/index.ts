@@ -2,7 +2,9 @@ import webpush from 'npm:web-push@3.6.7'
 import { CORS_HEADERS, jsonResponse } from '../_shared/http.ts'
 import { ensureAuthenticated } from '../_shared/coaching-auth.ts'
 import { listAvailableUsers } from './directory.ts'
+import { getPublicProfile } from './profile.ts'
 import { cancelInvitation, createChallenge, respondInvitation } from './invitations.ts'
+import { listChallengeReactions, sendChallengeReaction } from './reactions.ts'
 import type { AdminClient, ChallengeScope, ChallengeStatus, LanguagePair } from './types.ts'
 import {
   boardIndices,
@@ -1461,8 +1463,35 @@ async function reviewGame(ctx: GameContext) {
     })
     .filter((item): item is NonNullable<typeof item> => item !== null)
 
+  // Con el desafío terminado, las palabras del baúl del rival (para poder añadirlas al tuyo).
+  let rivalWords: Array<Record<string, unknown>> = []
+  if (finished && ctx.settings.wordSource !== 'mixed') {
+    const { data: rivalRows } = await ctx.adminClient
+      .from('desafio_preguntas')
+      .select('respuesta')
+      .eq('desafio_id', ctx.challenge.id)
+      .eq('usuario_id', ctx.rivalId)
+    const seen = new Set<string>()
+    rivalWords = ((rivalRows || []) as Array<Record<string, unknown>>)
+      .map((row) => (isRecord(row.respuesta) ? row.respuesta : {}) as Partial<StoredAnswer>)
+      .filter((answer) => {
+        const key = toText(answer.target).trim().toLowerCase()
+        if (!key || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .map((answer) => ({
+        target: toText(answer.target),
+        native: toText(answer.native),
+        phrase: toText(answer.phrase) || null,
+        phraseTranslation: toText(answer.phraseTranslation) || null,
+        targetLang: toText(answer.language) || null,
+      }))
+  }
+
   return {
     items,
+    rivalWords,
     me: { correct: scoreOf(ctx.myPlays), answered: ctx.myPlays.length },
     rival: { correct: scoreOf(ctx.rivalPlays), answered: ctx.rivalPlays.length, done: isRivalDone(ctx) },
     wordSource: ctx.settings.wordSource,
@@ -1524,6 +1553,23 @@ Deno.serve(async (req) => {
     })
   }
 
+  if (action === 'public-profile') {
+    return getPublicProfile({
+      adminClient: auth.adminClient,
+      userId: auth.userId,
+      profileUserId: toText(payload.profileUserId),
+      maxActiveChallenges: MAX_ACTIVE_CHALLENGES,
+      countActiveChallenges,
+      hasActivePairChallenge,
+      fetchSettingsByUser,
+      fetchLevelsForPair,
+      resolvePlayerPair,
+      countWordsForPair,
+      notEnoughWordsToJoinMessage,
+      toText,
+    })
+  }
+
   const invitationDependencies = {
     turnWindowSeconds: TURN_WINDOW_SECONDS,
     invitationWindowSeconds: INVITATION_WINDOW_SECONDS,
@@ -1563,6 +1609,14 @@ Deno.serve(async (req) => {
 
   if (action === 'cancel-invitation') {
     return cancelInvitation(baseInput, invitationDependencies)
+  }
+
+  if (action === 'list-reactions') {
+    return listChallengeReactions(baseInput)
+  }
+
+  if (action === 'send-reaction') {
+    return sendChallengeReaction(baseInput)
   }
 
   if (action === 'play-state') {

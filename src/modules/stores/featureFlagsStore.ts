@@ -5,6 +5,17 @@ import {
   type FeatureFlagState,
 } from '../featureFlags/domain'
 import { fetchFeatureFlags } from '../services/featureFlags'
+import { peekQuick, storeQuick } from '../services/quickCache'
+
+// Las funciones activadas son iguales para todos: se guarda la última lista para que,
+// al recargar, las tarjetas que dependen de ella (p. ej. «Nota desafiante») salgan al
+// momento, a la vez que el resto. La lista nueva llega por detrás.
+const FLAGS_CACHE_KEY = 'feature-flags'
+
+function initialFlags(): FeatureFlagState {
+  const saved = typeof window === 'undefined' ? undefined : peekQuick<Partial<FeatureFlagState>>(FLAGS_CACHE_KEY)
+  return { ...DEFAULT_FEATURE_FLAGS, ...(saved || {}) }
+}
 
 type FeatureFlagsLoadStatus = 'idle' | 'loading' | 'ready' | 'error'
 
@@ -18,7 +29,7 @@ type FeatureFlagsStore = {
 }
 
 export const useFeatureFlagsStore = create<FeatureFlagsStore>((set, get) => ({
-  flags: { ...DEFAULT_FEATURE_FLAGS },
+  flags: initialFlags(),
   status: 'idle',
   error: null,
   lastLoadedAt: null,
@@ -33,6 +44,7 @@ export const useFeatureFlagsStore = create<FeatureFlagsStore>((set, get) => ({
 
     try {
       const flags = await fetchFeatureFlags()
+      storeQuick(FLAGS_CACHE_KEY, flags)
       set({
         flags,
         status: 'ready',
@@ -41,7 +53,8 @@ export const useFeatureFlagsStore = create<FeatureFlagsStore>((set, get) => ({
       })
     } catch (error) {
       set({
-        flags: { ...DEFAULT_FEATURE_FLAGS },
+        // Se queda con la última lista conocida (así no desaparece nada de golpe).
+        flags: get().flags,
         status: 'error',
         error: error instanceof Error ? error.message : 'No se pudieron cargar los feature flags.',
       })

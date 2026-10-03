@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog'
 import importantInfoIcaChallengesImage from '@/images/important-info-ica-challenges.png'
 import { DASHBOARD_ROUTES } from '../routes/paths'
+import { t } from '@/i18n'
 
 type ImportantInfoMode = 'video' | 'image'
 
@@ -132,11 +133,11 @@ export function ImportantInfoModal() {
       >
         <div className='relative p-5 pb-4'>
             <DialogHeader>
-              <DialogTitle>INFORMACIÓN IMPORTANTE</DialogTitle>
+              <DialogTitle>{t('INFORMACIÓN IMPORTANTE')}</DialogTitle>
               <DialogDescription>
                 {IMPORTANT_INFO_MODE === 'video'
-                  ? 'Conoce Desafíos ICA, el nuevo juego disponible en Juegos ICA.'
-                  : 'Revisa esta imagen para conocer los nuevos Desafíos ICA en Juegos ICA.'}
+                  ? t('Conoce Desafíos ICA, el nuevo juego disponible en Juegos ICA.')
+                  : t('Revisa esta imagen para conocer los nuevos Desafíos ICA en Juegos ICA.')}
               </DialogDescription>
             </DialogHeader>
 
@@ -144,7 +145,7 @@ export function ImportantInfoModal() {
             {IMPORTANT_INFO_MODE === 'video' ? (
               <iframe
                 src={IMPORTANT_INFO_VIDEO_URL}
-                title='Información importante en vídeo'
+                title={t('Información importante en vídeo')}
                 className='h-65 w-full sm:h-105'
                 allow='autoplay; fullscreen; picture-in-picture'
                 allowFullScreen
@@ -152,7 +153,7 @@ export function ImportantInfoModal() {
             ) : (
               <img
                 src={importantInfoIcaChallengesImage}
-                alt={IMPORTANT_INFO_IMAGE_ALT}
+                alt={t(IMPORTANT_INFO_IMAGE_ALT)}
                 className='h-auto w-full'
                 onClick={handleNavigateTo}
               />
@@ -166,7 +167,7 @@ export function ImportantInfoModal() {
                 onClick={handleNavigateTo}
                 className='w-full'
               >
-                Ir a Desafíos ICA
+                {t('Ir a Desafíos ICA')}
               </Button>
             ) : !confirmAction ? (
               <Button
@@ -176,15 +177,15 @@ export function ImportantInfoModal() {
                 className='w-full'
               >
                 {secondsLeft > 0
-                  ? `No volver a mostrar (${secondsLeft})`
-                  : 'No volver a mostrar'}
+                  ? t('No volver a mostrar ({n})', { n: secondsLeft })
+                  : t('No volver a mostrar')}
               </Button>
             ) : (
               <div className='space-y-2'>
                 <p className='text-sm font-semibold'>
                   {IMPORTANT_INFO_MODE === 'video'
-                    ? '¿Estás seguro/a de que has visto el vídeo hasta el final?'
-                    : '¿Estás seguro/a de que revisaste toda la información?'}
+                    ? t('¿Estás seguro/a de que has visto el vídeo hasta el final?')
+                    : t('¿Estás seguro/a de que revisaste toda la información?')}
                 </p>
                 <div className='grid grid-cols-2 gap-2'>
                   <Button
@@ -192,7 +193,7 @@ export function ImportantInfoModal() {
                     variant='destructive'
                     onClick={handleConfirmYes}
                   >
-                    SÍ
+                    {t('SÍ')}
                   </Button>
                   <Button
                     type='button'

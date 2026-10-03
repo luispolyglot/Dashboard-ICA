@@ -1,43 +1,48 @@
-import { useEffect, useMemo, useState } from "react";
-import { CalendarClockIcon, InfoIcon, TrophyIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  AwardIcon,
+  BadgePercentIcon,
+  CameraIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ClipboardCheckIcon,
+  GiftIcon,
+  GraduationCapIcon,
+  HeadphonesIcon,
+  MicIcon,
+  type LucideIcon,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
-  DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/auth/AuthContext";
-import { ListLoading } from "@/components/ui/loading-state";
-import { useSoftLoading } from "@/modules/hooks/useSoftLoading";
-import useBreakpoints from "@/modules/hooks/useBreakpoints";
 import {
   getPregunticaMaxPoints,
   useLeaderboardScoringWindow,
 } from "@/modules/hooks/useLeaderboardScoringWindow";
 import type { LeaderboardEntry } from "../types";
 import {
-  fetchTotalIcademers,
   fetchMonthlySnapshotLeaderboard,
   fetchMonthlyStreakLeaderboard,
+  peekMonthlySnapshotLeaderboard,
+  peekMonthlyStreakLeaderboard,
 } from "../services/leaderboard";
 import { LISTENING_METRICS_CHANGED_EVENT } from "../services/creationMetricsSync";
 import { getIcaTestWindowStartDay } from "../services/icaTests";
+import { parseFeaturedBadge, useFeaturedBadge } from "../game/featuredBadge";
+import { MedalDefs } from "../game/Medal";
+import { FichaIcon, FlameIcon, TargetGlyph, TrophyIcon } from "../game/icons";
+import { LeaderboardRow, MyRankCard, Podium, RankingFadeOut, rankingFadeOpacity } from "../game/ranking";
+import { IcademerProfileDialog, type IcademerSummary } from "../game/IcademerProfile";
+import { IconTile, RowGroup, tone, type Tone } from "../game/ui";
+import { t, uiLocale } from '@/i18n'
 
 const HISTORY_START_MONTH = "2026-05-01";
 const FOCUS_TOP_LIMIT = 30;
-const VISIBLE_LIMIT = 33;
 
 type MonthOption = {
   value: string;
@@ -54,7 +59,7 @@ type LeaderboardPrizeRank = 1 | 2 | 3;
 
 type LeaderboardPrize = {
   borderClassName: string;
-  rewards: string[];
+  rewards: Array<{ icon: ReactNode; text: string }>;
 };
 
 type ScoreBreakdown = {
@@ -81,33 +86,49 @@ const MAX_ICA_TEST_POINTS = 1.2;
 const MAX_INSTAGRAM_POINTS_PER_DAY = 0.5;
 const REFERENCE_MAX_POINTS = 36;
 
+function PrizeIcon({ icon: Icon, color }: { icon: LucideIcon; color: string }) {
+  return (
+    <span
+      className="flex size-8 shrink-0 items-center justify-center rounded-xl"
+      style={{ background: `color-mix(in oklab, ${color} 16%, transparent)`, color }}
+    >
+      <Icon className="size-4.5" strokeWidth={2.4} aria-hidden="true" />
+    </span>
+  );
+}
+
 const LEADERBOARD_PRIZES: Record<LeaderboardPrizeRank, LeaderboardPrize> = {
   1: {
     borderClassName: "border-2 border-amber-400/80",
     rewards: [
-      "👨🏻‍🏫 Clase 1 a 1 de 1 hora con Luis",
-      "💲 1 mes gratis en ICADEMY",
-      "🎖️ Insignia oficial de ICAwards",
-      "🎯 1 ticket coaching privado con Luis",
+      { icon: <PrizeIcon icon={GraduationCapIcon} color="var(--ica-i)" />, text: "Clase 1 a 1 de 1 hora con Luis" },
+      { icon: <PrizeIcon icon={GiftIcon} color="var(--ica-ok)" />, text: "1 mes gratis en ICADEMY" },
+      { icon: <PrizeIcon icon={AwardIcon} color="var(--ica-gold-edge)" />, text: "Insignia oficial de ICAwards" },
+      { icon: <TargetGlyph size={30} />, text: "1 ticket coaching privado con Luis" },
     ],
   },
   2: {
     borderClassName: "border-2 border-slate-300/90",
     rewards: [
-      "👨🏻‍🏫 Clase 1 a 1 de 30 minutos con Luis",
-      "💲 50% de reembolso en membresía mensual",
-      "🎯 1 ticket coaching privado con Luis",
+      { icon: <PrizeIcon icon={GraduationCapIcon} color="var(--ica-i)" />, text: "Clase 1 a 1 de 30 minutos con Luis" },
+      { icon: <PrizeIcon icon={BadgePercentIcon} color="var(--ica-ok)" />, text: "50% de reembolso en membresía mensual" },
+      { icon: <TargetGlyph size={30} />, text: "1 ticket coaching privado con Luis" },
     ],
   },
   3: {
     borderClassName: "border-2 border-amber-700/70",
-    rewards: ["🪙 3 fichas canjeables para preguntICA"],
+    rewards: [{ icon: <FichaIcon size={30} />, text: "3 ICA Coins para canjear" }],
   },
 };
 
+const PRIZE_COLORS: Record<LeaderboardPrizeRank, [string, string, string]> = {
+  1: ["#ffd34d", "#d99a00", "#5a3b00"],
+  2: ["#dfe6ee", "#a3afbd", "#33475b"],
+  3: ["#efc39a", "#b9814f", "#5a3310"],
+};
+
 function getPrizeHeading(rank: LeaderboardPrizeRank): string {
-  const medal = rankBadge(rank);
-  return `${medal} El icademer que termine top ${rank} el día 28 del mes ganará:`;
+  return t('El icademer que termine top {rank} el día 28 del mes ganará:', { rank });
 }
 
 function toUtcMonthStart(date: Date): string {
@@ -125,7 +146,7 @@ function parseIsoDate(isoDate: string): Date {
 
 function formatMonthLabel(isoMonthStart: string): string {
   const date = parseIsoDate(isoMonthStart);
-  const label = date.toLocaleDateString("es-ES", {
+  const label = date.toLocaleDateString(uiLocale(), {
     month: "long",
     year: "numeric",
     timeZone: "UTC",
@@ -148,24 +169,7 @@ function buildMonthOptions(currentMonthStart: string): MonthOption[] {
   return options;
 }
 
-function pickVisibleRows(
-  rows: LeaderboardEntry[],
-  currentUserId: string | undefined,
-): LeaderboardEntry[] {
-  const topRows = rows.slice(0, VISIBLE_LIMIT);
-  if (!currentUserId) return topRows;
-
-  const currentUserRow = rows.find((row) => row.user_id === currentUserId);
-  const alreadyVisible = topRows.some((row) => row.user_id === currentUserId);
-  if (!currentUserRow || alreadyVisible) return topRows;
-
-  return [...topRows, currentUserRow];
-}
-
 function rankBadge(rank: number): string {
-  if (rank === 1) return "🥇";
-  if (rank === 2) return "🥈";
-  if (rank === 3) return "🥉";
   return `#${rank}`;
 }
 
@@ -234,12 +238,6 @@ function formatCountdown(ms: number): string {
   return `${minutes}m`;
 }
 
-function trailingRankOpacityClass(position: number): string {
-  if (position === FOCUS_TOP_LIMIT + 1) return "opacity-70";
-  if (position === FOCUS_TOP_LIMIT + 2) return "opacity-50";
-  if (position === FOCUS_TOP_LIMIT + 3) return "opacity-30";
-  return "";
-}
 
 function toSafeNumber(
   value: number | string | null | undefined,
@@ -301,17 +299,7 @@ function getDisplayedTotalPoints(
     : monthlyPoints + listeningPoints + pregunticaPoints + instagramPoints;
 }
 
-function getStreakCellClass(row: LeaderboardEntry): string {
-  const streak = row.ica_streak_days || 0;
-  const frozen = Boolean(row.is_creation_streak_frozen);
-  if (frozen) return "[filter:hue-rotate(165deg)_saturate(1.25)] animate-pulse";
-  return streak > 0 ? "" : "grayscale";
-}
 
-function getStreakLabel(row: LeaderboardEntry): string {
-  const streak = row.ica_streak_days || 0;
-  return `🔥 ${streak}`;
-}
 
 function buildScoreBreakdown(
   row: LeaderboardEntry,
@@ -357,7 +345,7 @@ function buildScoreBreakdown(
   };
 }
 
-const pointsFormatter = new Intl.NumberFormat("es-ES", {
+const pointsFormatter = new Intl.NumberFormat(uiLocale(), {
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
 });
@@ -369,7 +357,8 @@ function formatPoints(value: number): string {
 function formatAppliedPercent(value: number, maxValue: number): string {
   if (maxValue <= 0) return "0%";
   const rawPercent = (value / maxValue) * 100;
-  const safePercent = Number.isFinite(rawPercent) ? Math.max(rawPercent, 0) : 0;
+  // Nadie puede pasar del 100 %.
+  const safePercent = Number.isFinite(rawPercent) ? Math.min(100, Math.max(rawPercent, 0)) : 0;
   return `${Math.round(safePercent)}%`;
 }
 
@@ -378,24 +367,158 @@ function isPerfectScore(value: number, maxValue: number): boolean {
   return value >= maxValue - 0.001;
 }
 
-function renderGoldScore(value: number, maxValue: number) {
-  if (!isPerfectScore(value, maxValue)) {
-    return <span className="text-amber-500">{formatPoints(value)}</span>;
+/** Detalle de puntos con el estilo de la app: cada apartado con su barra y cómo se gana. */
+function ScoreBreakdownContent({
+  breakdown,
+  icaTestWindowStartDay,
+}: {
+  breakdown: ScoreBreakdown;
+  icaTestWindowStartDay: number;
+}) {
+  const items: Array<{
+    key: string;
+    icon: LucideIcon | typeof FlameGlyph;
+    tone: Tone;
+    title: string;
+    text: string;
+    value: number | null;
+    max: number;
+  }> = [
+    {
+      key: "monthly",
+      icon: FlameGlyph,
+      tone: "fire",
+      title: t("Rachas del mes"),
+      text: t("Media de tus rachas ICA y de flashcards, del día 1 al 28."),
+      value: breakdown.monthlyPoints,
+      max: breakdown.monthlyMaxPoints,
+    },
+    {
+      key: "instagram",
+      icon: CameraIcon,
+      tone: "a",
+      title: t("Track Instagram"),
+      text: t("0,5 por cada día con post, del 1 al 28."),
+      value: breakdown.instagramPoints,
+      max: breakdown.instagramMaxPoints,
+    },
+    {
+      key: "preguntica",
+      icon: MicIcon,
+      tone: "c",
+      title: t("PreguntICA"),
+      text: t("2 por cada semana completada."),
+      value: breakdown.pregunticaPoints,
+      max: breakdown.pregunticaMaxPoints,
+    },
+    {
+      key: "listening",
+      icon: HeadphonesIcon,
+      tone: "i",
+      title: t("Escucha"),
+      text: t("0,1 cada día que escuchas 10 minutos de notas maestras."),
+      value: breakdown.listeningPoints,
+      max: breakdown.listeningMaxPoints,
+    },
+    {
+      key: "icaTest",
+      icon: ClipboardCheckIcon,
+      tone: "gold",
+      title: t("Test ICA"),
+      text: breakdown.includeIcaTest
+        ? t("0,1 por cada respuesta correcta.")
+        : t("Se abre el día {day}.", { day: icaTestWindowStartDay }),
+      value: breakdown.includeIcaTest ? breakdown.icaTestPoints : null,
+      max: breakdown.icaTestMaxPoints,
+    },
+  ];
+  // Lo conseguido nunca puede pasar del máximo.
+  for (const item of items) {
+    if (item.value !== null) item.value = Math.min(item.value, item.max);
   }
+  const efficacy = formatAppliedPercent(breakdown.totalPoints, breakdown.totalMaxPoints);
 
   return (
-    <span className="relative inline-flex items-center justify-center px-1">
-      <span className="glow-breathe pointer-events-none absolute inset-0 rounded-full bg-amber-300/45 blur-[6px]" />
-      <span className="score-scale-pop relative font-extrabold text-amber-300 drop-shadow-[0_0_10px_rgba(245,158,11,0.9)]">
-        {formatPoints(value)}
-      </span>
-    </span>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-3">
+        <span
+          className="flex size-14 shrink-0 items-center justify-center rounded-full text-2xl font-black"
+          style={
+            breakdown.isCurrentUser
+              ? { background: "var(--ica-me)", color: "#fff", boxShadow: "0 3px 0 var(--ica-me-edge)" }
+              : { background: "var(--muted)", border: "2px solid var(--border)" }
+          }
+          aria-hidden="true"
+        >
+          {breakdown.userName.trim().charAt(0).toUpperCase() || "?"}
+        </span>
+        <div className="min-w-0 flex-1">
+          <DialogTitle className="truncate pr-6 text-xl">
+            {breakdown.isCurrentUser ? t("Tu puntuación") : breakdown.userName}
+          </DialogTitle>
+          <DialogDescription className="m-0 text-xs font-bold">
+            {t("{n} de eficacia", { n: efficacy })}
+          </DialogDescription>
+        </div>
+      </div>
+
+      <div
+        className="flex items-center gap-3 rounded-2xl px-4 py-3"
+        style={{ background: "var(--ica-gold-soft)" }}
+      >
+        <TrophyIcon size={34} />
+        <span className="flex-1 text-sm font-extrabold" style={{ color: "var(--ica-gold-ink)" }}>
+          {t("Total del mes")}
+        </span>
+        <span className="text-2xl font-black tabular-nums" style={{ color: "var(--ica-gold-ink)" }}>
+          {formatPoints(Math.min(breakdown.totalPoints, breakdown.totalMaxPoints))}
+          <span className="text-sm font-extrabold opacity-70"> / {formatPoints(breakdown.totalMaxPoints)}</span>
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        {items.map((item) => {
+          const colors = tone(item.tone);
+          const pct = item.value === null || item.max <= 0 ? 0 : Math.min(1, item.value / item.max);
+          const perfect = item.value !== null && isPerfectScore(item.value, item.max);
+          const Icon = item.icon;
+          return (
+            <div key={item.key} className="flex items-start gap-3">
+              <IconTile tone={item.tone} size={40}>
+                <Icon className="size-5" strokeWidth={2.4} aria-hidden="true" />
+              </IconTile>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-sm font-extrabold">{item.title}</span>
+                  <span className="shrink-0 text-sm font-black tabular-nums" style={{ color: perfect ? "var(--ica-gold-ink)" : colors.ink }}>
+                    <span>{item.value === null ? "–" : formatPoints(item.value)}</span>
+                    <span className="font-bold text-muted-foreground"> / {formatPoints(item.max)}</span>
+                  </span>
+                </div>
+                <span className="mt-1 block h-2 overflow-hidden rounded-full bg-muted">
+                  <span
+                    className="block h-full rounded-full transition-[width] duration-500"
+                    style={{ width: `${Math.max(pct > 0 ? 4 : 0, pct * 100)}%`, background: perfect ? "var(--ica-gold)" : colors.solid }}
+                  />
+                </span>
+                <span className="mt-1 block text-xs font-semibold text-muted-foreground">{item.text}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
+}
+
+/** La llama de la app con la forma de un icono de lucide (para la lista de puntos). */
+function FlameGlyph({ className }: { className?: string }) {
+  return <FlameIcon size={20} className={className} />;
 }
 
 export function LeaderboardView() {
   const { user } = useAuth();
-  const { isMd } = useBreakpoints();
+  const { badge: myBadge } = useFeaturedBadge(user?.id);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const currentMonthStart = useMemo(() => toLocalMonthStart(new Date()), []);
   const monthOptions = useMemo(
@@ -404,20 +527,19 @@ export function LeaderboardView() {
   );
 
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStart);
-  const [rows, setRows] = useState<LeaderboardEntry[]>([]);
-  const [totalIcademers, setTotalIcademers] = useState<number | null>(null);
-  // Al cambiar de mes se enseña el esqueleto; las actualizaciones del mismo mes
-  // (p. ej. al escuchar notas) refrescan la tabla sin que desaparezca.
-  const [loading, setLoading] = useSoftLoading(true, selectedMonth);
-  const [error, setError] = useState<string | null>(null);
-  const [isBreakdownInfoOpen, setIsBreakdownInfoOpen] = useState(false);
-  const [selectedScoreBreakdown, setSelectedScoreBreakdown] =
-    useState<ScoreBreakdown | null>(null);
-  const [refreshTick, setRefreshTick] = useState(0);
-  const [selectedPrizeRank, setSelectedPrizeRank] =
-    useState<LeaderboardPrizeRank | null>(null);
+  // Lo último que se cargó sale al momento; la versión nueva llega por detrás.
+  const [fetchedRows, setRows] = useState<LeaderboardEntry[]>(() => peekMonthlyStreakLeaderboard(250) ?? []);
+const [loading, setLoading] = useState(() => peekMonthlyStreakLeaderboard(250) === undefined);
+const [error, setError] = useState<string | null>(null);
+const [selectedScoreBreakdown, setSelectedScoreBreakdown] = useState<ScoreBreakdown | null>(null);
+const [refreshTick, setRefreshTick] = useState(0);
+const [selectedPrizeRank, setSelectedPrizeRank] = useState<LeaderboardPrizeRank | null>(null);
+  const rows = fetchedRows;
 
   const isCurrentMonth = selectedMonth === currentMonthStart;
+  const monthIndex = monthOptions.findIndex((month) => month.value === selectedMonth);
+  const olderMonth = monthIndex >= 0 ? monthOptions[monthIndex + 1]?.value ?? null : null;
+  const newerMonth = monthIndex > 0 ? monthOptions[monthIndex - 1].value : null;
   const closeAt = useMemo(
     () => closeAtUtcForMonth(selectedMonth),
     [selectedMonth],
@@ -459,23 +581,27 @@ export function LeaderboardView() {
     let active = true;
 
     const run = async () => {
-      setLoading(true);
+      const cached = isCurrentMonth
+        ? peekMonthlyStreakLeaderboard(250)
+        : peekMonthlySnapshotLeaderboard(selectedMonth, 250);
+      if (cached) {
+        setRows(cached);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
       setError(null);
 
       try {
-        const [data, total] = await Promise.all([
-          isCurrentMonth
-            ? fetchMonthlyStreakLeaderboard(250)
-            : fetchMonthlySnapshotLeaderboard(selectedMonth, VISIBLE_LIMIT),
-          fetchTotalIcademers(),
-        ]);
+        const data = isCurrentMonth
+          ? await fetchMonthlyStreakLeaderboard(250)
+          : await fetchMonthlySnapshotLeaderboard(selectedMonth, 250);
 
         if (!active) return;
         setRows(data);
-        setTotalIcademers(total);
       } catch {
         if (!active) return;
-        setError("No se pudo cargar el leaderboard.");
+        setError(t("No se pudo cargar el leaderboard."));
       } finally {
         if (!active) return;
         setLoading(false);
@@ -489,33 +615,20 @@ export function LeaderboardView() {
     };
   }, [isCurrentMonth, refreshTick, selectedMonth]);
 
-  const visibleRows = useMemo(
-    () => pickVisibleRows(rows, user?.id),
-    [rows, user?.id],
-  );
   const rowsWithSharedRank = useMemo(
-    () => buildVisibleRowsWithSharedRank(visibleRows),
-    [visibleRows],
+    () => buildVisibleRowsWithSharedRank(rows),
+    [rows],
   );
-  const topWindowRows = useMemo(
-    () => rowsWithSharedRank.slice(0, VISIBLE_LIMIT),
+  // Arriba, el podio (los 3 primeros); debajo, del 4.º al 30.º; y después, la cola que se difumina.
+  const topRows = useMemo(
+    () => rowsWithSharedRank.slice(0, FOCUS_TOP_LIMIT),
     [rowsWithSharedRank],
   );
-  const extraRows = useMemo(
-    () => rowsWithSharedRank.slice(VISIBLE_LIMIT),
-    [rowsWithSharedRank],
-  );
-  const missingPlaceholderCount = Math.max(
-    VISIBLE_LIMIT - topWindowRows.length,
-    0,
-  );
-  const placeholderRanks = useMemo(
-    () =>
-      Array.from(
-        { length: missingPlaceholderCount },
-        (_, index) => topWindowRows.length + index + 1,
-      ),
-    [missingPlaceholderCount, topWindowRows.length],
+  const podiumRows = topRows.slice(0, 3);
+  const listRows = topRows.slice(3);
+  const myRankRow = useMemo(
+    () => rowsWithSharedRank.find(({ row }) => row.user_id === user?.id) ?? null,
+    [rowsWithSharedRank, user?.id],
   );
   const hasSnapshotIcaPoints = useMemo(
     () =>
@@ -525,11 +638,6 @@ export function LeaderboardView() {
       ),
     [rows],
   );
-  const showIcaTestColumn =
-    (isCurrentMonth && currentDay >= icaTestWindowStartDay) ||
-    (!isCurrentMonth && hasSnapshotIcaPoints);
-  const desktopTableColumnCount = showIcaTestColumn ? 6 : 5;
-  const tableColumnCount = isMd ? desktopTableColumnCount : 4;
   const includeIcaTestInScoreExplanation =
     (isCurrentMonth && currentDay >= icaTestWindowStartDay) ||
     (!isCurrentMonth && hasSnapshotIcaPoints);
@@ -539,7 +647,6 @@ export function LeaderboardView() {
   );
 
   const openScoreBreakdown = (row: LeaderboardEntry) => {
-    setIsBreakdownInfoOpen(false);
     setSelectedScoreBreakdown(
       buildScoreBreakdown(
         row,
@@ -570,456 +677,194 @@ export function LeaderboardView() {
     selectedScoreBreakdown?.isCurrentUser,
   ]);
 
+  const rowDetail = (row: LeaderboardEntry) => {
+    const breakdown = buildScoreBreakdown(
+      row,
+      includeIcaTestInScoreExplanation,
+      false,
+      scoringDayCap,
+    );
+    return (
+      <span className="inline-flex items-center gap-1">
+        <FlameIcon size={13} tone={(row.ica_streak_days || 0) > 0 ? "fire" : "off"} />
+        {row.ica_streak_days || 0} ·{" "}
+        {t('{n} eficacia', { n: formatAppliedPercent(breakdown.totalPoints, breakdown.totalMaxPoints) })}
+      </span>
+    );
+  };
+
+  // Perfil de un icademer: sale al momento con lo que ya sabe el ranking y carga el resto.
+  const [profileSummary, setProfileSummary] = useState<IcademerSummary | null>(null);
+  const openProfile = (row: LeaderboardEntry) => {
+    setProfileSummary({
+      userId: row.user_id,
+      name: row.display_name || row.username || "Usuario",
+      badge: row.user_id === user?.id ? myBadge : parseFeaturedBadge(row.featured_badge),
+    });
+  };
+
+  const renderRow = ({ row, sharedRank }: VisibleLeaderboardRow) => {
+    const isMe = row.user_id === user?.id;
+    return (
+      <LeaderboardRow
+        key={`${row.user_id}-${row.rank}-${selectedMonth}`}
+        rank={sharedRank}
+        name={row.display_name || row.username || "Usuario"}
+        points={getDisplayedTotalPoints(row, includeIcaTestInScoreExplanation)}
+        isMe={isMe}
+        detail={rowDetail(row)}
+        badge={isMe ? myBadge : parseFeaturedBadge(row.featured_badge)}
+        onRankClick={
+          sharedRank <= 3
+            ? () => setSelectedPrizeRank(sharedRank as LeaderboardPrizeRank)
+            : undefined
+        }
+        onPointsClick={() => openScoreBreakdown(row)}
+        onProfileClick={() => openProfile(row)}
+      />
+    );
+  };
+
   return (
-    <section className="mx-auto w-full max-w-5xl flex-1 overflow-y-auto px-5 py-8">
-      <div className="mb-6">
-        <h2 className="mb-1 font-serif text-3xl font-bold">Leaderboard</h2>
-        <p className="text-sm text-muted-foreground">
-          Ranking mensual de progreso con corte oficial del 1 al 28.
+    <section className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-4 pt-2 pb-28 lg:py-8">
+      <MedalDefs />
+      <h1 className="m-0 font-display tracking-tight text-2xl font-extrabold lg:text-3xl">
+        {t('Ranking del mes')}
+      </h1>
+
+      {/* Mes: ‹ Septiembre de 2026 › (como en Estadísticas) */}
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => olderMonth && setSelectedMonth(olderMonth)}
+          disabled={!olderMonth}
+          className="flex size-10 items-center justify-center rounded-2xl border-2 border-border text-muted-foreground hover:bg-muted disabled:opacity-30"
+          aria-label={t('Mes anterior')}
+        >
+          <ChevronLeftIcon className="size-5" strokeWidth={2.6} />
+        </button>
+        <p className="m-0 text-lg font-extrabold" aria-live="polite">
+          {formatMonthLabel(selectedMonth)}
         </p>
+        <button
+          type="button"
+          onClick={() => newerMonth && setSelectedMonth(newerMonth)}
+          disabled={!newerMonth}
+          className="flex size-10 items-center justify-center rounded-2xl border-2 border-border text-muted-foreground hover:bg-muted disabled:opacity-30"
+          aria-label={t('Mes siguiente')}
+        >
+          <ChevronRightIcon className="size-5" strokeWidth={2.6} />
+        </button>
       </div>
 
-      <Card className="mb-4">
-        <CardHeader className="gap-3">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <div className="flex flex-row flex-wrap gap-2 items-center">
-                <p className="flex gap-1 items-center">
-                  <TrophyIcon className="h-4 w-4" />
-                  Clasificación mensual
-                </p>
-                <p className="text-sm">
-                  TOP {FOCUS_TOP_LIMIT} de {totalIcademers ?? "..."} icademers
-                </p>
-              </div>
-            </CardTitle>
+      {/* Estado del ranking */}
+      <div
+        className="mt-3 flex items-center gap-3 rounded-3xl px-4 py-3"
+        style={{
+          background:
+            isCurrentMonth && !leaderboardClosed ? "var(--ica-gold-soft)" : "var(--muted)",
+        }}
+      >
+        <TrophyIcon size={42} />
+        <div className="min-w-0 flex-1">
+          <p
+            className="m-0 text-base font-extrabold"
+            style={{
+              color:
+                isCurrentMonth && !leaderboardClosed ? "var(--ica-gold-ink)" : "var(--foreground)",
+            }}
+          >
+            {isCurrentMonth && !leaderboardClosed
+              ? t('Se cierra en {n}', { n: formatCountdown(remainingMs) })
+              : "Ranking cerrado"}
+          </p>
+          <p className="m-0 text-xs font-semibold text-muted-foreground">
+            {isCurrentMonth && !leaderboardClosed
+              ? t("Del día 1 al 28")
+              : t("Resultados finales del día 28")}
+            {" · "}
+            {t('máx. {max} pts', { max: REFERENCE_MAX_POINTS })}
+          </p>
+        </div>
+      </div>
 
-            <div className="w-full max-w-72 space-y-2">
-              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona mes" />
-                </SelectTrigger>
-                <SelectContent>
-                  {monthOptions.map((month) => (
-                    <SelectItem key={month.value} value={month.value}>
-                      {month.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+      {/* Tu puesto: siempre arriba y en azul */}
+      {!loading && !error && myRankRow ? (
+        <div className="sticky top-0 z-20 -mx-4 mt-3 bg-background/95 px-4 pt-1 pb-2 backdrop-blur">
+          <MyRankCard
+            rank={myRankRow.sharedRank}
+            name={myRankRow.row.display_name || myRankRow.row.username || "Usuario"}
+            points={getDisplayedTotalPoints(myRankRow.row, includeIcaTestInScoreExplanation)}
+            onOpen={() => openScoreBreakdown(myRankRow.row)}
+          />
+        </div>
+      ) : null}
 
-              <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                <CalendarClockIcon className="h-4 w-4" />
-                {isCurrentMonth && !leaderboardClosed
-                  ? `Cierra en ${formatCountdown(remainingMs)} (UTC-12).`
-                  : "Este leaderboard ya cerró."}
-              </p>
-            </div>
+      <div className="mt-3">
+        {loading ? (
+          <div className="flex flex-col gap-2" aria-hidden="true">
+            <div className="h-48 animate-pulse rounded-3xl bg-muted" />
+            <div className="h-12 animate-pulse rounded-2xl bg-muted" />
+            <div className="h-12 animate-pulse rounded-2xl bg-muted" />
           </div>
-
-          <blockquote className="border-l-2 border-amber-400/80 pl-2 text-xs italic text-muted-foreground">
-            La puntuación total máxima mensual es de {REFERENCE_MAX_POINTS}{" "}
-            puntos.
-          </blockquote>
-
-          <div>
-            <Button
-              type="button"
-              variant="default"
-              size="sm"
-              onClick={() => {
-                if (!currentUserRow) return;
-                openScoreBreakdown(currentUserRow);
-              }}
-              disabled={!currentUserRow || loading || Boolean(error)}
-            >
-              Mi puntuación 🏅
-            </Button>
-          </div>
-        </CardHeader>
-
-        <CardContent>
-          {loading ? (
-            <ListLoading label="Cargando leaderboard..." rows={6} />
-          ) : error ? (
-            <p className="text-sm text-destructive">{error}</p>
-          ) : rowsWithSharedRank.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {isCurrentMonth
-                ? "Todavía no hay datos disponibles para este período."
-                : `Se están calculando los resultados de ${formatMonthLabel(selectedMonth)}. En el transcurso del día estarán disponibles.`}
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full lg:min-w-160 table-fixed text-left text-sm">
-                <thead className="table w-full table-fixed">
-                  <tr className="border-b text-muted-foreground">
-                    <th className="w-[12%] lg:w-[8%] px-1 pb-2 font-medium">
-                      Rank
-                    </th>
-                    <th className="w-[12%] lg:w-[8%] px-1 pb-2 font-medium">
-                      🔥
-                    </th>
-                    <th className="w-auto pb-2 font-medium">Nombre</th>
-                    {showIcaTestColumn && (
-                      <th className="hidden md:table-cell w-[14%] pb-2 font-medium">
-                        ICA Test
-                      </th>
-                    )}
-                    <th className="hidden md:table-cell w-[18%] pb-2 font-medium">
-                      % de eficacia
-                    </th>
-                    <th className="w-[16%] pb-2 font-medium">
-                      Puntuación total
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="block lg:max-h-[50dvh] lg:overflow-y-auto">
-                  {topWindowRows.map(
-                    ({ row, rankLabel, sharedRank }, index) => (
-                      <tr
-                        key={`${row.user_id}-${row.rank}-${selectedMonth}`}
-                        className={`table w-full table-fixed border-b align-middle ${trailingRankOpacityClass(index + 1)} ${
-                          row.user_id === user?.id ? "bg-emerald-500/10" : ""
-                        }`}
-                      >
-                        <td className="w-[12%] lg:w-[8%] px-1 py-2">
-                          {sharedRank <= 3 ? (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              className="h-auto p-0 text-base leading-none hover:bg-transparent"
-                              onClick={() =>
-                                setSelectedPrizeRank(
-                                  sharedRank as LeaderboardPrizeRank,
-                                )
-                              }
-                              aria-label={`Ver premio del puesto ${sharedRank}`}
-                            >
-                              {rankLabel}
-                            </Button>
-                          ) : (
-                            rankLabel
-                          )}
-                        </td>
-                        <td
-                          className={`w-[12%] lg:w-[8%] px-1 py-2 ${getStreakCellClass(row)}`}
-                        >
-                          {getStreakLabel(row)}
-                        </td>
-                        <td className="w-auto py-2 flex flex-row gap-3 items-center pr-2">
-                          <p className="truncate font-medium">
-                            {row.display_name || row.username || "Usuario"}
-                          </p>
-                          {row.user_id === user?.id && (
-                            <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                              (Tú)
-                            </p>
-                          )}
-                        </td>
-                        {showIcaTestColumn && (
-                          <td className="hidden md:table-cell w-[14%] py-2 font-medium">
-                            {row.ica_test_points === null ||
-                            row.ica_test_points === undefined
-                              ? "-"
-                              : toSafeNumber(row.ica_test_points).toFixed(1)}
-                          </td>
-                        )}
-                        <td className="hidden md:table-cell w-[18%] py-2 font-medium">
-                          {Math.round(row.avg_percent || 0)}%
-                        </td>
-                        <td className="w-[16%] py-2">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            className="h-auto p-0 text-sm font-bold md:font-medium"
-                            onClick={() => openScoreBreakdown(row)}
-                            aria-label="Ver cómo se calculó esta puntuación total"
-                          >
-                            {getDisplayedTotalPoints(
-                              row,
-                              includeIcaTestInScoreExplanation,
-                            ).toFixed(1)}
-                          </Button>
-                        </td>
-                      </tr>
-                    ),
-                  )}
-
-                  {placeholderRanks.map((rank) => (
-                    <tr
-                      key={`placeholder-rank-${rank}-${selectedMonth}`}
-                      className={`table w-full table-fixed border-b align-middle ${trailingRankOpacityClass(rank)}`}
-                    >
-                      <td className="w-[12%] lg:w-[8%] px-1 py-2">#{rank}</td>
-                      <td className="w-[12%] lg:w-[8%] px-1 py-2 text-muted-foreground">
-                        -
-                      </td>
-                      <td className="w-auto py-2 pr-2 text-muted-foreground">
-                        -
-                      </td>
-                      {showIcaTestColumn && (
-                        <td className="hidden md:table-cell w-[14%] py-2 text-muted-foreground">
-                          -
-                        </td>
-                      )}
-                      <td className="hidden md:table-cell w-[18%] py-2 text-muted-foreground">
-                        -
-                      </td>
-                      <td className="w-[16%] py-2 text-muted-foreground">-</td>
-                    </tr>
-                  ))}
-
-                  <tr className="table w-full table-fixed align-middle opacity-40">
-                    <td
-                      colSpan={tableColumnCount}
-                      className="py-2 text-center text-lg tracking-[0.6em] text-muted-foreground"
-                    >
-                      ...
-                    </td>
-                  </tr>
-
-                  {extraRows.map(({ row, rankLabel, sharedRank }) => (
-                    <tr
-                      key={`${row.user_id}-${row.rank}-${selectedMonth}-extra`}
-                      className={`table w-full table-fixed border-b align-middle last:border-b-0 ${
-                        row.user_id === user?.id ? "bg-emerald-500/10" : ""
-                      }`}
-                    >
-                      <td className="w-[12%] lg:w-[8%] px-1 py-2">
-                        {sharedRank <= 3 ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            className="h-auto p-0 text-base leading-none hover:bg-transparent"
-                            onClick={() =>
-                              setSelectedPrizeRank(
-                                sharedRank as LeaderboardPrizeRank,
-                              )
-                            }
-                            aria-label={`Ver premio del puesto ${sharedRank}`}
-                          >
-                            {rankLabel}
-                          </Button>
-                        ) : (
-                          rankLabel
-                        )}
-                      </td>
-                      <td
-                        className={`w-[12%] lg:w-[8%] px-1 py-2 ${getStreakCellClass(row)}`}
-                      >
-                        {getStreakLabel(row)}
-                      </td>
-                      <td className="w-auto py-2 flex flex-row gap-3 items-center pr-2">
-                        <p className="truncate font-medium">
-                          {row.display_name || row.username || "Usuario"}
-                        </p>
-                        {row.user_id === user?.id && (
-                          <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                            (Tú)
-                          </p>
-                        )}
-                      </td>
-                      {showIcaTestColumn && (
-                        <td className="hidden md:table-cell w-[14%] py-2 font-medium">
-                          {row.ica_test_points === null ||
-                          row.ica_test_points === undefined
-                            ? "-"
-                            : toSafeNumber(row.ica_test_points).toFixed(1)}
-                        </td>
-                      )}
-                      <td className="hidden md:table-cell w-[18%] py-2 font-medium">
-                        {Math.round(row.avg_percent || 0)}%
-                      </td>
-                      <td className="w-[16%] py-2">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="h-auto p-0 text-sm font-bold md:font-medium"
-                          onClick={() => openScoreBreakdown(row)}
-                          aria-label="Ver cómo se calculó esta puntuación total"
-                        >
-                          {getDisplayedTotalPoints(
-                            row,
-                            includeIcaTestInScoreExplanation,
-                          ).toFixed(1)}
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        ) : error ? (
+          <p className="text-sm font-bold text-destructive">{error}</p>
+        ) : rowsWithSharedRank.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {isCurrentMonth
+              ? t("Todavía no hay datos disponibles para este período.")
+              : t('Se están calculando los resultados de {n}. En el transcurso del día estarán disponibles.', { n: formatMonthLabel(selectedMonth) })}
+          </p>
+        ) : (
+          <>
+            <Podium
+              entries={podiumRows.map(({ row, sharedRank }) => ({
+                key: `${row.user_id}-${selectedMonth}`,
+                rank: sharedRank,
+                name: row.display_name || row.username || "Usuario",
+                points: getDisplayedTotalPoints(row, includeIcaTestInScoreExplanation),
+                isMe: row.user_id === user?.id,
+                badge: row.user_id === user?.id ? myBadge : parseFeaturedBadge(row.featured_badge),
+                onOpen: () => openScoreBreakdown(row),
+                onProfile: () => openProfile(row),
+                onPrize: () => setSelectedPrizeRank(Math.min(3, sharedRank) as LeaderboardPrizeRank),
+              }))}
+            />
+            <div className="ica-group mt-0 flex flex-col gap-0.5 py-1.5">
+              {listRows.map((item, index) => {
+                // Si hay más gente después del 30, los últimos puestos se van difuminando.
+                const opacity = rows.length > FOCUS_TOP_LIMIT ? rankingFadeOpacity(index + 3, FOCUS_TOP_LIMIT) : 1;
+                if (opacity >= 1 || item.row.user_id === user?.id) return renderRow(item);
+                return (
+                  <div key={`fade-${item.row.user_id}-${selectedMonth}`} style={{ opacity }}>
+                    {renderRow(item)}
+                  </div>
+                );
+              })}
+              <RankingFadeOut remaining={Math.max(0, rows.length - FOCUS_TOP_LIMIT)} />
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </>
+        )}
+      </div>
 
+      {/* Perfil de un icademer (al tocar su inicial o su nombre) */}
+      {profileSummary ? (
+        <IcademerProfileDialog summary={profileSummary} onClose={() => setProfileSummary(null)} />
+      ) : null}
+
+      {/* Detalle de puntos (tuyo o de otra persona) */}
       <Dialog
         open={Boolean(selectedScoreBreakdown)}
         onOpenChange={(open) => {
-          if (!open) {
-            setSelectedScoreBreakdown(null);
-            setIsBreakdownInfoOpen(false);
-          }
+          if (!open) setSelectedScoreBreakdown(null);
         }}
       >
-        <DialogContent
-          className={
-            selectedScoreBreakdown?.isCurrentUser
-              ? "border-2 border-emerald-400/70"
-              : undefined
-          }
-        >
-          <DialogHeader className="sr-only">
-            <DialogTitle>Detalle de puntuación</DialogTitle>
-          </DialogHeader>
-
+        <DialogContent className="sm:max-w-md">
           {selectedScoreBreakdown ? (
-            <div className="space-y-3 text-foreground">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-base">
-                    <strong>{selectedScoreBreakdown.userName}</strong>{" "}
-                    {renderGoldScore(
-                      selectedScoreBreakdown.totalPoints,
-                      selectedScoreBreakdown.totalMaxPoints,
-                    )}{" "}
-                    / {formatPoints(selectedScoreBreakdown.totalMaxPoints)}
-                  </p>
-                </div>
-              </div>
-
-              <p>
-                📊{" "}
-                {renderGoldScore(
-                  selectedScoreBreakdown.monthlyPoints,
-                  selectedScoreBreakdown.monthlyMaxPoints,
-                )}{" "}
-                / {formatPoints(selectedScoreBreakdown.monthlyMaxPoints)}
-                {selectedScoreBreakdown.isCurrentUser
-                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.monthlyPoints, selectedScoreBreakdown.monthlyMaxPoints)} de acción aplicada`
-                  : ""}
-              </p>
-              {isBreakdownInfoOpen && (
-                <p className="text-xs text-yellow-700 dark:text-yellow-300 -mt-2">
-                  Promedio mensual de rachas ICA y flashcards, del día 1 al día
-                  28. (Máximo 10 puntos)
-                </p>
-              )}
-
-              <p>
-                🎧{" "}
-                {renderGoldScore(
-                  selectedScoreBreakdown.listeningPoints,
-                  selectedScoreBreakdown.listeningMaxPoints,
-                )}{" "}
-                / {formatPoints(selectedScoreBreakdown.listeningMaxPoints)}
-                {selectedScoreBreakdown.isCurrentUser
-                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.listeningPoints, selectedScoreBreakdown.listeningMaxPoints)} de acción aplicada`
-                  : ""}
-              </p>
-              {isBreakdownInfoOpen && (
-                <p className="text-xs text-yellow-700 dark:text-yellow-300 -mt-2">
-                  Solo suma 0,1 puntos cuando llegas a 10 minutos escuchados en
-                  el día. (Máximo 2,8 puntos)
-                </p>
-              )}
-
-              <p>
-                📸{" "}
-                {renderGoldScore(
-                  selectedScoreBreakdown.instagramPoints,
-                  selectedScoreBreakdown.instagramMaxPoints,
-                )}{" "}
-                / {formatPoints(selectedScoreBreakdown.instagramMaxPoints)}
-                {selectedScoreBreakdown.isCurrentUser
-                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.instagramPoints, selectedScoreBreakdown.instagramMaxPoints)} de acción aplicada`
-                  : ""}
-              </p>
-              {isBreakdownInfoOpen && (
-                <p className="text-xs text-yellow-700 dark:text-yellow-300 -mt-2">
-                  Instagram Track suma 0,5 por cada día cumplido del 1 al 28.
-                  (Máximo 14 puntos)
-                </p>
-              )}
-
-              <p>
-                🗣️{" "}
-                {renderGoldScore(
-                  selectedScoreBreakdown.pregunticaPoints,
-                  selectedScoreBreakdown.pregunticaMaxPoints,
-                )}{" "}
-                / {formatPoints(selectedScoreBreakdown.pregunticaMaxPoints)}
-                {selectedScoreBreakdown.isCurrentUser
-                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.pregunticaPoints, selectedScoreBreakdown.pregunticaMaxPoints)} de acción aplicada`
-                  : ""}
-              </p>
-              {isBreakdownInfoOpen && (
-                <p className="text-xs text-yellow-700 dark:text-yellow-300 -mt-2">
-                  PreguntICA semanal completada suma 2 puntos por semana.
-                  (Máximo 8 puntos)
-                </p>
-              )}
-
-              <p>
-                📝{" "}
-                {selectedScoreBreakdown.includeIcaTest ? (
-                  <>
-                    {renderGoldScore(
-                      selectedScoreBreakdown.icaTestPoints,
-                      selectedScoreBreakdown.icaTestMaxPoints,
-                    )}{" "}
-                    / {formatPoints(selectedScoreBreakdown.icaTestMaxPoints)}
-                  </>
-                ) : (
-                  <>
-                    <span className="text-amber-500">-</span>/
-                    {formatPoints(selectedScoreBreakdown.icaTestMaxPoints)}
-                  </>
-                )}
-                {selectedScoreBreakdown.isCurrentUser &&
-                selectedScoreBreakdown.includeIcaTest
-                  ? ` - ${formatAppliedPercent(selectedScoreBreakdown.icaTestPoints, selectedScoreBreakdown.icaTestMaxPoints)} de acción aplicada`
-                  : ""}
-              </p>
-              {isBreakdownInfoOpen && (
-                <p className="text-xs text-yellow-700 dark:text-yellow-300 -mt-2">
-                  {selectedScoreBreakdown.includeIcaTest
-                    ? `Cada respuesta correcta del ICA Test suma 0,1 puntos. Del día ${icaTestWindowStartDay} al 28 del mes. (Máximo 1,2 puntos)`
-                    : `ICA Test disponible del día ${icaTestWindowStartDay} al 28 del mes. (Máximo 1,2 puntos)`}
-                </p>
-              )}
-
-              <Separator className="my-2" />
-
-              <div className="flex items-center justify-between gap-3">
-                <p>
-                  🧾 <strong>Total:</strong>{" "}
-                  {renderGoldScore(
-                    selectedScoreBreakdown.totalPoints,
-                    selectedScoreBreakdown.totalMaxPoints,
-                  )}
-                  {selectedScoreBreakdown.isCurrentUser
-                    ? ` - ${formatAppliedPercent(selectedScoreBreakdown.totalPoints, selectedScoreBreakdown.totalMaxPoints)} de eficacia aplicada`
-                    : ""}
-                </p>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className={
-                    isBreakdownInfoOpen
-                      ? "border-yellow-500 bg-yellow-100 text-yellow-700 ring-1 ring-yellow-500 dark:border-yellow-400 dark:bg-yellow-500/15 dark:text-yellow-300 dark:ring-yellow-400"
-                      : "border-yellow-500/60 text-yellow-700 hover:bg-yellow-100 hover:text-yellow-700 dark:border-yellow-400/70 dark:text-yellow-300 dark:hover:bg-yellow-500/10 dark:hover:text-yellow-200"
-                  }
-                  aria-pressed={isBreakdownInfoOpen}
-                  onClick={() => setIsBreakdownInfoOpen((prev) => !prev)}
-                >
-                  <InfoIcon className="size-4" />
-                </Button>
-              </div>
-            </div>
+            <ScoreBreakdownContent
+              breakdown={selectedScoreBreakdown}
+              icaTestWindowStartDay={icaTestWindowStartDay}
+            />
           ) : null}
         </DialogContent>
       </Dialog>
@@ -1030,38 +875,39 @@ export function LeaderboardView() {
           if (!open) setSelectedPrizeRank(null);
         }}
       >
-        <DialogContent
-          className={`sm:max-w-md ${
-            selectedPrizeRank
-              ? LEADERBOARD_PRIZES[selectedPrizeRank].borderClassName
-              : ""
-          }`}
-        >
+        <DialogContent className="sm:max-w-md">
           {selectedPrizeRank ? (
-            <>
-              <DialogHeader className="pr-7">
-                <DialogTitle className="leading-[1.4] tracking-[0.01em]">
-                  {getPrizeHeading(selectedPrizeRank)}
-                </DialogTitle>
-                <DialogDescription className="sr-only">
-                  Detalle de premios para los puestos del leaderboard mensual.
-                </DialogDescription>
-              </DialogHeader>
-              <ul className="list-disc space-y-1.5 pl-5 text-sm">
-                {LEADERBOARD_PRIZES[selectedPrizeRank].rewards.map((reward) => (
-                  <li key={reward}>{reward}</li>
-                ))}
-              </ul>
-              <Separator />
-              <DialogFooter className="-mx-0 -mb-0 rounded-b-none border-0 bg-transparent p-0">
-                <Button
-                  type="button"
-                  onClick={() => setSelectedPrizeRank(null)}
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col items-center gap-2 pt-1 text-center">
+                <span
+                  className="ica-badge-reveal flex size-20 items-center justify-center rounded-full font-display text-4xl font-black"
+                  style={{
+                    background: PRIZE_COLORS[selectedPrizeRank][0],
+                    color: PRIZE_COLORS[selectedPrizeRank][2],
+                    boxShadow: `0 5px 0 ${PRIZE_COLORS[selectedPrizeRank][1]}`,
+                  }}
                 >
-                  Aceptar
-                </Button>
-              </DialogFooter>
-            </>
+                  {selectedPrizeRank}
+                </span>
+                <DialogTitle className="pr-0 text-2xl">
+                  {t("Premio del puesto {rank}", { rank: selectedPrizeRank })}
+                </DialogTitle>
+                <DialogDescription className="m-0 text-sm font-semibold">
+                  {getPrizeHeading(selectedPrizeRank)}
+                </DialogDescription>
+              </div>
+              <RowGroup>
+                {LEADERBOARD_PRIZES[selectedPrizeRank].rewards.map((reward) => (
+                  <div key={reward.text} className="flex items-center gap-3 py-2.5">
+                    {reward.icon}
+                    <span className="text-sm font-extrabold">{t(reward.text)}</span>
+                  </div>
+                ))}
+              </RowGroup>
+              <Button type="button" size="xl" className="w-full" onClick={() => setSelectedPrizeRank(null)}>
+                {t("¡A por ello!")}
+              </Button>
+            </div>
           ) : null}
         </DialogContent>
       </Dialog>

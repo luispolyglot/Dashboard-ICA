@@ -1,14 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
-import { CopyIcon, MicIcon, Trash2Icon } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import {
+  CheckIcon,
+  CopyIcon,
+  MicIcon,
+  PackagePlusIcon,
+  PlusIcon,
+  SearchIcon,
+  Trash2Icon,
+  TriangleAlertIcon,
+} from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
 import { ActivatePhraseInMasterNoteModal } from '../components/ActivatePhraseInMasterNoteModal'
 import { ExplorePhraseTokenModal } from '../components/ExplorePhraseTokenModal'
 import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
 import { IcaDeletionWarningDialog } from '../components/IcaDeletionWarningDialog'
 import { InteractivePhraseText } from '../components/InteractivePhraseText'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -18,8 +26,20 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
+import { t, tn, uiLocale } from '@/i18n'
 import { RomanizationHint } from '../components/RomanizationHint'
 import { SpeakButton } from '../components/SpeakButton'
+import {
+  EmptyState,
+  GamePage,
+  IconTile,
+  PageTitle,
+  PhaseLetter,
+  Pill,
+  RowGroup,
+  SectionLabel,
+} from '../game/ui'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchPhraseVoiceActivations } from '../services/phraseVoiceActivations'
 import {
@@ -33,7 +53,6 @@ import type {
   PhraseGenerationEntry,
   PhraseVoiceActivationEntry,
 } from '../types'
-import { ListLoading } from '@/components/ui/loading-state'
 
 type PhraseHistoryViewProps = {
   targetLang: string
@@ -69,7 +88,8 @@ function highlightMatch(text: string, query: string): ReactNode {
     sortedTerms.some((term) => term.toLowerCase() === part.toLowerCase()) ? (
       <mark
         key={`${part}-${index}`}
-        className='rounded-sm bg-primary/20 px-0.5 text-primary'
+        className='rounded-md px-0.5 font-extrabold'
+        style={{ background: 'color-mix(in oklab, var(--ica-c) 22%, transparent)', color: 'var(--ica-c-ink)' }}
       >
         {part}
       </mark>
@@ -83,6 +103,59 @@ function toDayKey(value: string): string | null {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return null
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+/** "Hoy", "Ayer" o "Domingo, 27 de septiembre" (con el año si no es el actual). */
+function dayLabel(key: string | null, todayKey: string): string {
+  if (!key) return t('Sin fecha')
+  if (key === todayKey) return t('Hoy')
+  const [year, month, day] = key.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  const now = new Date()
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+  if (date.getTime() === yesterday.getTime()) return t('Ayer')
+  const options: Intl.DateTimeFormatOptions = { weekday: 'long', day: 'numeric', month: 'long' }
+  if (year !== now.getFullYear()) options.year = 'numeric'
+  const text = date.toLocaleDateString(uiLocale(), options)
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+function timeLabel(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleTimeString(uiLocale(), { hour: '2-digit', minute: '2-digit' })
+}
+
+/** Botón de acción discreto (solo icono) de cada fila. */
+function RowAction({
+  label,
+  onClick,
+  disabled,
+  danger = false,
+  children,
+}: {
+  label: string
+  onClick: () => void
+  disabled?: boolean
+  danger?: boolean
+  children: ReactNode
+}) {
+  return (
+    <Button
+      type='button'
+      variant='ghost'
+      size='icon-sm'
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      className={cn(
+        'rounded-xl text-muted-foreground [&_svg:not([class*=size-])]:size-4.5',
+        danger && 'hover:bg-[var(--ica-bad-soft)] hover:text-[var(--ica-bad-ink)]',
+      )}
+    >
+      {children}
+    </Button>
+  )
 }
 
 export function PhraseHistoryView({
@@ -165,7 +238,7 @@ export function PhraseHistoryView({
         setError(null)
       } catch (err) {
         console.error(err)
-        setError('No se pudo cargar creación/activación de frases')
+        setError(t('No se pudo cargar creación/activación de frases'))
       } finally {
         setLoading(false)
       }
@@ -199,7 +272,7 @@ export function PhraseHistoryView({
       setError(null)
     } catch (err) {
       console.error(err)
-      setError('No se pudo cargar más frases')
+      setError(t('No se pudo cargar más frases'))
     } finally {
       setLoadingMore(false)
     }
@@ -220,7 +293,7 @@ export function PhraseHistoryView({
       setDeleteCandidate(null)
     } catch (err) {
       console.error(err)
-      setError('No se pudo eliminar la frase')
+      setError(t('No se pudo eliminar la frase'))
     } finally {
       setDeletingId(null)
     }
@@ -295,66 +368,134 @@ export function PhraseHistoryView({
     }
   }
 
-  return (
-    <section className='mx-auto flex h-auto w-full max-w-3xl flex-1 flex-col px-5 py-8 lg:h-full lg:min-h-0'>
-      <h2 className='mb-0 lg:mb-1 font-serif text-2xl lg:text-3xl font-bold'>
-        ⚡ Historial de Creación de Frases
-      </h2>
-      <p className='mb-4 lg:mb-6 text-sm text-muted-foreground'>
-        Historial con frase, traducción y palabras usadas.
-      </p>
 
-      <div className='sticky top-0 z-20 -mx-5 mb-5 border-b border-border/60 bg-background/95 px-5 pt-1 pb-3 backdrop-blur lg:static lg:z-auto lg:m-0 lg:mb-5 lg:border-none lg:bg-transparent lg:px-0 lg:pt-0 lg:pb-0 lg:backdrop-blur-none'>
+  // Frases agrupadas por día (ya vienen de la más nueva a la más antigua).
+  const dayGroups: Array<{ key: string | null; items: PhraseGenerationEntry[] }> = []
+  for (const item of visibleItems) {
+    const key = toDayKey(item.created_at)
+    const last = dayGroups[dayGroups.length - 1]
+    if (last && last.key === key) {
+      last.items.push(item)
+    } else {
+      dayGroups.push({ key, items: [item] })
+    }
+  }
+
+  const trimmedQuery = query.trim()
+
+  return (
+    <GamePage>
+      <PageTitle
+        icon={<PhaseLetter letter='C' size={44} />}
+        subtitle={t('Tus frases, día a día, con su traducción.')}
+        right={
+          <Button asChild variant='c' size='sm'>
+            <Link to={DASHBOARD_ROUTES.activationPhrase}>
+              <PlusIcon strokeWidth={3} aria-hidden='true' />
+              {t('Crear')}
+            </Link>
+          </Button>
+        }
+      >
+        {t('Historial de frases')}
+      </PageTitle>
+
+      {/* Buscador (fijo arriba en el móvil) */}
+      <div className='sticky top-0 z-20 -mx-4 -my-2 bg-background/95 px-4 py-2 backdrop-blur lg:static lg:m-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none'>
         <div className='relative'>
-          <span className='pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground'>
-            🔎
-          </span>
+          <SearchIcon
+            className='pointer-events-none absolute top-1/2 left-3.5 size-4.5 -translate-y-1/2 text-muted-foreground'
+            strokeWidth={2.6}
+            aria-hidden='true'
+          />
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder='Buscar por palabra o frase...'
-            className='pl-9'
+            placeholder={t('Buscar por palabra o frase...')}
+            aria-label={t('Buscar por palabra o frase')}
+            className='h-12 rounded-2xl pl-10'
           />
         </div>
       </div>
 
-      <div className='min-h-0 flex-1 overflow-visible lg:overflow-y-auto lg:pr-1'>
-        {loading && <ListLoading label='Cargando historial...' />}
-        {error && <p className='text-sm text-red-400'>{error}</p>}
+      {error && (
+        <div
+          role='alert'
+          className='flex items-center gap-3 rounded-2xl px-4 py-3'
+          style={{ background: 'var(--ica-bad-soft)', color: 'var(--ica-bad-ink)' }}
+        >
+          <TriangleAlertIcon className='size-5 shrink-0' strokeWidth={2.6} aria-hidden='true' />
+          <p className='m-0 text-sm font-bold'>{error}</p>
+        </div>
+      )}
 
-        {!loading && !error && visibleItems.length === 0 && (
-          <p className='text-sm text-muted-foreground'>
-            Todavía no generaste frases.
-          </p>
-        )}
+      {loading && (
+        <RowGroup>
+          <p className='sr-only'>{t('Cargando historial...')}</p>
+          {[0, 1, 2].map((index) => (
+            <div key={index} className='py-4' aria-hidden='true'>
+              <div className='h-6 w-4/5 animate-pulse rounded-lg bg-muted' />
+              <div className='mt-2 h-4 w-3/5 animate-pulse rounded-lg bg-muted' />
+              <div className='mt-3 flex gap-1.5'>
+                <div className='h-5 w-16 animate-pulse rounded-full bg-muted' />
+                <div className='h-5 w-20 animate-pulse rounded-full bg-muted' />
+                <div className='h-5 w-14 animate-pulse rounded-full bg-muted' />
+              </div>
+            </div>
+          ))}
+        </RowGroup>
+      )}
 
-        <div className='space-y-3'>
-          {visibleItems.map((item) => {
-            const activationCount = (activationsByPhrase[item.id] || []).length
-            return (
-              <Card key={item.id} className='rounded-2xl'>
-                <CardContent>
-                  <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
-                    <span className='text-xs text-muted-foreground'>
-                      {new Date(item.created_at).toLocaleString('es-ES', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                    <span
-                      className={`inline-flex rounded-full p-1.5 ${
-                        activationCount > 0
-                          ? 'shadow-[0_0_10px_#eab30877,0_0_22px_#eab30844]'
-                          : ''
-                      }`}
-                    >
-                      <MicIcon className='size-4 text-muted-foreground' />
-                    </span>
-                  </div>
+      {!loading && !error && visibleItems.length === 0 && (
+        <div className='ica-panel'>
+          {trimmedQuery ? (
+            <EmptyState
+              icon={
+                <IconTile tone='neutral' size={64}>
+                  <SearchIcon className='size-8' strokeWidth={2.6} aria-hidden='true' />
+                </IconTile>
+              }
+              title={t('Sin resultados')}
+              text={t('No hay frases con «{query}».', { query: trimmedQuery })}
+            />
+          ) : (
+            <EmptyState
+              icon={<PhaseLetter letter='C' size={64} />}
+              title={t('Aún no has creado frases')}
+              text={t('Crea tu primera frase con tus palabras ICA y aparecerá aquí, ordenada por días.')}
+              action={
+                <Button asChild variant='c' size='lg'>
+                  <Link to={DASHBOARD_ROUTES.activationPhrase}>{t('Crear mi primera frase')}</Link>
+                </Button>
+              }
+            />
+          )}
+        </div>
+      )}
 
+      {/* Frases por día */}
+      {dayGroups.map((group) => (
+        <div key={group.key ?? 'sin-fecha'}>
+          <SectionLabel
+            right={
+              <Pill tone='c'>
+                {tn(group.items.length, '{n} frase', '{n} frases')}
+              </Pill>
+            }
+          >
+            {dayLabel(group.key, todayKey)}
+          </SectionLabel>
+          <RowGroup>
+            {group.items.map((item) => {
+              const activationCount = (activationsByPhrase[item.id] || []).length
+              const copyLabel =
+                copyingId === item.id
+                  ? t('Copiando...')
+                  : copiedId === item.id
+                    ? t('Copiadas')
+                    : t('Copiar frases')
+              return (
+                <article key={item.id} className='py-4'>
                   {item.generated_phrase ? (
                     <InteractivePhraseText
                       text={item.generated_phrase}
@@ -367,10 +508,12 @@ export function PhraseHistoryView({
                           item.translation || '',
                         )
                       }
-                      className='font-serif text-xl font-bold'
+                      className='m-0 font-display text-xl leading-snug font-extrabold tracking-tight break-words'
                     />
                   ) : (
-                    <p className='font-serif text-xl font-bold'>Sin frase registrada</p>
+                    <p className='m-0 font-display text-xl font-extrabold tracking-tight text-muted-foreground'>
+                      {t('Sin frase registrada')}
+                    </p>
                   )}
                   {item.generated_phrase && (
                     <RomanizationHint
@@ -378,105 +521,105 @@ export function PhraseHistoryView({
                       language={targetLang}
                     />
                   )}
-                  <p className='mt-2 text-sm text-muted-foreground'>
+                  <p className='m-0 mt-1 text-sm font-semibold text-muted-foreground'>
                     {highlightMatch(
-                      item.translation || 'Sin traducción registrada',
+                      item.translation || t('Sin traducción registrada'),
                       query,
                     )}
                   </p>
 
-                  {item.generated_phrase && (
-                    <div className='mt-3'>
-                      <SpeakButton
-                        text={item.generated_phrase}
-                        langName={targetLang}
-                        color='#3B82F6'
-                      />
+                  {(item.source_words || []).length > 0 && (
+                    <div className='mt-2.5 flex flex-wrap gap-1.5'>
+                      {(item.source_words || []).map((word) => (
+                        <Pill key={`${item.id}-${word}`} tone='c'>
+                          {highlightMatch(word, query)}
+                        </Pill>
+                      ))}
                     </div>
                   )}
 
-                  <div className='mt-3 flex flex-wrap gap-1.5'>
-                    {(item.source_words || []).map((word) => (
-                      <span
-                        key={`${item.id}-${word}`}
-                        className='rounded-md bg-primary/30 px-2.5 py-0.5 text-xs font-semibold text-white'
-                      >
-                        {highlightMatch(word, query)}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className='mt-4 flex flex-wrap gap-2 border-t border-border pt-3'>
-                    <Button
-                      type='button'
-                      onClick={() =>
-                        void handleCopyPhrase(
-                          item.id,
-                          item.generated_phrase,
-                          item.translation,
-                        )
-                      }
-                      variant='outline'
-                      size='sm'
-                      disabled={
-                        !item.generated_phrase || copyingId === item.id
-                      }
-                    >
-                      <CopyIcon className='size-4' />
-                      {copyingId === item.id
-                        ? 'Copiando...'
-                        : copiedId === item.id
-                          ? 'Copiadas'
-                          : 'Copiar frases'}
-                    </Button>
-                    <Button
-                      type='button'
-                      onClick={() => handleAskDelete(item.id)}
-                      variant='destructive'
-                      size='sm'
-                    >
-                      Eliminar frase
-                      <Trash2Icon className='ml-1 size-4' />
-                    </Button>
-                    <Button
-                      type='button'
-                      onClick={() => handleOpenExtractModal(item.id)}
-                      variant='secondary'
-                      size='sm'
-                    >
-                      📦 Extraer nuevas palabras
-                    </Button>
-                    {activationCount === 0 && (
+                  <div className='mt-3 flex items-center gap-2'>
+                    <span className='text-xs font-bold text-muted-foreground tabular-nums'>
+                      {timeLabel(item.created_at)}
+                    </span>
+                    {activationCount > 0 ? (
+                      <Pill tone='a'>
+                        <MicIcon className='size-3' strokeWidth={3} aria-hidden='true' />
+                        {t('Activada')}{activationCount > 1 ? ` ×${activationCount}` : ''}
+                      </Pill>
+                    ) : (
                       <Button
                         type='button'
                         onClick={() => handleOpenActivateModal(item.id)}
-                        variant='outline'
+                        variant='a'
                         size='sm'
-                        className='ml-auto'
+                        aria-label={t('Activar frase')}
                       >
-                        🗣️ Activar frase
+                        <MicIcon strokeWidth={2.8} aria-hidden='true' />
+                        {t('Activar')}
                       </Button>
                     )}
+                    <div className='ml-auto flex items-center gap-0.5'>
+                      {item.generated_phrase && (
+                        <SpeakButton
+                          text={item.generated_phrase}
+                          langName={targetLang}
+                          color='#3B82F6'
+                          variant='icon'
+                          className='size-8 rounded-xl'
+                        />
+                      )}
+                      <RowAction
+                        label={copyLabel}
+                        onClick={() =>
+                          void handleCopyPhrase(
+                            item.id,
+                            item.generated_phrase,
+                            item.translation,
+                          )
+                        }
+                        disabled={!item.generated_phrase || copyingId === item.id}
+                      >
+                        {copiedId === item.id ? (
+                          <CheckIcon strokeWidth={3} style={{ color: 'var(--ica-ok-ink)' }} />
+                        ) : (
+                          <CopyIcon strokeWidth={2.4} />
+                        )}
+                      </RowAction>
+                      <RowAction
+                        label={t('Extraer nuevas palabras')}
+                        onClick={() => handleOpenExtractModal(item.id)}
+                      >
+                        <PackagePlusIcon strokeWidth={2.4} />
+                      </RowAction>
+                      <RowAction
+                        label={t('Eliminar frase')}
+                        onClick={() => handleAskDelete(item.id)}
+                        danger
+                      >
+                        <Trash2Icon strokeWidth={2.4} />
+                      </RowAction>
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            )
-          })}
+                </article>
+              )
+            })}
+          </RowGroup>
         </div>
+      ))}
 
-        {!loading && hasMore && (
-          <div className='mt-4 flex justify-center'>
-            <Button
-              type='button'
-              variant='outline'
-              onClick={() => void handleLoadMore()}
-              disabled={loadingMore}
-            >
-              {loadingMore ? 'Cargando...' : 'Cargar más frases'}
-            </Button>
-          </div>
-        )}
-      </div>
+      {!loading && hasMore && (
+        <Button
+          type='button'
+          variant='outline'
+          size='lg'
+          className='w-full'
+          onClick={() => void handleLoadMore()}
+          disabled={loadingMore}
+        >
+          {loadingMore ? t('Cargando...') : t('Cargar más frases')}
+        </Button>
+      )}
 
       <Dialog
         open={Boolean(deleteCandidate?.hasActivation)}
@@ -486,15 +629,18 @@ export function PhraseHistoryView({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {deleteCandidate?.hasActivation
-                ? 'Frase activada en Nota Maestra'
-                : '¿Eliminar esta frase?'}
-            </DialogTitle>
+            <div className='flex items-center gap-3'>
+              <PhaseLetter letter='A' size={40} />
+              <DialogTitle>
+                {deleteCandidate?.hasActivation
+                  ? t('Frase activada en Nota Maestra')
+                  : t('¿Eliminar esta frase?')}
+              </DialogTitle>
+            </div>
             <DialogDescription>
               {deleteCandidate?.hasActivation
-                ? 'Esta frase ya fue activada. Para borrarla, primero debes eliminarla desde la propia Nota Maestra.'
-                : '¿Eliminar esta frase?'}
+                ? t('Esta frase ya fue activada. Para borrarla, primero debes eliminarla desde la propia Nota Maestra.')
+                : t('¿Eliminar esta frase?')}
             </DialogDescription>
           </DialogHeader>
 
@@ -506,16 +652,17 @@ export function PhraseHistoryView({
                   variant='outline'
                   onClick={() => setDeleteCandidate(null)}
                 >
-                  Cerrar
+                  {t('Cerrar')}
                 </Button>
                 <Button
                   type='button'
+                  variant='a'
                   onClick={() => {
                     setDeleteCandidate(null)
                     navigate(DASHBOARD_ROUTES.masterNotes)
                   }}
                 >
-                  Ir a Nota Maestra
+                  {t('Ir a Nota Maestra')}
                 </Button>
               </>
             ) : null}
@@ -533,8 +680,8 @@ export function PhraseHistoryView({
           void handleDelete(deleteCandidate.id)
         }}
         loading={Boolean(deletingId)}
-        title='Eliminar frase'
-        resourceLabel='esta frase'
+        title={t('Eliminar frase')}
+        resourceLabel={t('esta frase')}
         resource='phrase'
         resourceDates={[deleteCandidate?.createdAt]}
         todayTotalCount={todayPhraseCount}
@@ -579,6 +726,6 @@ export function PhraseHistoryView({
         setCards={setCards}
         onWordAdded={onWordAdded}
       />
-    </section>
+    </GamePage>
   )
 }

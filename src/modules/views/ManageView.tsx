@@ -1,26 +1,49 @@
 import { useEffect, useState } from "react";
 import {
+  ArchiveIcon,
   CopyIcon,
   DownloadIcon,
+  FileDownIcon,
+  FileTextIcon,
+  LoaderCircleIcon,
+  LockIcon,
+  PencilIcon,
+  SearchIcon,
+  SparklesIcon,
   SquareIcon,
   Trash2Icon,
-  Volume1Icon,
+  Volume2Icon,
+  XIcon,
+  ZapIcon,
 } from "lucide-react";
 import { useAuth } from "../../auth/AuthContext";
 import type { Dispatch, SetStateAction } from "react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import { langName, t, tn, uiLocale } from "@/i18n";
 import { IcaDeletionWarningDialog } from "../components/IcaDeletionWarningDialog";
 import { RomanizationHint } from "../components/RomanizationHint";
 import { IMPORTANCE_LEVELS, getImportance } from "../constants";
+import {
+  EmptyState,
+  GamePage,
+  IconTile,
+  PageTitle,
+  PhaseLetter,
+  Pill,
+  RowGroup,
+  tone,
+} from "../game/ui";
 import { fetchWordExample } from "../services/anthropic";
 import { fetchWordActivationCounts } from "../services/metaTracker";
 import { deleteWordById, loadData, updateWord } from "../services/storage";
@@ -32,7 +55,13 @@ import {
 } from "../services/wordExport";
 import { sortChronological } from "../utils";
 import type { AppConfig, ImportanceKey, Lexicard, StudyLevel } from "../types";
-import useBreakpoints from "../hooks/useBreakpoints";
+import {
+  IMPORTANCE_TONE,
+  ImportanceBars,
+  ImportancePicker,
+  ImportanceTile,
+} from "./IcaWordParts";
+import { SwipeRow } from "../game/SwipeRow";
 
 type ManageViewProps = {
   cards: Lexicard[];
@@ -40,14 +69,6 @@ type ManageViewProps = {
   config: AppConfig;
   studyLevel: StudyLevel;
   todayWordsAdded: number;
-};
-
-const TONE_CLASS: Record<ImportanceKey, string> = {
-  vital: "text-blue-400",
-  frequent: "text-emerald-400",
-  occasional: "text-amber-400",
-  rare: "text-orange-400",
-  irrelevant: "text-red-400",
 };
 
 function escapeRegex(value: string): string {
@@ -69,7 +90,7 @@ function highlightMatch(text: string, query: string): ReactNode {
     part.toLowerCase() === trimmedQuery.toLowerCase() ? (
       <mark
         key={`${part}-${index}`}
-        className="rounded-sm bg-primary/20 px-0.5 text-primary"
+        className="rounded bg-[color-mix(in_oklab,var(--ica-i)_22%,transparent)] px-0.5 text-[var(--ica-i-ink)]"
       >
         {part}
       </mark>
@@ -87,7 +108,6 @@ export function ManageView({
   todayWordsAdded,
 }: ManageViewProps) {
   const { user } = useAuth();
-  const { isLg } = useBreakpoints();
   const [filter, setFilter] = useState<ImportanceKey | "all" | "to_learn">(
     "all",
   );
@@ -117,6 +137,7 @@ export function ManageView({
     Record<string, number>
   >({});
   const [playingWordId, setPlayingWordId] = useState<string | null>(null);
+  const [swipedId, setSwipedId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -193,7 +214,7 @@ export function ManageView({
   const ownerName =
     user?.user_metadata?.display_name ||
     user?.email?.split("@")[0] ||
-    "Usuario";
+    t("Usuario");
   const editingCard = cards.find((card) => card.id === editingId) || null;
   const hasDuplicateEditTarget = Boolean(
     editingCard &&
@@ -212,7 +233,12 @@ export function ManageView({
     if (busyExport) return;
     setBusyExport("copy");
     try {
-      await copyWordsToClipboard(ownerName, sorted);
+      await copyWordsToClipboard(ownerName, sorted, {
+        targetLang: langName(config.targetLang),
+        nativeLang: langName(config.nativeLang),
+        level: studyLevel,
+      });
+      toast.success(t("Palabras copiadas con un prompt para practicarlas"));
     } finally {
       setBusyExport(null);
     }
@@ -246,7 +272,7 @@ export function ManageView({
     if (usageCount > 0) {
       setDeleteErrorById((prev) => ({
         ...prev,
-        [id]: "No se puede eliminar: palabra protegida por activaciones.",
+        [id]: t("No se puede eliminar: palabra protegida por activaciones."),
       }));
       setDeleteCandidate(null);
       return;
@@ -265,7 +291,7 @@ export function ManageView({
     } catch {
       setDeleteErrorById((prev) => ({
         ...prev,
-        [id]: "No se pudo eliminar: palabra protegida por activaciones.",
+        [id]: t("No se pudo eliminar: palabra protegida por activaciones."),
       }));
       setDeleteCandidate(null);
     }
@@ -295,7 +321,7 @@ export function ManageView({
 
   const handleSaveEdit = async (id: string): Promise<void> => {
     if (hasDuplicateEditTarget) {
-      setEditError("Ya existe esta palabra en tu baúl ICA.");
+      setEditError(t("Ya existe esta palabra en tu baúl ICA."));
       return;
     }
 
@@ -340,7 +366,7 @@ export function ManageView({
       if (!example?.phrase || !example.translation) {
         setExampleErrorById((prev) => ({
           ...prev,
-          [card.id]: "No se pudo generar ejemplo ahora",
+          [card.id]: t("No se pudo generar ejemplo ahora"),
         }));
         return;
       }
@@ -378,378 +404,560 @@ export function ManageView({
     });
   };
 
+  // --- Lo que se ve ---
+  const activatedCount = cards.filter(
+    (card) => (wordUsageCounts[card.id] ?? card.activationCount ?? 0) > 0,
+  ).length;
+  const exportDisabled = sorted.length === 0 || busyExport !== null;
+
+  // Pastillas de filtro: Todas, Por aprender y una por frecuencia.
+  const filterPill = (
+    key: ImportanceKey | "all" | "to_learn",
+    content: ReactNode,
+    ariaLabel?: string,
+  ) => {
+    const active = filter === key;
+    const colors =
+      key === "all" || key === "to_learn"
+        ? tone("i")
+        : tone(IMPORTANCE_TONE[key]);
+    return (
+      <button
+        key={key}
+        type="button"
+        onClick={() => setFilter(key)}
+        aria-pressed={active}
+        aria-label={ariaLabel}
+        className={cn(
+          "inline-flex h-10 items-center gap-1.5 rounded-full border-2 px-3.5 text-sm font-extrabold whitespace-nowrap transition-[transform,box-shadow,background-color] active:translate-y-[2px] active:shadow-none",
+          active
+            ? ""
+            : "border-border bg-card text-muted-foreground hover:text-foreground dark:bg-transparent",
+        )}
+        style={
+          active
+            ? {
+                background: colors.soft,
+                borderColor: colors.solid,
+                color: colors.ink,
+                boxShadow: `0 2px 0 ${colors.solid}`,
+              }
+            : { boxShadow: "0 2px 0 var(--border)" }
+        }
+      >
+        {content}
+      </button>
+    );
+  };
+
   return (
-    <section className="mx-auto flex h-auto w-full max-w-2xl flex-1 flex-col pt-4 px-4 pb-24 lg:h-full lg:min-h-0 lg:pt-8 lg:pb-8">
-      <h2 className="mb-0 lg:mb-1 font-serif text-2xl lg:text-3xl font-bold">
-        📦 Mi baúl ICA
-      </h2>
-      <p className="mb-2 lg:mb-6 text-sm text-muted-foreground">
-        {cards.length} palabra{cards.length !== 1 ? "s" : ""} · Más reciente
-        primero
-      </p>
-
-      <div className="sticky top-0 z-20 -mx-5 mb-4 border-b border-border/60 bg-background/95 px-5 pt-1 pb-3 backdrop-blur lg:static lg:z-auto lg:m-0 lg:mb-6 lg:border-none lg:bg-transparent lg:px-0 lg:pt-0 lg:pb-0 lg:backdrop-blur-none">
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 lg:min-w-60">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-              🔎
-            </span>
-            <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Buscar palabra..."
-              className="pl-9"
-            />
-          </div>
-
-          <Button
-            type="button"
-            onClick={() => handleCopyWords()}
-            disabled={sorted.length === 0 || busyExport !== null}
-            variant="outline"
-            size="sm"
-          >
-            <CopyIcon />
-            {isLg && "Copiar"}
-          </Button>
-
+    <GamePage className="gap-5 lg:max-w-2xl">
+      <PageTitle
+        icon={<PhaseLetter letter="I" size={48} />}
+        subtitle={t("Tu baúl ICA · la más reciente primero")}
+        right={
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 type="button"
-                disabled={sorted.length === 0 || busyExport !== null}
                 variant="outline"
-                size="sm"
+                size="icon"
+                disabled={exportDisabled}
+                aria-label={t("Copiar o descargar tus palabras")}
               >
-                <DownloadIcon />
-                {(busyExport === "docx" || busyExport === "pdf") && isLg
-                  ? "Generando..."
-                  : isLg && "Descargar"}
+                {busyExport ? (
+                  <LoaderCircleIcon className="size-5 animate-spin" strokeWidth={2.6} />
+                ) : (
+                  <DownloadIcon className="size-5" strokeWidth={2.4} />
+                )}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => void handleDownloadDocx()}>
-                DOCX
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void handleDownloadPdf()}>
-                PDF
-              </DropdownMenuItem>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel>
+                {tn(sorted.length, "{n} palabra", "{n} palabras")}
+              </DropdownMenuLabel>
+              {[
+                {
+                  key: "copy",
+                  icon: <CopyIcon className="size-4.5" strokeWidth={2.6} />,
+                  label: t("Copiar"),
+                  hint: t("Con un prompt para practicarlas en ChatGPT o Claude"),
+                  toneKey: "i" as const,
+                  run: handleCopyWords,
+                },
+                {
+                  key: "docx",
+                  icon: <FileTextIcon className="size-4.5" strokeWidth={2.6} />,
+                  label: t("Descargar Word"),
+                  hint: t("Documento editable (.docx)"),
+                  toneKey: "primary" as const,
+                  run: handleDownloadDocx,
+                },
+                {
+                  key: "pdf",
+                  icon: <FileDownIcon className="size-4.5" strokeWidth={2.6} />,
+                  label: t("Descargar PDF"),
+                  hint: t("Listo para imprimir"),
+                  toneKey: "a" as const,
+                  run: handleDownloadPdf,
+                },
+              ].map((item) => (
+                <DropdownMenuItem key={item.key} onClick={() => void item.run()}>
+                  <IconTile tone={item.toneKey} size={36}>
+                    {item.icon}
+                  </IconTile>
+                  <span className="flex min-w-0 flex-col">
+                    <span className="leading-tight">{item.label}</span>
+                    <span className="text-xs font-semibold text-muted-foreground">
+                      {item.hint}
+                    </span>
+                  </span>
+                </DropdownMenuItem>
+              ))}
             </DropdownMenuContent>
           </DropdownMenu>
+        }
+      >
+        {t("Mis palabras ICA")}
+      </PageTitle>
+
+      {/* Tu baúl en números */}
+      <div
+        className="rounded-3xl px-5 py-4"
+        style={{ background: "var(--ica-i-soft)" }}
+      >
+        <div className="flex items-center gap-4">
+          <IconTile tone="i" solid size={60}>
+            <ArchiveIcon className="size-8" strokeWidth={2.4} aria-hidden="true" />
+          </IconTile>
+          <div className="min-w-0">
+            <p
+              className="m-0 text-5xl leading-none font-black tabular-nums"
+              style={{ color: "var(--ica-i-ink)" }}
+            >
+              {cards.length}
+            </p>
+            <p
+              className="m-0 mt-1 text-sm font-extrabold"
+              style={{ color: "var(--ica-i-ink)" }}
+            >
+              {tn(cards.length, "palabra en tu baúl ICA", "palabras en tu baúl ICA")}
+            </p>
+          </div>
         </div>
-
-        <div className="mb-0 flex flex-wrap gap-1 lg:gap-1.5">
-          <Button
-            type="button"
-            onClick={() => setFilter("all")}
-            variant={filter === "all" ? "default" : "outline"}
-            size="sm"
-          >
-            Todas ({cards.length})
-          </Button>
-
-          {IMPORTANCE_LEVELS.map((level) => {
-            const count = importanceCounts[level.key];
-            const selected = filter === level.key;
-            return (
-              <Button
-                key={level.key}
-                type="button"
-                onClick={() => setFilter(level.key)}
-                variant={selected ? "default" : "outline"}
-                size="sm"
-                className={selected ? TONE_CLASS[level.key] : ""}
-              >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${TONE_CLASS[level.key].replace("text", "bg")}`}
-                />
-                {count}
-              </Button>
-            );
-          })}
-
-          <Button
-            type="button"
-            onClick={() => setFilter("to_learn")}
-            variant={filter === "to_learn" ? "default" : "outline"}
-            size="sm"
-          >
-            Por aprender ({toLearnCount})
-          </Button>
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          {[
+            { value: `+${todayWordsAdded}`, label: t("hoy") },
+            { value: String(toLearnCount), label: t("por aprender") },
+            { value: String(activatedCount), label: t("ya activadas") },
+          ].map((item) => (
+            <div
+              key={item.label}
+              className="flex flex-col items-center rounded-2xl bg-card px-2 py-2.5 text-center dark:bg-background/40"
+            >
+              <span className="text-xl leading-none font-black tabular-nums">
+                {item.value}
+              </span>
+              <span className="mt-1 text-[11px] leading-tight font-bold text-muted-foreground">
+                {item.label}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-visible lg:overflow-y-auto lg:pr-1">
-        {sorted.length === 0 && (
-          <p className="mt-10 text-center text-sm text-muted-foreground">
-            No hay palabras con ese filtro.
-          </p>
-        )}
-
-        {sorted.map((card) => {
-          const importance = getImportance(card.importance);
-          const isFailed = (card.streak || 0) === 0;
-          const isEditing = editingId === card.id;
-          const usageCount =
-            wordUsageCounts[card.id] ?? card.activationCount ?? 0;
-          const isDeletionProtected = usageCount > 0;
-          const isTargetProtected = usageCount > 0;
-          const usageLevel = usageCount >= 3 ? 2 : usageCount >= 1 ? 1 : 0;
-          const dateStr = card.createdAt
-            ? new Date(card.createdAt).toLocaleDateString("es-ES", {
-                day: "numeric",
-                month: "short",
-              })
-            : "";
-
-          return (
-            <Card
-              key={card.id}
-              className={`mb-2.5 rounded-xl border p-3.5 ${
-                isEditing
-                  ? "border-primary/30 bg-primary/5"
-                  : usageLevel === 2
-                    ? "border-amber-400/70 bg-amber-500/10 shadow-[0_0_28px_-10px_rgba(251,191,36,0.95)]"
-                    : usageLevel === 1
-                      ? "border-amber-400/50 bg-amber-500/5 shadow-[0_0_24px_-12px_rgba(251,191,36,0.7)]"
-                      : ""
-              }`}
+      {/* Buscador y filtros (se quedan arriba al bajar) */}
+      <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-3 bg-background/95 px-4 pt-2 pb-3 backdrop-blur">
+        <div className="relative">
+          <SearchIcon
+            className="pointer-events-none absolute top-1/2 left-4 size-5 -translate-y-1/2 text-muted-foreground"
+            strokeWidth={2.6}
+            aria-hidden="true"
+          />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t("Buscar palabra...")}
+            aria-label={t("Buscar palabra")}
+            className="h-14 rounded-2xl pr-12 pl-12 text-lg font-bold placeholder:font-semibold placeholder:text-muted-foreground/75 focus-visible:border-[var(--ica-i)] focus-visible:ring-[color-mix(in_oklab,var(--ica-i)_22%,transparent)] md:text-lg"
+          />
+          {query ? (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              aria-label={t("Borrar búsqueda")}
+              className="absolute top-1/2 right-3 flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-foreground"
             >
-              <CardContent className="p-0">
-                <div className="flex items-center gap-2.5">
-                  <span
-                    className={`h-2.5 w-2.5 rounded-full ${TONE_CLASS[card.importance].replace("text", "bg")}`}
-                  />
+              <XIcon className="size-4" strokeWidth={2.8} />
+            </button>
+          ) : null}
+        </div>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-base font-semibold">
-                        {highlightMatch(card.target, query)}
-                      </span>
-                      <span className="text-muted-foreground">→</span>
-                      <span className="text-base text-muted-foreground">
-                        {highlightMatch(card.native, query)}
-                      </span>
-                    </div>
-                    <RomanizationHint
-                      text={card.target}
-                      language={card.targetLang || ""}
-                    />
-
-                    <div className="mt-1 flex flex-wrap items-center gap-2.5">
-                      <span
-                        className={`text-xs ${TONE_CLASS[card.importance]}`}
-                      >
-                        {importance.label}
-                      </span>
-                      <span
-                        className={`text-xs ${isFailed ? "text-red-400" : "text-emerald-400"}`}
-                      >
-                        {isFailed ? "Por aprender" : `Racha ${card.streak}`}
-                      </span>
-                      {dateStr && (
-                        <span className="text-[10px] text-muted-foreground">
-                          {dateStr}
-                        </span>
-                      )}
-                      {usageLevel > 0 && (
-                        <span
-                          className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
-                            usageLevel === 2
-                              ? "border-amber-400/70 bg-amber-500/25 text-amber-600"
-                              : "border-amber-400/50 bg-amber-500/15 text-amber-500"
-                          }`}
-                        >
-                          {usageLevel === 2
-                            ? `Muy usada en activación (${usageCount})`
-                            : "Usada en activación"}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {!isEditing && (
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        type="button"
-                        onClick={() => handlePlayWord(card)}
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
-                        aria-label={`Escuchar ${card.target}`}
-                      >
-                        {playingWordId === card.id ? (
-                          <SquareIcon className="size-4" />
-                        ) : (
-                          <Volume1Icon className="size-4" />
-                        )}
-                      </Button>
-                      <Button
-                        type="button"
-                        onClick={() => openEditor(card)}
-                        variant="outline"
-                        size="sm"
-                      >
-                        Editar
-                      </Button>
-                    </div>
+        <div className="flex flex-wrap gap-2">
+          {filterPill(
+            "all",
+            <>
+              {t("Todas")}
+              <span className="tabular-nums opacity-70">{cards.length}</span>
+            </>,
+          )}
+          {filterPill(
+            "to_learn",
+            <>
+              {t("Por aprender")}
+              <span className="tabular-nums opacity-70">{toLearnCount}</span>
+            </>,
+          )}
+          {IMPORTANCE_LEVELS.map((level) =>
+            filterPill(
+              level.key,
+              <>
+                <ImportanceBars level={level.key} size={16} />
+                <span
+                  className={cn(
+                    filter === level.key ? "inline" : "hidden sm:inline",
                   )}
-                </div>
+                >
+                  {t(level.label)}
+                </span>
+                <span className="tabular-nums opacity-70">
+                  {importanceCounts[level.key]}
+                </span>
+              </>,
+              `${t(level.label)}: ${importanceCounts[level.key]}`,
+            ),
+          )}
+        </div>
+      </div>
 
-                {isEditing && (
-                  <div className="mt-3 space-y-3 border-t border-border pt-3">
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <Input
-                        value={draftTarget}
-                        onChange={(event) => {
-                          setDraftTarget(event.target.value);
-                          setEditError(null);
-                        }}
-                        disabled={isTargetProtected}
-                      />
-                      <Input
-                        value={draftNative}
-                        onChange={(event) => setDraftNative(event.target.value)}
-                      />
-                    </div>
+      <div>
+        {sorted.length === 0 ? (
+          <EmptyState
+            icon={
+              <IconTile tone="i" size={64}>
+                <ArchiveIcon className="size-8" strokeWidth={2.4} aria-hidden="true" />
+              </IconTile>
+            }
+            title={t("No hay palabras con ese filtro.")}
+            text={
+              query.trim()
+                ? t("Prueba con otra búsqueda o cambia el filtro.")
+                : undefined
+            }
+          />
+        ) : (
+          <RowGroup>
+            {sorted.map((card) => {
+              const importance = getImportance(card.importance);
+              const isFailed = (card.streak || 0) === 0;
+              const isEditing = editingId === card.id;
+              const usageCount =
+                wordUsageCounts[card.id] ?? card.activationCount ?? 0;
+              const isDeletionProtected = usageCount > 0;
+              const isTargetProtected = usageCount > 0;
+              const usageLevel = usageCount >= 3 ? 2 : usageCount >= 1 ? 1 : 0;
+              const dateStr = card.createdAt
+                ? new Date(card.createdAt).toLocaleDateString(uiLocale(), {
+                    day: "numeric",
+                    month: "short",
+                  })
+                : "";
 
-                    {isTargetProtected && (
-                      <p className="text-xs text-amber-600">
-                        La palabra ICA nativa no se puede editar porque ya tiene
-                        activaciones asociadas.
-                      </p>
-                    )}
+              return (
+                <SwipeRow
+                  key={card.id}
+                  open={swipedId === card.id}
+                  onOpenChange={(next) => setSwipedId(next ? card.id : null)}
+                  disabled={isEditing}
+                  locked={isDeletionProtected}
+                  onDelete={() => {
+                    if (isDeletionProtected) {
+                      setDeleteErrorById((prev) => ({
+                        ...prev,
+                        [card.id]: t("Protegida: tiene activaciones asociadas."),
+                      }));
+                      return;
+                    }
+                    setDeleteCandidate(card);
+                  }}
+                >
+                <div className="py-3">
+                  <div className="flex items-start gap-3">
+                    <ImportanceTile level={importance.key} size={44} />
 
-                    {(hasDuplicateEditTarget || editError) && (
-                      <p className="text-xs text-red-600 dark:text-red-300">
-                        {editError || "Ya existe esta palabra en tu baúl ICA."}
-                      </p>
-                    )}
-                    <RomanizationHint
-                      text={draftTarget}
-                      language={card.targetLang || config.targetLang}
-                    />
-
-                    <div className="grid gap-2">
-                      <Input
-                        value={draftExamplePhrase}
-                        onChange={(event) =>
-                          setDraftExamplePhrase(event.target.value)
-                        }
-                        placeholder="Ejemplo (idioma objetivo)"
-                      />
-                      <Input
-                        value={draftExampleTranslation}
-                        onChange={(event) =>
-                          setDraftExampleTranslation(event.target.value)
-                        }
-                        placeholder="Traducción del ejemplo"
-                      />
-
-                      {!card.examplePhrase && (
-                        <div>
-                          <Button
-                            type="button"
-                            onClick={() => void handleGenerateExample(card)}
-                            variant="secondary"
-                            size="sm"
-                            disabled={generatingExampleId === card.id}
-                          >
-                            {generatingExampleId === card.id
-                              ? "Generando ejemplo..."
-                              : "Generar ejemplo con IA"}
-                          </Button>
-                          {exampleErrorById[card.id] && (
-                            <p className="mt-1 text-xs text-destructive">
-                              {exampleErrorById[card.id]}
-                            </p>
-                          )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0 flex-1 pt-0.5">
+                          <p className="m-0 text-base leading-tight font-extrabold break-words">
+                            {highlightMatch(card.target, query)}
+                          </p>
+                          <p className="m-0 mt-0.5 text-sm font-semibold break-words text-muted-foreground">
+                            {highlightMatch(card.native, query)}
+                          </p>
+                          <RomanizationHint
+                            text={card.target}
+                            language={card.targetLang || ""}
+                            className="m-0 mt-0.5 text-xs font-semibold text-muted-foreground"
+                          />
                         </div>
-                      )}
-                    </div>
 
-                    <div className="flex flex-wrap gap-1.5">
-                      {IMPORTANCE_LEVELS.map((level) => (
-                        <Button
-                          key={level.key}
-                          type="button"
-                          onClick={() => setDraftImportance(level.key)}
-                          variant={
-                            draftImportance === level.key
-                              ? "secondary"
-                              : "outline"
-                          }
-                          size="sm"
-                          className={
-                            draftImportance === level.key
-                              ? TONE_CLASS[level.key]
-                              : ""
-                          }
-                        >
-                          {level.label}
-                        </Button>
-                      ))}
-                    </div>
+                        {/* Acciones discretas: escuchar y editar */}
+                        {!isEditing && (
+                          <div className="-mr-1 flex shrink-0 items-center">
+                            <button
+                              type="button"
+                              onClick={() => handlePlayWord(card)}
+                              aria-label={t("Escuchar {word}", { word: card.target })}
+                              className={cn(
+                                "flex size-10 items-center justify-center rounded-xl transition-colors",
+                                playingWordId === card.id
+                                  ? "bg-[var(--ica-i-soft)] text-[var(--ica-i-ink)]"
+                                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                              )}
+                            >
+                              {playingWordId === card.id ? (
+                                <SquareIcon className="size-4" fill="currentColor" strokeWidth={2.6} />
+                              ) : (
+                                <Volume2Icon className="size-5" strokeWidth={2.4} />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openEditor(card)}
+                              aria-label={t("Editar {word}", { word: card.target })}
+                              title={t("Editar")}
+                              className="flex size-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            >
+                              <PencilIcon className="size-4.5" strokeWidth={2.4} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
 
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      {isDeletionProtected ? (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm text-amber-600">
-                            Protegida: tiene activaciones asociadas.
+                      {/* Frecuencia, fecha y estado (a todo el ancho, bajo las acciones) */}
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="text-xs font-extrabold whitespace-nowrap">
+                          <span style={{ color: tone(IMPORTANCE_TONE[importance.key]).ink }}>
+                            {t(importance.label)}
                           </span>
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            disabled
-                          >
-                            Eliminar bloqueado
-                            <Trash2Icon className="size-4 ml-1" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <Button
-                          type="button"
-                          onClick={() => setDeleteCandidate(card)}
-                          variant="destructive"
-                          size="sm"
-                        >
-                          Eliminar
-                          <Trash2Icon className="size-4 ml-1" />
-                        </Button>
-                      )}
-
-                      {deleteErrorById[card.id] && (
-                        <span className="text-xs text-red-500">
-                          {deleteErrorById[card.id]}
+                          {dateStr && (
+                            <span className="font-bold text-muted-foreground">
+                              {" "}
+                              · {dateStr}
+                            </span>
+                          )}
                         </span>
-                      )}
-
-                      <div className="ml-auto flex gap-2">
-                        <Button
-                          type="button"
-                          onClick={closeEditor}
-                          variant="outline"
-                          size="sm"
-                        >
-                          Cancelar
-                        </Button>
-                        <Button
-                          type="button"
-                          onClick={() => handleSaveEdit(card.id)}
-                          size="sm"
-                          disabled={hasDuplicateEditTarget}
-                        >
-                          Guardar cambios
-                        </Button>
+                        <Pill tone={isFailed ? "bad" : "ok"}>
+                          {isFailed ? t("Por aprender") : t("Racha {n}", { n: card.streak })}
+                        </Pill>
+                        {usageLevel > 0 && (
+                          <Pill
+                            tone="gold"
+                            solid={usageLevel === 2}
+                            className={usageLevel === 2 ? "text-[#4a3200]!" : undefined}
+                          >
+                            <ZapIcon className="size-3" strokeWidth={2.8} aria-hidden="true" />
+                            {usageLevel === 2
+                              ? t("Muy usada en activación ({n})", { n: usageCount })
+                              : t("Usada en activación")}
+                          </Pill>
+                        )}
                       </div>
                     </div>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
+
+                  {isEditing && (
+                    <div
+                      className="mt-3 flex flex-col gap-4 rounded-2xl border-2 p-3.5"
+                      style={{
+                        background: "var(--ica-i-soft)",
+                        borderColor:
+                          "color-mix(in oklab, var(--ica-i) 30%, transparent)",
+                      }}
+                    >
+                      <p className="ica-label m-0" style={{ color: "var(--ica-i-ink)" }}>
+                        {t("Editar palabra")}
+                      </p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-xs font-extrabold text-muted-foreground">
+                            {langName(card.targetLang || config.targetLang)}
+                          </span>
+                          <Input
+                            value={draftTarget}
+                            onChange={(event) => {
+                              setDraftTarget(event.target.value);
+                              setEditError(null);
+                            }}
+                            disabled={isTargetProtected}
+                            className="h-12 rounded-2xl text-base font-bold md:text-base"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1.5">
+                          <span className="text-xs font-extrabold text-muted-foreground">
+                            {langName(card.nativeLang || config.nativeLang)}
+                          </span>
+                          <Input
+                            value={draftNative}
+                            onChange={(event) => setDraftNative(event.target.value)}
+                            className="h-12 rounded-2xl text-base font-bold md:text-base"
+                          />
+                        </label>
+                      </div>
+
+                      {isTargetProtected && (
+                        <p
+                          className="m-0 flex items-start gap-2 rounded-xl px-3 py-2 text-xs font-bold"
+                          style={{ background: "var(--ica-gold-soft)", color: "var(--ica-gold-ink)" }}
+                        >
+                          <LockIcon className="mt-px size-3.5 shrink-0" strokeWidth={2.6} aria-hidden="true" />
+                          {t("La palabra ICA nativa no se puede editar porque ya tiene activaciones asociadas.")}
+                        </p>
+                      )}
+
+                      {(hasDuplicateEditTarget || editError) && (
+                        <p
+                          className="m-0 rounded-xl px-3 py-2 text-xs font-bold"
+                          style={{ background: "var(--ica-bad-soft)", color: "var(--ica-bad-ink)" }}
+                          role="alert"
+                        >
+                          {editError || t("Ya existe esta palabra en tu baúl ICA.")}
+                        </p>
+                      )}
+                      <RomanizationHint
+                        text={draftTarget}
+                        language={card.targetLang || config.targetLang}
+                        className="m-0 -mt-2 text-xs font-semibold text-muted-foreground"
+                      />
+
+                      <div className="flex flex-col gap-2">
+                        <span className="text-xs font-extrabold text-muted-foreground">
+                          {t("Ejemplo")}
+                        </span>
+                        <Input
+                          value={draftExamplePhrase}
+                          onChange={(event) =>
+                            setDraftExamplePhrase(event.target.value)
+                          }
+                          placeholder={t("Ejemplo (idioma objetivo)")}
+                          aria-label={t("Ejemplo (idioma objetivo)")}
+                        />
+                        <Input
+                          value={draftExampleTranslation}
+                          onChange={(event) =>
+                            setDraftExampleTranslation(event.target.value)
+                          }
+                          placeholder={t("Traducción del ejemplo")}
+                          aria-label={t("Traducción del ejemplo")}
+                        />
+
+                        {!card.examplePhrase && (
+                          <div>
+                            <Button
+                              type="button"
+                              onClick={() => void handleGenerateExample(card)}
+                              variant="outline"
+                              size="sm"
+                              disabled={generatingExampleId === card.id}
+                            >
+                              {generatingExampleId === card.id ? (
+                                <LoaderCircleIcon className="animate-spin" strokeWidth={2.6} />
+                              ) : (
+                                <SparklesIcon strokeWidth={2.4} style={{ color: "var(--ica-i)" }} />
+                              )}
+                              {generatingExampleId === card.id
+                                ? t("Generando ejemplo...")
+                                : t("Generar ejemplo con IA")}
+                            </Button>
+                            {exampleErrorById[card.id] && (
+                              <p className="m-0 mt-1 text-xs font-bold text-destructive">
+                                {exampleErrorById[card.id]}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <span className="text-xs font-extrabold text-muted-foreground">
+                          {t("Frecuencia de uso")}
+                        </span>
+                        <ImportancePicker
+                          value={draftImportance}
+                          onChange={setDraftImportance}
+                          showHint={false}
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t-2 border-[color-mix(in_oklab,var(--ica-i)_18%,transparent)] pt-3">
+                        {isDeletionProtected ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              disabled
+                            >
+                              <LockIcon className="size-3.5" strokeWidth={2.6} />
+                              {t("Eliminar bloqueado")}
+                            </Button>
+                            <span className="text-xs font-bold" style={{ color: "var(--ica-gold-ink)" }}>
+                              {t("Protegida: tiene activaciones asociadas.")}
+                            </span>
+                          </div>
+                        ) : (
+                          <Button
+                            type="button"
+                            onClick={() => setDeleteCandidate(card)}
+                            variant="destructive"
+                            size="sm"
+                          >
+                            <Trash2Icon className="size-4" strokeWidth={2.4} />
+                            {t("Eliminar")}
+                          </Button>
+                        )}
+
+                        {deleteErrorById[card.id] && (
+                          <span className="text-xs font-bold" style={{ color: "var(--ica-bad-ink)" }}>
+                            {deleteErrorById[card.id]}
+                          </span>
+                        )}
+
+                        <div className="ml-auto flex gap-2">
+                          <Button
+                            type="button"
+                            onClick={closeEditor}
+                            variant="outline"
+                          >
+                            {t("Cancelar")}
+                          </Button>
+                          <Button
+                            type="button"
+                            onClick={() => handleSaveEdit(card.id)}
+                            variant="i"
+                            disabled={hasDuplicateEditTarget}
+                          >
+                            {t("Guardar cambios")}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {!isEditing && deleteErrorById[card.id] ? (
+                    <p
+                      className="m-0 mt-2 flex items-center gap-1.5 text-xs font-bold"
+                      style={{ color: "var(--ica-gold-ink)" }}
+                    >
+                      <LockIcon className="size-3.5" strokeWidth={2.6} aria-hidden="true" />
+                      {deleteErrorById[card.id]}
+                    </p>
+                  ) : null}
+                </div>
+                </SwipeRow>
+              );
+            })}
+          </RowGroup>
+        )}
       </div>
 
       <IcaDeletionWarningDialog
@@ -761,12 +969,12 @@ export function ManageView({
           if (!deleteCandidate) return;
           void handleDelete(deleteCandidate.id);
         }}
-        title="Eliminar palabra ICA"
-        resourceLabel="esta palabra ICA"
+        title={t("Eliminar palabra ICA")}
+        resourceLabel={t("esta palabra ICA")}
         resource="word"
         resourceDates={[deleteCandidate?.createdAt]}
         todayTotalCount={todayWordsAdded}
       />
-    </section>
+    </GamePage>
   );
 }

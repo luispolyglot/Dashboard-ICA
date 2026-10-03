@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { toast } from 'sonner'
+import { CheckIcon, LightbulbIcon, PlusIcon, TriangleAlertIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -12,7 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { IMPORTANCE_LEVELS } from '../constants'
+import { langName, t } from '@/i18n'
 import { normalizeComparableText } from '../wordExtraction'
 import {
   fetchPhraseTokenInsight,
@@ -25,25 +26,13 @@ import type {
   PhraseTokenInsightResult,
 } from '../types'
 import { generateId } from '../utils'
+import { DailyLimitNotice } from '../game/DailyLimitNotice'
+import { useDailyLimits } from '../game/limits'
+import { IconTile } from '../game/ui'
 import { SpeakButton } from './SpeakButton'
+import { VaultImportanceTiles } from './VaultImportanceTiles'
 
 const INSIGHT_CACHE_STORAGE_KEY = 'ica-phrase-token-insights-cache-v1'
-
-const IMPORTANCE_TONE: Record<ImportanceKey, string> = {
-  vital: 'border-blue-500 text-blue-400 bg-blue-500/10',
-  frequent: 'border-emerald-500 text-emerald-400 bg-emerald-500/10',
-  occasional: 'border-amber-500 text-amber-400 bg-amber-500/10',
-  rare: 'border-orange-500 text-orange-400 bg-orange-500/10',
-  irrelevant: 'border-red-500 text-red-400 bg-red-500/10',
-}
-
-const IMPORTANCE_DOT: Record<ImportanceKey, string> = {
-  vital: 'bg-blue-400',
-  frequent: 'bg-emerald-400',
-  occasional: 'bg-amber-400',
-  rare: 'bg-orange-400',
-  irrelevant: 'bg-red-400',
-}
 
 let insightCacheHydrated = false
 const insightCache = new Map<string, PhraseTokenInsightResult>()
@@ -159,12 +148,18 @@ export function ExplorePhraseTokenModal({
     trimmedToken,
   ])
 
+  // Límite diario de palabras (cuenta igual que añadir desde "Añadir palabra").
+  const dailyLimits = useDailyLimits()
+  const wordLimitReached =
+    dailyLimits.isAtLimit('words') && !saved && !alreadyInVault
+
   const canSave =
     Boolean(trimmedToken) &&
     Boolean(nativeMeaning.trim()) &&
     Boolean(importance) &&
     !alreadyInVault &&
-    !saving
+    !saving &&
+    !wordLimitReached
 
   useEffect(() => {
     hydrateInsightCache()
@@ -202,7 +197,7 @@ export function ExplorePhraseTokenModal({
       .then((result) => {
         if (requestId !== insightRequestRef.current) return
         if (!result) {
-          setInsightError('No pudimos cargar la explicación con IA.')
+          setInsightError(t('No pudimos cargar la explicación con IA.'))
           return
         }
         insightCache.set(cacheKey, result)
@@ -212,7 +207,7 @@ export function ExplorePhraseTokenModal({
       })
       .catch(() => {
         if (requestId !== insightRequestRef.current) return
-        setInsightError('No pudimos cargar la explicación con IA.')
+        setInsightError(t('No pudimos cargar la explicación con IA.'))
       })
       .finally(() => {
         if (requestId !== insightRequestRef.current) return
@@ -236,7 +231,7 @@ export function ExplorePhraseTokenModal({
     if (!canSave || !importance) return
 
     if (alreadyInVault) {
-      const message = 'Esta palabra ya existe en tu baúl ICA.'
+      const message = t('Esta palabra ya existe en tu baúl ICA.')
       setSaveError(message)
       toast.error(message)
       return
@@ -281,10 +276,10 @@ export function ExplorePhraseTokenModal({
         return next
       })
       setSaved(true)
-      toast.success('Palabra añadida al baúl ICA.')
+      toast.success(t('Palabra añadida al baúl ICA.'))
     } catch {
       setCards((prev) => prev.filter((card) => card.id !== newCard.id))
-      const message = 'No se pudo guardar la palabra en tu baúl ICA.'
+      const message = t('No se pudo guardar la palabra en tu baúl ICA.')
       setSaveError(message)
       toast.error(message)
     } finally {
@@ -297,125 +292,150 @@ export function ExplorePhraseTokenModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-h-[85vh] overflow-y-auto sm:max-w-xl'>
         <DialogHeader>
-          <DialogTitle>Explorar palabra en contexto</DialogTitle>
+          <DialogTitle>{t('Explorar palabra en contexto')}</DialogTitle>
           <DialogDescription>
-            Escucha la palabra y revisa su uso en la frase sin salir del flujo.
+            {t('Escucha la palabra y revisa su uso en la frase sin salir del flujo.')}
           </DialogDescription>
         </DialogHeader>
 
         <div className='space-y-4'>
-          <div className='rounded-lg border border-border/70 bg-muted/20 p-3'>
-            <span className='text-xs uppercase tracking-wider text-muted-foreground'>
-              Palabra
+          {/* La palabra, grande */}
+          <div className='rounded-3xl px-4 py-4' style={{ background: 'var(--ica-i-soft)' }}>
+            <span
+              className='text-[11px] font-extrabold tracking-[0.08em] uppercase'
+              style={{ color: 'var(--ica-i-ink)' }}
+            >
+              {t('Palabra')}
             </span>
-            <p className='mt-1 text-xl font-semibold'>{trimmedToken}</p>
+            <p
+              className='m-0 mt-0.5 font-display text-3xl leading-tight font-extrabold tracking-tight break-words'
+              style={{ color: 'var(--ica-i-ink)' }}
+            >
+              {trimmedToken}
+            </p>
             <SpeakButton
               text={trimmedToken}
               langName={targetLang}
               color='#3B82F6'
-              label={`Escuchar ${targetLang}`}
+              label={t('Escuchar {lang}', { lang: langName(targetLang) })}
               className='mt-2'
               isPlaying={isPlaying}
               onPlayingChange={setIsPlaying}
             />
-            <div>
-              <Label className='mb-1 block text-xs text-muted-foreground'>
-                Traducción ({nativeLang})
+            <div className='mt-3'>
+              <Label className='mb-1.5 block text-xs font-bold text-muted-foreground'>
+                {t('Traducción ({lang})', { lang: langName(nativeLang) })}
               </Label>
               <Input
                 value={nativeMeaning}
                 onChange={(event) => setNativeMeaning(event.target.value)}
-                placeholder='Escribe la traducción...'
+                placeholder={t('Escribe la traducción...')}
                 disabled={saving || alreadyInVault || insightLoading}
               />
             </div>
           </div>
 
-          <div className='space-y-2 rounded-lg border border-border/70 bg-muted/10 p-3'>
-            <Label className='text-xs uppercase tracking-wider text-muted-foreground'>
-              Insight IA
-            </Label>
+          {/* Explicación de la IA */}
+          <div className='rounded-2xl border-2 border-border p-4'>
+            <div className='mb-2 flex items-center gap-2'>
+              <IconTile tone='gold' size={32} className='rounded-xl'>
+                <LightbulbIcon className='size-4.5' strokeWidth={2.6} aria-hidden='true' />
+              </IconTile>
+              <Label className='text-sm font-extrabold'>{t('Insight IA')}</Label>
+            </div>
 
             {insightLoading && (
-              <p className='text-sm text-muted-foreground'>
-                Analizando por favor espere...
+              <div className='space-y-2' aria-hidden='true'>
+                <div className='h-4 w-3/4 animate-pulse rounded-lg bg-muted' />
+                <div className='h-4 w-full animate-pulse rounded-lg bg-muted' />
+                <div className='h-4 w-2/3 animate-pulse rounded-lg bg-muted' />
+              </div>
+            )}
+            {insightLoading && (
+              <p className='m-0 mt-2 text-xs font-semibold text-muted-foreground'>
+                {t('Analizando por favor espere...')}
               </p>
             )}
 
             {!insightLoading && insightError && (
-              <p className='text-sm text-amber-600 dark:text-amber-300'>
+              <p
+                className='m-0 flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold'
+                style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
+              >
+                <TriangleAlertIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' />
                 {insightError}
               </p>
             )}
 
             {!insightLoading && insight && (
-              <div className='space-y-2 text-sm'>
-                <p>
-                  <span className='font-semibold'>Traducción:</span>{' '}
-                  {insight.translation}
-                </p>
-                <p>
-                  <span className='font-semibold'>Significado:</span>{' '}
-                  {insight.meaning}
-                </p>
-                <p>
-                  <span className='font-semibold'>Tip gramatical:</span>{' '}
-                  {insight.grammarTip}
-                </p>
+              <dl className='m-0 space-y-3 text-sm'>
+                <div>
+                  <dt className='ica-label'>{t('Traducción')}</dt>
+                  <dd className='m-0 mt-0.5 font-semibold'>{insight.translation}</dd>
+                </div>
+                <div>
+                  <dt className='ica-label'>{t('Significado')}</dt>
+                  <dd className='m-0 mt-0.5 font-semibold'>{insight.meaning}</dd>
+                </div>
+                <div>
+                  <dt className='ica-label'>{t('Tip gramatical')}</dt>
+                  <dd className='m-0 mt-0.5 font-semibold'>{insight.grammarTip}</dd>
+                </div>
                 {insight.examples.length > 0 && (
                   <div>
-                    <p className='font-semibold'>Mini ejemplos:</p>
-                    <ul className='list-disc pl-5'>
-                      {insight.examples.map((example) => (
-                        <li key={example}>{example}</li>
-                      ))}
-                    </ul>
+                    <dt className='ica-label'>{t('Mini ejemplos')}</dt>
+                    <dd className='m-0 mt-1.5'>
+                      <ul className='m-0 list-none space-y-1.5 p-0'>
+                        {insight.examples.map((example) => (
+                          <li
+                            key={example}
+                            className='rounded-xl border-l-4 bg-muted/60 px-3 py-1.5 font-semibold'
+                            style={{ borderLeftColor: 'var(--ica-c)' }}
+                          >
+                            {example}
+                          </li>
+                        ))}
+                      </ul>
+                    </dd>
                   </div>
                 )}
-              </div>
+              </dl>
             )}
           </div>
 
-          <div className='space-y-3 rounded-lg border border-border/70 bg-muted/10 p-3'>
-            <Label className='text-xs uppercase tracking-wider text-muted-foreground'>
-              Añadir al baúl ICA
-            </Label>
-            <div>
-              <Label className='mb-2 block text-xs uppercase tracking-wider text-muted-foreground'>
-                Frecuencia de uso
-              </Label>
-              <div className='grid grid-cols-2 gap-2 sm:grid-cols-5'>
-                {IMPORTANCE_LEVELS.map((item) => {
-                  const selected = importance === item.key
-                  return (
-                    <Button
-                      key={item.key}
-                      type='button'
-                      variant={selected ? 'default' : 'outline'}
-                      onClick={() => setImportance(item.key)}
-                      disabled={saving || alreadyInVault}
-                      className={`h-auto py-2 text-xs ${selected ? IMPORTANCE_TONE[item.key] : ''}`}
-                    >
-                      <span
-                        className={`mr-1 h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[item.key]}`}
-                      />
-                      {item.label}
-                    </Button>
-                  )
-                })}
-              </div>
-            </div>
+          {/* Guardar en el baúl */}
+          <div className='space-y-3'>
+            <Label className='ica-label block'>{t('Añadir al baúl ICA · Frecuencia de uso')}</Label>
+            <VaultImportanceTiles
+              value={importance}
+              onChange={setImportance}
+              disabled={saving || alreadyInVault}
+            />
 
             {!saving && alreadyInVault && (
-              <p className='text-xs text-amber-600 dark:text-amber-300'>
-                Esta palabra ya existe en tu baúl ICA para este idioma.
+              <p
+                className='m-0 rounded-xl px-3 py-2 text-xs font-bold'
+                style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
+              >
+                {t('Esta palabra ya existe en tu baúl ICA para este idioma.')}
               </p>
             )}
 
             {saveError && (
-              <p className='text-xs text-red-600 dark:text-red-300'>
+              <p
+                className='m-0 rounded-xl px-3 py-2 text-xs font-bold'
+                style={{ background: 'var(--ica-bad-soft)', color: 'var(--ica-bad-ink)' }}
+              >
                 {saveError}
               </p>
+            )}
+
+            {wordLimitReached && (
+              <DailyLimitNotice
+                kind='words'
+                state={dailyLimits}
+                onNavigate={() => onOpenChange(false)}
+              />
             )}
           </div>
         </div>
@@ -427,18 +447,24 @@ export function ExplorePhraseTokenModal({
             onClick={() => onOpenChange(false)}
             disabled={saving}
           >
-            Cerrar
+            {t('Cerrar')}
           </Button>
           <Button
             type='button'
+            variant={saved ? 'success' : 'i'}
             onClick={() => void handleSave()}
             disabled={!canSave}
           >
+            {saved ? (
+              <CheckIcon strokeWidth={3} aria-hidden='true' />
+            ) : !saving ? (
+              <PlusIcon strokeWidth={3} aria-hidden='true' />
+            ) : null}
             {saving
-              ? 'Guardando...'
+              ? t('Guardando...')
               : saved
-                ? '✓ Guardada'
-                : '📦 Añadir al baúl ICA'}
+                ? t('Guardada')
+                : t('Añadir al baúl ICA')}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -60,6 +60,7 @@ import {
   toIsoFromDateAndTime,
 } from "./coachingClassResources";
 import { getCoachingV2ExerciseRoute } from "../routes/paths";
+import { t, langName, uiLocale } from "@/i18n";
 import { ContentLoading } from "@/components/ui/loading-state";
 
 type CoachingV2SessionBoardProps = {
@@ -192,10 +193,10 @@ function parseAttemptTagScores(value: unknown): AttemptTagScore[] {
 function statusLabel(
   status: CoachingV2SessionBoard["session"]["status"],
 ): string {
-  if (status === "active") return "Activo";
-  if (status === "completed") return "Completado";
-  if (status === "cancelled") return "Archivado";
-  return "Borrador";
+  if (status === "active") return t("Activo");
+  if (status === "completed") return t("Completado");
+  if (status === "cancelled") return t("Archivado");
+  return t("Borrador");
 }
 
 function statusVariant(
@@ -285,10 +286,10 @@ export function CoachingV2SessionBoard({
       }
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "No se pudo cargar el tablero.",
+        err instanceof Error ? err.message : t("No se pudo cargar el tablero."),
       );
       toast.error(
-        err instanceof Error ? err.message : "No se pudo cargar el programa.",
+        err instanceof Error ? err.message : t("No se pudo cargar el programa."),
       );
     } finally {
       if (!silent) setLoading(false);
@@ -411,10 +412,10 @@ export function CoachingV2SessionBoard({
           }, 1500);
         }
       }
-      toast.success("Fase actualizada.");
+      toast.success(t("Fase actualizada."));
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "No se pudo actualizar fase.";
+        err instanceof Error ? err.message : t("No se pudo actualizar fase.");
       toast.error(message);
     } finally {
       setSaving(false);
@@ -437,9 +438,9 @@ export function CoachingV2SessionBoard({
       });
       setFocusDeleteCandidateId(null);
       setOpenFocusCommentId((prev) => (prev === focusId ? null : prev));
-      toast.success("Foco borrado.");
+      toast.success(t("Foco borrado."));
     } catch (err) {
-      const message = err instanceof Error ? err.message : "No se pudo borrar foco.";
+      const message = err instanceof Error ? err.message : t("No se pudo borrar foco.");
       toast.error(message);
     } finally {
       setSaving(false);
@@ -485,10 +486,10 @@ export function CoachingV2SessionBoard({
           };
         });
       }
-      toast.success("Foco creado.");
+      toast.success(t("Foco creado."));
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "No se pudo crear foco.";
+        err instanceof Error ? err.message : t("No se pudo crear foco.");
       toast.error(message);
     } finally {
       setSaving(false);
@@ -502,10 +503,10 @@ export function CoachingV2SessionBoard({
         sessionId,
       });
       await loadBoard(selectedPeriod, { silent: true, keepOpenValue: true });
-      toast.success("Periodo cerrado correctamente.");
+      toast.success(t("Periodo cerrado correctamente."));
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "No se pudo cerrar periodo.";
+        err instanceof Error ? err.message : t("No se pudo cerrar periodo.");
       toast.error(message);
     } finally {
       setSaving(false);
@@ -565,10 +566,10 @@ export function CoachingV2SessionBoard({
           removeReportImage: false,
         },
       }));
-      toast.success(`Clase ${classIndex} actualizada.`);
+      toast.success(t("Clase {n} actualizada.", { n: classIndex }));
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "No se pudo guardar tareas.";
+        err instanceof Error ? err.message : t("No se pudo guardar tareas.");
       toast.error(message);
     } finally {
       setSaving(false);
@@ -594,11 +595,14 @@ export function CoachingV2SessionBoard({
         guidelineResponse3: draft.guidelineResponse3.trim() || null,
       });
       upsertClassInState(updatedClass);
-      const suffix = responseIndex ? ` ${responseIndex}` : "";
-      toast.success(`Respuesta${suffix} guardada.`);
+      toast.success(
+        responseIndex
+          ? t("Respuesta {n} guardada.", { n: responseIndex })
+          : t("Respuesta guardada."),
+      );
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "No se pudo guardar respuestas.";
+        err instanceof Error ? err.message : t("No se pudo guardar respuestas.");
       toast.error(message);
     } finally {
       setSaving(false);
@@ -664,10 +668,10 @@ export function CoachingV2SessionBoard({
       <Card className="border-primary/20 bg-linear-to-br from-primary/10 via-background to-muted">
         <CardHeader className="pb-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle>Sesion de coaching</CardTitle>
+            <CardTitle>{t("Sesion de coaching")}</CardTitle>
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <PlayCircleIcon className="h-4 w-4 text-primary" />
-              <span>Link clase en vivo:</span>
+              <span>{t("Link clase en vivo:")}</span>
               {board.session.classJoinUrl ? (
                 <>
                   <a
@@ -676,7 +680,7 @@ export function CoachingV2SessionBoard({
                     rel="noopener noreferrer"
                     className="text-primary underline underline-offset-2"
                   >
-                    Abrir enlace
+                    {t("Abrir enlace")}
                   </a>
                   <Button
                     type="button"
@@ -684,16 +688,16 @@ export function CoachingV2SessionBoard({
                     variant="outline"
                     className="h-7 w-7"
                     onClick={() => void handleCopySessionClassLink()}
-                    aria-label="Copiar link de clase en vivo"
+                    aria-label={t("Copiar link de clase en vivo")}
                   >
                     <CopyIcon className="h-3.5 w-3.5" />
                   </Button>
                   {copiedSessionLink && (
-                    <span className="text-xs">Copiado</span>
+                    <span className="text-xs">{t("Copiado")}</span>
                   )}
                 </>
               ) : (
-                <span>Sin enlace configurado</span>
+                <span>{t("Sin enlace configurado")}</span>
               )}
             </div>
           </div>
@@ -706,30 +710,30 @@ export function CoachingV2SessionBoard({
                 {statusLabel(board.session.status)}
               </Badge>
               <Badge variant="outline">
-                Programa {durationPeriods} periodos
+                {t("Programa {n} periodos", { n: durationPeriods })}
               </Badge>
             </div>
 
             <div className="grid gap-2 text-sm sm:grid-cols-3">
               <p className="inline-flex items-center gap-2 text-muted-foreground">
                 <LanguagesIcon className="h-4 w-4 text-primary" />
-                Idioma:{" "}
+                {t("Idioma:")}{" "}
                 <span className="font-medium text-foreground">
-                  {board.session.targetLang || targetLang}
+                  {langName(board.session.targetLang || targetLang)}
                 </span>
               </p>
               <p className="inline-flex items-center gap-2 text-muted-foreground">
                 <BookOpenIcon className="h-4 w-4 text-primary" />
-                Nivel:{" "}
+                {t("Nivel:")}{" "}
                 <span className="font-medium text-foreground">
                   {board.session.level}
                 </span>
               </p>
               <p className="inline-flex items-center gap-2 text-muted-foreground">
                 <UserIcon className="h-4 w-4 text-primary" />
-                Coach:{" "}
+                {t("Coach:")}{" "}
                 <span className="font-medium text-foreground">
-                  {coachDisplayName || "Por asignar"}
+                  {coachDisplayName || t("Por asignar")}
                 </span>
               </p>
             </div>
@@ -745,19 +749,19 @@ export function CoachingV2SessionBoard({
                     try {
                       await activateCoachingV2Period({ sessionId });
                       await loadBoard(undefined, { silent: true });
-                      toast.success("Periodo activado correctamente.");
+                      toast.success(t("Periodo activado correctamente."));
                     } catch (err) {
                       toast.error(
                         err instanceof Error
                           ? err.message
-                          : "No se pudo activar el periodo.",
+                          : t("No se pudo activar el periodo."),
                       );
                     } finally {
                       setSaving(false);
                     }
                   }}
                 >
-                  Activar siguiente periodo
+                  {t("Activar siguiente periodo")}
                 </Button>
                 <Button
                   type="button"
@@ -765,7 +769,7 @@ export function CoachingV2SessionBoard({
                   disabled={saving || !board.periodState.currentActivePeriod}
                   onClick={() => void handleClosePeriod()}
                 >
-                  Cerrar periodo activo
+                  {t("Cerrar periodo activo")}
                 </Button>
               </div>
             )}
@@ -773,7 +777,7 @@ export function CoachingV2SessionBoard({
 
           <div className="w-full min-w-52 rounded-lg border bg-card/80 p-3 md:w-64">
             <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
-              Periodo actual
+              {t("Periodo actual")}
             </p>
             <p className="mb-2 text-2xl font-semibold text-foreground">
               {currentProgramPeriod || "-"}
@@ -789,8 +793,8 @@ export function CoachingV2SessionBoard({
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
               {unlockedPeriods > 0
-                ? `${unlockedProgressPct}% del programa completado`
-                : "Esperando activación del coach"}
+                ? t("{pct}% del programa completado", { pct: unlockedProgressPct })
+                : t("Esperando activación del coach")}
             </p>
           </div>
         </CardContent>
@@ -842,10 +846,10 @@ export function CoachingV2SessionBoard({
                 ? "bg-primary/10"
                 : "";
             const statusLabel = isActive
-              ? "Activo"
+              ? t("Activo")
               : isEnded
-                ? "Finalizado"
-                : "No activado";
+                ? t("Finalizado")
+                : t("No activado");
 
             return (
               <AccordionItem
@@ -859,7 +863,7 @@ export function CoachingV2SessionBoard({
                 >
                   <div className="flex flex-1 flex-wrap items-center justify-between gap-2 pr-3 text-left">
                     <div className="flex items-center gap-2">
-                      <span>{`Periodo ${period}`}</span>
+                      <span>{t("Periodo {n}", { n: period })}</span>
                       <Badge
                         variant={
                           isActive
@@ -873,12 +877,12 @@ export function CoachingV2SessionBoard({
                       </Badge>
                       {activation?.activatedAt && (
                         <Badge variant="outline" className="text-[10px]">
-                          {`Inicio: ${new Date(activation.activatedAt).toLocaleDateString("es-AR")}`}
+                          {t("Inicio: {date}", { date: new Date(activation.activatedAt).toLocaleDateString(uiLocale() === "es-ES" ? "es-AR" : uiLocale()) })}
                         </Badge>
                       )}
                       {activation?.endedAt && (
                         <Badge variant="outline" className="text-[10px]">
-                          {`Fin: ${new Date(activation.endedAt).toLocaleDateString("es-AR")}`}
+                          {t("Fin: {date}", { date: new Date(activation.endedAt).toLocaleDateString(uiLocale() === "es-ES" ? "es-AR" : uiLocale()) })}
                         </Badge>
                       )}
                     </div>
@@ -889,7 +893,7 @@ export function CoachingV2SessionBoard({
                   <div className="grid gap-4">
                     <Card>
                       <CardHeader>
-                        <CardTitle>Focos y fases</CardTitle>
+                        <CardTitle>{t("Focos y fases")}</CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-3">
                         {mode === "coach" && (
@@ -899,14 +903,14 @@ export function CoachingV2SessionBoard({
                               onChange={(event) =>
                                 setNewFocusTitle(event.target.value)
                               }
-                              placeholder="Ej: Past Simple"
+                              placeholder={t("Ej: Past Simple")}
                             />
                             <Input
                               value={newFocusComment}
                               onChange={(event) =>
                                 setNewFocusComment(event.target.value)
                               }
-                              placeholder="Comentario del foco (opcional)"
+                              placeholder={t("Comentario del foco (opcional)")}
                             />
                             <Button
                               type="button"
@@ -923,8 +927,8 @@ export function CoachingV2SessionBoard({
                                   ? canCreateFocusInSelectedPeriod
                                   : board.canCreateFocus
                               )
-                                ? "Agregar foco"
-                                : "Limite 3 focos activos"}
+                                ? t("Agregar foco")
+                                : t("Limite 3 focos activos")}
                             </Button>
                           </div>
                         )}
@@ -978,8 +982,8 @@ export function CoachingV2SessionBoard({
                                     ) : (
                                       <p className="text-xs text-muted-foreground">
                                         {mode === "coach"
-                                          ? "Hueco libre"
-                                          : "Aqui ira tu proximo foco"}
+                                          ? t("Hueco libre")
+                                          : t("Aqui ira tu proximo foco")}
                                       </p>
                                     )}
                                   </th>
@@ -991,7 +995,7 @@ export function CoachingV2SessionBoard({
                                 <tr key={phase.key} className="border-b last:border-b-0">
                                   <td className="p-2 font-medium">
                                     <div className="flex items-center gap-2">
-                                      <span>{phase.label}</span>
+                                      <span>{t(phase.label)}</span>
                                       <button
                                         type="button"
                                         className="inline-flex items-center justify-center rounded-full border p-0.5"
@@ -1060,11 +1064,11 @@ export function CoachingV2SessionBoard({
                                           </button>
                                           <span className="text-xs text-muted-foreground">
                                             {checked
-                                              ? "Hecho"
+                                              ? t("Hecho")
                                               : isNext
                                                 ? mode === "coach"
-                                                  ? "Marcar"
-                                                  : "Por hacer"
+                                                  ? t("Marcar")
+                                                  : t("Por hacer")
                                                 : ""}
                                           </span>
                                           {mode === "student" && isTrainedPhase && (
@@ -1086,12 +1090,12 @@ export function CoachingV2SessionBoard({
                                                   );
                                                 }}
                                               >
-                                                {focusAttempt ? "💪 Repetir" : "💪 Entrenar"}
+                                                {focusAttempt ? t("💪 Repetir") : t("💪 Entrenar")}
                                               </Button>
                                             ) : focusExercise?.status === "generating" ||
                                               focusExercise?.status === "pending" ? (
                                               <span className="ml-auto text-[11px] text-muted-foreground">
-                                                Preparando...
+                                                {t("Preparando...")}
                                               </span>
                                             ) : null
                                           )}
@@ -1109,7 +1113,7 @@ export function CoachingV2SessionBoard({
                                                 );
                                               }}
                                             >
-                                              <EyeIcon className="size-3" /> Revisar
+                                              <EyeIcon className="size-3" /> {t("Revisar")}
                                             </Button>
                                           )}
                                         </div>
@@ -1124,10 +1128,10 @@ export function CoachingV2SessionBoard({
 
                         {openPhaseInfoKey && (
                           <p className="rounded-md border-l-2 border-primary bg-muted/30 p-2 text-sm text-muted-foreground">
-                            {
+                            {t(
                               PHASES.find((phase) => phase.key === openPhaseInfoKey)
-                                ?.info
-                            }
+                                ?.info || "",
+                            )}
                           </p>
                         )}
 
@@ -1143,7 +1147,7 @@ export function CoachingV2SessionBoard({
 
                         {completedFocusesInSelectedPeriod.length > 0 && (
                           <div className="space-y-1">
-                            <p className="text-xs text-muted-foreground">Dominados</p>
+                            <p className="text-xs text-muted-foreground">{t("Dominados")}</p>
                             {completedFocusesInSelectedPeriod.map((focus) => (
                               <div key={`completed-${focus.id}`} className="text-sm">
                                 - {focus.focusTitle}
@@ -1157,7 +1161,7 @@ export function CoachingV2SessionBoard({
 
                     <Card>
                       <CardHeader>
-                        <CardTitle>Clases del periodo</CardTitle>
+                        <CardTitle>{t("Clases del periodo")}</CardTitle>
                       </CardHeader>
                       <CardContent className="grid gap-2 md:grid-cols-2">
                         {[1, 2].map((index) => {
@@ -1221,8 +1225,8 @@ export function CoachingV2SessionBoard({
                             ? draft.reportImageFile.name
                             : classSlot?.reportImageUrl &&
                                 !draft.removeReportImage
-                              ? "Usando imagen actual"
-                              : "Ningun archivo seleccionado";
+                              ? t("Usando imagen actual")
+                              : t("Ningun archivo seleccionado");
                           const teacherTasks = [
                             {
                               task: classSlot?.coachGuideline1?.trim() || "",
@@ -1293,10 +1297,10 @@ export function CoachingV2SessionBoard({
                                         },
                                       }))
                                     }
-                                    placeholder="Link Loom de la clase"
+                                    placeholder={t("Link Loom de la clase")}
                                   />
                                   <p className="text-xs mb-1! font-medium text-muted-foreground">
-                                    Reportes
+                                    {t("Reportes")}
                                   </p>
                                   <Textarea
                                     value={draft.report}
@@ -1309,7 +1313,7 @@ export function CoachingV2SessionBoard({
                                         },
                                       }))
                                     }
-                                    placeholder="Reporte texto de clase"
+                                    placeholder={t("Reporte texto de clase")}
                                     rows={3}
                                   />
                                   <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/20 p-2">
@@ -1325,8 +1329,8 @@ export function CoachingV2SessionBoard({
                                       >
                                         <UploadIcon className="h-4 w-4" />
                                         {draft.reportImageFile
-                                          ? "Cambiar imagen de reporte"
-                                          : "Subir imagen de reporte"}
+                                          ? t("Cambiar imagen de reporte")
+                                          : t("Subir imagen de reporte")}
                                       </label>
                                     </Button>
                                     <span className="text-xs text-muted-foreground mb-1">
@@ -1335,7 +1339,7 @@ export function CoachingV2SessionBoard({
                                   </div>
                                   <input
                                     id={fileInputId}
-                                    aria-label="Reporte imagen de clase"
+                                    aria-label={t("Reporte imagen de clase")}
                                     type="file"
                                     accept="image/*"
                                     className="sr-only h-px w-px max-w-px"
@@ -1361,7 +1365,7 @@ export function CoachingV2SessionBoard({
                                           rel="noreferrer"
                                           className="underline"
                                         >
-                                          Ver imagen actual
+                                          {t("Ver imagen actual")}
                                         </a>
                                         <Button
                                           type="button"
@@ -1377,12 +1381,12 @@ export function CoachingV2SessionBoard({
                                             }))
                                           }
                                         >
-                                          Quitar imagen
+                                          {t("Quitar imagen")}
                                         </Button>
                                       </div>
                                     )}
                                   <p className="mb-1! text-xs font-medium text-muted-foreground">
-                                    Tareas para el alumno
+                                    {t("Tareas para el alumno")}
                                   </p>
                                   <Textarea
                                     value={draft.coachGuideline1}
@@ -1395,7 +1399,7 @@ export function CoachingV2SessionBoard({
                                         },
                                       }))
                                     }
-                                    placeholder="Tarea 1"
+                                    placeholder={t("Tarea {n}", { n: 1 })}
                                     rows={2}
                                   />
                                   <Textarea
@@ -1409,7 +1413,7 @@ export function CoachingV2SessionBoard({
                                         },
                                       }))
                                     }
-                                    placeholder="Tarea 2"
+                                    placeholder={t("Tarea {n}", { n: 2 })}
                                     rows={2}
                                   />
                                   <Textarea
@@ -1423,7 +1427,7 @@ export function CoachingV2SessionBoard({
                                         },
                                       }))
                                     }
-                                    placeholder="Tarea 3"
+                                    placeholder={t("Tarea {n}", { n: 3 })}
                                     rows={2}
                                   />
                                   <Button
@@ -1436,18 +1440,17 @@ export function CoachingV2SessionBoard({
                                     }
                                     disabled={saving}
                                   >
-                                    Guardar clase
+                                    {t("Guardar clase")}
                                   </Button>
                                 </div>
                               ) : (
                                 <div className="space-y-2">
                                   <p className="text-sm font-medium">
-                                    Tareas del profesor
+                                    {t("Tareas del profesor")}
                                   </p>
                                   {teacherTasks.length === 0 ? (
                                     <p className="text-sm text-muted-foreground">
-                                      Aun no hay tareas del profesor para esta
-                                      clase.
+                                      {t("Aun no hay tareas del profesor para esta clase.")}
                                     </p>
                                   ) : (
                                     <div className="space-y-3">
@@ -1500,7 +1503,7 @@ export function CoachingV2SessionBoard({
                                               !item.response.trim()
                                             }
                                           >
-                                            Guardar
+                                            {t("Guardar")}
                                           </Button>
                                         </div>
                                       ))}
@@ -1510,13 +1513,13 @@ export function CoachingV2SessionBoard({
                                   {(classVideoEmbedUrl || classLoomUrl) && (
                                     <div className="space-y-2 rounded-md border bg-muted/20 p-2 text-sm">
                                       <p className="font-medium">
-                                        Clase grabada
+                                        {t("Clase grabada")}
                                       </p>
                                       {classVideoEmbedUrl ? (
                                         <div className="overflow-hidden rounded-md border">
                                           <iframe
                                             src={classVideoEmbedUrl}
-                                            title={`Clase ${classIndex} periodo ${period}`}
+                                            title={t("Clase {n} periodo {period}", { n: classIndex, period })}
                                             className="aspect-video w-full"
                                             allow="autoplay; fullscreen; picture-in-picture"
                                             allowFullScreen
@@ -1529,7 +1532,7 @@ export function CoachingV2SessionBoard({
                                           rel="noreferrer"
                                           className="underline"
                                         >
-                                          Ver clase en Loom
+                                          {t("Ver clase en Loom")}
                                         </a>
                                       )}
                                     </div>
@@ -1572,7 +1575,7 @@ export function CoachingV2SessionBoard({
                                         </div>
                                       </div>
                                       <p className="mt-1 text-xs text-cyan-100/90">
-                                        Completa tareas para desbloquear reporte.
+                                        {t("Completa tareas para desbloquear reporte.")}
                                       </p>
                                     </div>
                                   )}
@@ -1580,7 +1583,7 @@ export function CoachingV2SessionBoard({
                                   {hasStudentResponses && (
                                     <div className="space-y-2 rounded-md border bg-muted/20 p-2 text-sm">
                                       <p className="font-medium">
-                                        Reporte del profesor
+                                        {t("Reporte del profesor")}
                                       </p>
                                       {classSlot?.report && (
                                         <p>{classSlot.report}</p>
@@ -1592,7 +1595,7 @@ export function CoachingV2SessionBoard({
                                           rel="noreferrer"
                                           className="underline"
                                         >
-                                          Ver imagen de reporte
+                                          {t("Ver imagen de reporte")}
                                         </a>
                                       )}
                                     </div>
@@ -1620,11 +1623,11 @@ export function CoachingV2SessionBoard({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Borrar foco</DialogTitle>
+            <DialogTitle>{t("Borrar foco")}</DialogTitle>
             <DialogDescription>
               {focusDeleteCandidate
-                ? `Se borrara "${focusDeleteCandidate.focusTitle}".`
-                : "Se borrara este foco."}
+                ? t('Se borrara "{focus}".', { focus: focusDeleteCandidate.focusTitle })
+                : t("Se borrara este foco.")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1634,7 +1637,7 @@ export function CoachingV2SessionBoard({
               onClick={() => setFocusDeleteCandidateId(null)}
               disabled={saving}
             >
-              Cancelar
+              {t("Cancelar")}
             </Button>
             <Button
               type="button"
@@ -1647,7 +1650,7 @@ export function CoachingV2SessionBoard({
               disabled={saving || !focusDeleteCandidateId}
             >
               <Trash2Icon className="size-4" />
-              Borrar foco
+              {t("Borrar foco")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1661,20 +1664,20 @@ export function CoachingV2SessionBoard({
       >
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Revision de intento</DialogTitle>
+            <DialogTitle>{t("Revision de intento")}</DialogTitle>
             <DialogDescription>
               {openReviewAttempt
-                ? `${openReviewAttempt.passed ? "Superado" : "No superado"} · ${openReviewAttempt.scoreCorrect}/${openReviewAttempt.scoreTotal} · ${new Date(openReviewAttempt.submittedAt).toLocaleString("es-AR")}`
-                : "Sin intento seleccionado."}
+                ? `${openReviewAttempt.passed ? t("Superado") : t("No superado")} · ${openReviewAttempt.scoreCorrect}/${openReviewAttempt.scoreTotal} · ${new Date(openReviewAttempt.submittedAt).toLocaleString(uiLocale() === "es-ES" ? "es-AR" : uiLocale())}`
+                : t("Sin intento seleccionado.")}
             </DialogDescription>
           </DialogHeader>
 
           {openReviewAttempt && (
             <Tabs defaultValue="reconocer" className="w-full">
               <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="reconocer">Reconocer</TabsTrigger>
-                <TabsTrigger value="construir">Construir</TabsTrigger>
-                <TabsTrigger value="conversacion">Conversacion</TabsTrigger>
+                <TabsTrigger value="reconocer">{t("Reconocer")}</TabsTrigger>
+                <TabsTrigger value="construir">{t("Construir")}</TabsTrigger>
+                <TabsTrigger value="conversacion">{t("Conversacion")}</TabsTrigger>
               </TabsList>
 
               {(["Reconocer", "Construir", "En conversacion"] as const).map((name, idx) => {
@@ -1690,13 +1693,13 @@ export function CoachingV2SessionBoard({
                 return (
                   <TabsContent key={`review-tab-${value}`} value={value} className="mt-3 space-y-2">
                     {failures.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">Sin fallos registrados en esta seccion.</p>
+                      <p className="text-sm text-muted-foreground">{t("Sin fallos registrados en esta seccion.")}</p>
                     ) : (
                       failures.map((item, itemIdx) => (
                         <div key={`failure-${value}-${itemIdx}`} className="rounded-md border p-3 text-sm">
                           <p className="font-medium">{item.question}</p>
-                          <p className="mt-1 text-xs text-muted-foreground">Respondio: {item.mine}</p>
-                          <p className="text-xs text-emerald-700">Esperado: {item.expected}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{t("Respondio: {answer}", { answer: item.mine })}</p>
+                          <p className="text-xs text-emerald-700">{t("Esperado: {answer}", { answer: item.expected })}</p>
                           {item.why && <p className="mt-1 text-xs text-muted-foreground">{item.why}</p>}
                         </div>
                       ))
@@ -1709,14 +1712,14 @@ export function CoachingV2SessionBoard({
 
           {openReviewAttempt && (
             <div className="space-y-2 rounded-md border bg-muted/20 p-3 text-xs">
-              <p className="font-medium">Resumen</p>
+              <p className="font-medium">{t("Resumen")}</p>
               <p>
-                Total: {openReviewAttempt.scoreCorrect}/{openReviewAttempt.scoreTotal} · Umbral {openReviewAttempt.scoreThreshold}
+                {t("Total: {n}/{total} · Umbral {threshold}", { n: openReviewAttempt.scoreCorrect, total: openReviewAttempt.scoreTotal, threshold: openReviewAttempt.scoreThreshold })}
               </p>
-              <p>Resultado: {openReviewAttempt.passed ? "Superado" : "No superado"}</p>
+              <p>{t("Resultado:")} {openReviewAttempt.passed ? t("Superado") : t("No superado")}</p>
               {openReviewBlockScores.length > 0 && (
                 <div>
-                  <p className="font-medium">Por bloque</p>
+                  <p className="font-medium">{t("Por bloque")}</p>
                   {openReviewBlockScores.map((row) => (
                     <p key={`block-score-${row.id}`}>{row.title}: {row.got}/{row.max}</p>
                   ))}
@@ -1724,7 +1727,7 @@ export function CoachingV2SessionBoard({
               )}
               {openReviewTagScores.length > 0 && (
                 <div>
-                  <p className="font-medium">Por etiqueta</p>
+                  <p className="font-medium">{t("Por etiqueta")}</p>
                   {openReviewTagScores.map((row) => (
                     <p key={`tag-score-${row.tag}`}>{row.tag}: {row.ok}/{row.total}</p>
                   ))}
@@ -1735,7 +1738,7 @@ export function CoachingV2SessionBoard({
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpenReviewFocusId(null)}>
-              Cerrar
+              {t("Cerrar")}
             </Button>
           </DialogFooter>
         </DialogContent>

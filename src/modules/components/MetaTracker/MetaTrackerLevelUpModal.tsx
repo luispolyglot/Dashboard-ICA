@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import confetti from 'canvas-confetti'
 import { Button } from '@/components/ui/button'
+import { langName, t, tn } from '@/i18n'
 
 export type MetaTrackerLevelUpCelebration = {
   targetLang: string
@@ -112,7 +113,7 @@ export function MetaTrackerLevelUpModal({
             variant='ghost'
             size='icon-sm'
             onClick={() => onOpenChange(false)}
-            aria-label='Cerrar celebracion'
+            aria-label={t('Cerrar celebración')}
             className='absolute top-4 right-4 z-10 border border-white/20 text-white/85 hover:bg-white/10 hover:text-white'
           >
             <X />
@@ -151,28 +152,35 @@ export function MetaTrackerLevelUpModal({
             pointerEvents: showDetails ? 'auto' : 'none',
           }}
         >
-          <h3 className='text-3xl font-bold sm:text-4xl'>Subiste de nivel</h3>
+          <h3 className='text-3xl font-bold sm:text-4xl'>{t('Subiste de nivel')}</h3>
           <p className='mt-2 text-base text-slate-200'>
-            Pasaste de {formatLevelLabel(celebration.fromLevel)} a{' '}
-            {formatLevelLabel(celebration.toLevel)} en {celebration.targetLang}.
+            {t('Pasaste de {from} a {to} en {lang}.', {
+              from: formatLevelLabel(celebration.fromLevel),
+              to: formatLevelLabel(celebration.toLevel),
+              lang: langName(celebration.targetLang),
+            })}
           </p>
 
           <div className='mt-4 rounded-lg border border-emerald-300/35 bg-emerald-500/10 p-4'>
             <p className='text-base font-semibold text-emerald-200'>
-              +{celebration.activatedWords} palabras activadas
+              {tn(celebration.activatedWords, '+{n} palabra activada', '+{n} palabras activadas')}
             </p>
             <p className='mt-1 text-sm text-slate-200'>
-              {celebration.fromTotalWords} {'->'} {celebration.toTotalWords} palabras
+              {celebration.fromTotalWords} {'->'} {celebration.toTotalWords} {t('palabras')}
             </p>
           </div>
 
           {typeof celebration.wordsToNext === 'number' && celebration.wordsToNext > 0 && (
             <div className='mt-3 rounded-lg border border-cyan-300/30 bg-cyan-500/8 p-4'>
               <p className='text-sm font-semibold text-cyan-200'>
-                Proximo nivel: {formatLevelLabel(celebration.nextLevel)}
+                {t('Proximo nivel: {level}', { level: formatLevelLabel(t(celebration.nextLevel)) })}
               </p>
               <p className='mt-1 text-sm text-slate-200'>
-                Te faltan {celebration.wordsToNext} palabras para alcanzarlo.
+                {tn(
+                  celebration.wordsToNext,
+                  'Te falta {n} palabra para alcanzarlo.',
+                  'Te faltan {n} palabras para alcanzarlo.',
+                )}
               </p>
             </div>
           )}
@@ -180,10 +188,10 @@ export function MetaTrackerLevelUpModal({
           {celebration.wordsToNext === null && (
             <div className='mt-3 rounded-lg border border-cyan-300/30 bg-cyan-500/8 p-4'>
               <p className='text-sm font-semibold text-cyan-200'>
-                Llegaste a C1 en {celebration.targetLang}
+                {t('Llegaste a C1 en {lang}', { lang: langName(celebration.targetLang) })}
               </p>
               <p className='mt-1 text-sm text-slate-200'>
-                Ahora comienza tu camino hacia un nivel nativo.
+                {t('Ahora comienza tu camino hacia un nivel nativo.')}
               </p>
             </div>
           )}

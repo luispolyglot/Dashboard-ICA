@@ -1,22 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { RefreshCwIcon, SaveIcon } from 'lucide-react'
+import { MinusIcon, PlusIcon, RefreshCwIcon, SaveIcon, SearchIcon } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { EmptyState, IconTile, PageTitle, Panel, Pill, RowGroup, StatTile } from '../game/ui'
+import { FichaIcon } from '../game/icons'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import {
   fetchPregunticaTokensAdminOverview,
   updatePregunticaManualTokensForUser,
   type PregunticaTokensAdminUser,
 } from '../services/pregunticaTokensAdmin'
-import { ListLoading } from '@/components/ui/loading-state'
 import { useSoftLoading } from '../hooks/useSoftLoading'
 
 const PAGE_SIZE_OPTIONS = [10, 50, 100] as const
@@ -41,7 +35,7 @@ export function ManagePregunticaTokensView() {
       toast.error(
         error instanceof Error
           ? error.message
-          : 'No se pudieron cargar las fichas de PreguntICA.',
+          : 'No se pudieron cargar las ICA Coins.',
       )
     } finally {
       setLoading(false)
@@ -75,18 +69,18 @@ export function ManagePregunticaTokensView() {
   const handleSaveManualTokens = async (row: PregunticaTokensAdminUser) => {
     const draft = (manualDraftByUserId[row.userId] ?? String(row.manualTokens)).trim()
     if (!/^\d+$/u.test(draft)) {
-      toast.error('Las fichas manuales deben ser un entero no negativo.')
+      toast.error('Las ICA Coins a mano deben ser un número entero (0 o más).')
       return
     }
 
     const nextValue = Number(draft)
     if (!Number.isInteger(nextValue) || nextValue < 0) {
-      toast.error('Las fichas manuales deben ser un entero no negativo.')
+      toast.error('Las ICA Coins a mano deben ser un número entero (0 o más).')
       return
     }
 
     if (nextValue === row.manualTokens) {
-      toast('No hubo cambios para guardar en esa fila.')
+      toast('No hay cambios que guardar.')
       return
     }
 
@@ -108,167 +102,187 @@ export function ManagePregunticaTokensView() {
         ...prev,
         [row.userId]: String(updated.manualTokens),
       }))
-      toast.success('Fichas manuales actualizadas correctamente.')
+      toast.success('ICA Coins actualizadas.')
     } catch (error) {
       toast.error(
         error instanceof Error
           ? error.message
-          : 'No se pudieron actualizar las fichas manuales.',
+          : 'No se pudieron actualizar las ICA Coins.',
       )
     } finally {
       setSavingUserId(null)
     }
   }
 
+  const totalMonthly = rows.reduce((sum, row) => sum + (Number(row.monthlyTokens) || 0), 0)
+  const totalManual = rows.reduce((sum, row) => sum + (Number(row.manualTokens) || 0), 0)
+
   return (
-    <section className='mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-5 py-8'>
-      <div className='mb-6'>
-        <h2 className='mb-1 font-serif text-3xl font-bold'>Gestión Fichas PreguntICA</h2>
-        <p className='text-sm text-muted-foreground'>
-          Panel de SUPER ADMIN para consultar fichas mensuales y editar fichas
-          manuales por usuario.
-        </p>
+    <section className='mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 px-4 pt-2 pb-8 lg:py-8'>
+      <PageTitle
+        icon={
+          <IconTile tone='gold' size={48}>
+            <FichaIcon size={30} />
+          </IconTile>
+        }
+        subtitle='Las ICA Coins de cada persona: las que ganó este mes y las que le das tú a mano.'
+        right={
+          <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => void load()} disabled={loading || refreshing} aria-label='Recargar'>
+            <RefreshCwIcon className={loading || refreshing ? 'size-5 animate-spin' : 'size-5'} strokeWidth={2.6} />
+          </Button>
+        }
+      >
+        ICA Coins
+      </PageTitle>
+
+      <div className='grid grid-cols-3 gap-3'>
+        <StatTile tone='primary' value={String(rows.length)} label='personas' />
+        <StatTile tone='gold' value={String(totalMonthly)} label='este mes' />
+        <StatTile tone='c' value={String(totalManual)} label='a mano' />
       </div>
 
-      <Card>
-        <CardHeader className='gap-4'>
-          <div className='flex flex-col gap-3 md:flex-row md:items-end md:justify-between'>
-            <CardTitle>Usuarios ({filteredRows.length})</CardTitle>
-            <div className='flex flex-col gap-2 sm:flex-row sm:items-end'>
-              <div className='w-full min-w-[240px]'>
-                <p className='mb-1.5 text-xs text-muted-foreground'>Buscar</p>
-                <Input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder='Username o ID'
-                />
-              </div>
-              <div className='w-[130px]'>
-                <p className='mb-1.5 text-xs text-muted-foreground'>Mostrar</p>
-                <Select
-                  value={String(pageSize)}
-                  onValueChange={(value) => setPageSize(Number(value))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder='Cantidad' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PAGE_SIZE_OPTIONS.map((size) => (
-                      <SelectItem key={size} value={String(size)}>
-                        {size}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button
-                type='button'
-                variant='ghost'
-                onClick={() => void load()}
-                disabled={loading || refreshing}
-              >
-                <RefreshCwIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-                Recargar
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
+      <div className='flex flex-col gap-2 sm:flex-row'>
+        <div className='relative flex-1'>
+          <SearchIcon className='pointer-events-none absolute top-1/2 left-3.5 size-[18px] -translate-y-1/2 text-muted-foreground' strokeWidth={2.4} />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder='Buscar por nombre o ID'
+            aria-label='Buscar por nombre o ID'
+            className='h-12 rounded-2xl pl-10'
+          />
+        </div>
+        <div className='flex gap-1.5' role='group' aria-label='Cuántos mostrar'>
+          {PAGE_SIZE_OPTIONS.map((size) => (
+            <button
+              key={size}
+              type='button'
+              onClick={() => setPageSize(size)}
+              aria-pressed={pageSize === size}
+              className={cn(
+                'h-12 min-w-12 rounded-2xl border-2 px-3 text-sm font-extrabold transition-colors',
+                pageSize === size ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-muted',
+              )}
+            >
+              {size}
+            </button>
+          ))}
+        </div>
+      </div>
 
-        <CardContent>
-          {loading ? (
-            <ListLoading label='Cargando usuarios...' />
-          ) : filteredRows.length === 0 ? (
-            <p className='text-sm text-muted-foreground'>No hay usuarios para mostrar.</p>
-          ) : (
-            <>
-              <div className='overflow-x-auto'>
-                <table className='w-full min-w-200 table-fixed text-left text-sm'>
-                  <thead className='table w-full table-fixed'>
-                    <tr className='border-b text-muted-foreground'>
-                      <th className='w-[24%] pb-2 font-medium'>Username</th>
-                      <th className='w-[34%] pb-2 font-medium'>ID</th>
-                      <th className='w-[14%] pb-2 font-medium'>Fichas mensuales</th>
-                      <th className='w-[28%] pb-2 font-medium'>Fichas manuales</th>
-                    </tr>
-                  </thead>
-                  <tbody className='block max-h-[56dvh] overflow-y-auto'>
-                    {visibleRows.map((row) => {
-                      const draftValue =
-                        manualDraftByUserId[row.userId] ?? String(row.manualTokens)
-                      const isSaving = savingUserId === row.userId
-
-                      return (
-                        <tr
-                          key={row.userId}
-                          className='table w-full table-fixed border-b align-middle last:border-b-0'
-                        >
-                          <td className='w-[24%] py-2 font-medium'>{row.username}</td>
-                          <td className='w-[34%] py-2 font-mono text-xs'>{row.userId}</td>
-                          <td className='w-[14%] py-2'>{row.monthlyTokens}</td>
-                          <td className='w-[28%] py-2'>
-                            <div className='flex items-center gap-2'>
-                              <Input
-                                type='number'
-                                min={0}
-                                step={1}
-                                value={draftValue}
-                                onChange={(event) => {
-                                  setManualDraftByUserId((prev) => ({
-                                    ...prev,
-                                    [row.userId]: event.target.value,
-                                  }))
-                                }}
-                                className='h-8 w-24'
-                              />
-                              <Button
-                                type='button'
-                                size='sm'
-                                onClick={() => void handleSaveManualTokens(row)}
-                                disabled={isSaving}
-                              >
-                                <SaveIcon className='h-4 w-4' />
-                                {isSaving ? 'Guardando...' : 'Guardar'}
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className='mt-4 flex flex-wrap items-center justify-between gap-2'>
-                <p className='text-xs text-muted-foreground'>
-                  Página {safePage} de {totalPages}
-                </p>
-                <div className='flex gap-2'>
-                  <Button
-                    type='button'
-                    variant='outline'
-                    size='sm'
-                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                    disabled={safePage <= 1}
-                  >
-                    Anterior
-                  </Button>
-                  <Button
-                    type='button'
-                    variant='outline'
-                    size='sm'
-                    onClick={() =>
-                      setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-                    }
-                    disabled={safePage >= totalPages}
-                  >
-                    Siguiente
-                  </Button>
+      {loading && rows.length === 0 ? (
+        <div className='flex flex-col gap-2' aria-hidden='true'>
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className='h-16 animate-pulse rounded-2xl bg-muted' />
+          ))}
+        </div>
+      ) : filteredRows.length === 0 ? (
+        <Panel>
+          <EmptyState title='No hay nadie con esa búsqueda' text='Prueba con otro nombre o ID.' />
+        </Panel>
+      ) : (
+        <>
+          <RowGroup>
+            {visibleRows.map((row) => {
+              const draftValue = manualDraftByUserId[row.userId] ?? String(row.manualTokens)
+              const isSaving = savingUserId === row.userId
+              const changed = draftValue.trim() !== String(row.manualTokens)
+              return (
+                <div key={row.userId} className='flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:gap-3'>
+                  <div className='flex min-w-0 flex-1 items-center gap-3'>
+                    <span className='flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-border bg-muted text-sm font-black uppercase'>
+                      {row.username.charAt(0) || '?'}
+                    </span>
+                    <span className='min-w-0 flex-1'>
+                      <span className='block truncate font-extrabold'>{row.username}</span>
+                      <span className='block truncate font-mono text-[11px] text-muted-foreground'>{row.userId}</span>
+                    </span>
+                    <Pill tone='gold'>+{row.monthlyTokens} este mes</Pill>
+                  </div>
+                  <div className='flex shrink-0 items-center gap-2 pl-[52px] sm:pl-0'>
+                    <span className='text-xs font-extrabold whitespace-nowrap text-muted-foreground'>A mano</span>
+                    <Button
+                      type='button'
+                      variant='outline'
+                      size='icon-sm'
+                      className='h-10 rounded-xl'
+                      aria-label={`Quitar 1 ICA Coin a ${row.username}`}
+                      onClick={() =>
+                        setManualDraftByUserId((prev) => ({
+                          ...prev,
+                          [row.userId]: String(Math.max(0, (Number(draftValue) || 0) - 1)),
+                        }))
+                      }
+                    >
+                      <MinusIcon className='size-4' strokeWidth={2.8} />
+                    </Button>
+                    <Input
+                      type='text'
+                      inputMode='numeric'
+                      value={draftValue}
+                      onChange={(event) => {
+                        setManualDraftByUserId((prev) => ({ ...prev, [row.userId]: event.target.value }))
+                      }}
+                      className='h-10 w-14 rounded-xl px-1 text-center'
+                      aria-label={`ICA Coins a mano de ${row.username}`}
+                    />
+                    <Button
+                      type='button'
+                      variant='outline'
+                      size='icon-sm'
+                      className='h-10 rounded-xl'
+                      aria-label={`Dar 1 ICA Coin a ${row.username}`}
+                      onClick={() =>
+                        setManualDraftByUserId((prev) => ({
+                          ...prev,
+                          [row.userId]: String((Number(draftValue) || 0) + 1),
+                        }))
+                      }
+                    >
+                      <PlusIcon className='size-4' strokeWidth={2.8} />
+                    </Button>
+                    <Button
+                      type='button'
+                      size='sm'
+                      className='h-10 rounded-xl'
+                      variant={changed ? 'default' : 'outline'}
+                      onClick={() => void handleSaveManualTokens(row)}
+                      disabled={isSaving}
+                    >
+                      <SaveIcon className='size-4' strokeWidth={2.6} />
+                      {isSaving ? 'Guardando...' : 'Guardar'}
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+              )
+            })}
+          </RowGroup>
+
+          <div className='flex items-center justify-between gap-2'>
+            <Button
+              type='button'
+              variant='outline'
+              className='rounded-2xl'
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+              disabled={safePage <= 1}
+            >
+              Anterior
+            </Button>
+            <p className='m-0 text-xs font-extrabold text-muted-foreground'>
+              Página {safePage} de {totalPages}
+            </p>
+            <Button
+              type='button'
+              variant='outline'
+              className='rounded-2xl'
+              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+              disabled={safePage >= totalPages}
+            >
+              Siguiente
+            </Button>
+          </div>
+        </>
+      )}
     </section>
   )
 }

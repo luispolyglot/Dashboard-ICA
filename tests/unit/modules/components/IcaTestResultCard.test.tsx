@@ -22,7 +22,7 @@ describe('IcaTestResultCard', () => {
       />,
     )
 
-    expect(screen.getByText('+1.1 puntos al leaderboard mensual')).toBeTruthy()
+    expect(screen.getByText('+1,1 puntos para el ranking del mes')).toBeTruthy()
   })
 
   it('does not show leaderboard points badge when missing', () => {
@@ -38,7 +38,7 @@ describe('IcaTestResultCard', () => {
       />,
     )
 
-    expect(screen.queryByText(/puntos al leaderboard mensual/i)).toBeNull()
+    expect(screen.queryByText(/puntos para el ranking del mes/i)).toBeNull()
   })
 
   it('renders error review action when provided', () => {

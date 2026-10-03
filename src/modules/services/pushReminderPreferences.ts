@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { supabase } from '@/lib/supabase'
 import type {
   PushReminderPreferences,
@@ -12,12 +13,13 @@ type PushReminderPreferencesRow = {
   flashcards_streak_hour: number
   habit_loss_enabled: boolean
   habit_loss_last_stage: number
+  streak_risk_enabled: boolean | null
   created_at: string
   updated_at: string
 }
 
 const SELECT_FIELDS =
-  'user_id, ica_streak_enabled, ica_streak_hour, flashcards_streak_enabled, flashcards_streak_hour, habit_loss_enabled, habit_loss_last_stage, created_at, updated_at'
+  'user_id, ica_streak_enabled, ica_streak_hour, flashcards_streak_enabled, flashcards_streak_hour, habit_loss_enabled, habit_loss_last_stage, streak_risk_enabled, created_at, updated_at'
 
 const DEFAULT_HOUR = 20
 
@@ -46,6 +48,7 @@ function mapRow(row: PushReminderPreferencesRow): PushReminderPreferences {
     ),
     habitLossEnabled: Boolean(row.habit_loss_enabled),
     habitLossLastStage: Number(row.habit_loss_last_stage ?? 0),
+    streakRiskEnabled: row.streak_risk_enabled !== false,
     createdAt: row.created_at ?? null,
     updatedAt: row.updated_at ?? null,
   }
@@ -53,7 +56,7 @@ function mapRow(row: PushReminderPreferencesRow): PushReminderPreferences {
 
 async function getCurrentUserId(): Promise<string> {
   if (!supabase) {
-    throw new PushReminderPreferencesError('Supabase no esta configurado.')
+    throw new PushReminderPreferencesError(t('Supabase no esta configurado.'))
   }
 
   const {
@@ -63,7 +66,7 @@ async function getCurrentUserId(): Promise<string> {
 
   if (error || !user) {
     throw new PushReminderPreferencesError(
-      'Necesitas iniciar sesion para configurar notificaciones.',
+      t('Necesitas iniciar sesión para configurar notificaciones.'),
     )
   }
 
@@ -79,6 +82,7 @@ function getDefaultPreferences(userId: string): PushReminderPreferences {
     flashcardsStreakHour: DEFAULT_HOUR,
     habitLossEnabled: false,
     habitLossLastStage: 0,
+    streakRiskEnabled: true,
     createdAt: null,
     updatedAt: null,
   }
@@ -95,7 +99,7 @@ export async function fetchPushReminderPreferences(): Promise<PushReminderPrefer
 
   if (error) {
     throw new PushReminderPreferencesError(
-      'No se pudieron cargar tus preferencias de notificaciones.',
+      t('No se pudieron cargar tus preferencias de notificaciones.'),
     )
   }
 
@@ -121,6 +125,7 @@ export async function upsertPushReminderPreferences(
         flashcards_streak_enabled: Boolean(input.flashcardsStreakEnabled),
         flashcards_streak_hour: normalizeHour(input.flashcardsStreakHour),
         habit_loss_enabled: Boolean(input.habitLossEnabled),
+        streak_risk_enabled: Boolean(input.streakRiskEnabled),
       },
       { onConflict: 'user_id' },
     )
@@ -129,7 +134,7 @@ export async function upsertPushReminderPreferences(
 
   if (error || !data) {
     throw new PushReminderPreferencesError(
-      'No se pudieron guardar tus preferencias de notificaciones.',
+      t('No se pudieron guardar tus preferencias de notificaciones.'),
     )
   }
 

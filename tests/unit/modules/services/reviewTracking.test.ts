@@ -43,25 +43,8 @@ describe('reviewTracking service', () => {
     })
   })
 
-  it('records correct review and uses atomic RPC delta 1', async () => {
-    const lexicardInsert = vi.fn().mockResolvedValue({ error: null })
-    const xpInsert = vi.fn().mockResolvedValue({ error: null })
-    const goalUpsert = vi.fn().mockResolvedValue({ error: null })
-
-    mockSupabase.from.mockImplementation((table: string) => {
-      if (table === 'lexicard_reviews') return { insert: lexicardInsert }
-      if (table === 'xp_events') return { insert: xpInsert }
-      if (table === 'goal_completions') return { upsert: goalUpsert }
-      throw new Error(`Unexpected table: ${table}`)
-    })
-
-    mockSupabase.rpc.mockResolvedValue({
-      data: {
-        correct_reviews: 4,
-        review_goal_completed: false,
-      },
-      error: null,
-    })
+  it('registra una respuesta correcta mediante el evento servidor autoritativo', async () => {
+    mockSupabase.rpc.mockResolvedValue({ data: [], error: null })
 
     await recordReviewEvent({
       previousCard: { id: 'card-1', interval: 1, easeFactor: 2.5, importance: 'frequent' } as any,
@@ -69,37 +52,16 @@ describe('reviewTracking service', () => {
       knew: true,
     })
 
-    expect(mockSupabase.rpc).toHaveBeenCalledWith('bump_daily_review_metrics', {
-      p_day: '2026-05-21',
-      p_correct_delta: 1,
-      p_xp_delta: 10,
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('record_review_event', {
+      p_lexicard_id: 'card-1',
+      p_knew: true,
+      p_response_time_ms: null,
     })
-    expect(goalUpsert).toHaveBeenCalledWith(
-      expect.objectContaining({ progress_value: 4, completed: false, goal_type: 'review_goal' }),
-      { onConflict: 'user_id,day,goal_type' },
-    )
     expect(evaluateAndUnlockAchievementsMock).toHaveBeenCalledWith('user-1')
   })
 
-  it('records wrong review and uses atomic RPC delta 0', async () => {
-    const lexicardInsert = vi.fn().mockResolvedValue({ error: null })
-    const xpInsert = vi.fn().mockResolvedValue({ error: null })
-    const goalUpsert = vi.fn().mockResolvedValue({ error: null })
-
-    mockSupabase.from.mockImplementation((table: string) => {
-      if (table === 'lexicard_reviews') return { insert: lexicardInsert }
-      if (table === 'xp_events') return { insert: xpInsert }
-      if (table === 'goal_completions') return { upsert: goalUpsert }
-      throw new Error(`Unexpected table: ${table}`)
-    })
-
-    mockSupabase.rpc.mockResolvedValue({
-      data: {
-        correct_reviews: 9,
-        review_goal_completed: false,
-      },
-      error: null,
-    })
+  it('registra una respuesta incorrecta sin enviar días ni deltas del cliente', async () => {
+    mockSupabase.rpc.mockResolvedValue({ data: [], error: null })
 
     await recordReviewEvent({
       previousCard: { id: 'card-2', interval: 1, easeFactor: 2.5, importance: 'rare' } as any,
@@ -107,11 +69,11 @@ describe('reviewTracking service', () => {
       knew: false,
     })
 
-    expect(mockSupabase.rpc).toHaveBeenCalledWith('bump_daily_review_metrics', {
-      p_day: '2026-05-21',
-      p_correct_delta: 0,
-      p_xp_delta: 2,
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('record_review_event', {
+      p_lexicard_id: 'card-2',
+      p_knew: false,
+      p_response_time_ms: null,
     })
-    expect(xpInsert).toHaveBeenCalledWith(expect.objectContaining({ source: 'review_incorrect', points: 2 }))
+    expect(evaluateAndUnlockAchievementsMock).toHaveBeenCalledWith('user-1')
   })
 })

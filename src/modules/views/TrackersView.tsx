@@ -1,9 +1,9 @@
+import { t, uiLocale } from '@/i18n'
 import { useEffect, useMemo, useState } from 'react'
-import { PlusIcon, SearchIcon, Trash2Icon, TrendingUpIcon } from 'lucide-react'
+import { CalendarIcon, LineChartIcon, PlusIcon, Trash2Icon } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -19,7 +19,7 @@ import {
   listImprovementTrackers,
 } from '../services/trackers'
 import type { ImprovementTracker } from '../types'
-import { ListLoading } from '@/components/ui/loading-state'
+import { EmptyState, GamePage, IconTile, PageTitle, RowGroup, SectionLabel } from '../game/ui'
 
 type TrackersViewProps = {
   targetLang: string
@@ -35,15 +35,15 @@ type TrendPoint = {
 }
 
 const TREND_COLORS = {
-  pronunciation: '#16a34a',
-  fluency: '#2563eb',
-  improvisation: '#f97316',
+  pronunciation: 'var(--ica-ok)',
+  fluency: 'var(--ica-i)',
+  improvisation: 'var(--ica-fire)',
 } as const
 
 function monthLabelShort(value: string): string {
   const date = new Date(`${value}T00:00:00Z`)
   if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleDateString('es-ES', {
+  return date.toLocaleDateString(uiLocale(), {
     month: 'short',
     year: '2-digit',
     timeZone: 'UTC',
@@ -86,7 +86,7 @@ export function TrackersView({ targetLang, nativeLang }: TrackersViewProps) {
         const data = await listImprovementTrackers(targetLang, nativeLang)
         if (mounted) setTrackers(data)
       } catch {
-        if (mounted) setError('No pudimos cargar tu histórico de trackers.')
+        if (mounted) setError(t('No pudimos cargar tu histórico de trackers.'))
       } finally {
         if (mounted) setIsLoading(false)
       }
@@ -132,186 +132,225 @@ export function TrackersView({ targetLang, nativeLang }: TrackersViewProps) {
       setTrackers((prev) => prev.filter((entry) => entry.id !== trackerToDelete.id))
       setTrackerToDelete(null)
     } catch {
-      setError('No pudimos eliminar el tracker. Inténtalo de nuevo.')
+      setError(t('No pudimos eliminar el tracker. Inténtalo de nuevo.'))
     } finally {
       setDeletingTrackerId(null)
     }
   }
 
+  const sortedDesc = trackers.slice().sort((a, b) => b.trackerMonth.localeCompare(a.trackerMonth))
+  const latest = sortedDesc[0] ?? null
+  const previous = sortedDesc[1] ?? null
+  const skills: Array<{ key: SkillKey; label: string; color: string }> = [
+    { key: 'pronunciationPct', label: t('Pronunciación'), color: TREND_COLORS.pronunciation },
+    { key: 'fluencyPct', label: t('Fluidez'), color: TREND_COLORS.fluency },
+    { key: 'improvisationPct', label: t('Improvisación'), color: TREND_COLORS.improvisation },
+  ]
+
   return (
-    <section className='mx-auto w-full max-w-5xl flex-1 p-4 pb-24 lg:pb-4'>
-      <div className='mb-6 flex flex-wrap items-end justify-between gap-4'>
-        <div>
-          <h2 className='font-serif text-3xl font-bold'>Trackers de mejora</h2>
-          <p className='text-sm text-muted-foreground'>
-            Revisa tu progreso mensual en pronunciación, fluidez e improvisación.
-          </p>
-        </div>
-        <Button asChild>
-          <Link to={DASHBOARD_ROUTES.trackersNew}>
-            <PlusIcon data-icon='inline-start' />
-            Nuevo tracker
-          </Link>
-        </Button>
-      </div>
+    <GamePage wide className='gap-6 lg:max-w-4xl'>
+      <PageTitle
+        icon={
+          <IconTile tone='i' size={48} solid>
+            <LineChartIcon className='size-6' strokeWidth={2.6} aria-hidden='true' />
+          </IconTile>
+        }
+        subtitle={t('Tu pronunciación, fluidez e improvisación, mes a mes.')}
+        right={
+          <Button asChild variant='i' className='rounded-2xl font-extrabold'>
+            <Link to={DASHBOARD_ROUTES.trackersNew}>
+              <PlusIcon className='size-4' strokeWidth={3} aria-hidden='true' />
+              <span className='hidden sm:inline'>{t('Nuevo tracker')}</span>
+              <span className='sm:hidden'>{t('Nuevo')}</span>
+            </Link>
+          </Button>
+        }
+      >
+        {t('Trackers')}
+      </PageTitle>
 
-      {isLoading && <ListLoading label='Cargando trackers...' rows={3} />}
-      {error && <p className='text-sm text-destructive'>{error}</p>}
+      {isLoading ? <div className='h-40 animate-pulse rounded-3xl bg-muted' aria-hidden='true' /> : null}
+      {error ? (
+        <p className='m-0 rounded-2xl px-3 py-2 text-sm font-bold' style={{ background: 'var(--ica-bad-soft)', color: 'var(--ica-bad-ink)' }}>
+          {error}
+        </p>
+      ) : null}
 
-      {!isLoading && !error && trackers.length === 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Aun no tienes trackers</CardTitle>
-            <CardDescription>
-              Crea el primero para empezar a registrar tu evolución mensual.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button asChild>
+      {!isLoading && !error && trackers.length === 0 ? (
+        <EmptyState
+          icon={
+            <IconTile tone='i' size={72}>
+              <LineChartIcon className='size-9' strokeWidth={2.4} aria-hidden='true' />
+            </IconTile>
+          }
+          title={t('Aún no tienes trackers')}
+          text={t('Crea el primero para ver cómo mejoras cada mes.')}
+          action={
+            <Button asChild variant='i' size='xl'>
               <Link to={DASHBOARD_ROUTES.trackersNew}>
-                <PlusIcon data-icon='inline-start' />
-                Crear tracker
+                <PlusIcon className='size-5' strokeWidth={3} aria-hidden='true' />
+                {t('Crear mi primer tracker')}
               </Link>
             </Button>
-          </CardContent>
-        </Card>
-      )}
+          }
+        />
+      ) : null}
 
-      {!isLoading && trackers.length > 0 && (
-        <div className='flex flex-col gap-4'>
-          <Card>
-            <CardHeader>
-              <CardTitle>Histórico mensual</CardTitle>
-              <CardDescription>
-                Cada ítem te permite abrir, editar o eliminar el tracker mensual.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className='flex max-h-100 flex-col gap-3 overflow-y-auto'>
-              {trackers.map((tracker) => (
-                <div
-                  key={tracker.id}
-                  className='flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-3'
-                >
-                  <div>
-                    <p className='font-medium capitalize'>{getTrackerMonthLabel(tracker.trackerMonth)}</p>
-                    <p className='text-sm text-muted-foreground'>
-                      Pronunciación {tracker.pronunciationPct.toFixed(1)}% · Fluidez{' '}
-                      {tracker.fluencyPct.toFixed(1)}% · Improvisación{' '}
-                      {tracker.improvisationPct.toFixed(1)}%
-                    </p>
-                  </div>
-
-                  <div className='flex items-center gap-2'>
-                    <Button type='button' variant='outline' size='icon' asChild>
-                      <Link
-                        to={`${DASHBOARD_ROUTES.trackers}/${tracker.id}`}
-                        aria-label='Ver o editar tracker'
+      {!isLoading && latest ? (
+        <>
+          {/* El último mes, en grande */}
+          <Link to={`${DASHBOARD_ROUTES.trackers}/${latest.id}`} className='ica-panel ica-press block px-4 py-5'>
+            <div className='mb-4 flex items-center justify-between gap-2'>
+              <span className='ica-label'>{t('Tu último mes')}</span>
+              <span className='text-sm font-extrabold text-muted-foreground'>
+                {getTrackerMonthLabel(latest.trackerMonth)}
+              </span>
+            </div>
+            <div className='grid grid-cols-3 gap-2'>
+              {skills.map((skill) => {
+                const value = latest[skill.key]
+                const delta = previous ? value - previous[skill.key] : null
+                return (
+                  <div key={skill.key} className='flex flex-col items-center gap-1.5 text-center'>
+                    <SkillRing value={value} color={skill.color} />
+                    <span className='text-xs font-extrabold sm:text-sm'>{skill.label}</span>
+                    {delta !== null && Math.abs(delta) >= 0.05 ? (
+                      <span
+                        className='inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-black tabular-nums'
+                        style={
+                          delta > 0
+                            ? { background: 'var(--ica-ok-soft)', color: 'var(--ica-ok-ink)' }
+                            : { background: 'var(--ica-bad-soft)', color: 'var(--ica-bad-ink)' }
+                        }
                       >
-                        <SearchIcon />
-                      </Link>
-                    </Button>
-                    <Button
-                      type='button'
-                      variant='outline'
-                      size='icon'
-                      aria-label='Eliminar tracker'
-                      disabled={deletingTrackerId === tracker.id}
-                      onClick={() => setTrackerToDelete(tracker)}
-                    >
-                      <Trash2Icon />
-                    </Button>
+                        {delta > 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}
+                      </span>
+                    ) : null}
                   </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+                )
+              })}
+            </div>
+          </Link>
 
-          {trackers.length >= 2 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className='flex items-center gap-2'>
-                  <TrendingUpIcon />
-                  Evolución en el tiempo
-                </CardTitle>
-                <CardDescription>
-                  Incluye todos los meses intermedios, incluso los que aún no tienen tracker.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className='flex flex-col gap-3'>
-                <div className='h-80 w-full'>
+          {/* Evolución */}
+          {trackers.length >= 2 ? (
+            <div>
+              <SectionLabel>{t('Evolución')}</SectionLabel>
+              <div className='ica-panel px-2 pt-4 pb-3'>
+                <div className='h-64 w-full sm:h-72'>
                   <ResponsiveContainer width='100%' height='100%'>
-                    <LineChart data={trendData} margin={{ top: 10, right: 20, left: 8, bottom: 8 }}>
-                      <XAxis dataKey='monthLabel' />
-                      <YAxis domain={[0, 100]} />
-                      <Tooltip formatter={(value) => `${Number(value).toFixed(1)}%`} />
-                      <Line
-                        type='monotone'
-                        dataKey='pronunciation'
-                        name='Pronunciación'
-                        stroke={TREND_COLORS.pronunciation}
-                        strokeWidth={2.25}
-                        dot={{ r: 3 }}
-                        connectNulls
+                    <LineChart data={trendData} margin={{ top: 8, right: 16, left: -12, bottom: 0 }}>
+                      <CartesianGrid vertical={false} stroke='var(--border)' strokeDasharray='4 6' />
+                      <XAxis
+                        dataKey='monthLabel'
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: 'var(--muted-foreground)', fontSize: 12, fontWeight: 700 }}
                       />
-                      <Line
-                        type='monotone'
-                        dataKey='fluency'
-                        name='Fluidez'
-                        stroke={TREND_COLORS.fluency}
-                        strokeWidth={2.25}
-                        dot={{ r: 3 }}
-                        connectNulls
+                      <YAxis
+                        domain={[0, 100]}
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: 'var(--muted-foreground)', fontSize: 12, fontWeight: 700 }}
                       />
-                      <Line
-                        type='monotone'
-                        dataKey='improvisation'
-                        name='Improvisación'
-                        stroke={TREND_COLORS.improvisation}
-                        strokeWidth={2.25}
-                        dot={{ r: 3 }}
-                        connectNulls
+                      <Tooltip
+                        formatter={(value) => `${Number(value).toFixed(1)}%`}
+                        contentStyle={{
+                          borderRadius: 16,
+                          border: '2px solid var(--border)',
+                          background: 'var(--popover)',
+                          fontWeight: 700,
+                        }}
                       />
+                      {skills.map((skill, index) => (
+                        <Line
+                          key={skill.key}
+                          type='monotone'
+                          dataKey={['pronunciation', 'fluency', 'improvisation'][index]}
+                          name={skill.label}
+                          stroke={skill.color}
+                          strokeWidth={3.5}
+                          dot={{ r: 4, strokeWidth: 0, fill: skill.color }}
+                          activeDot={{ r: 6 }}
+                          connectNulls
+                        />
+                      ))}
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-
-                <div className='flex flex-wrap items-center gap-4 text-sm'>
-                  <div className='flex items-center gap-2'>
-                    <span
-                      className='inline-block size-3 rounded-full'
-                      style={{ backgroundColor: TREND_COLORS.pronunciation }}
-                    />
-                    <span>Pronunciación</span>
-                  </div>
-                  <div className='flex items-center gap-2'>
-                    <span
-                      className='inline-block size-3 rounded-full'
-                      style={{ backgroundColor: TREND_COLORS.fluency }}
-                    />
-                    <span>Fluidez</span>
-                  </div>
-                  <div className='flex items-center gap-2'>
-                    <span
-                      className='inline-block size-3 rounded-full'
-                      style={{ backgroundColor: TREND_COLORS.improvisation }}
-                    />
-                    <span>Improvisación</span>
-                  </div>
+                <div className='mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs font-extrabold'>
+                  {skills.map((skill) => (
+                    <span key={skill.key} className='flex items-center gap-1.5'>
+                      <span className='inline-block size-3 rounded-full' style={{ background: skill.color }} />
+                      {skill.label}
+                    </span>
+                  ))}
                 </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
+              </div>
+            </div>
+          ) : null}
+
+          {/* Todos los meses */}
+          <div>
+            <SectionLabel>{t('Todos los meses')}</SectionLabel>
+            <RowGroup>
+              {sortedDesc.map((tracker) => (
+                <div key={tracker.id} className='flex items-center gap-2 py-3'>
+                  <Link
+                    to={`${DASHBOARD_ROUTES.trackers}/${tracker.id}`}
+                    className='flex min-w-0 flex-1 items-center gap-3 transition-opacity active:opacity-70'
+                    aria-label={t('Ver o editar tracker')}
+                  >
+                    <IconTile tone='i' size={44}>
+                      <CalendarIcon className='size-5' strokeWidth={2.6} aria-hidden='true' />
+                    </IconTile>
+                    <span className='min-w-0 flex-1'>
+                      <span className='block leading-tight font-extrabold'>
+                        {getTrackerMonthLabel(tracker.trackerMonth)}
+                      </span>
+                      <span className='mt-1.5 flex gap-1.5'>
+                        {skills.map((skill) => (
+                          <span key={skill.key} className='flex min-w-0 flex-1 flex-col gap-0.5'>
+                            <span className='h-2 overflow-hidden rounded-full bg-muted'>
+                              <span
+                                className='block h-full rounded-full'
+                                style={{ width: `${Math.max(3, tracker[skill.key])}%`, background: skill.color }}
+                              />
+                            </span>
+                            <span className='text-[10px] font-extrabold text-muted-foreground tabular-nums'>
+                              {Math.round(tracker[skill.key])}%
+                            </span>
+                          </span>
+                        ))}
+                      </span>
+                    </span>
+                  </Link>
+                  <button
+                    type='button'
+                    aria-label={t('Eliminar tracker')}
+                    disabled={deletingTrackerId === tracker.id}
+                    onClick={() => setTrackerToDelete(tracker)}
+                    className='flex size-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-muted hover:text-[var(--ica-bad-ink)] disabled:opacity-50'
+                  >
+                    <Trash2Icon className='size-4.5' strokeWidth={2.4} />
+                  </button>
+                </div>
+              ))}
+            </RowGroup>
+          </div>
+        </>
+      ) : null}
 
       <Dialog open={trackerToDelete !== null} onOpenChange={(open) => !open && setTrackerToDelete(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Eliminar tracker mensual</DialogTitle>
+            <DialogTitle>{t('Eliminar tracker mensual')}</DialogTitle>
             <DialogDescription>
               {trackerToDelete
-                ? `Se eliminará el tracker de ${getTrackerMonthLabel(trackerToDelete.trackerMonth)}. Esta acción no se puede deshacer.`
-                : 'Esta acción no se puede deshacer.'}
+                ? t('Se eliminará el tracker de {month}. Esta acción no se puede deshacer.', {
+                    month: getTrackerMonthLabel(trackerToDelete.trackerMonth),
+                  })
+                : t('Esta acción no se puede deshacer.')}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -321,7 +360,7 @@ export function TrackersView({ targetLang, nativeLang }: TrackersViewProps) {
               onClick={() => setTrackerToDelete(null)}
               disabled={Boolean(deletingTrackerId)}
             >
-              Cancelar
+              {t('Cancelar')}
             </Button>
             <Button
               type='button'
@@ -329,11 +368,44 @@ export function TrackersView({ targetLang, nativeLang }: TrackersViewProps) {
               onClick={() => void handleDelete()}
               disabled={Boolean(deletingTrackerId)}
             >
-              {deletingTrackerId ? 'Eliminando...' : 'Eliminar'}
+              {deletingTrackerId ? t('Eliminando...') : t('Eliminar')}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section>
+    </GamePage>
+  )
+}
+
+type SkillKey = 'pronunciationPct' | 'fluencyPct' | 'improvisationPct'
+
+/** Anillo de progreso con el porcentaje en el centro. */
+function SkillRing({ value, color }: { value: number; color: string }) {
+  const size = 84
+  const stroke = 9
+  const r = (size - stroke) / 2
+  const c = 2 * Math.PI * r
+  const pct = Math.max(0, Math.min(100, value))
+  return (
+    <span className='relative inline-flex' style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden='true'>
+        <circle cx={size / 2} cy={size / 2} r={r} fill='none' stroke='var(--muted)' strokeWidth={stroke} />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill='none'
+          stroke={color}
+          strokeWidth={stroke}
+          strokeLinecap='round'
+          strokeDasharray={`${(pct / 100) * c} ${c}`}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </svg>
+      <span className='absolute inset-0 flex items-center justify-center text-lg font-black tabular-nums'>
+        {Math.round(pct)}
+        <span className='text-xs font-extrabold text-muted-foreground'>%</span>
+      </span>
+    </span>
   )
 }

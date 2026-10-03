@@ -223,7 +223,7 @@ export function ManageCalendarIcademyView() {
 
     try {
       const [entryRows, teacherRows] = await Promise.all([
-        fetchCalendarIcademyEntries(),
+        fetchCalendarIcademyEntries({ includeRetired: true }),
         fetchIcademyTeachers(),
       ])
       setEntries(entryRows)
@@ -337,7 +337,7 @@ export function ManageCalendarIcademyView() {
     )
     const teacherLines =
       teacherRows.length === 0
-        ? '- (Sin profesores cargados todavia. Cargalos antes de pedir el JSON.)'
+        ? '- (Sin profesores cargados todavía. Cárgalos antes de pedir el JSON.)'
         : teacherRows
             .map(
               (teacher) =>
@@ -392,7 +392,7 @@ export function ManageCalendarIcademyView() {
     setIsCopyingPrompt(true)
     try {
       if (!navigator?.clipboard?.writeText) {
-        throw new Error('Este navegador no soporta copiado automatico.')
+        throw new Error('Este navegador no soporta copiado automático.')
       }
       await navigator.clipboard.writeText(bulkPrompt)
       toast.success('Prompt copiada al portapapeles.')
@@ -569,6 +569,7 @@ export function ManageCalendarIcademyView() {
                     {catalogOptions.map((option) => (
                       <SelectItem key={option.classKey} value={option.classKey}>
                         {option.flag} {option.className}
+                        {option.retired ? ' (oculta a los alumnos)' : ''}
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -732,7 +733,7 @@ export function ManageCalendarIcademyView() {
                   setBulkModalError(null)
                   setBulkJsonInput(event.target.value)
                 }}
-                placeholder='Pega aqui el JSON masivo'
+                placeholder='Pega aquí el JSON masivo'
                 rows={14}
                 className='overflow-y-auto max-h-56'
               />

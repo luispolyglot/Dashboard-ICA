@@ -17,6 +17,7 @@ import {
   CoachingFocusExerciseRunner,
   type CoachingFocusExerciseResult,
 } from "./CoachingFocusExerciseRunner";
+import { t } from "@/i18n";
 
 type CoachingV2ExerciseViewProps = {
   sessionId: string;
@@ -28,10 +29,10 @@ type CoachingV2ExerciseViewProps = {
 function getExerciseStatusLabel(
   status: CoachingV2FocusExercise["status"],
 ): string {
-  if (status === "ready") return "Listo";
-  if (status === "generating") return "Generando";
-  if (status === "error") return "Error";
-  return "Pendiente";
+  if (status === "ready") return t("Listo");
+  if (status === "generating") return t("Generando");
+  if (status === "error") return t("Error");
+  return t("Pendiente");
 }
 
 export function CoachingV2ExerciseView({
@@ -53,7 +54,7 @@ export function CoachingV2ExerciseView({
         (item) => item.id === sessionId && item.programVersion === "v2",
       );
       if (!allowed) {
-        setError("No tienes acceso a este ejercicio.");
+        setError(t("No tienes acceso a este ejercicio."));
         setBoard(null);
         return;
       }
@@ -67,7 +68,7 @@ export function CoachingV2ExerciseView({
       setError(
         err instanceof Error
           ? err.message
-          : "No se pudo cargar el ejercicio del foco.",
+          : t("No se pudo cargar el ejercicio del foco."),
       );
     } finally {
       setLoading(false);
@@ -117,8 +118,8 @@ export function CoachingV2ExerciseView({
       });
       invalidateHomeCoachingCache();
       return saved.phaseTrainedUpdated
-        ? "¡Superado! El foco pasa a Entrenado y tu coach ya ve tus respuestas."
-        : "Entregado. Tu coach ya ve tus respuestas.";
+        ? t("¡Superado! El foco pasa a Entrenado y tu coach ya ve tus respuestas.")
+        : t("Entregado. Tu coach ya ve tus respuestas.");
     },
     [focusId, periodNumber, sessionId],
   );
@@ -127,7 +128,7 @@ export function CoachingV2ExerciseView({
   if (loading) {
     return (
       <section className="mx-auto w-full max-w-4xl flex-1 overflow-y-auto px-5 py-8">
-        <p className="text-sm text-muted-foreground">Cargando ejercicio...</p>
+        <p className="text-sm text-muted-foreground">{t("Cargando ejercicio...")}</p>
       </section>
     );
   }
@@ -136,16 +137,16 @@ export function CoachingV2ExerciseView({
     <section className="mx-auto w-full max-w-4xl flex-1 overflow-y-auto px-5 py-8">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="mb-1 font-serif text-3xl font-bold">
-            Ejercicio de foco
+          <h2 className="mb-1 font-display tracking-tight text-3xl font-extrabold">
+            {t("Ejercicio de foco")}
           </h2>
           <p className="text-sm text-muted-foreground">
-            Fase Entrenado: tres bloques, unos cinco minutos.
+            {t("Fase Entrenado: tres bloques, unos cinco minutos.")}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button asChild variant="outline" type="button">
-            <Link to={getCoachingPersonalizedSessionRoute(sessionId)}>Volver</Link>
+            <Link to={getCoachingPersonalizedSessionRoute(sessionId)}>{t("Volver")}</Link>
           </Button>
           <Button
             type="button"
@@ -153,7 +154,7 @@ export function CoachingV2ExerciseView({
             onClick={() => void loadData()}
           >
             <RefreshCwIcon className="h-4 w-4" />
-            Recargar
+            {t("Recargar")}
           </Button>
         </div>
       </div>
@@ -162,44 +163,42 @@ export function CoachingV2ExerciseView({
         <p className="text-sm text-destructive">{error}</p>
       ) : !focus ? (
         <p className="text-sm text-muted-foreground">
-          No se encontro el foco solicitado.
+          {t("No se encontro el foco solicitado.")}
         </p>
       ) : !exercise ? (
         <p className="text-sm text-muted-foreground">
-          No hay ejercicio asociado a este foco.
+          {t("No hay ejercicio asociado a este foco.")}
         </p>
       ) : (
         <Card className="border-primary/20 bg-card shadow-sm">
           <CardHeader className="border-b border-primary/10">
             <CardTitle>{focus.focusTitle}</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Estado: {getExerciseStatusLabel(exercise.status)}
+              {t("Estado: {status}", { status: getExerciseStatusLabel(exercise.status) })}
             </p>
             {data && (
               <p className="text-xs text-muted-foreground">
-                {data.focoSlot} · fase {data.fase} · nivel {data.nivel}
+                {t("{slot} · fase {phase} · nivel {level}", { slot: data.focoSlot, phase: t(data.fase), level: data.nivel })}
               </p>
             )}
           </CardHeader>
           <CardContent className="space-y-4">
             {exercise.status === "error" && (
               <p className="text-sm text-destructive">
-                {exercise.error || "No se pudo generar este ejercicio."}
+                {exercise.error || t("No se pudo generar este ejercicio.")}
               </p>
             )}
 
             {(exercise.status === "pending" ||
               exercise.status === "generating") && (
               <p className="text-sm text-muted-foreground">
-                El contenido todavia se esta preparando. Esta vista se actualiza
-                automaticamente.
+                {t("El contenido todavía se está preparando. Esta vista se actualiza automáticamente.")}
               </p>
             )}
 
             {exercise.status === "ready" && !data && (
               <p className="text-sm text-destructive">
-                El ejercicio generado no tiene el formato esperado. Recarga o
-                avisa a soporte.
+                {t("El ejercicio generado no tiene el formato esperado. Recarga o avisa a soporte.")}
               </p>
             )}
 

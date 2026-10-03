@@ -413,6 +413,10 @@ export function useDashboardICA() {
   const metaTrackerProfile = config
     ? metaTrackerByScope[getMetaTrackerScopeKey(config)] ?? null
     : null
+  // También «cargando» antes de la primera petición (si no, salía un instante
+  // «Sitúa tu nivel real» aunque ya tuvieras nivel).
+  const metaTrackerPending =
+    metaTrackerLoading || Boolean(config && metaTrackerByScope[getMetaTrackerScopeKey(config)] === undefined)
 
   return {
     cards,
@@ -430,7 +434,7 @@ export function useDashboardICA() {
     dailyProgress,
     reviewSession,
     metaTrackerProfile,
-    metaTrackerLoading,
+    metaTrackerLoading: metaTrackerPending,
     metaTrackerSaving,
     handleWordAdded,
     handlePhraseGenerated,

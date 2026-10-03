@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { supabase } from '../../lib/supabase'
 import { todayKey } from '../utils'
 import { notifyCreationMetricsChanged } from './creationMetricsSync'
@@ -35,25 +36,25 @@ function monthBounds(dayKey: string): { monthStart: string; monthEnd: string } {
 
 function mapSaveError(message: string): string {
   if (message.includes('SAVE_LIMIT_REACHED')) {
-    return 'Ya usaste tus 2 CongeladICA del mes.'
+    return t('Ya usaste tus 2 CongeladICA del mes.')
   }
   if (message.includes('DAY_OUT_OF_CURRENT_MONTH')) {
-    return 'Solo puedes salvar días no completados del mes actual.'
+    return t('Solo puedes salvar días no completados del mes actual.')
   }
   if (message.includes('DAY_NOT_ELIGIBLE')) {
-    return 'Solo puedes salvar días pasados no completados.'
+    return t('Solo puedes salvar días pasados no completados.')
   }
   if (message.includes('DAY_ALREADY_COMPLETED')) {
-    return 'Ese día ya estaba completado.'
+    return t('Ese día ya estaba completado.')
   }
   if (message.includes('DAY_ALREADY_SAVED')) {
-    return 'Ese día ya fue congelado.'
+    return t('Ese día ya fue congelado.')
   }
   if (message.includes('AUTH_REQUIRED')) {
-    return 'Necesitas iniciar sesión para usar CongeladICA.'
+    return t('Necesitas iniciar sesión para usar CongeladICA.')
   }
 
-  return 'No se pudo salvar la racha ICA.'
+  return t('No se pudo salvar la racha ICA.')
 }
 
 export async function loadCreationStreakSaveState(): Promise<CreationStreakSaveState> {
@@ -83,7 +84,7 @@ export async function loadCreationStreakSaveState(): Promise<CreationStreakSaveS
     .not('creation_streak_saved_at', 'is', null)
     .order('day', { ascending: true })
 
-  if (savedError) throw new CreationStreakSaveError('No se pudo cargar días congelados.')
+  if (savedError) throw new CreationStreakSaveError(t('No se pudo cargar días congelados.'))
 
   const today = todayKey()
   const { monthStart, monthEnd } = monthBounds(today)
@@ -95,7 +96,7 @@ export async function loadCreationStreakSaveState(): Promise<CreationStreakSaveS
     .lte('day', monthEnd)
     .not('creation_streak_saved_at', 'is', null)
 
-  if (countError) throw new CreationStreakSaveError('No se pudo cargar el límite mensual de CongeladICA.')
+  if (countError) throw new CreationStreakSaveError(t('No se pudo cargar el límite mensual de CongeladICA.'))
 
   return {
     savedDays: (savedRows || []).map((row) => row.day),
@@ -110,7 +111,7 @@ export async function saveCreationStreakDay(day?: string): Promise<{
   savesLeftThisMonth: number
 }> {
   if (!supabase) {
-    throw new CreationStreakSaveError('CongeladICA no está disponible ahora.')
+    throw new CreationStreakSaveError(t('CongeladICA no está disponible ahora.'))
   }
 
   const payload = day ? { p_day: day } : {}
@@ -122,7 +123,7 @@ export async function saveCreationStreakDay(day?: string): Promise<{
 
   const row = (Array.isArray(data) ? data[0] : data) as SaveCreationStreakDayResultRow | null
   if (!row?.saved_day) {
-    throw new CreationStreakSaveError('No se pudo confirmar el día congelado.')
+    throw new CreationStreakSaveError(t('No se pudo confirmar el día congelado.'))
   }
 
   notifyCreationMetricsChanged()

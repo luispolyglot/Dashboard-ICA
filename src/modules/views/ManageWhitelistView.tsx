@@ -2,12 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import {
   FileUpIcon,
+  MailIcon,
   PlusIcon,
   RefreshCwIcon,
+  SearchIcon,
   ShieldAlertIcon,
+  ShieldCheckIcon,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { Switch } from '@/components/ui/switch'
+import { EmptyState, IconTile, PageTitle, Panel, RowGroup, StatTile } from '../game/ui'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -33,7 +38,6 @@ import {
   updateWhitelistFlags,
 } from '../services/whitelistAdmin'
 import { formatDateTime } from '../utils'
-import { ListLoading } from '@/components/ui/loading-state'
 import { useSoftLoading } from '../hooks/useSoftLoading'
 
 export function ManageWhitelistView() {
@@ -211,212 +215,191 @@ export function ManageWhitelistView() {
     }
   }
 
+  const totalCanLogin = rows.filter((row) => row.canLogin).length
+  const blocked = rows.length - totalCanLogin
+
   return (
-    <section className='mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-5 py-8'>
-      <div className='mb-6'>
-        <h2 className='mb-1 font-serif text-3xl font-bold'>
-          Gestionar whitelist
-        </h2>
-        <p className='text-sm text-muted-foreground'>
-          Panel exclusivo para SUPER ADMIN para habilitar o bloquear
-          registro/login por email.
-        </p>
+    <section className='mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 px-4 pt-2 pb-8 lg:py-8'>
+      <PageTitle
+        icon={
+          <IconTile tone='ok' size={48}>
+            <ShieldCheckIcon className='size-6' strokeWidth={2.4} />
+          </IconTile>
+        }
+        subtitle='Quién puede registrarse y entrar en la app.'
+        right={
+          <Button
+            type='button'
+            variant='outline'
+            size='icon'
+            className='rounded-2xl'
+            onClick={() => void loadRows()}
+            disabled={loading || refreshing}
+            aria-label='Recargar'
+          >
+            <RefreshCwIcon className={loading || refreshing ? 'size-5 animate-spin' : 'size-5'} strokeWidth={2.6} />
+          </Button>
+        }
+      >
+        Whitelist
+      </PageTitle>
+
+      <div className='grid grid-cols-3 gap-3'>
+        <StatTile tone='primary' value={String(rows.length)} label='emails' />
+        <StatTile tone='ok' value={String(totalCanLogin)} label='con acceso' />
+        <StatTile tone={blocked > 0 ? 'bad' : 'neutral'} value={String(blocked)} label='bloqueados' />
       </div>
 
-      <Card>
-        <CardHeader className='gap-4'>
-          <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
-            <CardTitle>Usuarios en whitelist ({rows.length})</CardTitle>
-            <div className='flex flex-wrap gap-2'>
-              <Button
+      <div className='grid grid-cols-2 gap-2'>
+        <Button type='button' size='lg' className='rounded-2xl' onClick={() => setIsCreateModalOpen(true)}>
+          <PlusIcon className='size-5' strokeWidth={2.6} />
+          Añadir email
+        </Button>
+        <Button
+          type='button'
+          size='lg'
+          variant='outline'
+          className='rounded-2xl'
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isSyncing}
+        >
+          <FileUpIcon className='size-5' strokeWidth={2.6} />
+          {isSyncing ? 'Sincronizando...' : 'Subir CSV'}
+        </Button>
+        <input ref={fileInputRef} type='file' accept='.csv,text/csv' className='hidden' onChange={handleCsvUpload} />
+      </div>
+
+      <div className='flex flex-col gap-3'>
+        <div className='relative'>
+          <SearchIcon className='pointer-events-none absolute top-1/2 left-3.5 size-[18px] -translate-y-1/2 text-muted-foreground' strokeWidth={2.4} />
+          <Input
+            id='whitelist-email-search'
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder='Buscar por email'
+            aria-label='Buscar por email'
+            className='h-12 rounded-2xl pl-10'
+          />
+        </div>
+        <div className='flex flex-wrap gap-2' role='group' aria-label='Filtrar por origen'>
+          {['all', ...sourceOptions].map((source) => {
+            const active = sourceFilter === source
+            return (
+              <button
+                key={source}
                 type='button'
-                variant='outline'
-                onClick={() => setIsCreateModalOpen(true)}
+                onClick={() => setSourceFilter(source)}
+                aria-pressed={active}
+                className={cn(
+                  'h-9 rounded-full border-2 px-3.5 text-xs font-extrabold transition-colors',
+                  active ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-muted',
+                )}
               >
-                <PlusIcon className='h-4 w-4' />
-                Nuevo manual
-              </Button>
-              <Button
-                type='button'
-                variant='outline'
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isSyncing}
-              >
-                <FileUpIcon className='h-4 w-4' />
-                {isSyncing ? 'Sincronizando...' : 'Subir CSV'}
-              </Button>
-              <Button
-                type='button'
-                variant='ghost'
-                onClick={() => void loadRows()}
-                disabled={loading || refreshing}
-              >
-                <RefreshCwIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-                Recargar
-              </Button>
-              <input
-                ref={fileInputRef}
-                type='file'
-                accept='.csv,text/csv'
-                className='hidden'
-                onChange={handleCsvUpload}
-              />
-            </div>
-          </div>
+                {source === 'all' ? 'Todos' : sourceLabel(source)}
+              </button>
+            )
+          })}
+        </div>
+      </div>
 
-          <div className='flex flex-col gap-3 md:flex-row md:items-end'>
-            <div className='w-full max-w-sm'>
-              <Label htmlFor='whitelist-email-search' className='mb-1.5 block'>
-                Buscar por email
-              </Label>
-              <Input
-                id='whitelist-email-search'
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder='usuario@email.com'
-              />
-            </div>
+      {feedback || error ? (
+        <Panel tone={error ? 'bad' : 'i'} className='text-sm font-bold'>
+          {error || feedback}
+        </Panel>
+      ) : null}
 
-            <div className='w-full max-w-[220px]'>
-              <Label htmlFor='whitelist-source-filter' className='mb-1.5 block'>
-                Filtrar por source
-              </Label>
-              <Select value={sourceFilter} onValueChange={setSourceFilter}>
-                <SelectTrigger id='whitelist-source-filter'>
-                  <SelectValue placeholder='Todos' />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value='all'>Todos</SelectItem>
-                  {sourceOptions.map((source) => (
-                    <SelectItem key={source} value={source}>
-                      {sourceLabel(source)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+      {loading && rows.length === 0 ? (
+        <div className='flex flex-col gap-2' aria-hidden='true'>
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className='h-16 animate-pulse rounded-2xl bg-muted' />
+          ))}
+        </div>
+      ) : rows.length === 0 ? (
+        <Panel>
+          <EmptyState
+            icon={
+              <IconTile tone='ok' size={56}>
+                <MailIcon className='size-7' strokeWidth={2.4} />
+              </IconTile>
+            }
+            title='No hay emails'
+            text='Prueba con otra búsqueda o añade uno nuevo.'
+          />
+        </Panel>
+      ) : (
+        <RowGroup>
+          {rows.map((row) => {
+            const canRegisterLoading = processingRow === `${row.email}:canRegister`
+            const canLoginLoading = processingRow === `${row.email}:canLogin`
+            const sourceLoading = processingRow === `${row.email}:source`
+            return (
+              <div key={row.email} className='flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:gap-3'>
+                <div className='flex min-w-0 flex-1 items-center gap-3'>
+                  <span
+                    className='flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-black uppercase'
+                    style={{
+                      background: row.canLogin ? 'var(--ica-ok-soft)' : 'var(--ica-bad-soft)',
+                      color: row.canLogin ? 'var(--ica-ok-ink)' : 'var(--ica-bad-ink)',
+                    }}
+                    aria-hidden='true'
+                  >
+                    {row.email.charAt(0)}
+                  </span>
+                  <span className='min-w-0 flex-1'>
+                    <span className='block truncate text-sm font-extrabold'>{row.email}</span>
+                    <span className='mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-muted-foreground'>
+                      <Select value={row.source} onValueChange={(value) => void handleSourceChange(row.email, value)} disabled={sourceLoading}>
+                        <SelectTrigger className='h-6 w-fit gap-1 rounded-full border-0 bg-muted px-2 text-[11px] font-extrabold'>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {sourceOptions.map((source) => (
+                            <SelectItem key={source} value={source}>
+                              {sourceLabel(source)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {formatDateTime(row.updatedAt)}
+                    </span>
+                  </span>
+                </div>
+                <div className='flex shrink-0 items-center gap-4 pl-[52px] sm:pl-0'>
+                  <label className='flex items-center gap-2 text-xs font-extrabold text-muted-foreground'>
+                    <Switch
+                      checked={row.canRegister}
+                      disabled={canRegisterLoading}
+                      onCheckedChange={(checked) => void handleToggle(row.email, 'canRegister', checked)}
+                      aria-label={`Puede registrarse: ${row.email}`}
+                    />
+                    Registro
+                  </label>
+                  <label className='flex items-center gap-2 text-xs font-extrabold text-muted-foreground'>
+                    <Switch
+                      checked={row.canLogin}
+                      disabled={canLoginLoading}
+                      onCheckedChange={(checked) => void handleToggle(row.email, 'canLogin', checked)}
+                      aria-label={`Puede entrar: ${row.email}`}
+                    />
+                    Entrar
+                  </label>
+                </div>
+              </div>
+            )
+          })}
+        </RowGroup>
+      )}
 
-          {(feedback || error) && (
-            <p
-              className={`text-sm ${error ? 'text-destructive' : 'text-muted-foreground'}`}
-            >
-              {error || feedback}
-            </p>
-          )}
-        </CardHeader>
-
-        <CardContent>
-          {loading ? (
-            <ListLoading label='Cargando whitelist...' />
-          ) : rows.length === 0 ? (
-            <p className='text-sm text-muted-foreground'>
-              No hay registros para mostrar.
-            </p>
-          ) : (
-            <div className='overflow-x-auto'>
-              <table className='w-full min-w-160 table-fixed text-left text-sm'>
-                <thead className='table w-full table-fixed'>
-                  <tr className='border-b text-muted-foreground'>
-                    <th className='w-[34%] pb-2 font-medium'>Email</th>
-                    <th className='w-[14%] pb-2 font-medium'>Source</th>
-                    <th className='w-[16%] pb-2 font-medium'>Can register</th>
-                    <th className='w-[16%] pb-2 font-medium'>Can login</th>
-                    <th className='w-[20%] pb-2 font-medium'>Updated</th>
-                  </tr>
-                </thead>
-                <tbody className='block max-h-[56dvh] overflow-y-auto'>
-                  {rows.map((row) => {
-                    const canRegisterLoading =
-                      processingRow === `${row.email}:canRegister`
-                    const canLoginLoading =
-                      processingRow === `${row.email}:canLogin`
-                    const sourceLoading =
-                      processingRow === `${row.email}:source`
-
-                    return (
-                      <tr
-                        key={row.email}
-                        className='table w-full table-fixed border-b align-middle last:border-b-0'
-                      >
-                        <td className='w-[34%] py-2 font-mono text-xs'>
-                          {row.email}
-                        </td>
-                        <td className='w-[14%] py-2'>
-                          <Select
-                            value={row.source}
-                            onValueChange={(value) =>
-                              void handleSourceChange(row.email, value)
-                            }
-                            disabled={sourceLoading}
-                          >
-                            <SelectTrigger className='h-8 w-fit min-w-[120px]'>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {sourceOptions.map((source) => (
-                                <SelectItem key={source} value={source}>
-                                  {sourceLabel(source)}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </td>
-                        <td className='w-[16%] py-2'>
-                          <label className='inline-flex items-center gap-2'>
-                            <input
-                              type='checkbox'
-                              checked={row.canRegister}
-                              disabled={canRegisterLoading}
-                              onChange={(event) =>
-                                void handleToggle(
-                                  row.email,
-                                  'canRegister',
-                                  event.target.checked,
-                                )
-                              }
-                            />
-                            <span>{row.canRegister ? 'true' : 'false'}</span>
-                          </label>
-                        </td>
-                        <td className='w-[16%] py-2'>
-                          <label className='inline-flex items-center gap-2'>
-                            <input
-                              type='checkbox'
-                              checked={row.canLogin}
-                              disabled={canLoginLoading}
-                              onChange={(event) =>
-                                void handleToggle(
-                                  row.email,
-                                  'canLogin',
-                                  event.target.checked,
-                                )
-                              }
-                            />
-                            <span>{row.canLogin ? 'true' : 'false'}</span>
-                          </label>
-                        </td>
-                        <td className='w-[20%] py-2 text-xs text-muted-foreground'>
-                          {formatDateTime(row.updatedAt)}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <Panel tone='gold' className='flex items-start gap-2 text-xs font-bold'>
+        <ShieldAlertIcon className='mt-0.5 size-4 shrink-0' strokeWidth={2.6} />
+        Lo que cambies aquí afecta al momento a quién puede registrarse y entrar.
+      </Panel>
 
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Crear usuario manual</DialogTitle>
-            <DialogDescription>
-              Añade un email a la whitelist con `can_register=true`,
-              `can_login=true` y `source=manual`.
-            </DialogDescription>
+            <DialogTitle>Añadir email</DialogTitle>
+            <DialogDescription>Podrá registrarse y entrar en la app desde ya.</DialogDescription>
           </DialogHeader>
 
           <div className='space-y-1.5'>
@@ -431,31 +414,15 @@ export function ManageWhitelistView() {
           </div>
 
           <DialogFooter>
-            <Button
-              type='button'
-              variant='outline'
-              onClick={() => setIsCreateModalOpen(false)}
-            >
+            <Button type='button' variant='outline' onClick={() => setIsCreateModalOpen(false)}>
               Cancelar
             </Button>
-            <Button
-              type='button'
-              onClick={() => void handleCreate()}
-              disabled={isCreating}
-            >
-              {isCreating ? 'Guardando...' : 'Crear usuario'}
+            <Button type='button' onClick={() => void handleCreate()} disabled={isCreating}>
+              {isCreating ? 'Guardando...' : 'Añadir'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <div className='mt-4 flex items-start gap-2 rounded-md border border-amber-200/70 bg-amber-50/60 px-3 py-2 text-xs text-amber-900'>
-        <ShieldAlertIcon className='mt-0.5 h-4 w-4 shrink-0' />
-        <p>
-          Cambios realizados aquí impactan directamente la capacidad de registro
-          e inicio de sesión.
-        </p>
-      </div>
     </section>
   )
 }

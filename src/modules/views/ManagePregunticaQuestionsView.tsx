@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { RefreshCwIcon, SaveIcon, Trash2Icon } from 'lucide-react'
+import { MessageCircleQuestionIcon, PencilIcon, RefreshCwIcon, SaveIcon, SearchIcon, Trash2Icon } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { Switch } from '@/components/ui/switch'
+import { EmptyState, IconTile, PageTitle, Panel, Pill, RowGroup, SectionLabel, StatTile } from '../game/ui'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -12,7 +14,6 @@ import {
   updatePregunticaQuestionText,
   type PregunticaAdminQuestion,
 } from '../services/pregunticaAdmin'
-import { ListLoading } from '@/components/ui/loading-state'
 import { useSoftLoading } from '../hooks/useSoftLoading'
 
 export function ManagePregunticaQuestionsView() {
@@ -145,170 +146,146 @@ export function ManagePregunticaQuestionsView() {
   }
 
   return (
-    <section className='mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-5 py-8'>
-      <div className='mb-6'>
-        <h2 className='mb-1 font-serif text-3xl font-bold'>Preguntas PreguntICA</h2>
-        <p className='text-sm text-muted-foreground'>
-          Banco en español. La traducción al idioma objetivo se almacena en caché automáticamente.
-        </p>
+    <section className='mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 px-4 pt-2 pb-8 lg:py-8'>
+      <PageTitle
+        icon={
+          <IconTile tone='c' size={48}>
+            <MessageCircleQuestionIcon className='size-6' strokeWidth={2.4} />
+          </IconTile>
+        }
+        subtitle='Banco de preguntas en español. La traducción a cada idioma se guarda sola.'
+        right={
+          <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => void load()} disabled={loading || refreshing} aria-label='Recargar'>
+            <RefreshCwIcon className={loading || refreshing ? 'size-5 animate-spin' : 'size-5'} strokeWidth={2.6} />
+          </Button>
+        }
+      >
+        Preguntas PreguntICA
+      </PageTitle>
+
+      <div className='grid grid-cols-3 gap-3'>
+        <StatTile tone='c' value={String(stats.total)} label='preguntas' />
+        <StatTile tone='ok' value={String(stats.active)} label='activas' />
+        <StatTile tone='neutral' value={String(stats.inactive)} label='inactivas' />
       </div>
 
-      <Card>
-        <CardHeader className='gap-3'>
-          <CardTitle>Carga masiva por líneas</CardTitle>
-          <p className='text-sm text-muted-foreground'>
-            Pega preguntas en español, una por línea. Cada salto de línea crea una entrada.
-          </p>
-        </CardHeader>
-        <CardContent className='space-y-3'>
+      <div>
+        <SectionLabel>Añadir preguntas</SectionLabel>
+        <Panel className='flex flex-col gap-3'>
+          <p className='m-0 text-sm font-semibold text-muted-foreground'>Pega preguntas en español, una por línea. Cada línea es una pregunta nueva.</p>
           <Textarea
             value={bulkText}
             onChange={(event) => setBulkText(event.target.value)}
-            rows={10}
-            placeholder={'Pregunta 1\nPregunta 2\nPregunta 3'}
+            rows={6}
+            className='rounded-2xl'
+            placeholder={'¿Qué hiciste el fin de semana?\n¿Cuál es tu comida favorita?'}
           />
-          <div className='flex flex-wrap items-center gap-2'>
-            <Button type='button' onClick={handleBulkImport} disabled={saving}>
-              <SaveIcon className='h-4 w-4' />
-              Guardar preguntas
-            </Button>
-            <Button
-              type='button'
-              variant='ghost'
-              onClick={() => void load()}
-              disabled={loading || refreshing}
-            >
-              <RefreshCwIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-              Recargar
-            </Button>
+          <Button type='button' size='lg' className='w-full rounded-2xl sm:w-fit' onClick={handleBulkImport} disabled={saving}>
+            <SaveIcon className='size-5' strokeWidth={2.6} />
+            Guardar preguntas
+          </Button>
+        </Panel>
+      </div>
+
+      {feedback ? (
+        <Panel tone='i' className='text-sm font-bold'>
+          {feedback}
+        </Panel>
+      ) : null}
+
+      <div>
+        <SectionLabel>Banco</SectionLabel>
+        <div className='relative mb-3'>
+          <SearchIcon className='pointer-events-none absolute top-1/2 left-3.5 size-[18px] -translate-y-1/2 text-muted-foreground' strokeWidth={2.4} />
+          <Input
+            placeholder='Buscar pregunta'
+            aria-label='Buscar pregunta'
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className='h-12 rounded-2xl pl-10'
+          />
+        </div>
+
+        {loading && rows.length === 0 ? (
+          <div className='flex flex-col gap-2' aria-hidden='true'>
+            {Array.from({ length: 4 }, (_, index) => (
+              <div key={index} className='h-20 animate-pulse rounded-2xl bg-muted' />
+            ))}
           </div>
-        </CardContent>
-      </Card>
-
-      <Card className='mt-5'>
-        <CardHeader className='gap-3'>
-          <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
-            <CardTitle>
-              Banco ({stats.total}) · Activas {stats.active} · Inactivas {stats.inactive}
-            </CardTitle>
-            <Input
-              className='max-w-sm'
-              placeholder='Buscar pregunta...'
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </div>
-        </CardHeader>
-        <CardContent className='space-y-3'>
-          {feedback && (
-            <p className='rounded-md border border-border bg-muted/40 px-3 py-2 text-sm'>
-              {feedback}
-            </p>
-          )}
-
-          {loading ? (
-            <ListLoading label='Cargando preguntas...' />
-          ) : rows.length === 0 ? (
-            <p className='text-sm text-muted-foreground'>No hay preguntas cargadas.</p>
-          ) : (
-            <div className='space-y-2'>
-              {rows.map((row) => {
-                const editing = editingId === row.id
-                return (
-                  <article key={row.id} className='rounded-lg border border-border p-3'>
-                    <div className='flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
-                      {editing ? (
-                        <Input
-                          value={editingValue}
-                          onChange={(event) => setEditingValue(event.target.value)}
-                          className='md:max-w-3xl'
-                        />
-                      ) : (
-                        <p className='text-sm font-medium'>{row.questionEs}</p>
-                      )}
-
-                      <div className='flex flex-wrap items-center gap-2'>
-                        <span className='text-xs text-muted-foreground'>
-                          Traducciones: {Object.keys(row.translations || {}).length}
-                        </span>
-                        <span className='text-xs text-muted-foreground'>
-                          Usos: {row.usageCount}
-                        </span>
-                        <span
-                          className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-                            row.canDelete
-                              ? 'border-emerald-300/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                              : 'border-rose-300/60 bg-rose-500/10 text-rose-700 dark:text-rose-300'
-                          }`}
-                        >
-                          {row.canDelete ? 'Sin uso' : 'Usada'}
-                        </span>
-
-                        <button
-                          type='button'
-                          onClick={() => void handleToggle(row, !row.isActive)}
-                          disabled={saving}
-                          className={`rounded-md px-2 py-1 text-xs font-semibold ${
-                            row.isActive
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}
-                        >
-                          {row.isActive ? 'Activa' : 'Inactiva'}
-                        </button>
-
-                        {editing ? (
-                          <>
-                            <Button size='sm' onClick={handleSaveEdit} disabled={saving}>
-                              Guardar
-                            </Button>
-                            <Button
-                              size='sm'
-                              variant='outline'
-                              onClick={() => {
-                                setEditingId(null)
-                                setEditingValue('')
-                              }}
-                              disabled={saving}
-                            >
-                              Cancelar
-                            </Button>
-                          </>
-                        ) : (
-                          <Button
-                            size='sm'
-                            variant='outline'
-                            onClick={() => {
-                              setEditingId(row.id)
-                              setEditingValue(row.questionEs)
-                            }}
-                            disabled={saving}
-                          >
-                            Editar
-                          </Button>
-                        )}
-
+        ) : rows.length === 0 ? (
+          <Panel>
+            <EmptyState title='No hay preguntas' text='Añade las primeras arriba.' />
+          </Panel>
+        ) : (
+          <RowGroup>
+            {rows.map((row) => {
+              const editing = editingId === row.id
+              return (
+                <div key={row.id} className={cn('flex flex-col gap-2 py-3', !row.isActive && 'opacity-70')}>
+                  {editing ? (
+                    <Input value={editingValue} onChange={(event) => setEditingValue(event.target.value)} className='rounded-xl' autoFocus />
+                  ) : (
+                    <p className='m-0 text-[15px] font-bold'>{row.questionEs}</p>
+                  )}
+                  <div className='flex flex-wrap items-center gap-1.5'>
+                    <Pill tone={row.canDelete ? 'ok' : 'a'}>{row.canDelete ? 'Sin usar' : `Usada ${row.usageCount} veces`}</Pill>
+                    <Pill tone='i'>{Object.keys(row.translations || {}).length} traducciones</Pill>
+                    <span className='flex-1' />
+                    <label className='flex items-center gap-2 text-xs font-extrabold text-muted-foreground'>
+                      <Switch checked={row.isActive} disabled={saving} onCheckedChange={(checked) => void handleToggle(row, checked)} aria-label='Activa' />
+                      {row.isActive ? 'Activa' : 'Inactiva'}
+                    </label>
+                    {editing ? (
+                      <>
+                        <Button size='sm' className='rounded-xl' onClick={handleSaveEdit} disabled={saving}>
+                          Guardar
+                        </Button>
                         <Button
                           size='sm'
-                          variant='outline'
-                          onClick={() => void handleDelete(row)}
-                          disabled={saving || !row.canDelete}
-                          title={row.canDelete
-                            ? 'Eliminar pregunta'
-                            : 'No se puede eliminar porque ya fue usada'}
+                          variant='ghost'
+                          className='rounded-xl'
+                          onClick={() => {
+                            setEditingId(null)
+                            setEditingValue('')
+                          }}
+                          disabled={saving}
                         >
-                          <Trash2Icon className='h-4 w-4' />
-                          Eliminar
+                          Cancelar
                         </Button>
-                      </div>
-                    </div>
-                  </article>
-                )
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                      </>
+                    ) : (
+                      <Button
+                        size='icon-sm'
+                        variant='ghost'
+                        className='rounded-xl'
+                        onClick={() => {
+                          setEditingId(row.id)
+                          setEditingValue(row.questionEs)
+                        }}
+                        disabled={saving}
+                        aria-label='Editar'
+                      >
+                        <PencilIcon className='size-4' strokeWidth={2.6} />
+                      </Button>
+                    )}
+                    <Button
+                      size='icon-sm'
+                      variant='ghost'
+                      className='rounded-xl text-[var(--ica-bad-ink)]'
+                      onClick={() => void handleDelete(row)}
+                      disabled={saving || !row.canDelete}
+                      aria-label='Eliminar'
+                      title={row.canDelete ? 'Eliminar pregunta' : 'No se puede eliminar porque ya se usó'}
+                    >
+                      <Trash2Icon className='size-4' strokeWidth={2.6} />
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </RowGroup>
+        )}
+      </div>
     </section>
   )
 }

@@ -1,77 +1,106 @@
+import { cn } from '@/lib/utils'
+import { t, tn } from '@/i18n'
 import { REVIEW_ROUND_SIZE } from '../constants'
+import { GameProgress } from '../game/ui'
 
 type ProgressBarProps = {
   correct: number
   total?: number
   answers?: Array<'correct' | 'wrong'>
+  className?: string
+  /** Solo la barra, sin el texto de encima (para la barra de arriba de la partida). */
+  hideLabel?: boolean
 }
 
+/**
+ * Progreso de la ronda de flashcards.
+ * - Con `answers` (modo clásico): una casilla gruesa por tarjeta, verde si la sabías y roja si no.
+ * - Sin `answers` (modo objetivo): barra continua hacia las correctas que faltan.
+ */
 export function ProgressBar({
   correct,
   total = REVIEW_ROUND_SIZE,
   answers,
+  className,
+  hideLabel = false,
 }: ProgressBarProps) {
   const answerList = answers ?? []
-  const pct = Math.min((correct / total) * 100, 100)
+  const safeTotal = Math.max(total, 1)
+  const pct = Math.min((correct / safeTotal) * 100, 100)
   const pending = Math.max(total - correct, 0)
   const answered = Math.min(answerList.length, total)
   const wrong = answerList.filter((answer) => answer === 'wrong').length
-  const correctLiteral = correct === 1 ? 'correcta' : 'correctas'
-  const pendingLiteral = pending === 1 ? 'Falta' : 'Faltan'
-  const tone = pct < 40 ? 'blue' : pct < 80 ? 'emerald' : 'amber'
-  const activeDotClass =
-    tone === 'blue'
-      ? 'bg-blue-400'
-      : tone === 'emerald'
-        ? 'bg-emerald-400'
-        : 'bg-amber-400'
-  const wrongDotClass = 'bg-red-500'
   const useClassicResultDots = answers !== undefined
+  const done = correct >= total
+
+  const leftText = !done
+    ? useClassicResultDots
+      ? t('{correct} aciertos · {wrong} fallos', { correct, wrong })
+      : tn(correct, '{n} / {total} correcta', '{n} / {total} correctas', { total })
+    : t('¡Objetivo cumplido!')
+  const leftToAnswer = Math.max(total - answered, 0)
+  const rightText = !done
+    ? useClassicResultDots
+      ? leftToAnswer > 0
+        ? tn(leftToAnswer, 'Falta {n}', 'Faltan {n}')
+        : t('Ronda terminada')
+      : tn(pending, 'Falta {n}', 'Faltan {n}')
+    : null
 
   return (
-    <div className='mb-5 w-full max-w-105'>
-      <div className='mb-2 flex items-center justify-between'>
-        <span className='text-sm font-semibold text-muted-foreground'>
-          {correct < total
-            ? useClassicResultDots
-              ? `${correct} aciertos · ${wrong} fallos`
-              : `${correct} / ${total} ${correctLiteral}`
-            : '¡Objetivo cumplido!'}
-        </span>
-        <span className='text-xs text-muted-foreground'>
-          {correct < total
-            ? useClassicResultDots
-              ? `${pendingLiteral} ${Math.max(total - answered, 0)}`
-              : `${pendingLiteral} ${pending}`
-            : '🎉'}
-        </span>
-      </div>
-      <div className='grid grid-cols-10 gap-1 rounded-lg bg-muted p-1'>
-        {Array.from({ length: total }, (_, i) => (
-          <div
-            key={i}
-            className={`h-2 rounded-full transition-all ${
-              useClassicResultDots
-                ? i < answered
-                  ? answerList[i] === 'wrong'
-                    ? wrongDotClass
-                    : activeDotClass
-                  : 'border border-border bg-background'
-                : i < correct
-                  ? activeDotClass
-                  : 'border border-border bg-background'
-            } ${
-              useClassicResultDots
-                ? i === answered - 1 && answered > 0
-                  ? 'scale-110'
-                  : ''
-                : i === correct - 1 && correct > 0
-                  ? 'scale-110'
-                  : ''
-            }`}
-          />
-        ))}
-      </div>
+    <div className={cn('w-full', className)}>
+      {!hideLabel ? (
+        <div className='mb-2 flex items-center justify-between gap-2'>
+          <span className='text-sm font-extrabold tabular-nums'>{leftText}</span>
+          {rightText ? (
+            <span className='text-xs font-bold text-muted-foreground tabular-nums'>{rightText}</span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {useClassicResultDots ? (
+        <div
+          className='flex w-full gap-1.5'
+          role='progressbar'
+          aria-label={t('Progreso de la ronda')}
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-valuenow={answered}
+        >
+          {Array.from({ length: total }, (_, i) => {
+            const state = i < answered ? answerList[i] : i === answered ? 'current' : 'pending'
+            const color =
+              state === 'correct'
+                ? 'var(--ica-ok)'
+                : state === 'wrong'
+                  ? 'var(--ica-bad-strong)'
+                  : state === 'current'
+                    ? 'color-mix(in oklab, var(--primary) 30%, var(--muted))'
+                    : 'var(--muted)'
+            return (
+              <span
+                key={i}
+                className={cn(
+                  'relative h-4 min-w-0 flex-1 overflow-hidden rounded-full transition-colors duration-300',
+                  i === answered - 1 && answered > 0 && 'ica-pop',
+                )}
+                style={{ background: color }}
+              >
+                {state === 'correct' || state === 'wrong' ? (
+                  <span className='absolute top-[3px] right-1.5 left-1.5 h-1 rounded-full bg-white/35' aria-hidden='true' />
+                ) : null}
+              </span>
+            )
+          })}
+        </div>
+      ) : (
+        <GameProgress
+          value={pct / 100}
+          color='var(--ica-ok)'
+          height={16}
+          label={t('{correct} de {total} correctas', { correct, total })}
+        />
+      )}
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { t, uiLocale } from '@/i18n'
 import type {
   IcaTestAnswer,
   IcaTestQuestion,
@@ -251,7 +252,7 @@ export function getCurrentIcaTestMonthDate(now = new Date()): string {
 export function getIcaTestMonthLabel(testMonth: string): string {
   const date = new Date(`${testMonth}T00:00:00`)
   if (Number.isNaN(date.getTime())) return testMonth
-  return date.toLocaleDateString('es-ES', {
+  return date.toLocaleDateString(uiLocale(), {
     month: 'long',
     year: 'numeric',
   })
@@ -515,15 +516,15 @@ export async function startIcaTestAttempt(
   input: StartIcaTestInput,
 ): Promise<IcaTestRecord> {
   if (!supabase) {
-    throw new Error('Falta configurar Supabase')
+    throw new Error(t('Falta configurar Supabase'))
   }
   if (!isValidMonthDate(input.testMonth)) {
-    throw new Error('Mes de test inválido')
+    throw new Error(t('Mes de test inválido'))
   }
 
   const userId = await getCurrentUserId()
   if (!userId) {
-    throw new Error('Necesitas iniciar sesión para guardar el test ICA.')
+    throw new Error(t('Necesitas iniciar sesión para guardar el test ICA.'))
   }
 
   const payload = {
@@ -564,7 +565,7 @@ export async function persistIcaTestAnswer(
   input: PersistIcaTestAnswerInput,
 ): Promise<IcaTestRecord> {
   if (!supabase) {
-    throw new Error('Falta configurar Supabase')
+    throw new Error(t('Falta configurar Supabase'))
   }
 
   const payload = {
@@ -597,7 +598,7 @@ export async function finalizeIcaTestAttempt(
   input: FinalizeIcaTestInput,
 ): Promise<IcaTestRecord> {
   if (!supabase) {
-    throw new Error('Falta configurar Supabase')
+    throw new Error(t('Falta configurar Supabase'))
   }
 
   const payload = {

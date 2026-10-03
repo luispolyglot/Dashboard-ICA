@@ -1,22 +1,17 @@
-import { useEffect, useId, useMemo, useState } from 'react'
-import { PinIcon, PinOffIcon } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { CalendarDaysIcon, CrownIcon, PinIcon, PinOffIcon, UsersIcon } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { cn } from '@/lib/utils'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { AppBreadcrumbs } from './AppBreadcrumbs'
-import { LeaderboardMenu } from './LeaderboardMenu'
-import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
-import { DASHBOARD_ROUTES, getManageCoachingUserRoute } from '../routes/paths'
+import { useNavigate } from 'react-router-dom'
+import { DesktopNav } from './DesktopSidebar'
+import {
+  DASHBOARD_ROUTES,
+  getManageCoachingUserRoute,
+} from '../routes/paths'
 import type { CoachingManagedUser } from '../services/coaching'
 import type { DailyProgressMap } from '../types'
-import { PendingReviewDot } from './PendingReviewDot'
-import { ChallengeAlertBadge } from './IcaChallenges/ChallengeAlertBadge'
-import {
-  challengesRouteForAlerts,
-  describeIcaChallengeAlerts,
-  useIcaChallengeAlerts,
-} from '../hooks/useIcaChallengeAlerts'
-import { Button } from '@/components/ui/button'
+import { WelcomeBrand } from '../game/WelcomeBrand'
+import { GameStatsBar } from '../game/GameStatsBar'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,12 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
-import { useTheme } from '@/theme/ThemeContext'
+import { langName, t } from '@/i18n'
 
 type HeaderProps = {
   dailyProgress: DailyProgressMap
@@ -48,9 +38,7 @@ const PINNED_STUDENTS_STORAGE_PREFIX = 'coach-pinned-students:'
 function readPinnedStudents(key: string): string[] {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(key) || '[]')
-    return Array.isArray(parsed)
-      ? parsed.filter((id) => typeof id === 'string')
-      : []
+    return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : []
   } catch {
     return []
   }
@@ -58,9 +46,7 @@ function readPinnedStudents(key: string): string[] {
 
 function usePinnedStudents(coachUserId: string | undefined) {
   const storageKey = `${PINNED_STUDENTS_STORAGE_PREFIX}${coachUserId || 'anon'}`
-  const [pinnedIds, setPinnedIds] = useState<string[]>(() =>
-    readPinnedStudents(storageKey),
-  )
+  const [pinnedIds, setPinnedIds] = useState<string[]>(() => readPinnedStudents(storageKey))
 
   useEffect(() => {
     setPinnedIds(readPinnedStudents(storageKey))
@@ -83,7 +69,41 @@ function usePinnedStudents(coachUserId: string | undefined) {
   return { pinnedIds, togglePinned }
 }
 
-/* Acceso rápido del coach (solo ordenador): un clic y estás en el tablero del alumno. */
+/**
+ * Acceso rápido del coach (solo ordenador). Al pasar el ratón por «Coaching» se despliegan los
+ * alumnos (como la racha y las ICA Coins de al lado) y un clic lleva a su tablero. También se
+ * abre con un clic o con el teclado, como cualquier menú.
+ */
+function useHoverOpen() {
+  const [open, setOpen] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clear = () => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = null
+  }
+  const later = useCallback((next: boolean, delay: number) => {
+    clear()
+    timer.current = setTimeout(() => setOpen(next), delay)
+  }, [])
+  useEffect(() => () => clear(), [])
+  return {
+    open,
+    setOpen: (next: boolean) => {
+      clear()
+      setOpen(next)
+    },
+    // Solo con ratón: en pantallas táctiles el menú se abre tocando, como siempre.
+    hoverHandlers: {
+      onPointerEnter: (event: React.PointerEvent) => {
+        if (event.pointerType === 'mouse') later(true, 90)
+      },
+      onPointerLeave: (event: React.PointerEvent) => {
+        if (event.pointerType === 'mouse') later(false, 220)
+      },
+    },
+  }
+}
+
 function CoachQuickAccess({
   students,
   hasPending,
@@ -94,6 +114,7 @@ function CoachQuickAccess({
   const navigate = useNavigate()
   const { user } = useAuth()
   const { pinnedIds, togglePinned } = usePinnedStudents(user?.id)
+  const { open, setOpen, hoverHandlers } = useHoverOpen()
 
   // Fijados primero (en el orden en que se fijaron), luego el resto como venían.
   const { pinnedStudents, otherStudents } = useMemo(() => {
@@ -109,331 +130,158 @@ function CoachQuickAccess({
   }, [pinnedIds, students])
 
   // El botón de fijar va fuera de la opción del menú: así fijar no abre al alumno.
-  const renderStudent = (student: CoachingManagedUser, isPinned: boolean) => (
-    <div key={student.id} className='group flex items-center gap-1 pr-1'>
-      <DropdownMenuItem
-        className='flex min-w-0 flex-1 items-center justify-between gap-3'
-        onSelect={() =>
-          navigate(getManageCoachingUserRoute(student.userId, student.id))
-        }
-      >
-        <span className='min-w-0 flex-1'>
-          <span className='block truncate font-medium'>
-            {student.userDisplayName}
-          </span>
-          <span className='block text-xs text-muted-foreground'>
-            {student.targetLang} · {student.level}
-          </span>
-        </span>
-        {student.hasPendingMasterNotesReview ||
-        (student.pendingMasterNotesReviewCount || 0) > 0 ? (
+  const renderStudent = (student: CoachingManagedUser, isPinned: boolean) => {
+    const pending = student.pendingMasterNotesReviewCount || (student.hasPendingMasterNotesReview ? 1 : 0)
+    return (
+      <div key={student.id} className='group flex items-center gap-1 pr-1'>
+        <DropdownMenuItem
+          className='flex min-w-0 flex-1 items-center gap-3'
+          onSelect={() => navigate(getManageCoachingUserRoute(student.userId, student.id))}
+        >
           <span
-            className='shrink-0 rounded-full bg-amber-400/20 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300'
-            title='Notas maestras pendientes de revisar'
+            className='flex size-9 shrink-0 items-center justify-center rounded-xl text-sm font-black text-white'
+            style={{ background: 'linear-gradient(135deg, #1b2450, #3a1752)' }}
+            aria-hidden='true'
           >
-            {student.pendingMasterNotesReviewCount || 1} por revisar
+            {student.userDisplayName.trim().charAt(0).toUpperCase() || '?'}
           </span>
-        ) : null}
-      </DropdownMenuItem>
-      <button
-        type='button'
-        className={cn(
-          'flex size-7 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-accent',
-          isPinned
-            ? 'text-primary'
-            : 'text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
-        )}
-        aria-label={
-          isPinned
-            ? `Desfijar a ${student.userDisplayName}`
-            : `Fijar a ${student.userDisplayName} arriba`
-        }
-        title={isPinned ? 'Desfijar' : 'Fijar arriba'}
-        onClick={() => togglePinned(student.id)}
-      >
-        {isPinned ? (
-          <PinOffIcon className='size-3.5' aria-hidden='true' />
-        ) : (
-          <PinIcon className='size-3.5' aria-hidden='true' />
-        )}
-      </button>
-    </div>
-  )
+          <span className='min-w-0 flex-1'>
+            <span className='block truncate leading-tight'>{student.userDisplayName}</span>
+            <span className='block text-xs font-semibold text-muted-foreground'>
+              {langName(student.targetLang)} · {student.level}
+            </span>
+          </span>
+          {pending > 0 ? (
+            <span
+              className='shrink-0 rounded-full px-2 py-0.5 text-[11px] font-black'
+              style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
+              aria-label={t('Notas maestras pendientes de revisar')}
+            >
+              {t('{n} por revisar', { n: pending })}
+            </span>
+          ) : null}
+        </DropdownMenuItem>
+        <button
+          type='button'
+          className={cn(
+            'flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-accent',
+            isPinned
+              ? 'text-primary'
+              : 'text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+          )}
+          aria-label={
+            isPinned
+              ? t('Desfijar a {name}', { name: student.userDisplayName })
+              : t('Fijar a {name} arriba', { name: student.userDisplayName })
+          }
+          onClick={() => togglePinned(student.id)}
+        >
+          {isPinned ? <PinOffIcon className='size-4' aria-hidden='true' /> : <PinIcon className='size-4' aria-hidden='true' />}
+        </button>
+      </div>
+    )
+  }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant='outline'
-          className='relative hidden h-9 gap-2 px-3 md:inline-flex'
-          aria-label='Acceso rápido a coaching'
+    <DropdownMenu open={open} onOpenChange={setOpen} modal={false}>
+      <DropdownMenuTrigger asChild {...hoverHandlers}>
+        <button
+          type='button'
+          // Si ya se abrió al pasar el ratón, el clic no lo cierra (se queda abierto para elegir).
+          onPointerDown={(event) => {
+            if (event.pointerType === 'mouse' && open) event.preventDefault()
+          }}
+          className='coaching-hero relative hidden h-10 items-center gap-2 rounded-2xl px-3.5 text-sm font-black text-white transition-transform active:translate-y-[2px] md:inline-flex'
+          aria-label={t('Acceso rápido a coaching')}
         >
-          <span aria-hidden='true'>🎯</span>
-          <span className='text-sm font-semibold'>Coaching</span>
-          {students.length > 0 && (
-            <span className='rounded-full bg-primary/15 px-1.5 text-xs font-semibold text-primary'>
+          <CrownIcon className='size-4' strokeWidth={2.8} style={{ color: 'var(--ica-gold)' }} aria-hidden='true' />
+          Coaching
+          {students.length > 0 ? (
+            <span className='rounded-full px-1.5 text-xs font-black' style={{ background: 'var(--ica-gold)', color: '#4a3200' }}>
               {students.length}
             </span>
-          )}
-          {hasPending && (
-            <span className='absolute -right-1 -top-1 size-2.5 rounded-full bg-amber-400 ring-2 ring-background' />
-          )}
-        </Button>
+          ) : null}
+          {hasPending ? (
+            <span className='absolute -top-1 -right-1 size-3 rounded-full ring-2 ring-background' style={{ background: 'var(--ica-gold)' }} />
+          ) : null}
+        </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align='end' className='w-80'>
-        <DropdownMenuLabel>Tus alumnos en coaching</DropdownMenuLabel>
-        {students.length === 0 ? (
-          <p className='px-2 py-1.5 text-sm text-muted-foreground'>
-            No hay coachings activos.
+      <DropdownMenuContent align='end' sideOffset={6} className='w-[22rem] p-0' {...hoverHandlers}>
+        <div className='coaching-hero m-1.5 rounded-xl px-3.5 py-3 text-white'>
+          <p className='m-0 flex items-center gap-1.5 text-[11px] font-black tracking-[0.14em] uppercase' style={{ color: 'var(--ica-gold)' }}>
+            <CrownIcon className='size-3.5' strokeWidth={2.8} aria-hidden='true' />
+            Coaching ICA
           </p>
-        ) : (
-          <div className='max-h-80 overflow-y-auto'>
-            {pinnedStudents.length > 0 && (
-              <>
-                <p className='px-2 pt-1 pb-0.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase'>
-                  📌 Fijados
-                </p>
-                {pinnedStudents.map((student) => renderStudent(student, true))}
-                {otherStudents.length > 0 && <DropdownMenuSeparator />}
-              </>
-            )}
-            {otherStudents.map((student) => renderStudent(student, false))}
+          <p className='m-0 mt-1 text-base font-black'>{t('Tus alumnos en coaching')}</p>
+        </div>
+        <div className='px-1.5 pb-1.5'>
+          {students.length === 0 ? (
+            <p className='px-3 py-2 text-sm font-semibold text-muted-foreground'>{t('No hay coachings activos.')}</p>
+          ) : (
+            <div className='max-h-80 overflow-y-auto'>
+              {pinnedStudents.length > 0 && (
+                <>
+                  <DropdownMenuLabel>
+                    <PinIcon className='mr-1 inline size-3' aria-hidden='true' />
+                    {t('Fijados')}
+                  </DropdownMenuLabel>
+                  {pinnedStudents.map((student) => renderStudent(student, true))}
+                  {otherStudents.length > 0 && <DropdownMenuSeparator />}
+                </>
+              )}
+              {otherStudents.map((student) => renderStudent(student, false))}
+            </div>
+          )}
+          <DropdownMenuSeparator />
+          <div className='grid grid-cols-2 gap-1'>
+            <DropdownMenuItem onSelect={() => navigate(DASHBOARD_ROUTES.manageCoaching)}>
+              <UsersIcon className='size-4' aria-hidden='true' />
+              {t('Todos')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => navigate(DASHBOARD_ROUTES.manageCoachingCalendar)}>
+              <CalendarDaysIcon className='size-4' aria-hidden='true' />
+              {t('Calendario')}
+            </DropdownMenuItem>
           </div>
-        )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onSelect={() => navigate(DASHBOARD_ROUTES.manageCoaching)}
-        >
-          <span aria-hidden='true'>👥</span>
-          Ver todos los alumnos
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className='mt-1 bg-sky-500/10 font-semibold text-sky-700 focus:bg-sky-500/20 focus:text-sky-800 dark:text-sky-300 dark:focus:text-sky-200'
-          onSelect={() => navigate(DASHBOARD_ROUTES.manageCoachingCalendar)}
-        >
-          <span aria-hidden='true'>📅</span>
-          Calendario de coaching
-        </DropdownMenuItem>
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   )
 }
 
-type HeaderBoltIconProps = {
-  segments: 0 | 1 | 2
-  size?: number
-}
 
-function HeaderBoltIcon({ segments, size = 28 }: HeaderBoltIconProps) {
-  const id = useId().replace(/:/g, '')
-  const clipTopId = `bolt-half-top-${id}`
-  const clipBottomId = `bolt-half-bottom-${id}`
-  const topColor = segments >= 2 ? '#EAB308' : '#1e293b'
-  const bottomColor = segments >= 1 ? '#EAB308' : '#1e293b'
 
-  const glow =
-    segments === 2
-      ? 'drop-shadow(0 0 8px #EAB308) drop-shadow(0 0 18px #EAB30890)'
-      : segments > 0
-        ? 'drop-shadow(0 0 6px #EAB30870)'
-        : 'none'
-
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        filter: glow,
-        transition: 'filter .4s',
-        scale: 1.5,
-      }}
-    >
-      <svg viewBox='0 0 24 24' width={size} height={size} aria-hidden='true'>
-        <defs>
-          <clipPath id={clipTopId}>
-            <rect x='0' y='0' width='24' height='12' />
-          </clipPath>
-          <clipPath id={clipBottomId}>
-            <rect x='0' y='12' width='24' height='12' />
-          </clipPath>
-        </defs>
-
-        <path
-          d='M13 2L4.5 13.5H11L10 22L19.5 10.5H13Z'
-          fill={topColor}
-          clipPath={`url(#${clipTopId})`}
-          style={{ transition: 'fill .4s' }}
-        />
-        <path
-          d='M13 2L4.5 13.5H11L10 22L19.5 10.5H13Z'
-          fill={bottomColor}
-          clipPath={`url(#${clipBottomId})`}
-          style={{ transition: 'fill .4s' }}
-        />
-        <path
-          d='M13 2L4.5 13.5H11L10 22L19.5 10.5H13Z'
-          fill='none'
-          stroke={segments > 0 ? '#EAB308' : '#334155'}
-          strokeWidth='1.2'
-          style={{ transition: 'stroke .4s' }}
-        />
-      </svg>
-    </div>
-  )
-}
-
+// La racha ICA y las fichas salen del contexto (GameStatsBar);
+// dailyProgress y voiceActivationsToday se siguen recibiendo por compatibilidad.
+// En ordenador, la cabecera lleva el logo, las pestañas del menú y tus monedas;
+// en el móvil, el logo y tus monedas (el menú va abajo). Al abrir la app en el móvil,
+// WelcomeBrand saluda en el idioma objetivo antes de dejar el logo en su sitio.
 export function Header({
-  dailyProgress,
-  voiceActivationsToday,
   shouldHighlightProfileButton,
   shouldHighlightCoachingProfileButton = false,
   coachStudents = null,
   boltButtonRef,
 }: HeaderProps) {
-  const navigate = useNavigate()
-  const location = useLocation()
-  const todayProgress = getTodayProgress(dailyProgress)
-  const flashDone = todayProgress.reviewCorrect >= GOAL
-  const phraseDone = todayProgress.phraseGenerated
-  const hasFiveWords = todayProgress.wordsAdded >= CREATION_WORDS_GOAL
-  const icaTopDone = hasFiveWords && phraseDone && voiceActivationsToday > 0
-  const completedSegments = (Number(flashDone) + Number(icaTopDone)) as
-    | 0
-    | 1
-    | 2
-
-  const { theme } = useTheme()
-  const challengeAlerts = useIcaChallengeAlerts()
-  const isOnChallengesRoute = location.pathname.startsWith(
-    DASHBOARD_ROUTES.challengesIca,
-  )
-  const isOnProfileRoute = location.pathname === DASHBOARD_ROUTES.profile
-  const isOnIcaTestsRoute = location.pathname.startsWith(
-    DASHBOARD_ROUTES.testsIca,
-  )
-  const isOnManageCoachingRoute = location.pathname.startsWith(
-    DASHBOARD_ROUTES.manageCoaching,
-  )
-  const hasIcaProfileAlert = shouldHighlightProfileButton && !isOnIcaTestsRoute
-  const hasCoachingProfileAlert =
-    shouldHighlightCoachingProfileButton && !isOnManageCoachingRoute
-  const shouldPulseProfileButton =
-    (hasIcaProfileAlert || hasCoachingProfileAlert) && !isOnProfileRoute
-  const profileAlertTitle = hasCoachingProfileAlert
-    ? hasIcaProfileAlert
-      ? 'Tienes novedades: test ICA y coaching pendiente de revisión.'
-      : 'Tienes notas maestras pendientes de revisión en coaching.'
-    : 'Tienes un test ICA disponible este mes.'
-
   return (
-    <header className='bg-background'>
-      <div className='container mx-auto flex h-16 items-center justify-between px-4'>
-        <div className='min-w-0 flex-1'>
-          <div className='flex flex-row items-center gap-0 w-full lg:w-auto lg:justify-start justify-between'>
-            {theme === 'light' ? (
-              <img
-                src='/logo-light.png'
-                alt='Logo de ICADEMY'
-                className='h-16 lg:h-20 w-auto'
-              />
-            ) : (
-              <img
-                src='/logo-dark.png'
-                alt='Logo de ICADEMY'
-                className='h-16 lg:h-20 w-auto'
-              />
-            )}
-            <AppBreadcrumbs />
-            <div className='w-1 block lg:hidden'></div>
-          </div>
+    <header className='bg-background md:sticky md:top-0 md:z-30 md:border-b-2 md:border-border md:bg-background/90 md:backdrop-blur'>
+      <div className='relative mx-auto flex h-16 w-full max-w-[1240px] items-center justify-between gap-3 px-4 md:h-[72px] lg:px-8'>
+        <div className='flex min-w-0 items-center gap-4 lg:flex-1'>
+          <WelcomeBrand />
         </div>
 
-        <div className='flex items-center gap-2'>
+        <DesktopNav
+          shouldHighlightProfileButton={shouldHighlightProfileButton}
+          shouldHighlightCoachingProfileButton={shouldHighlightCoachingProfileButton}
+        />
+
+        <div className='flex items-center justify-end gap-2 lg:flex-1'>
           {coachStudents ? (
             <CoachQuickAccess
               students={coachStudents}
               hasPending={shouldHighlightCoachingProfileButton}
             />
           ) : null}
-          {challengeAlerts.total > 0 && !isOnChallengesRoute && (
-            <div className='hidden md:block'>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type='button'
-                    size='icon'
-                    variant='outline'
-                    onClick={() =>
-                      navigate(challengesRouteForAlerts(challengeAlerts))
-                    }
-                    aria-label={`Desafíos ICA: ${describeIcaChallengeAlerts(challengeAlerts)}`}
-                    className='relative overflow-visible border-rose-300 shadow-[0_0_0_1px_rgba(251,113,133,0.35),0_0_18px_rgba(244,63,94,0.25)] dark:border-rose-400/50'
-                  >
-                    <span aria-hidden='true' className='text-base'>
-                      ⚔️
-                    </span>
-                    <ChallengeAlertBadge
-                      count={challengeAlerts.total}
-                      title={`Desafíos ICA: ${describeIcaChallengeAlerts(challengeAlerts)}`}
-                    />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{`Desafíos ICA: ${describeIcaChallengeAlerts(challengeAlerts)}`}</TooltipContent>
-              </Tooltip>
-            </div>
-          )}
-          <LeaderboardMenu />
-          <div className='hidden md:block'>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size='icon'
-                  variant='outline'
-                  className={
-                    shouldPulseProfileButton
-                      ? 'relative overflow-visible border-amber-300 shadow-[0_0_0_1px_rgba(252,211,77,0.35),0_0_18px_rgba(251,191,36,0.25)]'
-                      : undefined
-                  }
-                >
-                  {shouldPulseProfileButton && (
-                    <span className='pointer-events-none absolute -right-1 -top-1'>
-                      <PendingReviewDot
-                        title={profileAlertTitle}
-                        useIconSpeaker={hasCoachingProfileAlert}
-                      />
-                    </span>
-                  )}
-                  <Link
-                    to={DASHBOARD_ROUTES.profile}
-                    aria-label='Ir al perfil'
-                    title='Perfil'
-                  >
-                    <span aria-hidden='true' className='text-base'>
-                      👤
-                    </span>
-                  </Link>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Mi Perfil</TooltipContent>
-            </Tooltip>
-          </div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                ref={boltButtonRef}
-                type='button'
-                size='icon'
-                variant='outline'
-                onClick={() => navigate(DASHBOARD_ROUTES.streaks)}
-                aria-label={`Abrir mis rachas (${completedSegments}/2)`}
-                title={`Mis rachas (${completedSegments}/2)`}
-                className='transition-all duration-300 hover:scale-[1.04]'
-              >
-                <HeaderBoltIcon segments={completedSegments} size={16} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{`Objetivos de hoy: ${completedSegments}/2 · Ver mis rachas`}</TooltipContent>
-          </Tooltip>
+          <GameStatsBar ref={boltButtonRef} />
         </div>
       </div>
     </header>

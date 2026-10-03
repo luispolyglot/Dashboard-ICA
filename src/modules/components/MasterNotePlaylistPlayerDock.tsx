@@ -1,4 +1,5 @@
 import {
+  ListMusicIcon,
   PauseIcon,
   PlayIcon,
   RepeatOffIcon,
@@ -10,6 +11,10 @@ import {
   XIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { GameProgress, IconTile, tone } from '../game/ui'
+import { formatMasterNoteLabel } from '../services/masterNotes'
+import { RoundActionButton, SquareIconButton } from './MasterNoteGameUi'
+import { t } from '@/i18n'
 
 type MasterNotePlaylistPlayerDockProps = {
   open: boolean
@@ -60,128 +65,100 @@ export function MasterNotePlaylistPlayerDock({
   if (!open) return null
 
   const safeDuration = Math.max(1, durationSec)
-  const progressPercent = Math.max(
-    0,
-    Math.min(100, (progressSec / safeDuration) * 100),
-  )
+  const progressValue = Math.max(0, Math.min(1, progressSec / safeDuration))
 
+  // Reproductor fijo abajo: tarjeta blanca con canto, acentos rojos de la A.
   return (
     <div
-      className={`fixed inset-x-0 bottom-20 lg:bottom-0 z-40 lg:z-50 border-t border-white/20 bg-[radial-gradient(circle_at_20%_0%,_#334155_0%,_#111827_55%,_#020617_100%)] px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 text-white shadow-[0_-10px_40px_rgba(2,6,23,0.6)] ${extraClassname}`}
+      className={`fixed inset-x-0 bottom-20 z-40 border-t-2 border-border bg-card px-4 pt-3 pb-[calc(0.85rem+env(safe-area-inset-bottom))] text-foreground shadow-[0_-8px_30px_color-mix(in_oklab,var(--foreground)_10%,transparent)] lg:bottom-0 lg:z-50 ${extraClassname}`}
     >
-      <div className='mx-auto flex w-full max-w-5xl items-start justify-between gap-3'>
+      <div className='mx-auto flex w-full max-w-xl items-center gap-3'>
+        <IconTile tone='a' solid size={44} className='rounded-xl'>
+          <ListMusicIcon className='size-5.5' strokeWidth={2.4} />
+        </IconTile>
         <div className='min-w-0 flex-1'>
-          <p className='truncate text-sm font-semibold'>{noteName}</p>
-          <p className='truncate text-xs text-white/70'>
-            {playlistName} · {currentIndex + 1}/{totalCount}
+          <p className='m-0 truncate leading-tight font-extrabold'>{formatMasterNoteLabel(noteName)}</p>
+          <p className='m-0 mt-0.5 truncate text-xs font-semibold text-muted-foreground'>
+            {playlistName} · <span className='tabular-nums'>{currentIndex + 1}/{totalCount}</span>
           </p>
         </div>
-        <div className='flex flex-row gap-2'>
-          <Button
-            type='button'
-            size='icon'
-            variant={repeatEnabled ? 'secondary' : 'ghost'}
-            className={
-              repeatEnabled
-                ? 'text-white'
-                : 'text-white hover:bg-white/10 hover:text-white'
-            }
-            onClick={onToggleRepeat}
-            aria-label={repeatEnabled ? 'Desactivar bucle' : 'Activar bucle'}
-          >
-            {repeatEnabled ? (
-              <RepeatIcon className='size-4' />
-            ) : (
-              <RepeatOffIcon className='size-4' />
-            )}
-          </Button>
-          <Button
-            type='button'
-            size='icon'
-            variant='ghost'
-            className='text-white hover:bg-white/10 hover:text-white'
-            onClick={onClose}
-            aria-label='Cerrar reproductor'
-          >
-            <XIcon className='size-5' />
-          </Button>
-        </div>
+        <button
+          type='button'
+          onClick={onToggleRepeat}
+          aria-label={repeatEnabled ? t('Desactivar bucle') : t('Activar bucle')}
+          aria-pressed={repeatEnabled}
+          className='flex size-10 shrink-0 items-center justify-center rounded-xl border-2 transition-colors'
+          style={
+            repeatEnabled
+              ? { background: tone('a').soft, color: tone('a').ink, borderColor: 'color-mix(in oklab, var(--ica-a) 40%, transparent)' }
+              : { borderColor: 'var(--border)', color: 'var(--muted-foreground)' }
+          }
+        >
+          {repeatEnabled ? (
+            <RepeatIcon className='size-4.5' strokeWidth={2.6} />
+          ) : (
+            <RepeatOffIcon className='size-4.5' strokeWidth={2.6} />
+          )}
+        </button>
+        <Button
+          type='button'
+          size='icon'
+          variant='ghost'
+          className='shrink-0 rounded-xl text-muted-foreground'
+          onClick={onClose}
+          aria-label={t('Cerrar reproductor')}
+        >
+          <XIcon className='size-5' strokeWidth={2.6} />
+        </Button>
       </div>
 
-      <div className='mx-auto mt-3 w-full max-w-5xl'>
-        <div className='h-1.5 w-full rounded-full bg-white/20'>
-          <div
-            className='h-full rounded-full bg-white transition-all duration-200'
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
-        <div className='mt-1 flex items-center justify-between text-[11px] text-white/75'>
+      <div className='mx-auto mt-3 w-full max-w-xl'>
+        <GameProgress value={progressValue} color='var(--ica-a)' height={10} />
+        <div className='mt-1 flex items-center justify-between text-[11px] font-extrabold text-muted-foreground tabular-nums'>
           <span>{formatSeconds(progressSec)}</span>
           <span>{formatSeconds(durationSec)}</span>
         </div>
       </div>
 
-      <div className='mx-auto mt-3 flex w-full max-w-5xl items-center justify-center gap-4 lg:gap-6'>
+      <div className='mx-auto mt-1 flex w-full max-w-xl items-center justify-center gap-3 lg:gap-5'>
         <Button
           type='button'
           size='icon-lg'
           variant='ghost'
-          className='text-white hover:bg-white/10 hover:text-white'
+          className='rounded-xl'
           onClick={onPrevious}
-          aria-label='Anterior'
+          aria-label={t('Anterior')}
         >
-          <SkipBackIcon className='size-6' />
+          <SkipBackIcon className='size-6 fill-current' strokeWidth={2.2} />
         </Button>
-        <Button
-          type='button'
-          size='icon'
-          variant='ghost'
-          className='relative text-white hover:bg-white/10 hover:text-white'
-          onClick={onSeekBack10}
-          aria-label='Retroceder 10 segundos'
-        >
-          <RotateCcwIcon className='size-4' />
-          <span className='absolute -right-1 -bottom-1 text-[9px] font-bold'>
-            10
+        <SquareIconButton onClick={onSeekBack10} ariaLabel={t('Retroceder 10 segundos')}>
+          <span className='relative flex items-center justify-center'>
+            <RotateCcwIcon className='size-5' strokeWidth={2.4} />
+            <span className='absolute -right-1.5 -bottom-1.5 text-[9px] font-black'>10</span>
           </span>
-        </Button>
-        <Button
-          type='button'
-          size='icon-lg'
-          className='size-16 rounded-full bg-white text-slate-950 hover:bg-white/90'
-          onClick={onTogglePause}
-          aria-label={paused ? 'Reanudar' : 'Pausar'}
-        >
+        </SquareIconButton>
+        <RoundActionButton size={60} onClick={onTogglePause} ariaLabel={paused ? t('Reanudar') : t('Pausar')}>
           {paused ? (
-            <PlayIcon className='size-8' />
+            <PlayIcon className='ml-1 size-7 fill-current' strokeWidth={2.4} />
           ) : (
-            <PauseIcon className='size-8' />
+            <PauseIcon className='size-7 fill-current' strokeWidth={2.4} />
           )}
-        </Button>
-
-        <Button
-          type='button'
-          size='icon'
-          variant='ghost'
-          className='relative text-white hover:bg-white/10 hover:text-white'
-          onClick={onSeekForward10}
-          aria-label='Adelantar 10 segundos'
-        >
-          <RotateCwIcon className='size-4' />
-          <span className='absolute -right-1 -bottom-1 text-[9px] font-bold'>
-            10
+        </RoundActionButton>
+        <SquareIconButton onClick={onSeekForward10} ariaLabel={t('Adelantar 10 segundos')}>
+          <span className='relative flex items-center justify-center'>
+            <RotateCwIcon className='size-5' strokeWidth={2.4} />
+            <span className='absolute -right-1.5 -bottom-1.5 text-[9px] font-black'>10</span>
           </span>
-        </Button>
-
+        </SquareIconButton>
         <Button
           type='button'
           size='icon-lg'
           variant='ghost'
-          className='text-white hover:bg-white/10 hover:text-white'
+          className='rounded-xl'
           onClick={onNext}
-          aria-label='Siguiente'
+          aria-label={t('Siguiente')}
         >
-          <SkipForwardIcon className='size-6' />
+          <SkipForwardIcon className='size-6 fill-current' strokeWidth={2.2} />
         </Button>
       </div>
     </div>

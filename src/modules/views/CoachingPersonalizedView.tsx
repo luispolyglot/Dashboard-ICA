@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { RefreshCwIcon } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { ArrowRightIcon, CrownIcon, TrophyIcon } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
-import { ContentLoading } from '@/components/ui/loading-state'
 import { useSoftLoading } from '../hooks/useSoftLoading'
 import {
   completeCoachingExerciseObjective,
@@ -13,6 +11,8 @@ import {
 import { getCoachingPersonalizedSessionRoute } from '../routes/paths'
 import { CoachingProgramPreview } from './CoachingProgramPreview'
 import { CoachingV3SessionBoard } from './CoachingV3SessionBoard'
+import { t, langName } from '@/i18n'
+import { EmptyState, GamePage, IconTile, ListRow, PageTitle, RowGroup, SectionLabel } from '../game/ui'
 
 type CoachingPersonalizedViewProps = {
   targetLang?: string
@@ -38,7 +38,7 @@ export function CoachingPersonalizedView({
   targetLang,
 }: CoachingPersonalizedViewProps) {
   const navigate = useNavigate()
-  const [loading, setLoading, refreshing] = useSoftLoading(true)
+  const [loading, setLoading] = useSoftLoading(true)
   const [error, setError] = useState<string | null>(null)
   const [memberships, setMemberships] = useState<CoachingMembership[]>([])
 
@@ -52,7 +52,7 @@ export function CoachingPersonalizedView({
       const message =
         err instanceof Error
           ? err.message
-          : 'No se pudo cargar tu sección de coaching.'
+          : t('No se pudo cargar tu sección de coaching.')
       setError(message)
     } finally {
       setLoading(false)
@@ -76,112 +76,114 @@ export function CoachingPersonalizedView({
     [memberships],
   )
 
-  const renderSessionList = (rows: CoachingMembership[]) => {
-    return rows.map((membership) => (
-      <button
-        key={membership.id}
-        type='button'
-        className='w-full rounded-lg border bg-card p-4 text-left transition hover:border-primary/50 hover:bg-accent'
-        onClick={() =>
-          navigate(getCoachingPersonalizedSessionRoute(membership.id))
-        }
-      >
-        <div className='mb-2 flex items-start justify-between gap-2'>
-          <p className='font-semibold text-foreground'>
-            {membership.targetLang} - {membership.level}
-          </p>
-          <span
-            className={`mt-1 inline-block h-2.5 w-2.5 rounded-full ${membership.status === 'active' ? 'bg-primary' : 'bg-foreground/50'}`}
-            aria-hidden='true'
-          />
-        </div>
-        <p className='text-sm text-muted-foreground'>
-          Coach:{' '}
-          {(() => {
-            const mainCoach = (membership.coachDisplayName || '').trim()
-            if (!mainCoach) return 'Luis'
-            if (mainCoach.toLowerCase() === 'luis') return 'Luis'
-            return `Luis y ${mainCoach}`
-          })()}
-        </p>
-      </button>
-    ))
+  const coachLabel = (membership: CoachingMembership) => {
+    const mainCoach = (membership.coachDisplayName || '').trim()
+    if (!mainCoach || mainCoach.toLowerCase() === 'luis') return 'Luis'
+    return t('Luis y {coach}', { coach: mainCoach })
   }
 
   return (
-    <section className='mx-auto w-full max-w-5xl flex-1 overflow-y-auto px-5 py-8'>
-      <div className='mb-6 flex flex-wrap items-center justify-between gap-3'>
-        <div>
-          <h2 className='mb-1 font-serif text-3xl font-bold'>
-            Coaching Personalizado
-          </h2>
-          <p className='text-sm text-muted-foreground'>
-            Sesiones activas y finalizadas de tu coaching.
-          </p>
-        </div>
-
-        <Button
-          type='button'
-          variant='outline'
-          onClick={() => void loadData()}
-          disabled={refreshing}
-        >
-          <RefreshCwIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-          Recargar
-        </Button>
-      </div>
+    <GamePage className='gap-6 lg:max-w-3xl'>
+      <PageTitle
+        icon={
+          <IconTile tone='gold' size={52} solid>
+            <CrownIcon className='size-7' strokeWidth={2.6} aria-hidden='true' />
+          </IconTile>
+        }
+        subtitle={t('Tus 12 semanas de Coaching ICA, en un solo sitio.')}
+      >
+        {t('Tu coaching')}
+      </PageTitle>
 
       {loading ? (
-        <ContentLoading label='Cargando coaching...' cards={2} />
+        <div className='h-48 animate-pulse rounded-[32px] bg-muted' aria-hidden='true' />
       ) : error ? (
-        <p className='text-sm text-destructive'>{error}</p>
+        <p className='m-0 rounded-2xl px-3 py-2 text-sm font-bold' style={{ background: 'var(--ica-bad-soft)', color: 'var(--ica-bad-ink)' }}>
+          {error}
+        </p>
       ) : memberships.length === 0 ? (
-        <Card>
-          <CardContent className='py-6 text-sm text-muted-foreground'>
-            Todavía no tienes sesiones de coaching personalizadas.
-          </CardContent>
-        </Card>
+        <EmptyState
+          icon={
+            <IconTile tone='gold' size={72}>
+              <CrownIcon className='size-9' strokeWidth={2.4} aria-hidden='true' />
+            </IconTile>
+          }
+          title={t('Todavía no tienes coaching')}
+          text={t('Cuando empieces tu Coaching ICA, aquí verás tus clases, focos y reportes.')}
+        />
       ) : (
-        <div className='grid gap-6'>
-          <Card>
-            <CardContent className='space-y-3 py-5'>
-              <h3 className='text-lg font-semibold'>Sesiones activas</h3>
-              {activeMemberships.length === 0 ? (
-                <p className='text-sm text-muted-foreground'>
-                  No tienes sesiones activas.
-                </p>
-              ) : (
-                <div className='grid gap-3'>
-                  {renderSessionList(activeMemberships)}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        <>
+          {activeMemberships.length > 0 ? (
+            <div className='flex flex-col gap-4'>
+              {activeMemberships.map((membership) => (
+                <button
+                  key={membership.id}
+                  type='button'
+                  onClick={() => navigate(getCoachingPersonalizedSessionRoute(membership.id))}
+                  className='coaching-hero ica-press relative w-full overflow-hidden rounded-[32px] px-6 py-6 text-left text-white'
+                >
+                  <span className='coaching-hero-glow pointer-events-none absolute -top-20 -right-12 size-64 rounded-full' aria-hidden='true' />
+                  <span className='relative flex items-start justify-between gap-4'>
+                    <span className='min-w-0'>
+                      <span
+                        className='inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[11px] font-black tracking-[0.14em] uppercase'
+                        style={{ color: 'var(--ica-gold)' }}
+                      >
+                        <CrownIcon className='size-3.5' strokeWidth={2.8} aria-hidden='true' />
+                        Coaching ICA
+                      </span>
+                      <span className='mt-3 block font-display text-4xl leading-none font-black tracking-tight'>
+                        {langName(membership.targetLang)}
+                      </span>
+                      <span className='mt-3 flex flex-wrap items-center gap-2 text-sm font-bold text-white/80'>
+                        <span className='rounded-full px-2.5 py-0.5 text-xs font-black' style={{ background: 'var(--ica-gold)', color: '#4a3200' }}>
+                          {membership.level}
+                        </span>
+                        {t('Con {coach}', { coach: coachLabel(membership) })}
+                      </span>
+                    </span>
+                    <span
+                      className='flex size-12 shrink-0 items-center justify-center rounded-2xl'
+                      style={{ background: 'var(--ica-gold)', color: '#4a3200', boxShadow: '0 4px 0 var(--ica-gold-edge)' }}
+                    >
+                      <ArrowRightIcon className='size-6' strokeWidth={2.8} aria-hidden='true' />
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
 
-          <Card>
-            <CardContent className='space-y-3 py-5'>
-              <h3 className='text-lg font-semibold'>Sesiones finalizadas</h3>
-              {finalizedMemberships.length === 0 ? (
-                <p className='text-sm text-muted-foreground'>
-                  No tienes sesiones finalizadas.
-                </p>
-              ) : (
-                <div className='grid gap-3'>
-                  {renderSessionList(finalizedMemberships)}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+          {finalizedMemberships.length > 0 ? (
+            <div>
+              <SectionLabel>{t('Coachings terminados')}</SectionLabel>
+              <RowGroup>
+                {finalizedMemberships.map((membership) => (
+                  <ListRow
+                    key={membership.id}
+                    onClick={() => navigate(getCoachingPersonalizedSessionRoute(membership.id))}
+                    icon={
+                      <IconTile tone='gold' size={44}>
+                        <TrophyIcon className='size-5' strokeWidth={2.4} aria-hidden='true' />
+                      </IconTile>
+                    }
+                    title={`${langName(membership.targetLang)} · ${membership.level}`}
+                    text={t('Con {coach}', { coach: coachLabel(membership) })}
+                  />
+                ))}
+              </RowGroup>
+            </div>
+          ) : null}
+        </>
       )}
-    </section>
+    </GamePage>
   )
 }
 
 export function CoachingPersonalizedSessionView({
   sessionId,
 }: CoachingPersonalizedSessionViewProps) {
-  const [loading, setLoading, refreshing] = useSoftLoading(true, sessionId)
+  const [loading, setLoading] = useSoftLoading(true, sessionId)
   const [error, setError] = useState<string | null>(null)
   const [memberships, setMemberships] = useState<CoachingMembership[]>([])
   const [completingExerciseWeek, setCompletingExerciseWeek] = useState<
@@ -198,7 +200,7 @@ export function CoachingPersonalizedSessionView({
       const message =
         err instanceof Error
           ? err.message
-          : 'No se pudo cargar tu sección de coaching.'
+          : t('No se pudo cargar tu sección de coaching.')
       setError(message)
     } finally {
       setLoading(false)
@@ -258,7 +260,7 @@ export function CoachingPersonalizedSessionView({
         setError(
           err instanceof Error
             ? err.message
-            : 'No se pudo marcar el ejercicio como completado.',
+            : t('No se pudo marcar el ejercicio como completado.'),
         )
       })
       .finally(() => {
@@ -269,34 +271,15 @@ export function CoachingPersonalizedSessionView({
   }
 
   return (
-    <section className='mx-auto w-full max-w-5xl flex-1 overflow-y-auto px-5 py-8'>
-      <div className='mb-6 flex flex-wrap items-center justify-between gap-3'>
-        <div>
-          <h2 className='mb-1 font-serif text-3xl font-bold'>Detalle de sesión</h2>
-          <p className='text-sm text-muted-foreground'>
-            Visualiza el contenido completo de esta sesión.
-          </p>
-        </div>
-
-        <Button
-          type='button'
-          variant='outline'
-          onClick={() => void loadData()}
-          disabled={refreshing}
-        >
-          <RefreshCwIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-          Recargar
-        </Button>
-      </div>
-
+    <section className='mx-auto w-full max-w-6xl flex-1 px-4 pt-2 pb-8 lg:px-8'>
       {loading ? (
-        <ContentLoading label='Cargando sesión...' />
+        <div className='h-64 animate-pulse rounded-[32px] bg-muted' aria-hidden='true' />
       ) : error ? (
         <p className='text-sm text-destructive'>{error}</p>
       ) : !selectedMembership ? (
         <Card>
           <CardContent className='py-6 text-sm text-muted-foreground'>
-            No se encontró esta sesión en tu historial de coaching.
+            {t('No se encontró esta sesión en tu historial de coaching.')}
           </CardContent>
         </Card>
       ) : selectedMembership.programVersion === 'v2' ? (

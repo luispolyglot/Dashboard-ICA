@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase'
+import { t } from '@/i18n'
+import { quickFetch } from './quickCache'
 
 export type CoachingScope = {
   targetLang: string
@@ -385,30 +387,38 @@ async function invokeCoachingFunction<T>(
   fallbackMessage: string,
 ): Promise<T> {
   if (!supabase) {
-    throw new CoachingRequestError('Supabase no está configurado.')
+    throw new CoachingRequestError(t('Supabase no está configurado.'))
   }
 
   const { data, error } = await supabase.functions.invoke<T>(name, { body })
   if (error) {
     const status = getErrorStatus(error)
     if (status === 403) {
-      throw new CoachingRequestError('No tienes permisos para esta acción.', 403)
+      throw new CoachingRequestError(t('No tienes permisos para esta acción.'), 403)
     }
-    throw new CoachingRequestError(fallbackMessage, status)
+    throw new CoachingRequestError(t(fallbackMessage), status)
   }
 
   if (typeof data === 'undefined') {
-    throw new CoachingRequestError('Respuesta vacía del servidor.')
+    throw new CoachingRequestError(t('Respuesta vacía del servidor.'))
   }
 
   return data as T
 }
 
 export async function fetchCoachingAccess(): Promise<CoachingAccessPayload | null> {
-  return invokeCoachingFunction<CoachingAccessPayload | null>(
-    'coaching-access',
-    {},
-    'No se pudo validar el acceso de coaching.',
+  // Muchas pantallas lo piden a la vez: se comparte la petición y se recuerda 30 s.
+  const session = supabase ? (await supabase.auth.getSession()).data.session : null
+  const userId = session?.user.id ?? 'anon'
+  return quickFetch(
+    `coaching-access:${userId}`,
+    () =>
+      invokeCoachingFunction<CoachingAccessPayload | null>(
+        'coaching-access',
+        {},
+        'No se pudo validar el acceso de coaching.',
+      ),
+    { maxAgeMs: 30_000 },
   )
 }
 
@@ -750,7 +760,7 @@ export async function uploadCoachingClassReportImage(input: {
   weekKey: string
 }): Promise<string> {
   if (!supabase) {
-    throw new CoachingRequestError('Supabase no está configurado.')
+    throw new CoachingRequestError(t('Supabase no está configurado.'))
   }
 
   const extension = input.file.name.includes('.')
@@ -766,7 +776,7 @@ export async function uploadCoachingClassReportImage(input: {
     .upload(path, input.file, { upsert: false })
 
   if (error) {
-    throw new CoachingRequestError('No se pudo subir la imagen de reporte.')
+    throw new CoachingRequestError(t('No se pudo subir la imagen de reporte.'))
   }
 
   return path

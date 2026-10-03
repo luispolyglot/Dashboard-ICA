@@ -1,18 +1,19 @@
-import { useRef, useState } from 'react'
-import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import { CoachingInviteCard } from './CoachingInvite'
+import { t, tn, langName } from '@/i18n'
+import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Dialog as DialogPrimitive } from 'radix-ui'
 import {
+  ArrowRightIcon,
   BarChart3Icon,
   BellIcon,
   CalendarDaysIcon,
   CameraIcon,
   ChevronDownIcon,
-  ChevronRightIcon,
   ClipboardCheckIcon,
   CoinsIcon,
+  SpeechIcon,
   GraduationCapIcon,
-  LanguagesIcon,
   LineChartIcon,
   ListChecksIcon,
   LogOutIcon,
@@ -21,160 +22,126 @@ import {
   SunIcon,
   TrophyIcon,
   UsersIcon,
-  XIcon,
+  Volume2Icon,
+  VolumeXIcon,
 } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/theme/ThemeContext'
 import { useDashboardContext } from '../context/DashboardContext'
+import { fichasFormatter, useFichas } from '../game/fichas'
+import { FichaIcon } from '../game/icons'
+import { ChatProfileRow } from '../game/ChatProfileRow'
+import {
+  LevelAvatar,
+  memberSinceLabel,
+  MyFeaturedBadge,
+  ProfileGameSummary,
+  ProfileStreakPanel,
+} from '../game/ProfileGameSummary'
+import { isGameSoundEnabled, setGameSoundEnabled } from '../game/sfx'
+import { isPronunciationEnabled, setPronunciationEnabled } from '../pronunciation/pronunciation'
+import { IconTile, ListRow, RowGroup, SectionLabel, type Tone } from '../game/ui'
 import { useProfileAccess } from '../hooks/useProfileAccess'
 import { DASHBOARD_ROUTES } from '../routes/paths'
+import { IcaTestGlyph } from './IcaTestParts'
+import { LanguageFlag } from './LanguagePicker'
 import { PendingReviewDot } from './PendingReviewDot'
 
-type MobileProfileSheetProps = {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  hasIcaTestAlert: boolean
-  hasCoachingAlert: boolean
-}
-
-// Distancia (px) que hay que arrastrar hacia abajo para cerrar el panel
-const DRAG_CLOSE_THRESHOLD_PX = 90
-
+/** Acceso rápido: tarjeta pulsable con icono grande de color (4 en fila). */
 function QuickTile({
   to,
-  icon: Icon,
+  icon,
+  tone,
   label,
   alert,
+  badge,
   onNavigate,
 }: {
   to: string
-  icon: LucideIcon
+  icon: ReactNode
+  tone: Tone
   label: string
   alert?: ReactNode
+  badge?: ReactNode
   onNavigate: () => void
 }) {
   return (
     <Link
       to={to}
       onClick={onNavigate}
-      className='relative flex flex-col items-center gap-1.5 rounded-2xl border border-border/70 bg-card px-1 py-3 text-center transition-colors active:bg-accent'
+      className='ica-panel ica-press relative flex min-w-0 flex-col items-center gap-2 rounded-2xl px-1 pt-3 pb-2.5 text-center'
     >
-      {alert && <span className='absolute top-1.5 right-1.5'>{alert}</span>}
-      <span className='flex size-9 items-center justify-center rounded-xl bg-muted'>
-        <Icon className='size-[18px]' aria-hidden='true' />
+      {alert ? <span className='absolute top-2 right-2'>{alert}</span> : null}
+      <span className='relative'>
+        <IconTile tone={tone} size={46}>
+          {icon}
+        </IconTile>
+        {badge ? <span className='absolute -right-2.5 -bottom-1.5'>{badge}</span> : null}
       </span>
-      <span className='text-[11px] leading-tight font-medium'>{label}</span>
+      <span className='w-full truncate text-xs leading-tight font-extrabold'>{label}</span>
     </Link>
   )
 }
 
-function SheetRow({
-  to,
-  icon: Icon,
-  label,
-  hint,
-  alert,
-  tone = 'default',
-  onNavigate,
-}: {
-  to: string
-  icon: LucideIcon
-  label: string
-  hint?: string
-  alert?: ReactNode
-  tone?: 'default' | 'coaching' | 'admin'
-  onNavigate: () => void
-}) {
+/** Icono de lucide con el grosor de la app. */
+function Glyph({ icon: Icon }: { icon: typeof BellIcon }) {
+  return <Icon className='size-[22px]' strokeWidth={2.5} aria-hidden='true' />
+}
+
+/** ICA Coins como cuarto acceso rápido: solo se monta con el panel abierto (así no pide el saldo sin necesidad). */
+function FichasQuickTile({ userId, onNavigate }: { userId: string | undefined; onNavigate: () => void }) {
+  const { total } = useFichas(userId)
   return (
-    <Link
-      to={to}
-      onClick={onNavigate}
-      className='flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors active:bg-accent'
-    >
-      <span
-        className={cn(
-          'flex size-9 shrink-0 items-center justify-center rounded-xl',
-          tone === 'coaching' && 'bg-sky-500/15 text-sky-600 dark:text-sky-300',
-          tone === 'admin' && 'bg-rose-500/15 text-rose-600 dark:text-rose-300',
-          tone === 'default' && 'bg-muted',
-        )}
-      >
-        <Icon className='size-[18px]' aria-hidden='true' />
-      </span>
-      <span className='min-w-0 flex-1'>
-        <span className='block truncate text-sm font-medium'>{label}</span>
-        {hint && (
-          <span className='block truncate text-xs text-muted-foreground'>
-            {hint}
+    <QuickTile
+      to={DASHBOARD_ROUTES.fichas}
+      tone='gold'
+      icon={<FichaIcon size={30} />}
+      label={t('ICA Coins')}
+      badge={
+        total === null ? null : (
+          <span
+            className='flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-black tabular-nums'
+            style={{ background: 'var(--ica-gold)', color: '#4a3200', boxShadow: '0 2px 0 var(--ica-gold-edge)' }}
+            aria-label={t('Tienes {n} ICA Coins', { n: fichasFormatter.format(total) })}
+          >
+            {fichasFormatter.format(total)}
           </span>
-        )}
-      </span>
-      {alert}
-      <ChevronRightIcon
-        className='size-4 shrink-0 text-muted-foreground'
-        aria-hidden='true'
-      />
-    </Link>
-  )
-}
-
-function SectionTitle({ children }: { children: ReactNode }) {
-  return (
-    <p className='mb-1 px-2 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase'>
-      {children}
-    </p>
+        )
+      }
+      onNavigate={onNavigate}
+    />
   )
 }
 
 /**
- * Perfil en móvil: panel que sube desde la tab bar.
- * Versión compacta del perfil para que no crezca sin control al añadir cosas.
- * Lo menos usado (nombre, contraseña) sigue en la página completa de Perfil.
+ * Perfil en móvil: una pantalla completa (pestaña «Perfil» de la barra de abajo).
+ * Arriba tu nombre, nivel e insignias; luego accesos rápidos, tu racha y el resto en bloques.
+ * Lo menos usado (nombre, contraseña) está en «Ajustes de cuenta».
  */
-export function MobileProfileSheet({
-  open,
-  onOpenChange,
+export function MobileProfileScreen({
   hasIcaTestAlert,
   hasCoachingAlert,
-}: MobileProfileSheetProps) {
+}: {
+  hasIcaTestAlert: boolean
+  hasCoachingAlert: boolean
+}) {
   const { user, signOut } = useAuth()
   const { resolvedTheme, setTheme } = useTheme()
   const { config, setShowLangModal } = useDashboardContext()
-  const [hasOpened, setHasOpened] = useState(false)
-  if (open && !hasOpened) setHasOpened(true)
-  // Solo pedimos permisos (coaching/admin) cuando el panel se abre por primera vez
-  const access = useProfileAccess(config?.targetLang, hasOpened)
+  const access = useProfileAccess(config?.targetLang, true)
   const [adminExpanded, setAdminExpanded] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
-  const [dragY, setDragY] = useState(0)
-  const dragStartYRef = useRef<number | null>(null)
+  const [soundOn, setSoundOn] = useState(isGameSoundEnabled)
+  const [pronunciationOn, setPronunciationOn] = useState(isPronunciationEnabled)
 
   const metadata = user?.user_metadata ?? {}
   const displayName: string =
-    metadata.display_name || user?.email?.split('@')[0] || 'Usuario'
-  const initial = displayName.trim().charAt(0).toUpperCase() || '👤'
+    metadata.display_name || user?.email?.split('@')[0] || t('Usuario')
+  const memberSince = memberSinceLabel(user?.created_at)
 
-  const close = () => onOpenChange(false)
-
-  const handleDragStart = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).closest('button')) return
-    dragStartYRef.current = event.clientY
-    event.currentTarget.setPointerCapture(event.pointerId)
-  }
-
-  const handleDragMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (dragStartYRef.current === null) return
-    setDragY(Math.max(0, event.clientY - dragStartYRef.current))
-  }
-
-  const handleDragEnd = () => {
-    if (dragStartYRef.current === null) return
-    dragStartYRef.current = null
-    if (dragY > DRAG_CLOSE_THRESHOLD_PX) close()
-    setDragY(0)
-  }
+  // En una página no hay nada que cerrar: los enlaces navegan sin más.
+  const close = () => undefined
 
   const handleLogout = async () => {
     if (isLoggingOut) return
@@ -193,250 +160,327 @@ export function MobileProfileSheet({
     hasCoachingAlert || access.pendingCoachingSessions > 0
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className='fixed inset-0 z-50 bg-black/40 duration-200 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 md:hidden' />
-        <DialogPrimitive.Content
-          aria-describedby={undefined}
-          className={cn(
-            'fixed inset-x-0 bottom-0 z-50 flex max-h-[88dvh] flex-col rounded-t-3xl border-t border-border/70 bg-background text-foreground shadow-[0_-18px_40px_-20px_rgba(0,0,0,0.45)] outline-none md:hidden',
-            'duration-300 data-open:animate-in data-open:slide-in-from-bottom data-closed:animate-out data-closed:slide-out-to-bottom',
-            dragY === 0 && 'transition-transform',
-          )}
-          style={dragY > 0 ? { transform: `translateY(${dragY}px)` } : undefined}
-        >
-          {/* Cabecera: se puede arrastrar hacia abajo para cerrar */}
-          <div
-            className='shrink-0 touch-none px-4 pt-2.5 pb-3 select-none'
-            onPointerDown={handleDragStart}
-            onPointerMove={handleDragMove}
-            onPointerUp={handleDragEnd}
-            onPointerCancel={handleDragEnd}
-          >
-            <div className='mx-auto mb-3 h-1.5 w-10 rounded-full bg-muted-foreground/30' />
+    <div className='mx-auto flex w-full max-w-xl flex-col gap-5 px-4 pt-2 pb-8'>
+          <div>
             <div className='flex items-center gap-3'>
-              <span className='flex size-11 shrink-0 items-center justify-center rounded-full bg-primary text-lg font-bold text-primary-foreground'>
-                {initial}
-              </span>
-              <div className='min-w-0 flex-1'>
-                <DialogPrimitive.Title className='truncate font-serif text-lg leading-tight font-bold'>
-                  {displayName}
-                </DialogPrimitive.Title>
-                <p className='truncate text-xs text-muted-foreground'>
-                  {user?.email || ''}
-                </p>
-              </div>
-              <DialogPrimitive.Close
-                className='flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground active:bg-accent'
-                aria-label='Cerrar perfil'
+              {/* El anillo tiene el color de tu nivel real. Al tocarlo: ajustes de cuenta. */}
+              <Link
+                to={DASHBOARD_ROUTES.profileAccount}
+                className='shrink-0 rounded-full transition-transform active:scale-95'
+                aria-label={t('Ajustes de cuenta')}
               >
-                <XIcon className='size-4' />
-              </DialogPrimitive.Close>
+                <LevelAvatar size={56} />
+              </Link>
+              <div className='min-w-0 flex-1'>
+                <div className='flex min-w-0 items-center gap-2'>
+                  {/* El nombre puede ocupar dos líneas: así la insignia siempre se ve entera */}
+                  <h1 className='m-0 line-clamp-2 min-w-0 font-display text-2xl leading-tight font-extrabold break-words'>
+                    {displayName}
+                  </h1>
+                  <MyFeaturedBadge size={44} />
+                </div>
+                {memberSince ? (
+                  <p className='truncate text-xs font-semibold text-muted-foreground'>
+                    {memberSince}
+                  </p>
+                ) : null}
+              </div>
             </div>
 
             <div className='mt-3 flex gap-2'>
               <button
                 type='button'
-                onClick={() => {
-                  close()
-                  setShowLangModal(true)
-                }}
-                className='flex min-w-0 flex-1 items-center gap-2 rounded-full border border-border/70 px-3 py-1.5 text-xs font-medium active:bg-accent'
+                onClick={() => setShowLangModal(true)}
+                className='ica-press flex h-11 min-w-0 flex-1 items-center gap-2 rounded-2xl border-2 border-border bg-card px-3 text-sm font-extrabold dark:bg-transparent'
+                style={{ boxShadow: '0 3px 0 var(--border)' }}
+                aria-label={config ? t('Idiomas: {native} a {target}', { native: langName(config.nativeLang), target: langName(config.targetLang) }) : t('Idiomas')}
               >
-                <LanguagesIcon className='size-3.5 shrink-0' aria-hidden='true' />
-                <span className='truncate'>
-                  {config
-                    ? `${config.nativeLang} → ${config.targetLang}`
-                    : 'Idiomas'}
-                </span>
+                {config ? (
+                  <>
+                    <LanguageFlag language={config.nativeLang} size={24} />
+                    <ArrowRightIcon className='size-3.5 shrink-0 text-muted-foreground' strokeWidth={2.8} aria-hidden='true' />
+                    <LanguageFlag language={config.targetLang} size={24} />
+                    <span className='truncate'>{langName(config.targetLang)}</span>
+                  </>
+                ) : (
+                  <span className='truncate'>{t('Idiomas')}</span>
+                )}
               </button>
               <button
                 type='button'
                 onClick={() =>
                   setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')
                 }
-                className='flex shrink-0 items-center gap-1.5 rounded-full border border-border/70 px-3 py-1.5 text-xs font-medium active:bg-accent'
-                aria-label='Cambiar tema'
+                className='ica-press flex h-11 shrink-0 items-center gap-1.5 rounded-2xl border-2 border-border bg-card px-3 text-sm font-extrabold dark:bg-transparent'
+                style={{ boxShadow: '0 3px 0 var(--border)' }}
+                aria-label={t('Cambiar tema')}
               >
                 {resolvedTheme === 'dark' ? (
-                  <MoonIcon className='size-3.5' aria-hidden='true' />
+                  <MoonIcon className='size-4' strokeWidth={2.6} style={{ color: 'var(--ica-c)' }} aria-hidden='true' />
                 ) : (
-                  <SunIcon className='size-3.5' aria-hidden='true' />
+                  <SunIcon className='size-4' strokeWidth={2.6} style={{ color: 'var(--ica-gold-edge)' }} aria-hidden='true' />
                 )}
-                {resolvedTheme === 'dark' ? 'Oscuro' : 'Claro'}
+                {resolvedTheme === 'dark' ? t('Oscuro') : t('Claro')}
               </button>
             </div>
           </div>
 
-          <div className='min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[max(env(safe-area-inset-bottom),1.25rem)]'>
-            <div className='grid grid-cols-4 gap-2 px-1'>
+          <div className='flex flex-col gap-5'>
+            {/* Tu progreso: nivel real e insignias */}
+            <ProfileGameSummary onNavigate={close} />
+
+            {/* Accesos rápidos */}
+            <div className='grid grid-cols-4 gap-2'>
               <QuickTile
                 to={DASHBOARD_ROUTES.myAnalytics}
-                icon={BarChart3Icon}
-                label='Estadísticas'
+                tone='i'
+                icon={<Glyph icon={BarChart3Icon} />}
+                label={t('Estadísticas')}
                 onNavigate={close}
               />
               <QuickTile
                 to={DASHBOARD_ROUTES.testsIca}
-                icon={ClipboardCheckIcon}
-                label='Tests ICA'
+                tone='c'
+                icon={<IcaTestGlyph size={30} />}
+                label={t('Tests ICA')}
                 alert={
                   hasIcaTestAlert ? (
-                    <PendingReviewDot title='Tienes un test ICA disponible este mes.' />
+                    <PendingReviewDot title={t('Tienes un test ICA disponible este mes.')} />
                   ) : null
                 }
                 onNavigate={close}
               />
               <QuickTile
                 to={DASHBOARD_ROUTES.calendarIcademy}
-                icon={CalendarDaysIcon}
-                label='Calendario'
+                tone='a'
+                icon={<Glyph icon={CalendarDaysIcon} />}
+                label={t('Calendario')}
                 onNavigate={close}
               />
-              <QuickTile
-                to={DASHBOARD_ROUTES.trackers}
-                icon={LineChartIcon}
-                label='Trackers'
-                onNavigate={close}
-              />
+              <FichasQuickTile userId={user?.id} onNavigate={close} />
             </div>
 
-            {hasCoaching && (
-              <div className='mt-4'>
-                <SectionTitle>Coaching</SectionTitle>
-                {access.canSeeCoachingPersonalized && (
-                  <SheetRow
-                    to={DASHBOARD_ROUTES.coachingPersonalized}
-                    icon={GraduationCapIcon}
-                    label='Coaching personalizado'
-                    hint='Clases, feedback y objetivos ICA'
-                    tone='coaching'
-                    onNavigate={close}
-                  />
-                )}
-                {access.canManageCoaching && (
-                  <SheetRow
-                    to={DASHBOARD_ROUTES.manageCoaching}
-                    icon={UsersIcon}
-                    label='Administrar coaching'
-                    hint={
-                      access.pendingCoachingSessions > 0
-                        ? `${pendingCoachingNotes} nota${pendingCoachingNotes === 1 ? '' : 's'} pendiente${pendingCoachingNotes === 1 ? '' : 's'} de revisión`
-                        : 'Alumnos, feedback y objetivos'
-                    }
-                    tone='coaching'
-                    alert={
-                      showCoachingAlert ? (
-                        <PendingReviewDot
-                          title='Tienes notas maestras pendientes de revisión.'
-                          useIconSpeaker
-                        />
-                      ) : null
-                    }
-                    onNavigate={close}
-                  />
-                )}
+            {/* Comunidad: la racha en grande y el track de Instagram */}
+            <div>
+              <SectionLabel>{t('Comunidad')}</SectionLabel>
+              <div className='flex flex-col gap-3'>
+                <ProfileStreakPanel onNavigate={close} />
+                <RowGroup>
+                  <div onClick={close}>
+                    <ListRow
+                      to={DASHBOARD_ROUTES.instagramTrackPosts}
+                      icon={
+                        <IconTile tone='c' size={42}>
+                          <Glyph icon={CameraIcon} />
+                        </IconTile>
+                      }
+                      title={t('Track Instagram')}
+                      text={t('Cada día con post suma puntos al ranking')}
+                    />
+                  </div>
+                </RowGroup>
+              </div>
+            </div>
+
+            {/* Quien no está en el coaching ve la invitación; los admins de coaching, como vista previa. */}
+            {access.loaded && (!hasCoaching || access.canManageCoaching) && (
+              <div>
+                <SectionLabel>{access.canManageCoaching ? t('Coaching (vista de alumno)') : t('Coaching')}</SectionLabel>
+                <CoachingInviteCard preview={access.canManageCoaching} />
               </div>
             )}
 
-            <div className='mt-4'>
-              <SectionTitle>Más</SectionTitle>
-              <SheetRow
-                to={DASHBOARD_ROUTES.instagramTrackPosts}
-                icon={CameraIcon}
-                label='Track Instagram'
-                onNavigate={close}
-              />
-              <SheetRow
-                to={DASHBOARD_ROUTES.manageNotifications}
-                icon={BellIcon}
-                label='Notificaciones'
-                onNavigate={close}
-              />
-              <SheetRow
-                to={DASHBOARD_ROUTES.profile}
-                icon={SettingsIcon}
-                label='Ajustes de cuenta'
-                hint='Nombre y contraseña'
-                onNavigate={close}
-              />
+            {hasCoaching && (
+              <div>
+                <SectionLabel>{t('Coaching')}</SectionLabel>
+                <RowGroup>
+                  {access.canSeeCoachingPersonalized && (
+                    <div onClick={close}>
+                      <ListRow
+                        to={DASHBOARD_ROUTES.coachingPersonalized}
+                        icon={
+                          <IconTile tone='i' size={42}>
+                            <Glyph icon={GraduationCapIcon} />
+                          </IconTile>
+                        }
+                        title={t('Coaching personalizado')}
+                        text={t('Clases, feedback y objetivos ICA')}
+                      />
+                    </div>
+                  )}
+                  {access.canManageCoaching && (
+                    <div onClick={close}>
+                      <ListRow
+                        to={DASHBOARD_ROUTES.manageCoaching}
+                        icon={
+                          <IconTile tone='i' size={42}>
+                            <Glyph icon={UsersIcon} />
+                          </IconTile>
+                        }
+                        title={t('Administrar coaching')}
+                        text={
+                          access.pendingCoachingSessions > 0
+                            ? tn(pendingCoachingNotes, '{n} nota pendiente de revisión', '{n} notas pendientes de revisión')
+                            : t('Alumnos, feedback y objetivos')
+                        }
+                        right={
+                          showCoachingAlert ? (
+                            <PendingReviewDot
+                              title={t('Tienes notas maestras pendientes de revisión.')}
+                              useIconSpeaker
+                            />
+                          ) : undefined
+                        }
+                      />
+                    </div>
+                  )}
+                </RowGroup>
+              </div>
+            )}
+
+            {/* Más: lo que se usa menos */}
+            <div>
+              <SectionLabel>{t('Más')}</SectionLabel>
+              <RowGroup>
+                <div onClick={close}>
+                  <ListRow
+                    to={DASHBOARD_ROUTES.trackers}
+                    icon={
+                      <IconTile tone='i' size={42}>
+                        <Glyph icon={LineChartIcon} />
+                      </IconTile>
+                    }
+                    title={t('Trackers')}
+                    text={t('Pronunciación, fluidez e improvisación')}
+                  />
+                </div>
+                <div onClick={close}>
+                  <ListRow
+                    to={DASHBOARD_ROUTES.manageNotifications}
+                    icon={
+                      <IconTile tone='gold' size={42}>
+                        <Glyph icon={BellIcon} />
+                      </IconTile>
+                    }
+                    title={t('Notificaciones')}
+                    text={t('Recordatorios de racha y hábitos')}
+                  />
+                </div>
+                {config?.targetLang ? <ChatProfileRow targetLang={config.targetLang} onNavigate={close} /> : null}
+                <button
+                  type='button'
+                  onClick={() => {
+                    const next = !pronunciationOn
+                    setPronunciationEnabled(next)
+                    setPronunciationOn(next)
+                  }}
+                  className='flex w-full items-center gap-3 py-3 text-left'
+                  aria-pressed={pronunciationOn}
+                >
+                  <IconTile tone={pronunciationOn ? 'i' : 'neutral'} size={42}>
+                    <Glyph icon={SpeechIcon} />
+                  </IconTile>
+                  <span className='min-w-0 flex-1'>
+                    <span className='block leading-tight font-extrabold'>{t('Pronunciación')}</span>
+                    <span className='mt-0.5 block text-xs font-semibold text-muted-foreground'>
+                      {pronunciationOn ? t('Visible · beaucoup → /bocú/') : t('Oculta · beaucoup → /bocú/')}
+                    </span>
+                  </span>
+                  <span
+                    className='relative h-7 w-12 shrink-0 rounded-full transition-colors'
+                    style={{ background: pronunciationOn ? 'var(--ica-ok)' : 'var(--border-strong)' }}
+                    aria-hidden='true'
+                  >
+                    <span
+                      className={cn(
+                        'absolute top-1 size-5 rounded-full bg-white shadow transition-[left]',
+                        pronunciationOn ? 'left-6' : 'left-1',
+                      )}
+                    />
+                  </span>
+                </button>
+                <button
+                  type='button'
+                  onClick={() => {
+                    const next = !soundOn
+                    setGameSoundEnabled(next)
+                    setSoundOn(next)
+                  }}
+                  className='flex w-full items-center gap-3 py-3 text-left'
+                  aria-pressed={soundOn}
+                >
+                  <IconTile tone={soundOn ? 'ok' : 'neutral'} size={42}>
+                    <Glyph icon={soundOn ? Volume2Icon : VolumeXIcon} />
+                  </IconTile>
+                  <span className='min-w-0 flex-1'>
+                    <span className='block leading-tight font-extrabold'>{t('Sonidos')}</span>
+                    <span className='mt-0.5 block text-xs font-semibold text-muted-foreground'>
+                      {soundOn ? t('Activados · al abrir el cofre y al completar el ciclo') : t('Apagados · al abrir el cofre y al completar el ciclo')}
+                    </span>
+                  </span>
+                  {/* Interruptor */}
+                  <span
+                    className='relative h-7 w-12 shrink-0 rounded-full transition-colors'
+                    style={{ background: soundOn ? 'var(--ica-ok)' : 'var(--border-strong)' }}
+                    aria-hidden='true'
+                  >
+                    <span
+                      className={cn(
+                        'absolute top-1 size-5 rounded-full bg-white shadow transition-[left]',
+                        soundOn ? 'left-6' : 'left-1',
+                      )}
+                    />
+                  </span>
+                </button>
+                <div onClick={close}>
+                  <ListRow
+                    to={DASHBOARD_ROUTES.profileAccount}
+                    icon={
+                      <IconTile tone='neutral' size={42}>
+                        <Glyph icon={SettingsIcon} />
+                      </IconTile>
+                    }
+                    title={t('Ajustes de cuenta')}
+                    text={t('Nombre y contraseña')}
+                  />
+                </div>
+              </RowGroup>
             </div>
 
             {hasAdmin && (
-              <div className='mt-4'>
+              <div>
                 <button
                   type='button'
                   onClick={() => setAdminExpanded((value) => !value)}
-                  className='flex w-full items-center justify-between px-2 py-1 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase'
+                  className='mb-2 flex w-full items-center justify-between py-1'
                   aria-expanded={adminExpanded}
                 >
-                  Administración
+                  <span className='ica-label'>{t('Administración')}</span>
                   <ChevronDownIcon
                     className={cn(
-                      'size-4 transition-transform',
+                      'size-5 text-muted-foreground transition-transform',
                       adminExpanded && 'rotate-180',
                     )}
+                    strokeWidth={2.6}
                     aria-hidden='true'
                   />
                 </button>
                 {adminExpanded && (
-                  <div>
+                  <RowGroup>
                     {access.canSeeAdminAnalytics && (
-                      <SheetRow
-                        to={DASHBOARD_ROUTES.analytics}
-                        icon={BarChart3Icon}
-                        label='Analíticas admin'
-                        tone='admin'
-                        onNavigate={close}
-                      />
+                      <AdminRow to={DASHBOARD_ROUTES.analytics} icon={BarChart3Icon} label={t('Analíticas admin')} onNavigate={close} />
                     )}
                     {access.isSuperAdmin && (
                       <>
-                        <SheetRow
-                          to={DASHBOARD_ROUTES.manageWhitelist}
-                          icon={ListChecksIcon}
-                          label='Whitelist'
-                          tone='admin'
-                          onNavigate={close}
-                        />
-                        <SheetRow
-                          to={DASHBOARD_ROUTES.managePregunticaQuestions}
-                          icon={ClipboardCheckIcon}
-                          label='PreguntICA'
-                          tone='admin'
-                          onNavigate={close}
-                        />
-                        <SheetRow
-                          to={DASHBOARD_ROUTES.managePregunticaTokens}
-                          icon={CoinsIcon}
-                          label='Fichas PreguntICA'
-                          tone='admin'
-                          onNavigate={close}
-                        />
-                        <SheetRow
-                          to={DASHBOARD_ROUTES.calendarIcademyManage}
-                          icon={CalendarDaysIcon}
-                          label='Calendario ICADEMY'
-                          tone='admin'
-                          onNavigate={close}
-                        />
-                        <SheetRow
-                          to={DASHBOARD_ROUTES.calendarIcademyTeachers}
-                          icon={UsersIcon}
-                          label='Profesores ICADEMY'
-                          tone='admin'
-                          onNavigate={close}
-                        />
-                        <SheetRow
-                          to={DASHBOARD_ROUTES.historicLeaderboard}
-                          icon={TrophyIcon}
-                          label='Histórico leaderboard'
-                          tone='admin'
-                          onNavigate={close}
-                        />
+                        <AdminRow to={DASHBOARD_ROUTES.manageWhitelist} icon={ListChecksIcon} label={t('Whitelist')} onNavigate={close} />
+                        <AdminRow to={DASHBOARD_ROUTES.managePregunticaQuestions} icon={ClipboardCheckIcon} label={t('PreguntICA')} onNavigate={close} />
+                        <AdminRow to={DASHBOARD_ROUTES.managePregunticaTokens} icon={CoinsIcon} label={t('ICA Coins de usuarios')} onNavigate={close} />
+                        <AdminRow to={DASHBOARD_ROUTES.calendarIcademyManage} icon={CalendarDaysIcon} label={t('Calendario ICADEMY')} onNavigate={close} />
+                        <AdminRow to={DASHBOARD_ROUTES.calendarIcademyTeachers} icon={UsersIcon} label={t('Profesores ICADEMY')} onNavigate={close} />
+                        <AdminRow to={DASHBOARD_ROUTES.historicLeaderboard} icon={TrophyIcon} label={t('Histórico leaderboard')} onNavigate={close} />
                       </>
                     )}
-                  </div>
+                  </RowGroup>
                 )}
               </div>
             )}
@@ -445,18 +489,44 @@ export function MobileProfileSheet({
               type='button'
               onClick={() => void handleLogout()}
               disabled={isLoggingOut}
-              className='mt-4 flex w-full items-center gap-3 rounded-xl px-2 py-2.5 text-destructive active:bg-destructive/10 dark:text-rose-300'
+              className='ica-press flex h-12 w-full items-center justify-center gap-2 rounded-2xl border-2 text-base font-extrabold disabled:opacity-60'
+              style={{
+                borderColor: 'color-mix(in oklab, var(--ica-bad-strong) 35%, var(--border))',
+                color: 'var(--ica-bad-ink)',
+                boxShadow: '0 3px 0 color-mix(in oklab, var(--ica-bad-strong) 25%, var(--border))',
+              }}
             >
-              <span className='flex size-9 items-center justify-center rounded-xl bg-destructive/10'>
-                <LogOutIcon className='size-[18px]' aria-hidden='true' />
-              </span>
-              <span className='text-sm font-medium'>
-                {isLoggingOut ? 'Cerrando sesión...' : 'Cerrar sesión'}
-              </span>
+              <LogOutIcon className='size-5' strokeWidth={2.6} aria-hidden='true' />
+              {isLoggingOut ? t('Cerrando sesión...') : t('Cerrar sesión')}
             </button>
           </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+    </div>
+  )
+}
+
+/** Fila del bloque de administración (discreta, en gris). */
+function AdminRow({
+  to,
+  icon,
+  label,
+  onNavigate,
+}: {
+  to: string
+  icon: typeof BellIcon
+  label: string
+  onNavigate: () => void
+}) {
+  return (
+    <div onClick={onNavigate}>
+      <ListRow
+        to={to}
+        icon={
+          <IconTile tone='neutral' size={38}>
+            <Glyph icon={icon} />
+          </IconTile>
+        }
+        title={label}
+      />
+    </div>
   )
 }

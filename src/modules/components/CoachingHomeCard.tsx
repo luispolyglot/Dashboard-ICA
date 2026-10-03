@@ -1,8 +1,19 @@
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
+import {
+  CalendarDaysIcon,
+  CheckCircle2Icon,
+  ChevronRightIcon,
+  ClipboardListIcon,
+  CrownIcon,
+  DumbbellIcon,
+  FileTextIcon,
+  LoaderCircleIcon,
+} from 'lucide-react'
+import { TargetGlyph } from '../game/icons'
 import { useAuth } from '@/auth/AuthContext'
 import { cn } from '@/lib/utils'
-import { LoaderCircleIcon } from 'lucide-react'
 import {
   fetchMyCoachingDashboard,
   fetchMyCoachingV2SessionBoard,
@@ -13,6 +24,7 @@ import {
   getCoachingPersonalizedSessionRoute,
   getCoachingV2ExerciseRoute,
 } from '../routes/paths'
+import { langName, t, tn, uiLocale } from '@/i18n'
 
 /* ══════════════════════════════════════════════════════════════════════
    Tarjeta COACHING de la home (solo para alumnos con coaching activo).
@@ -90,14 +102,14 @@ const PHASE_KEYS = [
 ] as const
 
 type NextStep = {
-  emoji: string
+  icon: ReactNode
   text: string
   cta?: { label: string; to?: string; href?: string }
   urgent?: boolean
 }
 
 function formatClassDate(value: string): string {
-  return new Date(value).toLocaleString('es-ES', {
+  return new Date(value).toLocaleString(uiLocale(), {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
@@ -109,7 +121,7 @@ function formatClassDate(value: string): string {
 function getNextStep(data: HomeCoachingData): NextStep {
   const { membership, board } = data
   if (!board) {
-    return { emoji: '🎯', text: 'Abre tu coaching para ver tu semana.' }
+    return { icon: <TargetGlyph size={14} />, text: t('Abre tu coaching para ver tu semana.') }
   }
   const period = board.periodNumber
   const now = Date.now()
@@ -123,9 +135,9 @@ function getNextStep(data: HomeCoachingData): NextStep {
   })
   if (liveClass && joinUrl) {
     return {
-      emoji: '🔴',
-      text: `Tu clase ${liveClass.classIndex} empieza ahora`,
-      cta: { label: 'Entrar', href: joinUrl },
+      icon: <span className='inline-block size-2.5 animate-pulse rounded-full bg-red-500' />,
+      text: t('Tu clase {n} empieza ahora', { n: liveClass.classIndex }),
+      cta: { label: t('Entrar'), href: joinUrl },
       urgent: true,
     }
   }
@@ -139,10 +151,10 @@ function getNextStep(data: HomeCoachingData): NextStep {
   })
   if (readyFocus) {
     return {
-      emoji: '💪',
-      text: `Tu entrenamiento de «${readyFocus.focusTitle}» está listo`,
+      icon: <DumbbellIcon className='size-3.5' strokeWidth={2.4} />,
+      text: t('Tu entrenamiento de «{focus}» está listo', { focus: readyFocus.focusTitle }),
       cta: {
-        label: 'Entrenar',
+        label: t('Entrenar'),
         to: getCoachingV2ExerciseRoute(membership.id, period, readyFocus.id),
       },
       urgent: true,
@@ -157,28 +169,30 @@ function getNextStep(data: HomeCoachingData): NextStep {
   const pendingTasks = tasks.filter((value) => !value?.trim()).length
   if (tasks.length > 0 && pendingTasks > 0) {
     return {
-      emoji: '📝',
-      text: `Te ${pendingTasks === 1 ? 'falta 1 tarea' : `faltan ${pendingTasks} tareas`} de esta semana`,
+      icon: <ClipboardListIcon className='size-3.5' strokeWidth={2.4} />,
+      text: tn(pendingTasks, t('Te falta {n} tarea de esta semana'), t('Te faltan {n} tareas de esta semana')),
     }
   }
 
   if (board.periodReport && (board.periodReport.reportImageUrl || board.periodReport.reportText)) {
-    return { emoji: '📄', text: 'Tu reporte de la semana está listo' }
+    return { icon: <FileTextIcon className='size-3.5' strokeWidth={2.4} />, text: t('Tu reporte de la semana está listo') }
   }
 
   const nextClass = classes
     .filter((row) => row.scheduledAt && new Date(row.scheduledAt).getTime() > now)
     .sort((a, b) => new Date(a.scheduledAt || 0).getTime() - new Date(b.scheduledAt || 0).getTime())[0]
   if (nextClass?.scheduledAt) {
-    return { emoji: '📅', text: `Próxima clase: ${formatClassDate(nextClass.scheduledAt)}` }
+    return { icon: <CalendarDaysIcon className='size-3.5' strokeWidth={2.4} />, text: t('Próxima clase: {date}', { date: formatClassDate(nextClass.scheduledAt) }) }
   }
 
-  return { emoji: '✅', text: 'Todo al día' }
+  return { icon: <CheckCircle2Icon className='size-3.5' strokeWidth={2.4} />, text: t('Todo al día') }
 }
 
 type CoachingHomeCardProps = {
   targetLang: string
   className?: string
+  /** Versión pequeña (móvil): solo «Tu coaching» y el siguiente paso, con «Entrenar» si toca. */
+  compact?: boolean
   /** Avisa al padre de si hay coaching activo (para colocar la tarjeta). */
   onAvailabilityChange?: (available: boolean) => void
 }
@@ -186,6 +200,7 @@ type CoachingHomeCardProps = {
 export function CoachingHomeCard({
   targetLang,
   className,
+  compact = false,
   onAvailabilityChange,
 }: CoachingHomeCardProps) {
   const navigate = useNavigate()
@@ -214,57 +229,61 @@ export function CoachingHomeCard({
   }, [key, onAvailabilityChange, targetLang, user?.id])
 
   if (!data) {
-    // Conserva el hueco de la tarjeta conocida sin mostrar un bloque gris genérico.
-    return expectsHomeCoaching(user?.id, targetLang) ? (
+    // Mientras carga, si esperamos coaching, se ve ya la tarjeta (sin datos) en su sitio:
+    // nada salta y no aparece un bloque gris genérico.
+    if (!expectsHomeCoaching(user?.id, targetLang)) return null
+    return compact ? (
       <div
         role='status'
-        aria-label='Cargando tu coaching'
-        className={cn(
-          'relative flex min-h-[230px] w-full flex-col overflow-hidden rounded-[20px] border border-amber-300/60 px-[25px] py-6 shadow-[0_8px_26px_-14px_rgba(217,119,6,0.3)] dark:border-amber-500/25',
-          '[background:linear-gradient(160deg,#fffdf7,#f3f5fb)_padding-box,linear-gradient(135deg,rgba(245,215,126,.8),rgba(96,165,250,.45))_border-box] dark:[background:linear-gradient(160deg,#111a2e,#0a0f1a)_padding-box,linear-gradient(135deg,rgba(245,215,126,.3),rgba(59,130,246,.25))_border-box]',
-          className,
-        )}
+        aria-label={t('Cargando tu coaching')}
+        className={cn('coaching-hero relative flex min-h-[64px] w-full items-center gap-3 overflow-hidden rounded-2xl px-3 py-2.5 text-white', className)}
       >
-        <div className='flex items-start justify-between gap-3'>
-          <div className='flex items-center gap-2.5'>
-            <div className='flex size-11 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-200 to-amber-500 text-2xl shadow-[0_4px_14px_-4px_rgba(217,119,6,0.35)]'>
-              🎯
-            </div>
-            <div>
-              <p className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
-                TU COACHING
-              </p>
-              <p className='m-0 text-xs text-slate-500'>
-                Preparando tu semana...
-              </p>
-            </div>
+        <span
+          className='flex size-10 shrink-0 items-center justify-center rounded-xl'
+          style={{ background: 'var(--ica-gold)', boxShadow: '0 3px 0 var(--ica-gold-edge)' }}
+          aria-hidden='true'
+        >
+          <CrownIcon className='size-5' strokeWidth={2.6} style={{ color: '#4a3200' }} />
+        </span>
+        <span className='min-w-0 flex-1'>
+          <span className='block text-sm leading-tight font-black'>{t('Tu coaching')}</span>
+          <span className='mt-0.5 block text-xs font-bold text-white/70'>{t('Preparando tu semana...')}</span>
+        </span>
+        <LoaderCircleIcon className='size-4 shrink-0 animate-spin text-white/60' aria-hidden='true' />
+      </div>
+    ) : (
+      <div
+        role='status'
+        aria-label={t('Cargando tu coaching')}
+        className={cn('coaching-hero relative flex min-h-[230px] w-full flex-col overflow-hidden rounded-[28px] px-6 py-5 text-white', className)}
+      >
+        <span className='coaching-hero-glow pointer-events-none absolute -top-20 -right-16 size-64 rounded-full' aria-hidden='true' />
+        <div className='relative flex items-start justify-between gap-3'>
+          <div>
+            <p
+              className='m-0 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-black tracking-[0.14em] uppercase'
+              style={{ color: 'var(--ica-gold)' }}
+            >
+              <CrownIcon className='size-3' strokeWidth={2.8} aria-hidden='true' />
+              {t('Tu coaching')}
+            </p>
+            <p className='m-0 mt-2 text-xs font-bold text-white/70'>{t('Preparando tu semana...')}</p>
           </div>
-          <LoaderCircleIcon
-            aria-hidden='true'
-            className='mt-1 size-4 animate-spin text-amber-600/70 dark:text-amber-300/70'
-          />
+          <LoaderCircleIcon className='mt-1 size-4 animate-spin text-white/60' aria-hidden='true' />
         </div>
-
-        <div className='mt-5 flex items-center gap-2'>
-          <span className='h-1.5 w-16 rounded-full bg-amber-300/70 dark:bg-amber-300/35' />
-          <span className='h-1.5 flex-1 rounded-full bg-slate-200/80 dark:bg-slate-700/75' />
+        <div className='relative mt-5 flex items-center gap-1' aria-hidden='true'>
+          <span className='h-2 w-14 rounded-full' style={{ background: 'var(--ica-gold)' }} />
+          <span className='h-2 flex-1 rounded-full bg-white/15' />
         </div>
-
-        <div className='mt-4 space-y-2.5'>
-          {[0, 1, 2].map((row) => (
+        <div className='relative mt-4 space-y-2.5' aria-hidden='true'>
+          {['w-2/3', 'w-1/2', 'w-3/5'].map((width, row) => (
             <div key={row} className='flex items-center justify-between gap-4'>
-              <span
-                className={cn(
-                  'h-3 rounded-full bg-slate-300/55 dark:bg-slate-600/45',
-                  row === 0 ? 'w-2/3' : row === 1 ? 'w-1/2' : 'w-3/5',
-                  'animate-pulse',
-                )}
-              />
+              <span className={cn('h-3 animate-pulse rounded-full bg-white/15', width)} />
               <span className='flex gap-1'>
                 {[0, 1, 2, 3].map((pip) => (
                   <span
                     key={pip}
-                    className='size-1.5 animate-pulse rounded-full bg-amber-300/55 dark:bg-amber-300/30'
+                    className='h-2 w-4 animate-pulse rounded-full bg-white/15'
                     style={{ animationDelay: `${(row * 4 + pip) * 70}ms` }}
                   />
                 ))}
@@ -272,15 +291,11 @@ export function CoachingHomeCard({
             </div>
           ))}
         </div>
-
-        <div className='mt-auto pt-4'>
-          <div className='border-t border-amber-400/25 pt-3'>
-            <span className='inline-block h-3 w-3/4 animate-pulse rounded-full bg-slate-300/45 dark:bg-slate-600/35' />
-          </div>
+        <div className='relative mt-auto border-t border-white/12 pt-3' aria-hidden='true'>
+          <span className='inline-block h-3 w-3/4 animate-pulse rounded-full bg-white/15' />
         </div>
-        <span className='sr-only'>Cargando tu coaching</span>
       </div>
-    ) : null
+    )
   }
 
   const { membership, board } = data
@@ -296,6 +311,68 @@ export function CoachingHomeCard({
   const step = getNextStep(data)
   const sessionRoute = getCoachingPersonalizedSessionRoute(membership.id)
 
+  const runCta = () => {
+    if (step.cta?.href) {
+      window.open(step.cta.href, '_blank', 'noopener,noreferrer')
+      return
+    }
+    if (step.cta?.to) navigate(step.cta.to)
+  }
+
+  if (compact) {
+    return (
+      <div
+        role='button'
+        tabIndex={0}
+        onClick={() => navigate(sessionRoute)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            navigate(sessionRoute)
+          }
+        }}
+        className={cn(
+          'coaching-hero relative flex w-full cursor-pointer items-center gap-3 overflow-hidden rounded-2xl px-3 py-2.5 text-left text-white active:translate-y-[2px]',
+          className,
+        )}
+      >
+        <span
+          className='flex size-10 shrink-0 items-center justify-center rounded-xl'
+          style={{ background: 'var(--ica-gold)', boxShadow: '0 3px 0 var(--ica-gold-edge)' }}
+        >
+          <CrownIcon className='size-5' strokeWidth={2.6} style={{ color: '#4a3200' }} aria-hidden='true' />
+        </span>
+        <span className='min-w-0 flex-1'>
+          <span className='flex items-center gap-1.5 text-sm leading-tight font-black whitespace-nowrap'>
+            {t('Tu coaching')}
+            <span className='rounded-full bg-white/12 px-1.5 py-px text-[11px] font-black' style={{ color: 'var(--ica-gold)' }}>
+              {t('Semana {n}/{total}', { n: currentWeek, total: totalWeeks })}
+            </span>
+          </span>
+          <span className='mt-0.5 flex min-w-0 items-center gap-1.5 text-xs font-bold text-white/75'>
+            <span className='flex shrink-0 items-center' aria-hidden='true'>{step.icon}</span>
+            <span className='truncate'>{step.text}</span>
+          </span>
+        </span>
+        {step.cta ? (
+          <button
+            type='button'
+            className='shrink-0 rounded-xl px-3 py-2 text-xs font-black active:translate-y-0.5'
+            style={{ background: 'var(--ica-gold)', color: '#4a3200', boxShadow: '0 3px 0 var(--ica-gold-edge)' }}
+            onClick={(event) => {
+              event.stopPropagation()
+              runCta()
+            }}
+          >
+            {step.cta.label}
+          </button>
+        ) : (
+          <ChevronRightIcon className='size-5 shrink-0 text-white/70' aria-hidden='true' />
+        )}
+      </div>
+    )
+  }
+
   return (
     <div
       role='button'
@@ -308,50 +385,45 @@ export function CoachingHomeCard({
         }
       }}
       className={cn(
-        // Aspecto premium: borde dorado degradado, brillo cálido y fondo con un toque de oro.
-        'group relative flex w-full cursor-pointer flex-col overflow-hidden rounded-[20px] border border-transparent px-[25px] py-6 text-left transition-[transform,box-shadow] duration-250 hover:-translate-y-[2px]',
-        '[background:linear-gradient(160deg,#fffdf7,#f3f5fb)_padding-box,linear-gradient(135deg,#f5d77e,#c9962b_35%,#60a5fa_70%,#f5d77e)_border-box] dark:[background:linear-gradient(160deg,#111a2e,#0a0f1a)_padding-box,linear-gradient(135deg,#f5d77e,#b8862a_35%,#3b82f6_70%,#f5d77e)_border-box]',
-        'shadow-[0_0_0_1px_rgba(234,179,8,0.12),0_10px_30px_-12px_rgba(234,179,8,0.35)] hover:shadow-[0_0_0_1px_rgba(234,179,8,0.35),0_14px_36px_-10px_rgba(234,179,8,0.45)]',
-        step.urgent && 'shadow-[0_0_0_1px_rgba(234,179,8,0.4),0_0_26px_rgba(234,179,8,0.3)]',
+        // Aspecto premium: el mismo azul noche y oro que la zona de coaching.
+        'coaching-hero group relative flex w-full cursor-pointer flex-col overflow-hidden rounded-[28px] px-6 py-5 text-left text-white transition-transform duration-200 hover:-translate-y-[2px]',
         className,
       )}
     >
-      {/* Destello dorado que cruza la tarjeta al pasar el ratón */}
-      <span
-        aria-hidden='true'
-        className='pointer-events-none absolute -inset-y-8 -left-1/3 w-1/3 rotate-12 bg-gradient-to-r from-transparent via-amber-200/25 to-transparent opacity-0 transition-all duration-700 group-hover:left-[110%] group-hover:opacity-100'
-      />
+      <span className='coaching-hero-glow pointer-events-none absolute -top-20 -right-16 size-64 rounded-full' aria-hidden='true' />
       <div className='relative flex items-start justify-between gap-3'>
-        <div className='flex items-center gap-2.5'>
-          <div className='flex size-11 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-200 to-amber-500 text-2xl shadow-[0_4px_14px_-4px_rgba(217,119,6,0.6)]'>
-            🎯
-          </div>
-          <div>
-            <h2 className='m-0 font-serif text-lg font-bold tracking-widest text-slate-700 dark:text-slate-100'>
-              TU COACHING
-            </h2>
-            <p className='m-0 text-xs text-slate-500'>
-              {membership.targetLang} · {membership.level} · {(() => {
-                const second = (membership.coachDisplayName || '').trim()
-                return second && second.toLowerCase() !== 'luis' ? `con Luis y ${second}` : 'con Luis'
-              })()}
-            </p>
-          </div>
+        <div className='min-w-0'>
+          <p
+            className='m-0 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-black tracking-[0.14em] uppercase'
+            style={{ color: 'var(--ica-gold)' }}
+          >
+            <CrownIcon className='size-3' strokeWidth={2.8} aria-hidden='true' />
+            {t('Tu coaching')}
+          </p>
+          <h2 className='m-0 mt-2 font-display text-2xl leading-none font-black tracking-tight'>
+            {langName(membership.targetLang)}
+          </h2>
+          <p className='m-0 mt-1.5 text-xs font-bold text-white/70'>
+            {membership.level} · {(() => {
+              const second = (membership.coachDisplayName || '').trim()
+              return second && second.toLowerCase() !== 'luis' ? t('con Luis y {name}', { name: second }) : t('con Luis')
+            })()}
+          </p>
         </div>
-        <p className='m-0 text-right text-xs text-slate-500'>
-          Semana{' '}
-          <b className='font-serif text-2xl leading-none text-slate-700 dark:text-slate-100'>
+        <p className='m-0 shrink-0 text-right text-xs font-bold text-white/70'>
+          {t('Semana')}
+          <b className='block font-display text-3xl leading-none font-black text-white'>
             {currentWeek}
-          </b>{' '}
-          de {totalWeeks}
+            <span className='text-sm font-bold text-white/50'>/{totalWeeks}</span>
+          </b>
         </p>
       </div>
 
       {/* Recorrido de semanas */}
       <div
-        className='mt-4 grid gap-1'
+        className='relative mt-4 grid gap-1'
         style={{ gridTemplateColumns: `repeat(${totalWeeks}, minmax(0, 1fr))` }}
-        aria-label={`Semana ${currentWeek} de ${totalWeeks}`}
+        aria-label={t('Semana {n} de {total}', { n: currentWeek, total: totalWeeks })}
       >
         {Array.from({ length: totalWeeks }, (_, idx) => {
           const week = idx + 1
@@ -360,41 +432,29 @@ export function CoachingHomeCard({
           return (
             <span
               key={week}
-              className={cn(
-                'h-1.5 rounded-full',
-                current
-                  ? 'bg-[#3B82F6]'
-                  : done
-                    ? 'bg-amber-400'
-                    : 'bg-slate-300/70 dark:bg-slate-700',
-              )}
+              className='h-2 rounded-full'
+              style={{ background: current ? '#ffffff' : done ? 'var(--ica-gold)' : 'rgba(255,255,255,0.15)' }}
             />
           )
         })}
       </div>
 
       {/* Los focos de la semana */}
-      <div className='mt-4 space-y-2'>
+      <div className='relative mt-4 space-y-2'>
         {activeFocuses.length === 0 ? (
-          <p className='m-0 text-xs text-slate-500'>
-            Tu coach añadirá tus focos en la próxima clase.
-          </p>
+          <p className='m-0 text-xs font-semibold text-white/70'>{t('Tu coach añadirá tus focos en la próxima clase.')}</p>
         ) : (
           activeFocuses.map((focus) => {
             const progress = PHASE_KEYS.filter((key) => focus[key]).length
             return (
               <div key={focus.id} className='flex items-center justify-between gap-3'>
-                <span className='min-w-0 truncate text-sm font-medium text-slate-700 dark:text-slate-100'>
-                  {focus.focusTitle}
-                </span>
-                <span className='flex shrink-0 items-center gap-1' aria-label={`${progress} de 4 fases`}>
+                <span className='min-w-0 truncate text-sm font-bold'>{focus.focusTitle}</span>
+                <span className='flex shrink-0 items-center gap-1' aria-label={t('{n} de 4 fases', { n: progress })}>
                   {PHASE_KEYS.map((key, idx) => (
                     <span
                       key={key}
-                      className={cn(
-                        'h-1.5 w-4 rounded-full',
-                        idx < progress ? 'bg-[#3B82F6]' : 'bg-slate-300/70 dark:bg-slate-700',
-                      )}
+                      className='h-2 w-4 rounded-full'
+                      style={{ background: idx < progress ? 'var(--ica-gold)' : 'rgba(255,255,255,0.18)' }}
                     />
                   ))}
                 </span>
@@ -405,22 +465,19 @@ export function CoachingHomeCard({
       </div>
 
       {/* Siguiente paso */}
-      <div className='relative mt-4 flex items-center justify-between gap-3 border-t border-amber-400/25 pt-3'>
-        <p className='m-0 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-300'>
-          <span aria-hidden='true'>{step.emoji}</span>
+      <div className='relative mt-4 flex items-center justify-between gap-3 border-t border-white/12 pt-3'>
+        <p className='m-0 flex items-center gap-1.5 text-xs font-bold text-white/80'>
+          <span className='flex items-center' aria-hidden='true'>{step.icon}</span>
           <span>{step.text}</span>
         </p>
         {step.cta ? (
           <button
             type='button'
-            className='shrink-0 rounded-full bg-gradient-to-r from-amber-400 to-amber-500 px-3 py-1 text-xs font-bold text-amber-950 shadow-[0_2px_10px_-2px_rgba(217,119,6,0.6)] transition hover:from-amber-300 hover:to-amber-500'
+            className='shrink-0 rounded-xl px-3 py-1.5 text-xs font-black active:translate-y-0.5'
+            style={{ background: 'var(--ica-gold)', color: '#4a3200', boxShadow: '0 3px 0 var(--ica-gold-edge)' }}
             onClick={(event) => {
               event.stopPropagation()
-              if (step.cta?.href) {
-                window.open(step.cta.href, '_blank', 'noopener,noreferrer')
-                return
-              }
-              if (step.cta?.to) navigate(step.cta.to)
+              runCta()
             }}
           >
             {step.cta.label}

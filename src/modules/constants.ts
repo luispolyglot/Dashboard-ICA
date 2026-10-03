@@ -45,6 +45,9 @@ export const GOAL = 10
 export const REVIEW_ROUND_SIZE = 10
 export const CREATION_WORDS_GOAL = 5
 
+/** Máximo de letras del nombre (para que la insignia destacada siempre quepa al lado). */
+export const DISPLAY_NAME_MAX_LENGTH = 20
+
 export const REVIEW_MODE_OPTIONS: Array<{
   key: ReviewMode
   title: string

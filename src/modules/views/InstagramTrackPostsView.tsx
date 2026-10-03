@@ -1,10 +1,11 @@
-import { type ComponentProps, useEffect, useMemo, useState } from 'react'
-import { Loader2Icon } from 'lucide-react'
+import { t, uiLocale } from '@/i18n'
+import { type ComponentProps, type CSSProperties, useEffect, useMemo, useState } from 'react'
+import { CameraIcon, CheckIcon, Loader2Icon } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { EmptyState, GameProgress, GamePage, HeroBlock, IconTile, PageTitle, Panel, Pill, SectionLabel } from '../game/ui'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -32,8 +33,8 @@ type InstagramTrackPostsViewProps = {
 const DAYS_LIMIT = 28
 
 function formatDate(value: Date): string {
-  if (Number.isNaN(value.getTime())) return 'No disponible'
-  return value.toLocaleString('es-ES', {
+  if (Number.isNaN(value.getTime())) return t('No disponible')
+  return value.toLocaleString(uiLocale(), {
     dateStyle: 'short',
     timeStyle: 'short',
     timeZone: 'UTC',
@@ -52,6 +53,7 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
   const [isLoadingMonths, setIsLoadingMonths] = useState(true)
   const [isLoadingRows, setIsLoadingRows] = useState(false)
   const [savingDay, setSavingDay] = useState<number | null>(null)
+  const [selectedDay, setSelectedDay] = useState<number | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -66,7 +68,7 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
         setAvailableMonths(months)
         setSelectedMonth((prev) => (prev && months.includes(prev) ? prev : months[0] || ''))
       } catch {
-        if (mounted) toast.error('No pudimos cargar los meses del track.')
+        if (mounted) toast.error(t('No pudimos cargar los meses del track.'))
       } finally {
         if (mounted) setIsLoadingMonths(false)
       }
@@ -101,7 +103,7 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
         setRowsByDay(byDay)
         setDraftsByDay(drafts)
       } catch {
-        if (mounted) toast.error('No pudimos cargar la tabla del mes seleccionado.')
+        if (mounted) toast.error(t('No pudimos cargar la tabla del mes seleccionado.'))
       } finally {
         if (mounted) setIsLoadingRows(false)
       }
@@ -127,8 +129,8 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
     const isWindowClosed = windowState.isUnlocked && !windowState.isEditable
     const isFutureLocked = !windowState.isUnlocked
     const hasExistingContent = Boolean(current?.postUrl && current.postUrl.trim().length > 0)
-    const baseLabel = hasExistingContent ? 'Editar' : 'Guardar'
-    const buttonLabel = isWindowClosed ? 'Ventana cerrada' : baseLabel
+    const baseLabel = hasExistingContent ? t('Editar') : t('Guardar')
+    const buttonLabel = isWindowClosed ? t('Ventana cerrada') : baseLabel
     const buttonVariant: ComponentProps<typeof Button>['variant'] = isWindowClosed
       ? 'ghost'
       : isFutureLocked
@@ -137,16 +139,16 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
     const isRowSaving = savingDay === dayIndex
 
     const stateText = !windowState.isUnlocked
-      ? `Se desbloquea ${formatDate(windowState.unlockAt)}`
+      ? t('Se desbloquea {date}', { date: formatDate(windowState.unlockAt) })
       : windowState.isEditable
-        ? `Editable hasta ${formatDate(windowState.closeAt)}`
-        : 'Ventana cerrada'
+        ? t('Editable hasta {date}', { date: formatDate(windowState.closeAt) })
+        : t('Ventana cerrada')
 
     const stateBadgeLabel = !windowState.isUnlocked
-      ? 'Bloqueado'
+      ? t('Bloqueado')
       : windowState.isEditable
-        ? 'Editable'
-        : 'Cerrado'
+        ? t('Editable')
+        : t('Cerrado')
 
     const stateBadgeClass = !windowState.isUnlocked
       ? 'bg-muted text-muted-foreground'
@@ -176,17 +178,17 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
     const windowState = getDayUnlockWindow(selectedMonth, dayIndex)
 
     if (!windowState.isEditable) {
-      toast.error('La ventana de 48 horas para ese día no está disponible.')
+      toast.error(t('La ventana de 48 horas para ese día no está disponible.'))
       return
     }
 
     if (trimmed.length === 0 && !rowsByDay[dayIndex]) {
-      toast.error('Ingresa un link de Instagram para guardar este día.')
+      toast.error(t('Ingresa un link de Instagram para guardar este día.'))
       return
     }
 
     if (trimmed.length > 0 && !isInstagramUrl(trimmed)) {
-      toast.error('El link debe empezar con https://instagram.com o https://www.instagram.com')
+      toast.error(t('El link debe empezar con https://instagram.com o https://www.instagram.com'))
       return
     }
 
@@ -202,7 +204,7 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
 
       setRowsByDay((prev) => ({ ...prev, [dayIndex]: saved }))
       setDraftsByDay((prev) => ({ ...prev, [dayIndex]: saved.postUrl || '' }))
-      toast.success(`Día ${dayIndex} guardado correctamente.`)
+      toast.success(t('Día {n} guardado correctamente.', { n: dayIndex }))
     } catch (saveError) {
       toast.error(getTrackPostErrorMessage(saveError))
     } finally {
@@ -210,166 +212,145 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
     }
   }
 
+  const postedDays = dayRows.filter((day) => Boolean(rowsByDay[day]?.postUrl?.trim()))
+  // Día elegido: el que toques; si no, el último que aún se puede editar.
+  const editableDays = selectedMonth ? dayRows.filter((day) => getDayUnlockWindow(selectedMonth, day).isEditable) : []
+  const activeDay = selectedDay ?? editableDays[editableDays.length - 1] ?? null
+  const active = activeDay && selectedMonth ? getDayRowViewModel(activeDay) : null
+
   return (
-    <section className='mx-auto w-full max-w-6xl flex-1 p-4 pb-24 lg:pb-4'>
-      <div className='mb-6 flex flex-wrap items-end justify-between gap-4'>
-        <div>
-          <h2 className='font-serif text-3xl font-bold'>Track post Instagram</h2>
-          <p className='text-sm text-muted-foreground'>
-            Tabla mensual de 28 días. Cada día se desbloquea de forma progresiva y tiene 48 horas para editarse.
-          </p>
-        </div>
+    <GamePage>
+      <PageTitle
+        icon={
+          <IconTile tone='a' size={48}>
+            <CameraIcon className='size-6' strokeWidth={2.6} />
+          </IconTile>
+        }
+        subtitle={t('Cada día con post suma puntos al ranking.')}
+        right={
+          availableMonths.length > 1 ? (
+            <Select value={selectedMonth} onValueChange={(value) => { setSelectedMonth(value); setSelectedDay(null) }}>
+              <SelectTrigger className='w-36' aria-label={t('Mes')}>
+                <SelectValue placeholder={t('Selecciona un mes')} />
+              </SelectTrigger>
+              <SelectContent>
+                {availableMonths.map((month) => (
+                  <SelectItem key={month} value={month}>
+                    {getMonthLabel(month)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null
+        }
+      >
+        {t('Track Instagram')}
+      </PageTitle>
 
-        <div className='w-full max-w-xs'>
-          <Label htmlFor='instagram-track-month'>Mes</Label>
-          <Select
-            value={selectedMonth}
-            onValueChange={setSelectedMonth}
-            disabled={isLoadingMonths || availableMonths.length === 0}
+      {isLoadingMonths || (isLoadingRows && postedDays.length === 0) ? (
+        <ListLoading label={t('Cargando track de Instagram...')} rows={3} className='mb-3' />
+      ) : null}
+
+      {selectedMonth ? (
+        <>
+          {/* El mes en un vistazo */}
+          <HeroBlock
+            tone='a'
+            icon={<CameraIcon className='size-12' strokeWidth={2.2} style={{ color: 'var(--ica-a)' }} />}
+            eyebrow={getMonthLabel(selectedMonth)}
+            title={t('{n} de {total} días con post', { n: postedDays.length, total: DAYS_LIMIT })}
+            text={t('+{points} puntos en el ranking', { points: (postedDays.length * 0.5).toLocaleString(uiLocale()) })}
           >
-            <SelectTrigger id='instagram-track-month'>
-              <SelectValue placeholder='Selecciona un mes' />
-            </SelectTrigger>
-            <SelectContent>
-              {availableMonths.map((month) => (
-                <SelectItem key={month} value={month}>
-                  {getMonthLabel(month)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+            <GameProgress value={postedDays.length / DAYS_LIMIT} color='var(--ica-a)' />
+          </HeroBlock>
 
-      {(isLoadingMonths || isLoadingRows) && (
-        <ListLoading label='Cargando track de Instagram...' rows={3} className='mb-3' />
-      )}
-
-      {!!selectedMonth && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{getMonthLabel(selectedMonth)}</CardTitle>
-            <CardDescription>
-              Solo se pueden guardar cambios mientras el día esté dentro de su ventana de 48 horas.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className='hidden md:block'>
-              <div className='overflow-x-auto'>
-                <table className='w-full min-w-[720px] border-separate border-spacing-y-2'>
-                  <thead>
-                    <tr className='text-left text-sm text-muted-foreground'>
-                      <th className='px-3'>Día</th>
-                      <th className='px-3'>Fecha (UTC)</th>
-                      <th className='px-3'>Link de Instagram</th>
-                      <th className='px-3'>Estado</th>
-                      <th className='px-3 text-right'>Acción</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dayRows.map((dayIndex) => {
-                      const rowViewModel = getDayRowViewModel(dayIndex)
-
-                      return (
-                        <tr key={dayIndex} className='rounded-lg border bg-card'>
-                          <td className='px-3 py-2 font-medium'>{dayIndex}</td>
-                          <td className='px-3 py-2 text-sm text-muted-foreground'>{rowViewModel.dayDate}</td>
-                          <td className='px-3 py-2'>
-                            <Input
-                              value={rowViewModel.draftValue}
-                              placeholder='https://www.instagram.com/...'
-                              disabled={!rowViewModel.isEditable || savingDay !== null}
-                              onChange={(event) => {
-                                const value = event.target.value
-                                setDraftsByDay((prev) => ({ ...prev, [dayIndex]: value }))
-                              }}
-                            />
-                          </td>
-                          <td className='px-3 py-2 text-xs text-muted-foreground'>{rowViewModel.stateText}</td>
-                          <td className='px-3 py-2 text-right'>
-                            <Button
-                              type='button'
-                              size='sm'
-                              variant={rowViewModel.buttonVariant}
-                              onClick={() => void handleSave(dayIndex)}
-                              disabled={!rowViewModel.isEditable || savingDay !== null}
-                            >
-                              {rowViewModel.isRowSaving ? (
-                                <>
-                                  <Loader2Icon className='animate-spin' data-icon='inline-start' />
-                                  Guardando...
-                                </>
-                              ) : (
-                                rowViewModel.buttonLabel
-                              )}
-                            </Button>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className='grid gap-3 md:hidden'>
-              <p className='text-xs text-muted-foreground'>
-                En mobile, cada día se muestra en tarjeta para que puedas ver estado, pegar link y guardar sin scroll
-                horizontal.
-              </p>
-              {dayRows.map((dayIndex) => {
-                const rowViewModel = getDayRowViewModel(dayIndex)
-
+          {/* Los 28 días como círculos (como en Rachas) */}
+          <div>
+            <SectionLabel>{t('Toca un día')}</SectionLabel>
+            <div className='grid grid-cols-7 gap-2'>
+              {dayRows.map((day) => {
+                const posted = Boolean(rowsByDay[day]?.postUrl?.trim())
+                const windowState = getDayUnlockWindow(selectedMonth, day)
+                const isActive = day === activeDay
                 return (
-                  <div key={dayIndex} className='rounded-xl border bg-card p-3'>
-                    <div className='mb-3 flex items-start justify-between gap-3'>
-                      <div>
-                        <p className='text-sm font-semibold'>Día {dayIndex}</p>
-                        <p className='text-xs text-muted-foreground'>{rowViewModel.dayDate}</p>
-                      </div>
-                      <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${rowViewModel.stateBadgeClass}`}>
-                        {rowViewModel.stateBadgeLabel}
-                      </span>
-                    </div>
-
-                    <p className='mb-2 text-xs text-muted-foreground'>{rowViewModel.stateText}</p>
-
-                    <div className='space-y-2'>
-                      <Input
-                        value={rowViewModel.draftValue}
-                        placeholder='https://www.instagram.com/...'
-                        disabled={!rowViewModel.isEditable || savingDay !== null}
-                        onChange={(event) => {
-                          const value = event.target.value
-                          setDraftsByDay((prev) => ({ ...prev, [dayIndex]: value }))
-                        }}
-                      />
-
-                      <Button
-                        type='button'
-                        size='sm'
-                        variant={rowViewModel.buttonVariant}
-                        className='w-full'
-                        onClick={() => void handleSave(dayIndex)}
-                        disabled={!rowViewModel.isEditable || savingDay !== null}
-                      >
-                        {rowViewModel.isRowSaving ? (
-                          <>
-                            <Loader2Icon className='animate-spin' data-icon='inline-start' />
-                            Guardando...
-                          </>
-                        ) : (
-                          rowViewModel.buttonLabel
-                        )}
-                      </Button>
-                    </div>
-                  </div>
+                  <button
+                    key={day}
+                    type='button'
+                    onClick={() => setSelectedDay(day)}
+                    aria-label={t('Día {n}', { n: day })}
+                    aria-pressed={isActive}
+                    className={cn(
+                      'relative flex aspect-square items-center justify-center rounded-full text-sm font-extrabold tabular-nums transition-transform active:scale-90',
+                      isActive && 'ring-3 ring-offset-2 ring-offset-background',
+                    )}
+                    style={{
+                      ...(posted
+                        ? { background: 'var(--ica-a)', color: '#fff', boxShadow: '0 3px 0 var(--ica-a-edge)' }
+                        : windowState.isEditable
+                          ? { background: 'var(--ica-a-soft)', color: 'var(--ica-a-ink)', border: '2px dashed var(--ica-a)' }
+                          : { background: 'var(--muted)', color: 'var(--muted-foreground)', opacity: windowState.isUnlocked ? 1 : 0.55 }),
+                      ...(isActive ? ({ '--tw-ring-color': 'var(--ica-a)' } as CSSProperties) : {}),
+                    }}
+                  >
+                    {posted ? <CheckIcon className='size-4' strokeWidth={3.2} /> : day}
+                  </button>
                 )
               })}
             </div>
-          </CardContent>
-        </Card>
-      )}
-    </section>
+            <div className='mt-3 flex flex-wrap gap-3 text-[11px] font-bold text-muted-foreground'>
+              <span className='flex items-center gap-1.5'><span className='size-3 rounded-full' style={{ background: 'var(--ica-a)' }} />{t('Con post')}</span>
+              <span className='flex items-center gap-1.5'><span className='size-3 rounded-full border-2 border-dashed' style={{ borderColor: 'var(--ica-a)' }} />{t('Puedes subirlo')}</span>
+              <span className='flex items-center gap-1.5'><span className='size-3 rounded-full bg-muted' />{t('Cerrado o aún no')}</span>
+            </div>
+          </div>
+
+          {/* El día elegido */}
+          {active && activeDay ? (
+            <Panel className='flex flex-col gap-3'>
+              <div className='flex items-start justify-between gap-3'>
+                <div>
+                  <p className='m-0 text-lg font-extrabold'>{t('Día {n}', { n: activeDay })}</p>
+                  <p className='m-0 text-xs font-semibold text-muted-foreground'>{active.stateText}</p>
+                </div>
+                <Pill tone={active.isEditable ? 'ok' : 'neutral'}>{active.stateBadgeLabel}</Pill>
+              </div>
+              <Input
+                value={active.draftValue}
+                placeholder='https://www.instagram.com/...'
+                disabled={!active.isEditable || savingDay !== null}
+                onChange={(event) => {
+                  const value = event.target.value
+                  setDraftsByDay((prev) => ({ ...prev, [activeDay]: value }))
+                }}
+                aria-label={t('Link de Instagram')}
+              />
+              <Button
+                type='button'
+                size='lg'
+                variant={active.isEditable ? 'a' : 'outline'}
+                className='w-full'
+                onClick={() => void handleSave(activeDay)}
+                disabled={!active.isEditable || savingDay !== null}
+              >
+                {active.isRowSaving ? (
+                  <>
+                    <Loader2Icon className='animate-spin' data-icon='inline-start' />
+                    {t('Guardando...')}
+                  </>
+                ) : (
+                  active.buttonLabel
+                )}
+              </Button>
+            </Panel>
+          ) : (
+            <EmptyState
+              icon={<CameraIcon className='size-10 text-muted-foreground' strokeWidth={2.2} />}
+              title={t('Toca un día')}
+              text={t('Cada día se abre a su hora y tienes 48 horas para pegar el link de tu post.')}
+            />
+          )}
+        </>
+      ) : null}
+    </GamePage>
   )
 }

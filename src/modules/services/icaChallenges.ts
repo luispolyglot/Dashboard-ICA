@@ -1,3 +1,4 @@
+import { getUiLang, t } from '@/i18n'
 import { supabase } from '@/lib/supabase'
 import { runInBatches } from '@/lib/utils'
 import { ICA_CHALLENGES_LOCAL } from './icaChallengesLocalMode'
@@ -316,20 +317,95 @@ export const ICA_CHALLENGE_WORD_SOURCE_LABEL: Record<IcaChallengeWordSource, str
 export function getIcaChallengeConfigLabel(
   challenge: Pick<IcaChallengeRecord, 'challengeSlug' | 'gameMetadata'>,
 ): string {
-  const source = ICA_CHALLENGE_WORD_SOURCE_LABEL[getChallengeWordSource(challenge)]
+  // Se traduce al pintar (las etiquetas de arriba son constantes en español).
+  const source = t(ICA_CHALLENGE_WORD_SOURCE_LABEL[getChallengeWordSource(challenge)])
   if (isLightningChallenge(challenge)) {
     const seconds = Math.round(Number(challenge.gameMetadata.sessionSeconds)) || 60
-    return `${seconds} segundos por jugador · ${source}`
+    return `${t('{n} segundos por jugador', { n: seconds })} · ${source}`
   }
   const config = getOwnWordsChallengeConfig(challenge.gameMetadata)
   if (isPairsChallenge(challenge)) {
-    const roundsLabel = config.rounds === 1 ? 'los 2 seguidos' : '1 por ronda'
-    return `2 tableros de 5 parejas · ${roundsLabel} · ${config.responseSeconds}s por tablero · ${source}`
+    const roundsLabel = config.rounds === 1 ? t('los 2 seguidos') : t('1 por ronda')
+    return `${t('2 tableros de 5 parejas')} · ${roundsLabel} · ${t('{n}s por tablero', { n: config.responseSeconds })} · ${source}`
   }
   const perRound = ICA_CHALLENGE_OWN_WORDS_TOTAL_QUESTIONS / config.rounds
   const roundsLabel =
-    config.rounds === 1 ? '1 ronda' : `${config.rounds} rondas de ${perRound}`
-  return `10 palabras · ${roundsLabel} · ${config.responseSeconds}s por palabra · ${source}`
+    config.rounds === 1 ? t('1 ronda') : t('{n} rondas de {per}', { n: config.rounds, per: perRound })
+  return `${t('10 palabras')} · ${roundsLabel} · ${t('{n}s por palabra', { n: config.responseSeconds })} · ${source}`
+}
+
+/**
+ * Mensajes del servidor (y del modo local) para enseñarlos en pantalla.
+ * Llegan en español y a veces se comparan tal cual: aquí solo se traducen al mostrarlos.
+ * Los que llevan números o nombres dentro se reconocen por su forma.
+ */
+const CHALLENGE_MESSAGE_PATTERNS: Array<{ pattern: RegExp; key: string; vars: string[] }> = [
+  { pattern: /^Nivel demasiado distinto \((.+) y (.+)\)\.$/, key: 'Nivel demasiado distinto ({a} y {b}).', vars: ['a', 'b'] },
+  {
+    pattern: /^Necesitas (\d+) palabras en tu Baúl ICA para retar\. Tienes (\d+): te faltan (\d+)\.$/,
+    key: 'Necesitas {min} palabras en tu Baúl ICA para retar. Tienes {n}: te faltan {missing}.',
+    vars: ['min', 'n', 'missing'],
+  },
+  {
+    pattern: /^Necesitas (\d+) palabras en tu Baúl ICA para aceptar retos\. Tienes (\d+): te faltan (\d+)\.$/,
+    key: 'Necesitas {min} palabras en tu Baúl ICA para aceptar retos. Tienes {n}: te faltan {missing}.',
+    vars: ['min', 'n', 'missing'],
+  },
+  {
+    pattern: /^Este icademer aún no tiene (\d+) palabras en su Baúl ICA\.$/,
+    key: 'Este icademer aún no tiene {n} palabras en su Baúl ICA.',
+    vars: ['n'],
+  },
+  { pattern: /^No hay suficientes palabras ICA(.*) para este modo\.$/, key: 'No hay suficientes palabras ICA{req} para este modo.', vars: ['req'] },
+  {
+    pattern: /^Necesitas al menos (\d+) palabras ICA(.*) para «(.+)»\.$/,
+    key: 'Necesitas al menos {n} palabras ICA{req} para «{mode}».',
+    vars: ['n', 'req', 'mode'],
+  },
+  {
+    pattern: /^Entre los dos necesitan al menos (\d+) palabras ICA(.*) para «(.+)»\.$/,
+    key: 'Entre los dos necesitan al menos {n} palabras ICA{req} para «{mode}».',
+    vars: ['n', 'req', 'mode'],
+  },
+  {
+    pattern: /^Tu rival aún no tiene (\d+) palabras ICA(.*) para «(.+)»\.$/,
+    key: 'Tu rival aún no tiene {n} palabras ICA{req} para «{mode}».',
+    vars: ['n', 'req', 'mode'],
+  },
+  // Mensajes de invitations.ts al aceptar un reto (develop, 1 oct).
+  {
+    pattern: /^El retador necesita al menos (\d+) palabras en su Baúl ICA\.$/,
+    key: 'El retador necesita al menos {n} palabras en su Baúl ICA.',
+    vars: ['n'],
+  },
+  {
+    pattern: /^Entre los dos necesitan al menos (\d+) palabras ICA(.*) para este modo\.$/,
+    key: 'Entre los dos necesitan al menos {n} palabras ICA{req} para este modo.',
+    vars: ['n', 'req'],
+  },
+  {
+    pattern: /^Ambos necesitan al menos (\d+) palabras ICA(.*) válidas para este modo\.$/,
+    key: 'Ambos necesitan al menos {n} palabras ICA{req} válidas para este modo.',
+    vars: ['n', 'req'],
+  },
+]
+
+export function translateChallengeMessage(message: string): string {
+  if (getUiLang() === 'es' || !message) return message
+  const direct = t(message)
+  if (direct !== message) return direct
+  for (const item of CHALLENGE_MESSAGE_PATTERNS) {
+    const match = item.pattern.exec(message)
+    if (!match) continue
+    const vars: Record<string, string> = {}
+    item.vars.forEach((name, index) => {
+      const value = match[index + 1] ?? ''
+      // «req» es un trozo como « de una sola palabra»; «mode», el nombre del modo.
+      vars[name] = name === 'req' || name === 'mode' ? t(value) : value
+    })
+    return t(item.key, vars)
+  }
+  return message
 }
 
 export async function fetchMyIcaChallengeEnrollment(
@@ -407,7 +483,16 @@ export async function listMyIcaChallenges(
   nativeLang: string,
   limit = 20,
 ): Promise<IcaChallengeRecord[]> {
-  if (ICA_CHALLENGES_LOCAL) return (await (await loadLocalChallenges()).localListChallenges()).slice(0, limit)
+  if (ICA_CHALLENGES_LOCAL) {
+    // Igual que con el servidor: los «por idioma» solo salen en su idioma.
+    return (await (await loadLocalChallenges()).localListChallenges())
+      .filter(
+        (challenge) =>
+          challenge.scope === 'global' ||
+          (challenge.targetLang === targetLang && challenge.nativeLang === nativeLang),
+      )
+      .slice(0, limit)
+  }
   if (!supabase) return []
   const userId = await getCurrentUserId()
   if (!userId) return []
@@ -672,6 +757,36 @@ async function invokeChallenges<T>(
   return data as T
 }
 
+export type IcaChallengeReactionRow = {
+  id: string
+  challenge_id: string
+  sender_user_id: string
+  kind: 'face' | 'phrase'
+  value: string
+  created_at: string
+}
+
+export async function listIcaChallengeReactions(challengeId: string): Promise<IcaChallengeReactionRow[]> {
+  const result = await invokeChallenges<{ rows?: IcaChallengeReactionRow[] }>(
+    { action: 'list-reactions', challengeId },
+    'No se pudieron cargar las reacciones.',
+  )
+  return Array.isArray(result.rows) ? result.rows : []
+}
+
+export async function sendIcaChallengeReaction(input: {
+  challengeId: string
+  kind: 'face' | 'phrase'
+  value: string
+}): Promise<IcaChallengeReactionRow> {
+  const result = await invokeChallenges<{ row?: IcaChallengeReactionRow }>(
+    { action: 'send-reaction', ...input },
+    'No se pudo enviar la reacción.',
+  )
+  if (!result.row?.id) throw new IcaChallengeRequestError('No se pudo enviar la reacción.')
+  return result.row
+}
+
 export async function createIcaChallenge(input: {
   challengeTypeId: string
   challengedUserId: string
@@ -680,6 +795,8 @@ export async function createIcaChallenge(input: {
   nativeLang?: string
   durationSeconds?: number
   config: IcaOwnWordsChallengeConfig
+  /** 4.º desafío activo con un «desafío extra» (EXTRA_CHALLENGE_COST ICA Coins). El servidor aún no lo acepta (ver MODO_JUEGO_NOTAS.md). */
+  extraSlot?: boolean
 }): Promise<void> {
   const cleanConfig = sanitizeOwnWordsConfig(input.config)
   const durationSeconds = input.durationSeconds
@@ -698,6 +815,7 @@ export async function createIcaChallenge(input: {
       responseSeconds: cleanConfig.responseSeconds,
       wordSource: input.config.wordSource === 'mixed' ? 'mixed' : 'own',
       durationSeconds,
+      ...(input.extraSlot ? { useExtraSlot: true } : {}),
     },
     'No se pudo crear el desafío.',
   )
@@ -1017,4 +1135,72 @@ export async function listIcaChallengeProfilesByIds(
 
     return acc
   }, { ...botProfiles })
+}
+
+// ---------------------------------------------------------------------------
+// Perfil de otro icademer (se abre al tocar su nombre en el ranking)
+// ---------------------------------------------------------------------------
+
+export type IcademerPublicProfile = {
+  profile: {
+    userId: string
+    displayName: string
+    username: string | null
+    targetLang: string | null
+    nativeLang: string | null
+    level: string | null
+    isMe: boolean
+  }
+  /** Datos de sus insignias (null = no se sabe). Ranking y eficacia se calculan en la app. */
+  stats: {
+    icaStreakBest: number | null
+    flashStreakBest: number | null
+    vocab: number | null
+    wins: number | null
+  }
+  challenge: {
+    canChallenge: boolean
+    blockedReason: string | null
+    blockedCode: string | null
+  }
+}
+
+/**
+ * Pide al servidor el perfil público de un icademer (acción `public-profile` de
+ * ica-challenges-center). Si la función aún no está desplegada con esa acción, falla y la app
+ * enseña lo que ya sabe por el ranking.
+ */
+export async function fetchIcademerPublicProfile(profileUserId: string): Promise<IcademerPublicProfile> {
+  type Response = FunctionResponse & Partial<IcademerPublicProfile>
+  const data = await invokeChallenges<Response>(
+    { action: 'public-profile', profileUserId },
+    'No se pudo cargar el perfil.',
+  )
+  if (!data.profile || !data.challenge) {
+    throw new IcaChallengeRequestError('No se pudo cargar el perfil.')
+  }
+  const toCount = (value: unknown): number | null =>
+    value === null || value === undefined || !Number.isFinite(Number(value)) ? null : Math.max(0, Number(value))
+  return {
+    profile: {
+      userId: String(data.profile.userId || profileUserId),
+      displayName: String(data.profile.displayName || '').trim() || 'Usuario',
+      username: data.profile.username || null,
+      targetLang: data.profile.targetLang || null,
+      nativeLang: data.profile.nativeLang || null,
+      level: data.profile.level || null,
+      isMe: Boolean(data.profile.isMe),
+    },
+    stats: {
+      icaStreakBest: toCount(data.stats?.icaStreakBest),
+      flashStreakBest: toCount(data.stats?.flashStreakBest),
+      vocab: toCount(data.stats?.vocab),
+      wins: toCount(data.stats?.wins),
+    },
+    challenge: {
+      canChallenge: Boolean(data.challenge.canChallenge),
+      blockedReason: data.challenge.blockedReason || null,
+      blockedCode: data.challenge.blockedCode || null,
+    },
+  }
 }

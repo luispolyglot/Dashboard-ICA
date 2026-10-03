@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PlusIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react'
+import { GraduationCapIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react'
+import { EmptyState, IconTile, PageTitle, Panel, RowGroup, SectionLabel } from '../game/ui'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -19,7 +19,6 @@ import {
   fetchIcademyTeachers,
 } from '../services/icademyTeachers'
 import type { IcademyTeacher, IcademyTeacherAssignableUser } from '../types'
-import { ListLoading } from '@/components/ui/loading-state'
 import { useSoftLoading } from '../hooks/useSoftLoading'
 
 export function ManageIcademyTeachersView() {
@@ -129,109 +128,94 @@ export function ManageIcademyTeachersView() {
   }
 
   return (
-    <section className='mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-5 py-8'>
-      <div className='mb-6'>
-        <h2 className='mb-1 font-serif text-3xl font-bold'>Profesores ICADEMY</h2>
-        <p className='text-sm text-muted-foreground'>
-          Panel de SUPER ADMIN para asignar o quitar el rol de profesor.
-        </p>
-      </div>
+    <section className='mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 px-4 pt-2 pb-8 lg:py-8'>
+      <PageTitle
+        icon={
+          <IconTile tone='i' size={48}>
+            <GraduationCapIcon className='size-6' strokeWidth={2.4} />
+          </IconTile>
+        }
+        subtitle='Quién da clases en el Calendario ICADEMY.'
+        right={
+          <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => void loadData()} disabled={loading || refreshing} aria-label='Recargar'>
+            <RefreshCwIcon className={loading || refreshing ? 'size-5 animate-spin' : 'size-5'} strokeWidth={2.6} />
+          </Button>
+        }
+      >
+        Profesores ICADEMY
+      </PageTitle>
 
-      <Card>
-        <CardHeader className='gap-4'>
-          <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
-            <CardTitle>Tabla de profesores ({teachers.length})</CardTitle>
-            <div className='flex flex-wrap gap-2'>
-              <Button
-                type='button'
-                variant='outline'
-                onClick={() => {
-                  setFeedback(null)
-                  setSelectedUserId('')
-                  setIsCreateModalOpen(true)
-                }}
-              >
-                <PlusIcon className='h-4 w-4' />
-                Nuevo profesor
-              </Button>
-              <Button
-                type='button'
-                variant='ghost'
-                onClick={() => void loadData()}
-                disabled={loading || refreshing}
-              >
-                <RefreshCwIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-                Recargar
-              </Button>
-            </div>
+      <Button
+        type='button'
+        size='lg'
+        className='w-full rounded-2xl sm:w-fit'
+        onClick={() => {
+          setFeedback(null)
+          setSelectedUserId('')
+          setIsCreateModalOpen(true)
+        }}
+      >
+        <PlusIcon className='size-5' strokeWidth={2.6} />
+        Añadir profesor
+      </Button>
+
+      {feedback ? (
+        <Panel tone='i' className='text-sm font-bold'>
+          {feedback}
+        </Panel>
+      ) : null}
+
+      <div>
+        <SectionLabel>{teachers.length === 1 ? '1 profesor' : `${teachers.length} profesores`}</SectionLabel>
+        {loading && teachers.length === 0 ? (
+          <div className='flex flex-col gap-2' aria-hidden='true'>
+            {Array.from({ length: 3 }, (_, index) => (
+              <div key={index} className='h-16 animate-pulse rounded-2xl bg-muted' />
+            ))}
           </div>
-
-          {feedback && (
-            <p className='rounded-md border border-border bg-muted/40 px-3 py-2 text-sm'>
-              {feedback}
-            </p>
-          )}
-        </CardHeader>
-
-        <CardContent>
-          {loading ? (
-            <ListLoading label='Cargando profesores...' />
-          ) : error ? (
-            <p className='rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive'>
-              {error}
-            </p>
-          ) : teachers.length === 0 ? (
-            <p className='text-sm text-muted-foreground'>
-              No hay profesores asignados.
-            </p>
-          ) : (
-            <div className='overflow-x-auto'>
-              <table className='w-full min-w-[520px] text-sm'>
-                <thead>
-                  <tr className='border-b text-left text-muted-foreground'>
-                    <th className='px-3 py-2 font-medium'>Nombre</th>
-                    <th className='px-3 py-2 font-medium'>Username</th>
-                    <th className='px-3 py-2 font-medium'>UUID</th>
-                    <th className='px-3 py-2 font-medium text-right'>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {teachers.map((teacher) => (
-                    <tr key={teacher.userId} className='border-b align-middle'>
-                      <td className='px-3 py-2'>{teacher.displayName}</td>
-                      <td className='px-3 py-2 text-muted-foreground'>
-                        {teacher.username || '-'}
-                      </td>
-                      <td className='px-3 py-2 font-mono text-xs text-muted-foreground'>
-                        {teacher.userId}
-                      </td>
-                      <td className='px-3 py-2 text-right'>
-                        <Button
-                          type='button'
-                          variant='outline'
-                          size='sm'
-                          onClick={() => setTeacherPendingDelete(teacher)}
-                          disabled={deletingUserId === teacher.userId}
-                        >
-                          <Trash2Icon className='h-4 w-4' />
-                          {deletingUserId === teacher.userId
-                            ? 'Eliminando...'
-                            : 'Eliminar'}
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        ) : error ? (
+          <Panel tone='bad' className='text-sm font-bold'>
+            {error}
+          </Panel>
+        ) : teachers.length === 0 ? (
+          <Panel>
+            <EmptyState title='Todavía no hay profesores' text='Añade el primero con el botón de arriba.' />
+          </Panel>
+        ) : (
+          <RowGroup>
+            {teachers.map((teacher) => (
+              <div key={teacher.userId} className='flex items-center gap-3 py-3'>
+                <span className='flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--ica-i-soft)] text-sm font-black text-[var(--ica-i-ink)] uppercase'>
+                  {teacher.displayName.charAt(0) || '?'}
+                </span>
+                <span className='min-w-0 flex-1'>
+                  <span className='block truncate font-extrabold'>{teacher.displayName}</span>
+                  <span className='block truncate text-xs font-semibold text-muted-foreground'>
+                    {teacher.username ? `@${teacher.username} · ` : ''}
+                    <span className='font-mono'>{teacher.userId}</span>
+                  </span>
+                </span>
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='icon-sm'
+                  className='rounded-xl text-[var(--ica-bad-ink)]'
+                  onClick={() => setTeacherPendingDelete(teacher)}
+                  disabled={deletingUserId === teacher.userId}
+                  aria-label={`Quitar a ${teacher.displayName}`}
+                >
+                  <Trash2Icon className='size-4' strokeWidth={2.6} />
+                </Button>
+              </div>
+            ))}
+          </RowGroup>
+        )}
+      </div>
 
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Agregar profesor</DialogTitle>
+            <DialogTitle>Añadir profesor</DialogTitle>
             <DialogDescription>
               Selecciona un usuario de la app para asignarlo como profesor de
               ICADEMY.
@@ -278,17 +262,16 @@ export function ManageIcademyTeachersView() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Eliminar profesor</DialogTitle>
+            <DialogTitle>Quitar profesor</DialogTitle>
             <DialogDescription>
               {teacherPendingDelete
                 ? `Vas a eliminar a ${teacherPendingDelete.displayName} de la tabla de profesores.`
-                : 'Confirma la eliminacion del profesor.'}
+                : 'Confirma que quieres quitar a este profesor.'}
             </DialogDescription>
           </DialogHeader>
 
           <p className='text-sm text-muted-foreground'>
-            Esta accion no elimina al usuario de la app, solo quita su rol de
-            profesor.
+            Su cuenta sigue en la app: solo deja de ser profesor.
           </p>
 
           <DialogFooter>
@@ -306,7 +289,7 @@ export function ManageIcademyTeachersView() {
               onClick={() => void handleConfirmDelete()}
               disabled={Boolean(deletingUserId)}
             >
-              {deletingUserId ? 'Eliminando...' : 'Confirmar eliminacion'}
+              {deletingUserId ? 'Eliminando...' : 'Quitar profesor'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -3,3 +3,6 @@ dist
 .DS_Store
 .env
 scripts/.coaching-exercise-output/
+# Copias de .env con claves (no se suben): .env.luis, .env.local...
+.env.*
+!.env.example

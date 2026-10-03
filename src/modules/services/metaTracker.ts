@@ -2,12 +2,29 @@ import { supabase } from '../../lib/supabase'
 import { chunkArray } from '../../lib/utils'
 import { notifyActivationMetricsChanged } from './creationMetricsSync'
 import { fetchAllPages } from './lexicardsPagination'
+import { peekQuick, storeQuick } from './quickCache'
 import type { MetaTrackerProfile, MetaTrackerStartLevel } from '../types'
 
 type SaveMetaTrackerInput = {
   startLevel: MetaTrackerStartLevel
   priorIcaWords: number
   confirmedAt: number
+}
+
+// Tu nivel real se guarda también en la caché rápida: al abrir la app se enseña al momento
+// el último que se vio (la barrita de «Tu nivel») mientras llega el de ahora.
+function metaTrackerCacheKey(userId: string, targetLang: string, nativeLang: string): string {
+  return `meta-tracker:${userId}:${targetLang}|${nativeLang}`
+}
+
+/** El último nivel guardado de este usuario e idioma (undefined si no hay ninguno). */
+export function peekMetaTrackerProfile(
+  userId: string | null | undefined,
+  targetLang: string,
+  nativeLang: string,
+): MetaTrackerProfile | null | undefined {
+  if (!userId) return undefined
+  return peekQuick<MetaTrackerProfile | null>(metaTrackerCacheKey(userId, targetLang, nativeLang))
 }
 
 async function getCurrentUserId(): Promise<string | null> {
@@ -57,8 +74,9 @@ export async function loadMetaTrackerProfile(
       .maybeSingle()
 
     if (error) throw error
-    if (!data) return null
-    return toProfile(data)
+    const profile = data ? toProfile(data) : null
+    storeQuick(metaTrackerCacheKey(userId, targetLang, nativeLang), profile)
+    return profile
   } catch {
     return null
   }
@@ -122,7 +140,9 @@ export async function saveMetaTrackerProfile(
     throw error
   }
 
-  return toProfile(data)
+  const profile = toProfile(data)
+  storeQuick(metaTrackerCacheKey(userId, targetLang, nativeLang), profile)
+  return profile
 }
 
 export async function fetchWordActivationCounts(

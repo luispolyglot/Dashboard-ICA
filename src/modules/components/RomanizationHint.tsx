@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getRomanization } from '../utils/romanization'
+import { t } from '@/i18n'
 
 type RomanizationHintProps = {
   text: string
@@ -29,8 +30,8 @@ export function RomanizationHint({ text, language, className }: RomanizationHint
   if (!romanization) return null
 
   return (
-    <p className={className || 'mt-1 text-xs text-muted-foreground'}>
-      Romanización: {romanization}
+    <p className={className || 'mt-1 text-xs font-semibold text-muted-foreground'}>
+      <span className='font-extrabold'>{t('Romanización:')}</span> {romanization}
     </p>
   )
 }
