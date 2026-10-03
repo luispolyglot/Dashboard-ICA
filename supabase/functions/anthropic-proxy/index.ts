@@ -74,7 +74,15 @@ type AnthropicToolDefinition = {
   input_schema: Record<string, unknown>
 }
 
+// Modelo rápido y barato (Haiku) para las tareas cortas de todos los días:
+// traducir lo que escribes en Inmersión, corregir la ortografía, ejemplos de las palabras,
+// explicar una palabra de una frase y revisar la frase escrita a mano.
+// Crear frases (activation_phrase), dividir frases y el coaching siguen con el modelo general (Sonnet).
+const FAST_MODEL = Deno.env.get('ANTHROPIC_FAST_MODEL') || 'claude-haiku-4-5-20251001'
+
 type CallAnthropicOptions = {
+  /** Modelo concreto para esta llamada (si no, el general de ANTHROPIC_MODEL). */
+  model?: string
   maxTokens?: number
   temperature?: number
   tool?: AnthropicToolDefinition
@@ -601,7 +609,7 @@ async function callAnthropic(
   options?: CallAnthropicOptions,
 ): Promise<{ text: string | null; toolInput: Record<string, unknown> | null }> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
-  const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6'
+  const model = options?.model || Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6'
   const baseUrl = Deno.env.get('ANTHROPIC_BASE_URL') || 'https://api.anthropic.com'
 
   if (!apiKey) {
@@ -836,6 +844,7 @@ Deno.serve(async (req) => {
         ].join('\n'),
         payload.text,
         {
+          model: FAST_MODEL,
           maxTokens: 400,
           temperature: 0,
           tool: {
@@ -959,7 +968,7 @@ Deno.serve(async (req) => {
       const raw = await callAnthropic(
         'You generate high-quality learner examples. Reply ONLY in JSON. No markdown, no backticks.',
         prompt,
-        { maxTokens: 180, temperature: 0.1 },
+        { model: FAST_MODEL, maxTokens: 180, temperature: 0.1 },
       )
 
       return jsonResponse(200, {
@@ -1009,6 +1018,7 @@ Deno.serve(async (req) => {
         ].join('\n'),
         text,
         {
+          model: FAST_MODEL,
           maxTokens: 200,
           temperature: 0,
           tool: {
@@ -1063,7 +1073,7 @@ Deno.serve(async (req) => {
       const raw = await callAnthropic(
         'You are a precise language tutor. Keep responses short and useful. Reply ONLY JSON.',
         prompt,
-        { maxTokens: 260, temperature: 0.1 },
+        { model: FAST_MODEL, maxTokens: 260, temperature: 0.1 },
       )
 
       return jsonResponse(200, {
@@ -1116,6 +1126,7 @@ Deno.serve(async (req) => {
         'You review and improve learner sentences. Keep the meaning of the required ICA words and inflect them only when grammar requires it. Reply ONLY JSON.',
         prompt,
         {
+          model: FAST_MODEL,
           maxTokens: 600, // Antes 180: la respuesta completa no cabía
           temperature: 0,
           tool: {

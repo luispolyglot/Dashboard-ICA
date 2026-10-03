@@ -278,7 +278,8 @@ async function callAnthropicForWordExample(
   effectiveLevel: string,
 ): Promise<WordExampleResult | null> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
-  const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6'
+  // Ejemplos de las flashcards: tarea corta, va con el modelo rápido (Haiku).
+  const model = Deno.env.get('ANTHROPIC_FAST_MODEL') || 'claude-haiku-4-5-20251001'
   const baseUrl =
     Deno.env.get('ANTHROPIC_BASE_URL') || 'https://api.anthropic.com'
 
