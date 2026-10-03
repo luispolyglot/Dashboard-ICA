@@ -17,6 +17,8 @@ import { LevelCard } from '../game/LevelCard'
 import { LevelStrip } from '../game/LevelStrip'
 import { RankingSnippetCard } from '../game/RankingSnippetCard'
 import { isIcaCycleDone } from '../game/streak'
+import { StreakRiskBanner } from '../game/StreakRiskBanner'
+import { ChatInvite } from '../game/ChatInvite'
 import type { DailyProgressMap } from '../types'
 import type { AppConfig } from '../types'
 import { t, uiLocale } from '@/i18n'
@@ -147,6 +149,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
             </div>
           </div>
 
+          <StreakRiskBanner className='max-w-xl' />
           <IcaPath />
 
           <div className='grid grid-cols-3 items-start gap-5'>
@@ -156,6 +159,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           </div>
           <div className={hasCoaching ? '' : 'hidden'}>{coachingCard}</div>
         </div>
+        <ChatInvite />
       </section>
     )
   }
@@ -174,6 +178,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
             </h1>
             <p className='m-0 mt-0.5 text-sm font-medium text-muted-foreground'>{subtitle}</p>
           </div>
+          <StreakRiskBanner />
           <IcaPath />
           {/* Coaching: debajo del camino en el móvil (se monta siempre para saber si lo tienes) */}
           {!isLg ? <div className={hasCoaching ? '' : 'hidden'}>{coachingCard}</div> : null}
@@ -186,6 +191,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           {isLg ? coachingCard : null}
         </aside>
       </div>
+      <ChatInvite />
     </section>
   )
 }

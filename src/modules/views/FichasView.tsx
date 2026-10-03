@@ -9,9 +9,11 @@ import { DASHBOARD_ROUTES } from '../routes/paths'
 import {
   buyChallengeSlot,
   buyPhaseBoost,
+  challengeWinCoinsThisWeek,
   coinsText,
   fichasFormatter,
   nextCoinProgress,
+  phaseBoostsThisWeek,
   unusedChallengeSlots,
   useFichas,
   type FichaPreviewEntry,
@@ -20,6 +22,9 @@ import { ChestIcon, FichaIcon, FlameIcon, PhaseBoostGlyph, PregunticaExtraGlyph,
 import { LIMIT_LABELS, useDailyLimits } from '../game/limits'
 import {
   CHALLENGE_WIN_REWARD,
+  CHALLENGE_WIN_WEEKLY_CAP,
+  COIN_WALLET_CAP,
+  COIN_WALLET_WARN,
   CYCLE_CHEST_MAX,
   CYCLE_CHEST_MIN,
   FLASH_STREAK_MILESTONES,
@@ -27,8 +32,9 @@ import {
   DAILY_LIMITS,
   EXTRA_CHALLENGE_COST,
   LIMIT_PHASE,
-  PHASE_BOOST_COST,
   PHASE_BOOST_MULTIPLIER,
+  PHASE_BOOST_WEEKLY_MAX,
+  PHASE_BOOST_WEEKLY_PRICES,
   PREGUNTICA_EXTRA_COST,
   RANKING_POINTS_PER_COIN,
   type DailyLimitKey,
@@ -48,10 +54,10 @@ const LIMIT_ROWS: Array<{ key: DailyLimitKey; letter: 'I' | 'C' | 'A'; color: st
 ]
 
 function entryLabel(entry: FichaPreviewEntry): string {
-  if (entry.type === 'cycle_chest') return t('Cofre del ciclo')
+  if (entry.type === 'cycle_chest') return entry.rolled ? t('Cofre del ciclo (hucha llena)') : t('Cofre del ciclo')
   if (entry.type === 'streak_milestone') return t('Hito de racha ICA: {milestoneDays} días', { milestoneDays: entry.milestoneDays })
   if (entry.type === 'flash_milestone') return t('Hito de racha de flashcards: {milestoneDays} días', { milestoneDays: entry.milestoneDays })
-  if (entry.type === 'challenge_win') return t('Desafío ICA ganado')
+  if (entry.type === 'challenge_win') return entry.delta > 0 ? t('Desafío ICA ganado') : t('Desafío ICA ganado (tope alcanzado)')
   if (entry.type === 'challenge_slot') return entry.used ? t('Desafío extra (usado)') : t('Desafío extra')
   if (entry.type === 'phase_boost' && entry.phase) return t('Ampliar {phase}', { phase: t(LIMIT_PHASE[entry.phase].name) })
   return t('Día ampliado')
@@ -192,7 +198,7 @@ export function FichasView() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { total, realBalance, entries } = useFichas(user?.id)
-  const { limits, used, boosted } = useDailyLimits()
+  const { limits, used, boosted, nextBoostPrice } = useDailyLimits()
   const [confirming, setConfirming] = useState<DailyLimitKey | 'challenge' | null>(null)
   const [openRow, setOpenRow] = useState<'ica' | 'flash' | 'ranking' | null>(null)
   const { completedDays, creationDays, savedCreationDays, creationSavesUsedThisMonth, creationSavesLimit, dailyProgress } =
@@ -208,14 +214,21 @@ export function FichasView() {
   const balance = total ?? 0
   const slots = unusedChallengeSlots(entries)
   const progress = nextCoinProgress(realBalance)
+  const boostsThisWeek = phaseBoostsThisWeek(entries)
+  const winCoinsThisWeek = challengeWinCoinsThisWeek(entries)
+  const walletPercent = Math.min(100, (balance / COIN_WALLET_CAP) * 100)
 
   // «Ampliar» una fase solo hoy: primer toque pide confirmar, el segundo compra.
   const tryBoost = (kind: DailyLimitKey) => {
     const phase = t(LIMIT_PHASE[kind].name)
+    if (nextBoostPrice === null) {
+      toast.error(t('Esta semana ya usaste las {n} ampliaciones. El lunes vuelven.', { n: PHASE_BOOST_WEEKLY_MAX }))
+      return
+    }
     if (confirming !== kind) {
-      if (balance < PHASE_BOOST_COST) {
+      if (balance < nextBoostPrice) {
         toast.error(
-          t('Necesitas {n} para ampliar {phase} (tienes {balance}).', { n: coinsText(PHASE_BOOST_COST), phase, balance }),
+          t('Necesitas {n} para ampliar {phase} (tienes {balance}).', { n: coinsText(nextBoostPrice), phase, balance }),
         )
         return
       }
@@ -270,6 +283,32 @@ export function FichasView() {
         </div>
       </div>
 
+      {/* Hucha: como mucho COIN_WALLET_CAP */}
+      <div className='-mt-3 px-1'>
+        <div className='mb-1 flex items-center justify-between gap-2 text-xs font-bold'>
+          <span className='text-muted-foreground'>{t('Tu hucha')}</span>
+          <span className='tabular-nums' style={{ color: 'var(--ica-gold-ink)' }}>
+            {t('{n} de {max}', { n: balance, max: COIN_WALLET_CAP })}
+          </span>
+        </div>
+        <div className='h-2.5 overflow-hidden rounded-full bg-muted'>
+          <span
+            className='block h-full rounded-full transition-[width] duration-500'
+            style={{ width: `${walletPercent}%`, background: 'var(--ica-gold)' }}
+          />
+        </div>
+        <p
+          className='m-0 mt-1 text-xs font-semibold'
+          style={{ color: balance >= COIN_WALLET_WARN ? 'var(--ica-gold-ink)' : 'var(--muted-foreground)' }}
+        >
+          {balance >= COIN_WALLET_CAP
+            ? t('Hucha llena: el cofre y los desafíos no suman hasta que gastes alguna.')
+            : balance >= COIN_WALLET_WARN
+              ? t('Casi llena: por encima de {max}, el cofre y los desafíos ya no suman.', { max: COIN_WALLET_CAP })
+              : t('Puedes guardar hasta {max} ICA Coins.', { max: COIN_WALLET_CAP })}
+        </p>
+      </div>
+
       {/* En qué se gastan */}
       <div>
         <p className='mb-2 flex items-center gap-2 text-base font-black'>
@@ -312,10 +351,10 @@ export function FichasView() {
               })}
               right={
                 <PriceButton
-                  cost={PHASE_BOOST_COST}
+                  cost={nextBoostPrice ?? PHASE_BOOST_WEEKLY_PRICES[0]}
                   onClick={() => tryBoost(row.key)}
                   confirming={confirming === row.key}
-                  doneLabel={boosted[row.key] ? t('Activo hoy') : undefined}
+                  doneLabel={boosted[row.key] ? t('Activo hoy') : nextBoostPrice === null ? t('Hasta el lunes') : undefined}
                 />
               }
             />
@@ -339,10 +378,18 @@ export function FichasView() {
         {confirming ? (
           <p className='mt-1 text-xs font-semibold text-muted-foreground'>
             {t('Toca «Confirmar» para gastar {coins}.', {
-              coins: coinsText(confirming === 'challenge' ? EXTRA_CHALLENGE_COST : PHASE_BOOST_COST),
+              coins: coinsText(confirming === 'challenge' ? EXTRA_CHALLENGE_COST : nextBoostPrice ?? 0),
             })}
           </p>
-        ) : null}
+        ) : (
+          <p className='mt-1 text-xs font-semibold text-muted-foreground'>
+            {t('Ampliaciones: {prices} ICA Coins la 1.ª, 2.ª y 3.ª de la semana. Esta semana llevas {n} de {max}.', {
+              prices: PHASE_BOOST_WEEKLY_PRICES.join(', '),
+              n: boostsThisWeek,
+              max: PHASE_BOOST_WEEKLY_MAX,
+            })}
+          </p>
+        )}
       </div>
 
       {/* Límites de hoy */}
@@ -410,7 +457,10 @@ export function FichasView() {
           <Row
             icon={<SwordsIcon size={38} />}
             title={t('Desafíos ICA')}
-            text={t('Cada desafío que ganas.')}
+            text={t('Cada desafío que ganas, hasta {cap} por semana. Llevas {n}.', {
+              cap: CHALLENGE_WIN_WEEKLY_CAP,
+              n: winCoinsThisWeek,
+            })}
             right={
               <span className='shrink-0 text-base font-extrabold' style={{ color: 'var(--ica-gold-ink)' }}>
                 +{CHALLENGE_WIN_REWARD}

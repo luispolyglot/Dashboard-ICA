@@ -397,3 +397,41 @@ export function PregunticaExtraGlyph({ size = 24, className }: IconProps) {
     </svg>
   )
 }
+
+/** Reloj de «racha en peligro»: esfera blanca con borde naranja; el minutero gira (clase ica-clock-hand). */
+export function StreakClockIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg viewBox='0 0 32 32' width={size} height={size} className={className} aria-hidden='true' style={{ flexShrink: 0 }}>
+      <rect x='13' y='1.2' width='6' height='3.6' rx='1.4' style={{ fill: 'var(--ica-fire-edge)' }} />
+      <circle cx='16' cy='18' r='12.6' style={{ fill: 'var(--ica-fire-edge)' }} />
+      <circle cx='16' cy='17' r='12.6' style={{ fill: 'var(--ica-fire)' }} />
+      <circle cx='16' cy='17' r='9.6' fill='#ffffff' />
+      <g fill='#f3c7a5'>
+        <circle cx='16' cy='9.4' r='1' />
+        <circle cx='23.6' cy='17' r='1' />
+        <circle cx='16' cy='24.6' r='1' />
+        <circle cx='8.4' cy='17' r='1' />
+      </g>
+      <path d='M16 17 L16 12.4' stroke='#a04b00' strokeWidth='2.4' strokeLinecap='round' />
+      <g className='ica-clock-hand' style={{ transformOrigin: '16px 17px' }}>
+        <path d='M16 17 L21.4 17' stroke='#a04b00' strokeWidth='2' strokeLinecap='round' />
+      </g>
+      <circle cx='16' cy='17' r='1.6' fill='#a04b00' />
+    </svg>
+  )
+}
+
+/** Bocadillo de chat (Chat de icademers): dos viñetas, la de delante azul ICA con tres puntos. */
+export function ChatBubblesIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg viewBox='0 0 32 32' width={size} height={size} className={className} aria-hidden='true' style={{ flexShrink: 0 }}>
+      <path d='M14 3.5h11.5a4 4 0 0 1 4 4v6.6a4 4 0 0 1-4 4h-1.2l.6 3.4-4.4-3.4H14a4 4 0 0 1-4-4V7.5a4 4 0 0 1 4-4z' fill='#c4b5fd' />
+      <path d='M6.5 10.5h12a4 4 0 0 1 4 4v7a4 4 0 0 1-4 4h-6.3l-5.1 3.9.7-3.9H6.5a4 4 0 0 1-4-4v-7a4 4 0 0 1 4-4z' style={{ fill: 'var(--ica-brand-deep, #0a72a3)' }} />
+      <g fill='#ffffff'>
+        <circle cx='8.2' cy='18' r='1.5' />
+        <circle cx='12.5' cy='18' r='1.5' />
+        <circle cx='16.8' cy='18' r='1.5' />
+      </g>
+    </svg>
+  )
+}

@@ -45,7 +45,7 @@ import {
 } from '../services/coachingNotificationPreferences'
 import { fetchCoachingAccess } from '../services/coaching'
 import { DASHBOARD_ROUTES } from '../routes/paths'
-import { FlameIcon } from '../game/icons'
+import { FlameIcon, StreakClockIcon } from '../game/icons'
 import { GamePage, IconTile, ListRow, PageTitle, Panel, Pill, RowGroup, SectionLabel, type Tone } from '../game/ui'
 import type {
   CalendarIcademyTeacherNotificationPreference,
@@ -74,6 +74,7 @@ function getDefaultReminderPreferences(): PushReminderPreferences {
     flashcardsStreakHour: 20,
     habitLossEnabled: false,
     habitLossLastStage: 0,
+    streakRiskEnabled: true,
     createdAt: null,
     updatedAt: null,
   }
@@ -269,12 +270,15 @@ export function ManageNotificationsView() {
         nextPartial.flashcardsStreakHour ?? reminderPrefs.flashcardsStreakHour,
       habitLossEnabled:
         nextPartial.habitLossEnabled ?? reminderPrefs.habitLossEnabled,
+      streakRiskEnabled:
+        nextPartial.streakRiskEnabled ?? reminderPrefs.streakRiskEnabled,
     }
 
     const isEnablingAnyReminder =
       next.icaStreakEnabled ||
       next.flashcardsStreakEnabled ||
-      next.habitLossEnabled
+      next.habitLossEnabled ||
+      Boolean(nextPartial.streakRiskEnabled)
 
     try {
       if (isEnablingAnyReminder) {
@@ -552,6 +556,16 @@ export function ManageNotificationsView() {
               void handleUpdateReminderPreferences({ icaStreakHour: hour }),
             )}
           </ReminderRow>
+          <ReminderRow
+            id='manage-streak-risk-switch'
+            icon={<StreakClockIcon size={30} />}
+            iconTone='fire'
+            title={t('Racha en peligro')}
+            text={t('«Te quedan 5 horas» si ayer hiciste I·C·A y hoy aún no.')}
+            checked={reminderPrefs.streakRiskEnabled}
+            disabled={isLoadingReminderPrefs || isSavingReminderPrefs}
+            onCheckedChange={(checked) => void handleUpdateReminderPreferences({ streakRiskEnabled: checked })}
+          />
           <ReminderRow
             id='manage-flash-reminder-switch'
             icon={<FlameIcon size={30} tone='flash' />}

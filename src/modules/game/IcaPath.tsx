@@ -6,6 +6,7 @@ import { CheckIcon, Gamepad2Icon, LockIcon } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { CREATION_WORDS_GOAL, getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
+import { todayKey } from '../utils'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { CYCLE_CELEBRATION_CLOSED_EVENT, openCycleCelebration } from './CycleCelebration'
 import {
@@ -528,16 +529,22 @@ export function IcaPath() {
   const openChest = () => {
     if (chestLocked) return
     if (chestReady) {
-      const chestFichas = claimCycleChest(user?.id)
+      const chest = claimCycleChest(user?.id)
+      const chestFichas = chest.coins
       const milestoneFichas = claimReachedMilestones(user?.id, streakState.streak)
       // Las monedas no se suman en el marcador hasta que se recogen (vuelan a la cartera).
       holdCoinsDisplay(chestFichas + milestoneFichas)
       setCelebrationOpen(true)
-      openCycleCelebration({ chestFichas, milestoneFichas, fresh: true })
+      openCycleCelebration({ chestFichas, milestoneFichas, fresh: true, walletFull: chest.coins < chest.rolled })
       return
     }
     if (chestOpened) {
-      openCycleCelebration({ chestFichas: todayChestCoins(entries), milestoneFichas: 0 })
+      const todayChest = entries.find((entry) => entry.type === 'cycle_chest' && entry.day === todayKey())
+      openCycleCelebration({
+        chestFichas: todayChestCoins(entries),
+        milestoneFichas: 0,
+        walletFull: Boolean(todayChest?.rolled && todayChest.rolled > todayChest.delta),
+      })
     }
   }
 

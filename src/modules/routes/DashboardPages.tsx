@@ -60,6 +60,7 @@ import { PhraseView } from '../views/PhraseView'
 import { ReviewView } from '../views/ReviewView'
 import { StreaksView } from '../views/StreaksView'
 import { FichasView } from '../views/FichasView'
+import { IcademerChatView } from '../views/IcademerChatView'
 import { InsigniasView } from '../views/InsigniasView'
 import { FlashcardsLocked } from '../game/FlashcardsLocked'
 import { countNewPhraseToday, useDailyLimits } from '../game/limits'
@@ -661,6 +662,14 @@ export function FichasPage() {
   return (
     <PageLayout flush>
       <FichasView />
+    </PageLayout>
+  )
+}
+
+export function IcademerChatPage() {
+  return (
+    <PageLayout flush>
+      <IcademerChatView />
     </PageLayout>
   )
 }

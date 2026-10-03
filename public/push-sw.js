@@ -62,7 +62,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
-      icon: '/android-chrome-192x192.png',
+      // Cada aviso puede traer su dibujo (p. ej. el reloj de «racha en peligro»).
+      icon: payload.icon || '/android-chrome-192x192.png',
       badge: '/badge-72.png',
       data: { url },
       tag: payload.tag || undefined,

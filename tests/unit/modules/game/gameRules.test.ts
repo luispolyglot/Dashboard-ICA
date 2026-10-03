@@ -3,6 +3,8 @@ import { longestStreak } from '../../../../src/modules/game/achievements'
 import {
   buyChallengeSlot,
   buyPhaseBoost,
+  challengeWinCoinsThisWeek,
+  claimChallengeWinCoin,
   claimCycleChest,
   claimReachedFlashMilestones,
   claimReachedMilestones,
@@ -11,7 +13,10 @@ import {
   hasPhaseBoost,
   phaseBoostsToday,
   nextCoinProgress,
+  nextPhaseBoostPrice,
   readPreviewEntries,
+  walletRoom,
+  weekStartKey,
   toWholeFichas,
   unusedChallengeSlots,
 } from '../../../../src/modules/game/fichas'
@@ -19,6 +24,7 @@ import { dailyGameModeFor, DAILY_GAME_MODES } from '../../../../src/modules/game
 import { shortName } from '../../../../src/modules/game/ranking'
 import { CYCLE_CHEST_ODDS, rollCycleChest } from '../../../../src/modules/game/rules'
 import { countNewPhraseToday, readPhrasesToday } from '../../../../src/modules/game/limits'
+import { forgetQuick, storeQuick } from '../../../../src/modules/services/quickCache'
 import { getIcaStreakState, isIcaCycleDone } from '../../../../src/modules/game/streak'
 import { countActivatedWords } from '../../../../src/modules/game/useActivatedWords'
 import type { DailyProgressEntry, Lexicard } from '../../../../src/modules/types'
@@ -74,10 +80,10 @@ describe('modo juego: reglas', () => {
   })
 
   it('el cofre del ciclo da de 1 a 5 ICA Coins y solo una vez al día', () => {
-    const coins = claimCycleChest(USER)
+    const { coins } = claimCycleChest(USER)
     expect(coins).toBeGreaterThanOrEqual(1)
     expect(coins).toBeLessThanOrEqual(5)
-    expect(claimCycleChest(USER)).toBe(0)
+    expect(claimCycleChest(USER).coins).toBe(0)
     expect(getPreviewDelta(readPreviewEntries(USER))).toBe(coins)
   })
 
@@ -111,12 +117,61 @@ describe('modo juego: reglas', () => {
     expect(getPreviewDelta(readPreviewEntries(USER))).toBe(-15)
     expect(phaseBoostsToday(readPreviewEntries(USER))).toEqual({ words: true, phrases: false, activations: false })
 
+    // La 2.ª ampliación de la semana cuesta 20.
     expect(buyPhaseBoost(USER, 'activations', 100)).toBe(true)
-    expect(getPreviewDelta(readPreviewEntries(USER))).toBe(-30)
+    expect(getPreviewDelta(readPreviewEntries(USER))).toBe(-35)
     expect(phaseBoostsToday(readPreviewEntries(USER))).toEqual({ words: true, phrases: false, activations: true })
 
     vi.setSystemTime(new Date('2026-10-01T10:00:00'))
     expect(hasPhaseBoost(readPreviewEntries(USER), 'words')).toBe(false)
+  })
+
+  it('ampliaciones de la semana: 15, 20 y 25; no hay 4.ª y el lunes vuelve a 15', () => {
+    // 30 sept 2026 es miércoles: la semana empieza el lunes 28.
+    expect(weekStartKey('2026-09-30')).toBe('2026-09-28')
+    expect(weekStartKey('2026-10-04')).toBe('2026-09-28')
+    expect(weekStartKey('2026-10-05')).toBe('2026-10-05')
+
+    expect(nextPhaseBoostPrice(readPreviewEntries(USER))).toBe(15)
+    expect(buyPhaseBoost(USER, 'words', 100)).toBe(true)
+    expect(nextPhaseBoostPrice(readPreviewEntries(USER))).toBe(20)
+    expect(buyPhaseBoost(USER, 'phrases', 19)).toBe(false)
+    expect(buyPhaseBoost(USER, 'phrases', 20)).toBe(true)
+    vi.setSystemTime(new Date('2026-10-02T10:00:00'))
+    expect(buyPhaseBoost(USER, 'words', 100)).toBe(true)
+    expect(getPreviewDelta(readPreviewEntries(USER))).toBe(-60)
+    expect(nextPhaseBoostPrice(readPreviewEntries(USER))).toBe(null)
+    expect(buyPhaseBoost(USER, 'activations', 100)).toBe(false)
+
+    vi.setSystemTime(new Date('2026-10-05T10:00:00'))
+    expect(nextPhaseBoostPrice(readPreviewEntries(USER))).toBe(15)
+  })
+
+  it('desafíos ganados: como mucho 7 ICA Coins por semana; el lunes se reinicia', () => {
+    for (let index = 0; index < 9; index += 1) claimChallengeWinCoin(USER, `reto-${index}`)
+    expect(challengeWinCoinsThisWeek(readPreviewEntries(USER))).toBe(7)
+    expect(getPreviewDelta(readPreviewEntries(USER))).toBe(7)
+    // El mismo desafío no se vuelve a intentar otro día.
+    vi.setSystemTime(new Date('2026-10-05T10:00:00'))
+    expect(claimChallengeWinCoin(USER, 'reto-8')).toBe(false)
+    expect(claimChallengeWinCoin(USER, 'reto-nuevo')).toBe(true)
+    expect(challengeWinCoinsThisWeek(readPreviewEntries(USER))).toBe(1)
+  })
+
+  it('hucha: como mucho 100; con la hucha llena el cofre y los desafíos no suman', () => {
+    expect(walletRoom(0)).toBe(100)
+    expect(walletRoom(97)).toBe(3)
+    expect(walletRoom(140)).toBe(0)
+    // Saldo del servidor (último conocido) de 98: el cofre suma como mucho 2.
+    storeQuick(`coins:${USER}`, 98)
+    const chest = claimCycleChest(USER)
+    expect(chest.coins).toBe(Math.min(chest.rolled, 2))
+    expect(getPreviewDelta(readPreviewEntries(USER))).toBe(chest.coins)
+    // Ya en 100: un desafío ganado no suma (se apunta con 0).
+    storeQuick(`coins:${USER}`, 100 - chest.coins)
+    expect(claimChallengeWinCoin(USER, 'reto-lleno')).toBe(false)
+    expect(getPreviewDelta(readPreviewEntries(USER))).toBe(chest.coins)
+    forgetQuick(`coins:${USER}`)
   })
 
   it('el contador de frases nuevas vuelve a cero al cambiar de día', () => {

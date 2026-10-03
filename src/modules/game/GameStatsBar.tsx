@@ -7,10 +7,12 @@ import { useDashboardContext } from '../context/DashboardContext'
 import { DAY_NAMES, getTodayProgress } from '../constants'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { getStreak, shiftIsoDay, todayKey } from '../utils'
-import { coinsText, fichasFormatter, phaseBoostsToday, useFichas, useHeldCoins } from './fichas'
+import { coinsText, fichasFormatter, nextPhaseBoostPrice, phaseBoostsToday, useFichas, useHeldCoins } from './fichas'
 import { HoverPanel } from './HoverPanel'
 import { FichaIcon, FlameIcon, IceCubeIcon, PhaseBoostGlyph, PregunticaExtraGlyph, SwordsIcon } from './icons'
 import {
+  COIN_WALLET_CAP,
+  COIN_WALLET_WARN,
   EXTRA_CHALLENGE_COST,
   LIMIT_PHASE,
   PHASE_BOOST_COST,
@@ -111,6 +113,7 @@ export const GameStatsBar = forwardRef<HTMLButtonElement>(function GameStatsBar(
         <CoinsPanel
           total={total}
           boosted={phaseBoostsToday(entries)}
+          boostPrice={nextPhaseBoostPrice(entries)}
           onNavigate={(to) => navigate(to)}
         />
       </HoverPanel>
@@ -286,10 +289,13 @@ const PANEL_BOOSTS: Array<{ key: DailyLimitKey; tint: string }> = [
 function CoinsPanel({
   total,
   boosted,
+  boostPrice,
   onNavigate,
 }: {
   total: number | null
   boosted: Record<DailyLimitKey, boolean>
+  /** Precio de la próxima ampliación esta semana (null: ya se usaron las 3). */
+  boostPrice: number | null
   onNavigate: (to: string) => void
 }) {
   const balance = total ?? 0
@@ -315,9 +321,9 @@ function CoinsPanel({
       icon: <PhaseBoostGlyph letter={LIMIT_PHASE[boost.key].letter} size={26} />,
       tint: boost.tint,
       title: t('Ampliar {phase} hoy', { phase: t(LIMIT_PHASE[boost.key].name) }),
-      cost: PHASE_BOOST_COST,
+      cost: boostPrice ?? PHASE_BOOST_COST,
       to: DASHBOARD_ROUTES.fichas,
-      doneLabel: boosted[boost.key] ? t('Activo hoy') : undefined,
+      doneLabel: boosted[boost.key] ? t('Activo hoy') : boostPrice === null ? t('Hasta el lunes') : undefined,
     })),
     {
       key: 'preguntica',
@@ -337,7 +343,15 @@ function CoinsPanel({
           <p className='m-0 text-lg leading-tight font-black' style={{ color: 'var(--ica-gold-ink)' }}>
             {total === null ? t('ICA Coins') : `${fichasFormatter.format(balance)} ICA Coins`}
           </p>
-          <p className='m-0 text-sm font-semibold text-muted-foreground'>{t('En qué puedes gastarlas hoy')}</p>
+          {total !== null && balance >= COIN_WALLET_WARN ? (
+            <p className='m-0 text-sm font-bold' style={{ color: 'var(--ica-gold-ink)' }}>
+              {balance >= COIN_WALLET_CAP
+                ? t('Hucha llena ({n} de {max}): gasta para seguir ganando', { n: balance, max: COIN_WALLET_CAP })
+                : t('Hucha casi llena: {n} de {max}', { n: balance, max: COIN_WALLET_CAP })}
+            </p>
+          ) : (
+            <p className='m-0 text-sm font-semibold text-muted-foreground'>{t('En qué puedes gastarlas hoy')}</p>
+          )}
         </div>
       </div>
 

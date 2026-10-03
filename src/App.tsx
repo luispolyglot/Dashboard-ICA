@@ -50,6 +50,7 @@ import {
   ShareTargetPage,
   StreaksPage,
   FichasPage,
+  IcademerChatPage,
   DailyGamePage,
   NotaDesafianteListPage,
   NotaDesafiantePlayerPage,
@@ -129,6 +130,7 @@ export function App() {
             <Route path='leaderboard' element={<LeaderboardPage />} />
             <Route path='streaks' element={<StreaksPage />} />
             <Route path='fichas' element={<FichasPage />} />
+            <Route path='chat-icademers' element={<IcademerChatPage />} />
             <Route path='insignias' element={<InsigniasPage />} />
             <Route path='profile' element={<ProfilePage />} />
             <Route path='profile/account' element={<ProfileAccountPage />} />

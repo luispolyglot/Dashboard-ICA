@@ -31,6 +31,7 @@ import { useTheme } from '@/theme/ThemeContext'
 import { useDashboardContext } from '../context/DashboardContext'
 import { fichasFormatter, useFichas } from '../game/fichas'
 import { FichaIcon } from '../game/icons'
+import { ChatProfileRow } from '../game/ChatProfileRow'
 import {
   LevelAvatar,
   memberSinceLabel,
@@ -365,6 +366,7 @@ export function MobileProfileScreen({
                     text={t('Recordatorios de racha y hábitos')}
                   />
                 </div>
+                {config?.targetLang ? <ChatProfileRow targetLang={config.targetLang} onNavigate={close} /> : null}
                 <button
                   type='button'
                   onClick={() => {

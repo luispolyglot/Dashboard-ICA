@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { todayKey } from '../utils'
+import { shiftIsoDay, todayKey } from '../utils'
 import {
   CHALLENGE_WIN_REWARD,
+  CHALLENGE_WIN_WEEKLY_CAP,
+  COIN_WALLET_CAP,
   EXTRA_CHALLENGE_COST,
-  PHASE_BOOST_COST,
   FLASH_STREAK_MILESTONES,
   STREAK_MILESTONES,
+  phaseBoostPrice,
   rollCycleChest,
   type DailyLimitKey,
 } from './rules'
@@ -34,6 +36,8 @@ export type FichaPreviewEntry = {
   challengeId?: string
   /** Solo en phase_boost: la fase ampliada. */
   phase?: DailyLimitKey
+  /** Solo en cycle_chest: lo que salió en el cofre si la hucha llena dejó sumar menos. */
+  rolled?: number
 }
 
 export const FICHAS_CHANGED_EVENT = 'ica:fichas-changed'
@@ -89,12 +93,47 @@ export function todayChestCoins(entries: FichaPreviewEntry[], day = todayKey()):
   return entries.find((entry) => entry.type === 'cycle_chest' && entry.day === day)?.delta ?? 0
 }
 
-export function claimCycleChest(userId: string | null | undefined): number {
+// ---------------------------------------------------------------------------
+// Semana (de lunes a domingo) y hucha
+// ---------------------------------------------------------------------------
+
+/** El lunes de la semana de `day` (AAAA-MM-DD). */
+export function weekStartKey(day = todayKey()): string {
+  const weekday = new Date(`${day}T12:00:00Z`).getUTCDay() // 0 = domingo
+  return shiftIsoDay(day, -((weekday + 6) % 7))
+}
+
+function isThisWeek(entryDay: string, day: string): boolean {
+  return entryDay >= weekStartKey(day) && entryDay <= day
+}
+
+/** Lo que se ve arriba: saldo del servidor (último conocido) + vista previa, entero. */
+function knownTotal(userId: string | null | undefined, entries: FichaPreviewEntry[]): number {
+  const real = userId ? peekQuick<number>(`coins:${userId}`) ?? 0 : 0
+  return toWholeFichas(real + getPreviewDelta(entries))
+}
+
+/** Cuántas ICA Coins caben aún en la hucha (COIN_WALLET_CAP). */
+export function walletRoom(total: number): number {
+  return Math.max(0, COIN_WALLET_CAP - Math.max(0, Math.floor(total)))
+}
+
+export type ChestResult = {
+  /** Las que se suman. */
+  coins: number
+  /** Lo que salió en el cofre (más que `coins` si la hucha estaba llena). */
+  rolled: number
+}
+
+/** Abre el cofre de hoy. Con la hucha llena (COIN_WALLET_CAP) solo suma lo que cabe. */
+export function claimCycleChest(userId: string | null | undefined): ChestResult {
   const day = todayKey()
-  if (hasClaimedCycleChest(readPreviewEntries(userId), day)) return 0
-  const coins = rollCycleChest()
-  addEntry(userId, { type: 'cycle_chest', delta: coins, day })
-  return coins
+  const entries = readPreviewEntries(userId)
+  if (hasClaimedCycleChest(entries, day)) return { coins: 0, rolled: 0 }
+  const rolled = rollCycleChest()
+  const coins = Math.min(rolled, walletRoom(knownTotal(userId, entries)))
+  addEntry(userId, { type: 'cycle_chest', delta: coins, day, ...(coins < rolled ? { rolled } : {}) })
+  return { coins, rolled }
 }
 
 /** ¿Esta fase está ampliada hoy? (también con un «Ampliar el día» antiguo, que ampliaba las tres). */
@@ -113,12 +152,25 @@ export function phaseBoostsToday(entries: FichaPreviewEntry[], day = todayKey())
   }
 }
 
-/** Amplía una fase solo hoy (PHASE_BOOST_COST ICA Coins). Si ya estaba ampliada, no cobra. */
+/** Ampliaciones compradas esta semana (de lunes a domingo, las tres fases juntas). */
+export function phaseBoostsThisWeek(entries: FichaPreviewEntry[], day = todayKey()): number {
+  return entries.filter((entry) => (entry.type === 'phase_boost' || entry.type === 'day_boost') && isThisWeek(entry.day, day))
+    .length
+}
+
+/** Precio de la próxima ampliación esta semana: 15, 20, 25 (null si ya se compraron las 3). */
+export function nextPhaseBoostPrice(entries: FichaPreviewEntry[], day = todayKey()): number | null {
+  return phaseBoostPrice(phaseBoostsThisWeek(entries, day))
+}
+
+/** Amplía una fase solo hoy (precio de la semana: 15, 20 o 25). Si ya estaba ampliada, no cobra. */
 export function buyPhaseBoost(userId: string | null | undefined, phase: DailyLimitKey, totalBalance: number): boolean {
   const day = todayKey()
-  if (hasPhaseBoost(readPreviewEntries(userId), phase, day)) return true
-  if (totalBalance < PHASE_BOOST_COST) return false
-  addEntry(userId, { type: 'phase_boost', delta: -PHASE_BOOST_COST, day, phase })
+  const entries = readPreviewEntries(userId)
+  if (hasPhaseBoost(entries, phase, day)) return true
+  const price = nextPhaseBoostPrice(entries, day)
+  if (price === null || totalBalance < price) return false
+  addEntry(userId, { type: 'phase_boost', delta: -price, day, phase })
   return true
 }
 
@@ -172,13 +224,28 @@ export function claimReachedFlashMilestones(userId: string | null | undefined, s
 // Desafío extra (4.º desafío activo) por EXTRA_CHALLENGE_COST ICA Coins
 // ---------------------------------------------------------------------------
 
-/** Cada desafío ICA ganado da {CHALLENGE_WIN_REWARD} ICA Coin (una sola vez por desafío). Devuelve true si se ha dado ahora. */
+/** ICA Coins ganadas esta semana con desafíos (máximo CHALLENGE_WIN_WEEKLY_CAP). */
+export function challengeWinCoinsThisWeek(entries: FichaPreviewEntry[], day = todayKey()): number {
+  return entries
+    .filter((entry) => entry.type === 'challenge_win' && isThisWeek(entry.day, day))
+    .reduce((sum, entry) => sum + entry.delta, 0)
+}
+
+/**
+ * Cada desafío ICA ganado da {CHALLENGE_WIN_REWARD} ICA Coin (una sola vez por desafío), hasta
+ * CHALLENGE_WIN_WEEKLY_CAP por semana y si cabe en la hucha. Devuelve true si se ha dado ahora.
+ */
 export function claimChallengeWinCoin(userId: string | null | undefined, challengeId: string): boolean {
   if (!userId || !challengeId) return false
   const entries = readPreviewEntries(userId)
   if (entries.some((entry) => entry.type === 'challenge_win' && entry.challengeId === challengeId)) return false
-  addEntry(userId, { type: 'challenge_win', delta: CHALLENGE_WIN_REWARD, day: todayKey(), challengeId })
-  return true
+  const day = todayKey()
+  const capped =
+    challengeWinCoinsThisWeek(entries, day) + CHALLENGE_WIN_REWARD > CHALLENGE_WIN_WEEKLY_CAP ||
+    walletRoom(knownTotal(userId, entries)) < CHALLENGE_WIN_REWARD
+  // Con el tope alcanzado se apunta igual (con 0) para no volver a intentarlo otro día.
+  addEntry(userId, { type: 'challenge_win', delta: capped ? 0 : CHALLENGE_WIN_REWARD, day, challengeId })
+  return !capped
 }
 
 /** Pases de «desafío extra» comprados y aún sin usar. */

@@ -75,6 +75,7 @@ import {
   fetchMyCoachingDashboard,
 } from "../services/coaching";
 import { DASHBOARD_ROUTES } from "../routes/paths";
+import { ChatProfileRow } from "../game/ChatProfileRow";
 import {
   ICA_TEST_REQUIRED_WORDS,
 } from "../services/icaTests";
@@ -571,6 +572,7 @@ export function ProfileView({
                 title={t("Notificaciones")}
                 text={t("Recordatorios de rachas y hábitos por push.")}
               />
+              {config?.targetLang ? <ChatProfileRow targetLang={config.targetLang} /> : null}
             </RowGroup>
           </div>
 

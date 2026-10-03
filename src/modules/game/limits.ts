@@ -3,7 +3,7 @@ import { useAuth } from '@/auth/AuthContext'
 import { getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
 import { todayKey } from '../utils'
-import { phaseBoostsToday, useFichas } from './fichas'
+import { nextPhaseBoostPrice, phaseBoostsToday, useFichas } from './fichas'
 import { DAILY_LIMITS, PHASE_BOOST_MULTIPLIER, type DailyLimitKey } from './rules'
 
 // LÍMITES DIARIOS: máximo de palabras, frases y activaciones por día.
@@ -45,6 +45,8 @@ export type DailyLimitsState = {
   used: Record<DailyLimitKey, number>
   /** Fases ampliadas hoy (cada una se compra por separado). */
   boosted: Record<DailyLimitKey, boolean>
+  /** Precio de la próxima ampliación esta semana (15, 20, 25) o null si ya no quedan. */
+  nextBoostPrice: number | null
   isAtLimit: (key: DailyLimitKey) => boolean
 }
 
@@ -83,6 +85,7 @@ export function useDailyLimits(): DailyLimitsState {
     limits,
     used,
     boosted,
+    nextBoostPrice: nextPhaseBoostPrice(entries),
     isAtLimit: (key) => used[key] >= limits[key],
   }
 }

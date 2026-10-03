@@ -63,8 +63,8 @@ import {
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { refreshIcaChallengeAlerts } from '../hooks/useIcaChallengeAlerts'
 import { FichaIcon, TrophyIcon } from '../game/icons'
-import { claimChallengeWinCoin } from '../game/fichas'
-import { CHALLENGE_WIN_REWARD } from '../game/rules'
+import { challengeWinCoinsThisWeek, claimChallengeWinCoin, readPreviewEntries } from '../game/fichas'
+import { CHALLENGE_WIN_REWARD, CHALLENGE_WIN_WEEKLY_CAP } from '../game/rules'
 import { ReactionPanel } from '../game/reactions'
 import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocalMode'
 import {
@@ -625,6 +625,8 @@ export function IcaChallengePlayView({
   // -------------------------------------------------------------------------
 
   const celebratedRef = useRef(false)
+  // false si el desafío ganado ya no suma (tope semanal de ICA Coins por desafíos o hucha llena).
+  const [winCoin, setWinCoin] = useState<'ok' | 'week' | 'wallet'>('ok')
   const iWon =
     phase === 'finished' &&
     challenge?.status === 'completed' &&
@@ -635,7 +637,16 @@ export function IcaChallengePlayView({
     if (!iWon || celebratedRef.current) return
     celebratedRef.current = true
     // Ganar un desafío da 1 ICA Coin (una sola vez por desafío).
-    if (challenge?.id) claimChallengeWinCoin(state?.me.userId, challenge.id)
+    if (challenge?.id) {
+      claimChallengeWinCoin(state?.me.userId, challenge.id)
+      const entry = readPreviewEntries(state?.me.userId).find(
+        (item) => item.type === 'challenge_win' && item.challengeId === challenge.id,
+      )
+      const entries = readPreviewEntries(state?.me.userId)
+      if (entry && entry.delta <= 0) {
+        setWinCoin(challengeWinCoinsThisWeek(entries) >= CHALLENGE_WIN_WEEKLY_CAP ? 'week' : 'wallet')
+      }
+    }
     return launchWinConfetti()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [iWon])
@@ -923,7 +934,11 @@ export function IcaChallengePlayView({
               style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
             >
               <FichaIcon size={18} />
-              {t('+{n} ICA Coin', { n: CHALLENGE_WIN_REWARD })}
+              {winCoin === 'ok'
+                ? t('+{n} ICA Coin', { n: CHALLENGE_WIN_REWARD })
+                : winCoin === 'week'
+                  ? t('Esta semana ya sumaste {n} ICA Coins con desafíos', { n: CHALLENGE_WIN_WEEKLY_CAP })
+                  : t('Tu hucha está llena')}
             </span>
           ) : null}
           <div className='mt-4 grid grid-cols-2 gap-2'>

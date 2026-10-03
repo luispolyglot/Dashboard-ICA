@@ -319,6 +319,8 @@ export interface PushReminderPreferences {
   flashcardsStreakHour: number
   habitLossEnabled: boolean
   habitLossLastStage: number
+  /** «Te quedan 5 horas»: racha ICA en peligro (viene activada). */
+  streakRiskEnabled: boolean
   createdAt: string | null
   updatedAt: string | null
 }
@@ -329,6 +331,7 @@ export interface PushReminderPreferencesInput {
   flashcardsStreakEnabled: boolean
   flashcardsStreakHour: number
   habitLossEnabled: boolean
+  streakRiskEnabled: boolean
 }
 
 export interface CoachingNotificationPreference {

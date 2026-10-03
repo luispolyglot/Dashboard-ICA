@@ -8,6 +8,7 @@ import { getTodayProgress } from '../constants'
 import { fichasFormatter, releaseCoinsDisplay } from './fichas'
 import { ChestIcon, FichaIcon, FlameIcon } from './icons'
 import { gameSfx } from './sfx'
+import { COIN_WALLET_CAP } from './rules'
 import { getIcaStreakState } from './streak'
 import { t, tn } from '@/i18n'
 
@@ -24,6 +25,8 @@ type CelebrationDetail = {
   milestoneFichas: number
   /** Cofre recién abierto: animación de apertura y «Recoger mis ICA Coins». */
   fresh?: boolean
+  /** La hucha estaba llena (COIN_WALLET_CAP): el cofre sumó menos de lo que salió. */
+  walletFull?: boolean
 }
 
 /** Abre la pantalla de "ciclo ICA completado" (la escucha CycleCelebration). */
@@ -187,7 +190,7 @@ export function CycleCelebration() {
     if (detail.fresh) collect()
     else close()
   }
-  const burstCount = Math.max(1, Math.min(totalFichas, 5))
+  const burstCount = Math.max(0, Math.min(totalFichas, 5))
 
   return (
     <div
@@ -249,6 +252,16 @@ export function CycleCelebration() {
                 })
               : ''}
           </p>
+          {detail.walletFull ? (
+            <p
+              className='mx-auto mt-2 max-w-xs rounded-xl px-3 py-2 text-xs font-bold'
+              style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
+            >
+              {t('Tu hucha está llena (máximo {n}). Gasta ICA Coins en la tienda para que el cofre vuelva a sumar.', {
+                n: COIN_WALLET_CAP,
+              })}
+            </p>
+          ) : null}
 
           <h2 className='mt-4 font-display text-2xl font-extrabold tracking-tight'>{t('Ciclo ICA completado')}</h2>
           <div className='mt-3 flex justify-center gap-2'>
