@@ -3,11 +3,12 @@ import { supabase } from '../../lib/supabase'
 import { todayKey } from '../utils'
 import {
   CHALLENGE_WIN_REWARD,
-  DAY_BOOST_COST,
   EXTRA_CHALLENGE_COST,
+  PHASE_BOOST_COST,
   FLASH_STREAK_MILESTONES,
   STREAK_MILESTONES,
   rollCycleChest,
+  type DailyLimitKey,
 } from './rules'
 import { uiLocale } from '@/i18n'
 import { peekQuick, storeQuick } from '../services/quickCache'
@@ -15,13 +16,14 @@ import { peekQuick, storeQuick } from '../services/quickCache'
 // ICA COINS (en el código se siguen llamando "fichas")
 // - El saldo REAL es el de siempre (get_my_preguntica_token_balance): lo que se gana
 //   con el ranking del mes y se gasta en PreguntICA.
-// - Lo nuevo (cofre del ciclo, hitos de racha y ampliar el día) aún no existe en el
+// - Lo nuevo (cofre del ciclo, hitos de racha y ampliar una fase) aún no existe en el
 //   servidor. Mientras Nahuel no lo active, se guarda como "vista previa" en este
 //   dispositivo y se suma al saldo real para poder probarlo con tus datos.
 
 export type FichaPreviewEntry = {
   id: string
-  type: 'cycle_chest' | 'streak_milestone' | 'flash_milestone' | 'day_boost' | 'challenge_slot' | 'challenge_win'
+  /** day_boost: «Ampliar el día» antiguo (las tres fases a la vez). phase_boost: una fase. */
+  type: 'cycle_chest' | 'streak_milestone' | 'flash_milestone' | 'day_boost' | 'phase_boost' | 'challenge_slot' | 'challenge_win'
   delta: number
   day: string
   createdAt: number
@@ -30,6 +32,8 @@ export type FichaPreviewEntry = {
   used?: boolean
   /** Solo en challenge_win: el desafío ganado (para no darla dos veces). */
   challengeId?: string
+  /** Solo en phase_boost: la fase ampliada. */
+  phase?: DailyLimitKey
 }
 
 export const FICHAS_CHANGED_EVENT = 'ica:fichas-changed'
@@ -64,7 +68,11 @@ function writePreviewEntries(userId: string | null | undefined, entries: FichaPr
 
 function addEntry(userId: string | null | undefined, entry: Omit<FichaPreviewEntry, 'id' | 'createdAt'>) {
   const entries = readPreviewEntries(userId)
-  entries.push({ ...entry, id: `${entry.type}:${entry.day}:${entry.challengeId ?? ''}:${Date.now()}`, createdAt: Date.now() })
+  entries.push({
+    ...entry,
+    id: `${entry.type}:${entry.day}:${entry.challengeId ?? entry.phase ?? ''}:${Date.now()}`,
+    createdAt: Date.now(),
+  })
   writePreviewEntries(userId, entries)
 }
 
@@ -89,15 +97,28 @@ export function claimCycleChest(userId: string | null | undefined): number {
   return coins
 }
 
-export function hasDayBoost(entries: FichaPreviewEntry[], day = todayKey()): boolean {
-  return entries.some((entry) => entry.type === 'day_boost' && entry.day === day)
+/** ¿Esta fase está ampliada hoy? (también con un «Ampliar el día» antiguo, que ampliaba las tres). */
+export function hasPhaseBoost(entries: FichaPreviewEntry[], phase: DailyLimitKey, day = todayKey()): boolean {
+  return entries.some(
+    (entry) => entry.day === day && (entry.type === 'day_boost' || (entry.type === 'phase_boost' && entry.phase === phase)),
+  )
 }
 
-export function buyDayBoost(userId: string | null | undefined, totalBalance: number): boolean {
+/** Fases ampliadas hoy. */
+export function phaseBoostsToday(entries: FichaPreviewEntry[], day = todayKey()): Record<DailyLimitKey, boolean> {
+  return {
+    words: hasPhaseBoost(entries, 'words', day),
+    phrases: hasPhaseBoost(entries, 'phrases', day),
+    activations: hasPhaseBoost(entries, 'activations', day),
+  }
+}
+
+/** Amplía una fase solo hoy (PHASE_BOOST_COST ICA Coins). Si ya estaba ampliada, no cobra. */
+export function buyPhaseBoost(userId: string | null | undefined, phase: DailyLimitKey, totalBalance: number): boolean {
   const day = todayKey()
-  if (hasDayBoost(readPreviewEntries(userId), day)) return true
-  if (totalBalance < DAY_BOOST_COST) return false
-  addEntry(userId, { type: 'day_boost', delta: -DAY_BOOST_COST, day })
+  if (hasPhaseBoost(readPreviewEntries(userId), phase, day)) return true
+  if (totalBalance < PHASE_BOOST_COST) return false
+  addEntry(userId, { type: 'phase_boost', delta: -PHASE_BOOST_COST, day, phase })
   return true
 }
 

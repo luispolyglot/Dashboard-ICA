@@ -137,7 +137,7 @@ export function AddView({
   const recent = cards.slice(-25).reverse()
   const todayProgress = getTodayProgress(dailyProgress)
 
-  // Límite diario de palabras (10, o 20 con el día ampliado).
+  // Límite diario de palabras (10, o 20 con Inmersión ampliada hoy).
   // Además del dato del servidor, contamos lo guardado en esta pantalla por si el
   // servidor tarda un momento en actualizarse.
   const dailyLimits = useDailyLimits()
@@ -445,8 +445,8 @@ export function AddView({
       <div className='mt-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs font-bold text-muted-foreground tabular-nums'>
         <span>{t('Mínimo {n} para tu ciclo', { n: CREATION_WORDS_GOAL })}</span>
         <span>
-          {dailyLimits.boosted
-            ? t('Máximo {n} (día ampliado)', { n: wordLimit })
+          {dailyLimits.boosted.words
+            ? t('Máximo {n} (ampliado hoy)', { n: wordLimit })
             : t('Máximo {n}', { n: wordLimit })}
         </span>
       </div>

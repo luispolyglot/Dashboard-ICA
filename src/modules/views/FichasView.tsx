@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import {
   buyChallengeSlot,
-  buyDayBoost,
+  buyPhaseBoost,
   coinsText,
   fichasFormatter,
   nextCoinProgress,
@@ -16,7 +16,7 @@ import {
   useFichas,
   type FichaPreviewEntry,
 } from '../game/fichas'
-import { ChestIcon, DayBoostGlyph, FichaIcon, FlameIcon, PregunticaExtraGlyph, SwordsIcon, TrophyIcon } from '../game/icons'
+import { ChestIcon, FichaIcon, FlameIcon, PhaseBoostGlyph, PregunticaExtraGlyph, SwordsIcon, TrophyIcon } from '../game/icons'
 import { LIMIT_LABELS, useDailyLimits } from '../game/limits'
 import {
   CHALLENGE_WIN_REWARD,
@@ -25,9 +25,10 @@ import {
   FLASH_STREAK_MILESTONES,
   STREAK_MILESTONES,
   DAILY_LIMITS,
-  DAY_BOOST_COST,
-  DAY_BOOST_MULTIPLIER,
   EXTRA_CHALLENGE_COST,
+  LIMIT_PHASE,
+  PHASE_BOOST_COST,
+  PHASE_BOOST_MULTIPLIER,
   PREGUNTICA_EXTRA_COST,
   RANKING_POINTS_PER_COIN,
   type DailyLimitKey,
@@ -40,10 +41,10 @@ import { getStreak } from '../utils'
 import { getTodayProgress } from '../constants'
 import { t } from '@/i18n'
 
-const LIMIT_ROWS: Array<{ key: DailyLimitKey; letter: 'I' | 'C' | 'A'; color: string }> = [
-  { key: 'words', letter: 'I', color: 'var(--ica-i)' },
-  { key: 'phrases', letter: 'C', color: 'var(--ica-c)' },
-  { key: 'activations', letter: 'A', color: 'var(--ica-a)' },
+const LIMIT_ROWS: Array<{ key: DailyLimitKey; letter: 'I' | 'C' | 'A'; color: string; soft: string }> = [
+  { key: 'words', letter: 'I', color: 'var(--ica-i)', soft: 'var(--ica-i-soft)' },
+  { key: 'phrases', letter: 'C', color: 'var(--ica-c)', soft: 'var(--ica-c-soft)' },
+  { key: 'activations', letter: 'A', color: 'var(--ica-a)', soft: 'var(--ica-a-soft)' },
 ]
 
 function entryLabel(entry: FichaPreviewEntry): string {
@@ -52,10 +53,15 @@ function entryLabel(entry: FichaPreviewEntry): string {
   if (entry.type === 'flash_milestone') return t('Hito de racha de flashcards: {milestoneDays} días', { milestoneDays: entry.milestoneDays })
   if (entry.type === 'challenge_win') return t('Desafío ICA ganado')
   if (entry.type === 'challenge_slot') return entry.used ? t('Desafío extra (usado)') : t('Desafío extra')
+  if (entry.type === 'phase_boost' && entry.phase) return t('Ampliar {phase}', { phase: t(LIMIT_PHASE[entry.phase].name) })
   return t('Día ampliado')
 }
 
-/** Botón de precio: la moneda y lo que cuesta (o el estado si ya está hecho). */
+/**
+ * Botón de precio: la moneda y lo que cuesta (o el estado si ya está hecho). Al pasar el ratón
+ * (o al llegar con el teclado) se ilumina en dorado, sube un poco, la moneda gira y lo cruza un
+ * brillo: clase `ica-price` en index.css.
+ */
 function PriceButton({
   cost,
   onClick,
@@ -86,7 +92,7 @@ function PriceButton({
       disabled={disabled}
       className={cn(
         'flex h-11 shrink-0 items-center gap-1.5 rounded-2xl border-2 px-3 text-base font-extrabold tabular-nums transition-transform active:translate-y-[3px] disabled:opacity-50',
-        confirming ? 'border-transparent text-white' : 'border-border',
+        confirming ? 'border-transparent text-white' : 'ica-price border-border',
       )}
       style={
         confirming
@@ -99,7 +105,10 @@ function PriceButton({
         t('Confirmar')
       ) : (
         <>
-          <FichaIcon size={20} /> {cost}
+          <span className='ica-price-coin inline-flex'>
+            <FichaIcon size={20} />
+          </span>{' '}
+          {cost}
         </>
       )}
     </button>
@@ -174,7 +183,8 @@ function ExpandRow({
 }
 
 /**
- * ICA COINS: tu saldo, en qué se gastan (ampliar el día, PreguntICA extra, desafío extra)
+ * ICA COINS: tu saldo, en qué se gastan (desafío extra, ampliar Inmersión, Creación o
+ * Activación, PreguntICA extra)
  * y cómo se consiguen (cofre, hitos de racha ICA y de flashcards, ranking del mes).
  */
 export function FichasView() {
@@ -183,7 +193,7 @@ export function FichasView() {
   const { user } = useAuth()
   const { total, realBalance, entries } = useFichas(user?.id)
   const { limits, used, boosted } = useDailyLimits()
-  const [confirming, setConfirming] = useState<'boost' | 'challenge' | null>(null)
+  const [confirming, setConfirming] = useState<DailyLimitKey | 'challenge' | null>(null)
   const [openRow, setOpenRow] = useState<'ica' | 'flash' | 'ranking' | null>(null)
   const { completedDays, creationDays, savedCreationDays, creationSavesUsedThisMonth, creationSavesLimit, dailyProgress } =
     useDashboardContext()
@@ -199,20 +209,27 @@ export function FichasView() {
   const slots = unusedChallengeSlots(entries)
   const progress = nextCoinProgress(realBalance)
 
-  const tryBoost = () => {
-    if (confirming !== 'boost') {
-      if (balance < DAY_BOOST_COST) {
-        toast.error(t('Necesitas {n} para ampliar el día (tienes {balance}).', { n: coinsText(DAY_BOOST_COST), balance }))
+  // «Ampliar» una fase solo hoy: primer toque pide confirmar, el segundo compra.
+  const tryBoost = (kind: DailyLimitKey) => {
+    const phase = t(LIMIT_PHASE[kind].name)
+    if (confirming !== kind) {
+      if (balance < PHASE_BOOST_COST) {
+        toast.error(
+          t('Necesitas {n} para ampliar {phase} (tienes {balance}).', { n: coinsText(PHASE_BOOST_COST), phase, balance }),
+        )
         return
       }
-      setConfirming('boost')
+      setConfirming(kind)
       return
     }
     setConfirming(null)
-    if (buyDayBoost(user?.id, balance)) {
+    if (buyPhaseBoost(user?.id, kind, balance)) {
       gameSfx.celebrate()
-      toast.success(t('Día ampliado'), {
-        description: t('Hoy puedes hacer el doble: {n} palabras, {n2} frases y {n3} activaciones.', { n: DAILY_LIMITS.words * DAY_BOOST_MULTIPLIER, n2: DAILY_LIMITS.phrases * DAY_BOOST_MULTIPLIER, n3: DAILY_LIMITS.activations * DAY_BOOST_MULTIPLIER }),
+      toast.success(t('{phase} ampliada hoy', { phase }), {
+        description: t('Hoy puedes llegar a {n} {what}.', {
+          n: DAILY_LIMITS[kind] * PHASE_BOOST_MULTIPLIER,
+          what: t(LIMIT_LABELS[kind].many),
+        }),
       })
     }
   }
@@ -279,23 +296,30 @@ export function FichasView() {
             }
             right={<PriceButton cost={EXTRA_CHALLENGE_COST} onClick={tryChallenge} confirming={confirming === 'challenge'} />}
           />
-          <Row
-            icon={
-              <span className='flex size-12 items-center justify-center rounded-2xl' style={{ background: 'var(--ica-c-soft)' }}>
-                <DayBoostGlyph size={30} />
-              </span>
-            }
-            title={t('Ampliar el día')}
-            text={t('Solo hoy: el doble de palabras, frases y activaciones.')}
-            right={
-              <PriceButton
-                cost={DAY_BOOST_COST}
-                onClick={tryBoost}
-                confirming={confirming === 'boost'}
-                doneLabel={boosted ? t('Activo hoy') : undefined}
-              />
-            }
-          />
+          {LIMIT_ROWS.map((row) => (
+            <Row
+              key={row.key}
+              icon={
+                <span className='flex size-12 items-center justify-center rounded-2xl' style={{ background: row.soft }}>
+                  <PhaseBoostGlyph letter={row.letter} size={32} />
+                </span>
+              }
+              title={t('Ampliar {phase} hoy', { phase: t(LIMIT_PHASE[row.key].name) })}
+              text={t('Solo hoy: {n} {what} en vez de {base}.', {
+                n: DAILY_LIMITS[row.key] * PHASE_BOOST_MULTIPLIER,
+                base: DAILY_LIMITS[row.key],
+                what: t(LIMIT_LABELS[row.key].many),
+              })}
+              right={
+                <PriceButton
+                  cost={PHASE_BOOST_COST}
+                  onClick={() => tryBoost(row.key)}
+                  confirming={confirming === row.key}
+                  doneLabel={boosted[row.key] ? t('Activo hoy') : undefined}
+                />
+              }
+            />
+          ))}
           <Row
             icon={
               <span className='flex size-12 items-center justify-center rounded-2xl' style={{ background: 'var(--ica-a-soft)' }}>
@@ -314,7 +338,9 @@ export function FichasView() {
         </div>
         {confirming ? (
           <p className='mt-1 text-xs font-semibold text-muted-foreground'>
-            Toca «Confirmar» para gastar {coinsText(confirming === 'boost' ? DAY_BOOST_COST : EXTRA_CHALLENGE_COST)}.
+            {t('Toca «Confirmar» para gastar {coins}.', {
+              coins: coinsText(confirming === 'challenge' ? EXTRA_CHALLENGE_COST : PHASE_BOOST_COST),
+            })}
           </p>
         ) : null}
       </div>
@@ -323,11 +349,7 @@ export function FichasView() {
       <div>
         <div className='mb-2 flex items-center justify-between gap-2'>
           <p className='m-0 text-xs font-extrabold tracking-[0.08em] text-muted-foreground uppercase'>{t('Tus límites de hoy')}</p>
-          {boosted ? (
-            <span className='rounded-full px-2.5 py-0.5 text-xs font-extrabold text-white' style={{ background: 'var(--ica-c)' }}>
-              DÍA AMPLIADO ×{DAY_BOOST_MULTIPLIER}
-            </span>
-          ) : null}
+
         </div>
         <div className='flex flex-col gap-3'>
           {LIMIT_ROWS.map((row) => {
@@ -343,7 +365,17 @@ export function FichasView() {
                 </span>
                 <div className='min-w-0 flex-1'>
                   <div className='mb-1 flex justify-between text-sm font-bold'>
-                    <span>{t(LIMIT_LABELS[row.key].many)}</span>
+                    <span className='flex items-center gap-1.5'>
+                      {t(LIMIT_LABELS[row.key].many)}
+                      {boosted[row.key] ? (
+                        <span
+                          className='rounded-full px-1.5 text-[11px] font-black text-white'
+                          style={{ background: row.color }}
+                        >
+                          ×{PHASE_BOOST_MULTIPLIER} {t('hoy')}
+                        </span>
+                      ) : null}
+                    </span>
                     <span className='tabular-nums text-muted-foreground'>
                       {value} / {max}
                     </span>

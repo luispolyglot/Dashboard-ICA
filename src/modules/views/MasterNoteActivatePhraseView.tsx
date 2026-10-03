@@ -134,7 +134,7 @@ export function MasterNoteActivatePhraseView({
   const [searchParams] = useSearchParams()
   const { refreshCreationDaysFromSource } = useDashboardContext()
   const rerecordMode = searchParams.get('mode') === 'rerecord'
-  // Límite diario de activaciones (2, o 4 con el día ampliado). Regrabar no cuenta.
+  // Límite diario de activaciones (2, o 4 con Activación ampliada hoy). Regrabar no cuenta.
   const dailyLimits = useDailyLimits()
   const activationLimitReached =
     !rerecordMode && dailyLimits.isAtLimit('activations')
@@ -833,7 +833,7 @@ export function MasterNoteActivatePhraseView({
             />
             <p className='m-0 mt-1.5 text-xs font-semibold text-muted-foreground tabular-nums'>
               {t('Hoy llevas {done} de {max} activaciones', { done: activationsDone, max: activationsMax })}
-              {dailyLimits.boosted ? ` ${t('(día ampliado)')}` : ''}
+              {dailyLimits.boosted.activations ? ` ${t('(ampliado hoy)')}` : ''}
             </p>
           </div>
         ) : null}

@@ -354,19 +354,30 @@ export function HourglassGlyph({ size = 24, className }: IconProps) {
 // Tienda de ICA Coins (mismo estilo que el desafío extra)
 // ---------------------------------------------------------------------------
 
-/** Calendario con un rayo (Ampliar el día). */
-export function DayBoostGlyph({ size = 24, className }: IconProps) {
+const PHASE_TILE: Record<'I' | 'C' | 'A', { fill: string; edge: string }> = {
+  I: { fill: 'var(--ica-i)', edge: 'var(--ica-i-edge)' },
+  C: { fill: 'var(--ica-c)', edge: 'var(--ica-c-edge)' },
+  A: { fill: 'var(--ica-a)', edge: 'var(--ica-a-edge)' },
+}
+
+/** Ficha de una fase (I, C o A) con un rayo: «Ampliar» esa fase solo hoy. */
+export function PhaseBoostGlyph({ letter, size = 24, className }: IconProps & { letter: 'I' | 'C' | 'A' }) {
+  const tile = PHASE_TILE[letter]
   return (
     <svg viewBox='0 0 24 24' width={size} height={size} className={className} aria-hidden='true' style={{ flexShrink: 0 }}>
-      <rect x='2.4' y='4.4' width='15.6' height='16' rx='3' fill='#BFDBFE' />
-      <path d='M5.4 4.4h9.6a3 3 0 0 1 3 3v2.2H2.4V7.4a3 3 0 0 1 3-3z' fill='#3B82F6' />
-      <rect x='5.6' y='2.4' width='1.9' height='4.4' rx='0.95' fill='#1E40AF' />
-      <rect x='12.9' y='2.4' width='1.9' height='4.4' rx='0.95' fill='#1E40AF' />
-      <g fill='#93C5FD'>
-        <rect x='5' y='12' width='2.6' height='2.4' rx='0.7' />
-        <rect x='8.8' y='12' width='2.6' height='2.4' rx='0.7' />
-        <rect x='5' y='15.8' width='2.6' height='2.4' rx='0.7' />
-      </g>
+      <rect x='1.4' y='3.4' width='16.8' height='16.8' rx='4.6' style={{ fill: tile.edge }} />
+      <rect x='1.4' y='1.8' width='16.8' height='16.8' rx='4.6' style={{ fill: tile.fill }} />
+      <text
+        x='9.8'
+        y='14.9'
+        textAnchor='middle'
+        fontFamily='Nunito, "Nunito Sans", system-ui, sans-serif'
+        fontWeight={900}
+        fontSize='12.4'
+        fill='#ffffff'
+      >
+        {letter}
+      </text>
       <path d='M18.6 8.6 13.2 15.8h3.6l-1.4 6.2 5.8-8.2h-3.7l1.6-5.2z' fill='#FFC72C' stroke='#D99A00' strokeWidth='0.9' strokeLinejoin='round' />
     </svg>
   )

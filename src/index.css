@@ -965,3 +965,80 @@ button:disabled {
     animation: ica-nudge-calm 0.85s ease 1 !important;
   }
 }
+
+/* TIENDA DE ICA COINS: al pasar el ratón por el precio (o llegar con el teclado), el recuadro
+   se vuelve dorado, sube un poco, la moneda da una vuelta y lo cruza un brillo (Luis, 3 oct).
+   En el desplegable de la barra de arriba pasa lo mismo al pasar por la fila. */
+.ica-price,
+.ica-price-pill {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  transition:
+    background-color 0.22s ease,
+    border-color 0.22s ease,
+    color 0.22s ease,
+    box-shadow 0.22s ease,
+    transform 0.22s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+.ica-price::after,
+.ica-price-pill::after {
+  content: '';
+  position: absolute;
+  inset: -2px auto -2px -60%;
+  width: 45%;
+  z-index: -1;
+  background: linear-gradient(100deg, transparent, rgb(255 255 255 / 0.75), transparent);
+  transform: skewX(-18deg);
+  opacity: 0;
+  pointer-events: none;
+}
+@media (hover: hover) {
+  .ica-price:hover:not(:disabled),
+  .ica-price-row:hover .ica-price-pill {
+    background: linear-gradient(180deg, #ffe07a, var(--ica-gold)) !important;
+    border-color: var(--ica-gold-edge) !important;
+    color: #4a3200 !important;
+  }
+  .ica-price:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 0 var(--ica-gold-edge) !important;
+  }
+  .ica-price-row:hover .ica-price-pill {
+    transform: scale(1.06);
+  }
+  .ica-price:hover:not(:disabled)::after,
+  .ica-price-row:hover .ica-price-pill::after {
+    animation: ica-price-shine 0.7s ease-out 1 forwards;
+  }
+  .ica-price:hover:not(:disabled) .ica-price-coin,
+  .ica-price-row:hover .ica-price-coin {
+    animation: ica-price-coin-spin 0.6s cubic-bezier(0.3, 0.7, 0.4, 1) 1;
+  }
+}
+.ica-price:focus-visible {
+  background: linear-gradient(180deg, #ffe07a, var(--ica-gold)) !important;
+  border-color: var(--ica-gold-edge) !important;
+  color: #4a3200 !important;
+}
+@keyframes ica-price-shine {
+  0% { left: -60%; opacity: 1; }
+  100% { left: 120%; opacity: 1; }
+}
+@keyframes ica-price-coin-spin {
+  0% { transform: perspective(60px) rotateY(0deg) scale(1); }
+  50% { transform: perspective(60px) rotateY(180deg) scale(1.18); }
+  100% { transform: perspective(60px) rotateY(360deg) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ica-price:hover:not(:disabled),
+  .ica-price-row:hover .ica-price-pill {
+    transform: none;
+  }
+  .ica-price:hover:not(:disabled)::after,
+  .ica-price-row:hover .ica-price-pill::after,
+  .ica-price:hover:not(:disabled) .ica-price-coin,
+  .ica-price-row:hover .ica-price-coin {
+    animation: none;
+  }
+}

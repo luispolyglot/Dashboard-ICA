@@ -1,20 +1,22 @@
 import { forwardRef, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRightIcon, MicIcon, ZapIcon } from 'lucide-react'
+import { ChevronRightIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/auth/AuthContext'
 import { useDashboardContext } from '../context/DashboardContext'
 import { DAY_NAMES, getTodayProgress } from '../constants'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { getStreak, shiftIsoDay, todayKey } from '../utils'
-import { coinsText, fichasFormatter, hasDayBoost, useFichas, useHeldCoins } from './fichas'
+import { coinsText, fichasFormatter, phaseBoostsToday, useFichas, useHeldCoins } from './fichas'
 import { HoverPanel } from './HoverPanel'
-import { FichaIcon, FlameIcon, IceCubeIcon, SwordsIcon } from './icons'
+import { FichaIcon, FlameIcon, IceCubeIcon, PhaseBoostGlyph, PregunticaExtraGlyph, SwordsIcon } from './icons'
 import {
-  DAY_BOOST_COST,
   EXTRA_CHALLENGE_COST,
+  LIMIT_PHASE,
+  PHASE_BOOST_COST,
   PREGUNTICA_EXTRA_COST,
   STREAK_MILESTONES,
+  type DailyLimitKey,
 } from './rules'
 import { getIcaStreakState } from './streak'
 import { t, tn } from '@/i18n'
@@ -108,7 +110,7 @@ export const GameStatsBar = forwardRef<HTMLButtonElement>(function GameStatsBar(
       >
         <CoinsPanel
           total={total}
-          boostedToday={hasDayBoost(entries)}
+          boosted={phaseBoostsToday(entries)}
           onNavigate={(to) => navigate(to)}
         />
       </HoverPanel>
@@ -274,13 +276,20 @@ function WeekDayDot({ status, isToday }: { status: WeekDayStatus; isToday: boole
 // Desplegable de las ICA Coins: en qué puedes gastarlas hoy (la tienda en pequeño)
 // ---------------------------------------------------------------------------
 
+const PANEL_BOOSTS: Array<{ key: DailyLimitKey; tint: string }> = [
+  { key: 'words', tint: 'var(--ica-i-soft)' },
+  { key: 'phrases', tint: 'var(--ica-c-soft)' },
+  { key: 'activations', tint: 'var(--ica-a-soft)' },
+]
+
+/** Lo mismo que la tienda (mismos dibujos y precios), en pequeño. */
 function CoinsPanel({
   total,
-  boostedToday,
+  boosted,
   onNavigate,
 }: {
   total: number | null
-  boostedToday: boolean
+  boosted: Record<DailyLimitKey, boolean>
   onNavigate: (to: string) => void
 }) {
   const balance = total ?? 0
@@ -295,24 +304,24 @@ function CoinsPanel({
   }> = [
     {
       key: 'challenge',
-      icon: <SwordsIcon size={22} />,
+      icon: <SwordsIcon size={28} />,
       tint: 'var(--ica-a-soft)',
       title: t('Desafío extra'),
       cost: EXTRA_CHALLENGE_COST,
       to: DASHBOARD_ROUTES.fichas,
     },
-    {
-      key: 'boost',
-      icon: <ZapIcon className='size-5' strokeWidth={2.6} style={{ color: 'var(--ica-c-ink)' }} />,
-      tint: 'var(--ica-c-soft)',
-      title: t('Ampliar el día'),
-      cost: DAY_BOOST_COST,
+    ...PANEL_BOOSTS.map((boost) => ({
+      key: boost.key,
+      icon: <PhaseBoostGlyph letter={LIMIT_PHASE[boost.key].letter} size={26} />,
+      tint: boost.tint,
+      title: t('Ampliar {phase} hoy', { phase: t(LIMIT_PHASE[boost.key].name) }),
+      cost: PHASE_BOOST_COST,
       to: DASHBOARD_ROUTES.fichas,
-      doneLabel: boostedToday ? t('Activo hoy') : undefined,
-    },
+      doneLabel: boosted[boost.key] ? t('Activo hoy') : undefined,
+    })),
     {
       key: 'preguntica',
-      icon: <MicIcon className='size-5' strokeWidth={2.6} style={{ color: 'var(--ica-a-ink)' }} />,
+      icon: <PregunticaExtraGlyph size={26} />,
       tint: 'var(--ica-a-soft)',
       title: t('Intento extra de PreguntICA'),
       cost: PREGUNTICA_EXTRA_COST,
@@ -347,13 +356,13 @@ function CoinsPanel({
               key={item.key}
               type='button'
               onClick={() => onNavigate(item.to)}
-              className='flex items-center gap-3 rounded-2xl px-2 py-2 text-left transition-colors hover:bg-muted'
+              className='ica-price-row flex items-center gap-3 rounded-2xl px-2 py-1.5 text-left transition-colors hover:bg-muted'
             >
               <span className='flex size-10 shrink-0 items-center justify-center rounded-xl' style={{ background: item.tint }}>
                 {item.icon}
               </span>
               <span className='min-w-0 flex-1'>
-                <span className='block truncate text-sm font-extrabold'>{item.title}</span>
+                <span className='block text-sm leading-tight font-extrabold'>{item.title}</span>
                 {status ? (
                   <span className='block text-xs font-bold' style={{ color: status.color }}>
                     {status.text}
@@ -361,11 +370,13 @@ function CoinsPanel({
                 ) : null}
               </span>
               <span
-                className='inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-xs font-black tabular-nums'
+                className='ica-price-pill inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-xs font-black tabular-nums'
                 style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
                 aria-label={coinsText(item.cost)}
               >
-                <FichaIcon size={14} />
+                <span className='ica-price-coin inline-flex'>
+                  <FichaIcon size={14} />
+                </span>
                 {item.cost}
               </span>
             </button>

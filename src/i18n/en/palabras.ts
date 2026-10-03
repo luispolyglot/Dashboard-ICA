@@ -47,7 +47,6 @@ const en: Record<string, string> = {
   'MÍNIMO HECHO': 'MINIMUM DONE',
   'FALTAN {n}': '{n} TO GO',
   'Mínimo {n} para tu ciclo': 'Minimum {n} for your cycle',
-  'Máximo {n} (día ampliado)': 'Max {n} (boosted day)',
   'Máximo {n}': 'Max {n}',
   Creación: 'Creation',
   'Crear nueva frase': 'Create a new sentence',

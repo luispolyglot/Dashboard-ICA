@@ -10,9 +10,20 @@ export const DAILY_LIMITS = {
 
 export type DailyLimitKey = keyof typeof DAILY_LIMITS
 
-/** «Ampliar el día»: por DAY_BOOST_COST ICA Coins, ese día los límites se multiplican por 2 (20 · 4 · 4). */
-export const DAY_BOOST_COST = 50
-export const DAY_BOOST_MULTIPLIER = 2
+/**
+ * «Ampliar» una fase: por PHASE_BOOST_COST ICA Coins, ese día el límite de esa fase se
+ * multiplica por 2 (Inmersión 20 palabras, Creación 4 frases o Activación 4 activaciones).
+ * Cada fase se compra por separado (Luis, 3 oct; antes era «Ampliar el día» todo junto por 50).
+ */
+export const PHASE_BOOST_COST = 15
+export const PHASE_BOOST_MULTIPLIER = 2
+
+/** Nombre de la fase de cada límite (para la tienda y los avisos). */
+export const LIMIT_PHASE: Record<DailyLimitKey, { letter: 'I' | 'C' | 'A'; name: string }> = {
+  words: { letter: 'I', name: 'Inmersión' },
+  phrases: { letter: 'C', name: 'Creación' },
+  activations: { letter: 'A', name: 'Activación' },
+}
 
 /**
  * ICA Coins que da el cofre al completar el ciclo ICA del día (I + C + A): de 1 a 5, al azar.

@@ -107,6 +107,21 @@ const en: Record<string, string> = {
   "Intentarlo otra vez": "Try again",
   "Reto del día completado.": "Daily challenge completed.",
   "Mínimo {n} correctas para completarlo.": "At least {n} correct to complete it.",
+  " · ampliado hoy": " · boosted today",
+  "(ampliado hoy)": "(boosted today)",
+  "AMPLIADA HOY": "BOOSTED TODAY",
+  "Ampliar Activación · {n}": "Boost Activation · {n}",
+  "Ampliar {phase} hoy": "Boost {phase} today",
+  "Ampliar {phase} hoy · {n} ICA Coins": "Boost {phase} today · {n} ICA Coins",
+  "Hoy puedes llegar a {n} {what}.": "Today you can reach {n} {what}.",
+  "Hoy ya tienes {phase} ampliada (×{n}).": "{phase} is already boosted today (×{n}).",
+  "Máximo {n} (ampliado hoy)": "Max {n} (boosted today)",
+  "Necesitas {n} para ampliar {phase} (tienes {balance}).": "You need {n} to boost {phase} (you have {balance}).",
+  "Solo hoy: {n} {what} en vez de {base}.": "Today only: {n} {what} instead of {base}.",
+  "Toca «Confirmar» para gastar {coins}.": "Tap «Confirm» to spend {coins}.",
+  "{phase} ampliada hoy": "{phase} boosted today",
+  "Ampliar {phase}": "Boost {phase}",
+  "hoy": "today",
 }
 
 export default en

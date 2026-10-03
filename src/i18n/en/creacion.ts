@@ -16,7 +16,6 @@ const en: Record<string, string> = {
   "Tu nivel": "Your level",
   "Frases nuevas de hoy": "Today's new phrases",
   "Pedir otra versión no cuenta.": "Asking for another version doesn't count.",
-  "DÍA AMPLIADO": "BOOSTED DAY",
   "Cómo quieres crear la frase": "How do you want to create the phrase",
   "Usa tus últimas": "Use your latest",
   "palabras": "words",

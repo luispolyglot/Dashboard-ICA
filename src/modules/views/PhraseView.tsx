@@ -308,7 +308,7 @@ export function PhraseView({
   onNewPhraseCreated,
 }: PhraseViewProps) {
   const challengeEnabled = useChallengeEnabled()
-  // Límite diario de frases nuevas (2, o 4 con el día ampliado).
+  // Límite diario de frases nuevas (2, o 4 con Creación ampliada hoy).
   // "No me convence, genera otra" no cuenta como frase nueva.
   const phraseLimitReached = dailyLimits?.isAtLimit('phrases') ?? false
   const [wordCount, setWordCount] = useState(5)
@@ -856,9 +856,9 @@ export function PhraseView({
               <p className='m-0 text-xs font-semibold text-muted-foreground'>
                 {t('Pedir otra versión no cuenta.')}
               </p>
-              {dailyLimits.boosted ? (
+              {dailyLimits.boosted.phrases ? (
                 <Pill tone='c' solid>
-                  {t('DÍA AMPLIADO')}
+                  {t('AMPLIADA HOY')}
                 </Pill>
               ) : null}
             </div>

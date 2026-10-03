@@ -3,8 +3,8 @@ import { useAuth } from '@/auth/AuthContext'
 import { getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
 import { todayKey } from '../utils'
-import { hasDayBoost, useFichas } from './fichas'
-import { DAILY_LIMITS, DAY_BOOST_MULTIPLIER, type DailyLimitKey } from './rules'
+import { phaseBoostsToday, useFichas } from './fichas'
+import { DAILY_LIMITS, PHASE_BOOST_MULTIPLIER, type DailyLimitKey } from './rules'
 
 // LÍMITES DIARIOS: máximo de palabras, frases y activaciones por día.
 // Palabras y activaciones salen del progreso real del día. Las frases nuevas se cuentan
@@ -43,7 +43,8 @@ export function countNewPhraseToday(userId: string | null | undefined): void {
 export type DailyLimitsState = {
   limits: Record<DailyLimitKey, number>
   used: Record<DailyLimitKey, number>
-  boosted: boolean
+  /** Fases ampliadas hoy (cada una se compra por separado). */
+  boosted: Record<DailyLimitKey, boolean>
   isAtLimit: (key: DailyLimitKey) => boolean
 }
 
@@ -64,12 +65,12 @@ export function useDailyLimits(): DailyLimitsState {
     }
   }, [user?.id])
 
-  const boosted = hasDayBoost(entries)
-  const factor = boosted ? DAY_BOOST_MULTIPLIER : 1
+  const boosted = phaseBoostsToday(entries)
+  const factor = (key: DailyLimitKey) => (boosted[key] ? PHASE_BOOST_MULTIPLIER : 1)
   const limits = {
-    words: DAILY_LIMITS.words * factor,
-    phrases: DAILY_LIMITS.phrases * factor,
-    activations: DAILY_LIMITS.activations * factor,
+    words: DAILY_LIMITS.words * factor('words'),
+    phrases: DAILY_LIMITS.phrases * factor('phrases'),
+    activations: DAILY_LIMITS.activations * factor('activations'),
   }
   const today = getTodayProgress(dailyProgress)
   const used = {

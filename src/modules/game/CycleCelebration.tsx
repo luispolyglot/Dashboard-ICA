@@ -7,6 +7,7 @@ import { useDashboardContext } from '../context/DashboardContext'
 import { getTodayProgress } from '../constants'
 import { fichasFormatter, releaseCoinsDisplay } from './fichas'
 import { ChestIcon, FichaIcon, FlameIcon } from './icons'
+import { gameSfx } from './sfx'
 import { getIcaStreakState } from './streak'
 import { t, tn } from '@/i18n'
 
@@ -83,10 +84,15 @@ export function CycleCelebration() {
       setDetail(next)
       const animate = Boolean(next.fresh) && !prefersReducedMotion()
       setPhase(animate ? 'shaking' : 'open')
-      // Sin sonidos en el cofre (Luis, 2 oct): ni al abrirlo ni al recoger las monedas.
-      if (!animate) return
+      // Suena solo la primera vez, al abrirlo y ganar las monedas. Al volver a ver un cofre ya
+      // abierto (fresh = false), en silencio (Luis, 3 oct).
+      if (!animate) {
+        if (next.fresh) gameSfx.chest()
+        return
+      }
       window.setTimeout(() => {
         setPhase('open')
+        gameSfx.chest()
         try {
           void confetti({ particleCount: 60, spread: 70, startVelocity: 30, origin: { y: 0.3 }, zIndex: 120 })
         } catch {
@@ -128,7 +134,10 @@ export function CycleCelebration() {
         delay: index * FLY_STAGGER_MS,
       })),
     )
-    // Al final el contador suma lo que faltaba (sin sonido).
+    // Cada moneda que llega suena; al final el contador suma lo que faltaba.
+    for (let index = 0; index < count; index += 1) {
+      window.setTimeout(() => gameSfx.coin(), FLY_MS + index * FLY_STAGGER_MS)
+    }
     window.setTimeout(() => releaseCoinsDisplay(60), FLY_MS)
     window.setTimeout(() => setFlyers([]), FLY_MS + count * FLY_STAGGER_MS + 100)
   }

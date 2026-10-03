@@ -2,13 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { longestStreak } from '../../../../src/modules/game/achievements'
 import {
   buyChallengeSlot,
-  buyDayBoost,
+  buyPhaseBoost,
   claimCycleChest,
   claimReachedFlashMilestones,
   claimReachedMilestones,
   consumeChallengeSlot,
   getPreviewDelta,
-  hasDayBoost,
+  hasPhaseBoost,
+  phaseBoostsToday,
   nextCoinProgress,
   readPreviewEntries,
   toWholeFichas,
@@ -102,16 +103,20 @@ describe('modo juego: reglas', () => {
     expect(getPreviewDelta(readPreviewEntries(USER))).toBe(7)
   })
 
-  it('ampliar el día cuesta 50 ICA Coins, necesita saldo y no se cobra dos veces', () => {
-    expect(buyDayBoost(USER, 49)).toBe(false)
-    expect(hasDayBoost(readPreviewEntries(USER))).toBe(false)
-    expect(buyDayBoost(USER, 50)).toBe(true)
-    expect(buyDayBoost(USER, 50)).toBe(true)
-    expect(getPreviewDelta(readPreviewEntries(USER))).toBe(-50)
-    expect(hasDayBoost(readPreviewEntries(USER))).toBe(true)
+  it('ampliar una fase cuesta 15 ICA Coins, solo amplía esa fase y no se cobra dos veces', () => {
+    expect(buyPhaseBoost(USER, 'words', 14)).toBe(false)
+    expect(hasPhaseBoost(readPreviewEntries(USER), 'words')).toBe(false)
+    expect(buyPhaseBoost(USER, 'words', 15)).toBe(true)
+    expect(buyPhaseBoost(USER, 'words', 15)).toBe(true)
+    expect(getPreviewDelta(readPreviewEntries(USER))).toBe(-15)
+    expect(phaseBoostsToday(readPreviewEntries(USER))).toEqual({ words: true, phrases: false, activations: false })
+
+    expect(buyPhaseBoost(USER, 'activations', 100)).toBe(true)
+    expect(getPreviewDelta(readPreviewEntries(USER))).toBe(-30)
+    expect(phaseBoostsToday(readPreviewEntries(USER))).toEqual({ words: true, phrases: false, activations: true })
 
     vi.setSystemTime(new Date('2026-10-01T10:00:00'))
-    expect(hasDayBoost(readPreviewEntries(USER))).toBe(false)
+    expect(hasPhaseBoost(readPreviewEntries(USER), 'words')).toBe(false)
   })
 
   it('el contador de frases nuevas vuelve a cero al cambiar de día', () => {

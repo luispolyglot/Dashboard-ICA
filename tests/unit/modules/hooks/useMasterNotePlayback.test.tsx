@@ -250,7 +250,9 @@ describe('useMasterNotePlayback', () => {
     expect(createSignedMasterNoteAudioUrlMock).toHaveBeenCalledWith('final/note-final.mp3')
     expect(upsertOfflineClosedMasterNoteAudioMock.mock.calls[0]?.[0]).toEqual(finalNote)
     const persistedBlob = upsertOfflineClosedMasterNoteAudioMock.mock.calls[0]?.[1]
-    expect(persistedBlob).toBeInstanceOf(Blob)
+    // jsdom y Node tienen cada uno su propia clase Blob: toBeInstanceOf fallaba aunque sí se
+    // guardara un Blob ("expected Blob to be an instance of Blob"). Se comprueba el tipo real.
+    expect(Object.prototype.toString.call(persistedBlob)).toBe('[object Blob]')
   })
 
   it('revokes merged object URL cache on unmount', async () => {

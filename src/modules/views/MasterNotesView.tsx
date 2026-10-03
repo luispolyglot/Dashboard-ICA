@@ -62,7 +62,7 @@ import { useMasterNotePlaylists } from '../hooks/useMasterNotePlaylists'
 import { NotaDesafianteChip } from '../components/NotaDesafiante/NotaDesafianteChip'
 import { useChallengeEnabled } from '../services/challengeChunks'
 import { CHALLENGE_UNLOCK_RATIO } from '../services/challengeUnlocks'
-import { CHALLENGE_NOTE_MIN_CLOSED_NOTES } from '../game/rules'
+import { CHALLENGE_NOTE_MIN_CLOSED_NOTES, PHASE_BOOST_COST } from '../game/rules'
 import { FichaIcon, TargetGlyph } from '../game/icons'
 import { useDailyLimits } from '../game/limits'
 import {
@@ -872,9 +872,9 @@ export function MasterNotesView({
               {t('activaciones hoy')}
             </p>
           </div>
-          {dailyLimits.boosted ? (
+          {dailyLimits.boosted.activations ? (
             <Pill tone='c' solid>
-              {t('DÍA AMPLIADO')}
+              {t('AMPLIADA HOY')}
             </Pill>
           ) : null}
         </div>
@@ -886,14 +886,14 @@ export function MasterNotesView({
         />
         <div className='mt-2 flex flex-wrap items-center justify-between gap-2'>
           <p className='m-0 text-xs font-semibold text-muted-foreground'>{dayText}</p>
-          {atDailyLimit && !dailyLimits.boosted ? (
+          {atDailyLimit && !dailyLimits.boosted.activations ? (
             <Link
               to={DASHBOARD_ROUTES.fichas}
               className='inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-extrabold'
               style={{ background: 'var(--ica-gold)', color: '#3a2a00', boxShadow: '0 3px 0 var(--ica-gold-edge)' }}
             >
               <FichaIcon size={16} />
-              {t('Ampliar el día')}
+              {t('Ampliar Activación · {n}', { n: PHASE_BOOST_COST })}
             </Link>
           ) : null}
         </div>

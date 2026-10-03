@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { FichaIcon } from './icons'
 import type { DailyLimitsState } from './limits'
-import { DAY_BOOST_COST, type DailyLimitKey } from './rules'
+import { LIMIT_PHASE, PHASE_BOOST_COST, PHASE_BOOST_MULTIPLIER, type DailyLimitKey } from './rules'
 import { t } from '@/i18n'
 
 const REACHED_TEXT: Record<DailyLimitKey, (limit: number) => string> = {
@@ -13,7 +13,7 @@ const REACHED_TEXT: Record<DailyLimitKey, (limit: number) => string> = {
 }
 
 /**
- * Aviso de "máximo del día alcanzado" con la opción de ampliar el día con fichas.
+ * Aviso de "máximo del día alcanzado" con la opción de ampliar esa fase hoy con ICA Coins.
  * Se usa en Añadir palabra, Crear frase y Activar frase.
  */
 export function DailyLimitNotice({
@@ -28,6 +28,7 @@ export function DailyLimitNotice({
   className?: string
 }) {
   const limit = state.limits[kind]
+  const phase = t(LIMIT_PHASE[kind].name)
 
   return (
     <div
@@ -41,9 +42,9 @@ export function DailyLimitNotice({
       <p className='m-0 mt-1 text-xs font-medium' style={{ color: 'var(--ica-gold-ink)' }}>
         {t('El método ICA funciona mejor con poco y bien trabajado. Mañana el contador vuelve a cero.')}
       </p>
-      {state.boosted ? (
+      {state.boosted[kind] ? (
         <p className='m-0 mt-2 text-xs font-bold' style={{ color: 'var(--ica-gold-ink)' }}>
-          {t('Hoy ya tienes el día ampliado (el doble de todo).')}
+          {t('Hoy ya tienes {phase} ampliada (×{n}).', { phase, n: PHASE_BOOST_MULTIPLIER })}
         </p>
       ) : (
         <Link
@@ -53,7 +54,7 @@ export function DailyLimitNotice({
           style={{ background: 'var(--ica-gold)', color: '#3a2a00' }}
         >
           <FichaIcon size={18} />
-          {t('Ampliar el día · {n} ICA Coins', { n: DAY_BOOST_COST })}
+          {t('Ampliar {phase} hoy · {n} ICA Coins', { phase, n: PHASE_BOOST_COST })}
         </Link>
       )}
     </div>
@@ -81,7 +82,7 @@ export function DailyLimitCounter({
   return (
     <span className={cn('text-xs font-semibold text-muted-foreground tabular-nums', className)}>
       {label}
-      {state.boosted ? t(' · día ampliado') : ''}
+      {state.boosted[kind] ? t(' · ampliado hoy') : ''}
     </span>
   )
 }

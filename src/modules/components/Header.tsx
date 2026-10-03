@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CalendarDaysIcon, CrownIcon, PinIcon, PinOffIcon, UsersIcon } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { cn } from '@/lib/utils'
@@ -69,7 +69,41 @@ function usePinnedStudents(coachUserId: string | undefined) {
   return { pinnedIds, togglePinned }
 }
 
-/* Acceso rápido del coach (solo ordenador): un clic y estás en el tablero del alumno. */
+/**
+ * Acceso rápido del coach (solo ordenador). Al pasar el ratón por «Coaching» se despliegan los
+ * alumnos (como la racha y las ICA Coins de al lado) y un clic lleva a su tablero. También se
+ * abre con un clic o con el teclado, como cualquier menú.
+ */
+function useHoverOpen() {
+  const [open, setOpen] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clear = () => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = null
+  }
+  const later = useCallback((next: boolean, delay: number) => {
+    clear()
+    timer.current = setTimeout(() => setOpen(next), delay)
+  }, [])
+  useEffect(() => () => clear(), [])
+  return {
+    open,
+    setOpen: (next: boolean) => {
+      clear()
+      setOpen(next)
+    },
+    // Solo con ratón: en pantallas táctiles el menú se abre tocando, como siempre.
+    hoverHandlers: {
+      onPointerEnter: (event: React.PointerEvent) => {
+        if (event.pointerType === 'mouse') later(true, 90)
+      },
+      onPointerLeave: (event: React.PointerEvent) => {
+        if (event.pointerType === 'mouse') later(false, 220)
+      },
+    },
+  }
+}
+
 function CoachQuickAccess({
   students,
   hasPending,
@@ -80,6 +114,7 @@ function CoachQuickAccess({
   const navigate = useNavigate()
   const { user } = useAuth()
   const { pinnedIds, togglePinned } = usePinnedStudents(user?.id)
+  const { open, setOpen, hoverHandlers } = useHoverOpen()
 
   // Fijados primero (en el orden en que se fijaron), luego el resto como venían.
   const { pinnedStudents, otherStudents } = useMemo(() => {
@@ -148,10 +183,14 @@ function CoachQuickAccess({
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <DropdownMenu open={open} onOpenChange={setOpen} modal={false}>
+      <DropdownMenuTrigger asChild {...hoverHandlers}>
         <button
           type='button'
+          // Si ya se abrió al pasar el ratón, el clic no lo cierra (se queda abierto para elegir).
+          onPointerDown={(event) => {
+            if (event.pointerType === 'mouse' && open) event.preventDefault()
+          }}
           className='coaching-hero relative hidden h-10 items-center gap-2 rounded-2xl px-3.5 text-sm font-black text-white transition-transform active:translate-y-[2px] md:inline-flex'
           aria-label={t('Acceso rápido a coaching')}
         >
@@ -167,7 +206,7 @@ function CoachQuickAccess({
           ) : null}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align='end' className='w-[22rem] p-0'>
+      <DropdownMenuContent align='end' sideOffset={6} className='w-[22rem] p-0' {...hoverHandlers}>
         <div className='coaching-hero m-1.5 rounded-xl px-3.5 py-3 text-white'>
           <p className='m-0 flex items-center gap-1.5 text-[11px] font-black tracking-[0.14em] uppercase' style={{ color: 'var(--ica-gold)' }}>
             <CrownIcon className='size-3.5' strokeWidth={2.8} aria-hidden='true' />
