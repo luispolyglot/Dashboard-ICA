@@ -33,12 +33,14 @@ import {
   updateWhitelistFlags,
 } from '../services/whitelistAdmin'
 import { formatDateTime } from '../utils'
+import { ListLoading } from '@/components/ui/loading-state'
+import { useSoftLoading } from '../hooks/useSoftLoading'
 
 export function ManageWhitelistView() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [sourceFilter, setSourceFilter] = useState<string>('all')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading, refreshing] = useSoftLoading(true)
   const [rows, setRows] = useState<WhitelistEntry[]>([])
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -247,9 +249,9 @@ export function ManageWhitelistView() {
                 type='button'
                 variant='ghost'
                 onClick={() => void loadRows()}
-                disabled={loading}
+                disabled={loading || refreshing}
               >
-                <RefreshCwIcon className='h-4 w-4' />
+                <RefreshCwIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
                 Recargar
               </Button>
               <input
@@ -306,9 +308,7 @@ export function ManageWhitelistView() {
 
         <CardContent>
           {loading ? (
-            <p className='text-sm text-muted-foreground'>
-              Cargando whitelist...
-            </p>
+            <ListLoading label='Cargando whitelist...' />
           ) : rows.length === 0 ? (
             <p className='text-sm text-muted-foreground'>
               No hay registros para mostrar.

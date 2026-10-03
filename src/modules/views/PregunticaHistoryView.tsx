@@ -17,6 +17,7 @@ import {
 import { AddIcaSuggestionModal } from '../components/AddIcaSuggestionModal'
 import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
 import type { AppConfig, Lexicard } from '../types'
+import { ListLoading } from '@/components/ui/loading-state'
 
 type PregunticaHistoryViewProps = {
   config: AppConfig
@@ -507,7 +508,7 @@ export function PregunticaHistoryView({
         sugerencias ICA de cada semana.
       </p>
 
-      {loading && <p className='mt-6 text-sm text-muted-foreground'>Cargando historial...</p>}
+      {loading && <ListLoading label='Cargando historial...' className='mt-6' />}
       {error && <p className='mt-6 text-sm text-red-500'>{error}</p>}
 
       {!loading && !error && weeks.length === 0 && (

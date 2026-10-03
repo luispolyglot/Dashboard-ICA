@@ -78,6 +78,7 @@ import {
   toDateAndTimeFromIso,
   toIsoFromDateAndTime,
 } from "./coachingClassResources";
+import { ContentLoading } from "@/components/ui/loading-state";
 
 type CoachingV3SessionBoardProps = {
   sessionId: string;
@@ -1147,7 +1148,7 @@ export function CoachingV3SessionBoard({
 
   if (loading) {
     return (
-      <p className="text-sm text-muted-foreground">Cargando coaching...</p>
+      <ContentLoading label="Cargando coaching..." />
     );
   }
 

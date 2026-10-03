@@ -72,6 +72,7 @@ import type {
   PhraseGenerationEntry,
 } from '../types'
 import { formatDate } from '../utils'
+import { PageLoading } from '@/components/ui/loading-state'
 
 type MasterNoteDetailViewProps = {
   noteId: string
@@ -521,11 +522,7 @@ export function MasterNoteDetailView({
 
   if (loading) {
     return (
-      <section className='mx-auto w-full max-w-4xl flex-1 px-5 py-8'>
-        <p className='text-sm text-muted-foreground'>
-          Cargando nota maestra...
-        </p>
-      </section>
+      <PageLoading label='Cargando nota maestra...' />
     )
   }
 

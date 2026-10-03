@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { CircleHelpIcon, EyeIcon, EyeOffIcon, PlusIcon } from 'lucide-react'
 import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
+import { PageLoading } from '@/components/ui/loading-state'
 
 type PregunticaViewProps = {
   config: AppConfig
@@ -717,9 +718,7 @@ export function PregunticaView({
 
   if (loading) {
     return (
-      <section className='mx-auto w-full max-w-4xl px-4 pb-24 pt-8'>
-        <p className='text-sm text-muted-foreground'>Cargando PreguntICA...</p>
-      </section>
+      <PageLoading label='Cargando PreguntICA...' className='px-4 pb-24 pt-8' />
     )
   }
 

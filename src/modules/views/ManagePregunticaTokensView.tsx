@@ -16,12 +16,14 @@ import {
   updatePregunticaManualTokensForUser,
   type PregunticaTokensAdminUser,
 } from '../services/pregunticaTokensAdmin'
+import { ListLoading } from '@/components/ui/loading-state'
+import { useSoftLoading } from '../hooks/useSoftLoading'
 
 const PAGE_SIZE_OPTIONS = [10, 50, 100] as const
 
 export function ManagePregunticaTokensView() {
   const [rows, setRows] = useState<PregunticaTokensAdminUser[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading, refreshing] = useSoftLoading(true)
   const [search, setSearch] = useState('')
   const [pageSize, setPageSize] = useState<number>(10)
   const [currentPage, setCurrentPage] = useState(1)
@@ -163,9 +165,9 @@ export function ManagePregunticaTokensView() {
                 type='button'
                 variant='ghost'
                 onClick={() => void load()}
-                disabled={loading}
+                disabled={loading || refreshing}
               >
-                <RefreshCwIcon className='h-4 w-4' />
+                <RefreshCwIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
                 Recargar
               </Button>
             </div>
@@ -174,7 +176,7 @@ export function ManagePregunticaTokensView() {
 
         <CardContent>
           {loading ? (
-            <p className='text-sm text-muted-foreground'>Cargando usuarios...</p>
+            <ListLoading label='Cargando usuarios...' />
           ) : filteredRows.length === 0 ? (
             <p className='text-sm text-muted-foreground'>No hay usuarios para mostrar.</p>
           ) : (

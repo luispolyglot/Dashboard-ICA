@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Skeleton } from '@/components/ui/loading-state'
 import { useDashboardContext } from '../../context/DashboardContext'
 import type { AppConfig, MetaTrackerStartLevel } from '../../types'
 import { MetaTrackerBar } from './MetaTrackerBar'
@@ -32,8 +33,14 @@ export function MetaTrackerSection({ config }: MetaTrackerSectionProps) {
 
   if (metaTrackerLoading) {
     return (
-      <div className='mx-auto mb-2 w-full rounded-[14px] border border-dashed border-slate-400 px-5 py-4.5 text-center text-[13px] text-slate-500 bg-[linear-gradient(160deg,#ffffff,#eef3f9)] dark:border-[#334155] dark:text-[#94a3b8] dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'>
-        Cargando meta tracker...
+      <div
+        role='status'
+        aria-busy='true'
+        className='loading-reveal mx-auto mb-2 w-full rounded-[14px] border border-dashed border-slate-400 px-5 py-4.5 bg-[linear-gradient(160deg,#ffffff,#eef3f9)] dark:border-[#334155] dark:bg-[linear-gradient(160deg,#0f172a,#0a0f1a)]'
+      >
+        <span className='sr-only'>Cargando meta tracker...</span>
+        <Skeleton className='mx-auto h-3 w-36' />
+        <Skeleton className='mt-3 h-2.5 w-full rounded-full' />
       </div>
     )
   }

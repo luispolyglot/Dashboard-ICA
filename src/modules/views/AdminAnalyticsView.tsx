@@ -16,6 +16,7 @@ import {
   type AdminAnalyticsPayload,
 } from '../services/adminAnalytics'
 import { formatDateTime } from '../utils'
+import { ContentLoading } from '@/components/ui/loading-state'
 
 function formatDayLabel(day: string): string {
   const date = new Date(`${day}T00:00:00`)
@@ -72,10 +73,8 @@ export function AdminAnalyticsView() {
   if (loading) {
     return (
       <section className='mx-auto w-full max-w-6xl flex-1 overflow-y-auto px-5 py-8'>
-        <h2 className='mb-2 font-serif text-3xl font-bold'>Analíticas Admin</h2>
-        <p className='text-sm text-muted-foreground'>
-          Cargando métricas globales...
-        </p>
+        <h2 className='mb-6 font-serif text-3xl font-bold'>Analíticas Admin</h2>
+        <ContentLoading label='Cargando métricas globales...' />
       </section>
     )
   }

@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { RefreshCwIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { ContentLoading } from '@/components/ui/loading-state'
+import { useSoftLoading } from '../hooks/useSoftLoading'
 import {
   completeCoachingExerciseObjective,
   fetchMyCoachingDashboard,
@@ -36,16 +38,16 @@ export function CoachingPersonalizedView({
   targetLang,
 }: CoachingPersonalizedViewProps) {
   const navigate = useNavigate()
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading, refreshing] = useSoftLoading(true)
   const [error, setError] = useState<string | null>(null)
   const [memberships, setMemberships] = useState<CoachingMembership[]>([])
 
   const loadData = async () => {
     setLoading(true)
-    setError(null)
     try {
       const data = await fetchMyCoachingDashboard()
       setMemberships(data)
+      setError(null)
     } catch (err) {
       const message =
         err instanceof Error
@@ -118,14 +120,19 @@ export function CoachingPersonalizedView({
           </p>
         </div>
 
-        <Button type='button' variant='outline' onClick={() => void loadData()}>
-          <RefreshCwIcon className='h-4 w-4' />
+        <Button
+          type='button'
+          variant='outline'
+          onClick={() => void loadData()}
+          disabled={refreshing}
+        >
+          <RefreshCwIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
           Recargar
         </Button>
       </div>
 
       {loading ? (
-        <p className='text-sm text-muted-foreground'>Cargando coaching...</p>
+        <ContentLoading label='Cargando coaching...' cards={2} />
       ) : error ? (
         <p className='text-sm text-destructive'>{error}</p>
       ) : memberships.length === 0 ? (
@@ -174,7 +181,7 @@ export function CoachingPersonalizedView({
 export function CoachingPersonalizedSessionView({
   sessionId,
 }: CoachingPersonalizedSessionViewProps) {
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading, refreshing] = useSoftLoading(true, sessionId)
   const [error, setError] = useState<string | null>(null)
   const [memberships, setMemberships] = useState<CoachingMembership[]>([])
   const [completingExerciseWeek, setCompletingExerciseWeek] = useState<
@@ -183,10 +190,10 @@ export function CoachingPersonalizedSessionView({
 
   const loadData = async () => {
     setLoading(true)
-    setError(null)
     try {
       const data = await fetchMyCoachingDashboard()
       setMemberships(data)
+      setError(null)
     } catch (err) {
       const message =
         err instanceof Error
@@ -271,14 +278,19 @@ export function CoachingPersonalizedSessionView({
           </p>
         </div>
 
-        <Button type='button' variant='outline' onClick={() => void loadData()}>
-          <RefreshCwIcon className='h-4 w-4' />
+        <Button
+          type='button'
+          variant='outline'
+          onClick={() => void loadData()}
+          disabled={refreshing}
+        >
+          <RefreshCwIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
           Recargar
         </Button>
       </div>
 
       {loading ? (
-        <p className='text-sm text-muted-foreground'>Cargando sesión...</p>
+        <ContentLoading label='Cargando sesión...' />
       ) : error ? (
         <p className='text-sm text-destructive'>{error}</p>
       ) : !selectedMembership ? (

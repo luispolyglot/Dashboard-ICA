@@ -19,6 +19,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/auth/AuthContext";
+import { ListLoading } from "@/components/ui/loading-state";
+import { useSoftLoading } from "@/modules/hooks/useSoftLoading";
 import useBreakpoints from "@/modules/hooks/useBreakpoints";
 import {
   getPregunticaMaxPoints,
@@ -404,7 +406,9 @@ export function LeaderboardView() {
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStart);
   const [rows, setRows] = useState<LeaderboardEntry[]>([]);
   const [totalIcademers, setTotalIcademers] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Al cambiar de mes se enseña el esqueleto; las actualizaciones del mismo mes
+  // (p. ej. al escuchar notas) refrescan la tabla sin que desaparezca.
+  const [loading, setLoading] = useSoftLoading(true, selectedMonth);
   const [error, setError] = useState<string | null>(null);
   const [isBreakdownInfoOpen, setIsBreakdownInfoOpen] = useState(false);
   const [selectedScoreBreakdown, setSelectedScoreBreakdown] =
@@ -636,9 +640,7 @@ export function LeaderboardView() {
 
         <CardContent>
           {loading ? (
-            <p className="text-sm text-muted-foreground">
-              Cargando leaderboard...
-            </p>
+            <ListLoading label="Cargando leaderboard..." rows={6} />
           ) : error ? (
             <p className="text-sm text-destructive">{error}</p>
           ) : rowsWithSharedRank.length === 0 ? (

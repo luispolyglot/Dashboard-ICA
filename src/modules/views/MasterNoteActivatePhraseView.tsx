@@ -34,6 +34,7 @@ import type {
   MasterNoteChunk,
   PhraseGenerationEntry,
 } from '../types'
+import { ContentLoading } from '@/components/ui/loading-state'
 
 type MasterNoteActivatePhraseViewProps = {
   noteId: string
@@ -693,7 +694,7 @@ export function MasterNoteActivatePhraseView({
         ref={pageSectionRef}
         className='mx-auto w-full max-w-3xl flex-1 px-5 pt-8 pb-24 lg:pb-8'
       >
-        <p className='text-sm text-muted-foreground'>Cargando activación...</p>
+        <ContentLoading label='Cargando activación...' cards={2} />
       </section>
     )
   }

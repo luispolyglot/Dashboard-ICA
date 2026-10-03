@@ -42,6 +42,7 @@ import {
 import { useCalendarIcademyExport } from '../../hooks/useCalendarIcademyExport'
 import { CalendarPlus, Check, Volume1, VolumeOff } from 'lucide-react'
 import { toast } from 'sonner'
+import { BlockLoading } from '@/components/ui/loading-state'
 
 type CalendarIcademyBoardProps = {
   title: string
@@ -742,9 +743,7 @@ export function CalendarIcademyBoard({
               )}
 
               {loading ? (
-                <p className='text-sm text-muted-foreground'>
-                  Cargando calendario...
-                </p>
+                <BlockLoading label='Cargando calendario...' className='h-[420px]' />
               ) : entries.length === 0 ? (
                 <p className='text-sm text-muted-foreground'>{emptyMessage}</p>
               ) : (

@@ -90,6 +90,8 @@ import {
   toDateAndTimeFromIso,
   toIsoFromDateAndTime,
 } from './coachingClassResources'
+import { ContentLoading } from '@/components/ui/loading-state'
+import { useSoftLoading } from '../hooks/useSoftLoading'
 
 type ManageCoachingUserViewProps = {
   userId: string
@@ -765,7 +767,7 @@ export function ManageCoachingUserView({
   initialSessionId,
 }: ManageCoachingUserViewProps) {
   const navigate = useNavigate()
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading, refreshing] = useSoftLoading(true, userId)
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [memberships, setMemberships] = useState<CoachingUserMembership[]>([])
@@ -1648,8 +1650,13 @@ export function ManageCoachingUserView({
           Volver
         </Button>
 
-        <Button type='button' variant='ghost' onClick={() => void loadAll()}>
-          Recargar
+        <Button
+          type='button'
+          variant='ghost'
+          onClick={() => void loadAll()}
+          disabled={refreshing}
+        >
+          {refreshing ? 'Recargando…' : 'Recargar'}
         </Button>
       </div>
 
@@ -1847,7 +1854,7 @@ export function ManageCoachingUserView({
       </Card>
 
       {loading ? (
-        <p className='text-sm text-muted-foreground'>Cargando detalle...</p>
+        <ContentLoading label='Cargando detalle...' />
       ) : !insights || !selectedMembership ? (
         <p className='text-sm text-muted-foreground'>
           No hay datos disponibles para este usuario.

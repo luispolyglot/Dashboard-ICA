@@ -267,6 +267,42 @@ button:disabled {
   }
 }
 
+/* Cargas suaves: el esqueleto aparece tras un instante, así las cargas rápidas no parpadean. */
+@keyframes loading-reveal {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.loading-reveal {
+  animation: loading-reveal 280ms ease-out 180ms both;
+}
+
+/* Barra de la pantalla de arranque (igual que la de index.html). */
+@keyframes app-splash-bar {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(250%);
+  }
+}
+
+.app-splash-bar {
+  animation: app-splash-bar 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-reveal {
+    animation-duration: 1ms;
+  }
+}
+
 @layer utilities {
 
   .shadow-inital-letter {

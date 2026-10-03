@@ -13,9 +13,93 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <title>Dashboard ICA</title>
+    <script>
+      // Aplica el tema oscuro antes de pintar nada (evita el destello claro al abrir).
+      (function () {
+        try {
+          var stored = localStorage.getItem('dashboard-ica-theme')
+          var dark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
+          if (dark) document.documentElement.classList.add('dark')
+        } catch (e) {}
+      })()
+    </script>
+    <style>
+      /* Pantalla de arranque mientras se descarga la app. React la sustituye por
+         FullscreenLoading, que es idéntica, así que no se nota el cambio. */
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 24px;
+        background: oklch(97.1% 0.012 218);
+      }
+      .dark #boot-splash {
+        background: oklch(20.5% 0.03 245);
+      }
+      #boot-splash img {
+        width: 112px;
+        height: 112px;
+        border-radius: 24px;
+      }
+      #boot-splash .boot-logo-dark,
+      .dark #boot-splash .boot-logo-light {
+        display: none;
+      }
+      .dark #boot-splash .boot-logo-dark {
+        display: block;
+      }
+      #boot-splash .boot-track {
+        position: relative;
+        width: 128px;
+        height: 4px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: oklch(72.5% 0.126 216 / 0.15);
+      }
+      .dark #boot-splash .boot-track {
+        background: oklch(76% 0.125 213 / 0.15);
+      }
+      #boot-splash .boot-bar {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 40%;
+        border-radius: 999px;
+        background: oklch(72.5% 0.126 216);
+        animation: boot-splash-bar 1.2s ease-in-out infinite;
+      }
+      .dark #boot-splash .boot-bar {
+        background: oklch(76% 0.125 213);
+      }
+      @keyframes boot-splash-bar {
+        from {
+          transform: translateX(-100%);
+        }
+        to {
+          transform: translateX(250%);
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="boot-splash" role="status" aria-live="polite">
+        <img class="boot-logo-light" src="/logo-light.png" alt="" />
+        <img class="boot-logo-dark" src="/logo-dark.png" alt="" />
+        <div class="boot-track" aria-hidden="true"><span id="boot-splash-bar" class="boot-bar"></span></div>
+      </div>
+      <script>
+        // Misma sincronización que FullscreenLoading para que la barra no salte.
+        try {
+          document.getElementById('boot-splash-bar').style.animationDelay =
+            '-' + Math.round(performance.now() % 1200) + 'ms'
+        } catch (e) {}
+      </script>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

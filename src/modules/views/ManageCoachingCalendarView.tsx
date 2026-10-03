@@ -28,6 +28,8 @@ import {
   upsertCoachingUser,
 } from '../services/coaching'
 import { toDateAndTimeFromIso, toIsoFromDateAndTime } from './coachingClassResources'
+import { BlockLoading } from '@/components/ui/loading-state'
+import { useSoftLoading } from '../hooks/useSoftLoading'
 
 type CoachingCalendarEntry = {
   id: string
@@ -308,7 +310,7 @@ function mapClassSessions(rows: CoachingManagedUser[]): CoachingCalendarEntry[] 
 export function ManageCoachingCalendarView() {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading, refreshing] = useSoftLoading(true)
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [managedRows, setManagedRows] = useState<CoachingManagedUser[]>([])
@@ -1064,8 +1066,13 @@ export function ManageCoachingCalendarView() {
             <ArrowLeftIcon className='h-4 w-4' />
             Volver
           </Button>
-          <Button type='button' variant='ghost' onClick={() => void loadData()}>
-            <RefreshCwIcon className='h-4 w-4' />
+          <Button
+            type='button'
+            variant='ghost'
+            onClick={() => void loadData()}
+            disabled={refreshing}
+          >
+            <RefreshCwIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             Recargar
           </Button>
         </div>
@@ -1113,7 +1120,7 @@ export function ManageCoachingCalendarView() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <p className='text-sm text-muted-foreground'>Cargando calendario...</p>
+            <BlockLoading label='Cargando calendario...' className='h-[420px]' />
           ) : entries.length === 0 ? (
             <p className='text-sm text-muted-foreground'>
               No hay clases de coaching programadas por ahora.

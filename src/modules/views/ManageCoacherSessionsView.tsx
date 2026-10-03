@@ -9,6 +9,8 @@ import {
 } from '../services/coaching'
 import { getManageCoachingUserRoute } from '../routes/paths'
 import { formatDateTime } from '../utils'
+import { ListLoading } from '@/components/ui/loading-state'
+import { useSoftLoading } from '../hooks/useSoftLoading'
 
 type ManageCoacherSessionsViewProps = {
   coachUserId: string
@@ -18,7 +20,7 @@ export function ManageCoacherSessionsView({
   coachUserId,
 }: ManageCoacherSessionsViewProps) {
   const navigate = useNavigate()
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading, refreshing] = useSoftLoading(true, coachUserId)
   const [error, setError] = useState<string | null>(null)
   const [rows, setRows] = useState<CoachingManagedUser[]>([])
 
@@ -66,8 +68,13 @@ export function ManageCoacherSessionsView({
             <ArrowLeftIcon className='h-4 w-4' />
             Volver
           </Button>
-          <Button type='button' variant='ghost' onClick={() => void loadData()}>
-            <RefreshCwIcon className='h-4 w-4' />
+          <Button
+            type='button'
+            variant='ghost'
+            onClick={() => void loadData()}
+            disabled={refreshing}
+          >
+            <RefreshCwIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             Recargar
           </Button>
         </div>
@@ -81,9 +88,7 @@ export function ManageCoacherSessionsView({
         </CardHeader>
         <CardContent>
           {loading ? (
-            <p className='text-sm text-muted-foreground'>
-              Cargando sesiones...
-            </p>
+            <ListLoading label='Cargando sesiones...' />
           ) : sessions.length === 0 ? (
             <p className='text-sm text-muted-foreground'>
               Este coacher no tiene sesiones asignadas.
