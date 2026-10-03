@@ -6,13 +6,16 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { AppBreadcrumbs } from './AppBreadcrumbs'
 import { LeaderboardMenu } from './LeaderboardMenu'
 import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
-import {
-  DASHBOARD_ROUTES,
-  getManageCoachingUserRoute,
-} from '../routes/paths'
+import { DASHBOARD_ROUTES, getManageCoachingUserRoute } from '../routes/paths'
 import type { CoachingManagedUser } from '../services/coaching'
 import type { DailyProgressMap } from '../types'
 import { PendingReviewDot } from './PendingReviewDot'
+import { ChallengeAlertBadge } from './IcaChallenges/ChallengeAlertBadge'
+import {
+  challengesRouteForAlerts,
+  describeIcaChallengeAlerts,
+  useIcaChallengeAlerts,
+} from '../hooks/useIcaChallengeAlerts'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -45,7 +48,9 @@ const PINNED_STUDENTS_STORAGE_PREFIX = 'coach-pinned-students:'
 function readPinnedStudents(key: string): string[] {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(key) || '[]')
-    return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : []
+    return Array.isArray(parsed)
+      ? parsed.filter((id) => typeof id === 'string')
+      : []
   } catch {
     return []
   }
@@ -53,7 +58,9 @@ function readPinnedStudents(key: string): string[] {
 
 function usePinnedStudents(coachUserId: string | undefined) {
   const storageKey = `${PINNED_STUDENTS_STORAGE_PREFIX}${coachUserId || 'anon'}`
-  const [pinnedIds, setPinnedIds] = useState<string[]>(() => readPinnedStudents(storageKey))
+  const [pinnedIds, setPinnedIds] = useState<string[]>(() =>
+    readPinnedStudents(storageKey),
+  )
 
   useEffect(() => {
     setPinnedIds(readPinnedStudents(storageKey))
@@ -194,7 +201,9 @@ function CoachQuickAccess({
           </div>
         )}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => navigate(DASHBOARD_ROUTES.manageCoaching)}>
+        <DropdownMenuItem
+          onSelect={() => navigate(DASHBOARD_ROUTES.manageCoaching)}
+        >
           <span aria-hidden='true'>👥</span>
           Ver todos los alumnos
         </DropdownMenuItem>
@@ -294,8 +303,14 @@ export function Header({
     | 2
 
   const { theme } = useTheme()
+  const challengeAlerts = useIcaChallengeAlerts()
+  const isOnChallengesRoute = location.pathname.startsWith(
+    DASHBOARD_ROUTES.challengesIca,
+  )
   const isOnProfileRoute = location.pathname === DASHBOARD_ROUTES.profile
-  const isOnIcaTestsRoute = location.pathname.startsWith(DASHBOARD_ROUTES.testsIca)
+  const isOnIcaTestsRoute = location.pathname.startsWith(
+    DASHBOARD_ROUTES.testsIca,
+  )
   const isOnManageCoachingRoute = location.pathname.startsWith(
     DASHBOARD_ROUTES.manageCoaching,
   )
@@ -340,6 +355,33 @@ export function Header({
               hasPending={shouldHighlightCoachingProfileButton}
             />
           ) : null}
+          {challengeAlerts.total > 0 && !isOnChallengesRoute && (
+            <div className='hidden md:block'>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type='button'
+                    size='icon'
+                    variant='outline'
+                    onClick={() =>
+                      navigate(challengesRouteForAlerts(challengeAlerts))
+                    }
+                    aria-label={`Desafíos ICA: ${describeIcaChallengeAlerts(challengeAlerts)}`}
+                    className='relative overflow-visible border-rose-300 shadow-[0_0_0_1px_rgba(251,113,133,0.35),0_0_18px_rgba(244,63,94,0.25)] dark:border-rose-400/50'
+                  >
+                    <span aria-hidden='true' className='text-base'>
+                      ⚔️
+                    </span>
+                    <ChallengeAlertBadge
+                      count={challengeAlerts.total}
+                      title={`Desafíos ICA: ${describeIcaChallengeAlerts(challengeAlerts)}`}
+                    />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{`Desafíos ICA: ${describeIcaChallengeAlerts(challengeAlerts)}`}</TooltipContent>
+              </Tooltip>
+            </div>
+          )}
           <LeaderboardMenu />
           <div className='hidden md:block'>
             <Tooltip>

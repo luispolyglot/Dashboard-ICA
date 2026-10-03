@@ -424,10 +424,26 @@ export interface IcaChallengeAvailableUser {
   nativeLang: string | null
   targetLang: string | null
   cefrLevel: string | null
+  /** Nivel real (barra de progreso) en tu mismo par de idiomas. */
+  level: string | null
+  /** Está inscrito con tu mismo par de idiomas (puede jugar "por idioma"). */
+  samePair: boolean
+  /** Se puede jugar con la mezcla de baúles (mismo idioma y nivel parecido). */
+  mixedAllowed: boolean
+  mixedBlockedReason: string | null
   activeChallengesCount: number
   canChallenge: boolean
   blockedReason: string | null
+  /** Victorias seguidas ahora mismo (se ve al lado del nombre). */
+  winStreak: number
+  /** Desafíos de los últimos 30 días (los que más juegan salen arriba). */
+  recentChallenges: number
 }
+
+export type IcaChallengeQuestionKind = 'choice' | 'write' | 'speak' | 'listen' | 'cloze' | 'pairs'
+export type IcaChallengeFormat = 'turns' | 'lightning'
+/** own: cada uno juega con su baúl · mixed: las mismas palabras, 5 de cada baúl */
+export type IcaChallengeWordSource = 'own' | 'mixed'
 
 export interface IcaChallengeTypeRecord {
   id: string
@@ -438,6 +454,145 @@ export interface IcaChallengeTypeRecord {
   order: number
   scopes: IcaChallengeScope[]
   config: Record<string, unknown>
+  kind: IcaChallengeQuestionKind | null
+  format: IcaChallengeFormat | null
+  maxLevelGap: number
+}
+
+export type IcaChallengePublicQuestion =
+  | { kind: 'choice'; prompt: string; options: string[] }
+  | { kind: 'listen'; audioText: string; options: string[] }
+  | { kind: 'write'; prompt: string; hint: string }
+  | { kind: 'speak'; prompt: string }
+  | { kind: 'cloze'; before: string; after: string; options: string[] }
+  /** Parejas: 5 palabras (izquierda) y sus significados desordenados (derecha). */
+  | { kind: 'pairs'; words: string[]; options: string[] }
+
+export interface IcaChallengeRoundInfo {
+  roundNumber: number
+  roundsTotal: number
+  positionInRound: number
+  questionsInRound: number
+}
+
+export interface IcaChallengeServedQuestion {
+  index: number
+  kind: IcaChallengeQuestionKind
+  data: IcaChallengePublicQuestion
+  language: { target: string; native: string }
+  /** Tiempo que queda para responder (modos por turnos). null en el Modo Relámpago. */
+  limitMs: number | null
+  round: IcaChallengeRoundInfo | null
+}
+
+export interface IcaChallengeReveal {
+  target: string
+  native: string
+  correctOptionIndex: number | null
+  phrase: string | null
+  phraseTranslation: string | null
+}
+
+export interface IcaChallengeProgress {
+  answered: number
+  correct: number
+  total: number | null
+  rivalAnswered: number
+  rivalCorrect: number
+}
+
+export interface IcaChallengeSession {
+  endsAt: string
+  remainingMs: number
+  totalMs: number
+}
+
+export interface IcaChallengePlayState {
+  challenge: {
+    id: string
+    status: IcaChallengeStatus
+    typeId: string
+    kind: IcaChallengeQuestionKind
+    format: IcaChallengeFormat
+    wordSource: IcaChallengeWordSource
+    rounds: number
+    questionsPerRound: number
+    totalQuestions: number | null
+    secondsPerQuestion: number
+    sessionSeconds: number | null
+    isMyTurn: boolean
+    turnExpiresAt: string | null
+    resultType: IcaChallengeResultType
+    winnerUserId: string | null
+    levels: Record<string, string | null> | null
+  }
+  me: {
+    userId: string
+    answered: number
+    correct: number
+    done: boolean
+    hasOpenQuestion: boolean
+    sessionStarted: boolean
+    round: IcaChallengeRoundInfo | null
+  }
+  rival: { userId: string; answered: number; correct: number; done: boolean }
+  session: IcaChallengeSession | null
+}
+
+export type IcaChallengeStepStatus = 'question' | 'answered' | 'round_finished' | 'done'
+
+/** Tu balance en Desafíos ICA (todos los idiomas). */
+export interface IcaChallengeStats {
+  played: number
+  wins: number
+  losses: number
+  draws: number
+  /** Victorias seguidas ahora mismo (una derrota o un empate la cortan). */
+  currentStreak: number
+  bestStreak: number
+}
+
+/** Parejas: resultado del tablero, en el orden de las palabras de la izquierda. */
+export interface IcaChallengePairsResult {
+  correct: boolean[]
+  /** Significado correcto (índice de la columna derecha) de cada palabra. */
+  solution: number[]
+  /** Lo que unió el alumno (null = sin unir). */
+  chosen: Array<number | null>
+}
+
+export interface IcaChallengeStep {
+  status: IcaChallengeStepStatus
+  question: IcaChallengeServedQuestion | null
+  result: { isCorrect: boolean; timedOut: boolean; reveal: IcaChallengeReveal } | null
+  /** Solo en Parejas. */
+  pairs: IcaChallengePairsResult | null
+  progress: IcaChallengeProgress | null
+  session: IcaChallengeSession | null
+  late: boolean
+  /** Tras acabar una ronda: ¿sigues tú? (pasa si tu rival ya terminó). */
+  isMyTurn: boolean | null
+}
+
+export interface IcaChallengeReviewItem {
+  index: number
+  kind: IcaChallengeQuestionKind
+  target: string
+  native: string
+  phrase: string | null
+  phraseTranslation: string | null
+  isCorrect: boolean
+  timedOut: boolean
+  myAnswer: string | null
+  fromRival: boolean
+  targetLang: string | null
+}
+
+export interface IcaChallengeReview {
+  items: IcaChallengeReviewItem[]
+  me: { correct: number; answered: number }
+  rival: { correct: number; answered: number; done: boolean }
+  wordSource: IcaChallengeWordSource
 }
 
 export interface IcaChallengeEnrollment {
@@ -453,6 +608,7 @@ export interface IcaChallengeEnrollment {
 export interface IcaOwnWordsChallengeConfig {
   rounds: 1 | 2 | 5 | 10
   responseSeconds: number
+  wordSource?: IcaChallengeWordSource
 }
 
 export interface IcaTestQuestion {

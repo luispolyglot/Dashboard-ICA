@@ -1,16 +1,45 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
 import { CORS_HEADERS, jsonResponse } from '../_shared/http.ts'
 import { ensureAuthenticated } from '../_shared/coaching-auth.ts'
-
-type ChallengeScope = 'global' | 'language'
-type ChallengeStatus =
-  | 'created'
-  | 'in_progress'
-  | 'completed'
-  | 'cancelled'
-  | 'expired'
-  | 'not_accepted'
+import { listAvailableUsers } from './directory.ts'
+import { cancelInvitation, createChallenge, respondInvitation } from './invitations.ts'
+import type { AdminClient, ChallengeScope, ChallengeStatus, LanguagePair } from './types.ts'
+import {
+  boardIndices,
+  boardStart,
+  decideResult,
+  DEFAULT_MAX_LEVEL_GAP,
+  evaluatePairsBoard,
+  evaluateResponse,
+  generateQuestions,
+  isAnswerInTime,
+  isCompetitorDone,
+  isLightningSessionOver,
+  LIGHTNING_GRACE_MS,
+  isPendingQuestionStale,
+  isPlayableTypeId,
+  isRoundFinished,
+  levelFromTracker,
+  MIN_WORDS_TO_JOIN,
+  MODE_DEFAULTS,
+  nextTurnUserId,
+  normalizeLevel,
+  readGameState,
+  readModeSettings,
+  readPairMatches,
+  remainingQuestionMs,
+  roundInfo,
+  usesTimeTiebreak,
+  wordsMissingToJoin,
+  type CompetitorGameState,
+  type EngineCard,
+  type ModeSettings,
+  type PlayerResponse,
+  type PublicQuestion,
+  type QuestionKind,
+  type SecretAnswer,
+  type WordSource,
+} from './engine.ts'
 
 type PushSubscriptionRow = {
   id: string
@@ -19,16 +48,10 @@ type PushSubscriptionRow = {
   auth: string
 }
 
-type OwnWordsAnswerRow = {
-  questionIndex: number
-  selectedOptionIndex: number | null
-  isCorrect: boolean
-  timedOut: boolean
-  responseMs: number | null
-}
-
 const INVITATION_WINDOW_SECONDS = 12 * 60 * 60
 const TURN_WINDOW_SECONDS = 10 * 60 * 60
+const MAX_ACTIVE_CHALLENGES = 3
+const MAX_CARDS_PER_PLAYER = 3000
 
 type ChallengeTypeRow = {
   id: string
@@ -36,7 +59,7 @@ type ChallengeTypeRow = {
   icono: string
   activo: boolean
   orden: number
-  ambitos: string[]
+  ambitos: ChallengeScope[]
   config: Record<string, unknown>
 }
 
@@ -48,22 +71,12 @@ function toScope(value: unknown): ChallengeScope {
   return value === 'language' ? 'language' : 'global'
 }
 
-const OWN_WORDS_TOTAL_QUESTIONS = 10
-
-function toRounds(value: unknown): 1 | 2 | 5 | 10 {
-  const numberValue = Number(value)
-  if (numberValue === 1 || numberValue === 2 || numberValue === 5 || numberValue === 10) {
-    return numberValue
-  }
-  return 2
+function toWordSource(value: unknown): WordSource {
+  return value === 'mixed' ? 'mixed' : 'own'
 }
 
-function toResponseSeconds(value: unknown): number {
-  const numberValue = Math.round(Number(value))
-  if (Number.isNaN(numberValue)) return 5
-  if (numberValue < 3) return 3
-  if (numberValue > 8) return 8
-  return numberValue
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function toDurationSecondsDaysRange(value: unknown): number {
@@ -79,38 +92,6 @@ function toDurationSecondsDaysRange(value: unknown): number {
 
 function addSecondsToNow(seconds: number): string {
   return new Date(Date.now() + seconds * 1000).toISOString()
-}
-
-function normalizeOwnWordsAnswers(value: unknown): OwnWordsAnswerRow[] {
-  if (!Array.isArray(value)) return []
-
-  return value
-    .map((raw): OwnWordsAnswerRow | null => {
-      if (!raw || typeof raw !== 'object') return null
-      const answer = raw as Record<string, unknown>
-      const questionIndex = Math.max(0, Math.round(Number(answer.questionIndex || 0)))
-      const selectedOptionRaw = answer.selectedOptionIndex
-      const selectedOptionIndex =
-        selectedOptionRaw === null || selectedOptionRaw === undefined
-          ? null
-          : Math.max(0, Math.round(Number(selectedOptionRaw)))
-      const isCorrect = Boolean(answer.isCorrect)
-      const timedOut = Boolean(answer.timedOut)
-      const responseMsRaw = Number(answer.responseMs)
-      const responseMs = Number.isFinite(responseMsRaw)
-        ? Math.max(0, Math.round(responseMsRaw))
-        : null
-
-      return {
-        questionIndex,
-        selectedOptionIndex,
-        isCorrect,
-        timedOut,
-        responseMs,
-      }
-    })
-    .filter((item): item is OwnWordsAnswerRow => item !== null)
-    .sort((a, b) => a.questionIndex - b.questionIndex)
 }
 
 function normalizeChallengeTypeScopes(value: unknown): ChallengeScope[] {
@@ -140,8 +121,14 @@ function toChallengeTypeRow(raw: Record<string, unknown>): ChallengeTypeRow {
   }
 }
 
+function maxLevelGapFor(config: Record<string, unknown>): number {
+  const parsed = Math.round(Number(config.maxLevelGap))
+  if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_MAX_LEVEL_GAP
+  return Math.min(9, parsed)
+}
+
 async function getChallengeTypeById(input: {
-  adminClient: ReturnType<typeof createClient>
+  adminClient: AdminClient
   challengeTypeId: string
 }): Promise<{ row: ChallengeTypeRow | null; error: string | null }> {
   const { data, error } = await input.adminClient
@@ -156,7 +143,7 @@ async function getChallengeTypeById(input: {
 }
 
 async function listChallengeTypes(input: {
-  adminClient: ReturnType<typeof createClient>
+  adminClient: AdminClient
 }) {
   const { data, error } = await input.adminClient
     .from('desafio_tipos')
@@ -166,10 +153,11 @@ async function listChallengeTypes(input: {
 
   if (error) return jsonResponse(500, { error: error.message })
 
-  const rows = (data || [])
-    .filter((row): row is Record<string, unknown> => typeof row === 'object' && row !== null)
+  const rows = ((data || []) as unknown[])
+    .filter((row): row is Record<string, unknown> => isRecord(row))
     .map((row) => {
       const item = toChallengeTypeRow(row)
+      const defaults = MODE_DEFAULTS[item.id]
       return {
         id: item.id,
         name: item.nombre,
@@ -178,7 +166,10 @@ async function listChallengeTypes(input: {
         order: item.orden,
         scopes: item.ambitos,
         config: item.config,
-        isPlayable: item.id === 'ica-own-words',
+        isPlayable: isPlayableTypeId(item.id),
+        kind: defaults?.kind ?? null,
+        format: defaults?.format ?? null,
+        maxLevelGap: maxLevelGapFor(item.config),
       }
     })
 
@@ -186,7 +177,7 @@ async function listChallengeTypes(input: {
 }
 
 async function sendPushToUser(input: {
-  adminClient: ReturnType<typeof createClient>
+  adminClient: AdminClient
   userId: string
   title: string
   body: string
@@ -243,7 +234,7 @@ async function sendPushToUser(input: {
 }
 
 async function countActiveChallenges(
-  adminClient: ReturnType<typeof createClient>,
+  adminClient: AdminClient,
   userId: string,
 ): Promise<number> {
   const { count, error } = await adminClient
@@ -257,7 +248,7 @@ async function countActiveChallenges(
 }
 
 async function hasActivePairChallenge(
-  adminClient: ReturnType<typeof createClient>,
+  adminClient: AdminClient,
   challengerUserId: string,
   challengedUserId: string,
 ): Promise<boolean> {
@@ -274,697 +265,1225 @@ async function hasActivePairChallenge(
   return (count || 0) > 0
 }
 
-async function listAvailableUsers(input: {
-  adminClient: ReturnType<typeof createClient>
-  userId: string
-  targetLang: string
-  nativeLang: string
-  scope: ChallengeScope
-}) {
-  const activeCount = await countActiveChallenges(input.adminClient, input.userId)
+// ---------------------------------------------------------------------------
+// Nivel real (el de la barra de progreso)
+// ---------------------------------------------------------------------------
 
-  const enrollmentQuery = input.adminClient
-    .from('users_ica_challenges')
-    .select('user_id, target_lang, native_lang, updated_at')
-    .eq('is_active', true)
+type SettingsInfo = { targetLang: string | null; nativeLang: string | null; cefrLevel: string | null }
 
-  if (input.scope === 'language') {
-    enrollmentQuery
-      .eq('target_lang', input.targetLang)
-      .eq('native_lang', input.nativeLang)
-  }
+async function fetchSettingsByUser(
+  adminClient: AdminClient,
+  userIds: string[],
+): Promise<Map<string, SettingsInfo>> {
+  const map = new Map<string, SettingsInfo>()
+  if (userIds.length === 0) return map
 
-  const { data: enrollmentRows, error: enrollmentError } = await enrollmentQuery
-  if (enrollmentError) return jsonResponse(500, { error: enrollmentError.message })
-
-  const candidateIds = Array.from(
-    new Set(
-      (enrollmentRows || [])
-        .map((row) => toText((row as { user_id?: string }).user_id))
-        .filter((id) => id && id !== input.userId),
-    ),
-  )
-
-  const latestEnrollmentByUser = new Map<
-    string,
-    { targetLang: string | null; nativeLang: string | null; updatedAt: string | null }
-  >()
-
-  for (const row of enrollmentRows || []) {
-    const rawRow = row as {
-      user_id?: string
-      target_lang?: string
-      native_lang?: string
-      updated_at?: string
-    }
-    const userId = toText(rawRow.user_id)
-    if (!userId || userId === input.userId) continue
-
-    const previous = latestEnrollmentByUser.get(userId)
-    const currentUpdatedAt = toText(rawRow.updated_at) || null
-    const previousUpdatedAt = previous?.updatedAt || null
-
-    const shouldReplace =
-      !previous ||
-      (currentUpdatedAt !== null &&
-        (previousUpdatedAt === null || currentUpdatedAt > previousUpdatedAt))
-
-    if (!shouldReplace) continue
-
-    latestEnrollmentByUser.set(userId, {
-      targetLang: toText(rawRow.target_lang) || null,
-      nativeLang: toText(rawRow.native_lang) || null,
-      updatedAt: currentUpdatedAt,
-    })
-  }
-
-  if (candidateIds.length === 0) {
-    return jsonResponse(200, { rows: [], myActiveChallengesCount: activeCount })
-  }
-
-  const { data: profilesRows, error: profilesError } = await input.adminClient
-    .from('profiles')
-    .select('id, display_name, username')
-    .in('id', candidateIds)
-
-  if (profilesError) return jsonResponse(500, { error: profilesError.message })
-
-  const { data: settingsRows, error: settingsError } = await input.adminClient
+  const { data, error } = await adminClient
     .from('user_settings')
     .select('user_id, target_lang, native_lang, cefr_level')
-    .in('user_id', candidateIds)
+    .in('user_id', userIds)
 
-  if (settingsError) return jsonResponse(500, { error: settingsError.message })
+  if (error) throw new Error(error.message)
 
-  const settingsByUser = new Map<
-    string,
-    { targetLang: string | null; nativeLang: string | null; cefrLevel: string | null }
-  >()
-
-  for (const row of settingsRows || []) {
-    const rawRow = row as {
-      user_id?: string
-      target_lang?: string
-      native_lang?: string
-      cefr_level?: string
-    }
-    const userId = toText(rawRow.user_id)
+  for (const row of (data || []) as Array<Record<string, unknown>>) {
+    const userId = toText(row.user_id)
     if (!userId) continue
-
-    settingsByUser.set(userId, {
-      targetLang: toText(rawRow.target_lang) || null,
-      nativeLang: toText(rawRow.native_lang) || null,
-      cefrLevel: toText(rawRow.cefr_level) || null,
+    map.set(userId, {
+      targetLang: toText(row.target_lang) || null,
+      nativeLang: toText(row.native_lang) || null,
+      cefrLevel: toText(row.cefr_level) || null,
     })
   }
-
-  const rows = await Promise.all(
-    (profilesRows || []).map(async (row) => {
-      const userId = toText((row as { id?: string }).id)
-      const userActiveCount = await countActiveChallenges(input.adminClient, userId)
-      const activePair = await hasActivePairChallenge(input.adminClient, input.userId, userId)
-
-      let blockedReason: string | null = null
-      if (activeCount >= 3) blockedReason = 'Tu máximo de desafíos activos es 3.'
-      else if (userActiveCount >= 3)
-        blockedReason = 'Este usuario ya tiene 3 desafíos activos.'
-      else if (activePair)
-        blockedReason = 'Ya tienen un desafío activo entre ustedes.'
-
-      const setting = settingsByUser.get(userId)
-      const enrollment = latestEnrollmentByUser.get(userId)
-
-      return {
-        userId,
-        displayName: toText((row as { display_name?: string }).display_name) || 'Usuario',
-        username: toText((row as { username?: string }).username) || null,
-        nativeLang: setting?.nativeLang || enrollment?.nativeLang || null,
-        targetLang: setting?.targetLang || enrollment?.targetLang || null,
-        cefrLevel: setting?.cefrLevel || null,
-        activeChallengesCount: userActiveCount,
-        canChallenge: blockedReason === null,
-        blockedReason,
-      }
-    }),
-  )
-
-  rows.sort((a, b) => a.displayName.localeCompare(b.displayName, 'es'))
-  return jsonResponse(200, { rows, myActiveChallengesCount: activeCount })
+  return map
 }
 
-async function createOwnWordsChallenge(input: {
-  adminClient: ReturnType<typeof createClient>
+/**
+ * Nivel de cada alumno para un par de idiomas: el de su barra de progreso
+ * (user_meta_tracker). Si no la ha configurado, el nivel de sus ajustes (como PregúntICA).
+ */
+async function fetchLevelsForPair(input: {
+  adminClient: AdminClient
+  userIds: string[]
+  targetLang: string
+  nativeLang: string
+  settingsByUser?: Map<string, SettingsInfo>
+}): Promise<Map<string, string | null>> {
+  const levels = new Map<string, string | null>()
+  const userIds = Array.from(new Set(input.userIds.filter(Boolean)))
+  if (userIds.length === 0 || !input.targetLang || !input.nativeLang) return levels
+
+  const { data, error } = await input.adminClient
+    .from('user_meta_tracker')
+    .select('user_id, start_level, prior_ica_words, activation_words_total, confirmed_at')
+    .in('user_id', userIds)
+    .eq('target_lang', input.targetLang)
+    .eq('native_lang', input.nativeLang)
+
+  if (error) throw new Error(error.message)
+
+  const trackerByUser = new Map<string, Record<string, unknown>>()
+  for (const row of (data || []) as Array<Record<string, unknown>>) {
+    const userId = toText(row.user_id)
+    if (userId) trackerByUser.set(userId, row)
+  }
+
+  const settingsByUser =
+    input.settingsByUser || (await fetchSettingsByUser(input.adminClient, userIds))
+
+  for (const userId of userIds) {
+    const fromTracker = levelFromTracker(trackerByUser.get(userId) || null, input.targetLang)
+    if (fromTracker) {
+      levels.set(userId, fromTracker)
+      continue
+    }
+    const setting = settingsByUser.get(userId)
+    const fromSettings =
+      setting && setting.targetLang === input.targetLang ? normalizeLevel(setting.cefrLevel) : null
+    levels.set(userId, fromSettings)
+  }
+
+  return levels
+}
+
+// ---------------------------------------------------------------------------
+// Palabras ICA de cada alumno
+// ---------------------------------------------------------------------------
+
+async function fetchCards(
+  adminClient: AdminClient,
+  userId: string,
+  pair: LanguagePair,
+): Promise<EngineCard[]> {
+  const selection = 'id, target, native, example_phrase, example_translation'
+
+  const scoped = await adminClient
+    .from('lexicards')
+    .select(selection)
+    .eq('user_id', userId)
+    .eq('target_lang', pair.targetLang)
+    .eq('native_lang', pair.nativeLang)
+    .limit(MAX_CARDS_PER_PLAYER)
+
+  if (scoped.error) throw new Error(scoped.error.message)
+  let rows = (scoped.data || []) as Array<Record<string, unknown>>
+
+  if (rows.length === 0) {
+    // Palabras antiguas sin idioma guardado (igual que hace la app al cargar el baúl).
+    const legacy = await adminClient
+      .from('lexicards')
+      .select(selection)
+      .eq('user_id', userId)
+      .is('target_lang', null)
+      .is('native_lang', null)
+      .limit(MAX_CARDS_PER_PLAYER)
+    if (legacy.error) throw new Error(legacy.error.message)
+    rows = (legacy.data || []) as Array<Record<string, unknown>>
+  }
+
+  return rows
+    .map((row) => ({
+      id: toText(row.id),
+      ownerUserId: userId,
+      target: toText(row.target),
+      native: toText(row.native),
+      examplePhrase: toText(row.example_phrase) || null,
+      exampleTranslation: toText(row.example_translation) || null,
+    }))
+    .filter((card) => card.id && card.target && card.native)
+}
+
+/** Idiomas con los que juega cada alumno: los del desafío (por idioma) o los suyos (global). */
+async function resolvePlayerPair(
+  adminClient: AdminClient,
+  challenge: { scope: ChallengeScope; target_lang: string | null; native_lang: string | null },
+  userId: string,
+): Promise<LanguagePair | null> {
+  if (challenge.scope === 'language' && challenge.target_lang && challenge.native_lang) {
+    return { targetLang: challenge.target_lang, nativeLang: challenge.native_lang }
+  }
+
+  const settings = await fetchSettingsByUser(adminClient, [userId])
+  const setting = settings.get(userId)
+  if (setting?.targetLang && setting.nativeLang) {
+    return { targetLang: setting.targetLang, nativeLang: setting.nativeLang }
+  }
+
+  const { data } = await adminClient
+    .from('users_ica_challenges')
+    .select('target_lang, native_lang, updated_at')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+
+  const row = ((data || []) as Array<Record<string, unknown>>)[0]
+  if (row && toText(row.target_lang) && toText(row.native_lang)) {
+    return { targetLang: toText(row.target_lang), nativeLang: toText(row.native_lang) }
+  }
+  return null
+}
+
+const KIND_REQUIREMENT: Record<QuestionKind, string> = {
+  choice: '',
+  listen: '',
+  write: ' de una sola palabra',
+  speak: ' de hasta 4 palabras',
+  cloze: ' con frase de ejemplo',
+  pairs: ' cortas',
+}
+
+function hasPlayableQuestionSet(input: {
+  settings: ModeSettings
+  pools: EngineCard[][]
+  language: string
+}): boolean {
+  return generateQuestions({
+    kind: input.settings.kind,
+    pools: input.pools,
+    count: input.settings.totalQuestions,
+    language: input.language,
+  }).ok
+}
+
+// ---------------------------------------------------------------------------
+// Mínimo de palabras para entrar en los retos
+// ---------------------------------------------------------------------------
+
+/** Palabras del Baúl ICA de alguien en un par de idiomas (como las cuenta la app). */
+async function countWordsForPair(
+  adminClient: AdminClient,
+  userId: string,
+  pair: LanguagePair,
+): Promise<number> {
+  const scoped = await adminClient
+    .from('lexicards')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('target_lang', pair.targetLang)
+    .eq('native_lang', pair.nativeLang)
+  if (scoped.error) throw new Error(scoped.error.message)
+  if ((scoped.count || 0) > 0) return scoped.count || 0
+
+  // Palabras antiguas sin idioma guardado (igual que fetchCards).
+  const legacy = await adminClient
+    .from('lexicards')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .is('target_lang', null)
+    .is('native_lang', null)
+  if (legacy.error) throw new Error(legacy.error.message)
+  return legacy.count || 0
+}
+
+function notEnoughWordsToJoinMessage(wordCount: number, action: 'retar' | 'aceptar'): string {
+  const missing = wordsMissingToJoin(wordCount)
+  const verb = action === 'retar' ? 'retar' : 'aceptar retos'
+  return `Necesitas ${MIN_WORDS_TO_JOIN} palabras en tu Baúl ICA para ${verb}. Tienes ${wordCount}: te faltan ${missing}.`
+}
+
+// ---------------------------------------------------------------------------
+// Partida: el servidor da las preguntas de una en una y corrige
+// ---------------------------------------------------------------------------
+
+type ChallengeRow = {
+  id: string
+  status: ChallengeStatus
+  challenge_slug: string
+  scope: ChallengeScope
+  target_lang: string | null
+  native_lang: string | null
+  challenger_user_id: string
+  challenged_user_id: string
+  turn_user_id: string | null
+  turn_expires_at: string | null
+  result_type: string
+  winner_user_id: string | null
+  game_metadata: unknown
+}
+
+type CompetitorRow = {
+  user_id: string
+  invitation_status: string
+  score: number | null
+  payload: Record<string, unknown>
+}
+
+type PlayRow = { usuario_id: string; indice: number; acierto: boolean; ms: number | null }
+
+type StoredAnswer = SecretAnswer & { language?: string; nativeLanguage?: string }
+
+type QuestionRow = {
+  id: string
+  indice: number
+  tipo: QuestionKind
+  pregunta: PublicQuestion
+  respuesta: StoredAnswer
+  respuestas: Record<string, unknown>
+}
+
+type GameContext = {
+  adminClient: AdminClient
   userId: string
-  body: Record<string, unknown>
-}) {
-  const challengeTypeId = toText(input.body.challengeTypeId) || 'ica-own-words'
-  const challengedUserId = toText(input.body.challengedUserId)
-  const scope = toScope(input.body.scope)
-  const targetLang = toText(input.body.targetLang)
-  const nativeLang = toText(input.body.nativeLang)
-  const rounds = toRounds(input.body.rounds)
-  const responseSeconds = toResponseSeconds(input.body.responseSeconds)
-  const durationSeconds = toDurationSecondsDaysRange(input.body.durationSeconds)
+  rivalId: string
+  challenge: ChallengeRow
+  settings: ModeSettings
+  me: CompetitorRow
+  rival: CompetitorRow | null
+  myState: CompetitorGameState
+  rivalState: CompetitorGameState
+  myPlays: PlayRow[]
+  rivalPlays: PlayRow[]
+}
 
-  if (!challengedUserId) return jsonResponse(400, { error: 'Rival inválido.' })
-  if (challengedUserId === input.userId) {
-    return jsonResponse(400, { error: 'No puedes desafiarte a ti mismo.' })
+class GameError extends Error {
+  status: number
+  code: string | null
+
+  constructor(status: number, message: string, code: string | null = null) {
+    super(message)
+    this.status = status
+    this.code = code
+  }
+}
+
+function toCompetitorRow(raw: Record<string, unknown>): CompetitorRow {
+  return {
+    user_id: toText(raw.user_id),
+    invitation_status: toText(raw.invitation_status),
+    score: raw.score === null || raw.score === undefined ? null : Number(raw.score),
+    payload: isRecord(raw.payload) ? raw.payload : {},
+  }
+}
+
+async function loadGame(adminClient: AdminClient, challengeId: string, userId: string): Promise<GameContext> {
+  if (!challengeId) throw new GameError(400, 'challengeId inválido.')
+
+  const { data: challengeData, error: challengeError } = await adminClient
+    .from('ica_challenges')
+    .select(
+      'id, status, challenge_slug, scope, target_lang, native_lang, challenger_user_id, challenged_user_id, turn_user_id, turn_expires_at, result_type, winner_user_id, game_metadata',
+    )
+    .eq('id', challengeId)
+    .maybeSingle()
+
+  if (challengeError) throw new GameError(500, challengeError.message)
+  if (!challengeData) throw new GameError(404, 'Desafío no encontrado.')
+  const challenge = challengeData as unknown as ChallengeRow
+
+  if (userId !== challenge.challenger_user_id && userId !== challenge.challenged_user_id) {
+    throw new GameError(403, 'No participas en este desafío.')
   }
 
-  if (scope === 'language' && (!targetLang || !nativeLang)) {
-    return jsonResponse(400, { error: 'Faltan idiomas para el desafío por idioma.' })
-  }
+  const settings = readModeSettings(challenge.challenge_slug, challenge.game_metadata)
+  if (!settings) throw new GameError(400, 'Este modo todavía no se puede jugar.', 'ICA_CHALLENGE_TYPE_NOT_PLAYABLE_YET')
 
-  const challengeTypeResult = await getChallengeTypeById({
-    adminClient: input.adminClient,
-    challengeTypeId,
-  })
-  if (challengeTypeResult.error) {
-    return jsonResponse(500, { error: challengeTypeResult.error })
-  }
-
-  if (!challengeTypeResult.row) {
-    return jsonResponse(400, { error: 'ICA_CHALLENGE_TYPE_NOT_FOUND' })
-  }
-
-  if (!challengeTypeResult.row.activo) {
-    return jsonResponse(400, { error: 'ICA_CHALLENGE_TYPE_NOT_ACTIVE' })
-  }
-
-  if (!challengeTypeResult.row.ambitos.includes(scope)) {
-    return jsonResponse(400, { error: 'ICA_CHALLENGE_SCOPE_NOT_SUPPORTED' })
-  }
-
-  if (challengeTypeId !== 'ica-own-words') {
-    return jsonResponse(400, { error: 'ICA_CHALLENGE_TYPE_NOT_PLAYABLE_YET' })
-  }
-
-  const myActiveCount = await countActiveChallenges(input.adminClient, input.userId)
-  if (myActiveCount >= 3) {
-    return jsonResponse(400, { error: 'ICA_CHALLENGE_ACTIVE_LIMIT_REACHED' })
-  }
-
-  const rivalActiveCount = await countActiveChallenges(input.adminClient, challengedUserId)
-  if (rivalActiveCount >= 3) {
-    return jsonResponse(400, { error: 'ICA_CHALLENGE_OPPONENT_ACTIVE_LIMIT_REACHED' })
-  }
-
-  const activePair = await hasActivePairChallenge(
-    input.adminClient,
-    input.userId,
-    challengedUserId,
-  )
-  if (activePair) {
-    return jsonResponse(400, { error: 'ICA_CHALLENGE_ACTIVE_PAIR_EXISTS' })
-  }
-
-  const myEnrollmentQuery = input.adminClient
-    .from('users_ica_challenges')
-    .select('id')
-    .eq('user_id', input.userId)
-    .eq('is_active', true)
-
-  if (scope === 'language') {
-    myEnrollmentQuery.eq('target_lang', targetLang).eq('native_lang', nativeLang)
-  }
-
-  const rivalEnrollmentQuery = input.adminClient
-    .from('users_ica_challenges')
-    .select('id')
-    .eq('user_id', challengedUserId)
-    .eq('is_active', true)
-
-  if (scope === 'language') {
-    rivalEnrollmentQuery.eq('target_lang', targetLang).eq('native_lang', nativeLang)
-  }
-
-  const [myEnrollmentResult, rivalEnrollmentResult] = await Promise.all([
-    myEnrollmentQuery.limit(1),
-    rivalEnrollmentQuery.limit(1),
+  const [competitorsResult, playsResult] = await Promise.all([
+    adminClient
+      .from('ica_challenge_competitors')
+      .select('user_id, invitation_status, score, payload')
+      .eq('challenge_id', challengeId),
+    adminClient
+      .from('desafio_jugadas')
+      .select('usuario_id, indice, acierto, ms')
+      .eq('desafio_id', challengeId)
+      .order('indice', { ascending: true }),
   ])
 
-  if (myEnrollmentResult.error || rivalEnrollmentResult.error) {
-    return jsonResponse(500, {
-      error:
-        myEnrollmentResult.error?.message ||
-        rivalEnrollmentResult.error?.message ||
-        'No se pudo validar la inscripción.',
-    })
-  }
+  if (competitorsResult.error) throw new GameError(500, competitorsResult.error.message)
+  if (playsResult.error) throw new GameError(500, playsResult.error.message)
 
-  if ((myEnrollmentResult.data || []).length === 0) {
-    return jsonResponse(400, { error: 'Debes activar tu inscripción a desafíos.' })
-  }
+  const competitors = ((competitorsResult.data || []) as Array<Record<string, unknown>>).map(toCompetitorRow)
+  const me = competitors.find((row) => row.user_id === userId)
+  if (!me) throw new GameError(403, 'No participas en este desafío.')
 
-  if ((rivalEnrollmentResult.data || []).length === 0) {
-    return jsonResponse(400, { error: 'El rival no está inscrito para este modo.' })
-  }
-
-  const expiresAt = new Date(Date.now() + durationSeconds * 1000).toISOString()
-  const acceptUntil = addSecondsToNow(INVITATION_WINDOW_SECONDS)
-
-  const { data: challenge, error: challengeError } = await input.adminClient
-    .from('ica_challenges')
-    .insert({
-      challenge_slug: challengeTypeId,
-      status: 'created',
-      result_type: 'pending',
-      scope,
-      target_lang: scope === 'language' ? targetLang : null,
-      native_lang: scope === 'language' ? nativeLang : null,
-      challenger_user_id: input.userId,
-      challenged_user_id: challengedUserId,
-      duration_seconds: durationSeconds,
-      expires_at: expiresAt,
-      accept_until: acceptUntil,
-      game_metadata: {
-        mode: 'own_words_quiz',
-        rounds,
-        responseSeconds,
-        totalQuestions: OWN_WORDS_TOTAL_QUESTIONS,
-        questionsPerRound: OWN_WORDS_TOTAL_QUESTIONS / rounds,
-      },
-      phases_json: [
-        { key: 'invitation', status: 'pending' },
-        { key: 'duel', status: 'locked' },
-      ],
-    })
-    .select('id')
-    .single()
-
-  if (challengeError || !challenge) {
-    const message = challengeError?.message || 'No se pudo crear el desafío.'
-    return jsonResponse(400, { error: message })
-  }
-
-  const challengeId = challenge.id as string
-  const { error: competitorsError } = await input.adminClient
-    .from('ica_challenge_competitors')
-    .insert([
-      {
-        challenge_id: challengeId,
-        user_id: input.userId,
-        competitor_order: 1,
-        invitation_status: 'accepted',
-        accepted_at: new Date().toISOString(),
-      },
-      {
-        challenge_id: challengeId,
-        user_id: challengedUserId,
-        competitor_order: 2,
-        invitation_status: 'pending',
-      },
-    ])
-
-  if (competitorsError) {
-    return jsonResponse(400, { error: competitorsError.message })
-  }
-
-  await sendPushToUser({
-    adminClient: input.adminClient,
-    userId: challengedUserId,
-    title: 'Nuevo desafío ICA',
-    body: 'Te retaron a un desafío. Respóndelo para comenzar.',
-    tag: `ica-challenge-created-${challengeId}`,
-    url: '/desafios-ica',
-  })
-
-  return jsonResponse(200, { ok: true, challengeId })
-}
-
-async function respondInvitation(input: {
-  adminClient: ReturnType<typeof createClient>
-  userId: string
-  body: Record<string, unknown>
-}) {
-  const challengeId = toText(input.body.challengeId)
-  const accept = Boolean(input.body.accept)
-  if (!challengeId) return jsonResponse(400, { error: 'challengeId inválido.' })
-
-  const { data: existing, error: existingError } = await input.adminClient
-    .from('ica_challenges')
-    .select('id, challenger_user_id, challenged_user_id, status, accept_until')
-    .eq('id', challengeId)
-    .eq('challenged_user_id', input.userId)
-    .maybeSingle()
-
-  if (existingError) return jsonResponse(500, { error: existingError.message })
-  if (!existing) return jsonResponse(404, { error: 'Desafío no encontrado.' })
-  if (existing.status !== 'created') {
-    return jsonResponse(400, { error: 'El desafío ya fue respondido.' })
-  }
-
-  const nowTs = Date.now()
-  const acceptUntilTs = existing.accept_until ? Date.parse(existing.accept_until) : NaN
-  if (Number.isFinite(acceptUntilTs) && acceptUntilTs <= nowTs) {
-    await input.adminClient
-      .from('ica_challenges')
-      .update({
-        status: 'not_accepted',
-        result_type: 'not_accepted',
-        finalized_at: new Date().toISOString(),
-        winner_user_id: null,
-        turn_user_id: null,
-        turn_expires_at: null,
-      })
-      .eq('id', challengeId)
-
-    return jsonResponse(400, { error: 'El reto ya caducó.' })
-  }
-
-  const nowIso = new Date().toISOString()
-  const firstTurnExpiresAt = addSecondsToNow(TURN_WINDOW_SECONDS)
-  const { error: competitorError } = await input.adminClient
-    .from('ica_challenge_competitors')
-    .update({
-      invitation_status: accept ? 'accepted' : 'rejected',
-      accepted_at: accept ? nowIso : null,
-      rejected_at: accept ? null : nowIso,
-    })
-    .eq('challenge_id', challengeId)
-    .eq('user_id', input.userId)
-
-  if (competitorError) return jsonResponse(500, { error: competitorError.message })
-
-  const { error: challengeError } = await input.adminClient
-    .from('ica_challenges')
-    .update({
-      status: accept ? 'in_progress' : 'not_accepted',
-      result_type: accept ? 'pending' : 'not_accepted',
-      started_at: accept ? nowIso : null,
-      finalized_at: accept ? null : nowIso,
-      winner_user_id: null,
-      turn_user_id: accept ? input.userId : null,
-      turn_expires_at: accept ? firstTurnExpiresAt : null,
-    })
-    .eq('id', challengeId)
-
-  if (challengeError) return jsonResponse(500, { error: challengeError.message })
-
-  await sendPushToUser({
-    adminClient: input.adminClient,
-    userId: toText(existing.challenger_user_id),
-    title: accept ? 'Desafío aceptado' : 'Desafío rechazado',
-    body: accept
-      ? 'Tu rival aceptó el desafío. Empieza su primer turno.'
-      : 'Tu rival no aceptó el desafío.',
-    tag: `ica-challenge-response-${challengeId}`,
-    url: '/desafios-ica',
-  })
-
-  return jsonResponse(200, { ok: true, challengeId, status: accept ? 'in_progress' : 'not_accepted' })
-}
-
-async function cancelInvitation(input: {
-  adminClient: ReturnType<typeof createClient>
-  userId: string
-  body: Record<string, unknown>
-}) {
-  const challengeId = toText(input.body.challengeId)
-  if (!challengeId) return jsonResponse(400, { error: 'challengeId inválido.' })
-
-  const { data: challenge, error: readError } = await input.adminClient
-    .from('ica_challenges')
-    .select('id, status, challenger_user_id, challenged_user_id')
-    .eq('id', challengeId)
-    .eq('challenger_user_id', input.userId)
-    .maybeSingle()
-
-  if (readError) return jsonResponse(500, { error: readError.message })
-  if (!challenge) return jsonResponse(404, { error: 'Desafío no encontrado.' })
-
-  if (challenge.status !== 'created') {
-    return jsonResponse(400, { error: 'El desafío ya no está pendiente.' })
-  }
-
-  const nowIso = new Date().toISOString()
-  const { error: updateError } = await input.adminClient
-    .from('ica_challenges')
-    .update({
-      status: 'cancelled',
-      result_type: 'cancelled',
-      finalized_at: nowIso,
-      winner_user_id: null,
-      turn_user_id: null,
-      turn_expires_at: null,
-    })
-    .eq('id', challengeId)
-    .eq('status', 'created')
-
-  if (updateError) return jsonResponse(500, { error: updateError.message })
-
-  await sendPushToUser({
-    adminClient: input.adminClient,
-    userId: toText(challenge.challenged_user_id),
-    title: 'Reto cancelado',
-    body: 'El retador canceló el desafío antes de que respondieras.',
-    tag: `ica-challenge-cancelled-${challengeId}`,
-    url: '/desafios-ica',
-  })
-
-  return jsonResponse(200, { ok: true, challengeId, status: 'cancelled' })
-}
-
-async function submitOwnWordsResult(input: {
-  adminClient: ReturnType<typeof createClient>
-  userId: string
-  body: Record<string, unknown>
-}) {
-  const challengeId = toText(input.body.challengeId)
-  const answers = normalizeOwnWordsAnswers(input.body.answers)
-
-  if (!challengeId) return jsonResponse(400, { error: 'challengeId inválido.' })
-
-  const { data: challenge, error: challengeError } = await input.adminClient
-    .from('ica_challenges')
-    .select('id, status, challenger_user_id, challenged_user_id, challenge_slug, turn_user_id, turn_expires_at, game_metadata')
-    .eq('id', challengeId)
-    .maybeSingle()
-
-  if (challengeError) return jsonResponse(500, { error: challengeError.message })
-  if (!challenge) return jsonResponse(404, { error: 'Desafío no encontrado.' })
-  if (challenge.challenge_slug !== 'ica-own-words') {
-    return jsonResponse(400, { error: 'Solo soportamos este desafío por ahora.' })
-  }
-
-  if (challenge.status !== 'in_progress') {
-    return jsonResponse(400, { error: 'El desafío no está en curso.' })
-  }
-
-  const turnUserId = toText(challenge.turn_user_id)
-  if (turnUserId && input.userId !== turnUserId) {
-    return jsonResponse(400, { error: 'No es tu turno para jugar.' })
-  }
-
-  if (challenge.turn_expires_at) {
-    const turnExpiresTs = Date.parse(challenge.turn_expires_at)
-    if (Number.isFinite(turnExpiresTs) && turnExpiresTs <= Date.now()) {
-      return jsonResponse(400, { error: 'Tu turno ya venció.' })
-    }
-  }
-
-  if (
-    input.userId !== challenge.challenger_user_id &&
-    input.userId !== challenge.challenged_user_id
-  ) {
-    return jsonResponse(403, { error: 'No participas en este desafío.' })
-  }
-
-  const nowIso = new Date().toISOString()
-  const { data: competitorRow, error: competitorReadError } = await input.adminClient
-    .from('ica_challenge_competitors')
-    .select('payload, invitation_status')
-    .eq('challenge_id', challengeId)
-    .eq('user_id', input.userId)
-    .maybeSingle()
-
-  if (competitorReadError) {
-    return jsonResponse(500, { error: competitorReadError.message })
-  }
-
-  if (!competitorRow || competitorRow.invitation_status !== 'accepted') {
-    return jsonResponse(400, { error: 'No puedes jugar este desafío.' })
-  }
-
-  const gameMetadata =
-    challenge.game_metadata && typeof challenge.game_metadata === 'object'
-      ? (challenge.game_metadata as Record<string, unknown>)
-      : {}
-  const rounds = toRounds(gameMetadata.rounds)
-  const responseSeconds = toResponseSeconds(gameMetadata.responseSeconds)
-  const questionsPerRound = OWN_WORDS_TOTAL_QUESTIONS / rounds
-
-  const { data: existingPlays, error: existingPlaysError } = await input.adminClient
-    .from('desafio_jugadas')
-    .select('indice')
-    .eq('desafio_id', challengeId)
-    .eq('usuario_id', input.userId)
-    .order('indice', { ascending: true })
-
-  if (existingPlaysError) {
-    return jsonResponse(500, { error: existingPlaysError.message })
-  }
-
-  const answeredBefore = (existingPlays || []).length
-  const expectedBatchSize = Math.min(
-    questionsPerRound,
-    OWN_WORDS_TOTAL_QUESTIONS - answeredBefore,
-  )
-
-  if (answeredBefore >= OWN_WORDS_TOTAL_QUESTIONS) {
-    return jsonResponse(400, { error: 'Ya completaste tus 10 preguntas.' })
-  }
-
-  if (answers.length !== expectedBatchSize) {
-    return jsonResponse(400, { error: 'Debes completar todas las preguntas de esta ronda.' })
-  }
-
-  const hasExpectedIndexes = answers.every(
-    (answer, index) => answer.questionIndex === answeredBefore + index,
-  )
-  if (!hasExpectedIndexes) {
-    return jsonResponse(400, { error: 'Las respuestas no corresponden a la ronda actual.' })
-  }
-
-  const currentPayload =
-    competitorRow.payload && typeof competitorRow.payload === 'object'
-      ? (competitorRow.payload as Record<string, unknown>)
-      : {}
-  const answerRows = answers.map((answer) => ({
-    desafio_id: challengeId,
-    usuario_id: input.userId,
-    indice: answer.questionIndex,
-    acierto: answer.isCorrect,
-    ms: answer.responseMs,
-    payload: {
-      selectedOptionIndex: answer.selectedOptionIndex,
-      timedOut: answer.timedOut,
-    },
+  const rivalId =
+    userId === challenge.challenger_user_id ? challenge.challenged_user_id : challenge.challenger_user_id
+  const rival = competitors.find((row) => row.user_id === rivalId) || null
+  const plays = ((playsResult.data || []) as Array<Record<string, unknown>>).map((row) => ({
+    usuario_id: toText(row.usuario_id),
+    indice: Number(row.indice),
+    acierto: Boolean(row.acierto),
+    ms: row.ms === null || row.ms === undefined || !Number.isFinite(Number(row.ms)) ? null : Number(row.ms),
   }))
 
-  if (answerRows.length > 0) {
-    const { error: upsertAnswerRowsError } = await input.adminClient
-      .from('desafio_jugadas')
-      .upsert(answerRows, { onConflict: 'desafio_id,usuario_id,indice' })
+  return {
+    adminClient,
+    userId,
+    rivalId,
+    challenge,
+    settings,
+    me,
+    rival,
+    myState: readGameState(me.payload),
+    rivalState: readGameState(rival?.payload),
+    myPlays: plays.filter((play) => play.usuario_id === userId),
+    rivalPlays: plays.filter((play) => play.usuario_id === rivalId),
+  }
+}
 
-    if (upsertAnswerRowsError) {
-      return jsonResponse(500, { error: upsertAnswerRowsError.message })
+function scoreOf(plays: PlayRow[]): number {
+  return plays.reduce((total, play) => total + Number(play.acierto), 0)
+}
+
+/** Tiempo total jugado (desempate de Parejas). */
+function totalMsOf(plays: PlayRow[]): number {
+  return plays.reduce((total, play) => total + (play.ms ?? 0), 0)
+}
+
+function isMeDone(ctx: GameContext, nowMs = Date.now()): boolean {
+  return isCompetitorDone({
+    settings: ctx.settings,
+    state: ctx.myState,
+    answeredCount: ctx.myPlays.length,
+    nowMs,
+  })
+}
+
+function isRivalDone(ctx: GameContext, nowMs = Date.now()): boolean {
+  return isCompetitorDone({
+    settings: ctx.settings,
+    state: ctx.rivalState,
+    answeredCount: ctx.rivalPlays.length,
+    nowMs,
+  })
+}
+
+function assertCanPlay(ctx: GameContext) {
+  if (ctx.me.invitation_status !== 'accepted') {
+    throw new GameError(400, 'No puedes jugar este desafío.')
+  }
+  if (ctx.challenge.status !== 'in_progress') {
+    throw new GameError(400, 'El desafío no está en curso.', 'ICA_CHALLENGE_NOT_IN_PROGRESS')
+  }
+  if (ctx.challenge.turn_user_id && ctx.challenge.turn_user_id !== ctx.userId) {
+    throw new GameError(409, 'Aún no es tu turno.', 'ICA_CHALLENGE_NOT_YOUR_TURN')
+  }
+  if (ctx.challenge.turn_expires_at) {
+    const turnExpiresTs = Date.parse(ctx.challenge.turn_expires_at)
+    if (Number.isFinite(turnExpiresTs) && turnExpiresTs <= Date.now()) {
+      throw new GameError(400, 'Tu turno ya venció.', 'ICA_CHALLENGE_TURN_EXPIRED')
     }
   }
+}
 
-  const { data: allPlays, error: allPlaysError } = await input.adminClient
-    .from('desafio_jugadas')
-    .select('usuario_id, acierto')
-    .eq('desafio_id', challengeId)
-
-  if (allPlaysError) return jsonResponse(500, { error: allPlaysError.message })
-
-  const challengePlays = (allPlays || []) as Array<{ usuario_id: string; acierto: boolean }>
-  const getProgress = (userId: string) => {
-    const userPlays = challengePlays.filter((play) => play.usuario_id === userId)
-    return {
-      answered: userPlays.length,
-      score: userPlays.reduce((total, play) => total + Number(play.acierto), 0),
-    }
-  }
-
-  const myProgress = getProgress(input.userId)
-  const challengerProgress = getProgress(challenge.challenger_user_id)
-  const challengedProgress = getProgress(challenge.challenged_user_id)
-  const hasCompletedOwnQuestions = myProgress.answered >= OWN_WORDS_TOTAL_QUESTIONS
-
-  const nextPayload = {
-    ...currentPayload,
-    ownWords: {
-      completedAt: hasCompletedOwnQuestions ? nowIso : null,
-      score: myProgress.score,
-      totalQuestions: OWN_WORDS_TOTAL_QUESTIONS,
-      rounds,
-      questionsPerRound,
-      responseSeconds,
-      answeredQuestions: myProgress.answered,
+async function saveMyState(ctx: GameContext, state: CompetitorGameState) {
+  const score = scoreOf(ctx.myPlays)
+  const payload = {
+    ...ctx.me.payload,
+    game: {
+      answered: ctx.myPlays.length,
+      correct: score,
+      completedAt: state.completedAt,
+      current: state.current,
+      sessionStartedAt: state.sessionStartedAt,
+      sessionEndsAt: state.sessionEndsAt,
     },
   }
 
-  const { error: updateCompetitorError } = await input.adminClient
+  const { error } = await ctx.adminClient
     .from('ica_challenge_competitors')
-    .update({
-      score: myProgress.score,
-      payload: nextPayload,
-    })
-    .eq('challenge_id', challengeId)
-    .eq('user_id', input.userId)
+    .update({ score: ctx.myPlays.length > 0 || state.completedAt ? score : ctx.me.score, payload })
+    .eq('challenge_id', ctx.challenge.id)
+    .eq('user_id', ctx.userId)
 
-  if (updateCompetitorError) {
-    return jsonResponse(500, { error: updateCompetitorError.message })
+  if (error) throw new GameError(500, error.message)
+  ctx.myState = state
+  ctx.me = { ...ctx.me, payload, score }
+}
+
+/** Preguntas del jugador (las genera la primera vez). */
+async function ensureQuestions(ctx: GameContext): Promise<QuestionRow[]> {
+  const ownerKey = ctx.settings.wordSource === 'mixed' ? null : ctx.userId
+
+  const readRows = async (): Promise<QuestionRow[]> => {
+    let query = ctx.adminClient
+      .from('desafio_preguntas')
+      .select('id, indice, tipo, pregunta, respuesta, respuestas')
+      .eq('desafio_id', ctx.challenge.id)
+      .order('indice', { ascending: true })
+    query = ownerKey ? query.eq('usuario_id', ownerKey) : query.is('usuario_id', null)
+    const { data, error } = await query
+    if (error) throw new GameError(500, error.message)
+    return ((data || []) as Array<Record<string, unknown>>).map((row) => ({
+      id: toText(row.id),
+      indice: Number(row.indice),
+      tipo: toText(row.tipo) as QuestionKind,
+      pregunta: row.pregunta as PublicQuestion,
+      respuesta: row.respuesta as StoredAnswer,
+      respuestas: isRecord(row.respuestas) ? row.respuestas : {},
+    }))
   }
 
-  const challengerCompleted = challengerProgress.answered >= OWN_WORDS_TOTAL_QUESTIONS
-  const challengedCompleted = challengedProgress.answered >= OWN_WORDS_TOTAL_QUESTIONS
+  const existing = await readRows()
+  if (existing.length > 0) return existing
 
-  if (!challengerCompleted || !challengedCompleted) {
-    const otherUserId =
-      input.userId === challenge.challenger_user_id
-        ? challenge.challenged_user_id
-        : challenge.challenger_user_id
-    const otherProgress = getProgress(otherUserId)
-    const nextTurnUserId =
-      otherProgress.answered >= OWN_WORDS_TOTAL_QUESTIONS ? input.userId : otherUserId
+  let pools: EngineCard[][]
+  let pair: LanguagePair | null
 
-    const { error: setTurnError } = await input.adminClient
-      .from('ica_challenges')
-      .update({
-        turn_user_id: nextTurnUserId,
-        turn_expires_at: addSecondsToNow(TURN_WINDOW_SECONDS),
-      })
-      .eq('id', challengeId)
-      .eq('status', 'in_progress')
-
-    if (setTurnError) return jsonResponse(500, { error: setTurnError.message })
-
-    if (nextTurnUserId !== input.userId) {
-      await sendPushToUser({
-        adminClient: input.adminClient,
-        userId: nextTurnUserId,
-        title: 'Te toca jugar',
-        body: 'Tu rival terminó su ronda. Continúa el desafío ICA.',
-        tag: `ica-challenge-turn-${challengeId}`,
-        url: `/desafios-ica/${challengeId}`,
-      })
-    }
-
-    return jsonResponse(200, { ok: true, challengeId })
+  if (ctx.settings.wordSource === 'mixed') {
+    pair =
+      ctx.challenge.target_lang && ctx.challenge.native_lang
+        ? { targetLang: ctx.challenge.target_lang, nativeLang: ctx.challenge.native_lang }
+        : null
+    if (!pair) throw new GameError(400, 'Faltan los idiomas del desafío.')
+    pools = await Promise.all([
+      fetchCards(ctx.adminClient, ctx.challenge.challenger_user_id, pair),
+      fetchCards(ctx.adminClient, ctx.challenge.challenged_user_id, pair),
+    ])
+  } else {
+    pair = await resolvePlayerPair(ctx.adminClient, ctx.challenge, ctx.userId)
+    if (!pair) throw new GameError(400, 'No encontramos tu idioma objetivo.')
+    pools = [await fetchCards(ctx.adminClient, ctx.userId, pair)]
   }
 
-  const resultType =
-    challengerProgress.score > challengedProgress.score
-      ? 'challenger_win'
-      : challengedProgress.score > challengerProgress.score
-        ? 'challenged_win'
-        : 'draw'
+  const generated = generateQuestions({
+    kind: ctx.settings.kind,
+    pools,
+    count: ctx.settings.totalQuestions,
+    language: pair.targetLang,
+  })
 
+  if (!generated.ok) {
+    throw new GameError(
+      400,
+      `No hay suficientes palabras ICA${KIND_REQUIREMENT[ctx.settings.kind]} para este modo.`,
+      'ICA_CHALLENGE_NOT_ENOUGH_WORDS',
+    )
+  }
+
+  const rows = generated.questions.map((item, index) => ({
+    desafio_id: ctx.challenge.id,
+    usuario_id: ownerKey,
+    indice: index,
+    tipo: item.kind,
+    pregunta: item.question,
+    respuesta: { ...item.answer, language: pair!.targetLang, nativeLanguage: pair!.nativeLang },
+  }))
+
+  const { error } = await ctx.adminClient.from('desafio_preguntas').insert(rows)
+  // Si justo las ha creado el rival (mezcla de baúles), se usan las suyas.
+  if (error && (error as { code?: string }).code !== '23505') throw new GameError(500, error.message)
+
+  return readRows()
+}
+
+function questionPayload(ctx: GameContext, row: QuestionRow, servedAtMs: number, nowMs: number) {
+  const settings = ctx.settings
+  const info = roundInfo(settings, row.indice)
+  return {
+    index: row.indice,
+    kind: row.tipo,
+    data: row.pregunta,
+    language: {
+      target: toText(row.respuesta.language) || ctx.challenge.target_lang || '',
+      native: toText(row.respuesta.nativeLanguage) || ctx.challenge.native_lang || '',
+    },
+    limitMs:
+      settings.format === 'turns'
+        ? remainingQuestionMs({ settings, servedAtMs, nowMs })
+        : null,
+    round: settings.format === 'turns' ? info : null,
+  }
+}
+
+function progressPayload(ctx: GameContext) {
+  return {
+    answered: ctx.myPlays.length,
+    correct: scoreOf(ctx.myPlays),
+    total: ctx.settings.format === 'turns' ? ctx.settings.totalQuestions : null,
+    rivalAnswered: ctx.rivalPlays.length,
+    rivalCorrect: scoreOf(ctx.rivalPlays),
+  }
+}
+
+function sessionPayload(ctx: GameContext, nowMs: number) {
+  if (ctx.settings.format !== 'lightning' || !ctx.myState.sessionEndsAt) return null
+  const endsAt = Date.parse(ctx.myState.sessionEndsAt)
+  return {
+    endsAt: ctx.myState.sessionEndsAt,
+    remainingMs: Number.isFinite(endsAt) ? Math.max(0, endsAt - nowMs) : 0,
+    totalMs: (ctx.settings.sessionSeconds || 60) * 1000,
+  }
+}
+
+async function finalizeChallenge(ctx: GameContext) {
+  const challengerPlays =
+    ctx.userId === ctx.challenge.challenger_user_id ? ctx.myPlays : ctx.rivalPlays
+  const challengedPlays =
+    ctx.userId === ctx.challenge.challenged_user_id ? ctx.myPlays : ctx.rivalPlays
+
+  const resultType = decideResult(
+    scoreOf(challengerPlays),
+    scoreOf(challengedPlays),
+    usesTimeTiebreak(ctx.settings.kind)
+      ? { challengerMs: totalMsOf(challengerPlays), challengedMs: totalMsOf(challengedPlays) }
+      : null,
+  )
   const winnerUserId =
     resultType === 'challenger_win'
-      ? challenge.challenger_user_id
+      ? ctx.challenge.challenger_user_id
       : resultType === 'challenged_win'
-        ? challenge.challenged_user_id
+        ? ctx.challenge.challenged_user_id
         : null
 
-  const { error: finishError } = await input.adminClient
+  const { data, error } = await ctx.adminClient
     .from('ica_challenges')
     .update({
       status: 'completed',
       result_type: resultType,
       winner_user_id: winnerUserId,
-      finalized_at: nowIso,
+      finalized_at: new Date().toISOString(),
       turn_user_id: null,
       turn_expires_at: null,
     })
-    .eq('id', challengeId)
+    .eq('id', ctx.challenge.id)
+    .eq('status', 'in_progress')
+    .select('id')
 
-  if (finishError) return jsonResponse(500, { error: finishError.message })
+  if (error) throw new GameError(500, error.message)
+  ctx.challenge = { ...ctx.challenge, status: 'completed', result_type: resultType, winner_user_id: winnerUserId, turn_user_id: null }
 
-  return jsonResponse(200, { ok: true, challengeId })
+  // Solo avisa quien cierra de verdad el desafío (evita avisos dobles).
+  if (((data || []) as unknown[]).length === 0) return
+
+  for (const userId of [ctx.challenge.challenger_user_id, ctx.challenge.challenged_user_id]) {
+    const body =
+      winnerUserId === null
+        ? 'Empate en el desafío ICA. ¡Revisa las palabras!'
+        : winnerUserId === userId
+          ? '¡Has ganado el desafío ICA! Mira tus resultados.'
+          : 'Tu rival ha ganado esta vez. Mira tus palabras en Desafíos ICA.'
+    await sendPushToUser({
+      adminClient: ctx.adminClient,
+      userId,
+      title: 'Desafío terminado',
+      body,
+      tag: `ica-challenge-finished-${ctx.challenge.id}`,
+      url: `/desafios-ica/${ctx.challenge.id}`,
+    })
+  }
+}
+
+/** Al terminar una ronda (o la partida relámpago): pasa el turno o cierra el desafío. */
+async function afterMyRound(ctx: GameContext) {
+  const nowMs = Date.now()
+  const meDone = isMeDone(ctx, nowMs)
+  const rivalDone = isRivalDone(ctx, nowMs)
+  const nextTurn = nextTurnUserId({ me: ctx.userId, rival: ctx.rivalId, meDone, rivalDone })
+
+  if (nextTurn === null) {
+    await finalizeChallenge(ctx)
+    return
+  }
+
+  const { error } = await ctx.adminClient
+    .from('ica_challenges')
+    .update({
+      turn_user_id: nextTurn,
+      turn_expires_at: addSecondsToNow(TURN_WINDOW_SECONDS),
+    })
+    .eq('id', ctx.challenge.id)
+    .eq('status', 'in_progress')
+
+  if (error) throw new GameError(500, error.message)
+  ctx.challenge = { ...ctx.challenge, turn_user_id: nextTurn }
+
+  if (nextTurn !== ctx.userId) {
+    await sendPushToUser({
+      adminClient: ctx.adminClient,
+      userId: nextTurn,
+      title: 'Te toca jugar',
+      body: 'Tu rival terminó su ronda. Continúa el desafío ICA.',
+      tag: `ica-challenge-turn-${ctx.challenge.id}`,
+      url: `/desafios-ica/${ctx.challenge.id}`,
+    })
+  }
+}
+
+async function finishLightningSession(ctx: GameContext) {
+  if (ctx.myState.completedAt) return
+  await saveMyState(ctx, { ...ctx.myState, current: null, completedAt: new Date().toISOString() })
+  await afterMyRound(ctx)
+}
+
+async function recordPlay(
+  ctx: GameContext,
+  input: { index: number; isCorrect: boolean; clientMs: number | null; timedOut: boolean },
+) {
+  const { error } = await ctx.adminClient.from('desafio_jugadas').insert({
+    desafio_id: ctx.challenge.id,
+    usuario_id: ctx.userId,
+    indice: input.index,
+    acierto: input.isCorrect,
+    ms: input.clientMs,
+    payload: { timedOut: input.timedOut, kind: ctx.settings.kind },
+  })
+
+  if (error) {
+    if ((error as { code?: string }).code === '23505') {
+      throw new GameError(409, 'Esta respuesta ya estaba guardada.', 'ICA_CHALLENGE_ALREADY_ANSWERED')
+    }
+    throw new GameError(500, error.message)
+  }
+
+  ctx.myPlays = [
+    ...ctx.myPlays,
+    { usuario_id: ctx.userId, indice: input.index, acierto: input.isCorrect, ms: input.clientMs },
+  ]
+}
+
+/** Parejas: guarda las 5 jugadas de un tablero de una vez. */
+async function recordBoardPlays(
+  ctx: GameContext,
+  plays: Array<{ index: number; isCorrect: boolean; ms: number | null; timedOut: boolean }>,
+) {
+  const { error } = await ctx.adminClient.from('desafio_jugadas').insert(
+    plays.map((play) => ({
+      desafio_id: ctx.challenge.id,
+      usuario_id: ctx.userId,
+      indice: play.index,
+      acierto: play.isCorrect,
+      ms: play.ms,
+      payload: { timedOut: play.timedOut, kind: ctx.settings.kind },
+    })),
+  )
+
+  if (error) {
+    if ((error as { code?: string }).code === '23505') {
+      throw new GameError(409, 'Esta respuesta ya estaba guardada.', 'ICA_CHALLENGE_ALREADY_ANSWERED')
+    }
+    throw new GameError(500, error.message)
+  }
+
+  ctx.myPlays = [
+    ...ctx.myPlays,
+    ...plays.map((play) => ({ usuario_id: ctx.userId, indice: play.index, acierto: play.isCorrect, ms: play.ms })),
+  ]
+}
+
+/** Guarda lo que respondió (solo lo ve el servidor; sirve para la pantalla de resultados). */
+async function saveResponse(ctx: GameContext, row: QuestionRow, record: Record<string, unknown>) {
+  const { error } = await ctx.adminClient
+    .from('desafio_preguntas')
+    .update({ respuestas: { ...row.respuestas, [ctx.userId]: record } })
+    .eq('id', row.id)
+  if (error) throw new GameError(500, error.message)
+  row.respuestas = { ...row.respuestas, [ctx.userId]: record }
+}
+
+/** Sirve la pregunta que toca (o la que quedó abierta) y apunta la hora. */
+async function serveQuestion(ctx: GameContext, questions?: QuestionRow[]) {
+  const nowMs = Date.now()
+  const rows = questions || (await ensureQuestions(ctx))
+  const nextIndex = ctx.myPlays.length
+  const row = rows.find((item) => item.indice === nextIndex)
+
+  if (!row) {
+    if (ctx.settings.format === 'lightning') {
+      await finishLightningSession(ctx)
+    } else {
+      await saveMyState(ctx, { ...ctx.myState, current: null, completedAt: new Date().toISOString() })
+      await afterMyRound(ctx)
+    }
+    return { status: 'done' as const }
+  }
+
+  await saveMyState(ctx, {
+    ...ctx.myState,
+    current: { index: row.indice, servedAt: new Date(nowMs).toISOString() },
+  })
+
+  return { status: 'question' as const, question: questionPayload(ctx, row, nowMs, nowMs) }
+}
+
+async function nextQuestion(ctx: GameContext) {
+  const nowMs = Date.now()
+  assertCanPlay(ctx)
+
+  if (ctx.settings.format === 'lightning') {
+    if (ctx.myState.completedAt) {
+      return { status: 'done' as const }
+    }
+    if (!ctx.myState.sessionEndsAt) {
+      const sessionMs = (ctx.settings.sessionSeconds || 60) * 1000
+      await ensureQuestions(ctx)
+      const startedAt = new Date()
+      await saveMyState(ctx, {
+        ...ctx.myState,
+        sessionStartedAt: startedAt.toISOString(),
+        sessionEndsAt: new Date(startedAt.getTime() + sessionMs).toISOString(),
+      })
+    } else if (isLightningSessionOver(ctx.myState, nowMs)) {
+      await finishLightningSession(ctx)
+      return { status: 'done' as const }
+    }
+  } else if (isMeDone(ctx, nowMs)) {
+    return { status: 'done' as const }
+  }
+
+  const rows = await ensureQuestions(ctx)
+  const current = ctx.myState.current
+
+  if (current && !ctx.myPlays.some((play) => play.indice === current.index)) {
+    const servedAtMs = Date.parse(current.servedAt)
+    const row = rows.find((item) => item.indice === current.index)
+    const stale =
+      !Number.isFinite(servedAtMs) || isPendingQuestionStale({ settings: ctx.settings, servedAtMs, nowMs })
+
+    if (row && !stale) {
+      // Se retoma la pregunta abierta con el tiempo que le quedaba.
+      return { status: 'question' as const, question: questionPayload(ctx, row, servedAtMs, nowMs) }
+    }
+
+    if (row) {
+      // Cerró la app con la pregunta abierta: cuenta como fallo (en Parejas, todo el tablero).
+      const staleIndices =
+        ctx.settings.kind === 'pairs'
+          ? boardIndices(current.index, ctx.settings.totalQuestions)
+          : [current.index]
+      for (const index of staleIndices) {
+        const staleRow = rows.find((item) => item.indice === index)
+        if (!staleRow || ctx.myPlays.some((play) => play.indice === index)) continue
+        await recordPlay(ctx, { index, isCorrect: false, clientMs: null, timedOut: true })
+        await saveResponse(ctx, staleRow, {
+          optionIndex: null,
+          text: null,
+          transcript: null,
+          correct: false,
+          timedOut: true,
+          at: new Date(nowMs).toISOString(),
+        })
+      }
+      await saveMyState(ctx, { ...ctx.myState, current: null })
+      if (isRoundFinished(ctx.settings, ctx.myPlays.length)) {
+        if (ctx.myPlays.length >= ctx.settings.totalQuestions) {
+          await saveMyState(ctx, { ...ctx.myState, completedAt: new Date().toISOString() })
+        }
+        await afterMyRound(ctx)
+        return { status: ctx.myState.completedAt ? ('done' as const) : ('round_finished' as const) }
+      }
+    }
+  }
+
+  return serveQuestion(ctx, rows)
+}
+
+function readResponse(body: Record<string, unknown>): PlayerResponse {
+  const raw = isRecord(body.response) ? body.response : {}
+  const optionIndexRaw = raw.optionIndex
+  return {
+    optionIndex:
+      optionIndexRaw === null || optionIndexRaw === undefined || optionIndexRaw === ''
+        ? null
+        : Math.round(Number(optionIndexRaw)),
+    text: typeof raw.text === 'string' ? raw.text.slice(0, 120) : null,
+    transcripts: Array.isArray(raw.transcripts)
+      ? raw.transcripts.filter((item): item is string => typeof item === 'string').slice(0, 6)
+      : null,
+  }
+}
+
+function revealPayload(row: QuestionRow) {
+  return {
+    target: row.respuesta.target,
+    native: row.respuesta.native,
+    correctOptionIndex: row.respuesta.correctOptionIndex,
+    phrase: row.respuesta.phrase,
+    phraseTranslation: row.respuesta.phraseTranslation,
+  }
+}
+
+async function answerQuestion(ctx: GameContext, body: Record<string, unknown>) {
+  const nowMs = Date.now()
+  const questionIndex = Math.round(Number(body.questionIndex))
+  if (!Number.isInteger(questionIndex) || questionIndex < 0) {
+    throw new GameError(400, 'Pregunta inválida.')
+  }
+
+  const rows = await ensureQuestions(ctx)
+  const row = rows.find((item) => item.indice === questionIndex)
+  if (!row) throw new GameError(400, 'Pregunta inválida.')
+
+  if (ctx.settings.kind === 'pairs') return answerPairsBoard(ctx, body, rows, questionIndex, nowMs)
+
+  // Reintento (se cortó la conexión justo al responder): se devuelve lo guardado.
+  const alreadyPlayed = ctx.myPlays.find((play) => play.indice === questionIndex)
+  if (alreadyPlayed) {
+    return {
+      status: 'answered' as const,
+      duplicate: true,
+      result: { isCorrect: alreadyPlayed.acierto, timedOut: false, reveal: revealPayload(row) },
+      progress: progressPayload(ctx),
+    }
+  }
+
+  assertCanPlay(ctx)
+
+  const current = ctx.myState.current
+  if (!current || current.index !== questionIndex) {
+    throw new GameError(409, 'Esta pregunta ya no está activa.', 'ICA_CHALLENGE_QUESTION_NOT_ACTIVE')
+  }
+
+  const servedAtMs = Date.parse(current.servedAt)
+  const clientMsRaw = Number(body.clientMs)
+  const clientMs = Number.isFinite(clientMsRaw) ? Math.max(0, Math.min(600000, Math.round(clientMsRaw))) : null
+  const sessionEndsAtMs = ctx.myState.sessionEndsAt ? Date.parse(ctx.myState.sessionEndsAt) : null
+  const inTime = isAnswerInTime({
+    settings: ctx.settings,
+    servedAtMs: Number.isFinite(servedAtMs) ? servedAtMs : 0,
+    nowMs,
+    clientMs,
+    sessionEndsAtMs,
+  })
+
+  if (ctx.settings.format === 'lightning' && !inTime) {
+    // Se acabó el minuto: la respuesta ya no cuenta.
+    await finishLightningSession(ctx)
+    return {
+      status: 'done' as const,
+      late: true,
+      progress: progressPayload(ctx),
+    }
+  }
+
+  const timedOut = Boolean(body.timedOut) || !inTime
+  const response = readResponse(body)
+  const language = toText(row.respuesta.language) || ctx.challenge.target_lang || ''
+  const isCorrect =
+    !timedOut &&
+    evaluateResponse({ kind: row.tipo, answer: row.respuesta, response, language })
+
+  await recordPlay(ctx, { index: questionIndex, isCorrect, clientMs, timedOut })
+
+  await saveResponse(ctx, row, {
+    optionIndex: response.optionIndex,
+    text: response.text,
+    transcript: response.transcripts?.[0] ?? null,
+    correct: isCorrect,
+    timedOut,
+    at: new Date(nowMs).toISOString(),
+  })
+
+  const result = { isCorrect, timedOut, reveal: revealPayload(row) }
+
+  if (ctx.settings.format === 'lightning') {
+    // serveQuestion guarda el progreso y apunta la siguiente palabra.
+    const served = await serveQuestion(ctx, rows)
+    return {
+      status: served.status === 'question' ? ('answered' as const) : ('done' as const),
+      result,
+      next: served.status === 'question' ? served.question : null,
+      progress: progressPayload(ctx),
+      session: sessionPayload(ctx, Date.now()),
+    }
+  }
+
+  const answered = ctx.myPlays.length
+  if (isRoundFinished(ctx.settings, answered)) {
+    const done = answered >= ctx.settings.totalQuestions
+    await saveMyState(ctx, {
+      ...ctx.myState,
+      current: null,
+      completedAt: done ? new Date().toISOString() : ctx.myState.completedAt,
+    })
+    await afterMyRound(ctx)
+    return {
+      status: done ? ('done' as const) : ('round_finished' as const),
+      result,
+      next: null,
+      progress: progressPayload(ctx),
+      challengeStatus: ctx.challenge.status,
+      isMyTurn: ctx.challenge.turn_user_id === ctx.userId,
+    }
+  }
+
+  const served = await serveQuestion(ctx, rows)
+  return {
+    status: 'answered' as const,
+    result,
+    next: served.status === 'question' ? served.question : null,
+    progress: progressPayload(ctx),
+  }
+}
+
+function storedBoardResult(ctx: GameContext, boardRows: QuestionRow[]) {
+  const chosen = boardRows.map((row) => {
+    const mine = row.respuestas[ctx.userId]
+    return isRecord(mine) && typeof mine.optionIndex === 'number' ? mine.optionIndex : null
+  })
+  const correct = boardRows.map(
+    (row) => ctx.myPlays.find((play) => play.indice === row.indice)?.acierto ?? false,
+  )
+  const solution = boardRows.map((row) => row.respuesta.correctOptionIndex ?? -1)
+  return { correct, solution, chosen }
+}
+
+/**
+ * Parejas: el móvil manda el tablero entero (qué significado ha unido a cada palabra).
+ * Se corrigen las 5 parejas a la vez y se guardan como 5 jugadas. La siguiente pregunta
+ * no va incluida: el móvil la pide al terminar de enseñar el resultado (así el reloj del
+ * siguiente tablero empieza entero).
+ */
+async function answerPairsBoard(
+  ctx: GameContext,
+  body: Record<string, unknown>,
+  rows: QuestionRow[],
+  questionIndex: number,
+  nowMs: number,
+) {
+  const start = boardStart(questionIndex)
+  const indices = boardIndices(start, ctx.settings.totalQuestions)
+  const boardRows = indices
+    .map((index) => rows.find((item) => item.indice === index))
+    .filter((item): item is QuestionRow => Boolean(item))
+  if (questionIndex !== start || boardRows.length !== indices.length) {
+    throw new GameError(400, 'Tablero inválido.')
+  }
+
+  // Reintento: se devuelve lo guardado.
+  if (ctx.myPlays.some((play) => indices.includes(play.indice))) {
+    const pairs = storedBoardResult(ctx, boardRows)
+    return {
+      status: 'answered' as const,
+      duplicate: true,
+      result: { isCorrect: pairs.correct.every(Boolean), timedOut: false, reveal: revealPayload(boardRows[0]) },
+      pairs,
+      next: null,
+      progress: progressPayload(ctx),
+    }
+  }
+
+  assertCanPlay(ctx)
+
+  const current = ctx.myState.current
+  if (!current || current.index !== start) {
+    throw new GameError(409, 'Este tablero ya no está activo.', 'ICA_CHALLENGE_QUESTION_NOT_ACTIVE')
+  }
+
+  const servedAtMs = Date.parse(current.servedAt)
+  const clientMsRaw = Number(body.clientMs)
+  const clientMs = Number.isFinite(clientMsRaw) ? Math.max(0, Math.min(600000, Math.round(clientMsRaw))) : null
+  const inTime = isAnswerInTime({
+    settings: ctx.settings,
+    servedAtMs: Number.isFinite(servedAtMs) ? servedAtMs : 0,
+    nowMs,
+    clientMs,
+    sessionEndsAtMs: null,
+  })
+  // Tiempo medido en el servidor (el desempate no se fía del reloj del móvil).
+  const elapsedMs = Number.isFinite(servedAtMs) ? Math.max(0, Math.min(600000, nowMs - servedAtMs)) : clientMs
+  const response = isRecord(body.response) ? body.response : {}
+  const board = evaluatePairsBoard({
+    answers: boardRows.map((row) => row.respuesta),
+    matches: readPairMatches(response.matches),
+    inTime,
+  })
+  const timedOut = !inTime || Boolean(body.timedOut)
+  const at = new Date(nowMs).toISOString()
+
+  await recordBoardPlays(
+    ctx,
+    boardRows.map((row, position) => ({
+      index: row.indice,
+      isCorrect: board.correct[position],
+      ms: elapsedMs,
+      timedOut,
+    })),
+  )
+  await Promise.all(
+    boardRows.map((row, position) =>
+      saveResponse(ctx, row, {
+        optionIndex: board.chosen[position],
+        text: null,
+        transcript: null,
+        correct: board.correct[position],
+        timedOut,
+        at,
+      }),
+    ),
+  )
+
+  const result = { isCorrect: board.correct.every(Boolean), timedOut, reveal: revealPayload(boardRows[0]) }
+  const answered = ctx.myPlays.length
+
+  if (isRoundFinished(ctx.settings, answered)) {
+    const done = answered >= ctx.settings.totalQuestions
+    await saveMyState(ctx, {
+      ...ctx.myState,
+      current: null,
+      completedAt: done ? new Date().toISOString() : ctx.myState.completedAt,
+    })
+    await afterMyRound(ctx)
+    return {
+      status: done ? ('done' as const) : ('round_finished' as const),
+      result,
+      pairs: board,
+      next: null,
+      progress: progressPayload(ctx),
+      challengeStatus: ctx.challenge.status,
+      isMyTurn: ctx.challenge.turn_user_id === ctx.userId,
+    }
+  }
+
+  await saveMyState(ctx, { ...ctx.myState, current: null })
+  return { status: 'answered' as const, result, pairs: board, next: null, progress: progressPayload(ctx) }
+}
+
+async function endSession(ctx: GameContext) {
+  if (ctx.settings.format !== 'lightning') {
+    throw new GameError(400, 'Solo el Modo Relámpago tiene partida por tiempo.')
+  }
+  if (ctx.myState.completedAt) return { status: 'done' as const }
+  assertCanPlay(ctx)
+  const sessionEndsAt = ctx.myState.sessionEndsAt ? Date.parse(ctx.myState.sessionEndsAt) : NaN
+  if (!Number.isFinite(sessionEndsAt)) {
+    throw new GameError(409, 'La cuenta atrás todavía no ha empezado.', 'ICA_CHALLENGE_SESSION_NOT_STARTED')
+  }
+  if (Date.now() < sessionEndsAt + LIGHTNING_GRACE_MS) {
+    throw new GameError(409, 'La cuenta atrás aún no ha terminado.', 'ICA_CHALLENGE_SESSION_NOT_OVER')
+  }
+  await finishLightningSession(ctx)
+  return { status: 'done' as const, progress: progressPayload(ctx) }
+}
+
+async function playState(ctx: GameContext) {
+  const nowMs = Date.now()
+
+  // Si la partida relámpago se quedó a medias (cerró la app), se cierra aquí.
+  if (
+    ctx.challenge.status === 'in_progress' &&
+    ctx.settings.format === 'lightning' &&
+    ctx.myState.sessionEndsAt &&
+    !ctx.myState.completedAt &&
+    isLightningSessionOver(ctx.myState, nowMs)
+  ) {
+    await finishLightningSession(ctx)
+  }
+
+  const meDone = isMeDone(ctx, nowMs)
+  const rivalDone = isRivalDone(ctx, nowMs)
+  const metadata = isRecord(ctx.challenge.game_metadata) ? ctx.challenge.game_metadata : {}
+
+  return {
+    challenge: {
+      id: ctx.challenge.id,
+      status: ctx.challenge.status,
+      typeId: ctx.settings.typeId,
+      kind: ctx.settings.kind,
+      format: ctx.settings.format,
+      wordSource: ctx.settings.wordSource,
+      rounds: ctx.settings.rounds,
+      questionsPerRound: ctx.settings.questionsPerRound,
+      totalQuestions: ctx.settings.format === 'turns' ? ctx.settings.totalQuestions : null,
+      secondsPerQuestion: ctx.settings.secondsPerQuestion,
+      sessionSeconds: ctx.settings.sessionSeconds,
+      isMyTurn:
+        ctx.challenge.status === 'in_progress' &&
+        (!ctx.challenge.turn_user_id || ctx.challenge.turn_user_id === ctx.userId),
+      turnExpiresAt: ctx.challenge.turn_expires_at,
+      resultType: ctx.challenge.result_type,
+      winnerUserId: ctx.challenge.winner_user_id,
+      levels: isRecord(metadata.levels) ? metadata.levels : null,
+    },
+    me: {
+      userId: ctx.userId,
+      answered: ctx.myPlays.length,
+      correct: scoreOf(ctx.myPlays),
+      done: meDone,
+      hasOpenQuestion: Boolean(
+        ctx.myState.current && !ctx.myPlays.some((play) => play.indice === ctx.myState.current?.index),
+      ),
+      sessionStarted: Boolean(ctx.myState.sessionStartedAt),
+      round: ctx.settings.format === 'turns' ? roundInfo(ctx.settings, ctx.myPlays.length) : null,
+    },
+    rival: {
+      userId: ctx.rivalId,
+      answered: ctx.rivalPlays.length,
+      correct: scoreOf(ctx.rivalPlays),
+      done: rivalDone,
+    },
+    session: sessionPayload(ctx, nowMs),
+  }
+}
+
+async function reviewGame(ctx: GameContext) {
+  const finished = ['completed', 'expired', 'cancelled', 'not_accepted'].includes(ctx.challenge.status)
+  if (!isMeDone(ctx) && !finished) {
+    throw new GameError(400, 'Termina tus palabras para ver los resultados.', 'ICA_CHALLENGE_REVIEW_LOCKED')
+  }
+
+  const ownerKey = ctx.settings.wordSource === 'mixed' ? null : ctx.userId
+  let query = ctx.adminClient
+    .from('desafio_preguntas')
+    .select('indice, tipo, pregunta, respuesta, respuestas')
+    .eq('desafio_id', ctx.challenge.id)
+    .order('indice', { ascending: true })
+  query = ownerKey ? query.eq('usuario_id', ownerKey) : query.is('usuario_id', null)
+  const { data, error } = await query
+  if (error) throw new GameError(500, error.message)
+
+  const rowsByIndex = new Map<number, Record<string, unknown>>()
+  for (const row of (data || []) as Array<Record<string, unknown>>) {
+    rowsByIndex.set(Number(row.indice), row)
+  }
+
+  const items = ctx.myPlays
+    .slice()
+    .sort((a, b) => a.indice - b.indice)
+    .map((play) => {
+      const row = rowsByIndex.get(play.indice)
+      if (!row) return null
+      const answer = (isRecord(row.respuesta) ? row.respuesta : {}) as Partial<StoredAnswer>
+      const question = (isRecord(row.pregunta) ? row.pregunta : {}) as Record<string, unknown>
+      const responses = isRecord(row.respuestas) ? row.respuestas : {}
+      // Jugadas de antes de este cambio (las preguntas las hacía el móvil): no se pueden enseñar.
+      if (!isRecord(responses[ctx.userId])) return null
+      const mine = responses[ctx.userId] as Record<string, unknown>
+      const options = Array.isArray(question.options) ? (question.options as unknown[]).map((item) => toText(item)) : []
+      const optionIndex = typeof mine.optionIndex === 'number' ? mine.optionIndex : null
+
+      return {
+        index: play.indice,
+        kind: toText(row.tipo),
+        target: toText(answer.target),
+        native: toText(answer.native),
+        phrase: toText(answer.phrase) || null,
+        phraseTranslation: toText(answer.phraseTranslation) || null,
+        isCorrect: play.acierto,
+        timedOut: Boolean(mine.timedOut),
+        myAnswer:
+          toText(mine.text) ||
+          toText(mine.transcript) ||
+          (optionIndex !== null && options[optionIndex] ? options[optionIndex] : null),
+        fromRival: toText(answer.ownerUserId) !== ctx.userId,
+        targetLang: toText(answer.language) || ctx.challenge.target_lang || null,
+      }
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+
+  return {
+    items,
+    me: { correct: scoreOf(ctx.myPlays), answered: ctx.myPlays.length },
+    rival: { correct: scoreOf(ctx.rivalPlays), answered: ctx.rivalPlays.length, done: isRivalDone(ctx) },
+    wordSource: ctx.settings.wordSource,
+  }
+}
+
+async function runGameAction(
+  input: { adminClient: AdminClient; userId: string; body: Record<string, unknown> },
+  handler: (ctx: GameContext) => Promise<Record<string, unknown>>,
+) {
+  try {
+    const ctx = await loadGame(input.adminClient, toText(input.body.challengeId), input.userId)
+    const result = await handler(ctx)
+    return jsonResponse(200, { ok: true, ...result })
+  } catch (error) {
+    if (error instanceof GameError) {
+      return jsonResponse(error.status, { ok: false, error: error.message, code: error.code })
+    }
+    const message = error instanceof Error ? error.message : 'Error inesperado.'
+    return jsonResponse(500, { ok: false, error: message })
+  }
 }
 
 Deno.serve(async (req) => {
@@ -987,6 +1506,7 @@ Deno.serve(async (req) => {
   }
 
   const action = toText(payload.action)
+  const baseInput = { adminClient: auth.adminClient, userId: auth.userId, body: payload }
 
   if (action === 'list-available-users') {
     return listAvailableUsers({
@@ -995,15 +1515,40 @@ Deno.serve(async (req) => {
       targetLang: toText(payload.targetLang),
       nativeLang: toText(payload.nativeLang),
       scope: toScope(payload.scope),
+      maxActiveChallenges: MAX_ACTIVE_CHALLENGES,
+      countActiveChallenges,
+      fetchSettingsByUser,
+      fetchLevelsForPair,
+      countWordsForPair,
+      toText,
     })
   }
 
-  if (action === 'create-own-words') {
-    return createOwnWordsChallenge({
-      adminClient: auth.adminClient,
-      userId: auth.userId,
-      body: payload,
-    })
+  const invitationDependencies = {
+    turnWindowSeconds: TURN_WINDOW_SECONDS,
+    invitationWindowSeconds: INVITATION_WINDOW_SECONDS,
+    maxActiveChallenges: MAX_ACTIVE_CHALLENGES,
+    toText,
+    toScope,
+    toWordSource,
+    toDurationSecondsDaysRange,
+    addSecondsToNow,
+    getChallengeTypeById,
+    maxLevelGapFor,
+    countActiveChallenges,
+    hasActivePairChallenge,
+    fetchLevelsForPair,
+    resolvePlayerPair,
+    countWordsForPair,
+    fetchCards,
+    hasPlayableQuestionSet,
+    notEnoughWordsToJoinMessage,
+    kindRequirement: KIND_REQUIREMENT,
+    sendPushToUser,
+  }
+
+  if (action === 'create-challenge' || action === 'create-own-words') {
+    return createChallenge(baseInput, invitationDependencies)
   }
 
   if (action === 'list-challenge-types') {
@@ -1013,26 +1558,41 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'respond-invitation') {
-    return respondInvitation({
-      adminClient: auth.adminClient,
-      userId: auth.userId,
-      body: payload,
-    })
+    return respondInvitation(baseInput, invitationDependencies)
   }
 
   if (action === 'cancel-invitation') {
-    return cancelInvitation({
-      adminClient: auth.adminClient,
-      userId: auth.userId,
-      body: payload,
+    return cancelInvitation(baseInput, invitationDependencies)
+  }
+
+  if (action === 'play-state') {
+    return runGameAction(baseInput, playState)
+  }
+
+  if (action === 'next-question') {
+    return runGameAction(baseInput, async (ctx) => {
+      const step = await nextQuestion(ctx)
+      return { ...step, progress: progressPayload(ctx), session: sessionPayload(ctx, Date.now()) }
     })
   }
 
+  if (action === 'answer-question') {
+    return runGameAction(baseInput, (ctx) => answerQuestion(ctx, payload))
+  }
+
+  if (action === 'end-session') {
+    return runGameAction(baseInput, endSession)
+  }
+
+  if (action === 'review') {
+    return runGameAction(baseInput, reviewGame)
+  }
+
   if (action === 'submit-own-words-result') {
-    return submitOwnWordsResult({
-      adminClient: auth.adminClient,
-      userId: auth.userId,
-      body: payload,
+    // La corrección ahora la hace el servidor pregunta a pregunta.
+    return jsonResponse(410, {
+      error: 'Actualiza la app para seguir jugando este desafío.',
+      code: 'ICA_CHALLENGE_UPDATE_APP',
     })
   }
 
