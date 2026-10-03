@@ -61,6 +61,7 @@ import {
 } from "./coachingClassResources";
 import { getCoachingV2ExerciseRoute } from "../routes/paths";
 import { t, langName, uiLocale } from "@/i18n";
+import { ContentLoading } from "@/components/ui/loading-state";
 
 type CoachingV2SessionBoardProps = {
   sessionId: string;
@@ -610,7 +611,7 @@ export function CoachingV2SessionBoard({
 
   if (loading)
     return (
-      <p className="text-sm text-muted-foreground">Cargando programa...</p>
+      <ContentLoading label="Cargando programa..." />
     );
   if (error) return <p className="text-sm text-destructive">{error}</p>;
   if (!board)

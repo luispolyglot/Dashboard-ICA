@@ -10,6 +10,7 @@ import {
 } from '../services/coaching'
 import { getManageCoachingUserRoute } from '../routes/paths'
 import { formatDateTime } from '../utils'
+import { useSoftLoading } from '../hooks/useSoftLoading'
 
 type ManageCoacherSessionsViewProps = {
   coachUserId: string
@@ -19,7 +20,7 @@ export function ManageCoacherSessionsView({
   coachUserId,
 }: ManageCoacherSessionsViewProps) {
   const navigate = useNavigate()
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading, refreshing] = useSoftLoading(true, coachUserId)
   const [error, setError] = useState<string | null>(null)
   const [rows, setRows] = useState<CoachingManagedUser[]>([])
 
@@ -69,8 +70,8 @@ export function ManageCoacherSessionsView({
             <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => navigate(-1)} aria-label='Volver'>
               <ArrowLeftIcon className='size-5' strokeWidth={2.6} />
             </Button>
-            <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => void loadData()} disabled={loading} aria-label='Recargar'>
-              <RefreshCwIcon className={loading ? 'size-5 animate-spin' : 'size-5'} strokeWidth={2.6} />
+            <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => void loadData()} disabled={loading || refreshing} aria-label='Recargar'>
+              <RefreshCwIcon className={loading || refreshing ? 'size-5 animate-spin' : 'size-5'} strokeWidth={2.6} />
             </Button>
           </span>
         }

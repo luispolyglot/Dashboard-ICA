@@ -35,6 +35,7 @@ import {
 import { useTheme } from "@/theme/ThemeContext";
 import type { AppConfig, LeaderboardEntry } from "../types";
 import { langName, t } from "@/i18n";
+import { ListLoading } from "@/components/ui/loading-state";
 
 type UserMenuProps = {
   onLogout: () => Promise<void>;
@@ -199,7 +200,7 @@ return (
             </DialogHeader>
 
             {mobileLeaderboard.loading && (
-              <p className="text-sm text-muted-foreground">{t("Cargando...")}</p>
+              <ListLoading label={t("Cargando...")} rows={5} />
             )}
             {!mobileLeaderboard.loading && mobileLeaderboard.error && (
               <p className="text-sm text-destructive">

@@ -14,13 +14,14 @@ import {
   updatePregunticaQuestionText,
   type PregunticaAdminQuestion,
 } from '../services/pregunticaAdmin'
+import { useSoftLoading } from '../hooks/useSoftLoading'
 
 export function ManagePregunticaQuestionsView() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [bulkText, setBulkText] = useState('')
   const [rows, setRows] = useState<PregunticaAdminQuestion[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading, refreshing] = useSoftLoading(true)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -154,8 +155,8 @@ export function ManagePregunticaQuestionsView() {
         }
         subtitle='Banco de preguntas en español. La traducción a cada idioma se guarda sola.'
         right={
-          <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => void load()} disabled={loading} aria-label='Recargar'>
-            <RefreshCwIcon className={loading ? 'size-5 animate-spin' : 'size-5'} strokeWidth={2.6} />
+          <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => void load()} disabled={loading || refreshing} aria-label='Recargar'>
+            <RefreshCwIcon className={loading || refreshing ? 'size-5 animate-spin' : 'size-5'} strokeWidth={2.6} />
           </Button>
         }
       >

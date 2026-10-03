@@ -11,12 +11,13 @@ import {
   updatePregunticaManualTokensForUser,
   type PregunticaTokensAdminUser,
 } from '../services/pregunticaTokensAdmin'
+import { useSoftLoading } from '../hooks/useSoftLoading'
 
 const PAGE_SIZE_OPTIONS = [10, 50, 100] as const
 
 export function ManagePregunticaTokensView() {
   const [rows, setRows] = useState<PregunticaTokensAdminUser[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading, refreshing] = useSoftLoading(true)
   const [search, setSearch] = useState('')
   const [pageSize, setPageSize] = useState<number>(10)
   const [currentPage, setCurrentPage] = useState(1)
@@ -126,8 +127,8 @@ export function ManagePregunticaTokensView() {
         }
         subtitle='Las ICA Coins de cada persona: las que ganó este mes y las que le das tú a mano.'
         right={
-          <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => void load()} disabled={loading} aria-label='Recargar'>
-            <RefreshCwIcon className={loading ? 'size-5 animate-spin' : 'size-5'} strokeWidth={2.6} />
+          <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => void load()} disabled={loading || refreshing} aria-label='Recargar'>
+            <RefreshCwIcon className={loading || refreshing ? 'size-5 animate-spin' : 'size-5'} strokeWidth={2.6} />
           </Button>
         }
       >

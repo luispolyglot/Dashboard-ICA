@@ -695,6 +695,28 @@ button:disabled {
   cursor: pointer;
 }
 
+
+/* Cargas suaves (de develop): el esqueleto aparece tras un instante, así las cargas rápidas no parpadean. */
+@keyframes loading-reveal {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.loading-reveal {
+  animation: loading-reveal 280ms ease-out 180ms both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-reveal {
+    animation-duration: 1ms;
+  }
+}
+
 @layer utilities {
   .ica-streak-ring {
     animation: ica-streak-ring 1.6s ease-out infinite;

@@ -85,6 +85,7 @@ import {
 import { t, tn, langName, uiLocale } from "@/i18n";
 import { IconTile } from "../game/ui";
 import { TargetGlyph } from "../game/icons";
+import { ContentLoading } from "@/components/ui/loading-state";
 
 type CoachingV3SessionBoardProps = {
   sessionId: string;
@@ -1154,7 +1155,7 @@ export function CoachingV3SessionBoard({
 
   if (loading) {
     return (
-      <p className="text-sm text-muted-foreground">{t("Cargando coaching...")}</p>
+      <ContentLoading label={t("Cargando coaching...")} />
     );
   }
 

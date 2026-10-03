@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowRightIcon, CrownIcon, TrophyIcon } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
+import { useSoftLoading } from '../hooks/useSoftLoading'
 import {
   completeCoachingExerciseObjective,
   fetchMyCoachingDashboard,
@@ -37,16 +38,16 @@ export function CoachingPersonalizedView({
   targetLang,
 }: CoachingPersonalizedViewProps) {
   const navigate = useNavigate()
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useSoftLoading(true)
   const [error, setError] = useState<string | null>(null)
   const [memberships, setMemberships] = useState<CoachingMembership[]>([])
 
   const loadData = async () => {
     setLoading(true)
-    setError(null)
     try {
       const data = await fetchMyCoachingDashboard()
       setMemberships(data)
+      setError(null)
     } catch (err) {
       const message =
         err instanceof Error
@@ -182,7 +183,7 @@ export function CoachingPersonalizedView({
 export function CoachingPersonalizedSessionView({
   sessionId,
 }: CoachingPersonalizedSessionViewProps) {
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useSoftLoading(true, sessionId)
   const [error, setError] = useState<string | null>(null)
   const [memberships, setMemberships] = useState<CoachingMembership[]>([])
   const [completingExerciseWeek, setCompletingExerciseWeek] = useState<
@@ -191,10 +192,10 @@ export function CoachingPersonalizedSessionView({
 
   const loadData = async () => {
     setLoading(true)
-    setError(null)
     try {
       const data = await fetchMyCoachingDashboard()
       setMemberships(data)
+      setError(null)
     } catch (err) {
       const message =
         err instanceof Error

@@ -19,11 +19,12 @@ import {
   fetchIcademyTeachers,
 } from '../services/icademyTeachers'
 import type { IcademyTeacher, IcademyTeacherAssignableUser } from '../types'
+import { useSoftLoading } from '../hooks/useSoftLoading'
 
 export function ManageIcademyTeachersView() {
   const [teachers, setTeachers] = useState<IcademyTeacher[]>([])
   const [users, setUsers] = useState<IcademyTeacherAssignableUser[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading, refreshing] = useSoftLoading(true)
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -136,8 +137,8 @@ export function ManageIcademyTeachersView() {
         }
         subtitle='Quién da clases en el Calendario ICADEMY.'
         right={
-          <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => void loadData()} disabled={loading} aria-label='Recargar'>
-            <RefreshCwIcon className={loading ? 'size-5 animate-spin' : 'size-5'} strokeWidth={2.6} />
+          <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => void loadData()} disabled={loading || refreshing} aria-label='Recargar'>
+            <RefreshCwIcon className={loading || refreshing ? 'size-5 animate-spin' : 'size-5'} strokeWidth={2.6} />
           </Button>
         }
       >

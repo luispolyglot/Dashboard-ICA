@@ -58,10 +58,12 @@ import {
 import { PendingReviewDot } from '../components/PendingReviewDot'
 import { GameProgress, Pill, SectionLabel } from '../game/ui'
 import { formatDateTime } from '../utils'
+import { ListLoading } from '@/components/ui/loading-state'
+import { useSoftLoading } from '../hooks/useSoftLoading'
 
 export function ManageCoachingView() {
   const navigate = useNavigate()
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading, refreshing] = useSoftLoading(true)
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
 
@@ -542,8 +544,13 @@ export function ManageCoachingView() {
             <CalendarIcon className='h-4 w-4' />
             Ver calendario coaching
           </Button>
-          <Button type='button' variant='ghost' onClick={() => void loadData()}>
-            <RefreshCwIcon className='h-4 w-4' />
+          <Button
+            type='button'
+            variant='ghost'
+            onClick={() => void loadData()}
+            disabled={refreshing}
+          >
+            <RefreshCwIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             Recargar
           </Button>
       </div>
@@ -614,7 +621,7 @@ export function ManageCoachingView() {
         <SectionLabel>{t('Sesiones de coaching ({n})', { n: filteredUsers.length })}</SectionLabel>
         <div>
           {loading ? (
-            <p className='text-sm text-muted-foreground'>Cargando tabla...</p>
+            <ListLoading label='Cargando tabla...' />
           ) : filteredUsers.length === 0 ? (
             <p className='text-sm text-muted-foreground'>
               No hay sesiones para los filtros seleccionados.

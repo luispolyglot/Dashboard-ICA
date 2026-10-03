@@ -38,12 +38,13 @@ import {
   updateWhitelistFlags,
 } from '../services/whitelistAdmin'
 import { formatDateTime } from '../utils'
+import { useSoftLoading } from '../hooks/useSoftLoading'
 
 export function ManageWhitelistView() {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [sourceFilter, setSourceFilter] = useState<string>('all')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading, refreshing] = useSoftLoading(true)
   const [rows, setRows] = useState<WhitelistEntry[]>([])
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -233,10 +234,10 @@ export function ManageWhitelistView() {
             size='icon'
             className='rounded-2xl'
             onClick={() => void loadRows()}
-            disabled={loading}
+            disabled={loading || refreshing}
             aria-label='Recargar'
           >
-            <RefreshCwIcon className={loading ? 'size-5 animate-spin' : 'size-5'} strokeWidth={2.6} />
+            <RefreshCwIcon className={loading || refreshing ? 'size-5 animate-spin' : 'size-5'} strokeWidth={2.6} />
           </Button>
         }
       >

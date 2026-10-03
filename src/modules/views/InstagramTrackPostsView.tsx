@@ -23,6 +23,7 @@ import {
   upsertInstagramTrackPost,
 } from '../services/instagramTrackPosts'
 import type { InstagramTrackPostEntry } from '../types'
+import { ListLoading } from '@/components/ui/loading-state'
 
 type InstagramTrackPostsViewProps = {
   targetLang: string
@@ -247,10 +248,7 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
       </PageTitle>
 
       {isLoadingMonths || (isLoadingRows && postedDays.length === 0) ? (
-        <div className='flex items-center justify-center gap-2 py-10 text-sm font-semibold text-muted-foreground'>
-          <Loader2Icon className='size-4 animate-spin' />
-          {t('Cargando track de Instagram...')}
-        </div>
+        <ListLoading label={t('Cargando track de Instagram...')} rows={3} className='mb-3' />
       ) : null}
 
       {selectedMonth ? (

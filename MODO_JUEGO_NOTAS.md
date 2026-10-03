@@ -9,8 +9,8 @@ Rediseño de toda la app con un modo juego propio del método ICA: camino I → 
 | Dato | Valor |
 |---|---|
 | Rama | `feat/modo-juego`. PR contra `develop` |
-| Base | `develop` actual (82a2bde) ya unida en la rama: no quedan conflictos |
-| Commits | 1) `feat: modo juego` (todo el trabajo, sobre 6085f2b) · 2) merge de `develop` · 3) `fix: ajustes tras unir develop` · 4) `fix(security)` del saldo de monedas · 5) estas notas · 6) `feat: ajustes del 3 de octubre` · 7) `feat: economía de la ICA Coin, racha en peligro y chat de icademers` · 8) `fix: ampliaciones otra vez a 15` · 9) `feat(chat): avisos del grupo, plegar mensajes, confirmar salida y horas de cada uno` (ver «Historial», con estas notas al día) |
+| Base | `develop` actual (255b39c, con «cargas fluidas» y el CI con el pooler IPv4) ya unida en la rama: no quedan conflictos |
+| Commits | 1) `feat: modo juego` (todo el trabajo, sobre 6085f2b) · 2) merge de `develop` · 3) `fix: ajustes tras unir develop` · 4) `fix(security)` del saldo de monedas · 5) estas notas · 6) `feat: ajustes del 3 de octubre` · 7) `feat: economía de la ICA Coin, racha en peligro y chat de icademers` · 8) `fix: ampliaciones otra vez a 15` · 9) `feat(chat): avisos del grupo, plegar mensajes, confirmar salida y horas de cada uno` · 10) merge de `develop` 255b39c (ver «Historial», con estas notas al día) |
 | Tamaño frente a develop | 264 archivos: 92 nuevos, 165 modificados y 7 borrados (unas +38.100 / −15.600 líneas). Unas 3.200 líneas son diccionarios de inglés y la mayoría del resto es interfaz |
 | Comprobado | `tsc -b` y `vite build` sin errores. Tests unitarios: 238 de 238. `useMasterNotePlayback` fallaba también en `develop`: en las pruebas conviven dos clases `Blob` (la de Node y la de jsdom) y `toBeInstanceOf(Blob)` miraba la otra; ahora comprueba el tipo con `Object.prototype.toString`. Solo cambia el test, no la app. `deno check` de las 16 funciones: los mismos errores de tipos que en `develop`, ninguno nuevo. Las 138 migraciones entran en orden en un Postgres 16 vacío con los esquemas de Supabase simulados. No se han ejecutado los tests de integración (necesitan Supabase) |
 | Al unir con `develop` | El CI (`deploy-supabase.yml`) aplica en DEV 6 migraciones nuevas y vuelve a desplegar todas las funciones, porque cambia `_shared/` |
@@ -59,7 +59,16 @@ Rediseño de toda la app con un modo juego propio del método ICA: camino I → 
 | `icaChallenges.ts` | Tu carga diferida (`loadLocalChallenges`) más nuestro filtro por idioma en `listMyIcaChallenges` |
 | `IcaChallengePlayView.tsx`, `game/IcademerProfile.tsx` | Ya no importan `icaChallengesLocal` (el simulador no entra en el build de production; comprobado) |
 
-Después de unir (commit `fix: ajustes tras unir develop`): traducidos al inglés tus 4 mensajes nuevos de `invitations.ts`; `public-profile` resuelve el idioma del rival con `resolvePlayerPair` y responde 500 en JSON si falla la base de datos; la caché rápida se borra al cerrar sesión (y una respuesta que llegue después ya no se guarda); la precarga de Desafíos solo se reutiliza si es de la misma cuenta.
+**Segunda unión (3 de octubre, `develop` 255b39c: «cargas fluidas» de la PR #85 y el CI con el pooler IPv4).** Las dos ramas hacían lo mismo en varios sitios; se quedó así:
+
+| Archivo | Qué se hizo |
+|---|---|
+| `index.html`, `fullscreen-loading.tsx` | La pantalla de arranque del modo juego (logo ICA quieto, igual en `index.html` y en React). Fuera la barra de progreso y los logos PNG de `develop`. `.loading-reveal` de `index.css` se queda (lo usa `loading-state.tsx`) |
+| `router/RouteGuards.tsx` | La versión del modo juego (caché rápida por usuario). Pasan los tests nuevos de `develop` (`RouteGuards.test.tsx`) |
+| Vistas con conflicto (admin, coaching, notas maestras, PreguntICA, trackers, ranking…) | El diseño del modo juego, con lo de «cargas fluidas» encima: `useSoftLoading` (el contenido se queda al recargar y gira el icono de recargar) y los esqueletos de `loading-state.tsx` donde quedaba un «Cargando…» de texto (menú de usuario, Instagram, notas offline, calendario de coaching, sesión de coaching). Donde el modo juego ya tenía su esqueleto, se queda el suyo |
+| `MetaTracker/MetaTrackerSection.tsx` | Sigue borrado (ya no lo usa nada) |
+
+Después de la primera unión (commit `fix: ajustes tras unir develop`): traducidos al inglés tus 4 mensajes nuevos de `invitations.ts`; `public-profile` resuelve el idioma del rival con `resolvePlayerPair` y responde 500 en JSON si falla la base de datos; la caché rápida se borra al cerrar sesión (y una respuesta que llegue después ya no se guarda); la precarga de Desafíos solo se reutiliza si es de la misma cuenta.
 
 ## Qué revisar con atención (toca datos o servidor)
 

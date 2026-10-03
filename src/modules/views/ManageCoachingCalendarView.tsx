@@ -47,6 +47,8 @@ import {
   upsertCoachingUser,
 } from '../services/coaching'
 import { toDateAndTimeFromIso, toIsoFromDateAndTime } from './coachingClassResources'
+import { BlockLoading } from '@/components/ui/loading-state'
+import { useSoftLoading } from '../hooks/useSoftLoading'
 
 type CoachingCalendarEntry = {
   id: string
@@ -398,7 +400,7 @@ function firstName(name: string): string {
 export function ManageCoachingCalendarView() {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading, refreshing] = useSoftLoading(true)
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [managedRows, setManagedRows] = useState<CoachingManagedUser[]>([])
@@ -1495,8 +1497,8 @@ export function ManageCoachingCalendarView() {
             <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => navigate(-1)} aria-label='Volver'>
               <ArrowLeftIcon className='size-5' strokeWidth={2.6} />
             </Button>
-            <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => void loadData()} aria-label='Recargar'>
-              <RefreshCwIcon className='size-5' strokeWidth={2.6} />
+            <Button type='button' variant='outline' size='icon' className='rounded-2xl' onClick={() => void loadData()} disabled={refreshing} aria-label='Recargar'>
+              <RefreshCwIcon className={refreshing ? 'size-5 animate-spin' : 'size-5'} strokeWidth={2.6} />
             </Button>
           </span>
         }
@@ -1512,7 +1514,7 @@ export function ManageCoachingCalendarView() {
 
       {loading ? (
         <Panel>
-          <p className='m-0 text-sm font-semibold text-muted-foreground'>Cargando calendario...</p>
+          <BlockLoading label='Cargando calendario...' className='h-[420px]' />
         </Panel>
       ) : entries.length === 0 ? (
         <Panel>
