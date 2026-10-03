@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { t } from '@/i18n'
+import { toast } from 'sonner'
+import { useAuth } from '@/auth/AuthContext'
+import { listIcaChallengeReactions, sendIcaChallengeReaction } from '../services/icaChallenges'
 
-// EXPRESIONES AL TERMINAR UN DESAFÍO: 6 caritas dibujadas con el estilo ICA y 4 frases
-// cortas. Nada de emojis del móvil ni texto libre.
-// Vista previa: se guardan en este dispositivo. En el modo de prueba, el rival de
-// prueba contesta. Para que lleguen a rivales reales, el servidor tiene que guardarlas
-// y avisar (ver MODO_JUEGO_NOTAS.md).
+// EXPRESIONES AL TERMINAR UN DESAFÍO: 6 caritas dibujadas y 4 frases cerradas.
+// Para retos reales se guardan en Supabase; solo los rivales de prueba usan estado local.
 
 export type ReactionFace = 'feliz' | 'risa' | 'guino' | 'sorpresa' | 'gafas' | 'lagrima'
 // 'que-nivel', 'por-poco' y 'buena-partida' ya no se pueden mandar; se siguen leyendo
@@ -208,21 +208,65 @@ function myStreakAtEnd(items: StoredReaction[]): number {
   return count
 }
 
+function fromServerRows(rows: Awaited<ReturnType<typeof listIcaChallengeReactions>>, userId: string | null): StoredReaction[] {
+  return rows.reduce<StoredReaction[]>((items, row) => {
+    if (row.kind === 'face' && REACTION_FACES.some((item) => item.value === row.value)) {
+      items.push({ kind: 'face', value: row.value as ReactionFace, from: row.sender_user_id === userId ? 'me' : 'rival', at: Date.parse(row.created_at) || 0 })
+      return items
+    }
+    if (row.kind === 'phrase' && REACTION_PHRASES.some((item) => item.value === row.value)) {
+      items.push({ kind: 'phrase', value: row.value as ReactionPhrase, from: row.sender_user_id === userId ? 'me' : 'rival', at: Date.parse(row.created_at) || 0 })
+    }
+    return items
+  }, [])
+}
+
 /** Hook: las expresiones de un desafío y cómo mandar una. */
 export function useChallengeReactions(challengeId: string, options: { rivalIsTestBot: boolean }) {
-  const [items, setItems] = useState<StoredReaction[]>(() => readChallengeReactions(challengeId))
+  const { user } = useAuth()
+  const [items, setItems] = useState<StoredReaction[]>(() => options.rivalIsTestBot ? readChallengeReactions(challengeId) : [])
+
+  const refresh = useCallback(async () => {
+    if (options.rivalIsTestBot) {
+      setItems(readChallengeReactions(challengeId))
+      return
+    }
+    try {
+      const rows = await listIcaChallengeReactions(challengeId)
+      setItems(fromServerRows(rows, user?.id ?? null))
+    } catch {
+      // La pantalla de resultado sigue disponible aunque falle la carga social.
+    }
+  }, [challengeId, options.rivalIsTestBot, user?.id])
 
   useEffect(() => {
-    const refresh = () => setItems(readChallengeReactions(challengeId))
-    refresh()
-    window.addEventListener(REACTIONS_CHANGED_EVENT, refresh)
-    return () => window.removeEventListener(REACTIONS_CHANGED_EVENT, refresh)
-  }, [challengeId])
+    void refresh()
+    if (options.rivalIsTestBot) {
+      const onChanged = () => { void refresh() }
+      window.addEventListener(REACTIONS_CHANGED_EVENT, onChanged)
+      return () => window.removeEventListener(REACTIONS_CHANGED_EVENT, onChanged)
+    }
+    const interval = window.setInterval(() => { void refresh() }, 8000)
+    return () => window.clearInterval(interval)
+  }, [challengeId, options.rivalIsTestBot, refresh])
 
   const left = Math.max(0, MAX_REACTIONS_IN_A_ROW - myStreakAtEnd(items))
 
   const send = useCallback(
-    (reaction: Reaction) => {
+    async (reaction: Reaction) => {
+      if (!options.rivalIsTestBot) {
+        try {
+          await sendIcaChallengeReaction({ challengeId, kind: reaction.kind, value: reaction.value })
+          await refresh()
+          return true
+        } catch (error) {
+          toast.error(error instanceof Error && error.message.includes('REACTION_STREAK_LIMIT')
+            ? t('Espera a que tu rival conteste para mandar más.')
+            : t('No se pudo enviar la reacción. Inténtalo de nuevo.'))
+          await refresh()
+          return false
+        }
+      }
       const current = readChallengeReactions(challengeId)
       if (myStreakAtEnd(current) >= MAX_REACTIONS_IN_A_ROW) return false
       pushReaction(challengeId, { ...reaction, from: 'me', at: Date.now() })
@@ -244,7 +288,7 @@ export function useChallengeReactions(challengeId: string, options: { rivalIsTes
       }
       return true
     },
-    [challengeId, options.rivalIsTestBot],
+    [challengeId, options.rivalIsTestBot, refresh],
   )
 
   return { items, send, left, canSend: left > 0 }

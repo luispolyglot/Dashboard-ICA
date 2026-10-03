@@ -17,8 +17,6 @@ import {
 import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAuth } from '@/auth/AuthContext'
-import { claimChallengeWinCoin } from '../game/fichas'
-import { CHALLENGE_WIN_REWARD_SINCE } from '../game/rules'
 import { getUiLang, langName, t, tn } from '@/i18n'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -58,8 +56,6 @@ import { ChallengeStatsCard, WinStreakChip } from '../components/IcaChallenges/C
 import {
   buyChallengeSlot,
   coinsText,
-  consumeChallengeSlot,
-  unusedChallengeSlots,
   useFichas,
 } from '../game/fichas'
 import { FichaIcon, FlameIcon, SwordsIcon } from '../game/icons'
@@ -420,10 +416,10 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
 
   // Desafío extra: con 3 en curso, EXTRA_CHALLENGE_COST ICA Coins para retar a una 4.ª persona.
   const { user: authUser } = useAuth()
-  const { total: coinBalance, entries: coinEntries } = useFichas(authUser?.id)
-  const extraPasses = unusedChallengeSlots(coinEntries)
+  const { total: coinBalance, unusedPasses: extraPasses, refresh: refreshCoins } = useFichas(authUser?.id)
   const [useExtraForNext, setUseExtraForNext] = useState(false)
   const [extraOfferUserId, setExtraOfferUserId] = useState<string | null>(null)
+  const [buyingExtraPass, setBuyingExtraPass] = useState(false)
 
   const isEnrolled = Boolean(enrollment?.isActive)
   // Hacen falta 20 palabras en el Baúl ICA de este idioma para entrar en los retos.
@@ -504,17 +500,6 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
       ),
     [challenges],
   )
-
-  // Cada desafío ganado da 1 ICA Coin (aunque no abras el resultado; nunca dos veces).
-  useEffect(() => {
-    if (!currentUserId) return
-    for (const challenge of historyChallenges) {
-      // Solo los ganados desde que existe el premio (no los de antes).
-      const finishedAt = Date.parse(challenge.finalizedAt || challenge.updatedAt || '')
-      if (!(finishedAt >= CHALLENGE_WIN_REWARD_SINCE)) continue
-      if (getOutcome(challenge, currentUserId) === 'won') claimChallengeWinCoin(currentUserId, challenge.id)
-    }
-  }, [currentUserId, historyChallenges])
 
   // Por idioma: solo icademers de tu mismo idioma y con nivel parecido.
   const scopedUsers = useMemo(
@@ -690,7 +675,7 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
         durationSeconds: CHALLENGE_DAYS * 24 * 60 * 60,
         extraSlot: useExtraForNext,
       })
-      if (useExtraForNext) consumeChallengeSlot(authUser?.id)
+      await refreshCoins()
       setUseExtraForNext(false)
 
       setIsChallengeModalOpen(false)
@@ -1435,13 +1420,20 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
             <Button
               type='button'
               className='h-11 gap-1.5 rounded-2xl font-extrabold'
-              disabled={(coinBalance ?? 0) < EXTRA_CHALLENGE_COST}
-              onClick={() => {
+              disabled={buyingExtraPass || (coinBalance ?? 0) < EXTRA_CHALLENGE_COST}
+              onClick={async () => {
+                if (buyingExtraPass) return
                 const userId = extraOfferUserId
                 if (!userId) return
-                if (!buyChallengeSlot(authUser?.id, coinBalance ?? 0)) {
+                setBuyingExtraPass(true)
+                try {
+                  if (!(await buyChallengeSlot(authUser?.id, coinBalance ?? 0))) throw new Error('PURCHASE_FAILED')
+                  await refreshCoins()
+                } catch {
                   toast.error(t('Necesitas {coins}.', { coins: coinsText(EXTRA_CHALLENGE_COST) }))
                   return
+                } finally {
+                  setBuyingExtraPass(false)
                 }
                 setExtraOfferUserId(null)
                 startChallengeFlow(userId, true)

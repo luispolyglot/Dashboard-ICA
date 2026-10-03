@@ -3,6 +3,7 @@ import { todayKey } from '../utils'
 import { evaluateAndUnlockAchievements } from './achievements'
 import { notifyCreationMetricsChanged } from './creationMetricsSync'
 import { registerWordActivations } from './metaTracker'
+import { signalIcaCoinsStateChanged } from '../game/fichas'
 
 const WORD_ADD_POINTS = 5
 const PHRASE_POINTS = 20
@@ -30,6 +31,7 @@ export async function recordWordAddedEvent(): Promise<void> {
 
   await evaluateAndUnlockAchievements(userId)
   notifyCreationMetricsChanged()
+  signalIcaCoinsStateChanged()
 }
 
 type PhraseEventParams = {
@@ -56,56 +58,20 @@ export async function recordPhraseGeneratedEvent(
 
   const day = todayKey()
 
-  const phrasePayload = {
-    user_id: userId,
-    source_words: params.words,
-    source_words_v2: params.wordIds.map((lexicardId, index) => ({
-      lexicard_id: lexicardId,
-      word: params.words[index] || '',
-    })),
-    generated_phrase: params.phrase,
-    translation: params.translation,
-    model:
-      params.source === 'manual'
-        ? 'manual'
-        : import.meta.env.VITE_ANTHROPIC_MODEL || null,
-    success: true,
-    target_lang: params.targetLang,
-    native_lang: params.nativeLang,
+  const { data: phraseId, error: phraseError } = await supabase.rpc('record_phrase_generation_event', {
+    p_word_ids: params.wordIds,
+    p_phrase: params.phrase,
+    p_translation: params.translation,
+    p_target_lang: params.targetLang,
+    p_native_lang: params.nativeLang,
+    p_source: params.source || 'generated',
+  })
+  if (phraseError) {
+    signalIcaCoinsStateChanged()
+    throw phraseError
   }
-
-  let phraseError: Error | null = null
-  let phraseGenerationId: string | null = null
-
-  const insertWithLang = await supabase
-    .from('phrase_generations')
-    .insert(phrasePayload)
-    .select('id')
-    .single()
-
-  if (insertWithLang.error) {
-    const insertLegacy = await supabase
-      .from('phrase_generations')
-      .insert({
-      user_id: userId,
-      source_words: params.words,
-      generated_phrase: params.phrase,
-      translation: params.translation,
-      model:
-        params.source === 'manual'
-          ? 'manual'
-          : import.meta.env.VITE_ANTHROPIC_MODEL || null,
-      success: true,
-    })
-      .select('id')
-      .single()
-    phraseError = insertLegacy.error
-    phraseGenerationId = insertLegacy.data?.id || null
-  } else {
-    phraseGenerationId = insertWithLang.data?.id || null
-  }
-
-  if (phraseError) throw phraseError
+  const phraseGenerationId = typeof phraseId === 'string' ? phraseId : null
+  signalIcaCoinsStateChanged()
 
   let activationTotal = await registerWordActivations(
     phraseGenerationId || '',
@@ -160,6 +126,7 @@ export async function recordPhraseGeneratedEvent(
   }
 
   notifyCreationMetricsChanged()
+  signalIcaCoinsStateChanged()
 
   return { activationWordsTotal: activationTotal, phraseGenerationId }
 }

@@ -4,6 +4,7 @@ import { notifyCreationMetricsChanged } from './creationMetricsSync'
 import { kickLexicardExampleWorker } from './lexicardExampleJobs'
 import { fetchAllPages } from './lexicardsPagination'
 import { recordBootstrapDiagnostic } from '../utils/bootstrapDiagnostics'
+import { signalIcaCoinsStateChanged } from '../game/fichas'
 import type { AppConfig, DailyProgressMap, Lexicard } from '../types'
 
 const MAX_SAFE_WORD_DELETES_PER_SAVE = 5
@@ -258,6 +259,7 @@ async function replaceWordsSnapshot(userId: string, cards: Lexicard[]): Promise<
     try {
       const { error } = await supabase.from('lexicards').upsert(payload)
       if (error) throw error
+      signalIcaCoinsStateChanged()
     } catch {
       const legacyPayload = cards.map((card) => ({
         id: card.id,
@@ -273,6 +275,7 @@ async function replaceWordsSnapshot(userId: string, cards: Lexicard[]): Promise<
       }))
       const { error } = await supabase.from('lexicards').upsert(legacyPayload)
       if (error) throw error
+      signalIcaCoinsStateChanged()
     }
   }
 
@@ -373,10 +376,12 @@ async function insertWordRecord(userId: string, card: Lexicard): Promise<void> {
     const { error } = await supabase.from('lexicards').insert(toLexicardRow(userId, card))
     if (error) throw error
     notifyCreationMetricsChanged()
+    signalIcaCoinsStateChanged()
   } catch {
     const { error } = await supabase.from('lexicards').insert(toLegacyLexicardRow(userId, card))
     if (error) throw error
     notifyCreationMetricsChanged()
+    signalIcaCoinsStateChanged()
   }
 }
 

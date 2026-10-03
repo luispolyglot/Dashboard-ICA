@@ -85,8 +85,6 @@ type PhraseViewProps = {
   LevelBadge: ComponentType<{ level: StudyLevel; size?: 'normal' | 'small' }>
   /** Límite diario de frases nuevas (si no se pasa, no hay límite). */
   dailyLimits?: DailyLimitsState
-  /** Se llama al crear una frase nueva (no al pedir otra versión). */
-  onNewPhraseCreated?: () => void
 }
 
 const IMPORTANCE_DOT = {
@@ -305,7 +303,6 @@ export function PhraseView({
   metaTrackerProfile,
   onActivationWordsTotalChange,
   dailyLimits,
-  onNewPhraseCreated,
 }: PhraseViewProps) {
   const challengeEnabled = useChallengeEnabled()
   // Límite diario de frases nuevas (2, o 4 con Creación ampliada hoy).
@@ -570,9 +567,6 @@ export function PhraseView({
             nativeLang: config.nativeLang,
             source: mode === 'manualPhrase' ? 'manual' : 'generated',
           })
-        if (!isRegeneration) {
-          onNewPhraseCreated?.()
-        }
         await onPhraseGenerated()
         setResultPhraseId(phraseGenerationId)
         // Nota desafiante: guardar los trozos de la frase (sin bloquear la pantalla).
@@ -633,6 +627,12 @@ export function PhraseView({
       }
     } catch (error) {
       console.error(error)
+      const message = error instanceof Error ? error.message : ''
+      if (message.includes('DAILY_LIMIT_PHRASES')) {
+        setResult(null)
+        setResultPhraseId(null)
+        toast.error(t('Has alcanzado el límite diario de frases.'))
+      }
     } finally {
       setLoading(false)
     }

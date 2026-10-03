@@ -757,6 +757,36 @@ async function invokeChallenges<T>(
   return data as T
 }
 
+export type IcaChallengeReactionRow = {
+  id: string
+  challenge_id: string
+  sender_user_id: string
+  kind: 'face' | 'phrase'
+  value: string
+  created_at: string
+}
+
+export async function listIcaChallengeReactions(challengeId: string): Promise<IcaChallengeReactionRow[]> {
+  const result = await invokeChallenges<{ rows?: IcaChallengeReactionRow[] }>(
+    { action: 'list-reactions', challengeId },
+    'No se pudieron cargar las reacciones.',
+  )
+  return Array.isArray(result.rows) ? result.rows : []
+}
+
+export async function sendIcaChallengeReaction(input: {
+  challengeId: string
+  kind: 'face' | 'phrase'
+  value: string
+}): Promise<IcaChallengeReactionRow> {
+  const result = await invokeChallenges<{ row?: IcaChallengeReactionRow }>(
+    { action: 'send-reaction', ...input },
+    'No se pudo enviar la reacción.',
+  )
+  if (!result.row?.id) throw new IcaChallengeRequestError('No se pudo enviar la reacción.')
+  return result.row
+}
+
 export async function createIcaChallenge(input: {
   challengeTypeId: string
   challengedUserId: string

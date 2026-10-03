@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import { CheckIcon, XIcon } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -128,13 +129,13 @@ const stopConfettiRef = useRef<(() => void) | null>(null)
       const correct = allPlayed.filter((item) => item.isCorrect).length
       setPhase('finished')
       setEndsAt(null)
-      saveDailyGameResult(user?.id, {
+      void saveDailyGameResult(user?.id, {
         day: todayKey(),
         kind: current.mode.kind,
         correct,
         total: current.questions.length,
         finishedAt: Date.now(),
-      })
+      }).catch(() => toast.error(t('No se pudo guardar el resultado del Reto del día.')))
       if (correct / current.questions.length >= 0.7) stopConfettiRef.current = launchWinConfetti()
     },
     [user?.id],

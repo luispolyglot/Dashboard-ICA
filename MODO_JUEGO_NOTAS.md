@@ -12,9 +12,9 @@ Rediseño de toda la app con un modo juego propio del método ICA: camino I → 
 | Base | `develop` actual (255b39c, con «cargas fluidas» y el CI con el pooler IPv4) ya unida en la rama: no quedan conflictos |
 | Commits | 1) `feat: modo juego` (todo el trabajo, sobre 6085f2b) · 2) merge de `develop` · 3) `fix: ajustes tras unir develop` · 4) `fix(security)` del saldo de monedas · 5) estas notas · 6) `feat: ajustes del 3 de octubre` · 7) `feat: economía de la ICA Coin, racha en peligro y chat de icademers` · 8) `fix: ampliaciones otra vez a 15` · 9) `feat(chat): avisos del grupo, plegar mensajes, confirmar salida y horas de cada uno` · 10) merge de `develop` 255b39c (ver «Historial», con estas notas al día) |
 | Tamaño frente a develop | 264 archivos: 92 nuevos, 165 modificados y 7 borrados (unas +38.100 / −15.600 líneas). Unas 3.200 líneas son diccionarios de inglés y la mayoría del resto es interfaz |
-| Comprobado | `tsc -b` y `vite build` sin errores. Tests unitarios: 238 de 238. `useMasterNotePlayback` fallaba también en `develop`: en las pruebas conviven dos clases `Blob` (la de Node y la de jsdom) y `toBeInstanceOf(Blob)` miraba la otra; ahora comprueba el tipo con `Object.prototype.toString`. Solo cambia el test, no la app. `deno check` de las 16 funciones: los mismos errores de tipos que en `develop`, ninguno nuevo. Las 138 migraciones entran en orden en un Postgres 16 vacío con los esquemas de Supabase simulados. No se han ejecutado los tests de integración (necesitan Supabase) |
-| Al unir con `develop` | El CI (`deploy-supabase.yml`) aplica en DEV 6 migraciones nuevas y vuelve a desplegar todas las funciones, porque cambia `_shared/` |
-| Production | No subir a `main` hasta resolver «Antes de production». El modo juego no va detrás de un flag: lo que entre en `develop` sale entero en la próxima subida a `main` |
+| Comprobado | `npm run build` sin errores. Tests unitarios: 241/241. `supabase db reset --local` reconstruye todas las migraciones (incluida `20261003120000_ica_coins_server_authority.sql`) y `supabase db lint --local --schema public --fail-on error` no encuentra errores. Se probaron RPCs de saldo/pase/4.º reto, premio automático, límites de reacciones, timestamp de palabra, regeneración y puerta de 20 palabras. `deno check --unstable` solo muestra el error de tipos preexistente en `_shared/coaching-auth.ts`; no hay errores nuevos en `reactions.ts`. No se han desplegado migraciones ni Edge Functions remotas |
+| Al unir con `develop` | El CI (`deploy-supabase.yml`) aplicará las migraciones nuevas en DEV y desplegará `ica-challenges-center` con las acciones de reacciones y creación transaccional |
+| Production | No subir a `main` hasta probar en DEV el nuevo ledger, los límites, el cuarto desafío y el flujo social. El modo juego no va detrás de un flag: lo que entre en `develop` sale entero en la próxima subida a `main` |
 
 ### Qué hacer, en orden
 
@@ -22,7 +22,7 @@ Rediseño de toda la app con un modo juego propio del método ICA: camino I → 
 2. Unir a `develop`. El CI aplica las migraciones y despliega las funciones en DEV.
 3. En DEV: activar las flags `ica-challenges` y `nota-desafiante`. Comprobar que `streak-push-reminders` se llama cada hora (el aviso de racha en peligro sale a las 19:00 de cada alumno). Opcional: secret `ANTHROPIC_FAST_MODEL` (si no está, se usa `claude-haiku-4-5-20251001`).
 4. Probar con la lista de «Qué probar en development».
-5. Antes de production: pasar al servidor lo que hoy es vista previa (ver su apartado) y repasar «Riesgos».
+5. Antes de production: probar en DEV las RPC/migraciones de «Estado actualizado en esta rama», los límites y el cuarto desafío; revisar los movimientos y el ranking con insignia. La interfaz no está protegida por un flag.
 
 ## Migraciones nuevas
 
@@ -234,7 +234,23 @@ Luis comparó cuatro estilos para el camino (pantalla azul, sin recuadro, tarjet
 Aplazado por Luis: un chat entre icademers al acabar un desafío (para animar a ir al Club de Dinámica).
 
 
-## Antes de production: lo que hoy es vista previa
+## Estado actualizado en esta rama · implementación para producción
+
+Las propuestas de las siguientes subsecciones describen la auditoría original y quedan como referencia histórica. Su implementación está en `20261003120000_ica_coins_server_authority.sql` y los cambios de cliente/Edge Functions de esta rama. ICA Coins usa el saldo/ledger existente de PreguntICA; las cantidades locales no se importan.
+
+| Pieza | Estado en esta rama |
+|---|---|
+| ICA Coins y movimientos | RPCs servidor para estado, cofre, hitos, ampliaciones y pase; ledger idempotente, lock por usuario y premio de victoria por trigger. El cofre y las victorias respetan el tope selectivo de 100; el saldo total puede superar 100 por ranking/hitos. |
+| Cuarto desafío | El pase se cobra en servidor. Creación del reto, competidores y consumo se confirman en una sola transacción. El retador gasta su pase y la invitación reserva el espacio del destinatario. |
+| Límites diarios | Triggers cuentan palabras, frases nuevas y primeras grabaciones con timestamps de servidor; las regeneraciones del mismo conjunto y regrabaciones no gastan cuota. Las ampliaciones se leen del ledger. |
+| Flashcards y nota desafiante | Revisión valida en servidor las 20 palabras activadas y calcula la métrica sin fecha/deltas arbitrarios. La nota desafiante exige dos notas maestras cerradas y usa la zona/día del perfil. |
+| Reacciones e insignia destacada | Persistidas en Supabase; las reacciones se limitan a participantes y dos seguidas. La insignia destacada se valida contra métricas servidor y se devuelve en rankings. |
+| Reto del día | Resultado mejor sincronizado por usuario y día local; no da monedas ni puntos. |
+| Zona horaria | Hasta cuatro cambios en 24 horas para facilitar viajes; las cuotas existentes se recalculan en la zona nueva. Escrituras directas del perfil quedan bloqueadas. |
+
+La migración se reconstruyó desde cero con `supabase db reset --local`. Antes de habilitar producción, aplicar migraciones, desplegar `ica-challenges-center` y publicar el cliente actualizado.
+
+### Histórico de la auditoría original: vista previa anterior
 
 En development se puede probar tal cual. Para production, cada pieza hay que llevarla al servidor o esconderla. Las ICA Coins son la misma moneda que las «fichas» de PreguntICA que hay hoy en production (`preguntica_token_ledger`, las que da el ranking de cada mes), con otro nombre: arriba se enseña servidor + vista previa, pero PreguntICA solo gasta lo del servidor (Luis veía 60 arriba y 42 al canjear).
 
@@ -273,7 +289,7 @@ Lo pidió Luis el 3 de octubre: que la moneda no se devalúe (demasiado fácil d
 
 Qué medir cuando esté en el servidor (alertas): gastado/creado por semana entre 0,6 y 0,9 (alerta por debajo de 0,5 o por encima de 1,1 tres semanas seguidas); crecimiento del total de monedas por debajo del 12 % semanal; menos del 20 % de activos con la hucha llena; al menos la mitad de los activos compra algo cada 30 días; los desafíos, como mucho el 35 % de las monedas creadas (y vigilar parejas que lleguen al tope 3 semanas seguidas). Fuentes: Machinations (inflación en economías de juego), Department of Play, Adrian Crook (umbrales del 12 % y 40 %), informes económicos de EVE Online y el congelador de racha de Duolingo (200 gemas, máximo 2).
 
-### Reglas que hoy solo comprueba el cliente
+### Reglas que solo comprobaba el cliente antes de esta implementación
 
 | Regla | Cliente | Servidor |
 |---|---|---|
@@ -284,9 +300,9 @@ Qué medir cuando esté en el servidor (alertas): gastado/creado por semana entr
 | Reto del día: 10 palabras y 5 aciertos | `game/dailyGame.ts` | No (no da premio) |
 | 20 palabras para entrar en Desafíos | `ChallengesUnlocked` | Sí (`invitations.ts`) |
 
-### «Hoy» en el cliente y en el servidor
+### «Hoy» antes de pasar las reglas al servidor (nota histórica)
 
-El cliente usa la hora del dispositivo (`todayKey()` en `utils.ts`, `getTodayProgress`, `pathFill.ts`, los desbloqueos de los lunes). El servidor usa `profiles.timezone` (UTC si falta) en `daily_metrics.day`; `record_master_note_challenge_play` y `bump_master_note_challenge_listening` comparan en UTC. La app manda la zona con `set_my_timezone` al cargar. Si eso falla, en España entre las 00:00 y las 02:00 el límite y el cofre miran días distintos. Y todo lo «una vez al día» de la vista previa se salta cambiando el reloj del móvil: otra razón para pasarlo al servidor.
+Antes de esta implementación, la hora del dispositivo y el servidor podían diferir. En esta rama, premios, límites, resultados diarios y nota desafiante toman el día desde `profiles.timezone`; editar el reloj del móvil no cambia el día del servidor.
 
 ## Riesgos y detalles
 

@@ -2,6 +2,7 @@ import { t } from '@/i18n'
 import { supabase } from '../../lib/supabase'
 import { runInBatches } from '../../lib/utils'
 import { notifyCreationMetricsChanged } from './creationMetricsSync'
+import { signalIcaCoinsStateChanged } from '../game/fichas'
 import type { PhraseVoiceActivationEntry } from '../types'
 
 const BUCKET = 'phrase-activations'
@@ -177,6 +178,7 @@ export async function uploadPhraseVoiceActivation({
   }
 
   notifyCreationMetricsChanged()
+  signalIcaCoinsStateChanged()
 
   return inserted as PhraseVoiceActivationEntry
 }

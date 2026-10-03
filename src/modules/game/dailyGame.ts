@@ -8,12 +8,13 @@ import {
 import { isSpeechRecognitionSupported } from '../components/NotaDesafiante/challengeEngine'
 import type { Lexicard } from '../types'
 import { todayKey } from '../utils'
+import { supabase } from '../../lib/supabase'
 
 // RETO DEL DÍA: el minijuego que sale en el camino después del cofre.
 // Usa el mismo motor que Desafíos ICA, pero lo juegas tú solo con tus palabras ICA.
 // Cada día toca uno de los modos de Desafíos (Parejas, Lectura, Escritura, Escucha, Habla;
-// van rotando). Cuenta como hecho con 5 aciertos o más. El resultado se guarda en este
-// dispositivo (vista previa) hasta que exista en el servidor.
+// van rotando). Cuenta como hecho con 5 aciertos o más. El mejor resultado diario se sincroniza
+// con el servidor para que el camino se comparta entre dispositivos.
 
 export type DailyGameKind = 'pairs' | 'choice' | 'write' | 'listen' | 'speak'
 
@@ -115,39 +116,36 @@ export type DailyGameResult = {
 }
 
 export const DAILY_GAME_CHANGED_EVENT = 'ica:daily-game-changed'
-const PREFIX = 'ica-daily-game-v1:'
 
-function key(userId: string | null | undefined): string {
-  return `${PREFIX}${userId || 'anon'}`
-}
-
-function readAll(userId: string | null | undefined): Record<string, DailyGameResult> {
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(key(userId)) || '{}')
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, DailyGameResult>) : {}
-  } catch {
-    return {}
+function parseDailyGameRow(value: unknown): DailyGameResult | null {
+  const row = Array.isArray(value) ? value[0] : value
+  if (!row || typeof row !== 'object') return null
+  const record = row as Record<string, unknown>
+  if (typeof record.day !== 'string' || typeof record.kind !== 'string') return null
+  const finishedAt = Date.parse(String(record.finished_at || ''))
+  return {
+    day: record.day,
+    kind: record.kind as DailyGameKind,
+    correct: Number(record.correct || 0),
+    total: Number(record.total || 0),
+    finishedAt: Number.isFinite(finishedAt) ? finishedAt : Date.now(),
   }
 }
 
-export function readDailyGameResult(userId: string | null | undefined, day = todayKey()): DailyGameResult | null {
-  return readAll(userId)[day] ?? null
-}
-
-/** Guarda el resultado de hoy (se queda con el mejor si juegas otra vez). */
-export function saveDailyGameResult(userId: string | null | undefined, result: DailyGameResult): void {
-  const all = readAll(userId)
-  const previous = all[result.day]
-  if (!previous || result.correct >= previous.correct) all[result.day] = result
-  // Solo se guardan los últimos 60 días.
-  const days = Object.keys(all).sort()
-  for (const day of days.slice(0, Math.max(0, days.length - 60))) delete all[day]
-  try {
-    window.localStorage.setItem(key(userId), JSON.stringify(all))
-  } catch {
-    // Sin almacenamiento: vale para esta sesión.
-  }
+export async function saveDailyGameResult(
+  userId: string | null | undefined,
+  result: DailyGameResult,
+): Promise<DailyGameResult | null> {
+  if (!supabase || !userId) return null
+  const { data, error } = await supabase.rpc('save_daily_game_result', {
+    p_kind: result.kind,
+    p_correct: result.correct,
+    p_total: result.total,
+  })
+  if (error) throw error
+  const saved = parseDailyGameRow(data)
   window.dispatchEvent(new Event(DAILY_GAME_CHANGED_EVENT))
+  return saved
 }
 
 /**
@@ -163,17 +161,28 @@ export function useDailyGame(userId: string | null | undefined, cards?: Lexicard
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [preferred.kind, cards?.length, language],
   )
-  const [result, setResult] = useState<DailyGameResult | null>(() => readDailyGameResult(userId, day))
+  const [result, setResult] = useState<DailyGameResult | null>(null)
 
-  const refresh = useCallback(() => setResult(readDailyGameResult(userId, todayKey())), [userId])
+  const refresh = useCallback(async () => {
+    if (!supabase || !userId) {
+      setResult(null)
+      return null
+    }
+    const { data, error } = await supabase.rpc('get_my_daily_game_result')
+    if (error) throw error
+    const next = parseDailyGameRow(data)
+    setResult(next)
+    return next
+  }, [userId])
 
   useEffect(() => {
-    refresh()
-    window.addEventListener(DAILY_GAME_CHANGED_EVENT, refresh)
-    window.addEventListener('focus', refresh)
+    const onRefresh = () => { void refresh().catch(() => undefined) }
+    onRefresh()
+    window.addEventListener(DAILY_GAME_CHANGED_EVENT, onRefresh)
+    window.addEventListener('focus', onRefresh)
     return () => {
-      window.removeEventListener(DAILY_GAME_CHANGED_EVENT, refresh)
-      window.removeEventListener('focus', refresh)
+      window.removeEventListener(DAILY_GAME_CHANGED_EVENT, onRefresh)
+      window.removeEventListener('focus', onRefresh)
     }
   }, [refresh, day])
 

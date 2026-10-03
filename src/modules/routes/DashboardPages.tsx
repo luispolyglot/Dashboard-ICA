@@ -63,8 +63,7 @@ import { FichasView } from '../views/FichasView'
 import { IcademerChatView } from '../views/IcademerChatView'
 import { InsigniasView } from '../views/InsigniasView'
 import { FlashcardsLocked } from '../game/FlashcardsLocked'
-import { countNewPhraseToday, useDailyLimits } from '../game/limits'
-import { useAuth } from '@/auth/AuthContext'
+import { useDailyLimits } from '../game/limits'
 import { useActivatedWords } from '../game/useActivatedWords'
 import { TrackerDetailView } from '../views/TrackerDetailView'
 import { TrackersView } from '../views/TrackersView'
@@ -523,7 +522,6 @@ export function ActivationPhrasePage() {
     setMetaTrackerActivationWordsTotal,
     dailyProgress,
   } = useDashboardContext()
-  const { user } = useAuth()
   const dailyLimits = useDailyLimits()
   if (!config) return null
 
@@ -537,7 +535,6 @@ export function ActivationPhrasePage() {
         onActivationWordsTotalChange={setMetaTrackerActivationWordsTotal}
         LevelBadge={LevelBadge}
         dailyLimits={dailyLimits}
-        onNewPhraseCreated={() => countNewPhraseToday(user?.id)}
         creationDoneToday={getTodayProgress(dailyProgress).phraseGenerated}
       />
     </PageLayout>

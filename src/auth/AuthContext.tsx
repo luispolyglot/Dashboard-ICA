@@ -142,23 +142,23 @@ export function AuthProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     if (!supabase || !user?.id) return
 
-    const timezone = detectUserTimezone()
-
-    void (async () => {
-      const { error: rpcError } = await supabase.rpc('set_my_timezone', {
-        p_timezone: timezone,
+    const syncTimezone = () => {
+      const timezone = detectUserTimezone()
+      void supabase!.rpc('set_my_timezone', { p_timezone: timezone }).then(({ error }) => {
+        if (error) console.warn('No se pudo sincronizar timezone de perfil', error)
       })
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') syncTimezone()
+    }
 
-      if (!rpcError) return
-
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert({ id: user.id, timezone }, { onConflict: 'id' })
-
-      if (profileError) {
-        console.warn('No se pudo sincronizar timezone de perfil', profileError)
-      }
-    })()
+    syncTimezone()
+    window.addEventListener('focus', syncTimezone)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', syncTimezone)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [user?.id])
 
   const value = useMemo<AuthContextValue>(
@@ -201,10 +201,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const userId = data.user?.id
         const hasActiveSession = Boolean(data.session)
         if (userId && cleanNickname && hasActiveSession) {
-          const timezone = detectUserTimezone()
           const { error: profileError } = await supabase
             .from('profiles')
-            .upsert({ id: userId, display_name: cleanNickname, timezone }, { onConflict: 'id' })
+            .upsert({ id: userId, display_name: cleanNickname }, { onConflict: 'id' })
 
           if (profileError) throw profileError
         }

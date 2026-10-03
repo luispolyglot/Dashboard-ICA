@@ -2,11 +2,11 @@ import useBreakpoints from '../hooks/useBreakpoints'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent, ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import { CheckIcon, Gamepad2Icon, LockIcon } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { CREATION_WORDS_GOAL, getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
-import { todayKey } from '../utils'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { CYCLE_CELEBRATION_CLOSED_EVENT, openCycleCelebration } from './CycleCelebration'
 import {
@@ -445,7 +445,14 @@ export function IcaPath() {
     creationSavesLimit,
     loading,
   } = useDashboardContext()
-  const { entries } = useFichas(user?.id)
+  const {
+    entries,
+    today: coinDay,
+    chestOpened: serverChestOpened,
+    chestCoins: serverChestCoins,
+    chestRolled,
+    refresh: refreshCoins,
+  } = useFichas(user?.id)
   const { limits } = useDailyLimits()
   const { mode: gameMode, result: gameResult } = useDailyGame(user?.id, cards, config?.targetLang)
   const today = getTodayProgress(dailyProgress)
@@ -461,7 +468,7 @@ export function IcaPath() {
   const cDone = today.phraseGenerated
   const aDone = today.voiceActivationsCount > 0
   const cycleDone = streakState.cycleDoneToday
-  const chestOpened = hasClaimedCycleChest(entries)
+  const chestOpened = serverChestOpened || hasClaimedCycleChest(entries, coinDay)
   // El reto cuenta como hecho con 5 aciertos o más (la mitad).
   const reviewDone = isDailyGamePassed(gameResult)
   // Hasta dónde llega el tramo de colores del camino (I, C, A, cofre, reto).
@@ -526,24 +533,34 @@ export function IcaPath() {
   const phaseState = (key: 'I' | 'C' | 'A', done: boolean, locked = false): NodeState =>
     done ? 'done' : locked ? 'locked' : next === key ? 'next' : 'pending'
 
-  const openChest = () => {
+  const openChest = async () => {
     if (chestLocked) return
     if (chestReady) {
-      const chest = claimCycleChest(user?.id)
-      const chestFichas = chest.coins
-      const milestoneFichas = claimReachedMilestones(user?.id, streakState.streak)
-      // Las monedas no se suman en el marcador hasta que se recogen (vuelan a la cartera).
-      holdCoinsDisplay(chestFichas + milestoneFichas)
-      setCelebrationOpen(true)
-      openCycleCelebration({ chestFichas, milestoneFichas, fresh: true, walletFull: chest.coins < chest.rolled })
+      try {
+        const chest = await claimCycleChest(user?.id)
+        const milestoneFichas = await claimReachedMilestones(user?.id, streakState.streak)
+        await refreshCoins()
+        holdCoinsDisplay(chest.coins + milestoneFichas)
+        setCelebrationOpen(true)
+        openCycleCelebration({
+          chestFichas: chest.coins,
+          milestoneFichas,
+          fresh: !chest.alreadyOpened,
+          walletFull: chest.coins < chest.rolled,
+        })
+      } catch (error) {
+        toast.error(error instanceof Error && error.message.includes('ICA_CYCLE_INCOMPLETE')
+          ? t('Completa el ciclo ICA para abrir el cofre.')
+          : t('No se pudo abrir el cofre. Inténtalo de nuevo.'))
+      }
       return
     }
     if (chestOpened) {
-      const todayChest = entries.find((entry) => entry.type === 'cycle_chest' && entry.day === todayKey())
+      const todayChest = entries.find((entry) => entry.type === 'cycle_chest' && entry.day === coinDay)
       openCycleCelebration({
-        chestFichas: todayChestCoins(entries),
+        chestFichas: todayChest ? todayChestCoins(entries, coinDay) : serverChestCoins,
         milestoneFichas: 0,
-        walletFull: Boolean(todayChest?.rolled && todayChest.rolled > todayChest.delta),
+        walletFull: Boolean((todayChest?.rolled ?? chestRolled) && (todayChest?.rolled ?? chestRolled)! > (todayChest?.delta ?? serverChestCoins)),
       })
     }
   }

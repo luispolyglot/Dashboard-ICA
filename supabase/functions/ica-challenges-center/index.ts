@@ -4,6 +4,7 @@ import { ensureAuthenticated } from '../_shared/coaching-auth.ts'
 import { listAvailableUsers } from './directory.ts'
 import { getPublicProfile } from './profile.ts'
 import { cancelInvitation, createChallenge, respondInvitation } from './invitations.ts'
+import { listChallengeReactions, sendChallengeReaction } from './reactions.ts'
 import type { AdminClient, ChallengeScope, ChallengeStatus, LanguagePair } from './types.ts'
 import {
   boardIndices,
@@ -1608,6 +1609,14 @@ Deno.serve(async (req) => {
 
   if (action === 'cancel-invitation') {
     return cancelInvitation(baseInput, invitationDependencies)
+  }
+
+  if (action === 'list-reactions') {
+    return listChallengeReactions(baseInput)
+  }
+
+  if (action === 'send-reaction') {
+    return sendChallengeReaction(baseInput)
   }
 
   if (action === 'play-state') {

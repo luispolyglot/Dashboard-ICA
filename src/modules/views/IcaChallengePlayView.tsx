@@ -63,7 +63,7 @@ import {
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { refreshIcaChallengeAlerts } from '../hooks/useIcaChallengeAlerts'
 import { FichaIcon, TrophyIcon } from '../game/icons'
-import { challengeWinCoinsThisWeek, claimChallengeWinCoin, readPreviewEntries } from '../game/fichas'
+import { loadIcaCoinsState } from '../game/fichas'
 import { CHALLENGE_WIN_REWARD, CHALLENGE_WIN_WEEKLY_CAP } from '../game/rules'
 import { ReactionPanel } from '../game/reactions'
 import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocalMode'
@@ -636,16 +636,15 @@ export function IcaChallengePlayView({
   useEffect(() => {
     if (!iWon || celebratedRef.current) return
     celebratedRef.current = true
-    // Ganar un desafío da 1 ICA Coin (una sola vez por desafío).
-    if (challenge?.id) {
-      claimChallengeWinCoin(state?.me.userId, challenge.id)
-      const entry = readPreviewEntries(state?.me.userId).find(
-        (item) => item.type === 'challenge_win' && item.challengeId === challenge.id,
-      )
-      const entries = readPreviewEntries(state?.me.userId)
-      if (entry && entry.delta <= 0) {
-        setWinCoin(challengeWinCoinsThisWeek(entries) >= CHALLENGE_WIN_WEEKLY_CAP ? 'week' : 'wallet')
-      }
+    if (challenge?.id && state?.me.userId) {
+      void loadIcaCoinsState(state.me.userId).then((coins) => {
+        const entry = coins?.entries.find(
+          (item) => item.type === 'challenge_win' && item.challengeId === challenge.id,
+        )
+        if (entry && entry.delta <= 0) {
+          setWinCoin((coins?.challengeWinsThisWeek ?? 0) >= CHALLENGE_WIN_WEEKLY_CAP ? 'week' : 'wallet')
+        }
+      }).catch(() => undefined)
     }
     return launchWinConfetti()
     // eslint-disable-next-line react-hooks/exhaustive-deps

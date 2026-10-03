@@ -5,7 +5,6 @@ import { cn } from '@/lib/utils'
 import { useDashboardContext } from '../context/DashboardContext'
 import { getStreak } from '../utils'
 import {
-  claimedMilestones,
   claimReachedFlashMilestones,
   claimReachedMilestones,
   coinsText,
@@ -70,7 +69,7 @@ export function CongeladicaCard({
 
 /**
  * Hitos de una racha con su premio en ICA Coins. La primera vez que llegas a cada
- * hito, las ICA Coins se suman solas a tu saldo (vista previa en este dispositivo).
+ * hito, el servidor concede las ICA Coins una sola vez.
  */
 export function StreakMilestones({
   kind,
@@ -82,18 +81,25 @@ export function StreakMilestones({
   milestones: ReadonlyArray<StreakMilestone>
 }) {
   const { user } = useAuth()
-  const { entries } = useFichas(user?.id)
-  const claimed = claimedMilestones(entries, kind === 'ica' ? 'streak_milestone' : 'flash_milestone')
+  const { claimedIcaMilestones, claimedFlashMilestones, refresh } = useFichas(user?.id)
+  const claimed = kind === 'ica' ? claimedIcaMilestones : claimedFlashMilestones
   const next = milestones.find((item) => item.days > streak)
   const previousDays = [...milestones].reverse().find((item) => item.days <= streak)?.days ?? 0
 
   useEffect(() => {
     if (!user?.id || kind !== 'ica') return
-    const gained = claimReachedMilestones(user.id, streak)
-    if (gained > 0) {
-      toast.success(t('¡Hito de racha ICA! +{n}', { n: coinsText(gained) }), { description: t('Ya están en tu saldo.') })
-    }
-  }, [kind, streak, user?.id])
+    let active = true
+    void claimReachedMilestones(user.id, streak).then(async (gained) => {
+      if (!active) return
+      await refresh()
+      if (gained > 0) {
+        toast.success(t('¡Hito de racha ICA! +{n}', { n: coinsText(gained) }), { description: t('Ya están en tu saldo.') })
+      }
+    }).catch(() => {
+      if (active) toast.error(t('No se pudo actualizar el hito de racha.'))
+    })
+    return () => { active = false }
+  }, [kind, refresh, streak, user?.id])
 
   const toNext = next ? next.days - streak : 0
   const pct = next ? Math.max(4, ((streak - previousDays) / (next.days - previousDays)) * 100) : 100
@@ -164,6 +170,7 @@ export function StreakRewardsWatcher() {
   const { user } = useAuth()
   const { completedDays } = useDashboardContext()
   const flashStreak = getStreak(completedDays)
+  const { refresh } = useFichas(user?.id)
   const lastRef = useRef<string>('')
 
   useEffect(() => {
@@ -171,11 +178,15 @@ export function StreakRewardsWatcher() {
     const key = `${user.id}:${flashStreak}`
     if (lastRef.current === key) return
     lastRef.current = key
-    const gained = claimReachedFlashMilestones(user.id, flashStreak)
-    if (gained > 0) {
-      toast.success(t('¡Hito de racha de flashcards! +{n}', { n: coinsText(gained) }), { description: t('Ya están en tu saldo.') })
-    }
-  }, [flashStreak, user?.id])
+    void claimReachedFlashMilestones(user.id, flashStreak).then(async (gained) => {
+      await refresh()
+      if (gained > 0) {
+        toast.success(t('¡Hito de racha de flashcards! +{n}', { n: coinsText(gained) }), { description: t('Ya están en tu saldo.') })
+      }
+    }).catch(() => {
+      toast.error(t('No se pudo actualizar el hito de racha.'))
+    })
+  }, [flashStreak, refresh, user?.id])
 
   return null
 }

@@ -9,13 +9,11 @@ import { DASHBOARD_ROUTES } from '../routes/paths'
 import {
   buyChallengeSlot,
   buyPhaseBoost,
-  challengeWinCoinsThisWeek,
   coinsText,
   fichasFormatter,
   nextCoinProgress,
-  unusedChallengeSlots,
   useFichas,
-  type FichaPreviewEntry,
+  type IcaCoinEntry,
 } from '../game/fichas'
 import { ChestIcon, FichaIcon, FlameIcon, PhaseBoostGlyph, PregunticaExtraGlyph, SwordsIcon, TrophyIcon } from '../game/icons'
 import { LIMIT_LABELS, useDailyLimits } from '../game/limits'
@@ -51,14 +49,17 @@ const LIMIT_ROWS: Array<{ key: DailyLimitKey; letter: 'I' | 'C' | 'A'; color: st
   { key: 'activations', letter: 'A', color: 'var(--ica-a)', soft: 'var(--ica-a-soft)' },
 ]
 
-function entryLabel(entry: FichaPreviewEntry): string {
+function entryLabel(entry: IcaCoinEntry): string {
   if (entry.type === 'cycle_chest') return entry.rolled ? t('Cofre del ciclo (hucha llena)') : t('Cofre del ciclo')
   if (entry.type === 'streak_milestone') return t('Hito de racha ICA: {milestoneDays} días', { milestoneDays: entry.milestoneDays })
   if (entry.type === 'flash_milestone') return t('Hito de racha de flashcards: {milestoneDays} días', { milestoneDays: entry.milestoneDays })
   if (entry.type === 'challenge_win') return entry.delta > 0 ? t('Desafío ICA ganado') : t('Desafío ICA ganado (tope alcanzado)')
   if (entry.type === 'challenge_slot') return entry.used ? t('Desafío extra (usado)') : t('Desafío extra')
   if (entry.type === 'phase_boost' && entry.phase) return t('Ampliar {phase}', { phase: t(LIMIT_PHASE[entry.phase].name) })
-  return t('Día ampliado')
+  if (entry.type === 'monthly_earn') return t('Recompensa del ranking mensual')
+  if (entry.type === 'redeem_unlock') return t('PreguntICA extra')
+  if (entry.type === 'manual_adjustment') return t('Ajuste de saldo')
+  return t('ICA Coins')
 }
 
 /**
@@ -195,9 +196,10 @@ export function FichasView() {
   const [showAllMoves, setShowAllMoves] = useState(false)
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { total, realBalance, entries } = useFichas(user?.id)
+  const { total, realBalance, entries, unusedPasses: slots, challengeWinsThisWeek, refresh } = useFichas(user?.id)
   const { limits, used, boosted } = useDailyLimits()
   const [confirming, setConfirming] = useState<DailyLimitKey | 'challenge' | null>(null)
+  const [purchaseBusy, setPurchaseBusy] = useState(false)
   const [openRow, setOpenRow] = useState<'ica' | 'flash' | 'ranking' | null>(null)
   const { completedDays, creationDays, savedCreationDays, creationSavesUsedThisMonth, creationSavesLimit, dailyProgress } =
     useDashboardContext()
@@ -210,13 +212,13 @@ export function FichasView() {
   }).streak
   const flashStreak = getStreak(completedDays)
   const balance = total ?? 0
-  const slots = unusedChallengeSlots(entries)
   const progress = nextCoinProgress(realBalance)
-  const winCoinsThisWeek = challengeWinCoinsThisWeek(entries)
+  const winCoinsThisWeek = challengeWinsThisWeek
   const walletPercent = Math.min(100, (balance / COIN_WALLET_CAP) * 100)
 
   // «Ampliar» una fase solo hoy: primer toque pide confirmar, el segundo compra.
-  const tryBoost = (kind: DailyLimitKey) => {
+  const tryBoost = async (kind: DailyLimitKey) => {
+    if (purchaseBusy) return
     const phase = t(LIMIT_PHASE[kind].name)
     if (confirming !== kind) {
       if (balance < PHASE_BOOST_COST) {
@@ -229,7 +231,10 @@ export function FichasView() {
       return
     }
     setConfirming(null)
-    if (buyPhaseBoost(user?.id, kind, balance)) {
+    setPurchaseBusy(true)
+    try {
+      if (!(await buyPhaseBoost(user?.id, kind, balance))) throw new Error('PURCHASE_FAILED')
+      await refresh()
       gameSfx.celebrate()
       toast.success(t('{phase} ampliada hoy', { phase }), {
         description: t('Hoy puedes llegar a {n} {what}.', {
@@ -237,10 +242,17 @@ export function FichasView() {
           what: t(LIMIT_LABELS[kind].many),
         }),
       })
+    } catch (error) {
+      toast.error(error instanceof Error && error.message.includes('INSUFFICIENT_TOKENS')
+        ? t('No tienes suficientes ICA Coins.')
+        : t('No se pudo ampliar esta fase. Inténtalo de nuevo.'))
+    } finally {
+      setPurchaseBusy(false)
     }
   }
 
-  const tryChallenge = () => {
+  const tryChallenge = async () => {
+    if (purchaseBusy) return
     if (confirming !== 'challenge') {
       if (balance < EXTRA_CHALLENGE_COST) {
         toast.error(t('Necesitas {n} para un desafío extra (tienes {balance}).', { n: coinsText(EXTRA_CHALLENGE_COST), balance }))
@@ -250,11 +262,20 @@ export function FichasView() {
       return
     }
     setConfirming(null)
-    if (buyChallengeSlot(user?.id, balance)) {
+    setPurchaseBusy(true)
+    try {
+      if (!(await buyChallengeSlot(user?.id, balance))) throw new Error('PURCHASE_FAILED')
+      await refresh()
       gameSfx.celebrate()
       toast.success(t('Desafío extra listo'), {
         description: t('Úsalo en Desafíos ICA para retar o aceptar a una 4.ª persona.'),
       })
+    } catch (error) {
+      toast.error(error instanceof Error && error.message.includes('INSUFFICIENT_TOKENS')
+        ? t('No tienes suficientes ICA Coins.')
+        : t('No se pudo comprar el pase. Inténtalo de nuevo.'))
+    } finally {
+      setPurchaseBusy(false)
     }
   }
 
@@ -326,7 +347,7 @@ export function FichasView() {
                 ? t('Tienes {slots} sin usar. Sirve para retar o aceptar a una 4.ª persona.', { slots })
                 : t('Con 3 desafíos en curso, reta o acepta el reto de una 4.ª persona.')
             }
-            right={<PriceButton cost={EXTRA_CHALLENGE_COST} onClick={tryChallenge} confirming={confirming === 'challenge'} />}
+            right={<PriceButton cost={EXTRA_CHALLENGE_COST} onClick={tryChallenge} confirming={confirming === 'challenge'} disabled={purchaseBusy} />}
           />
           {LIMIT_ROWS.map((row) => (
             <Row
@@ -347,6 +368,7 @@ export function FichasView() {
                   cost={PHASE_BOOST_COST}
                   onClick={() => tryBoost(row.key)}
                   confirming={confirming === row.key}
+                  disabled={purchaseBusy}
                   doneLabel={boosted[row.key] ? t('Activo hoy') : undefined}
                 />
               }

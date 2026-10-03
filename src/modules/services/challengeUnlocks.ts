@@ -7,8 +7,8 @@
  * - El desafío de una nota maestra se desbloquea al escuchar al menos el 80 % de ESA nota.
  * - Se puede desbloquear en varias notas la misma semana.
  * - Una vez desbloqueado, queda abierto toda la semana (hasta el domingo a las 23:59).
- * - El lunes a las 00:00 (hora local del dispositivo) todas se vuelven a bloquear.
- *   (En el servidor, la columna `day` guarda el lunes de la semana.)
+ * - El lunes a las 00:00 (zona horaria guardada en el perfil) todas se vuelven a bloquear.
+ *   En el servidor, la columna `day` guarda el lunes local calculado por la RPC.
  *
  * Solo cuenta el audio que suena de verdad (los saltos de +10 s no suman).
  *
@@ -16,8 +16,8 @@
  * - La verdad está en Supabase (tabla master_note_challenge_unlocks). Se escribe solo con la RPC
  *   bump_master_note_challenge_listening, que comprueba que la nota es del alumno y limita
  *   los segundos (nunca más que la duración de la nota). Así vale entre dispositivos.
- * - localStorage es la caché (para que la barra avance al instante) y la cola de segundos
- *   pendientes de enviar (si no hay conexión, se envían más tarde).
+ * - localStorage es una caché visual y una cola de segundos pendientes; el servidor recalcula
+ *   siempre la semana, comprueba los requisitos y conserva la fuente de verdad entre dispositivos.
  */
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -48,7 +48,7 @@ const CACHE_PREFIX = 'ica-challenge-unlocks-v2:'
 const PENDING_PREFIX = 'ica-challenge-unlocks-pending-v2:'
 const SEND_DELAY_MS = 10_000
 
-/** El lunes de la semana (hora local), en AAAA-MM-DD: es el "día" con el que se guarda todo. */
+/** Clave local de caché del lunes; la RPC calcula su propio lunes con `profiles.timezone`. */
 function getLocalDayStamp(now = new Date()): string {
   const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7))
   const year = date.getFullYear()
@@ -332,12 +332,9 @@ async function runSync(userId: string, noteIds: string[]): Promise<void> {
   let error: unknown = null
   try {
     data = await runInBatches(noteIds, async (batchIds) => {
-      const result = await client
-        .from('master_note_challenge_unlocks')
-        .select('note_id, listened_seconds, unlocked_at')
-        .eq('user_id', userId)
-        .eq('day', day)
-        .in('note_id', batchIds)
+      const result = await client.rpc('get_my_master_note_challenge_unlocks', {
+        p_note_ids: batchIds,
+      })
       if (result.error) throw result.error
       return (result.data || []) as UnlockRow[]
     })
