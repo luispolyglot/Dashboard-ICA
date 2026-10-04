@@ -166,22 +166,36 @@ type Geometry = { width: number; height: number; tops: Record<StepKey, number>; 
 // Paradas del camino, en orden (el relleno del camino va de una a la siguiente).
 const STEP_ORDER: StepKey[] = ['I', 'C', 'A', 'chest', 'review']
 
-/** Centro de las fichas del móvil, medido desde su borde (izquierdo o derecho). */
-const TILE_CENTER = 66
+// MÓVIL (Luis, 4 oct, opción «curva en S»): la I, la C, la A, el cofre y el reto van en una
+// columna recta, centrados; lo que se mueve es el camino, que hace una S entre una ficha y la
+// siguiente. El nombre de cada paso va debajo de su ficha.
 
-function geometry(wide: boolean): Geometry {
+/** Sitio extra debajo del paso que toca, que enseña además su chip y el texto de ayuda. */
+const NEXT_STEP_EXTRA = 44
+
+function geometry(wide: boolean, roomAfter: StepKey | null = null): Geometry {
   // En el móvil el camino es algo más estrecho que la pantalla: así el nombre de cada paso,
   // centrado debajo de su ficha, cabe aunque sea largo («COFRE DEL CICLO»).
   const width = wide ? 420 : 322
-  const step = wide ? 150 : 100
-  const tops: Record<StepKey, number> = { I: 4, C: 4 + step, A: 4 + step * 2, chest: 4 + step * 3, review: 4 + step * 3 + (wide ? 130 : 92) }
-  const right = width - 66
+  // Sitio para la ficha (84), su nombre y, en el paso que toca, el chip y el texto de ayuda.
+  const step = 150
+  // Debajo del paso que toca hay más texto (chip y ayuda): los de después bajan un poco.
+  const after = roomAfter ? STEP_ORDER.indexOf(roomAfter) : -1
+  const extra = (index: number) => (after >= 0 && index > after ? NEXT_STEP_EXTRA : 0)
+  const tops: Record<StepKey, number> = {
+    I: 4,
+    C: 4 + step + extra(1),
+    A: 4 + step * 2 + extra(2),
+    chest: 4 + step * 3 + extra(3),
+    review: 4 + step * 4 - 4 + extra(4),
+  }
+  const x = width / 2
   const centers: Array<[number, number]> = [
-    [66, tops.I + 42],
-    [right, tops.C + 42],
-    [66, tops.A + 42],
-    [right, tops.chest + 34],
-    [66, tops.review + 38],
+    [x, tops.I + 42],
+    [x, tops.C + 42],
+    [x, tops.A + 42],
+    [x, tops.chest + 34],
+    [x, tops.review + 42],
   ]
   // En el móvil, debajo del Reto del día va su nombre (y el texto de ayuda si toca).
   return { width, height: tops.review + (wide ? 86 : 176), tops, centers }
@@ -189,15 +203,31 @@ function geometry(wide: boolean): Geometry {
 
 const MOBILE_GEOMETRY = geometry(false)
 export const PATH_HEIGHT = MOBILE_GEOMETRY.height
-const DESKTOP_GEOMETRY = geometry(true)
 
-function pathD(centers: Array<[number, number]>): string {
+/** Posición horizontal respecto al centro de la columna (vale en pantallas más estrechas). */
+const fromCenter = (offset: number): string => `calc(50% + ${offset}px)`
+
+/** Cuánto se separa la S del centro, a un lado y a otro (px). */
+const S_SWING = 95
+
+/**
+ * Camino que pasa por el centro de cada ficha. Entre dos fichas en la misma columna hace una S
+ * (una vez sale por la derecha, la siguiente por la izquierda); si no, una curva suave.
+ * `firstIndex` es la parada en la que empieza (para que los tramos parciales sigan la misma S).
+ */
+function pathD(centers: Array<[number, number]>, firstIndex = 0): string {
   let d = `M${centers[0][0]} ${centers[0][1]}`
   for (let index = 1; index < centers.length; index += 1) {
     const [x1, y1] = centers[index - 1]
     const [x2, y2] = centers[index]
-    const mid = (x1 + x2) / 2
-    d += ` C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`
+    if (Math.abs(x1 - x2) < 1) {
+      const side = (firstIndex + index - 1) % 2 === 0 ? 1 : -1
+      const bend = (y2 - y1) / 3
+      d += ` C ${x1 + side * S_SWING} ${y1 + bend}, ${x2 + side * S_SWING} ${y2 - bend}, ${x2} ${y2}`
+    } else {
+      const mid = (x1 + x2) / 2
+      d += ` C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`
+    }
   }
   return d
 }
@@ -225,7 +255,7 @@ function Road({
   const road = pathD(centers)
   const painted = fill ? fill.from : reached
   const doneRoad = painted > 0 ? pathD(centers.slice(0, painted + 1)) : null
-  const fillRoad = fill ? pathD(centers.slice(fill.from, fill.to + 1)) : null
+  const fillRoad = fill ? pathD(centers.slice(fill.from, fill.to + 1), fill.from) : null
   const dashed = {
     fill: 'none',
     strokeLinecap: 'round' as const,
@@ -342,20 +372,15 @@ function Sparkle({ style, delay, size }: { style: CSSProperties; delay: string; 
 }
 
 function Label({
-  side,
   top,
   children,
 }: {
-  side: 'left' | 'right'
   /** Altura a la que empieza (justo debajo de su ficha). */
   top: number
   children: ReactNode
 }) {
-  // Centrado debajo de su ficha. Puede salirse un poco del camino para que quepa.
-  const style: CSSProperties =
-    side === 'left'
-      ? { left: TILE_CENTER, top, transform: 'translateX(-50%)' }
-      : { right: TILE_CENTER, top, transform: 'translateX(50%)' }
+  // Centrado debajo de su ficha (todas van en la columna del centro).
+  const style: CSSProperties = { left: '50%', top, transform: 'translateX(-50%)' }
   // Solo tapa el camino donde está el texto (así el camino se ve entero alrededor).
   return (
     <div
@@ -370,7 +395,6 @@ function Label({
 function PhaseTile({
   phase,
   state,
-  side,
   onClick,
   onLockedClick,
   ariaLabel,
@@ -378,7 +402,6 @@ function PhaseTile({
 }: {
   phase: Phase
   state: NodeState
-  side: 'left' | 'right'
   onClick: () => void
   onLockedClick: (event: MouseEvent<HTMLElement>) => void
   ariaLabel: string
@@ -390,7 +413,7 @@ function PhaseTile({
       {state === 'next' ? (
         <span
           className='pointer-events-none absolute rounded-[32px] border-[6px]'
-          style={{ [side]: 16, top: top - 8, width: 100, height: 100, borderColor: phase.soft }}
+          style={{ left: fromCenter(-50), top: top - 8, width: 100, height: 100, borderColor: phase.soft }}
           aria-hidden='true'
         />
       ) : null}
@@ -402,7 +425,7 @@ function PhaseTile({
         aria-label={ariaLabel}
         className={`absolute flex items-center justify-center rounded-[26px] transition-transform ${locked ? 'cursor-not-allowed' : 'active:scale-95'} ${state === 'next' ? 'ica-bob' : ''}`}
         style={{
-          [side]: 24,
+          left: fromCenter(-42),
           top,
           width: 84,
           height: 84,
@@ -421,8 +444,8 @@ function PhaseTile({
         {state === 'done' ? <DoneShine letter={phase.letter} /> : null}
       </button>
       {/* El check y el candado sobresalen lo mismo (8 px) en todas las fichas, a los dos lados. */}
-      {state === 'done' ? <DoneBadge style={{ [side]: side === 'left' ? 88 : 16, top: top - 6 }} /> : null}
-      {locked ? <LockBadge style={{ [side]: side === 'left' ? 88 : 16, top: top - 6 }} /> : null}
+      {state === 'done' ? <DoneBadge style={{ left: fromCenter(22), top: top - 6 }} /> : null}
+      {locked ? <LockBadge style={{ left: fromCenter(22), top: top - 6 }} /> : null}
     </>
   )
 }
@@ -430,7 +453,6 @@ function PhaseTile({
 export function IcaPath() {
   const navigate = useNavigate()
   const { isLg } = useBreakpoints()
-  const geo = isLg ? DESKTOP_GEOMETRY : MOBILE_GEOMETRY
   const { user } = useAuth()
   const {
     config,
@@ -688,6 +710,8 @@ export function IcaPath() {
   // Debajo del Reto del día solo hace falta sitio para el chip y el texto de ayuda cuando salen;
   // si no, el camino acaba justo bajo «RETO DEL DÍA» (sin hueco hasta lo siguiente).
   const reviewHelp = next === 'review' || (reviewLocked && reviewNeedsWords)
+  // En el móvil, el paso que toca deja sitio debajo para su chip y su texto de ayuda.
+  const geo = geometry(false, next)
   const mobileHeight = reviewHelp ? geo.height : geo.tops.review + 124
   return (
     <>
@@ -707,14 +731,13 @@ export function IcaPath() {
         phase={PHASES.I}
         top={geo.tops.I}
         state={phaseState('I', iDone)}
-        side='left'
         onClick={() => navigate(DASHBOARD_ROUTES.newIcaWords)}
         ariaLabel={t('Inmersión: {n} de {goal} palabras', {
           n: Math.min(today.wordsAdded, CREATION_WORDS_GOAL),
           goal: CREATION_WORDS_GOAL,
         })}
       />
-      <Label side='left' top={geo.tops.I + 96}>
+      <Label top={geo.tops.I + 96}>
         {next === 'I' ? <StartChip color='#ffffff' textColor='#0b84b5' /> : null}
         <span className='text-[15px] font-extrabold tracking-[0.06em]' style={{ color: PHASES.I.ink }}>{t('INMERSIÓN')}</span>
         {/* El texto de ayuda solo en el paso que toca (en los demás no aporta). */}
@@ -733,7 +756,6 @@ export function IcaPath() {
         phase={PHASES.C}
         top={geo.tops.C}
         state={phaseState('C', cDone, cLocked)}
-        side='right'
         onClick={() => navigate(DASHBOARD_ROUTES.activationPhrase)}
         ariaLabel={
           cDone
@@ -743,7 +765,7 @@ export function IcaPath() {
               : t('Creación: crea una frase con tus palabras')
         }
       />
-      <Label side='right' top={geo.tops.C + 96}>
+      <Label top={geo.tops.C + 96}>
         {next === 'C' ? <StartChip label='SIGUE AQUÍ' color='#ffffff' textColor='#0b84b5' /> : null}
         <span className='text-[15px] font-extrabold tracking-[0.06em]' style={{ color: PHASES.C.ink }}>{t('CREACIÓN')}</span>
         {next === 'C' ? (
@@ -761,7 +783,6 @@ export function IcaPath() {
         phase={PHASES.A}
         top={geo.tops.A}
         state={phaseState('A', aDone, aLocked)}
-        side='left'
         onClick={() => navigate(DASHBOARD_ROUTES.masterNotes)}
         ariaLabel={
           aDone
@@ -771,7 +792,7 @@ export function IcaPath() {
               : t('Activación: graba una nota con tu voz')
         }
       />
-      <Label side='left' top={geo.tops.A + 96}>
+      <Label top={geo.tops.A + 96}>
         {next === 'A' ? <StartChip label='SIGUE AQUÍ' color='#ffffff' textColor='#0b84b5' /> : null}
         <span className='text-[15px] font-extrabold tracking-[0.06em]' style={{ color: PHASES.A.ink }}>{t('ACTIVACIÓN')}</span>
         {next === 'A' ? (
@@ -790,7 +811,7 @@ export function IcaPath() {
         <span
           className='ica-glow-pulse pointer-events-none absolute rounded-full'
           style={{
-            right: 6,
+            left: fromCenter(-60),
             top: geo.tops.chest - 18,
             width: 120,
             height: 104,
@@ -803,7 +824,7 @@ export function IcaPath() {
         // Aro como el de las fichas que tocan (I·C·A y Reto del día), en dorado.
         <span
           className='pointer-events-none absolute rounded-[32px] border-[6px]'
-          style={{ right: 14, top: geo.tops.chest - 16, width: 104, height: 96, borderColor: CHEST_RING }}
+          style={{ left: fromCenter(-52), top: geo.tops.chest - 16, width: 104, height: 96, borderColor: CHEST_RING }}
           aria-hidden='true'
         />
       ) : null}
@@ -821,7 +842,7 @@ export function IcaPath() {
         }
         className={`absolute flex items-center justify-center ${chestReady ? 'ica-wiggle' : ''} ${chestLocked ? 'cursor-not-allowed' : 'active:scale-95'}`}
         style={{
-          right: 22,
+          left: fromCenter(-44),
           top: geo.tops.chest - 8,
           width: 88,
           height: 80,
@@ -836,16 +857,16 @@ export function IcaPath() {
           className={chestLocked ? 'opacity-60' : undefined}
         />
       </button>
-      {chestOpened ? <DoneBadge style={{ right: 14, top: geo.tops.chest - 14 }} /> : null}
+      {chestOpened ? <DoneBadge style={{ left: fromCenter(24), top: geo.tops.chest - 14 }} /> : null}
       {chestReady ? (
         <>
-          <Sparkle style={{ right: 16, top: geo.tops.chest - 14 }} delay='0s' size={14} />
-          <Sparkle style={{ right: 104, top: geo.tops.chest + 6 }} delay='0.6s' size={11} />
-          <Sparkle style={{ right: 34, top: geo.tops.chest + 62 }} delay='1.1s' size={10} />
+          <Sparkle style={{ left: fromCenter(36), top: geo.tops.chest - 14 }} delay='0s' size={14} />
+          <Sparkle style={{ left: fromCenter(-49), top: geo.tops.chest + 6 }} delay='0.6s' size={11} />
+          <Sparkle style={{ left: fromCenter(22), top: geo.tops.chest + 62 }} delay='1.1s' size={10} />
         </>
       ) : null}
-      {chestLocked ? <LockBadge style={{ right: 14, top: geo.tops.chest - 14 }} /> : null}
-      <Label side='right' top={geo.tops.chest + 86}>
+      {chestLocked ? <LockBadge style={{ left: fromCenter(24), top: geo.tops.chest - 14 }} /> : null}
+      <Label top={geo.tops.chest + 86}>
         {next === 'chest' ? <StartChip label={t('¡ÁBRELO!')} color='#a16207' /> : null}
         <span className='text-[15px] font-extrabold tracking-[0.06em]' style={{ color: 'var(--ica-brand-ink)' }}>
           {t('COFRE DEL CICLO')}
@@ -881,7 +902,7 @@ export function IcaPath() {
         }
         className={`absolute flex items-center justify-center rounded-[26px] transition-transform ${next === 'review' ? 'ica-bob' : ''} ${reviewLocked ? 'cursor-not-allowed' : 'active:scale-95'}`}
         style={{
-          left: 24,
+          left: fromCenter(-42),
           top: geo.tops.review,
           width: 84,
           height: 84,
@@ -894,16 +915,16 @@ export function IcaPath() {
           style={retoIconStyle(reviewDone ? 'done' : reviewLocked ? 'locked' : 'pending')}
         />
       </button>
-      {reviewDone ? <DoneBadge style={{ left: 88, top: geo.tops.review - 6 }} /> : null}
+      {reviewDone ? <DoneBadge style={{ left: fromCenter(22), top: geo.tops.review - 6 }} /> : null}
       {next === 'review' ? (
         <span
           className='pointer-events-none absolute rounded-[32px] border-[6px]'
-          style={{ left: 16, top: geo.tops.review - 8, width: 100, height: 100, borderColor: RETO_RING }}
+          style={{ left: fromCenter(-50), top: geo.tops.review - 8, width: 100, height: 100, borderColor: RETO_RING }}
           aria-hidden='true'
         />
       ) : null}
-      {reviewLocked ? <LockBadge style={{ left: 88, top: geo.tops.review - 6 }} /> : null}
-      <Label side='left' top={geo.tops.review + 96}>
+      {reviewLocked ? <LockBadge style={{ left: fromCenter(22), top: geo.tops.review - 6 }} /> : null}
+      <Label top={geo.tops.review + 96}>
         {next === 'review' ? (
           <StartChip label='TERMINA AQUÍ' color='var(--ica-reto-edge)' />
         ) : null}

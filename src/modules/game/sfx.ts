@@ -50,6 +50,22 @@ function effectsContext(): AudioContext | null {
   return audioContext
 }
 
+// SONIDO AL MOMENTO (Luis, 4 oct): el primer sonido (o el primero tras un rato sin sonar) tardaba,
+// porque el audio del navegador estaba dormido y despertarlo lleva un momento. Ahora se despierta
+// en cuanto el dedo toca la pantalla (pointerdown), antes del clic que hace sonar el efecto.
+if (typeof window !== 'undefined') {
+  const wake = () => {
+    if (!isGameSoundEnabled()) return
+    try {
+      effectsContext()
+    } catch {
+      // Sin audio: no pasa nada.
+    }
+  }
+  window.addEventListener('pointerdown', wake, { capture: true, passive: true })
+  window.addEventListener('keydown', wake, { capture: true })
+}
+
 export function isGameSoundEnabled(): boolean {
   try {
     return window.localStorage.getItem(SOUND_PREF_KEY) !== 'off'
