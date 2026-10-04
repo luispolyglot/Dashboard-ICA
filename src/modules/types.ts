@@ -78,6 +78,8 @@ export interface LeaderboardEntry {
   total_points?: number
   /** Insignia destacada del alumno ("categoria:rango"), cuando el servidor la devuelva. */
   featured_badge?: string | null
+  /** Bandera que enseña el alumno (nombre del idioma, p. ej. "Polaco"), si ha comprado alguna. */
+  display_flag?: string | null
 }
 
 export interface PhraseGenerationEntry {

@@ -14,7 +14,8 @@ import { FlameIcon } from './icons'
 import { getIcaStreakState } from './streak'
 import { GameProgress, Pill } from './ui'
 import { useFeaturedBadge } from './featuredBadge'
-import { FeaturedBadgeMini } from './ranking'
+import { FeaturedBadgeMini, FlagInitial } from './ranking'
+import { useMyFlags } from './languageFlag'
 import { Medal, MedalDefs } from './Medal'
 import { MedalDetailDialog, type MedalSelection } from './MedalDetail'
 import { tierName } from './medals'
@@ -49,9 +50,13 @@ export function LevelAvatar({ size = 64 }: { size?: number }) {
       ? getMetaTrackerSnapshot(metaTrackerProfile, config.targetLang)
       : null
   const levelColor = snapshot ? getMetaTrackerLevelColor(snapshot.currentLevelKey) : 'var(--border-strong)'
+  const { shown: flag } = useMyFlags(user?.id)
 
   return (
     <span className='relative inline-flex shrink-0' style={{ width: size, height: size + 8 }}>
+      {flag ? (
+        <FlagInitial initial={initial} flag={flag} size={size} ring={levelColor} />
+      ) : (
       <span
         className='flex items-center justify-center rounded-full font-extrabold'
         style={{
@@ -65,6 +70,7 @@ export function LevelAvatar({ size = 64 }: { size?: number }) {
       >
         {initial}
       </span>
+      )}
       {snapshot ? (
         <span
           className='absolute left-1/2 -translate-x-1/2 rounded-full border-2 border-background px-2 text-[11px] leading-5 font-extrabold text-white'

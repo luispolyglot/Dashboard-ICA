@@ -258,5 +258,19 @@ const en: Record<string, string> = {
   "Cerrar aviso": "Close warning",
   // Inicio en el móvil: cofre y reto a la vez (5 oct)
   "Reto del día: se abre al completar I·C·A": "Daily challenge: opens when you complete I·C·A",
+  // Bandera del idioma (4 oct)
+  "Necesitas {n} para la bandera (tienes {balance}).": "You need {n} for the flag (you have {balance}).",
+  "¡La bandera de {lang} ya es tuya!": "The {lang} flag is yours!",
+  "Sale de fondo en tu inicial, en tu perfil y en el ranking.": "It shows behind your initial, on your profile and in the ranking.",
+  "No se pudo comprar la bandera. Inténtalo de nuevo.": "Couldn't buy the flag. Try again.",
+  "No se pudo cambiar la bandera.": "Couldn't change the flag.",
+  "Bandera de {lang}": "{lang} flag",
+  "Ya es tuya. Elige abajo cuál sale de fondo en tu inicial.": "It's yours. Choose below which one shows behind your initial.",
+  "De fondo en tu inicial: en tu perfil y en el ranking. Para siempre.": "Behind your initial, on your profile and in the ranking. Forever.",
+  "Tuya": "Yours",
+  "Tus banderas": "Your flags",
+  "Bandera que se ve": "Flag shown",
+  "Ninguna": "None",
+  "Bandera del idioma": "Language flag",
 }
 export default en

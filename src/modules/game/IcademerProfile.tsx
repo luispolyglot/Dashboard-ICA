@@ -35,6 +35,8 @@ export type IcademerSummary = {
   userId: string
   name: string
   badge?: FeaturedBadge | null
+  /** Bandera comprada que enseña (nombre del idioma). */
+  flag?: string | null
 }
 
 type ChallengeState =
@@ -268,7 +270,7 @@ export function IcademerProfileDialog({
       <DialogContent className='sm:max-w-sm'>
         {/* Cabecera: inicial, nombre e insignia destacada */}
         <div className='flex flex-col items-center gap-2 pt-1 text-center'>
-          <UserInitial name={name} size={76} />
+          <UserInitial name={name} size={76} flag={summary.flag} />
           <div className='flex max-w-full items-center justify-center gap-1.5'>
             <DialogTitle className='truncate pr-0 text-2xl font-black tracking-tight'>
               {name}
