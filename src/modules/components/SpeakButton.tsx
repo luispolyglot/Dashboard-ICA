@@ -3,7 +3,8 @@ import type { CSSProperties, MouseEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { langName as displayLangName, t } from '@/i18n'
-import { speakNatural, stopTTS } from '../services/tts'
+import { toast } from 'sonner'
+import { speakNatural, stopTTS, type SpeakResult } from '../services/tts'
 import { SquareIcon, Volume2Icon } from 'lucide-react'
 
 type SpeakButtonProps = {
@@ -80,6 +81,15 @@ export function SpeakButton({
     boxShadow: `0 3px 0 color-mix(in oklab, ${colors.solid} 36%, transparent)`,
   }
 
+  // When nothing could be played (Google voice and device voice both failed), say so instead of
+  // silently going back to «Escuchar».
+  const handleEnd = (result: SpeakResult) => {
+    setPlaying(false)
+    if (!result.ok) {
+      toast.error(t('No se pudo reproducir el audio. Toca otra vez.'), { id: 'speak-button-failed' })
+    }
+  }
+
   const go = (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
     if (playing) {
@@ -88,7 +98,7 @@ export function SpeakButton({
       return
     }
     setPlaying(true)
-    speakNatural(text, langName, () => setPlaying(false), rate)
+    speakNatural(text, langName, handleEnd, rate)
   }
 
   const handleRate = (e: MouseEvent<HTMLButtonElement>, nextRate: 0.75 | 1) => {
@@ -99,7 +109,7 @@ export function SpeakButton({
 
     stopTTS()
     setPlaying(true)
-    speakNatural(text, langName, () => setPlaying(false), nextRate)
+    speakNatural(text, langName, handleEnd, nextRate)
   }
 
   if (variant === 'icon') {

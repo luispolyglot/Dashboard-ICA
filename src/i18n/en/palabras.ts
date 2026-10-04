@@ -247,6 +247,7 @@ const en: Record<string, string> = {
   'Escuchar {lang}': 'Listen in {lang}',
   Velocidad: 'Speed',
   'Reproduciendo...': 'Playing...',
+  'No se pudo reproducir el audio. Toca otra vez.': "Couldn't play the audio. Tap again.",
   Escuchar: 'Listen',
   'Racha diaria completada': 'Daily streak done',
   'Racha diaria {done}/{goal}': 'Daily streak {done}/{goal}',
