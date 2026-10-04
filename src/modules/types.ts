@@ -80,6 +80,8 @@ export interface LeaderboardEntry {
   featured_badge?: string | null
   /** Bandera que enseña el alumno (nombre del idioma, p. ej. "Polaco"), si ha comprado alguna. */
   display_flag?: string | null
+  /** Tiebreak: correct answers in the first daily-game attempt of each day (days 1-28). */
+  daily_game_correct?: number | null
 }
 
 export interface PhraseGenerationEntry {
