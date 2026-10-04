@@ -25,6 +25,7 @@ import {
   useAchievements,
 } from './achievements'
 import type { FeaturedBadge } from './featuredBadge'
+import { fetchProfileBadges, pickTopBadges, useMyProfileBadges } from './profileBadges'
 import { SwordsIcon } from './icons'
 import type { MedalCategory } from './medals'
 import { FeaturedBadgeMini, UserInitial } from './ranking'
@@ -203,6 +204,23 @@ export function IcademerProfileDialog({
   }, [summary?.userId])
   // Tus propias insignias salen de tus datos (igual que en tu perfil).
   const mine = useAchievements()
+  // The (up to) 3 badges the student chose for their profile. Empty = the 3 best ones.
+  const myChosen = useMyProfileBadges(isMe ? user?.id : null)
+  const [othersChosen, setOthersChosen] = useState<FeaturedBadge[] | null>(null)
+  useEffect(() => {
+    setOthersChosen(null)
+    const profileUserId = summary?.userId
+    if (!profileUserId || isMe) return
+    let active = true
+    fetchProfileBadges(profileUserId).then(
+      (badges) => active && setOthersChosen(badges),
+      () => active && setOthersChosen([]),
+    )
+    return () => {
+      active = false
+    }
+  }, [summary?.userId, isMe])
+  const chosen = isMe ? myChosen.badges : othersChosen
 
   const earned = useMemo<Record<MedalCategory, number> | null>(() => {
     if (!isMe) return loaded.earned
@@ -225,12 +243,12 @@ export function IcademerProfileDialog({
   const level = (isMe ? myLevel : null) || loaded.level
   const totalEarned = earned ? Object.values(earned).reduce((sum, value) => sum + value, 0) : 0
   const totalPossible = ACHIEVEMENT_CATALOG.reduce((sum, def) => sum + def.levels.length, 0)
-  const topBadges = earned
-    ? ACHIEVEMENT_CATALOG.filter((def) => earned[def.key] > 0).map((def) => ({
-        def,
-        badge: { category: def.key, tier: def.levels[earned[def.key] - 1].tier } as FeaturedBadge,
-      }))
-    : []
+  const shownBadges: FeaturedBadge[] = chosen && chosen.length > 0 ? chosen : earned ? pickTopBadges(earned) : []
+  const topBadges = shownBadges.flatMap((badge) => {
+    const def = ACHIEVEMENT_CATALOG.find((item) => item.key === badge.category)
+    return def ? [{ def, badge }] : []
+  })
+  const badgesLoading = topBadges.length === 0 && (earned === null || (!isMe && chosen === null))
 
   // «Desafiar»: el botón espera un momento (cargando) mientras se precargan los datos de
   // Desafíos, y luego se va directo a «Retar a …» con el modo para elegir. Como mucho 4 s.
@@ -319,7 +337,7 @@ export function IcademerProfileDialog({
               </span>
             ) : null}
           </div>
-          {earned === null ? (
+          {badgesLoading ? (
             <div className='grid grid-cols-3 gap-2' aria-hidden='true'>
               {Array.from({ length: 3 }, (_, index) => (
                 <span key={index} className='h-24 animate-pulse rounded-2xl bg-muted' />
@@ -332,13 +350,18 @@ export function IcademerProfileDialog({
           ) : (
             <div className='grid grid-cols-3 gap-2'>
               {topBadges.map(({ def, badge }) => (
-                <div key={def.key} className='flex flex-col items-center gap-1 rounded-2xl bg-muted/50 px-1 pt-2 pb-2 text-center'>
+                <div key={`${badge.category}:${badge.tier}`} className='flex flex-col items-center gap-1 rounded-2xl bg-muted/50 px-1 pt-2 pb-2 text-center'>
                   <FeaturedBadgeMini badge={badge} size={54} />
                   <span className='line-clamp-2 text-[11px] leading-tight font-extrabold'>{t(def.title)}</span>
                 </div>
               ))}
             </div>
           )}
+          {isMe && topBadges.length > 0 ? (
+            <p className='m-0 mt-2 text-center text-xs font-semibold text-muted-foreground'>
+              {t('Elige cuáles se ven aquí: abre una insignia y toca «Mostrar en mi perfil».')}
+            </p>
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>

@@ -247,5 +247,12 @@ const en: Record<string, string> = {
   "Te falta esta frase por activar": "You still need to activate this phrase",
   "La creaste hoy. Grábala con tu voz para completar el ciclo ICA.": "You created it today. Record it with your voice to complete the ICA cycle.",
   "Ahora no": "Not now",
+  // Insignias del perfil (4 oct)
+  "Toca una insignia para ver qué significa. Puedes elegir una para que salga junto a tu nombre y tres para tu perfil.": "Tap a badge to see what it means. You can pick one to show next to your name and three for your profile.",
+  "Mostrar en mi perfil ({n} de {max})": "Show on my profile ({n} of {max})",
+  "Quitar de mi perfil": "Remove from my profile",
+  "Ya tienes 3 insignias en tu perfil. Quita una para poner esta.": "You already have 3 badges on your profile. Remove one to add this one.",
+  "No se pudieron guardar las insignias de tu perfil.": "Your profile badges could not be saved.",
+  "Elige cuáles se ven aquí: abre una insignia y toca «Mostrar en mi perfil».": "Choose which ones show here: open a badge and tap “Show on my profile”.",
 }
 export default en

@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/auth/AuthContext'
 import { goalText, unlockHint, type AchievementCategoryDef, type AchievementProgress } from './achievements'
 import { useFeaturedBadge } from './featuredBadge'
+import { PROFILE_BADGES_MAX, useMyProfileBadges } from './profileBadges'
 import { Medal } from './Medal'
 import { isLegend, medalText, tierName, type MedalTier } from './medals'
 import { SpinningMedal } from './SpinningMedal'
@@ -36,6 +37,7 @@ export function MedalDetailDialog({
 }) {
   const { user } = useAuth()
   const { badge, choose } = useFeaturedBadge(user?.id)
+  const profileBadges = useMyProfileBadges(user?.id)
   const [tier, setTier] = useState<MedalTier | null>(selection?.tier ?? null)
 
   useEffect(() => {
@@ -53,6 +55,7 @@ export function MedalDetailDialog({
   const earned = earnedCount > levelIndex
   const goal = progress?.goals[levelIndex] ?? null
   const isFeatured = badge?.category === def.key && badge?.tier === tier
+  const inProfile = profileBadges.includes({ category: def.key, tier })
   const legends = def.levels.slice(5)
   const legendEarned = Math.max(0, earnedCount - 5)
   // Hueco de la Leyenda en la fila de abajo: la elegida o, si no, la Leyenda I (la que va
@@ -144,20 +147,33 @@ export function MedalDetailDialog({
         ) : null}
 
         {earned ? (
-          isFeatured ? (
-            <div className='flex flex-col gap-2'>
-              <p className='m-0 text-center text-xs font-semibold text-muted-foreground'>
-                {t('Es tu insignia destacada: sale junto a tu nombre en el perfil y en el ranking.')}
-              </p>
-              <Button type='button' variant='outline' onClick={() => choose(null)}>
-                {t('Quitar de mi nombre')}
+          <div className='flex flex-col gap-2'>
+            {isFeatured ? (
+              <>
+                <p className='m-0 text-center text-xs font-semibold text-muted-foreground'>
+                  {t('Es tu insignia destacada: sale junto a tu nombre en el perfil y en el ranking.')}
+                </p>
+                <Button type='button' variant='outline' onClick={() => choose(null)}>
+                  {t('Quitar de mi nombre')}
+                </Button>
+              </>
+            ) : (
+              <Button type='button' onClick={() => choose({ category: def.key, tier })}>
+                {t('Mostrar junto a mi nombre')}
               </Button>
-            </div>
-          ) : (
-            <Button type='button' onClick={() => choose({ category: def.key, tier })}>
-              {t('Mostrar junto a mi nombre')}
+            )}
+            {/* Up to 3 badges that other students see when they open your profile. */}
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => void profileBadges.toggle({ category: def.key, tier })}
+              aria-pressed={inProfile}
+            >
+              {inProfile
+                ? t('Quitar de mi perfil')
+                : t('Mostrar en mi perfil ({n} de {max})', { n: profileBadges.badges.length, max: PROFILE_BADGES_MAX })}
             </Button>
-          )
+          </div>
         ) : null}
       </DialogContent>
     </Dialog>

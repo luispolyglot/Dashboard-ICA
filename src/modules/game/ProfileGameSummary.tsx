@@ -193,7 +193,7 @@ export function ProfileGameSummary({ onNavigate }: { onNavigate?: () => void }) 
           })}
         </div>
         <p className='m-0 mt-2 text-xs font-semibold text-muted-foreground'>
-          {t('Toca una insignia para ver qué significa. Puedes elegir una para que salga junto a tu nombre.')}
+          {t('Toca una insignia para ver qué significa. Puedes elegir una para que salga junto a tu nombre y tres para tu perfil.')}
         </p>
       </div>
 
