@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { canRespellLocally, polishToSpanishRespelling } from './polish'
 /** Palabras por petición (las mismas que acepta el servidor). */
 const PRONUNCIATION_MAX_WORDS = 20
 
@@ -9,9 +10,11 @@ const PRONUNCIATION_MAX_WORDS = 20
 // Se puede ocultar en Perfil.
 //
 // Sale de la acción «pronunciation» de la función anthropic-proxy (hay que desplegarla).
+// Polaco para hispanohablantes: sin IA, con reglas fijas (polish.ts), que aciertan siempre.
 
 const PREF_KEY = 'ica-show-pronunciation'
-const CACHE_PREFIX = 'ica-pronunciation-v1:'
+// v2 (4 oct): se tiran las que hizo la IA con el prompt viejo (muchas estaban mal).
+const CACHE_PREFIX = 'ica-pronunciation-v2:'
 export const PRONUNCIATION_PREF_EVENT = 'ica:pronunciation-pref'
 
 export function isPronunciationEnabled(): boolean {
@@ -162,6 +165,7 @@ export function prefetchPronunciations(items: Array<{ word: string | null | unde
   if (!isPronunciationEnabled()) return
   for (const item of items) {
     const clean = (item.word || '').trim()
+    if (canRespellLocally(item.targetLang, item.nativeLang)) continue
     if (clean && item.targetLang && item.nativeLang) enqueue(clean, { targetLang: item.targetLang, nativeLang: item.nativeLang })
   }
 }
@@ -188,10 +192,11 @@ export function usePronunciation(
     }
   }, [])
 
-  const cached = enabled && pair && clean ? readCache(pair)[clean] ?? null : null
+  const local = enabled && pair && clean && canRespellLocally(pair.targetLang, pair.nativeLang)
+  const cached = enabled && pair && clean ? (local ? polishToSpanishRespelling(clean) : readCache(pair)[clean] ?? null) : null
 
   useEffect(() => {
-    if (!enabled || !pair || !clean || cached) return
+    if (!enabled || !pair || !clean || cached || local) return
     enqueue(clean, pair)
     notify()
   }, [enabled, clean, cached, pair?.targetLang, pair?.nativeLang]) // eslint-disable-line react-hooks/exhaustive-deps

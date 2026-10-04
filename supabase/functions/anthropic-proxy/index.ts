@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { PRONUNCIATION_MAX_WORDS, buildPronunciationPrompt, parsePronunciationReply, pronunciationMaxTokens } from '../_shared/pronunciation-prompt.ts'
+import { readCachedRespellings, storeRespellings, type PronunciationCacheClient } from '../_shared/pronunciation-cache.ts'
 import { ensureCoachingAdmin, scopeAllows } from '../_shared/coaching-auth.ts'
 import { getModelRequestConfig, isClaudeSonnet55, makeStrictTool } from '../_shared/anthropic-model.ts'
 import {
@@ -970,9 +971,19 @@ Deno.serve(async (req) => {
       if (words.length === 0 || !payload.targetLang || !payload.nativeLang) {
         return jsonResponse(400, { error: 'words, targetLang and nativeLang are required' })
       }
-      const { system, prompt } = buildPronunciationPrompt(words, payload.targetLang, payload.nativeLang)
-      const raw = await callAnthropic(system, prompt, { model: FAST_MODEL, maxTokens: pronunciationMaxTokens(words.length), temperature: 0 })
-      return jsonResponse(200, { result: parsePronunciationReply(raw.text || '', words) })
+      // Shared cache first: each word is asked to the AI only once for everyone.
+      const cacheClient = createAdminClient() as unknown as PronunciationCacheClient | null
+      const cached = await readCachedRespellings(cacheClient, words, payload.targetLang, payload.nativeLang)
+      const missing = words.filter((word) => !cached[word])
+      if (missing.length === 0) return jsonResponse(200, { result: cached })
+
+      const { system, prompt } = buildPronunciationPrompt(missing, payload.targetLang, payload.nativeLang)
+      // General model (not the fast one): the fast one got many wrong (Luis, 4 Oct). Cheap anyway,
+      // because each word is generated once and then read from the table.
+      const raw = await callAnthropic(system, prompt, { maxTokens: pronunciationMaxTokens(missing.length), temperature: 0 })
+      const fresh = parsePronunciationReply(raw.text || '', missing)
+      await storeRespellings(cacheClient, fresh, payload.targetLang, payload.nativeLang, Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6')
+      return jsonResponse(200, { result: { ...cached, ...fresh } })
     }
 
     if (payload.action === 'word_example') {
