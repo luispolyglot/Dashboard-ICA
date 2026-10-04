@@ -971,8 +971,7 @@ Deno.serve(async (req) => {
         return jsonResponse(400, { error: 'words, targetLang and nativeLang are required' })
       }
       const { system, prompt } = buildPronunciationPrompt(words, payload.targetLang, payload.nativeLang)
-      // Modelo general (no el rápido): con el rápido salían muchas mal (Luis, 4 oct). Se pide una vez por palabra.
-      const raw = await callAnthropic(system, prompt, { maxTokens: pronunciationMaxTokens(words.length), temperature: 0 })
+      const raw = await callAnthropic(system, prompt, { model: FAST_MODEL, maxTokens: pronunciationMaxTokens(words.length), temperature: 0 })
       return jsonResponse(200, { result: parsePronunciationReply(raw.text || '', words) })
     }
 

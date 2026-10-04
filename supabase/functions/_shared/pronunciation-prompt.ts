@@ -16,12 +16,8 @@ export function buildPronunciationPrompt(words: string[], targetLang: string, na
   const isSpanish = nativeLang.trim().toLowerCase() === 'español'
   const style = isSpanish
     ? [
-        'Write how each word SOUNDS using SPANISH spelling, so a Spanish speaker who reads your respelling with Spanish rules sounds right.',
-        'Never copy the original spelling when Spanish would read it differently: every letter you write is read the Spanish way (j = Spanish jota, ll/y = y, ñ = ñ, h is silent, z is not used for an s sound).',
-        'Use "sh" for the sh sound, "ch" for ch, "v" only for a real v sound, "ts" for ts, "ü" only for French u / German ü (say "iu" if unsure).',
-        'Write only the sounds that are pronounced (drop silent letters) and devoice final consonants when the language does it.',
-        'Mark the stressed syllable with a Spanish written accent only when Spanish rules would need it.',
-        'Examples: beaucoup → bocú, merci → mersí, thank you → zenkiú, water → uóter, Schweinsteiger → shváinshtaiguer, ich → ij, buongiorno → buonyorno, postawiłem → postavíuem, sposób → spósup, dziękuję → yenkuye.',
+        'Write how each word sounds using SPANISH spelling, so a Spanish speaker can read it aloud and sound right.',
+        'Mark the stressed syllable with a Spanish written accent only when Spanish rules would need it (beaucoup → bocú, thank you → zenkiú, dziękuję → dzienkúie).',
         'No IPA symbols, no hyphens, lowercase.',
       ]
     : [
