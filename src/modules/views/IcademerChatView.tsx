@@ -19,7 +19,7 @@ import {
   zoneCity,
   type ChatMessageKind,
 } from '../game/icademerChat'
-import { markChatInviteSeen } from '../game/useIcademerChat'
+import { markChatInviteSeen, markIcademerChatRead } from '../game/useIcademerChat'
 import { enablePushOnCurrentDevice } from '../services/pushNotifications'
 import {
   fetchIcademerChat,
@@ -167,6 +167,8 @@ export function IcademerChatView() {
   const loadChat = useCallback(async () => {
     try {
       const chat = await fetchIcademerChat(targetLang)
+      // Leer el chat lo marca como leído: el aviso de mensajes nuevos se apaga en todos lados.
+      markIcademerChatRead()
       setMessages(chat.messages)
       setMemberCount(chat.memberCount)
       setError(null)

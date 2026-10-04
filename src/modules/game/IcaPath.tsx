@@ -258,17 +258,14 @@ function Road({
   )
 }
 
-/** Al tocar algo bloqueado: tiembla un poco (y el móvil vibra), para que se note que no se puede. */
+/** Al tocar algo bloqueado: tiembla, suena «toc-toc» y el móvil vibra, para que se note que no se puede. */
 function shakeLocked(event: MouseEvent<HTMLElement>): void {
   const element = event.currentTarget
   element.classList.remove('ica-shake')
   void element.offsetWidth
   element.classList.add('ica-shake')
-  try {
-    navigator.vibrate?.(35)
-  } catch {
-    /* sin vibración */
-  }
+  // «toc-toc» y vibración (Luis, 3 oct: el sonido del paso bloqueado).
+  gameSfx.locked()
 }
 
 /**

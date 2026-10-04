@@ -1,5 +1,5 @@
 import { memo, useEffect } from 'react'
-import { buildMedalSvg, MEDAL_DEFS_SVG, type MedalCategory, type MedalTier } from './medals'
+import { buildMedalSvg, isLegend, MEDAL_DEFS_SVG, type MedalCategory, type MedalTier } from './medals'
 import { getUiLang, t } from '@/i18n'
 
 const DEFS_ID = 'ica-medal-defs'
@@ -59,7 +59,7 @@ export const Medal = memo(function Medal({ category, tier, ribbon, label, earned
       style={{
         filter: earned ? undefined : 'grayscale(1)',
         // Rubí y diamante sin conseguir: apagadas pero con su brillo bien visible.
-        opacity: earned ? 1 : tier === 'rubi' || tier === 'diamante' ? 0.55 : 0.32,
+        opacity: earned ? 1 : tier === 'rubi' || tier === 'diamante' || isLegend(tier) ? 0.55 : 0.32,
       }}
       aria-label={earned ? label : t('{label} (aún no)', { label })}
       dangerouslySetInnerHTML={{ __html: buildMedalSvg(category, tier, ribbonText(ribbon), label, compact) }}

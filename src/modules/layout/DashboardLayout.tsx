@@ -34,6 +34,8 @@ import {
 } from '../offline/events'
 import { LanguageSetup } from '../views/LanguageSetup'
 import { CycleCelebration } from '../game/CycleCelebration'
+import { NewBadgeCelebration } from '../game/NewBadgeCelebration'
+import { TapHaptics } from '../game/TapHaptics'
 import { ChallengesUnlockWatcher } from '../game/ChallengesUnlocked'
 import { prefetchAchievementStats } from '../game/achievements'
 import { fetchMonthlyStreakLeaderboard } from '../services/leaderboard'
@@ -425,6 +427,8 @@ export function DashboardLayout() {
         />
 
         <CycleCelebration />
+        <NewBadgeCelebration />
+        <TapHaptics />
         <ChallengesUnlockWatcher />
         <StreakDayCelebrationHost />
         <MonthlyRecapHost />

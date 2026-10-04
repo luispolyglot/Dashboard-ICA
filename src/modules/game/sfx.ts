@@ -52,12 +52,80 @@ function playTones(frequencies: number[], step = 0.11, type: OscillatorType = 's
   }
 }
 
+/** Ruido corto filtrado (el «toc», el confeti…). */
+function noiseBurst(ctx: AudioContext, at: number, duration: number, frequency: number, type: BiquadFilterType, volume: number): void {
+  const length = Math.max(1, Math.floor(ctx.sampleRate * duration))
+  const buffer = ctx.createBuffer(1, length, ctx.sampleRate)
+  const data = buffer.getChannelData(0)
+  for (let index = 0; index < length; index += 1) data[index] = Math.random() * 2 - 1
+  const source = ctx.createBufferSource()
+  source.buffer = buffer
+  const filter = ctx.createBiquadFilter()
+  filter.type = type
+  filter.frequency.value = frequency
+  const gain = ctx.createGain()
+  const start = ctx.currentTime + at
+  gain.gain.setValueAtTime(0.0001, start)
+  gain.gain.exponentialRampToValueAtTime(volume, start + 0.004)
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration)
+  source.connect(filter).connect(gain).connect(ctx.destination)
+  source.start(start)
+  source.stop(start + duration + 0.02)
+}
+
+/** Golpe sordo que baja de tono (el «toc» del paso bloqueado). */
+function thump(ctx: AudioContext, at: number, from: number, to: number, duration: number, volume: number): void {
+  const oscillator = ctx.createOscillator()
+  const gain = ctx.createGain()
+  const start = ctx.currentTime + at
+  oscillator.frequency.setValueAtTime(from, start)
+  oscillator.frequency.exponentialRampToValueAtTime(to, start + duration)
+  gain.gain.setValueAtTime(0.0001, start)
+  gain.gain.exponentialRampToValueAtTime(volume, start + 0.006)
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration)
+  oscillator.connect(gain).connect(ctx.destination)
+  oscillator.start(start)
+  oscillator.stop(start + duration + 0.05)
+}
+
 function vibrate(pattern: number | number[]): void {
   try {
-    navigator.vibrate?.(pattern)
+    if (navigator.vibrate?.(pattern)) return
   } catch {
-    // iPhone no vibra desde la web; no pasa nada.
+    /* sigue con el truco del iPhone */
   }
+  iosTick(Array.isArray(pattern) ? Math.ceil(pattern.length / 2) : 1)
+}
+
+// iPhone: Safari no deja vibrar a las webs, pero desde iOS 18 tocar un interruptor
+// (<input type="checkbox" switch>) da un toque suave. Se usa uno escondido.
+let hiddenSwitch: HTMLLabelElement | null = null
+function iosTick(times = 1): void {
+  if (typeof document === 'undefined' || !/iP(hone|ad|od)/.test(navigator.userAgent)) return
+  try {
+    if (!hiddenSwitch) {
+      const label = document.createElement('label')
+      const input = document.createElement('input')
+      input.type = 'checkbox'
+      input.setAttribute('switch', '')
+      label.appendChild(input)
+      label.setAttribute('aria-hidden', 'true')
+      label.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none'
+      document.body.appendChild(label)
+      hiddenSwitch = label
+    }
+    const tick = hiddenSwitch
+    tick.click()
+    for (let index = 1; index < times; index += 1) window.setTimeout(() => tick.click(), index * 90)
+  } catch {
+    /* sin vibración */
+  }
+}
+
+/** Toque suave al pulsar un botón (como Duolingo). Respeta el interruptor de sonido. */
+export function hapticTap(): void {
+  if (typeof window === 'undefined' || !isGameSoundEnabled()) return
+  vibrate(12)
 }
 
 export const gameSfx = {
@@ -90,6 +158,126 @@ export const gameSfx = {
   coin() {
     playTones([1319], 0.045, 'sine', 0.07)
   },
+  /** Confeti de una insignia nueva: un «pof» suave y crujidos muy bajitos. */
+  confetti() {
+    const ctx = getAudioContext()
+    if (!ctx) return
+    noiseBurst(ctx, 0, 0.09, 1400, 'bandpass', 0.1)
+    for (let index = 0; index < 14; index += 1) {
+      noiseBurst(ctx, 0.05 + Math.random() * 0.6, 0.018, 5000 + Math.random() * 3000, 'highpass', 0.02 + Math.random() * 0.025)
+    }
+  },
+  /** Paso bloqueado (tocar Creación o Activación sin haber hecho lo anterior): «toc-toc» y vibra. */
+  locked() {
+    vibrate([30, 40, 30])
+    const ctx = getAudioContext()
+    if (!ctx) return
+    noiseBurst(ctx, 0, 0.04, 900, 'bandpass', 0.25)
+    thump(ctx, 0, 170, 85, 0.15, 0.45)
+    noiseBurst(ctx, 0.14, 0.035, 800, 'bandpass', 0.18)
+    thump(ctx, 0.14, 150, 80, 0.13, 0.3)
+  },
+  /**
+   * Una estrella de la Leyenda cae sobre el aro: golpe seco y grave (todas igual).
+   * `quiet`: en las que aún no tienes, más bajito. `last`: la última vibra un poco más.
+   */
+  legendStar(quiet = false, last = false) {
+    const ctx = getAudioContext()
+    if (!ctx) return
+    playLegendStar(ctx, ctx.currentTime + 0.01, { quiet })
+    if (!quiet) window.setTimeout(() => vibrate(last ? [35, 30, 60] : 30), LEGEND_STAR_FALL_MS)
+  },
+}
+
+
+// ---------------------------------------------------------------------------
+// Estrellas de la Leyenda: caen una a una sobre el aro
+// ---------------------------------------------------------------------------
+
+/** Lo que tarda una estrella en caer (la animación y el sonido van con este tiempo). */
+export const LEGEND_STAR_FALL_MS = 220
+
+/** Ruido blanco de la duración pedida (para el «fiuu» y el brillo). */
+function noiseSource(ctx: BaseAudioContext, duration: number): AudioBufferSourceNode {
+  const length = Math.max(1, Math.floor(ctx.sampleRate * duration))
+  const buffer = ctx.createBuffer(1, length, ctx.sampleRate)
+  const data = buffer.getChannelData(0)
+  for (let index = 0; index < length; index += 1) data[index] = Math.random() * 2 - 1
+  const source = ctx.createBufferSource()
+  source.buffer = buffer
+  return source
+}
+
+/**
+ * Salida de las estrellas: pasa por un limitador suave para que el golpe grave y el metal
+ * juntos nunca saturen el altavoz. Uno por contexto.
+ */
+const starBuses = new WeakMap<BaseAudioContext, AudioNode>()
+function starBus(ctx: BaseAudioContext): AudioNode {
+  const existing = starBuses.get(ctx)
+  if (existing) return existing
+  const limiter = ctx.createDynamicsCompressor()
+  limiter.threshold.value = -12
+  limiter.knee.value = 6
+  limiter.ratio.value = 12
+  limiter.attack.value = 0.002
+  limiter.release.value = 0.2
+  limiter.connect(ctx.destination)
+  starBuses.set(ctx, limiter)
+  return limiter
+}
+
+/**
+ * Sonido de una estrella de la Leyenda que empieza a caer en `start` (segundos del contexto).
+ * Elegido por Luis (3 oct, opción «Caída con aire»): un soplo de aire que baja mientras cae y,
+ * al tocar el aro, un golpe suave y grave con un clic corto. Igual en las tres estrellas.
+ * Funciona con el audio normal y con OfflineAudioContext (para las muestras).
+ */
+export function playLegendStar(ctx: BaseAudioContext, start: number, { quiet = false }: { quiet?: boolean } = {}): void {
+  const volume = quiet ? 0.4 : 1
+  const land = start + LEGEND_STAR_FALL_MS / 1000
+  const out = starBus(ctx)
+
+  // La caída: aire que barre de agudo a grave y crece hasta el golpe.
+  const air = noiseSource(ctx, LEGEND_STAR_FALL_MS / 1000 + 0.12)
+  const band = ctx.createBiquadFilter()
+  band.type = 'bandpass'
+  band.Q.value = 1.3
+  const from = land - 0.2
+  band.frequency.setValueAtTime(3000, from)
+  band.frequency.exponentialRampToValueAtTime(700, land)
+  const airGain = ctx.createGain()
+  airGain.gain.setValueAtTime(0.0001, from)
+  airGain.gain.exponentialRampToValueAtTime(0.12 * volume, land - 0.01)
+  airGain.gain.exponentialRampToValueAtTime(0.0001, land + 0.03)
+  air.connect(band).connect(airGain).connect(out)
+  air.start(from)
+  air.stop(land + 0.08)
+
+  // El golpe: grave y suave, con un pequeño bajón de tono.
+  const body = ctx.createOscillator()
+  const bodyGain = ctx.createGain()
+  body.frequency.setValueAtTime(120, land)
+  body.frequency.exponentialRampToValueAtTime(60, land + 0.15)
+  bodyGain.gain.setValueAtTime(0.0001, land)
+  bodyGain.gain.exponentialRampToValueAtTime(0.5 * volume, land + 0.003)
+  bodyGain.gain.exponentialRampToValueAtTime(0.0001, land + 0.2)
+  body.connect(bodyGain).connect(out)
+  body.start(land)
+  body.stop(land + 0.25)
+
+  // El clic corto del choque (se oye en el altavoz del móvil).
+  const click = noiseSource(ctx, 0.05)
+  const low = ctx.createBiquadFilter()
+  low.type = 'lowpass'
+  low.frequency.value = 1800
+  const clickGain = ctx.createGain()
+  clickGain.gain.setValueAtTime(0.0001, land)
+  clickGain.gain.exponentialRampToValueAtTime(0.2 * volume, land + 0.002)
+  clickGain.gain.exponentialRampToValueAtTime(0.0001, land + 0.02)
+  click.connect(low).connect(clickGain).connect(out)
+  click.start(land)
+  click.stop(land + 0.05)
 }
 
 // ---------------------------------------------------------------------------
@@ -123,7 +311,7 @@ export function playBadgeSound(tier: BadgeSoundTier, options: { locked?: boolean
   try {
     const ctx = getAudioContext()
     if (!ctx) return noop
-    if (!options.locked) vibrate(tier === 'diamante' || tier === 'rubi' ? [20, 40, 20, 40, 60] : tier === 'oro' ? [30, 40, 50] : 25)
+    if (!options.locked) vibrate(tier === 'leyenda' ? [20, 40, 20, 40, 90] : tier === 'diamante' || tier === 'rubi' ? [20, 40, 20, 40, 60] : tier === 'oro' ? [30, 40, 50] : 25)
     return playBadgeFanfare(ctx, tier, { locked: options.locked, delay: options.delay })
   } catch {
     return noop

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { badgeWhooshPeak } from './badgeSounds'
-import { playBadgeSound, type BadgeSoundTier, type StopBadgeSound } from './sfx'
+import { gameSfx, LEGEND_STAR_FALL_MS, playBadgeSound, type BadgeSoundTier, type StopBadgeSound } from './sfx'
+import { isLegend, legendStars, type MedalTier } from './medals'
 import { t } from '@/i18n'
 
 // INSIGNIA QUE GIRA: al abrirla (o al tocarla) da una vuelta completa sobre sí misma, como una
@@ -16,6 +17,7 @@ const SPIN_MS: Record<BadgeSoundTier, number> = {
   oro: 1000,
   rubi: 1050,
   diamante: 1100,
+  leyenda: 1200,
 }
 /** Grosor de la insignia en píxeles (cara y dorso a ±HALF, capas en medio). */
 const HALF_DEPTH = 3
@@ -82,7 +84,7 @@ export function SpinningMedal({
   className,
   children,
 }: {
-  tier: BadgeSoundTier
+  tier: MedalTier
   locked?: boolean
   /** Cada vez que cambia, vuelve a girar (p. ej. al elegir otro rango). */
   spinKey?: string | number
@@ -99,18 +101,59 @@ export function SpinningMedal({
   const stopSoundRef = useRef<StopBadgeSound | null>(null)
   const mountedAtRef = useRef(0)
 
+  const starTimersRef = useRef<number[]>([])
+
   const spin = useCallback(() => {
     // Solo la vuelta del principio entra desde pequeña.
     const entering = enter && performance.now() - mountedAtRef.current < 200
     stopSoundRef.current?.()
-    const duration = SPIN_MS[tier]
+    // La Leyenda tiene su propio sonido (más grave, con golpe hondo); luego caen sus estrellas.
+    const soundTier: BadgeSoundTier = isLegend(tier) ? 'leyenda' : (tier as BadgeSoundTier)
+    const duration = SPIN_MS[soundTier]
+    starTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+    starTimersRef.current = []
     if (prefersReducedMotion() || !rotorRef.current) {
-      stopSoundRef.current = playBadgeSound(tier, { locked })
+      stopSoundRef.current = playBadgeSound(soundTier, { locked })
       return
     }
     // El golpe de aire cae cuando la insignia gira más rápido.
-    const delay = Math.max(0, (FASTEST_AT * duration) / 1000 - badgeWhooshPeak(tier))
-    stopSoundRef.current = playBadgeSound(tier, { locked, delay })
+    const delay = Math.max(0, (FASTEST_AT * duration) / 1000 - badgeWhooshPeak(soundTier))
+    stopSoundRef.current = playBadgeSound(soundTier, { locked, delay })
+
+    // Leyenda: sale sin estrellas y, al acabar la vuelta, caen una a una sobre el aro
+    // (desde arriba, cada una con un golpe seco y grave).
+    const stars = legendStars(tier)
+    if (stars > 0) {
+      const all = Array.from(rotorRef.current.querySelectorAll<SVGGElement>('.ica-legend-star'))
+      for (const star of all) {
+        star.style.transformBox = 'fill-box'
+        star.style.transformOrigin = 'center'
+        star.style.opacity = '0'
+      }
+      const fallMs = LEGEND_STAR_FALL_MS
+      const totalMs = Math.round(fallMs / 0.62)
+      for (let index = 0; index < stars; index += 1) {
+        starTimersRef.current.push(
+          window.setTimeout(() => {
+            for (const star of all.filter((item) => item.dataset.star === String(index))) {
+              star.style.opacity = ''
+              star.animate(
+                [
+                  { transform: 'translate(0px, -46px) scale(1.7) rotate(-30deg)', opacity: 0, easing: 'cubic-bezier(.55,0,.95,.5)' },
+                  { opacity: 1, offset: 0.3 },
+                  { transform: 'translate(0px, 0px) scale(0.86) rotate(0deg)', offset: 0.62, easing: 'ease-out' },
+                  { transform: 'translate(0px, -3px) scale(1.2)', offset: 0.8, easing: 'ease-in-out' },
+                  { transform: 'translate(0px, 0px) scale(1)' },
+                ],
+                { duration: totalMs },
+              )
+            }
+            // También en las que aún no tienes (más bajito), para oír cómo serán.
+            gameSfx.legendStar(locked, index === stars - 1)
+          }, duration + 120 + index * 400),
+        )
+      }
+    }
 
     const rotor: Keyframe[] = []
     const front: Keyframe[] = []
@@ -152,7 +195,13 @@ export function SpinningMedal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spinKey])
 
-  useEffect(() => () => stopSoundRef.current?.(), [])
+  useEffect(
+    () => () => {
+      stopSoundRef.current?.()
+      starTimersRef.current.forEach((timer) => window.clearTimeout(timer))
+    },
+    [],
+  )
 
   const face = 'absolute inset-0 [backface-visibility:hidden]'
   return (

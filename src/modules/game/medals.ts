@@ -2,10 +2,12 @@
 // Adaptado del documento "Sistema de logros · ICAdemy" (v4) de Luis:
 // mismo dibujo vectorial, 5 rangos (bronce → plata → oro → rubí → diamante)
 // y 6 categorías. Genera el SVG de cada medalla como texto.
+// Después del diamante viene la fase LEYENDA (Luis, 3 oct): metal violeta noche, aro y laurel de
+// oro, 5 gemas, rayos dorados y 1, 2 o 3 estrellas encima del aro (Leyenda I, II y III).
 
 import { t as translate } from '@/i18n'
 
-export type MedalTier = 'bronce' | 'plata' | 'oro' | 'rubi' | 'diamante'
+export type MedalTier = 'bronce' | 'plata' | 'oro' | 'rubi' | 'diamante' | 'leyenda1' | 'leyenda2' | 'leyenda3'
 export type MedalCategory = 'rachaICA' | 'rachaFlash' | 'ranking' | 'eficacia' | 'vocab' | 'desafios'
 
 const CX = 80
@@ -54,9 +56,26 @@ export const TIERS: Record<MedalTier, TierStyle> = {
   oro: { metal: 'gm-oro', ring: '#ffe38a', studs: true, laurel: true, laurelStroke: '#7a4e14', gems: 0, glow: 'soft', sparkle: false, sunburst: false, name: 'Oro' },
   rubi: { metal: 'gm-rubi', ring: '#ffb3bd', studs: true, laurel: true, laurelStroke: '#7a1420', gems: 3, gem: 'rubi', glow: 'strong', sparkle: true, sunburst: false, name: 'Rubí' },
   diamante: { metal: 'gm-diamante', ring: '#d6fbff', studs: true, laurel: true, laurelStroke: '#2b6b7a', gems: 3, glow: 'strong', sparkle: true, sunburst: true, name: 'Diamante' },
+  leyenda1: { metal: 'gm-leyenda', ring: '#ffd84a', studs: true, laurel: true, laurelStroke: '#5a3a00', gems: 5, glow: 'strong', sparkle: true, sunburst: true, name: 'Leyenda I' },
+  leyenda2: { metal: 'gm-leyenda', ring: '#ffd84a', studs: true, laurel: true, laurelStroke: '#5a3a00', gems: 5, glow: 'strong', sparkle: true, sunburst: true, name: 'Leyenda II' },
+  leyenda3: { metal: 'gm-leyenda', ring: '#ffd84a', studs: true, laurel: true, laurelStroke: '#5a3a00', gems: 5, glow: 'strong', sparkle: true, sunburst: true, name: 'Leyenda III' },
 }
 
-export const TIER_ORDER: MedalTier[] = ['bronce', 'plata', 'oro', 'rubi', 'diamante']
+/** Los 5 rangos de siempre y, después, las tres Leyendas. */
+export const TIER_ORDER: MedalTier[] = ['bronce', 'plata', 'oro', 'rubi', 'diamante', 'leyenda1', 'leyenda2', 'leyenda3']
+/** Solo los 5 rangos de antes de la Leyenda. */
+export const BASE_TIERS: MedalTier[] = ['bronce', 'plata', 'oro', 'rubi', 'diamante']
+export const LEGEND_TIERS: MedalTier[] = ['leyenda1', 'leyenda2', 'leyenda3']
+
+/** ¿Es una de las tres Leyendas? */
+export function isLegend(tier: MedalTier): boolean {
+  return tier === 'leyenda1' || tier === 'leyenda2' || tier === 'leyenda3'
+}
+
+/** Estrellas de la Leyenda (0 en los demás rangos). */
+export function legendStars(tier: MedalTier): number {
+  return tier === 'leyenda1' ? 1 : tier === 'leyenda2' ? 2 : tier === 'leyenda3' ? 3 : 0
+}
 
 /** Nombre del rango para mostrar ("Bronce" → "Bronze" si la interfaz va en inglés). */
 export function tierName(tier: MedalTier): string {
@@ -71,6 +90,7 @@ const MEDAL_TEXT_PATTERNS: Array<[RegExp, string]> = [
   [/^(\d+) % de eficacia$/, '{n} % de eficacia'],
   [/^(\d+) palabras$/, '{n} palabras'],
   [/^(\d+) ganados$/, '{n} ganados'],
+  [/^(\d+) meses al 100 %$/, '{n} meses al 100 %'],
 ]
 
 /** Traduce el texto de la cinta o el pie de una medalla al pintarlo. */
@@ -106,12 +126,12 @@ function laurel(metalId: string, stroke = '#7a4e14'): string {
 }
 
 function gemsRing(count: number, kind?: 'rubi'): string {
-  const spots = count === 3 ? [152, 28, 90] : count === 2 ? [152, 28] : []
-  const colors = kind === 'rubi' ? ['#ff3b5c', '#ff6d84', '#e02347'] : ['#ff5d73', '#5db8ff', '#7dffc4']
+  const spots = count === 5 ? [162, 18, 126, 54, 90] : count === 3 ? [152, 28, 90] : count === 2 ? [152, 28] : []
+  const colors = kind === 'rubi' ? ['#ff3b5c', '#ff6d84', '#e02347'] : count === 5 ? ['#ff3b5c', '#ff3b5c', '#5db8ff', '#5db8ff', '#7dffc4'] : ['#ff5d73', '#5db8ff', '#7dffc4']
   return spots
     .map((a, i) => {
       const [x, y] = polar(CX, CY, R - 0.5, a)
-      return `<polygon points="${diamond(x, y, 4.2)}" fill="${colors[i % 3]}" stroke="#fff" stroke-width="0.7" opacity="0.95"/><polygon points="${diamond(x, y - 0.6, 2.1)}" fill="#fff" opacity="0.6"/>`
+      return `<polygon points="${diamond(x, y, 4.2)}" fill="${colors[count === 5 ? i : i % 3]}" stroke="#fff" stroke-width="0.7" opacity="0.95"/><polygon points="${diamond(x, y - 0.6, 2.1)}" fill="#fff" opacity="0.6"/>`
     })
     .join('')
 }
@@ -123,17 +143,17 @@ function sparkles(): string {
     .join('')
 }
 
-function sunburst(): string {
+function sunburst(gold = false): string {
   let rays = ''
   const n = 28
   for (let i = 0; i < n; i += 1) {
     const a = (i * 360) / n
     const long = i % 2 === 0
-    const rout = long ? R + 34 : R + 20
+    const rout = long ? R + (gold ? 40 : 34) : R + (gold ? 24 : 20)
     const [x1, y1] = polar(CX, CY, R + 4, a - 2.4)
     const [x2, y2] = polar(CX, CY, R + 4, a + 2.4)
     const [xt, yt] = polar(CX, CY, rout, a)
-    rays += `<polygon points="${f(x1)},${f(y1)} ${f(x2)},${f(y2)} ${f(xt)},${f(yt)}" fill="url(#g-holo)" opacity="${long ? 0.55 : 0.32}"/>`
+    rays += `<polygon points="${f(x1)},${f(y1)} ${f(x2)},${f(y2)} ${f(xt)},${f(yt)}" fill="url(#${gold ? 'g-legend-rays' : 'g-holo'})" opacity="${long ? (gold ? 0.75 : 0.55) : gold ? 0.45 : 0.32}"/>`
   }
   return `<g class="ica-sunburst">${rays}</g>`
 }
@@ -156,12 +176,21 @@ const EMBLEM = {
       <path d="M12 1.8c.7 3.3-1.1 5.1-2.7 6.8-1.6 1.7-3.1 3.5-3.1 6.4 0 3.9 2.6 7.2 5.8 7.2s5.8-3.3 5.8-7.2c0-2.7-1.2-4.5-2.4-5.9-.3 1.4-1.1 2.3-2.1 2.7.5-3.4-.2-7-1.3-10z" fill="url(#e-flash)" stroke="#1e3a8a" stroke-width="0.5" stroke-linejoin="round"/>
       <path d="M12 12.2c-1.7 1.5-2.7 2.8-2.7 4.5 0 1.9 1.2 3.4 2.7 3.4s2.7-1.5 2.7-3.4c0-1.3-.6-2.3-1.4-3-.2.7-.6 1.2-1.1 1.4.2-1.1-.1-2.1-.2-2.9z" fill="#e0f2ff" opacity="0.92"/>
     </g>`,
+  // Libro «cute» de la app (BookGlyph) en blanco y beige (Luis: nada de verde, colores suaves).
   libro: () => `
-    <path d="M80 106 C 68 97 54 97 46 102 L46 74 C 54 69 68 69 80 78 Z" fill="url(#e-page)" stroke="#065f46" stroke-width="1.3" stroke-linejoin="round"/>
-    <path d="M80 106 C 92 97 106 97 114 102 L114 74 C 106 69 92 69 80 78 Z" fill="url(#e-page)" stroke="#065f46" stroke-width="1.3" stroke-linejoin="round"/>
-    <line x1="80" y1="78" x2="80" y2="106" stroke="#065f46" stroke-width="1.6"/>
-    <path d="M54 80 C 62 78 72 80 78 84 M54 88 C 62 86 72 88 78 92" stroke="#10b981" stroke-width="1" fill="none" opacity="0.7"/>
-    <path d="M106 80 C 98 78 88 80 82 84 M106 88 C 98 86 88 88 82 92" stroke="#10b981" stroke-width="1" fill="none" opacity="0.7"/>`,
+    <g transform="translate(51.2 59.5) scale(2.4)">
+      <path d="M12 6.4C9.7 4.8 6.5 4.3 2.6 4.7v13.6c3.9-.4 7.1.1 9.4 1.7z" fill="#FFF8EC"/>
+      <path d="M12 6.4c2.3-1.6 5.5-2.1 9.4-1.7v13.6c-3.9-.4-7.1.1-9.4 1.7z" fill="#EBD5B0"/>
+      <path d="M12 6.4V20" stroke="#B88A55" stroke-width="1.3" stroke-linecap="round"/>
+      <g stroke="#C9A06A" stroke-width="1.5" stroke-linecap="round">
+        <path d="M14.4 9.3c1.5-.6 3-.8 4.6-.7"/>
+        <path d="M14.4 12.4c1.5-.6 3-.8 4.6-.7" opacity="0.75"/>
+      </g>
+      <g stroke="#D9BE96" stroke-width="1.5" stroke-linecap="round">
+        <path d="M9.6 9.3c-1.5-.6-3-.8-4.6-.7"/>
+        <path d="M9.6 12.4c-1.5-.6-3-.8-4.6-.7"/>
+      </g>
+    </g>`,
   diana: () => `
     <circle cx="80" cy="88" r="22" fill="#ffffff" stroke="#9aa7b0" stroke-width="1.2"/>
     <circle cx="80" cy="88" r="15.5" fill="#12303b"/>
@@ -171,25 +200,41 @@ const EMBLEM = {
     <line x1="52" y1="116" x2="80" y2="88" stroke="#8b5a2b" stroke-width="2.6" stroke-linecap="round"/>
     <polygon points="80,88 76.8,97.6 70.4,91.2" fill="#ffffff" stroke="#9aa7b0" stroke-width="0.8" stroke-linejoin="round"/>
     <path d="M50 119 L56 111.5 M50 119 L57.5 116" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>`,
+  // Las espadas «cute» de Desafíos ICA (SwordsIcon de la app), siempre del mismo color.
   espadas: () => {
     const sword = `
-      <g stroke-linejoin="round">
-        <polygon points="80,55 83.2,92 80,97.5 76.8,92" fill="url(#gm-plata)" stroke="#2b3644" stroke-width="1.1"/>
-        <line x1="80" y1="60" x2="80" y2="91" stroke="#f1f5f9" stroke-width="0.9" opacity="0.85"/>
-        <rect x="67.5" y="96" width="25" height="4.8" rx="2.4" fill="url(#g-crown)" stroke="#7a4e14" stroke-width="0.9"/>
-        <rect x="77.4" y="100.6" width="5.2" height="11.5" rx="2" fill="#5b3a1a" stroke="#3f2610" stroke-width="0.8"/>
-        <circle cx="80" cy="114" r="3.5" fill="url(#g-crown)" stroke="#7a4e14" stroke-width="0.9"/>
-      </g>`
-    return `<g transform="rotate(45 80 88)">${sword}</g><g transform="rotate(-45 80 88)">${sword}</g>`
+      <path d="M12 1.6 14 4.3v9.5h-4V4.3z" fill="#E2E8F0" stroke="#94A3B8" stroke-width="0.8" stroke-linejoin="round"/>
+      <path d="M12 3v10.6" stroke="#ffffff" stroke-width="0.8" stroke-linecap="round"/>
+      <rect x="7.6" y="13.5" width="8.8" height="2.2" rx="1.1" fill="#FFC72C" stroke="#D99A00" stroke-width="0.6"/>
+      <rect x="11" y="15.6" width="2" height="4.2" rx="0.6" fill="#8E4717"/>
+      <circle cx="12" cy="20.6" r="1.5" fill="#FFC72C" stroke="#D99A00" stroke-width="0.6"/>`
+    return `<g transform="translate(51.2 59.5) scale(2.4)">
+      <g transform="translate(12 12) scale(0.92) rotate(-42) translate(-12 -12)">${sword}</g>
+      <g transform="translate(12 12) scale(0.92) rotate(42) translate(-12 -12)">${sword}</g>
+    </g>`
   },
-  medallaN: (metalId: string, n: number) => {
-    const star = (cx: number, cy: number, ro: number, ri: number) =>
-      `<polygon points="${starPoints(cx, cy, ro, ri)}" fill="url(#${metalId})" stroke="#00000055" stroke-width="1.1" stroke-linejoin="round"/>` +
-      `<polygon points="${starPoints(cx, cy, ro * 0.52, ri * 0.5)}" fill="#ffffff" opacity="0.22"/>`
-    if (n >= 3) return star(80, 75, 13, 6) + star(66, 99, 13, 6) + star(94, 99, 13, 6)
-    if (n === 2) return star(66, 88, 15, 7) + star(94, 88, 15, 7)
-    return star(80, 86, 27, 12)
-  },
+  // La copa de la app (TrophyIcon), siempre dorada y sin estrella: las estrellas son de la Leyenda.
+  copa: () => `
+    <g transform="translate(52.4 64.6) scale(2.3)">
+      <path d="M6.2 5.4H4.1a1 1 0 0 0-1 1.1c.25 2.3 1.6 3.8 3.7 4.2" fill="none" stroke="#E0A500" stroke-width="1.9" stroke-linecap="round"/>
+      <path d="M17.8 5.4h2.1a1 1 0 0 1 1 1.1c-.25 2.3-1.6 3.8-3.7 4.2" fill="none" stroke="#E0A500" stroke-width="1.9" stroke-linecap="round"/>
+      <rect x="10.5" y="12.5" width="3" height="4.4" fill="#E0A500"/>
+      <rect x="7.2" y="16.2" width="9.6" height="2.6" rx="1.1" fill="#E0A500"/>
+      <rect x="6.2" y="18.4" width="11.6" height="3.4" rx="1.3" fill="#B7791F"/>
+      <path d="M5.8 2.6h12.4v5a6.2 6.2 0 0 1-12.4 0z" fill="#FFC72C"/>
+      <path d="M8.3 4.4v3a3.6 3.6 0 0 0 1.6 3" fill="none" stroke="#FFF1B8" stroke-width="1.5" stroke-linecap="round"/>
+    </g>`,
+}
+
+/** Estrellas de la Leyenda encima del aro (1, 2 o 3), separadas entre sí. */
+function ringStars(n: number): string {
+  const angles = n === 1 ? [-90] : n === 2 ? [-106, -74] : [-122, -90, -58]
+  return angles
+    .map((a, index) => {
+      const [x, y] = polar(CX, CY, R, a)
+      return `<g class="ica-legend-star" data-star="${index}"><polygon points="${starPoints(x, y, 10.5, 4.6)}" fill="url(#g-crown)" stroke="#5a3a00" stroke-width="1.6" stroke-linejoin="round"/><polygon points="${starPoints(x, y - 1, 4.5, 2)}" fill="#fff" opacity="0.5"/></g>`
+    })
+    .join('')
 }
 
 const CATEGORY_STYLE: Record<MedalCategory, { disc: string; accent: string; ribbonGrad: string; ribbonDark: string }> = {
@@ -201,7 +246,7 @@ const CATEGORY_STYLE: Record<MedalCategory, { disc: string; accent: string; ribb
   ranking: { disc: 'gd-rank', accent: '#d4af37', ribbonGrad: 'rb-rank', ribbonDark: '#3f2d12' },
 }
 
-function emblemFor(category: MedalCategory, tier: MedalTier): string {
+function emblemFor(category: MedalCategory): string {
   switch (category) {
     case 'rachaICA':
       return EMBLEM.fuego()
@@ -214,7 +259,7 @@ function emblemFor(category: MedalCategory, tier: MedalTier): string {
     case 'eficacia':
       return EMBLEM.diana()
     case 'ranking':
-      return EMBLEM.medallaN(TIERS[tier].metal, tier === 'diamante' ? 3 : tier === 'rubi' ? 2 : 1)
+      return EMBLEM.copa()
   }
 }
 
@@ -260,9 +305,10 @@ export function buildMedalSvg(
   // Versión compacta (para filas del ranking): sin cinta debajo; el texto va dentro de la medalla.
   const viewBox = compact ? '18 26 124 124' : '0 0 160 190'
   let svg = `<svg viewBox="${viewBox}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${label}" style="width:100%;height:auto;display:block;overflow:visible">`
-  if (t.sunburst) svg += sunburst()
-  if (glowR) svg += `<circle cx="${CX}" cy="${CY}" r="${R}" fill="${c.accent}" opacity="${glowOp}" filter="url(#f-glow)"/>`
-  if (t.laurel) svg += laurel(t.metal, t.laurelStroke)
+  const legend = isLegend(tier)
+  if (t.sunburst) svg += sunburst(legend)
+  if (glowR) svg += `<circle cx="${CX}" cy="${CY}" r="${R}" fill="${legend ? '#ffcf3a' : c.accent}" opacity="${legend ? 0.75 : glowOp}" filter="url(#f-glow)"/>`
+  if (t.laurel) svg += laurel(legend ? 'gm-oro' : t.metal, t.laurelStroke)
   svg += `<g filter="url(#f-shadow)">
     <circle cx="${CX}" cy="${CY}" r="${R}" fill="url(#${t.metal})" stroke="#00000066" stroke-width="1.5"/>
     <circle cx="${CX}" cy="${CY}" r="${R - 2}" fill="none" stroke="#ffffff" stroke-width="1" opacity="0.35"/>
@@ -271,11 +317,12 @@ export function buildMedalSvg(
   </g>`
   svg += `<ellipse cx="${CX}" cy="${CY - R + 12}" rx="26" ry="9" fill="#ffffff" opacity="0.18"/>`
   if (t.studs) svg += studs()
-  svg += `<g clip-path="url(#clip-disc)">${emblemFor(category, tier)}</g>`
+  svg += `<g clip-path="url(#clip-disc)">${emblemFor(category)}</g>`
   if (t.gems) svg += gemsRing(t.gems, t.gem)
   if (t.sparkle) svg += sparkles()
   // Rubí y diamante brillan: un destello cruza la medalla y aparecen estrellitas.
-  if (tier === 'rubi' || tier === 'diamante') svg += shine(tier)
+  if (tier === 'rubi' || tier === 'diamante' || legend) svg += shine(legend ? 'diamante' : tier)
+  if (legend) svg += ringStars(legendStars(tier))
   if (compact) {
     svg += `
     <g filter="url(#f-shadow)">
@@ -302,6 +349,8 @@ export const MEDAL_DEFS_SVG = `<svg width="0" height="0" style="position:absolut
   <linearGradient id="gm-cobre" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f4c48a"/><stop offset=".45" stop-color="#c67c3e"/><stop offset="1" stop-color="#7c4a1e"/></linearGradient>
   <linearGradient id="gm-plata" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".45" stop-color="#cbd3db"/><stop offset="1" stop-color="#838d99"/></linearGradient>
   <linearGradient id="gm-oro" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff6c2"/><stop offset=".45" stop-color="#f2c230"/><stop offset="1" stop-color="#a9760a"/></linearGradient>
+  <linearGradient id="gm-leyenda" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9b7bff"/><stop offset=".45" stop-color="#3b1f8f"/><stop offset="1" stop-color="#140a3a"/></linearGradient>
+  <linearGradient id="g-legend-rays" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff2b0"/><stop offset=".5" stop-color="#ffc72c"/><stop offset="1" stop-color="#b07cff"/></linearGradient>
   <linearGradient id="gm-diamante" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f2ffff"/><stop offset=".4" stop-color="#a8ecf7"/><stop offset="1" stop-color="#4fb4cf"/></linearGradient>
   <linearGradient id="gm-rubi" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd3d9"/><stop offset=".42" stop-color="#e0324f"/><stop offset="1" stop-color="#8c0f24"/></linearGradient>
   <radialGradient id="gd-ica" cx=".5" cy=".42" r=".62"><stop offset="0" stop-color="#3a1e13"/><stop offset="1" stop-color="#150c08"/></radialGradient>

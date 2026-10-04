@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { GlobeIcon, Loader2Icon } from 'lucide-react'
+import { Loader2Icon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { useAuth } from '@/auth/AuthContext'
 import { langName, t } from '@/i18n'
 import { useDashboardContext } from '../context/DashboardContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
+import { LanguageFlag } from '../components/LanguagePicker'
+import { getMetaTrackerSnapshot } from '../components/MetaTracker/progress'
+import { peekQuick, storeQuick } from '../services/quickCache'
 import { prefetchIcaChallengesOverview } from '../hooks/useIcaChallengesOverview'
 import {
   fetchIcademerPublicProfile,
@@ -52,51 +55,83 @@ const EMPTY: LoadedProfile = { name: null, targetLang: null, level: null, earned
 
 const CANT_NOW = 'Ahora mismo no se puede desafiar a este icademer.'
 
+/** Lo último que se supo de este perfil: sale al momento la próxima vez que lo abras. */
+type CachedProfile = Pick<LoadedProfile, 'name' | 'targetLang' | 'level' | 'earned'>
+const profileCacheKey = (viewerId: string | undefined, userId: string) => `icademer-profile:${viewerId || 'anon'}:${userId}`
+
+function fromCache(key: string | null): LoadedProfile {
+  const cached = key ? peekQuick<CachedProfile>(key) : undefined
+  return cached ? { ...cached, challenge: { kind: 'loading' } } : EMPTY
+}
+
 /**
  * Carga el perfil de un icademer: primero lo que da el servidor (idioma, nivel, insignias y
  * si se le puede retar). Si la función del servidor aún no tiene esa acción, se enseña lo que
  * se puede saber desde la app (insignias de ranking y su fila en Desafíos ICA).
+ * El idioma y el nivel salen en cuanto llegan, sin esperar a las insignias (que tardan más),
+ * y lo último que se supo se enseña al momento mientras tanto.
  */
 function useIcademerProfile(summary: IcademerSummary | null, isMe: boolean): LoadedProfile {
+  const { user } = useAuth()
   const { config } = useDashboardContext()
   const challengesFlag = useFeatureFlagsStore((state) => Boolean(state.flags['ica-challenges']))
   const challengesOn = challengesFlag || ICA_CHALLENGES_LOCAL
-  const [state, setState] = useState<LoadedProfile>(EMPTY)
   const userId = summary?.userId ?? null
+  const cacheKey = userId ? profileCacheKey(user?.id, userId) : null
+  const [state, setState] = useState<LoadedProfile>(() => fromCache(cacheKey))
 
   useEffect(() => {
     if (!userId) return
     let active = true
-    setState(EMPTY)
-    void (async () => {
-      const [serverResult, rankingResult] = await Promise.allSettled([
-        fetchIcademerPublicProfile(userId),
-        fetchRankingHistoryFor(userId),
-      ])
-      if (!active) return
-      const ranking = rankingResult.status === 'fulfilled' ? rankingResult.value : { rankings: null, bestEfficacy: null }
+    setState(fromCache(cacheKey))
+    const serverPromise = fetchIcademerPublicProfile(userId)
+    const rankingPromise = fetchRankingHistoryFor(userId)
 
-      if (serverResult.status === 'fulfilled') {
-        const { profile, stats, challenge } = serverResult.value
-        setState({
+    // Idioma, nivel y botón de desafiar: en cuanto responde el servidor.
+    serverPromise.then(
+      ({ profile, challenge }) => {
+        if (!active) return
+        setState((prev) => ({
+          ...prev,
           name: profile.displayName,
           targetLang: profile.targetLang,
           level: profile.level,
-          earned: earnedLevelsFrom({
-            rachaICA: stats.icaStreakBest,
-            rachaFlash: stats.flashStreakBest,
-            vocab: stats.vocab,
-            desafios: stats.wins,
-            eficacia: ranking.bestEfficacy,
-            rankings: ranking.rankings,
-          }),
           challenge:
             isMe || profile.isMe || !challengesOn
               ? { kind: 'hidden' }
               : challenge.canChallenge
                 ? { kind: 'can' }
                 : { kind: 'blocked', reason: challenge.blockedReason },
+        }))
+      },
+      () => undefined,
+    )
+
+    void (async () => {
+      const [serverResult, rankingResult] = await Promise.allSettled([serverPromise, rankingPromise])
+      if (!active) return
+      const ranking = rankingResult.status === 'fulfilled' ? rankingResult.value : { rankings: null, bestEfficacy: null, perfectMonths: null }
+
+      if (serverResult.status === 'fulfilled') {
+        const { profile, stats } = serverResult.value
+        const earned = earnedLevelsFrom({
+          rachaICA: stats.icaStreakBest,
+          rachaFlash: stats.flashStreakBest,
+          vocab: stats.vocab,
+          desafios: stats.wins,
+          eficacia: ranking.bestEfficacy,
+          perfectMonths: ranking.perfectMonths,
+          rankings: ranking.rankings,
         })
+        setState((prev) => ({ ...prev, earned }))
+        if (cacheKey) {
+          storeQuick<CachedProfile>(cacheKey, {
+            name: profile.displayName,
+            targetLang: profile.targetLang,
+            level: profile.level,
+            earned,
+          })
+        }
         return
       }
 
@@ -107,6 +142,7 @@ function useIcademerProfile(summary: IcademerSummary | null, isMe: boolean): Loa
         vocab: null,
         desafios: null,
         eficacia: ranking.bestEfficacy,
+        perfectMonths: ranking.perfectMonths,
         rankings: ranking.rankings,
       })
       let challengeState: ChallengeState = { kind: 'hidden' }
@@ -140,7 +176,7 @@ function useIcademerProfile(summary: IcademerSummary | null, isMe: boolean): Loa
     return () => {
       active = false
     }
-  }, [userId, isMe, challengesOn, config?.targetLang, config?.nativeLang])
+  }, [userId, cacheKey, isMe, challengesOn, config?.targetLang, config?.nativeLang])
 
   return state
 }
@@ -158,7 +194,7 @@ export function IcademerProfileDialog({
 }) {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const { config } = useDashboardContext()
+  const { config, metaTrackerProfile } = useDashboardContext()
   const isMe = Boolean(summary && user?.id === summary.userId)
   const loaded = useIcademerProfile(summary, isMe)
   const [challengePending, setChallengePending] = useState(false)
@@ -181,7 +217,12 @@ export function IcademerProfileDialog({
   const name = loaded.name || summary.name
   const firstName = name.trim().split(/\s+/)[0] || name
   const targetLang = isMe ? loaded.targetLang || config?.targetLang || null : loaded.targetLang
-  const level = loaded.level
+  // Tu nivel ya lo sabe la app (el de tu barra de progreso): sale al momento, sin esperar.
+  const myLevel =
+    isMe && config && metaTrackerProfile?.confirmedAt
+      ? getMetaTrackerSnapshot(metaTrackerProfile, config.targetLang).currentLevelKey
+      : null
+  const level = (isMe ? myLevel : null) || loaded.level
   const totalEarned = earned ? Object.values(earned).reduce((sum, value) => sum + value, 0) : 0
   const totalPossible = ACHIEVEMENT_CATALOG.reduce((sum, def) => sum + def.levels.length, 0)
   const topBadges = earned
@@ -219,14 +260,12 @@ export function IcademerProfileDialog({
           </div>
           <DialogDescription className='sr-only'>{t('Perfil de este icademer')}</DialogDescription>
           {targetLang || level ? (
-            <div className='flex flex-wrap items-center justify-center gap-1.5'>
+            <div className='flex flex-wrap items-center justify-center gap-2'>
               {targetLang ? (
-                <span
-                  className='inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-extrabold'
-                  style={{ background: 'var(--ica-i-soft)', color: 'var(--ica-i-ink)' }}
-                >
-                  <GlobeIcon className='size-3.5' strokeWidth={2.8} aria-hidden='true' />
-                  {t('Aprende {lang}', { lang: langName(targetLang) })}
+                // El idioma que aprende, con su bandera (sin texto: «Aprende …» solo para lectores de pantalla).
+                <span className='inline-flex overflow-hidden rounded-[6px] ring-1 ring-black/10 dark:ring-white/20'>
+                  <LanguageFlag language={targetLang} size={36} />
+                  <span className='sr-only'>{t('Aprende {lang}', { lang: langName(targetLang) })}</span>
                 </span>
               ) : null}
               {level ? (

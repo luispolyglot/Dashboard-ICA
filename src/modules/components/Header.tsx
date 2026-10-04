@@ -12,6 +12,7 @@ import type { CoachingManagedUser } from '../services/coaching'
 import type { DailyProgressMap } from '../types'
 import { WelcomeBrand } from '../game/WelcomeBrand'
 import { GameStatsBar } from '../game/GameStatsBar'
+import { ChatQuickButton } from '../game/ChatQuickButton'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -281,6 +282,7 @@ export function Header({
               hasPending={shouldHighlightCoachingProfileButton}
             />
           ) : null}
+          <ChatQuickButton className='hidden size-11 md:flex' />
           <GameStatsBar ref={boltButtonRef} />
         </div>
       </div>

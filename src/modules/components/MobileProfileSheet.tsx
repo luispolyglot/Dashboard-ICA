@@ -32,6 +32,7 @@ import { useDashboardContext } from '../context/DashboardContext'
 import { fichasFormatter, useFichas } from '../game/fichas'
 import { FichaIcon } from '../game/icons'
 import { ChatProfileRow } from '../game/ChatProfileRow'
+import { ChatQuickButton } from '../game/ChatQuickButton'
 import {
   LevelAvatar,
   memberSinceLabel,
@@ -188,6 +189,7 @@ export function MobileProfileScreen({
             </div>
 
             <div className='mt-3 flex gap-2'>
+              <ChatQuickButton className='size-11' onNavigate={close} />
               <button
                 type='button'
                 onClick={() => setShowLangModal(true)}
