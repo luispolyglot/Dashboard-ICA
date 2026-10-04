@@ -274,7 +274,8 @@ const en: Record<string, string> = {
   "Bandera del idioma": "Language flag",
   // Desempate del ranking (4 oct)
   "¿Y si hay empate?": "What if there's a tie?",
-  "Si dos icademers tienen los mismos puntos, gana quien más aciertos tenga en el reto del día, del día 1 al 28.": "If two icademers have the same points, whoever has more correct answers in the daily challenge from day 1 to 28 wins.",
+  "Si dos o más icademers tienen los mismos puntos, gana quien más aciertos tenga en el reto del día, del día 1 al 28.": "If two or more icademers have the same points, whoever has more correct answers in the daily challenge from day 1 to 28 wins.",
+  "¿Empate?": "Tie?",
   "Solo cuenta la primera partida de cada día: repetirla no suma.": "Only the first game of each day counts: replaying it doesn't add up.",
   "Llevas {n} acierto este mes": "You have {n} correct answer this month",
   "Llevas {n} aciertos este mes": "You have {n} correct answers this month",

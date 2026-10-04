@@ -394,7 +394,7 @@ function TiebreakDialog({
             {t('¿Y si hay empate?')}
           </DialogTitle>
           <DialogDescription className="m-0 text-sm font-semibold">
-            {t('Si dos icademers tienen los mismos puntos, gana quien más aciertos tenga en el reto del día, del día 1 al 28.')}
+            {t('Si dos o más icademers tienen los mismos puntos, gana quien más aciertos tenga en el reto del día, del día 1 al 28.')}
           </DialogDescription>
           <p className="m-0 text-xs font-semibold text-muted-foreground">
             {t('Solo cuenta la primera partida de cada día: repetirla no suma.')}
@@ -839,10 +839,11 @@ const [tiebreakOpen, setTiebreakOpen] = useState(false);
         <button
           type="button"
           onClick={() => setTiebreakOpen(true)}
-          className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-background/60"
-          aria-label={t('¿Y si hay empate?')}
+          className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border-2 px-3 text-xs font-extrabold transition-colors hover:bg-background/60"
+          style={{ borderColor: "var(--ica-gold-edge)", color: "var(--ica-gold-ink)" }}
         >
-          <InfoIcon className="size-5" strokeWidth={2.6} aria-hidden="true" />
+          <InfoIcon className="size-4" strokeWidth={2.8} aria-hidden="true" />
+          {t('¿Empate?')}
         </button>
       </div>
       <TiebreakDialog
