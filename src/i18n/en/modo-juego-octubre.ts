@@ -254,5 +254,7 @@ const en: Record<string, string> = {
   "Ya tienes 3 insignias en tu perfil. Quita una para poner esta.": "You already have 3 badges on your profile. Remove one to add this one.",
   "No se pudieron guardar las insignias de tu perfil.": "Your profile badges could not be saved.",
   "Elige cuáles se ven aquí: abre una insignia y toca «Mostrar en mi perfil».": "Choose which ones show here: open a badge and tap “Show on my profile”.",
+  // Aviso de racha en peligro con X (4 oct)
+  "Cerrar aviso": "Close warning",
 }
 export default en
