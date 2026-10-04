@@ -67,7 +67,9 @@ export async function fetchPhraseHistoryPage({
       .from('phrase_generations')
       .select(selectWithLang)
       .eq('success', true)
-      .eq('target_lang', targetLang)
+      // Case-insensitive: phrases saved by record_phrase_generation_event before the
+      // 20261004120000 fix have the language in lower case ("polaco").
+      .ilike('target_lang', escapeLike(targetLang))
       .order('created_at', { ascending: false })
       .range(from, to)
 
@@ -183,4 +185,9 @@ export async function fetchPhraseHistoryEntry(
   }
 
   return (data as PhraseGenerationEntry | null) || null
+}
+
+/** Escapes LIKE wildcards so `ilike` matches the text exactly (only ignoring case). */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`)
 }
