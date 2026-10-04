@@ -7,6 +7,49 @@ const SOUND_PREF_KEY = 'ica-game-sound'
 
 let audioContext: AudioContext | null = null
 
+// MÚSICA DE FONDO (Luis, 4 oct): en el iPhone, en cuanto la web suena, Safari paraba Spotify.
+// Como en los juegos (Clash Royale), los efectos van en modo «ambient»: se mezclan con la música
+// del alumno. Al rato sin efectos, el audio de efectos se duerme y Safari vuelve a su modo normal
+// (así la voz y las notas maestras suenan como siempre).
+type AudioSessionType = 'auto' | 'ambient' | 'playback' | 'transient' | 'transient-solo' | 'play-and-record'
+const EFFECTS_IDLE_MS = 5000
+let effectsIdleTimer: number | null = null
+
+function setAudioSessionType(type: AudioSessionType): void {
+  try {
+    const session = (navigator as Navigator & { audioSession?: { type: AudioSessionType } }).audioSession
+    if (session && session.type !== type) session.type = type
+  } catch {
+    // Navegador sin Audio Session API (Android, ordenador): no hace falta.
+  }
+}
+
+/** El contexto de los efectos, despierto y en modo «se mezcla con tu música». */
+function effectsContext(): AudioContext | null {
+  if (typeof window === 'undefined' || !isGameSoundEnabled()) return null
+  const AudioCtor =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+  if (!AudioCtor) return null
+  setAudioSessionType('ambient')
+  audioContext = audioContext || new AudioCtor()
+  if (audioContext.state === 'suspended') void audioContext.resume()
+  if (effectsIdleTimer !== null) window.clearTimeout(effectsIdleTimer)
+  effectsIdleTimer = window.setTimeout(() => {
+    effectsIdleTimer = null
+    const ctx = audioContext
+    if (!ctx || ctx.state !== 'running') {
+      setAudioSessionType('auto')
+      return
+    }
+    void ctx
+      .suspend()
+      .catch(() => undefined)
+      .finally(() => setAudioSessionType('auto'))
+  }, EFFECTS_IDLE_MS)
+  return audioContext
+}
+
 export function isGameSoundEnabled(): boolean {
   try {
     return window.localStorage.getItem(SOUND_PREF_KEY) !== 'off'
@@ -26,12 +69,7 @@ export function setGameSoundEnabled(enabled: boolean): void {
 function playTones(frequencies: number[], step = 0.11, type: OscillatorType = 'sine', volume = 0.15): void {
   if (typeof window === 'undefined' || !isGameSoundEnabled()) return
   try {
-    const AudioCtor =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-    if (!AudioCtor) return
-    audioContext = audioContext || new AudioCtor()
-    if (audioContext.state === 'suspended') void audioContext.resume()
+    if (!effectsContext() || !audioContext) return
     const start = audioContext.currentTime
     frequencies.forEach((frequency, index) => {
       if (!audioContext) return
@@ -322,14 +360,7 @@ export type StopBadgeSound = () => void
 const noop: StopBadgeSound = () => undefined
 
 function getAudioContext(): AudioContext | null {
-  if (typeof window === 'undefined' || !isGameSoundEnabled()) return null
-  const AudioCtor =
-    window.AudioContext ||
-    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-  if (!AudioCtor) return null
-  audioContext = audioContext || new AudioCtor()
-  if (audioContext.state === 'suspended') void audioContext.resume()
-  return audioContext
+  return effectsContext()
 }
 
 /**

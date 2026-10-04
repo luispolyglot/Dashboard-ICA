@@ -243,6 +243,9 @@ const en: Record<string, string> = {
   "Completa un mes con un {n} % de eficacia para desbloquear esta insignia.": "Complete a month with {n}% efficacy to unlock this badge.",
   "Llega a {n} palabras en tu Baúl ICA para desbloquear esta insignia.": "Reach {n} words in your ICA vault to unlock this badge.",
   "Gana {n} desafíos ICA para desbloquear esta insignia.": "Win {n} ICA Challenges to unlock this badge.",
+  // Aviso de frase por activar (4 oct)
+  "Te falta esta frase por activar": "You still need to activate this phrase",
+  "La creaste hoy. Grábala con tu voz para completar el ciclo ICA.": "You created it today. Record it with your voice to complete the ICA cycle.",
+  "Ahora no": "Not now",
 }
-
 export default en

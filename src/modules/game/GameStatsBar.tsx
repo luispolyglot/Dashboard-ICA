@@ -353,14 +353,8 @@ function CoinsPanel({
 
       <div className='flex flex-col gap-1'>
         {items.map((item) => {
-          const missing = Math.max(0, item.cost - balance)
-          const status = item.doneLabel
-            ? { text: item.doneLabel, color: 'var(--ica-c-ink)' }
-            : total === null
-              ? null
-              : missing === 0
-                ? { text: t('Te alcanza'), color: 'var(--ica-ok-ink)' }
-                : { text: t('Te faltan {n}', { n: missing }), color: 'var(--muted-foreground)' }
+          // Sin «Te alcanza» / «Te faltan N» (Luis, 4 oct): solo «Activo hoy» si ya lo compró.
+          const status = item.doneLabel ? { text: item.doneLabel, color: 'var(--ica-c-ink)' } : null
           return (
             <button
               key={item.key}

@@ -1076,3 +1076,31 @@ button:disabled {
 @media (prefers-reduced-motion: reduce) {
   .ica-clock-hand { animation: none; }
 }
+
+/* Chat de icademers: al pasar el ratón por un mensaje (solo ordenador), sube un poco, se marca
+   con el color del chat, sale la flecha de enviar y un brillo sigue al ratón (Luis, 4 oct). */
+.ica-chat-option { position: relative; overflow: hidden; }
+.ica-chat-option .ica-chat-send { opacity: 0; transform: translateX(-6px); transition: opacity .15s ease, transform .15s ease; }
+@media (hover: hover) and (pointer: fine) {
+  .ica-chat-option { transition: transform .15s cubic-bezier(.3,.7,.4,1.4), border-color .15s ease, box-shadow .15s ease; }
+  .ica-chat-option:hover:not(:disabled) {
+    transform: translateY(-3px);
+    border-color: color-mix(in oklab, var(--ica-me) 70%, transparent);
+    box-shadow: 0 6px 0 color-mix(in oklab, var(--ica-me) 35%, var(--border)) !important;
+  }
+  .ica-chat-option::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .15s ease;
+    background: radial-gradient(120px circle at var(--mx, 50%) var(--my, 50%), color-mix(in oklab, var(--ica-me) 22%, transparent), transparent 70%);
+  }
+  .ica-chat-option:hover:not(:disabled)::before { opacity: 1; }
+  .ica-chat-option:hover:not(:disabled) .ica-chat-send { opacity: 1; transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ica-chat-option, .ica-chat-option .ica-chat-send { transition: none; }
+  .ica-chat-option:hover:not(:disabled) { transform: none; }
+}
