@@ -4,6 +4,7 @@ import { todayKey } from '../utils'
 import type { DailyLimitKey } from './rules'
 import { uiLocale } from '@/i18n'
 import { peekQuick, storeQuick } from '../services/quickCache'
+import { gameSfx } from './sfx'
 
 // ICA Coins tienen una única fuente de verdad: preguntica_token_ledger en Supabase.
 // El estado local solo conserva una copia rápida de lectura y nunca acredita ni gasta monedas.
@@ -213,6 +214,7 @@ export async function buyPhaseBoost(
   _clientBalance?: number,
 ): Promise<boolean> {
   const result = await callCoinRpc('buy_phase_boost', { p_phase: phase })
+  if (result.ok && !result.alreadyOwned) gameSfx.spend()
   return Boolean(result.ok)
 }
 
@@ -221,6 +223,7 @@ export async function buyChallengeSlot(
   _clientBalance?: number,
 ): Promise<boolean> {
   const result = await callCoinRpc('buy_challenge_pass')
+  if (result.ok && !result.alreadyOwned) gameSfx.spend()
   return Boolean(result.ok)
 }
 

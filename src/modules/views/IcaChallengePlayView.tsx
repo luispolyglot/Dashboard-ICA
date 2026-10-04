@@ -169,7 +169,7 @@ const MODE_INFO: Record<string, { name: string; icon: LucideIcon; howTo: string 
 
 const FEEDBACK_MS_CORRECT = 1100
 const FEEDBACK_MS_WRONG = 2000
-/** Fallo en Escritura o Habla: da tiempo a oír cómo se dice la palabra (Luis, 3 oct). */
+/** Al fallar: da tiempo a oír cómo se dice la palabra (Luis, 3-4 oct). */
 const FEEDBACK_MS_WRONG_SPOKEN = 3400
 // Parejas: hay 5 resultados que leer.
 const FEEDBACK_MS_PAIRS_PERFECT = 1800
@@ -415,6 +415,12 @@ export function IcaChallengePlayView({
               key: Date.now(),
             })
             playQuickAnswer(step.result.isCorrect)
+            // Al fallar, una voz dice la buena mientras sigue el reloj (Luis, 4 oct).
+            if (!step.result.isCorrect) {
+              const word = step.result.reveal.target
+              const lang = answeredQuestion.language.target
+              later(() => void speakAsync(word, lang), 250)
+            }
           }
           applyStep(step)
           return
@@ -437,9 +443,8 @@ export function IcaChallengePlayView({
         })
         setPhase('feedback')
         playAnswer(step.result.isCorrect)
-        // Fallo en Escritura o Habla: una voz dice cómo se dice de verdad la palabra.
-        const sayAnswer =
-          !step.result.isCorrect && (answeredQuestion.data.kind === 'write' || answeredQuestion.data.kind === 'speak')
+        // Al fallar (en todos los modos menos Parejas), una voz dice cómo se dice de verdad la palabra.
+        const sayAnswer = !step.result.isCorrect && answeredQuestion.data.kind !== 'pairs' && Boolean(step.result.reveal.target)
         if (sayAnswer) {
           const word = step.result.reveal.target
           later(() => void speakAsync(word, answeredQuestion.language.target), 450)

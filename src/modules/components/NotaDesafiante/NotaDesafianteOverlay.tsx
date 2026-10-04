@@ -34,6 +34,7 @@ import { recordChallengePlay } from '../../services/challengeUnlocks'
 import {
   checkAnswer,
   isIOSDevice,
+  isMicrophoneWarm,
   isSpeechRecognitionSupported,
   listenOnce,
   playBeep,
@@ -43,6 +44,7 @@ import {
   stopSpeaking,
   unlockChallengeAudio,
   wait,
+  waitMicrophoneReleased,
   warmUpMicrophone,
   type WordMark,
 } from './challengeEngine'
@@ -332,6 +334,7 @@ export function NotaDesafianteOverlay({
     // Permisos del micrófono y del reconocimiento de voz ANTES del primer trozo,
     // para que no salten en mitad del juego.
     setPhase('mic')
+    const wasWarm = isMicrophoneWarm()
     const mic = await warmUpMicrophone(targetLang)
     if (runIdRef.current !== runId) return
     if (!mic.ok) {
@@ -339,6 +342,14 @@ export function NotaDesafianteOverlay({
       setPhase('error')
       releaseWakeLock()
       return
+    }
+    // Recién abierto y cerrado el micro, el móvil tarda un momento en volver a sacar el sonido
+    // por el altavoz (y Android hace su propio «ding» al cerrarlo). Si la primera frase sonaba
+    // ya, se cortaba y parecía que sonaba el aviso de hablar (Luis, 4 oct).
+    if (!wasWarm) {
+      await waitMicrophoneReleased()
+      await wait(isIOSDevice() ? 600 : 900)
+      if (runIdRef.current !== runId) return
     }
 
     setPhase('running')

@@ -48,7 +48,7 @@ import { t } from '@/i18n'
 const PAIRS_PER_BOARD = 5
 const FEEDBACK_MS_CORRECT = 1000
 const FEEDBACK_MS_WRONG = 2000
-/** Fallo en Escritura o Habla: da tiempo a oír cómo se dice la palabra. */
+/** Al fallar: da tiempo a oír cómo se dice la palabra. */
 const FEEDBACK_MS_WRONG_SPOKEN = 3400
 
 type Feedback = {
@@ -176,8 +176,8 @@ const stopConfettiRef = useRef<(() => void) | null>(null)
     setFeedback({ isCorrect, timedOut, myAnswer, pairs: null })
     setPhase('feedback')
     setEndsAt(null)
-    // Fallo en Escritura o Habla: una voz dice cómo se dice de verdad la palabra (Luis, 3 oct).
-    const sayAnswer = !isCorrect && (question.kind === 'write' || question.kind === 'speak')
+    // Al fallar (en todos los modos menos Parejas), se ve la buena y una voz la dice (Luis, 3-4 oct).
+    const sayAnswer = !isCorrect && question.kind !== 'pairs'
     if (sayAnswer) {
       const word = question.answer.target
       window.setTimeout(() => void speakAsync(word, config.targetLang), 450)

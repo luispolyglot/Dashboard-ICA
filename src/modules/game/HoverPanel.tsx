@@ -1,9 +1,28 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
+// Solo se abre en aparatos con ratón (ordenador). En el móvil nunca: al cerrar un aviso o salir de
+// una pantalla, el navegador devolvía el foco al botón de la racha o de las monedas y se abría solo,
+// sin poder cerrarlo (Luis, 4 oct).
+function canHover(): boolean {
+  try {
+    return window.matchMedia('(hover: hover) and (pointer: fine)').matches
+  } catch {
+    return false
+  }
+}
+
+// Con teclado sí se abre, pero solo si lo último que se usó fue el tabulador (no cuando la app
+// devuelve el foco sola al cerrar una ventana).
+let lastInputWasTab = false
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', (event) => { lastInputWasTab = event.key === 'Tab' }, true)
+  window.addEventListener('pointerdown', () => { lastInputWasTab = false }, true)
+}
+
 /**
  * Desplegable que se abre al pasar el ratón por encima (como en Duolingo), sin clicar.
- * - Solo con ratón: en el móvil, tocar el botón hace lo de siempre (abrir su pantalla).
+ * - Solo con ratón: en el móvil no se abre nunca; tocar el botón hace lo de siempre (abrir su pantalla).
  * - Con teclado se abre al llegar con Tab y se cierra con Escape.
  * - Se puede mover el ratón del botón al desplegable sin que se cierre.
  */
@@ -59,13 +78,14 @@ export function HoverPanel({
       ref={rootRef}
       className='relative'
       onPointerEnter={(event) => {
-        if (event.pointerType === 'mouse') show(90)
+        if (event.pointerType === 'mouse' && canHover()) show(90)
       }}
       onPointerLeave={(event) => {
         if (event.pointerType === 'mouse') hide(180)
       }}
       onFocus={(event) => {
-        // Solo con teclado (al tocar en el móvil también llega el foco).
+        // Solo con teclado y tabulador (al tocar en el móvil o al cerrar una ventana también llega el foco).
+        if (!canHover() || !lastInputWasTab) return
         if (event.target instanceof HTMLElement && event.target.matches(':focus-visible')) show(0)
       }}
       onBlur={(event) => {

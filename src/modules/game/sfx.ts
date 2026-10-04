@@ -158,6 +158,35 @@ export const gameSfx = {
   coin() {
     playTones([1319], 0.045, 'sine', 0.07)
   },
+  /**
+   * Pagar con ICA Coins en la tienda (Luis, 4 oct): unas monedas que caen y tintinean,
+   * cada una un poco más baja y más flojita, con un «chas» de metal al principio.
+   */
+  spend() {
+    const ctx = getAudioContext()
+    if (!ctx) return
+    vibrate([15, 40, 15])
+    noiseBurst(ctx, 0, 0.05, 6500, 'highpass', 0.05)
+    const clinks = [0, 0.07, 0.13, 0.2, 0.3]
+    clinks.forEach((at, index) => {
+      const start = ctx.currentTime + at + Math.random() * 0.015
+      const base = 2400 - index * 140 + Math.random() * 80
+      const volume = 0.09 * (1 - index * 0.14)
+      // Dos parciales sin relación armónica: suena a metal, no a nota de piano.
+      for (const [ratio, level, decay] of [[1, 1, 0.16], [2.76, 0.45, 0.08]] as const) {
+        const osc = ctx.createOscillator()
+        osc.type = 'sine'
+        osc.frequency.value = base * ratio
+        const gain = ctx.createGain()
+        gain.gain.setValueAtTime(0.0001, start)
+        gain.gain.exponentialRampToValueAtTime(volume * level, start + 0.003)
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + decay)
+        osc.connect(gain).connect(ctx.destination)
+        osc.start(start)
+        osc.stop(start + decay + 0.02)
+      }
+    })
+  },
   /** Confeti de una insignia nueva: un «pof» suave y crujidos muy bajitos. */
   confetti() {
     const ctx = getAudioContext()

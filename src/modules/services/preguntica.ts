@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase'
 import { t } from '@/i18n'
 import { runInBatches } from '../../lib/utils'
 import { PREGUNTICA_EXTRA_COST } from '../game/rules'
+import { gameSfx } from '../game/sfx'
 
 const PREGUNTICA_AUDIO_BUCKET = 'preguntica-audios'
 
@@ -1079,6 +1080,9 @@ export async function redeemPregunticaTokensForWeek(
   if (!row) {
     throw new Error(t('No se pudo registrar el canje de ICA Coins'))
   }
+
+  // Se paga: suenan las monedas (Luis, 4 oct).
+  gameSfx.spend()
 
   return {
     unlockId: row.unlock_id,
