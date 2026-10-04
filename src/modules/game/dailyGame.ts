@@ -10,7 +10,7 @@ import type { Lexicard } from '../types'
 import { todayKey } from '../utils'
 import { supabase } from '../../lib/supabase'
 
-// RETO DEL DÍA: el minijuego que sale en el camino después del cofre.
+// RETO DEL DÍA: el minijuego que se abre al completar el ciclo, a la vez que el cofre.
 // Usa el mismo motor que Desafíos ICA, pero lo juegas tú solo con tus palabras ICA.
 // Cada día toca uno de los modos de Desafíos (Parejas, Lectura, Escritura, Escucha, Habla;
 // van rotando). Cuenta como hecho con 5 aciertos o más. El mejor resultado diario se sincroniza

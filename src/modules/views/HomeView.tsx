@@ -172,16 +172,17 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           <div className='lg:hidden'>
             <LevelStrip config={config} />
           </div>
+          {/* Coaching arriba en el móvil, como prioridad (Luis, 5 oct, maqueta B6). Se monta
+              siempre para saber si lo tienes. */}
+          {!isLg ? <div className={hasCoaching ? '' : 'hidden'}>{coachingCard}</div> : null}
+          <StreakRiskBanner />
           <div>
             <h1 className='m-0 font-display tracking-tight text-2xl leading-tight font-extrabold lg:text-3xl'>
               {t('Tu ciclo ICA de hoy')}
             </h1>
             <p className='m-0 mt-0.5 text-sm font-medium text-muted-foreground'>{subtitle}</p>
           </div>
-          <StreakRiskBanner />
           <IcaPath />
-          {/* Coaching: debajo del camino en el móvil (se monta siempre para saber si lo tienes) */}
-          {!isLg ? <div className={hasCoaching ? '' : 'hidden'}>{coachingCard}</div> : null}
         </div>
 
         <aside className='hidden flex-col gap-4 lg:sticky lg:top-6 lg:flex'>

@@ -256,5 +256,7 @@ const en: Record<string, string> = {
   "Elige cuáles se ven aquí: abre una insignia y toca «Mostrar en mi perfil».": "Choose which ones show here: open a badge and tap “Show on my profile”.",
   // Aviso de racha en peligro con X (4 oct)
   "Cerrar aviso": "Close warning",
+  // Inicio en el móvil: cofre y reto a la vez (5 oct)
+  "Reto del día: se abre al completar I·C·A": "Daily challenge: opens when you complete I·C·A",
 }
 export default en

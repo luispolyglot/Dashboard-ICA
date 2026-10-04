@@ -71,7 +71,7 @@ function scoreMessage(correct: number, total: number): string {
 }
 
 /**
- * RETO DEL DÍA: minijuego de 10 palabras con tu Baúl ICA, después del cofre del ciclo.
+ * RETO DEL DÍA: minijuego de 10 palabras con tu Baúl ICA; se abre al completar el ciclo, a la vez que el cofre.
  * Mismas piezas y motor que Desafíos ICA, pero sin rival. Cuenta como hecho con 5 aciertos.
  */
 export function DailyGameView({ config, cards }: { config: AppConfig; cards: Lexicard[] }) {
