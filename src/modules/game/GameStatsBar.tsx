@@ -21,7 +21,9 @@ import {
   type DailyLimitKey,
 } from './rules'
 import { getIcaStreakState } from './streak'
-import { t, tn } from '@/i18n'
+import { langName, t, tn } from '@/i18n'
+import { FLAG_COST, useMyFlags } from './languageFlag'
+import { FlagInitial } from './ranking'
 
 /**
  * Arriba a la derecha: racha ICA e ICA Coins. Nada más.
@@ -295,6 +297,12 @@ function CoinsPanel({
   onNavigate: (to: string) => void
 }) {
   const balance = total ?? 0
+  const { user } = useAuth()
+  const { config } = useDashboardContext()
+  const { owned } = useMyFlags(user?.id)
+  const targetLang = config?.targetLang ?? null
+  const myName: string = user?.user_metadata?.display_name || user?.email?.split('@')[0] || ''
+  const myInitial = myName.trim().charAt(0).toUpperCase() || '?'
   const items: Array<{
     key: string
     icon: ReactNode
@@ -329,6 +337,20 @@ function CoinsPanel({
       cost: PREGUNTICA_EXTRA_COST,
       to: `${DASHBOARD_ROUTES.preguntica}?extra=1`,
     },
+    // La más cara, al final: así va todo de menos a más (Luis, 4 oct).
+    ...(targetLang
+      ? [
+          {
+            key: 'flag',
+            icon: <FlagInitial initial={myInitial} flag={targetLang} size={40} />,
+            tint: 'transparent',
+            title: t('Bandera de {lang}', { lang: langName(targetLang) }),
+            cost: FLAG_COST,
+            to: DASHBOARD_ROUTES.fichas,
+            doneLabel: owned.includes(targetLang) ? t('Tuya') : undefined,
+          },
+        ]
+      : []),
   ]
 
   return (

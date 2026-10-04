@@ -44,6 +44,7 @@ import { getTodayProgress } from '../constants'
 import { langName, t } from '@/i18n'
 import { FLAG_COST, useMyFlags } from '../game/languageFlag'
 import { LanguageFlag } from '../components/LanguagePicker'
+import { FlagInitial } from '../game/ranking'
 
 const LIMIT_ROWS: Array<{ key: DailyLimitKey; letter: 'I' | 'C' | 'A'; color: string; soft: string }> = [
   { key: 'words', letter: 'I', color: 'var(--ica-i)', soft: 'var(--ica-i-soft)' },
@@ -209,6 +210,9 @@ export function FichasView() {
   const flags = useMyFlags(user?.id)
   const targetLang = config?.targetLang ?? null
   const ownsTargetFlag = Boolean(targetLang && flags.owned.includes(targetLang))
+  // La tienda enseña ya cómo quedaría tu inicial con la bandera (como en el ranking y el perfil).
+  const myName: string = user?.user_metadata?.display_name || user?.email?.split('@')[0] || ''
+  const myInitial = myName.trim().charAt(0).toUpperCase() || '?'
   const icaStreak = getIcaStreakState({
     creationDays,
     savedCreationDays,
@@ -417,15 +421,24 @@ export function FichasView() {
               }
             />
           ))}
+          <Row
+            icon={
+              <span className='flex size-12 items-center justify-center rounded-2xl' style={{ background: 'var(--ica-a-soft)' }}>
+                <PregunticaExtraGlyph size={30} />
+              </span>
+            }
+            title={t('Intento extra de PreguntICA')}
+            text={t('Una PreguntICA más esta semana, aunque no hayas activado las 20 palabras.')}
+            right={
+              <PriceButton
+                cost={PREGUNTICA_EXTRA_COST}
+                onClick={() => navigate(`${DASHBOARD_ROUTES.preguntica}?extra=1`)}
+              />
+            }
+          />
           {targetLang ? (
             <Row
-              icon={
-                <span className='flex size-12 items-center justify-center overflow-hidden rounded-full ring-2 ring-border'>
-                  <span className='-mx-3 flex'>
-                    <LanguageFlag language={targetLang} size={72} />
-                  </span>
-                </span>
-              }
+              icon={<FlagInitial initial={myInitial} flag={targetLang} size={48} />}
               title={t('Bandera de {lang}', { lang: langName(targetLang) })}
               text={
                 ownsTargetFlag
@@ -443,21 +456,6 @@ export function FichasView() {
               }
             />
           ) : null}
-          <Row
-            icon={
-              <span className='flex size-12 items-center justify-center rounded-2xl' style={{ background: 'var(--ica-a-soft)' }}>
-                <PregunticaExtraGlyph size={30} />
-              </span>
-            }
-            title={t('Intento extra de PreguntICA')}
-            text={t('Una PreguntICA más esta semana, aunque no hayas activado las 20 palabras.')}
-            right={
-              <PriceButton
-                cost={PREGUNTICA_EXTRA_COST}
-                onClick={() => navigate(`${DASHBOARD_ROUTES.preguntica}?extra=1`)}
-              />
-            }
-          />
         </div>
         {confirming ? (
           <p className='mt-1 text-xs font-semibold text-muted-foreground'>
