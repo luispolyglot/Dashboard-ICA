@@ -63,7 +63,89 @@ if (typeof window !== 'undefined') {
     }
   }
   window.addEventListener('pointerdown', wake, { capture: true, passive: true })
+  window.addEventListener('pointerdown', () => preloadSamples(), { capture: true, passive: true, once: true })
   window.addEventListener('keydown', wake, { capture: true })
+}
+
+// SOUND FILES (Luis, 5 Oct): the chest sounds are real recordings instead of synthesized tones.
+// - chestUnlock: «B19» from the picker (react-sounds «success», MIT), shortened and quieter.
+// - chestWaiting: «D04» (wood knocks from Kenney's City Builder starter kit, CC0).
+// Each file is fetched and decoded once, then kept in memory.
+const SAMPLE_URLS = {
+  chestUnlock: '/sounds/cofre-abierto.mp3',
+  chestWaiting: '/sounds/cofre-esperando.mp3',
+} as const
+type SampleName = keyof typeof SAMPLE_URLS
+const sampleBuffers = new Map<SampleName, AudioBuffer>()
+const sampleLoads = new Map<SampleName, Promise<AudioBuffer | null>>()
+
+function loadSample(ctx: BaseAudioContext, name: SampleName): Promise<AudioBuffer | null> {
+  const cached = sampleBuffers.get(name)
+  if (cached) return Promise.resolve(cached)
+  let load = sampleLoads.get(name)
+  if (!load) {
+    load = fetch(SAMPLE_URLS[name])
+      .then((response) => (response.ok ? response.arrayBuffer() : Promise.reject(new Error(String(response.status)))))
+      .then((data) => ctx.decodeAudioData(data))
+      .then((buffer) => {
+        sampleBuffers.set(name, buffer)
+        return buffer
+      })
+      .catch(() => {
+        sampleLoads.delete(name)
+        return null
+      })
+    sampleLoads.set(name, load)
+  }
+  return load
+}
+
+/** Downloads the sound files ahead of time (first touch), so the first play is not late. */
+function preloadSamples(): void {
+  if (typeof window === 'undefined' || !isGameSoundEnabled()) return
+  try {
+    const ctx = effectsContext()
+    if (!ctx) return
+    for (const name of Object.keys(SAMPLE_URLS) as SampleName[]) void loadSample(ctx, name)
+  } catch {
+    // No audio: nothing to preload.
+  }
+}
+
+function playSample(name: SampleName, volume: number): void {
+  try {
+    const ctx = effectsContext()
+    if (!ctx) return
+    const play = (buffer: AudioBuffer | null) => {
+      if (!buffer) return
+      const source = ctx.createBufferSource()
+      source.buffer = buffer
+      const gain = ctx.createGain()
+      gain.gain.value = volume
+      source.connect(gain).connect(ctx.destination)
+      source.start(ctx.currentTime + 0.005)
+    }
+    const cached = sampleBuffers.get(name)
+    if (cached) play(cached)
+    else void loadSample(ctx, name).then(play)
+  } catch {
+    // If the browser blocks audio, the game goes on silently.
+  }
+}
+
+/** A single tone with a quick attack and a soft tail (same envelope as the sound picker). */
+function shortTone(ctx: AudioContext, at: number, frequency: number, duration: number, type: OscillatorType, volume: number): void {
+  const oscillator = ctx.createOscillator()
+  oscillator.type = type
+  oscillator.frequency.value = frequency
+  const gain = ctx.createGain()
+  const start = ctx.currentTime + at
+  gain.gain.setValueAtTime(0.0001, start)
+  gain.gain.exponentialRampToValueAtTime(volume, start + 0.006)
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration)
+  oscillator.connect(gain).connect(ctx.destination)
+  oscillator.start(start)
+  oscillator.stop(start + duration + 0.05)
 }
 
 export function isGameSoundEnabled(): boolean {
@@ -207,6 +289,23 @@ export const gameSfx = {
   chest() {
     playTones([392, 587, 880], 0.06, 'triangle', 0.12)
     vibrate([20, 30, 20])
+  },
+  /** The cycle chest unlocks (I·C·A finished): «something achieved» (B19). */
+  chestUnlock() {
+    playSample('chestUnlock', 0.8)
+    vibrate([20, 30, 20])
+  },
+  /** The daily challenge unlocks, right after the chest: two beeps and a click (C3). */
+  challengeUnlock() {
+    const ctx = getAudioContext()
+    if (!ctx) return
+    noiseBurst(ctx, 0, 0.015, 3000, 'highpass', 0.2)
+    shortTone(ctx, 0.02, 880, 0.08, 'square', 0.05)
+    shortTone(ctx, 0.12, 1320, 0.14, 'square', 0.05)
+  },
+  /** The ready chest shakes while it waits to be opened: wooden knocks (D04). */
+  chestWaiting() {
+    playSample('chestWaiting', 1)
   },
   /** Una moneda llega al contador. */
   coin() {

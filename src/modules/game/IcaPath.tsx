@@ -165,6 +165,10 @@ type StepKey = 'I' | 'C' | 'A' | 'chest' | 'review'
 
 // Paradas del camino, en orden (el relleno del camino va de una a la siguiente).
 const STEP_ORDER: StepKey[] = ['I', 'C', 'A', 'chest', 'review']
+/** Gap between the chest unlock sound and the challenge unlock sound. */
+const CHALLENGE_UNLOCK_SOUND_DELAY_MS = 850
+/** The chest rattle (index.css) lasts 2.2 s and starts shaking at 56-58 %. */
+const CHEST_RATTLE_SHAKE_AT_MS = 1230
 
 /** CSS position relative to a horizontal anchor (`cx`, e.g. '18%'), in px. */
 const at = (cx: string, offset: number): string => `calc(${cx} + ${offset}px)`
@@ -474,15 +478,39 @@ export function IcaPath() {
     return () => window.removeEventListener(CYCLE_CELEBRATION_CLOSED_EVENT, onClosed)
   }, [])
   const pathRef = useRef<HTMLDivElement>(null)
+  // Read inside onArrive (a stable callback) to know if the challenge really opens with the chest.
+  const challengeOpensRef = useRef(false)
+  const challengeOpens = !isDailyGamePassed(gameResult) && cards.length >= DAILY_GAME_MIN_WORDS
+  useEffect(() => {
+    challengeOpensRef.current = challengeOpens
+  }, [challengeOpens])
   const onArrive = useCallback((stop: number) => {
     // La parada a la que llega el camino da un salto y suena.
-    const target = pathRef.current?.querySelector<HTMLElement>(`[data-ica-step="${STEP_ORDER[stop]}"]`)
-    gameSfx.streak()
-    if (!target) return
-    target.classList.remove('ica-nudge')
-    void target.offsetWidth
-    target.classList.add('ica-nudge')
-    target.addEventListener('animationend', () => target.classList.remove('ica-nudge'), { once: true })
+    const nudge = (step: StepKey) => {
+      const target = pathRef.current?.querySelector<HTMLElement>(`[data-ica-step="${step}"]`)
+      if (!target) return
+      target.classList.remove('ica-nudge')
+      void target.offsetWidth
+      target.classList.add('ica-nudge')
+      target.addEventListener('animationend', () => target.classList.remove('ica-nudge'), { once: true })
+    }
+    const step = STEP_ORDER[stop]
+    if (step === 'chest') {
+      // SOUNDS (Luis, 5 Oct): the chest and the challenge open together, but they sound one after
+      // the other: first the chest («something achieved»), then the challenge.
+      gameSfx.chestUnlock()
+      nudge('chest')
+      if (challengeOpensRef.current) {
+        window.setTimeout(() => {
+          gameSfx.challengeUnlock()
+          nudge('review')
+        }, CHALLENGE_UNLOCK_SOUND_DELAY_MS)
+      }
+      return
+    }
+    // The challenge already sounded when the chest unlocked: reaching it now only nudges it.
+    if (step !== 'review') gameSfx.streak()
+    nudge(step)
   }, [])
   const { fill, holdStop } = usePathFill({
     userId: user?.id,
@@ -505,6 +533,28 @@ export function IcaPath() {
   const chestLocked = (!cycleDone && !chestOpened) || held === 'chest'
   const reviewNeedsWords = cards.length < DAILY_GAME_MIN_WORDS
   const reviewLocked = (!reviewDone && ((!cycleDone && !chestOpened) || reviewNeedsWords)) || held === 'review'
+
+  // CHEST WAITING SOUND (Luis, 5 Oct): like in Clash Royale, the ready chest knocks every time it
+  // shakes. Synced with the CSS rattle: each new cycle of «ica-chest-rattle» schedules the knocks
+  // for the moment the shake starts. The first cycle stays silent so it does not overlap the unlock
+  // sound. With reduced motion there is no animation, so there is no sound either.
+  useEffect(() => {
+    if (!chestReady || celebrationOpen) return
+    let timer: number | null = null
+    const onIteration = (event: AnimationEvent) => {
+      if (event.animationName !== 'ica-chest-rattle') return
+      if (timer !== null) window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        timer = null
+        if (!document.hidden) gameSfx.chestWaiting()
+      }, CHEST_RATTLE_SHAKE_AT_MS)
+    }
+    document.addEventListener('animationiteration', onIteration)
+    return () => {
+      document.removeEventListener('animationiteration', onIteration)
+      if (timer !== null) window.clearTimeout(timer)
+    }
+  }, [chestReady, celebrationOpen])
 
   const next: StepKey | null = !iDone
     ? 'I'
