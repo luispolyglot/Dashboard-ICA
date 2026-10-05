@@ -13,6 +13,8 @@ const STORAGE_PREFIX = 'ica-path-seen-v1'
 export const PATH_FILL_DELAY_MS = 350
 /** Lo que tarda en pintarse un tramo. */
 export const PATH_FILL_MS = 1100
+/** Small wait before starting a fill, so a pausing screen that opens at the same time wins. */
+const FILL_START_GRACE_MS = 80
 
 export type PathFill = { from: number; to: number }
 
@@ -99,13 +101,19 @@ export function usePathFill({
       return
     }
     if (action !== 'fill' || paused) return
-    writePathSeen(userId, reached)
-    setSeen(reached)
-    if (prefersReducedMotion()) {
-      onArrive?.(reached)
-      return
-    }
-    setFill({ from: reached - 1, to: reached })
+    // Start a moment later: if a screen that pauses the path opens in this same moment (the
+    // «new streak day» flame when the cycle is completed on Home), `paused` changes first and the
+    // fill waits for it to close instead of running underneath.
+    const timer = window.setTimeout(() => {
+      writePathSeen(userId, reached)
+      setSeen(reached)
+      if (prefersReducedMotion()) {
+        onArrive?.(reached)
+        return
+      }
+      setFill({ from: reached - 1, to: reached })
+    }, FILL_START_GRACE_MS)
+    return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, ready, seen, reached, paused, fill])
 

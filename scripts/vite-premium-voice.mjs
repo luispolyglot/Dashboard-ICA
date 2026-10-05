@@ -32,6 +32,88 @@ function toWav(pcm, rate) {
   return Buffer.concat([header, pcm])
 }
 
+// USAGE (Luis, 5 Oct): every generated audio is written to usage.jsonl next to the cached audios
+// (tokens, seconds and estimated price), and every audio served from the cache too (free).
+// GET /__ica/tts/usage returns the totals for the admin panel («Voz premium»).
+// Paid tier prices per million tokens (ai.google.dev/gemini-api/docs/pricing, October 2026).
+const PRICES = {
+  'gemini-3.8-flash-lite-tts': { input: [0.5, 1], output: [6, 12] },
+  'gemini-3.8-flash-tts': { input: [0.5, 1], output: [9, 18] },
+}
+/** Prices double from 1 January 2027. */
+const PRICE_CHANGE_DAY = '2027-01-01'
+/** Gemini counts 25 audio tokens per second when the answer does not say. */
+const AUDIO_TOKENS_PER_SECOND = 25
+
+function localDay(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+/** @param {string} model @param {string} day @param {number} inputTokens @param {number} outputTokens */
+function priceUsd(model, day, inputTokens, outputTokens) {
+  const prices = PRICES[model] || PRICES['gemini-3.8-flash-lite-tts']
+  const step = day >= PRICE_CHANGE_DAY ? 1 : 0
+  return (inputTokens * prices.input[step] + outputTokens * prices.output[step]) / 1_000_000
+}
+
+/** @param {Buffer} wav */
+function wavSeconds(wav) {
+  if (wav.length < 44 || wav.subarray(0, 4).toString('ascii') !== 'RIFF') return 0
+  const byteRate = wav.readUInt32LE(28) || 48000
+  return Math.max(0, (wav.length - 44) / byteRate)
+}
+
+/** @param {string} file */
+function readUsage(file) {
+  if (!fs.existsSync(file)) return []
+  return fs
+    .readFileSync(file, 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line)
+      } catch {
+        return null
+      }
+    })
+    .filter(Boolean)
+}
+
+/** Totals for today, this month, everything, and the last 14 days. */
+function summarizeUsage(rows, model) {
+  const empty = () => ({ generated: 0, reused: 0, seconds: 0, costUsd: 0 })
+  const today = localDay()
+  const month = today.slice(0, 7)
+  const totals = { today: empty(), month: empty(), all: empty() }
+  /** @type {Record<string, ReturnType<typeof empty>>} */
+  const byDay = {}
+  for (const row of rows) {
+    const day = String(row.day || '')
+    const buckets = [totals.all, (byDay[day] ||= empty())]
+    if (day === today) buckets.push(totals.today)
+    if (day.startsWith(month)) buckets.push(totals.month)
+    for (const bucket of buckets) {
+      if (row.kind === 'hit') {
+        bucket.reused += 1
+      } else {
+        bucket.generated += 1
+        bucket.seconds += Number(row.seconds || 0)
+        bucket.costUsd += Number(row.costUsd || 0)
+      }
+    }
+  }
+  const days = []
+  for (let back = 13; back >= 0; back -= 1) {
+    const date = new Date()
+    date.setDate(date.getDate() - back)
+    const day = localDay(date)
+    days.push({ day, ...(byDay[day] || empty()) })
+  }
+  const prices = PRICES[model] || PRICES['gemini-3.8-flash-lite-tts']
+  return { model, source: 'local', today: totals.today, month: totals.month, all: totals.all, days, prices: { inputPerMillionUsd: prices.input[0], outputPerMillionUsd: prices.output[0], from2027Multiplier: 2 } }
+}
+
 /** @returns {import('vite').Plugin} */
 export function localPremiumVoice() {
   return {
@@ -45,6 +127,16 @@ export function localPremiumVoice() {
       const cacheDir = path.resolve(server.config.root, 'node_modules/.cache/ica-tts')
       /** @type {Map<string, Promise<Buffer>>} */
       const inFlight = new Map()
+      const usageFile = path.join(cacheDir, 'usage.jsonl')
+      /** @param {Record<string, unknown>} entry */
+      const logUsage = (entry) => {
+        try {
+          fs.mkdirSync(cacheDir, { recursive: true })
+          fs.appendFileSync(usageFile, `${JSON.stringify(entry)}\n`)
+        } catch {
+          // Without the log the voice still works.
+        }
+      }
       const languageNames = new Intl.DisplayNames(['en'], { type: 'language' })
       server.config.logger.info(
         apiKey ? `  Premium voice: ${model} (${voice})` : '  Premium voice: off (no GEMINI_API_KEY in .env.local)',
@@ -81,9 +173,27 @@ export function localPremiumVoice() {
         const inline = parts.find((p) => p?.inlineData?.data)?.inlineData
         if (!inline?.data) throw new Error('Gemini TTS: no audio in the answer')
         const bytes = Buffer.from(inline.data, 'base64')
-        if (bytes.subarray(0, 4).toString('ascii') === 'RIFF') return bytes
         const rate = Number(/rate=(\d+)/.exec(inline.mimeType || '')?.[1]) || 24000
-        return toWav(bytes, rate)
+        const audio = bytes.subarray(0, 4).toString('ascii') === 'RIFF' ? bytes : toWav(bytes, rate)
+        // Usage of this call: the real token counts when Gemini sends them, an estimate if not.
+        const seconds = wavSeconds(audio)
+        const meta = data?.usageMetadata || {}
+        const inputTokens = Number(meta.promptTokenCount) || Math.ceil((text.length + 120) / 4)
+        const outputTokens = Number(meta.candidatesTokenCount) || Math.ceil(seconds * AUDIO_TOKENS_PER_SECOND)
+        const day = localDay()
+        logUsage({
+          at: new Date().toISOString(),
+          day,
+          kind: 'gen',
+          model,
+          lang,
+          chars: text.length,
+          seconds: Math.round(seconds * 100) / 100,
+          inputTokens,
+          outputTokens,
+          costUsd: priceUsd(model, day, inputTokens, outputTokens),
+        })
+        return audio
       }
 
       server.middlewares.use('/__ica/tts', (req, res) => {
@@ -93,6 +203,9 @@ export function localPremiumVoice() {
           res.setHeader('Content-Type', type)
           res.setHeader('Cache-Control', 'no-store')
           res.end(body)
+        }
+        if (req.method === 'GET' && (req.url || '').startsWith('/usage')) {
+          return reply(200, JSON.stringify({ enabled: Boolean(apiKey), ...summarizeUsage(readUsage(usageFile), model) }), 'application/json')
         }
         if (!apiKey) return reply(404, 'Premium voice is off')
         if (req.method !== 'POST') return reply(405, 'POST only')
@@ -109,7 +222,10 @@ export function localPremiumVoice() {
             }
             const key = createHash('sha1').update(`${model}|${voice}|${lang}|${clean}`).digest('hex')
             const file = path.join(cacheDir, `${key}.wav`)
-            if (fs.existsSync(file)) return reply(200, fs.readFileSync(file), 'audio/wav')
+            if (fs.existsSync(file)) {
+              logUsage({ at: new Date().toISOString(), day: localDay(), kind: 'hit', model, lang })
+              return reply(200, fs.readFileSync(file), 'audio/wav')
+            }
             let job = inFlight.get(key)
             if (!job) {
               job = generate(clean, String(lang)).then((audio) => {

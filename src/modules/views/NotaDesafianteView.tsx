@@ -142,7 +142,10 @@ function speakAndWait(text: string, langName: string): Promise<void> {
 export function NotaDesafianteListView() {
   const { config } = useDashboardContext()
   const { notes, count } = useClosedMasterNotes(config?.targetLang, config?.nativeLang)
-  const playable = (notes || []).filter((note) => note.totalDurationMs > 0)
+  // Oldest first (Luis, 5 Oct): «Nota maestra 1» on top, like in Activación.
+  const playable = (notes || [])
+    .filter((note) => note.totalDurationMs > 0)
+    .sort((x, y) => (x.closedAt || '').localeCompare(y.closedAt || ''))
   const ready = count !== null && count >= CHALLENGE_NOTE_MIN_CLOSED_NOTES
   const nativeLang = config?.nativeLang || 'Español'
 

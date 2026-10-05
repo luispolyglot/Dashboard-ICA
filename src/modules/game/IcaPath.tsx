@@ -9,6 +9,7 @@ import { CREATION_WORDS_GOAL, getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { CYCLE_CELEBRATION_CLOSED_EVENT, openCycleCelebration } from './CycleCelebration'
+import { STREAK_DAY_CELEBRATION_EVENT, isStreakDayCelebrationOpen } from './StreakDayCelebration'
 import {
   claimCycleChest,
   claimReachedMilestones,
@@ -472,12 +473,20 @@ export function IcaPath() {
   // Relleno del camino al avanzar: la parada nueva sigue «dormida» hasta que llega el relleno.
   // Con la celebración del cofre encima se espera a que se cierre.
   const [celebrationOpen, setCelebrationOpen] = useState(false)
+  // The «new streak day» flame comes first; the path fills once it is closed.
+  const [streakDayOpen, setStreakDayOpen] = useState(isStreakDayCelebrationOpen)
+  useEffect(() => {
+    const onStreakDay = (event: Event) => setStreakDayOpen(Boolean((event as CustomEvent<boolean>).detail))
+    window.addEventListener(STREAK_DAY_CELEBRATION_EVENT, onStreakDay)
+    return () => window.removeEventListener(STREAK_DAY_CELEBRATION_EVENT, onStreakDay)
+  }, [])
   useEffect(() => {
     const onClosed = () => setCelebrationOpen(false)
     window.addEventListener(CYCLE_CELEBRATION_CLOSED_EVENT, onClosed)
     return () => window.removeEventListener(CYCLE_CELEBRATION_CLOSED_EVENT, onClosed)
   }, [])
   const pathRef = useRef<HTMLDivElement>(null)
+  const forkMaskId = `ica-fork-fill-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
   // Read inside onArrive (a stable callback) to know if the challenge really opens with the chest.
   const challengeOpensRef = useRef(false)
   const challengeOpens = !isDailyGamePassed(gameResult) && cards.length >= DAILY_GAME_MIN_WORDS
@@ -518,7 +527,7 @@ export function IcaPath() {
     // Wait for today's challenge result too: otherwise a finished challenge counts as pending for
     // a moment and the path «unlocks» it again (with its sound).
     ready: !loading && gameLoaded,
-    paused: celebrationOpen,
+    paused: celebrationOpen || streakDayOpen,
     onArrive,
   })
   const held = holdStop === null ? null : STEP_ORDER[holdStop]
@@ -537,26 +546,36 @@ export function IcaPath() {
     (!reviewDone && ((!cycleDone && !chestOpened) || reviewNeedsWords)) || held === 'review' || held === 'chest'
 
   // CHEST WAITING SOUND (Luis, 5 Oct): like in Clash Royale, the ready chest knocks every time it
-  // shakes. Synced with the CSS rattle: each new cycle of «ica-chest-rattle» schedules the knocks
-  // for the moment the shake starts. The first cycle stays silent so it does not overlap the unlock
-  // sound. With reduced motion there is no animation, so there is no sound either.
+  // shakes, the first shake included. Synced with the CSS rattle: the animation starts when the
+  // chest becomes ready (first knocks right away) and every new cycle of «ica-chest-rattle»
+  // schedules the next ones for the moment the shake starts. With reduced motion there is no
+  // animation, so only that first knock would play: it is skipped too.
   useEffect(() => {
-    if (!chestReady || celebrationOpen) return
-    let timer: number | null = null
-    const onIteration = (event: AnimationEvent) => {
-      if (event.animationName !== 'ica-chest-rattle') return
-      if (timer !== null) window.clearTimeout(timer)
-      timer = window.setTimeout(() => {
-        timer = null
+    if (!chestReady || celebrationOpen || streakDayOpen) return
+    const timers = new Set<number>()
+    const knockSoon = () => {
+      const timer = window.setTimeout(() => {
+        timers.delete(timer)
         if (!document.hidden) gameSfx.chestWaiting()
       }, CHEST_RATTLE_SHAKE_AT_MS)
+      timers.add(timer)
+    }
+    let reducedMotion = false
+    try {
+      reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    } catch {
+      reducedMotion = false
+    }
+    if (!reducedMotion) knockSoon()
+    const onIteration = (event: AnimationEvent) => {
+      if (event.animationName === 'ica-chest-rattle') knockSoon()
     }
     document.addEventListener('animationiteration', onIteration)
     return () => {
       document.removeEventListener('animationiteration', onIteration)
-      if (timer !== null) window.clearTimeout(timer)
+      timers.forEach((timer) => window.clearTimeout(timer))
     }
-  }, [chestReady, celebrationOpen])
+  }, [chestReady, celebrationOpen, streakDayOpen])
 
   const next: StepKey | null = !iDone
     ? 'I'
@@ -781,7 +800,8 @@ export function IcaPath() {
   const rowCenterY = ROW_TOP + 42
   // The road in the row only covers I → C → A; the fork below the box lights up once the cycle is done.
   const rowFill = fill && fill.to <= 2 ? fill : null
-  const forkDone = roadReached >= 3
+  // While the two branches are filling, the base stays grey under them (the fill paints on top).
+  const forkDone = roadReached >= 3 && !(fill && fill.to === 3)
   const forkStroke = forkDone ? 'var(--ica-road-done)' : 'var(--ica-road-todo)'
   const forkY = panelBottom + 14
   const forkD = [
@@ -789,6 +809,13 @@ export function IcaPath() {
     `M${XN.C} ${forkY} C${XN.C} ${forkY + 10}, ${XN.chest} ${forkY + 4}, ${XN.chest} ${slotTop}`,
     `M${XN.C} ${forkY} C${XN.C} ${forkY + 10}, ${XN.review} ${forkY + 4}, ${XN.review} ${slotTop}`,
   ].join(' ')
+  // When the cycle is done the two branches fill up at the same time, from the box down to the
+  // chest and to the daily challenge (Luis, 5 Oct).
+  const forkFilling = Boolean(fill && fill.to === 3)
+  const forkBranches = [
+    `M${XN.C} ${panelBottom} V${forkY} C${XN.C} ${forkY + 10}, ${XN.chest} ${forkY + 4}, ${XN.chest} ${slotTop}`,
+    `M${XN.C} ${panelBottom} V${forkY} C${XN.C} ${forkY + 10}, ${XN.review} ${forkY + 4}, ${XN.review} ${slotTop}`,
+  ]
   // Labels sit on the boxes: their backing color is the box color, so they blend in.
   const boxVars = { '--ica-label-bg': 'var(--card)', '--ica-brand': 'var(--card)' } as CSSProperties
   return (
@@ -817,6 +844,36 @@ export function IcaPath() {
           strokeDasharray='3 13'
           vectorEffect='non-scaling-stroke'
         />
+        {forkFilling ? (
+          <>
+            {/* One mask with both branches growing at once; the dashes are the same path as above. */}
+            <mask id={forkMaskId} maskUnits='userSpaceOnUse' x={0} y={0} width={100} height={mobileHeight}>
+              {forkBranches.map((branch) => (
+                <path
+                  key={branch}
+                  d={branch}
+                  fill='none'
+                  stroke='#ffffff'
+                  strokeWidth={14}
+                  strokeLinecap='round'
+                  pathLength={1}
+                  className='ica-road-fill'
+                  style={{ animationDelay: `${PATH_FILL_DELAY_MS}ms`, animationDuration: `${PATH_FILL_MS}ms` }}
+                />
+              ))}
+            </mask>
+            <path
+              d={forkD}
+              fill='none'
+              stroke='var(--ica-road-done)'
+              strokeLinecap='round'
+              strokeWidth={6}
+              strokeDasharray='3 13'
+              vectorEffect='non-scaling-stroke'
+              mask={`url(#${forkMaskId})`}
+            />
+          </>
+        ) : null}
       </svg>
       <Road
         centers={[

@@ -21,6 +21,7 @@ import {
 import { peekQuick, quickFetch } from '../services/quickCache'
 import { IconTile, PageTitle, Panel, RowGroup, SectionLabel, tone, type Tone } from '../game/ui'
 import { formatDateTime } from '../utils'
+import { VoiceUsagePanel } from '../components/VoiceUsagePanel'
 
 
 function formatDayLabel(day: string): string {
@@ -171,6 +172,8 @@ export function AdminAnalyticsView() {
               <TotalTile icon={ActivityIcon} tone='gold' label='Flashcards' value={analytics.summary.totalReviews} />
             </div>
           </div>
+
+          <VoiceUsagePanel />
 
           <div className='grid gap-6 lg:grid-cols-2'>
             <div>
