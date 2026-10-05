@@ -70,10 +70,15 @@ if (typeof window !== 'undefined') {
 // SOUND FILES (Luis, 5 Oct): the chest sounds are real recordings instead of synthesized tones.
 // - chestUnlock: «B19» from the picker (react-sounds «success», MIT), shortened and quieter.
 // - chestWaiting: «D04» (wood knocks from Kenney's City Builder starter kit, CC0).
+// - chestOpen: «E01», the lid opens and coins fall: latch, creak and coins from Kenney's RPG Audio
+//   plus three single coins from StarNinjas' «12 Coin Sound Effects» (all CC0).
+// - coinLand: «G01», one coin landing in the counter (StarNinjas, CC0).
 // Each file is fetched and decoded once, then kept in memory.
 const SAMPLE_URLS = {
   chestUnlock: '/sounds/cofre-abierto.mp3',
   chestWaiting: '/sounds/cofre-esperando.mp3',
+  chestOpen: '/sounds/cofre-se-abre.mp3',
+  coinLand: '/sounds/moneda-llega.mp3',
 } as const
 type SampleName = keyof typeof SAMPLE_URLS
 const sampleBuffers = new Map<SampleName, AudioBuffer>()
@@ -112,7 +117,8 @@ function preloadSamples(): void {
   }
 }
 
-function playSample(name: SampleName, volume: number): void {
+/** `rate` above or below 1 plays the file a bit higher or lower, so repeated coins do not sound identical. */
+function playSample(name: SampleName, volume: number, rate = 1): void {
   try {
     const ctx = effectsContext()
     if (!ctx) return
@@ -120,6 +126,7 @@ function playSample(name: SampleName, volume: number): void {
       if (!buffer) return
       const source = ctx.createBufferSource()
       source.buffer = buffer
+      source.playbackRate.value = rate
       const gain = ctx.createGain()
       gain.gain.value = volume
       source.connect(gain).connect(ctx.destination)
@@ -285,9 +292,9 @@ export const gameSfx = {
     playTones([784, 1175], 0.07, 'sine', 0.1)
     vibrate(20)
   },
-  /** El cofre se abre. */
+  /** The chest opens when tapped: the lid opens and coins fall (E01). */
   chest() {
-    playTones([392, 587, 880], 0.06, 'triangle', 0.12)
+    playSample('chestOpen', 0.85)
     vibrate([20, 30, 20])
   },
   /** The cycle chest unlocks (I·C·A finished): «something achieved» (B19). */
@@ -307,9 +314,9 @@ export const gameSfx = {
   chestWaiting() {
     playSample('chestWaiting', 1)
   },
-  /** Una moneda llega al contador. */
+  /** A coin lands in the counter (G01), each one slightly higher or lower. */
   coin() {
-    playTones([1319], 0.045, 'sine', 0.07)
+    playSample('coinLand', 0.6, 0.94 + Math.random() * 0.12)
   },
   /**
    * Pagar con ICA Coins en la tienda (Luis, 4 oct): unas monedas que caen y tintinean,
