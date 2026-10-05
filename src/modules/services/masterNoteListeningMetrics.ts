@@ -1,5 +1,12 @@
+import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
+import { t } from '@/i18n'
+import { todayKey } from '../utils'
 import { notifyListeningMetricsChanged } from './creationMetricsSync'
+
+/** Seconds of listening in a day that give +0.1 points in the monthly ranking (server rule). */
+export const LISTENING_GOAL_SECONDS = 600
+const GOAL_CELEBRATED_KEY = 'icademy:master-note-listening:goal-celebrated-day'
 
 type PendingListeningDeltaEvent = {
   id: string
@@ -13,6 +20,9 @@ type PendingListeningDeltaEvent = {
 
 const STORAGE_KEY = 'icademy:master-note-listening:pending:v1'
 let flushInFlight: Promise<void> | null = null
+// Events being sent right now: new seconds never merge into them (they would be lost when the
+// event is removed after the server accepts it).
+const inFlightEventIds = new Set<string>()
 
 function safeString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
@@ -114,7 +124,8 @@ export function enqueueMasterNoteListeningDelta(input: {
     if (!row) continue
 
     const sameKey =
-      row.userId === userId
+      !inFlightEventIds.has(row.id)
+      && row.userId === userId
       && row.day === day
       && row.targetLang === targetLang
       && row.nativeLang === nativeLang
@@ -156,25 +167,32 @@ export async function flushPendingMasterNoteListeningDeltas(userId: string): Pro
     let flushedCount = 0
 
     for (const event of queue) {
-      const { error } = await supabase.rpc('bump_master_note_listening_metrics', {
-        p_event_id: event.id,
-        p_day: event.day,
-        p_target_lang: event.targetLang,
-        p_native_lang: event.nativeLang,
-        p_delta_seconds: event.deltaSeconds,
-      })
+      inFlightEventIds.add(event.id)
+      try {
+        const { error } = await supabase.rpc('bump_master_note_listening_metrics', {
+          p_event_id: event.id,
+          p_day: event.day,
+          p_target_lang: event.targetLang,
+          p_native_lang: event.nativeLang,
+          p_delta_seconds: event.deltaSeconds,
+        })
 
-      if (error) {
-        break
+        if (error) {
+          break
+        }
+
+        // Re-read: seconds listened while this request was on its way are kept.
+        events = readPendingEvents().filter((row) => row.id !== event.id)
+        writePendingEvents(events)
+        flushedCount += 1
+      } finally {
+        inFlightEventIds.delete(event.id)
       }
-
-      events = events.filter((row) => row.id !== event.id)
-      writePendingEvents(events)
-      flushedCount += 1
     }
 
     if (flushedCount > 0) {
       notifyListeningMetricsChanged()
+      void celebrateListeningGoalIfReached(normalizedUserId).catch(() => undefined)
     }
   })()
 
@@ -183,4 +201,46 @@ export async function flushPendingMasterNoteListeningDeltas(userId: string): Pro
   } finally {
     flushInFlight = null
   }
+}
+
+function readCelebratedDay(): string | null {
+  try {
+    return window.localStorage.getItem(GOAL_CELEBRATED_KEY)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 10 MINUTES OF LISTENING (Luis, 5 Oct): as soon as today's listening reaches 10 minutes (all
+ * languages together, like the ranking counts it), a message says that today's +0.1 points are
+ * already in the ranking. Once per day and browser.
+ */
+export async function celebrateListeningGoalIfReached(userId: string): Promise<boolean> {
+  if (!supabase || typeof window === 'undefined') return false
+  const day = todayKey()
+  if (readCelebratedDay() === day) return false
+
+  const { data, error } = await supabase
+    .from('master_note_listening_daily_metrics')
+    .select('listened_seconds')
+    .eq('user_id', userId)
+    .eq('day', day)
+  if (error) return false
+
+  const total = (data ?? []).reduce(
+    (sum, row) => sum + (Number((row as { listened_seconds?: number }).listened_seconds) || 0),
+    0,
+  )
+  if (total < LISTENING_GOAL_SECONDS) return false
+
+  try {
+    window.localStorage.setItem(GOAL_CELEBRATED_KEY, day)
+  } catch {
+    // Without storage the message could show again on reload; it is harmless.
+  }
+  toast.success(t('¡10 minutos de escucha hoy!'), {
+    description: t('Ya tienes +0,1 puntos en el ranking de hoy.'),
+  })
+  return true
 }

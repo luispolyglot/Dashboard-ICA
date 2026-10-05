@@ -15,8 +15,11 @@ import {
 import {
   enqueueMasterNoteListeningDelta,
   flushPendingMasterNoteListeningDeltas,
-  getUtcDayStamp,
 } from '../services/masterNoteListeningMetrics'
+import { todayKey } from '../utils'
+
+/** While playing, listening seconds go to the server about every 30 s (ranking and 10-min message). */
+const LISTENING_FLUSH_EVERY_MS = 30_000
 
 type PlaybackTrack = {
   url: string
@@ -183,6 +186,8 @@ export function useMasterNotePlayback() {
     nativeLang: string
   } | null>(null)
   const listeningLastTickAtRef = useRef<number | null>(null)
+  const listeningLastAudioTimeRef = useRef<number | null>(null)
+  const listeningLastFlushAtRef = useRef(0)
   const listeningBufferedSecondsRef = useRef(0)
   const listeningFlushIntervalRef = useRef<number | null>(null)
   // Nota desafiante: cuánto audio de ESTA nota ha sonado de verdad (para desbloquearla al 80 %)
@@ -373,31 +378,46 @@ export function useMasterNotePlayback() {
 
     enqueueMasterNoteListeningDelta({
       userId: currentUserId,
-      day: getUtcDayStamp(),
+      // The student's own day (like the ranking and the ICA cycle), not the UTC one: in Latin
+      // America the UTC date changes in the evening and that listening was counted on the next day.
+      day: todayKey(),
       targetLang: meta.targetLang,
       nativeLang: meta.nativeLang,
       deltaSeconds: wholeSeconds,
     })
 
-    if (forceFlush || wholeSeconds >= 15) {
+    // Send it while listening (every ~30 s), not only when stopping: the ranking sees it right away.
+    if (forceFlush || Date.now() - listeningLastFlushAtRef.current >= LISTENING_FLUSH_EVERY_MS) {
+      listeningLastFlushAtRef.current = Date.now()
       void flushListeningAsync().catch(() => {})
     }
   }
 
   const checkpointListening = (forceFlush = false): void => {
-    if (!audioRef.current || audioRef.current.paused) {
-      commitListeningDelta(forceFlush)
-      listeningLastTickAtRef.current = null
-      return
-    }
-
-    const now = Date.now()
-    const last = listeningLastTickAtRef.current
-    listeningLastTickAtRef.current = now
-
-    if (last !== null) {
-      const deltaSec = clamp((now - last) / 1000, 0, 15)
-      listeningBufferedSecondsRef.current += deltaSec
+    const audio = audioRef.current
+    if (audio) {
+      const now = Date.now()
+      const audioNow = audio.currentTime || 0
+      const lastAt = listeningLastTickAtRef.current
+      const lastAudio = listeningLastAudioTimeRef.current
+      if (lastAt !== null && lastAudio !== null) {
+        // Count how far the audio really moved. With the screen off the phone pauses our timers
+        // but the audio keeps playing, so the clock between ticks is not reliable; the audio
+        // position is. Never more than the real time that passed (+2 s margin), and jumps back
+        // or forward with the buttons do not count.
+        const played = audioNow - lastAudio
+        const wall = (now - lastAt) / 1000
+        if (played > 0 && played <= wall + 2) {
+          listeningBufferedSecondsRef.current += played
+        }
+      }
+      if (audio.paused) {
+        listeningLastTickAtRef.current = null
+        listeningLastAudioTimeRef.current = null
+      } else {
+        listeningLastTickAtRef.current = now
+        listeningLastAudioTimeRef.current = audioNow
+      }
     }
 
     commitListeningDelta(forceFlush)
@@ -409,6 +429,7 @@ export function useMasterNotePlayback() {
       listeningFlushIntervalRef.current = null
     }
     listeningLastTickAtRef.current = null
+    listeningLastAudioTimeRef.current = null
   }
 
   const startListeningTicker = (): void => {
@@ -416,6 +437,7 @@ export function useMasterNotePlayback() {
     if (listeningFlushIntervalRef.current !== null) return
 
     listeningLastTickAtRef.current = Date.now()
+    listeningLastAudioTimeRef.current = audioRef.current.currentTime || 0
     listeningFlushIntervalRef.current = window.setInterval(() => {
       checkpointListening(false)
     }, 10_000)
