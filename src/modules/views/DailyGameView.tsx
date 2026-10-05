@@ -229,37 +229,51 @@ const stopConfettiRef = useRef<(() => void) | null>(null)
 
   const startListening = useCallback(async () => {
     if (question?.kind !== 'speak' || !endsAt) return
-    const remaining = endsAt - Date.now()
-    if (remaining < 900) return
     cancelListenRef.current?.()
     setMicMessage(null)
     setSpeakStatus('starting')
-    const session = listenOnce(config.targetLang, {
-      noSpeechMs: Math.min(remaining, 6000),
-      endSilenceMs: 900,
-      maxMs: remaining,
-      onInterim: (text) => {
-        heardRef.current = text
-        setHeard(text)
-        setSpeakStatus('listening')
-      },
-    })
-    cancelListenRef.current = session.cancel
-    setSpeakStatus('listening')
-    const outcome = await session.promise
-    if (outcome.status === 'cancelled') return
-    cancelListenRef.current = null
-    if (outcome.status === 'heard') {
-      heardRef.current = outcome.transcript
-      setHeard(outcome.transcript)
-      setSpeakStatus('checking')
-      answerRef.current({ transcripts: outcome.candidates.length ? outcome.candidates : [outcome.transcript] })
-      return
+    // The mic stays open for the whole turn: silence never stops it or asks to tap anything.
+    let stopped = false
+    for (;;) {
+      const remaining = endsAt - Date.now()
+      if (remaining < 900) return
+      const session = listenOnce(config.targetLang, {
+        noSpeechMs: remaining,
+        endSilenceMs: 900,
+        maxMs: remaining,
+        onInterim: (text) => {
+          heardRef.current = text
+          setHeard(text)
+          setSpeakStatus('listening')
+        },
+      })
+      cancelListenRef.current = () => {
+        stopped = true
+        session.cancel()
+      }
+      setSpeakStatus('listening')
+      const outcome = await session.promise
+      if (stopped || outcome.status === 'cancelled') return
+      cancelListenRef.current = null
+      if (outcome.status === 'heard') {
+        heardRef.current = outcome.transcript
+        setHeard(outcome.transcript)
+        setSpeakStatus('checking')
+        answerRef.current({ transcripts: outcome.candidates.length ? outcome.candidates : [outcome.transcript] })
+        return
+      }
+      if (outcome.status === 'error') {
+        setSpeakStatus('idle')
+        setMicMessage(t(outcome.message))
+        return
+      }
+      // Silence or nothing understood: keep listening quietly while time is left.
+      cancelListenRef.current = () => {
+        stopped = true
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 250))
+      if (stopped) return
     }
-    setSpeakStatus('idle')
-    setMicMessage(
-      outcome.status === 'error' ? t(outcome.message) : t('No te he oído bien. Toca «Repetir» y dila otra vez.'),
-    )
   }, [config.targetLang, endsAt, question?.kind])
 
   useEffect(() => {

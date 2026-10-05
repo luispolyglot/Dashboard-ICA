@@ -507,39 +507,53 @@ export function IcaChallengePlayView({
 
   const startListening = useCallback(async () => {
     if (!question || question.kind !== 'speak') return
-    const remaining = (questionEndsAt ?? Date.now()) - Date.now()
-    if (remaining < 900) return
     cancelListenRef.current?.()
     setMicMessage(null)
     setSpeakStatus('starting')
-    const session = listenOnce(question.language.target, {
-      noSpeechMs: Math.min(remaining, 6000),
-      endSilenceMs: 900,
-      maxMs: remaining,
-      onInterim: (text) => {
-        heardRef.current = text
-        setHeard(text)
-        setSpeakStatus('listening')
-      },
-    })
-    cancelListenRef.current = session.cancel
-    setSpeakStatus('listening')
-    const outcome = await session.promise
-    if (!mountedRef.current) return
-    cancelListenRef.current = null
+    // The mic stays open for the whole turn: people often think for a few seconds
+    // before speaking, so silence never stops the turn or asks them to tap anything.
+    let stopped = false
+    for (;;) {
+      const remaining = (questionEndsAt ?? Date.now()) - Date.now()
+      if (remaining < 900) return
+      const session = listenOnce(question.language.target, {
+        noSpeechMs: remaining,
+        endSilenceMs: 900,
+        maxMs: remaining,
+        onInterim: (text) => {
+          heardRef.current = text
+          setHeard(text)
+          setSpeakStatus('listening')
+        },
+      })
+      cancelListenRef.current = () => {
+        stopped = true
+        session.cancel()
+      }
+      setSpeakStatus('listening')
+      const outcome = await session.promise
+      if (!mountedRef.current || stopped || outcome.status === 'cancelled') return
+      cancelListenRef.current = null
 
-    if (outcome.status === 'cancelled') return
-    if (outcome.status === 'heard') {
-      heardRef.current = outcome.transcript
-      setHeard(outcome.transcript)
-      setSpeakStatus('checking')
-      void submit({ transcripts: outcome.candidates.length ? outcome.candidates : [outcome.transcript] })
-      return
+      if (outcome.status === 'heard') {
+        heardRef.current = outcome.transcript
+        setHeard(outcome.transcript)
+        setSpeakStatus('checking')
+        void submit({ transcripts: outcome.candidates.length ? outcome.candidates : [outcome.transcript] })
+        return
+      }
+      if (outcome.status === 'error') {
+        setSpeakStatus('idle')
+        setMicMessage(t(outcome.message))
+        return
+      }
+      // Silence or nothing understood: keep listening quietly while time is left.
+      cancelListenRef.current = () => {
+        stopped = true
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 250))
+      if (!mountedRef.current || stopped) return
     }
-    setSpeakStatus('idle')
-    setMicMessage(
-      outcome.status === 'error' ? t(outcome.message) : t('No te he oído bien. Toca «Repetir» y dila otra vez.'),
-    )
   }, [question, questionEndsAt, submit])
 
   useEffect(() => {
