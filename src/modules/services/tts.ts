@@ -210,9 +210,112 @@ function speakWithDeviceVoice(id: number, text: string, langCode: string, rate: 
   })
 }
 
+// ---------------------------------------------------------------------------
+// PREMIUM VOICE (Luis, 5 Oct): Gemini 3.8 Flash-Lite TTS.
+// Every text is generated once and then reused (cached by the server and, during the visit, here).
+// For now only the local copy has it: `pnpm dev` serves /__ica/tts (vite.config.ts) with the key in
+// .env.local (GEMINI_API_KEY, never sent to the browser). Without that endpoint or without a key,
+// everything works as before. Production will need its own endpoint (an Edge Function).
+// ---------------------------------------------------------------------------
+
+const PREMIUM_TTS_ENDPOINT: string | null = import.meta.env.DEV ? '/__ica/tts' : null
+/** If the premium audio is not ready by then, use the old voices. */
+const PREMIUM_FETCH_TIMEOUT_MS = 9000
+/** A few silent samples: playing them inside the tap «unlocks» the audio element on iPhone. */
+const SILENT_WAV =
+  'data:audio/wav;base64,UklGRsQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+
+/** null = unknown yet, false = the server has no premium voice (no key): stop asking. */
+let premiumAvailable: boolean | null = null
+let premiumAudio: HTMLAudioElement | null = null
+let premiumUnlocked = false
+const premiumCache = new Map<string, Promise<string | null>>()
+
+function fetchPremiumAudio(text: string, langCode: string): Promise<string | null> {
+  const key = `${langCode}|${text}`
+  const cached = premiumCache.get(key)
+  if (cached) return cached
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), PREMIUM_FETCH_TIMEOUT_MS)
+  const load = fetch(PREMIUM_TTS_ENDPOINT as string, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, lang: langCode }),
+    signal: controller.signal,
+  })
+    .then(async (response) => {
+      if (response.status === 404) {
+        premiumAvailable = false
+        return null
+      }
+      if (!response.ok) return null
+      premiumAvailable = true
+      return URL.createObjectURL(await response.blob())
+    })
+    .catch(() => null)
+    .finally(() => window.clearTimeout(timer))
+    .then((url) => {
+      // Failures are not cached: the next tap tries again.
+      if (!url) premiumCache.delete(key)
+      return url
+    })
+  premiumCache.set(key, load)
+  return load
+}
+
+/** The voice should sound like any other media (not mixed like the game effects). */
+function useMediaAudioSession(): void {
+  try {
+    const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession
+    if (session && session.type === 'ambient') session.type = 'auto'
+  } catch {
+    // No Audio Session API: nothing to do.
+  }
+}
+
+function speakWithPremiumVoice(id: number, text: string, langCode: string, rate: number): void {
+  premiumAudio = premiumAudio || new Audio()
+  const audio = premiumAudio
+  // iPhone only lets an audio element play later (after the download) if it already played inside a tap.
+  if (!premiumUnlocked) {
+    premiumUnlocked = true
+    audio.src = SILENT_WAV
+    void audio.play().catch(() => undefined)
+  }
+  const useOldVoices = () => {
+    if (!isCurrent(id)) return
+    if (ttsAudio === audio) ttsAudio = null
+    audio.onended = null
+    audio.onerror = null
+    speakWithoutPremium(id, text, langCode, rate)
+  }
+  void fetchPremiumAudio(text, langCode).then((url) => {
+    if (!isCurrent(id)) return
+    if (!url) {
+      useOldVoices()
+      return
+    }
+    useMediaAudioSession()
+    ttsAudio = audio
+    audio.onplaying = null
+    audio.onended = () => {
+      if (ttsAudio === audio) ttsAudio = null
+      endSession(id, { ok: true })
+    }
+    audio.onerror = useOldVoices
+    audio.src = url
+    // A new src resets the speed: set it after.
+    const speed = Math.min(1.25, Math.max(0.5, rate))
+    audio.defaultPlaybackRate = speed
+    audio.playbackRate = speed
+    audio.play().catch(useOldVoices)
+  })
+}
+
 /**
- * Speaks `text`: first the Google voice (more natural); if it fails or does not start within a few
- * seconds, the device voice. `onEnd` gets `{ ok: false }` only when nothing could be played.
+ * Speaks `text`: first the premium voice (Gemini, where available), then the Google voice; if that
+ * fails or does not start within a few seconds, the device voice. `onEnd` gets `{ ok: false }` only
+ * when nothing could be played.
  */
 export function speakNatural(
   text: string,
@@ -222,7 +325,15 @@ export function speakNatural(
 ): void {
   const id = beginSession(onEnd)
   const code = LANG_CODES[langName] || 'en-US'
+  if (PREMIUM_TTS_ENDPOINT && premiumAvailable !== false && text.trim()) {
+    speakWithPremiumVoice(id, text, code, rate)
+    return
+  }
+  speakWithoutPremium(id, text, code, rate)
+}
 
+/** The voices from before the premium one: Google Translate, or the device voice on iPhone. */
+function speakWithoutPremium(id: number, text: string, code: string, rate: number): void {
   if (isIOSLikeDevice()) {
     speakWithDeviceVoice(id, text, code, rate)
     return
