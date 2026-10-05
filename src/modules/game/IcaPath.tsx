@@ -532,7 +532,9 @@ export function IcaPath() {
   // Un cofre ya abierto hoy se queda abierto aunque luego se borre la C o la A (las monedas ya se cobraron).
   const chestLocked = (!cycleDone && !chestOpened) || held === 'chest'
   const reviewNeedsWords = cards.length < DAILY_GAME_MIN_WORDS
-  const reviewLocked = (!reviewDone && ((!cycleDone && !chestOpened) || reviewNeedsWords)) || held === 'review'
+  // The challenge opens with the chest: while the path is still filling up to the chest, both wait.
+  const reviewLocked =
+    (!reviewDone && ((!cycleDone && !chestOpened) || reviewNeedsWords)) || held === 'review' || held === 'chest'
 
   // CHEST WAITING SOUND (Luis, 5 Oct): like in Clash Royale, the ready chest knocks every time it
   // shakes. Synced with the CSS rattle: each new cycle of «ica-chest-rattle» schedules the knocks
