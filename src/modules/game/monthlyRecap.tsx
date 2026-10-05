@@ -41,6 +41,8 @@ export type MonthSummary = {
   rank: number | null
   points: number | null
   efficacy: number | null
+  /** First-try correct answers in the daily challenge (days 1 to 28): the ranking tie-break. */
+  dailyGameCorrect: number | null
   loading: boolean
   error: string | null
 }
@@ -54,6 +56,7 @@ export function useMonthSummary(monthStart: string | null, refreshKey = 0): Mont
     rank: null,
     points: null,
     efficacy: null,
+    dailyGameCorrect: null,
     loading: true,
     error: null,
   })
@@ -80,6 +83,7 @@ export function useMonthSummary(monthStart: string | null, refreshKey = 0): Mont
           rank: row.rank || index + 1,
           points: rowTotalPoints(row),
           efficacy: isCurrent ? monthEfficacy(row, dayCap) : closedMonthEfficacy(row),
+          dailyGameCorrect: row.daily_game_correct ?? null,
         }
       } catch {
         return null
@@ -97,6 +101,7 @@ export function useMonthSummary(monthStart: string | null, refreshKey = 0): Mont
           rank: ranking?.rank ?? null,
           points: ranking?.points ?? null,
           efficacy: ranking?.efficacy ?? null,
+          dailyGameCorrect: ranking?.dailyGameCorrect ?? null,
           loading: false,
           error: null,
         })

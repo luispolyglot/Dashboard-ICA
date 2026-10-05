@@ -7,7 +7,7 @@ import type { FeaturedBadge } from './featuredBadge'
 import { Medal } from './Medal'
 import { medalText, tierName } from './medals'
 import { SpinningMedal } from './SpinningMedal'
-import { t, uiLocale } from '@/i18n'
+import { t, tn, uiLocale } from '@/i18n'
 import { LanguageFlag } from '../components/LanguagePicker'
 
 export { closedMonthEfficacy, rowName, rowTotalPoints } from './rankingMath'
@@ -174,6 +174,26 @@ export function FeaturedBadgeMini({ badge, size = 34, compact = false }: { badge
   )
 }
 
+/**
+ * Tie-break hint (Luis, 5 Oct): first-try correct answers in the daily challenge. Only shown
+ * to the people tied on points with you, so each of you sees who would win the tie.
+ */
+export function TieCorrectPill({ correct, onDark = false }: { correct: number; onDark?: boolean }) {
+  return (
+    <span
+      className='inline-flex shrink-0 items-center rounded-full px-1.5 py-[3px] text-[10px] leading-none font-black tabular-nums'
+      style={
+        onDark
+          ? { background: 'rgba(255, 255, 255, 0.22)', color: '#fff' }
+          : { background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }
+      }
+    >
+      <span className='sr-only'>{t('Empate a puntos:')} </span>
+      {tn(correct, '{n} acierto', '{n} aciertos')}
+    </span>
+  )
+}
+
 export function LeaderboardRow({
   rank,
   name,
@@ -185,12 +205,15 @@ export function LeaderboardRow({
   onRankClick,
   onPointsClick,
   onProfileClick,
+  tieCorrect = null,
 }: {
   rank: number
   name: string
   points: number
   isMe?: boolean
   detail?: ReactNode
+  /** Daily challenge correct answers, only when this row is tied on points with you. */
+  tieCorrect?: number | null
   badge?: FeaturedBadge | null
   /** Bandera comprada en la tienda que ha elegido enseñar (nombre del idioma). */
   flag?: string | null
@@ -210,7 +233,12 @@ export function LeaderboardRow({
             {isMe ? t(' (tú)') : ''}
           </span>
         </div>
-        {detail ? <div className='truncate text-xs font-medium text-muted-foreground'>{detail}</div> : null}
+        {detail || tieCorrect !== null ? (
+          <div className='flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground'>
+            {tieCorrect !== null ? <TieCorrectPill correct={tieCorrect} /> : null}
+            {detail ? <span className='min-w-0 truncate'>{detail}</span> : null}
+          </div>
+        ) : null}
       </div>
     </>
   )
@@ -292,6 +320,8 @@ export type PodiumEntry = {
   onPrize: () => void
   /** Tocar la inicial o el nombre abre el perfil. Sin esto, la inicial abre los puntos. */
   onProfile?: () => void
+  /** Daily challenge correct answers, only when tied on points with you. */
+  tieCorrect?: number | null
 }
 
 /** Los tres primeros, en su podio: el 1.º en el centro y más alto, con corona. */
@@ -384,6 +414,9 @@ export function Podium({ entries }: { entries: PodiumEntry[] }) {
                   {pointsFormatter.format(entry.points)} pts
                 </span>
               )}
+              {entry.tieCorrect !== null && entry.tieCorrect !== undefined ? (
+                <TieCorrectPill correct={entry.tieCorrect} />
+              ) : null}
             </div>
             <button
               type='button'
@@ -412,11 +445,14 @@ export function MyRankCard({
   name,
   points,
   onOpen,
+  tieCorrect = null,
 }: {
   rank: number
   name: string
   points: number
   onOpen: () => void
+  /** Your daily challenge correct answers, only when you are tied on points with someone. */
+  tieCorrect?: number | null
 }) {
   return (
     <button
@@ -434,7 +470,10 @@ export function MyRankCard({
       </span>
       <span className='min-w-0 flex-1'>
         <span className='block text-[11px] font-black tracking-[0.1em] uppercase opacity-85'>{t('Tu puesto')}</span>
-        <span className='block truncate text-base font-black'>{shortName(name)}</span>
+        <span className='flex min-w-0 items-center gap-1.5'>
+          <span className='truncate text-base font-black'>{shortName(name)}</span>
+          {tieCorrect !== null ? <TieCorrectPill correct={tieCorrect} onDark /> : null}
+        </span>
       </span>
       <span className='flex shrink-0 items-center gap-1'>
         <span className='text-right'>

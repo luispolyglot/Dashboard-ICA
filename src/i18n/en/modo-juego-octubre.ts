@@ -279,5 +279,10 @@ const en: Record<string, string> = {
   "Solo cuenta la primera partida de cada día: repetirla no suma.": "Only the first game of each day counts: replaying it doesn't add up.",
   "Llevas {n} acierto este mes": "You have {n} correct answer this month",
   "Llevas {n} aciertos este mes": "You have {n} correct answers this month",
+  "Empate a puntos:": "Tied on points:",
+  "{n} acierto": "{n} correct",
+  "{n} aciertos": "{n} correct",
+  "Aciertos en el reto del día": "Daily challenge correct answers",
+  "Primera partida de cada día, hasta el 28. Deshacen los empates del ranking.": "First game of each day, up to the 28th. They break ties in the ranking.",
 }
 export default en

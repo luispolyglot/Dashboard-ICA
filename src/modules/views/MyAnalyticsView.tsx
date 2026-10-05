@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { ChevronLeftIcon, ChevronRightIcon, HeadphonesIcon, PercentIcon, SparklesIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, Gamepad2Icon, HeadphonesIcon, PercentIcon, SparklesIcon } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { Button } from '@/components/ui/button'
 import { getTodayProgress } from '../constants'
@@ -258,6 +258,13 @@ export function MyAnalyticsView() {
           label='Eficacia'
           hint={t('Puntos del ranking conseguidos entre los posibles')}
           color='var(--ica-ok)'
+        />
+        <StatTile
+          icon={<Gamepad2Icon className='size-5' strokeWidth={2.6} />}
+          value={summary.dailyGameCorrect !== null ? String(summary.dailyGameCorrect) : summary.loading ? '…' : '–'}
+          label={t('Aciertos en el reto del día')}
+          hint={t('Primera partida de cada día, hasta el 28. Deshacen los empates del ranking.')}
+          color='var(--ica-reto)'
         />
       </div>
 

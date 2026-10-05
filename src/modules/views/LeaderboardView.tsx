@@ -694,6 +694,19 @@ const [tiebreakOpen, setTiebreakOpen] = useState(false);
     [rows, user?.id],
   );
 
+  // Tie-break hint (Luis, 5 Oct): only the people tied on points with you (you included)
+  // show their first-try correct answers in the daily challenge.
+  const tiedWithMe = useMemo(() => {
+    if (!currentUserRow) return new Set<string>();
+    const mine = toComparablePoints(currentUserRow.total_points);
+    const tied = rows.filter((row) => toComparablePoints(row.total_points) === mine);
+    return new Set(tied.length > 1 ? tied.map((row) => row.user_id) : []);
+  }, [rows, currentUserRow]);
+  const tieCorrectFor = (row: LeaderboardEntry): number | null =>
+    tiedWithMe.has(row.user_id) && row.daily_game_correct !== null && row.daily_game_correct !== undefined
+      ? Math.max(0, row.daily_game_correct)
+      : null;
+
   const openScoreBreakdown = (row: LeaderboardEntry) => {
     setSelectedScoreBreakdown(
       buildScoreBreakdown(
@@ -771,6 +784,7 @@ const [tiebreakOpen, setTiebreakOpen] = useState(false);
         }
         onPointsClick={() => openScoreBreakdown(row)}
         onProfileClick={() => openProfile(row)}
+        tieCorrect={tieCorrectFor(row)}
       />
     );
   };
@@ -860,6 +874,7 @@ const [tiebreakOpen, setTiebreakOpen] = useState(false);
             name={myRankRow.row.display_name || myRankRow.row.username || "Usuario"}
             points={getDisplayedTotalPoints(myRankRow.row, includeIcaTestInScoreExplanation)}
             onOpen={() => openScoreBreakdown(myRankRow.row)}
+            tieCorrect={tieCorrectFor(myRankRow.row)}
           />
         </div>
       ) : null}
@@ -893,6 +908,7 @@ const [tiebreakOpen, setTiebreakOpen] = useState(false);
                 onOpen: () => openScoreBreakdown(row),
                 onProfile: () => openProfile(row),
                 onPrize: () => setSelectedPrizeRank(Math.min(3, sharedRank) as LeaderboardPrizeRank),
+                tieCorrect: tieCorrectFor(row),
               }))}
             />
             <div className="ica-group mt-0 flex flex-col gap-0.5 py-1.5">
