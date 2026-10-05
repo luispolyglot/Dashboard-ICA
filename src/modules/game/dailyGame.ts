@@ -9,6 +9,7 @@ import { isSpeechRecognitionSupported } from '../components/NotaDesafiante/chall
 import type { Lexicard } from '../types'
 import { todayKey } from '../utils'
 import { supabase } from '../../lib/supabase'
+import { peekQuick, storeQuick } from '../services/quickCache'
 
 // RETO DEL DÍA: el minijuego que se abre al completar el ciclo, a la vez que el cofre.
 // Usa el mismo motor que Desafíos ICA, pero lo juegas tú solo con tus palabras ICA.
@@ -161,22 +162,32 @@ export function useDailyGame(userId: string | null | undefined, cards?: Lexicard
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [preferred.kind, cards?.length, language],
   )
-  const [result, setResult] = useState<DailyGameResult | null>(null)
+  // Last known result of today, shown at once when coming back to Home (Luis, 5 Oct: after
+  // going to Ranking and back, the finished challenge showed as not done for a moment and the
+  // path played its «unlock» again). `loaded` tells whether we know today's result yet.
+  const cacheKey = userId ? `daily-game:${userId}:${day}` : null
+  const cached = cacheKey ? peekQuick<DailyGameResult | null>(cacheKey) : undefined
+  const [result, setResult] = useState<DailyGameResult | null>(cached ?? null)
+  const [loaded, setLoaded] = useState(cached !== undefined)
 
   const refresh = useCallback(async () => {
     if (!supabase || !userId) {
       setResult(null)
+      setLoaded(true)
       return null
     }
     const { data, error } = await supabase.rpc('get_my_daily_game_result')
     if (error) throw error
     const next = parseDailyGameRow(data)
     setResult(next)
+    setLoaded(true)
+    storeQuick(`daily-game:${userId}:${todayKey()}`, next)
     return next
   }, [userId])
 
   useEffect(() => {
-    const onRefresh = () => { void refresh().catch(() => undefined) }
+    // If the server cannot answer, stop waiting (the path must not stay asleep).
+    const onRefresh = () => { void refresh().catch(() => setLoaded(true)) }
     onRefresh()
     window.addEventListener(DAILY_GAME_CHANGED_EVENT, onRefresh)
     window.addEventListener('focus', onRefresh)
@@ -186,5 +197,5 @@ export function useDailyGame(userId: string | null | undefined, cards?: Lexicard
     }
   }, [refresh, day])
 
-  return { mode: playable ?? preferred, result, done: isDailyGamePassed(result) }
+  return { mode: playable ?? preferred, result, done: isDailyGamePassed(result), loaded }
 }

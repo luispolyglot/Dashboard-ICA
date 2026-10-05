@@ -443,7 +443,7 @@ export function IcaPath() {
     refresh: refreshCoins,
   } = useFichas(user?.id)
   const { limits } = useDailyLimits()
-  const { mode: gameMode, result: gameResult } = useDailyGame(user?.id, cards, config?.targetLang)
+  const { mode: gameMode, result: gameResult, loaded: gameLoaded } = useDailyGame(user?.id, cards, config?.targetLang)
   const today = getTodayProgress(dailyProgress)
   const streakState = getIcaStreakState({
     creationDays,
@@ -487,7 +487,9 @@ export function IcaPath() {
   const { fill, holdStop } = usePathFill({
     userId: user?.id,
     reached: mobileReached,
-    ready: !loading,
+    // Wait for today's challenge result too: otherwise a finished challenge counts as pending for
+    // a moment and the path «unlocks» it again (with its sound).
+    ready: !loading && gameLoaded,
     paused: celebrationOpen,
     onArrive,
   })
@@ -683,13 +685,13 @@ export function IcaPath() {
   // Horizontal centers (as % of the width) and vertical positions in px.
   const SLOT_GAP = 12
   const X = {
-    I: '18%',
+    I: '16%',
     C: '50%',
-    A: '82%',
+    A: '84%',
     chest: `calc(25% - ${SLOT_GAP / 4}px)`,
     review: `calc(75% + ${SLOT_GAP / 4}px)`,
   } as const
-  const XN = { I: 18, C: 50, A: 82, chest: 25, review: 75 }
+  const XN = { I: 16, C: 50, A: 84, chest: 25, review: 75 }
   const ROW_TOP = 22
   const rowLabelTop = ROW_TOP + 96
   const rowNext = next === 'I' || next === 'C' || next === 'A' ? next : null
@@ -740,7 +742,7 @@ export function IcaPath() {
   return (
     <>
     <div className='ica-path-skin pt-1 pb-1'>
-    <div ref={pathRef} className='relative mx-auto w-full max-w-[420px]' style={{ height: mobileHeight, ...boxVars }}>
+    <div ref={pathRef} className='relative mx-auto w-full max-w-[460px]' style={{ height: mobileHeight, ...boxVars }}>
       {/* Recuadros (estilo casillas): el del ciclo I·C·A y los del cofre y el reto. */}
       <div className='ica-panel pointer-events-none absolute inset-x-0' style={{ top: 0, height: panelBottom }} aria-hidden='true' />
       <div

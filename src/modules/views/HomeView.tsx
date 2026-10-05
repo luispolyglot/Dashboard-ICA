@@ -165,9 +165,10 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   }
 
   return (
-    <section className='flex flex-1 justify-center px-4 pt-3 pb-6 md:px-6 lg:px-8 lg:pt-8'>
+    <section className='flex flex-1 justify-center px-2.5 pt-3 pb-6 md:px-6 lg:px-8 lg:pt-8'>
       <div className='grid w-full max-w-[1040px] grid-cols-[minmax(0,1fr)] items-start gap-8 lg:grid-cols-[minmax(0,1fr)_360px]'>
-        <div className='mx-auto flex w-full max-w-[440px] min-w-0 flex-col gap-3'>
+        {/* Móvil (Luis, 5 oct): poco margen a los lados para aprovechar el ancho de cada pantalla. */}
+        <div className='mx-auto flex w-full max-w-[480px] min-w-0 flex-col gap-3'>
           {/* Tu nivel real, en una línea (en ordenador va en la columna derecha) */}
           <div className='lg:hidden'>
             <LevelStrip config={config} />
