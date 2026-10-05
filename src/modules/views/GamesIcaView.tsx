@@ -8,7 +8,8 @@ import { DASHBOARD_ROUTES } from '../routes/paths'
 import { useChallengeEnabled } from '../services/challengeChunks'
 import { useFeatureFlagsStore } from '../stores/featureFlagsStore'
 import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocalMode'
-import { ChallengeAlertPill } from '../components/IcaChallenges/ChallengeAlertBadge'
+import { ChallengeAlertPill, ChallengeNotePill } from '../components/IcaChallenges/ChallengeAlertBadge'
+import { usePendingChallengeNotes } from '../game/usePendingChallengeNotes'
 import {
   challengesRouteForAlerts,
   describeIcaChallengeAlerts,
@@ -22,7 +23,7 @@ import {
 } from '../game/rules'
 import { useActivatedWords } from '../game/useActivatedWords'
 import { useClosedMasterNotes } from '../game/useClosedMasterNotes'
-import { t } from '@/i18n'
+import { t, tn } from '@/i18n'
 
 type GamesIcaViewProps = {
   flashcardsReady: boolean
@@ -126,12 +127,13 @@ export function GamesIcaView({
   const challengeAlertText = describeIcaChallengeAlerts(challengeAlerts)
   const challengeNoteEnabled = useChallengeEnabled()
   const { activatedWords, flashcardsUnlocked } = useActivatedWords()
-  const { count: closedNotes } = useClosedMasterNotes(config?.targetLang, config?.nativeLang)
+  const { notes: closedNoteList, count: closedNotes } = useClosedMasterNotes(config?.targetLang, config?.nativeLang)
   const progress = parseProgress(pregunticaProgress)
   const pregunticaPct = (progress.current / progress.total) * 100
   const reviewedToday = Math.min(getTodayProgress(dailyProgress).reviewCorrect, GOAL)
   const flashcardsOpen = flashcardsReady && flashcardsUnlocked
   const challengeReady = closedNotes !== null && closedNotes >= CHALLENGE_NOTE_MIN_CLOSED_NOTES
+  const pendingChallengeNotes = usePendingChallengeNotes(closedNoteList, challengeNoteEnabled && challengeReady)
 
   useEffect(() => {
     void loadFlags()
@@ -198,8 +200,17 @@ export function GamesIcaView({
             color='var(--ica-gold-edge)'
             locked={closedNotes !== null && !challengeReady}
             onClick={() => navigate(DASHBOARD_ROUTES.notaDesafiante)}
+            badge={
+              pendingChallengeNotes.length > 0 ? <ChallengeNotePill count={pendingChallengeNotes.length} /> : undefined
+            }
             status={
-              closedNotes === null
+              pendingChallengeNotes.length > 0
+                ? tn(
+                    pendingChallengeNotes.length,
+                    '¡Tienes una nota desafiante esperando!',
+                    '¡Tienes {n} notas desafiantes esperando!',
+                  )
+                : closedNotes === null
                 ? t('Elige una nota maestra terminada')
                 : challengeReady
                   ? t('Elige una nota maestra terminada')

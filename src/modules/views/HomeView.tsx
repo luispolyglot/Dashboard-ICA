@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import useBreakpoints from '@/modules/hooks/useBreakpoints'
 import { useAuth } from '@/auth/AuthContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
-import { ChallengeAlertPill } from '../components/IcaChallenges/ChallengeAlertBadge'
+import { ChallengeAlertPill, ChallengeNotePill } from '../components/IcaChallenges/ChallengeAlertBadge'
 import { describeIcaChallengeAlerts, useIcaChallengeAlerts } from '../hooks/useIcaChallengeAlerts'
 import {
   CoachingHomeCard,
@@ -21,7 +21,11 @@ import { StreakRiskBanner } from '../game/StreakRiskBanner'
 import { ChatInvite } from '../game/ChatInvite'
 import type { DailyProgressMap } from '../types'
 import type { AppConfig } from '../types'
-import { t, uiLocale } from '@/i18n'
+import { t, tn, uiLocale } from '@/i18n'
+import { useChallengeEnabled } from '../services/challengeChunks'
+import { useClosedMasterNotes } from '../game/useClosedMasterNotes'
+import { usePendingChallengeNotes } from '../game/usePendingChallengeNotes'
+import { CHALLENGE_NOTE_MIN_CLOSED_NOTES } from '../game/rules'
 
 type HomeViewProps = {
   config: AppConfig
@@ -41,6 +45,13 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   const cycleDone = isIcaCycleDone(todayProgress)
   const { done: gameDone } = useDailyGame(user?.id)
   const challengeAlerts = useIcaChallengeAlerts()
+  // Nota desafiante waiting (finished notes of the last week without their challenge played).
+  const challengeNoteEnabled = useChallengeEnabled()
+  const { notes: closedNoteList } = useClosedMasterNotes(config.targetLang, config.nativeLang)
+  const pendingChallengeNotes = usePendingChallengeNotes(
+    closedNoteList,
+    challengeNoteEnabled && (closedNoteList?.length ?? 0) >= CHALLENGE_NOTE_MIN_CLOSED_NOTES,
+  )
   const challengeAlertText = describeIcaChallengeAlerts(challengeAlerts)
   const { isLg } = useBreakpoints()
 
@@ -100,6 +111,11 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
         <span className='text-xs font-extrabold tracking-[0.08em] text-muted-foreground uppercase'>{t('Juegos ICA')}</span>
         {challengeAlertText ? (
           <ChallengeAlertPill text={challengeAlertText} />
+        ) : pendingChallengeNotes.length > 0 ? (
+          <ChallengeNotePill
+            count={pendingChallengeNotes.length}
+            text={tn(pendingChallengeNotes.length, 'Nota desafiante esperando', '{n} notas desafiantes esperando')}
+          />
         ) : showPregunticaPulse ? (
           <span className='rounded-full px-2 py-0.5 text-[11px] font-extrabold text-white' style={{ background: 'var(--ica-c)' }}>
             {t('PreguntICA lista')}

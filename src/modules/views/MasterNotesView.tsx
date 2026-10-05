@@ -44,7 +44,7 @@ import {
   getMetaTrackerLevelColor,
 } from '../components/MetaTracker/colors'
 import { DASHBOARD_ROUTES } from '../routes/paths'
-import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
+import { useSharedMasterNotePlayback } from '../components/MasterNotePlaybackProvider'
 import { useLoopedMasterNotePlayback } from '../hooks/useLoopedMasterNotePlayback'
 import {
   getLoopCuePlaybackSource,
@@ -180,7 +180,7 @@ export function MasterNotesView({
     isPaused,
     positionSec,
     durationSec,
-  } = useMasterNotePlayback()
+  } = useSharedMasterNotePlayback()
 
   const {
     playlists,

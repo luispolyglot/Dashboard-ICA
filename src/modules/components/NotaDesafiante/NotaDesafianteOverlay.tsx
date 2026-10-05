@@ -31,6 +31,7 @@ import {
   type PreparedChallenge,
 } from '../../services/challengeChunks'
 import { recordChallengePlay } from '../../services/challengeUnlocks'
+import { prefetchSpeech, prefetchSpeechQueue } from '../../services/tts'
 import {
   checkAnswer,
   isIOSDevice,
@@ -70,6 +71,31 @@ type Step = 'prompt' | 'listening' | 'feedback'
 
 // Con al menos estas palabras bien (sin acertar el trozo entero) se dice «Casi».
 const ALMOST_MIN_WORDS = 2
+
+/** Lines of the game ready before it starts: the first 3 rounds (prompt + correct version). */
+const VOICES_READY_BEFORE_START = 6
+/** Never wait longer than this for the voices: the rest load while playing. */
+const VOICES_MAX_WAIT_MS = 10_000
+/** Fixed lines the game may say (prepared ahead too). */
+const CHALLENGE_FIXED_LINES = ['Casi.', 'No te he entendido.']
+
+/**
+ * End of the game (Luis, 5 Oct): after «You got X out of Y», a few words that depend on the result.
+ * All right: congratulations. Half or more: keep it up. Less than half: next time will be better.
+ * None: a line to cheer them up.
+ */
+type ResultLevel = 'perfect' | 'good' | 'some' | 'none'
+function resultLevel(score: number, total: number): ResultLevel {
+  if (total > 0 && score >= total) return 'perfect'
+  if (total > 0 && score >= total / 2) return 'good'
+  return score > 0 ? 'some' : 'none'
+}
+const ENCOURAGEMENT_SPOKEN: Record<ResultLevel, string> = {
+  perfect: '¡Enhorabuena por el trabajo!',
+  good: '¡Sigue así, vas muy bien!',
+  some: 'Seguro que la próxima vez sale mejor.',
+  none: 'No pasa nada: cada intento cuenta. ¡A por la siguiente!',
+}
 
 type Feedback = {
   correct: boolean
@@ -119,6 +145,9 @@ export function NotaDesafianteOverlay({
   )
   const phrasesRef = useRef(phrases)
   phrasesRef.current = phrases
+  const langsRef = useRef({ nativeLang, targetLang })
+  langsRef.current = { nativeLang, targetLang }
+  const [preparingVoices, setPreparingVoices] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -143,7 +172,30 @@ export function NotaDesafianteOverlay({
           setPhase('error')
           return
         }
-        setPhase('intro')
+        // VOICES READY BEFORE PLAYING (Luis, 5 Oct): the premium voice takes 1-2 s the first time
+        // it reads a text. All the game's lines are prepared now, in order, while «Preparing…» is
+        // on screen; the game starts once the first rounds are ready (at most ~10 s of waiting)
+        // and the rest keep loading ahead of the student. (On iPhone the game uses the device voice.)
+        if (isIOSDevice()) {
+          setPhase('intro')
+          return
+        }
+        const { nativeLang: native, targetLang: target } = langsRef.current
+        for (const line of [...CHALLENGE_FIXED_LINES, ...Object.values(ENCOURAGEMENT_SPOKEN)]) {
+          void prefetchSpeech(t(line), native)
+        }
+        const ready = prefetchSpeechQueue(
+          result.rounds.flatMap((round) => [
+            { text: round.native, langName: native },
+            { text: round.target, langName: target },
+          ]),
+        )
+        setPreparingVoices(true)
+        void Promise.race([Promise.all(ready.slice(0, VOICES_READY_BEFORE_START)), wait(VOICES_MAX_WAIT_MS)]).then(() => {
+          if (!active) return
+          setPreparingVoices(false)
+          setPhase('intro')
+        })
       })
       .catch((error) => {
         if (!active) return
@@ -215,6 +267,7 @@ export function NotaDesafianteOverlay({
         if (noteId) void recordChallengePlay(noteId, correct, total)
         await wait(300)
         if (!cancelled()) await speakAsync(`Has acertado ${correct} de ${total}.`, nativeLang)
+        if (!cancelled()) await speakAsync(t(ENCOURAGEMENT_SPOKEN[resultLevel(correct, total)]), nativeLang)
         return
       }
 
@@ -267,7 +320,7 @@ export function NotaDesafianteOverlay({
           // Ruido: intento extra que no penaliza.
           if (!usedFreeRetry) {
             usedFreeRetry = true
-            await speakAsync('No te he entendido.', nativeLang)
+            await speakAsync(t('No te he entendido.'), nativeLang)
             if (cancelled()) return
             continue
           }
@@ -300,7 +353,7 @@ export function NotaDesafianteOverlay({
         // «Casi» si ha dicho bien varias palabras; si no, tono de fallo.
         // Después, en los dos casos, suena la versión correcta como siempre.
         if (outcomeFeedback.almost) {
-          await speakAsync('Casi.', nativeLang)
+          await speakAsync(t('Casi.'), nativeLang)
         } else {
           await playFailTone()
         }
@@ -435,9 +488,11 @@ export function NotaDesafianteOverlay({
               </span>
               <p className='m-0 mb-2 font-display text-3xl font-black tracking-tight'>{t('Preparando tu desafío…')}</p>
               <p className='m-0 mb-6 text-base font-semibold text-muted-foreground'>
-                {progress.total > 0
-                  ? t('Dividiendo frases en trozos: {done} de {total}', { done: progress.done, total: progress.total })
-                  : t('Leyendo las frases de la nota')}
+                {preparingVoices
+                  ? t('Preparando las voces')
+                  : progress.total > 0
+                    ? t('Dividiendo frases en trozos: {done} de {total}', { done: progress.done, total: progress.total })
+                    : t('Leyendo las frases de la nota')}
               </p>
               <GameProgress
                 className='max-w-72'
@@ -816,8 +871,9 @@ export function ChallengeResultView({
   onRepeat: () => void
   onClose: () => void
 }) {
-  const perfect = total > 0 && score === total
-  const good = score >= total * 0.7
+  const level = resultLevel(score, total)
+  const perfect = level === 'perfect'
+  const good = level === 'good'
   const ink = perfect || good ? tone('ok').ink : tone('a').ink
 
   return (
@@ -836,10 +892,12 @@ export function ChallengeResultView({
       />
       <p className='m-0 mt-4 max-w-md text-base font-bold text-muted-foreground'>
         {perfect
-          ? t('¡Perfecto! Te sabes tu nota maestra de memoria.')
+          ? t('¡Enhorabuena por el trabajo! Te sabes tu nota maestra de memoria.')
           : good
-            ? t('Muy bien. Repasa los trozos que han fallado.')
-            : t('Escucha otra vez tu nota maestra y vuelve a intentarlo.')}
+            ? t('¡Sigue así, vas muy bien! Repasa los trozos que han fallado.')
+            : level === 'some'
+              ? t('Seguro que la próxima vez sale mejor. Escucha otra vez tu nota maestra y vuelve a intentarlo.')
+              : t('No pasa nada: cada intento cuenta. Escucha otra vez tu nota maestra y vuelve a por ella.')}
       </p>
 
       {failed.length > 0 && (

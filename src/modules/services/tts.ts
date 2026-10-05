@@ -263,6 +263,39 @@ function fetchPremiumAudio(text: string, langCode: string): Promise<string | nul
   return load
 }
 
+/**
+ * Prepares the premium audio of a text ahead of time, without playing it, so that tapping
+ * «Listen» later is instant. Does nothing where there is no premium voice. Never fails.
+ */
+export function prefetchSpeech(text: string, langName: string): Promise<void> {
+  if (!PREMIUM_TTS_ENDPOINT || premiumAvailable === false || !text.trim()) return Promise.resolve()
+  const code = LANG_CODES[langName] || 'en-US'
+  return fetchPremiumAudio(text, code).then(() => undefined)
+}
+
+/**
+ * Prepares many texts in order, a few at a time (the first ones are ready first).
+ * Returns one promise per text, resolved when that text is ready (or failed).
+ */
+export function prefetchSpeechQueue(
+  items: Array<{ text: string; langName: string }>,
+  concurrency = 3,
+): Promise<void>[] {
+  const resolvers: Array<() => void> = []
+  const promises = items.map(() => new Promise<void>((resolve) => resolvers.push(resolve)))
+  let next = 0
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const position = next
+      next += 1
+      await prefetchSpeech(items[position].text, items[position].langName)
+      resolvers[position]()
+    }
+  }
+  for (let count = 0; count < Math.max(1, concurrency); count += 1) void worker()
+  return promises
+}
+
 /** The voice should sound like any other media (not mixed like the game effects). */
 function useMediaAudioSession(): void {
   try {

@@ -62,7 +62,7 @@ import {
 } from '../services/masterNotes'
 import { getMetaTrackerLevelColor } from '../components/MetaTracker/colors'
 import { fetchPhraseVoiceActivations } from '../services/phraseVoiceActivations'
-import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
+import { useSharedMasterNotePlayback } from '../components/MasterNotePlaybackProvider'
 import { NotaDesafianteOverlay } from '../components/NotaDesafiante/NotaDesafianteOverlay'
 import { NotaDesafianteCard } from '../components/NotaDesafiante/NotaDesafianteCard'
 import { CHALLENGE_NOTE_MIN_CLOSED_NOTES } from '../game/rules'
@@ -192,7 +192,7 @@ export function MasterNoteDetailView({
     isPaused,
     positionSec,
     durationSec,
-  } = useMasterNotePlayback()
+  } = useSharedMasterNotePlayback()
 
   useEffect(() => {
     const load = async (): Promise<void> => {

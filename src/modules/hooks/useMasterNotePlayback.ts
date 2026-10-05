@@ -171,6 +171,8 @@ function clamp(value: number, min: number, max: number): number {
 export function useMasterNotePlayback() {
   const { user } = useAuth()
   const [playingNoteId, setPlayingNoteId] = useState<string | null>(null)
+  // Name of the note that is playing (the mini player shows it on other screens).
+  const [playingNoteName, setPlayingNoteName] = useState<string | null>(null)
   const [isPaused, setIsPaused] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [positionSec, setPositionSec] = useState(0)
@@ -820,6 +822,7 @@ export function useMasterNotePlayback() {
     setDurationSec(track.durationSec)
     setPositionSec(0)
     setPlayingNoteId(note.id)
+    setPlayingNoteName(note.name || null)
     // Nota desafiante: solo cuenta la escucha de notas maestras cerradas.
     challengeNoteRef.current =
       note.state === 'closed' ? { id: note.id, durationMs: note.total_duration_ms } : null
@@ -838,6 +841,7 @@ export function useMasterNotePlayback() {
     error,
     clearError: () => setError(null),
     playingNoteId,
+    playingNoteName,
     canPlay,
     play,
     playTransitionCue,

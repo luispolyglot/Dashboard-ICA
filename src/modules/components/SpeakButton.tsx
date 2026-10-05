@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { langName as displayLangName, t } from '@/i18n'
 import { toast } from 'sonner'
-import { speakNatural, stopTTS, type SpeakResult } from '../services/tts'
+import { prefetchSpeech, speakNatural, stopTTS, type SpeakResult } from '../services/tts'
 import { SquareIcon, Volume2Icon } from 'lucide-react'
 
 type SpeakButtonProps = {
@@ -62,6 +62,12 @@ export function SpeakButton({
     if (typeof window === 'undefined') return
     window.localStorage.setItem(SPEAK_RATE_STORAGE_KEY, String(rate))
   }, [rate])
+
+  // The voice is prepared as soon as the button appears (a new word, a new phrase…), so the
+  // first tap does not wait for it.
+  useEffect(() => {
+    void prefetchSpeech(text, langName)
+  }, [text, langName])
 
   // Color del modo juego según el color de la frecuencia (azul por defecto).
   const colors =

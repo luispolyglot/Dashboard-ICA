@@ -3,7 +3,7 @@ import type { MouseEvent } from 'react'
 import { SquareIcon, TurtleIcon, Volume2Icon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getImportance } from '../constants'
-import { speakNatural, stopTTS } from '../services/tts'
+import { prefetchSpeech, speakNatural, stopTTS } from '../services/tts'
 import type { ImportanceKey, ReviewMode } from '../types'
 
 /**
@@ -99,6 +99,11 @@ export function SpeakWordButton({
   useEffect(() => {
     setPlaying(null)
   }, [text])
+
+  // The voice of the card on screen is prepared right away: tapping it later is instant.
+  useEffect(() => {
+    void prefetchSpeech(text, langName)
+  }, [text, langName])
 
   const play = (event: MouseEvent<HTMLButtonElement>, rate: 1 | 0.75) => {
     event.stopPropagation()

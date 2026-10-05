@@ -12,6 +12,7 @@ import { CHALLENGE_NOTE_MIN_CLOSED_NOTES } from '../game/rules'
 import { EmptyState, GameProgress, GamePage, IconTile, PageTitle, Panel, SectionLabel, tone } from '../game/ui'
 import { useClosedMasterNotes, type ClosedMasterNote } from '../game/useClosedMasterNotes'
 import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
+import { useStopSharedMasterNote } from '../components/MasterNotePlaybackProvider'
 import { useLoopedMasterNotePlayback } from '../hooks/useLoopedMasterNotePlayback'
 import { MasterNotePlaylistPlayerDock } from '../components/MasterNotePlaylistPlayerDock'
 import { speakNatural } from '../services/tts'
@@ -148,6 +149,8 @@ export function NotaDesafianteListView() {
   // Escuchar todas seguidas: de la primera a la última, con una voz que las presenta.
   const { play, stop, pause, resume, seekBack10, seekForward10, isPaused, playingNoteId, positionSec, durationSec } =
     useMasterNotePlayback()
+  // This screen has its own player: a master note playing in the background stops.
+  useStopSharedMasterNote()
   const [fullNotes, setFullNotes] = useState<MasterNote[]>([])
   useEffect(() => {
     if (!ready || !config?.targetLang) return
@@ -319,6 +322,8 @@ export function NotaDesafiantePlayerView() {
   const challengeEnabled = useChallengeEnabled()
   const { play, stop, togglePause, isPaused, playingNoteId, positionSec, durationSec, error: playError } =
     useMasterNotePlayback()
+  // This screen has its own player: a master note playing in the background stops.
+  useStopSharedMasterNote()
 
   const [note, setNote] = useState<MasterNote | null>(null)
   const [chunkCount, setChunkCount] = useState(0)

@@ -26,7 +26,7 @@ import {
 } from '../review/playStyle'
 import { saveData, updateWord } from '../services/storage'
 import { recordReviewEvent } from '../services/reviewTracking'
-import { stopTTS } from '../services/tts'
+import { prefetchSpeech, stopTTS } from '../services/tts'
 import { buildReviewRound, getStreak, todayKey, updateCardAfterReview } from '../utils'
 import type { AppConfig, Lexicard, ReviewMode } from '../types'
 import {
@@ -342,6 +342,13 @@ export function ReviewView({
       })),
     )
   }, [roundCards, config.targetLang, config.nativeLang])
+
+  // The voice of this card and the next two is prepared ahead, so «Listen» does not wait.
+  useEffect(() => {
+    for (const card of roundCards.slice(currentIndex, currentIndex + 3)) {
+      void prefetchSpeech(card.target, config.targetLang || 'Inglés')
+    }
+  }, [roundCards, currentIndex, config.targetLang])
   const roundTotal = isGoalStyle
     ? REVIEW_PLAY_STYLE_CORRECT_GOAL
     : Math.max(roundCards.length, 1)
