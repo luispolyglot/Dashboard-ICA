@@ -1110,10 +1110,12 @@ function IcaJourney({
 }) {
   // Un caminito que sube y baja entre las estaciones (como un tablero de juego).
   // El tramo que ya has hecho se pinta de colores.
-  const HEIGHT = 400
+  // Luis (5 Oct): flatter than before (it dropped 132 px), almost a straight line.
+  const DROP = 56
+  const HEIGHT = 18 + DROP + 250
   const W = 1000
   const xs = steps.map((_, index) => 9 + (index * 82) / (steps.length - 1))
-  const tops = steps.map((_, index) => (index % 2 === 0 ? 18 : 150))
+  const tops = steps.map((_, index) => (index % 2 === 0 ? 18 : 18 + DROP))
   const sizes = steps.map((step) => (typeof step.content === 'string' ? 120 : 100))
   const centers = steps.map((_, index) => [xs[index] * (W / 100), tops[index] + sizes[index] / 2] as [number, number])
 
