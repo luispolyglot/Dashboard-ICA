@@ -677,12 +677,20 @@ export function IcaPath() {
     )
   }
 
-  // MÓVIL (Luis, 5 oct, mezcla de B3 y B6): I·C·A en fila y, debajo, el cofre y el reto del día,
-  // que se abren a la vez al acabar el ciclo. Todo cabe en la pantalla sin bajar.
+  // MÓVIL (Luis, 5 oct, mezcla de B3 y B6): I·C·A en fila dentro de su recuadro y, debajo, el
+  // cofre y el reto del día en dos recuadros (como las casillas de Clash Royale), que se abren a
+  // la vez al acabar el ciclo. Todo cabe en la pantalla sin bajar.
   // Horizontal centers (as % of the width) and vertical positions in px.
-  const X = { I: '18%', C: '50%', A: '82%', chest: '27%', review: '73%' } as const
-  const XN = { I: 18, C: 50, A: 82, chest: 27, review: 73 }
-  const ROW_TOP = 8
+  const SLOT_GAP = 12
+  const X = {
+    I: '18%',
+    C: '50%',
+    A: '82%',
+    chest: `calc(25% - ${SLOT_GAP / 4}px)`,
+    review: `calc(75% + ${SLOT_GAP / 4}px)`,
+  } as const
+  const XN = { I: 18, C: 50, A: 82, chest: 25, review: 75 }
+  const ROW_TOP = 22
   const rowLabelTop = ROW_TOP + 96
   const rowNext = next === 'I' || next === 'C' || next === 'A' ? next : null
   // Help line of the step to do, centered under the whole row.
@@ -694,10 +702,9 @@ export function IcaPath() {
         : rowNext === 'A'
           ? t('Graba 1 nota con tu voz')
           : null
-  const forkY = rowLabelTop + (rowNext ? 84 : 50)
-  const bonusTop = forkY + 34
-  const chestCenterY = bonusTop + 32
-  const reviewCenterY = bonusTop + 42
+  const panelBottom = rowLabelTop + (rowNext ? 84 : 40)
+  const slotTop = panelBottom + 34
+  const bonusTop = slotTop + 24
   const bonusLabelTop = bonusTop + 96
   const chestHelp = chestOpened
     ? t('Abierto: +{coins}', { coins: coinsText(todayChestCoins(entries)) })
@@ -715,21 +722,37 @@ export function IcaPath() {
       : !reviewLocked
         ? t('Mínimo {n} correctas', { n: DAILY_GAME_PASS })
         : null
-  const mobileHeight = bonusLabelTop + (next === 'chest' || next === 'review' ? 82 : 64)
+  const slotBottom = bonusLabelTop + (next === 'chest' || next === 'review' ? 86 : 58)
+  const mobileHeight = slotBottom + 6
   const rowCenterY = ROW_TOP + 42
-  // The road in the row only covers I → C → A; the fork below lights up once the cycle is done.
+  // The road in the row only covers I → C → A; the fork below the box lights up once the cycle is done.
   const rowFill = fill && fill.to <= 2 ? fill : null
   const forkDone = roadReached >= 3
   const forkStroke = forkDone ? 'var(--ica-road-done)' : 'var(--ica-road-todo)'
+  const forkY = panelBottom + 14
   const forkD = [
-    `M${XN.A} ${rowCenterY} C${XN.A} ${forkY - 20}, ${XN.C} ${forkY - 30}, ${XN.C} ${forkY}`,
-    `M${XN.C} ${forkY} C${XN.C} ${forkY + 18}, ${XN.chest} ${forkY + 6}, ${XN.chest} ${chestCenterY}`,
-    `M${XN.C} ${forkY} C${XN.C} ${forkY + 18}, ${XN.review} ${forkY + 6}, ${XN.review} ${reviewCenterY}`,
+    `M${XN.C} ${panelBottom} V${forkY}`,
+    `M${XN.C} ${forkY} C${XN.C} ${forkY + 10}, ${XN.chest} ${forkY + 4}, ${XN.chest} ${slotTop}`,
+    `M${XN.C} ${forkY} C${XN.C} ${forkY + 10}, ${XN.review} ${forkY + 4}, ${XN.review} ${slotTop}`,
   ].join(' ')
+  // Labels sit on the boxes: their backing color is the box color, so they blend in.
+  const boxVars = { '--ica-label-bg': 'var(--card)', '--ica-brand': 'var(--card)' } as CSSProperties
   return (
     <>
-    <div className='ica-path-skin rounded-[28px] pt-3 pb-1'>
-    <div ref={pathRef} className='relative mx-auto w-full max-w-[420px]' style={{ height: mobileHeight }}>
+    <div className='ica-path-skin pt-1 pb-1'>
+    <div ref={pathRef} className='relative mx-auto w-full max-w-[420px]' style={{ height: mobileHeight, ...boxVars }}>
+      {/* Recuadros (estilo casillas): el del ciclo I·C·A y los del cofre y el reto. */}
+      <div className='ica-panel pointer-events-none absolute inset-x-0' style={{ top: 0, height: panelBottom }} aria-hidden='true' />
+      <div
+        className='ica-panel pointer-events-none absolute'
+        style={{ left: 0, width: `calc(50% - ${SLOT_GAP / 2}px)`, top: slotTop, height: slotBottom - slotTop }}
+        aria-hidden='true'
+      />
+      <div
+        className='ica-panel pointer-events-none absolute'
+        style={{ right: 0, width: `calc(50% - ${SLOT_GAP / 2}px)`, top: slotTop, height: slotBottom - slotTop }}
+        aria-hidden='true'
+      />
       <svg viewBox={`0 0 100 ${mobileHeight}`} preserveAspectRatio='none' className='absolute inset-0 h-full w-full' aria-hidden='true'>
         <path
           d={forkD}
