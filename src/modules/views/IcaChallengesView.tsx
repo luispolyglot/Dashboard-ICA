@@ -14,7 +14,7 @@ import {
   TrophyIcon,
   XIcon,
 } from 'lucide-react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAuth } from '@/auth/AuthContext'
 import { getUiLang, langName, t, tn } from '@/i18n'
@@ -361,6 +361,7 @@ function renderAvatar(name: string, avatarUrl: string | null, seed: string) {
 }
 
 export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewProps) {
+  const navigate = useNavigate()
   const {
     enrollment,
     challenges,
@@ -642,8 +643,8 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
     try {
       await respondInvitation(challengeId, accept)
       toast.success(accept ? t('Desafío aceptado. ¡Te toca empezar!') : t('Desafío rechazado.'))
-      // Al aceptar, se pasa a «Activos», donde está el botón para jugar.
-      if (accept) setTab('active')
+      // Accepting starts the game right away (Luis, 6 Oct), instead of going to «Activos» first.
+      if (accept) navigate(getIcaChallengePlayRoute(challengeId))
     } catch (respondError) {
       toast.error(
         respondError instanceof Error
