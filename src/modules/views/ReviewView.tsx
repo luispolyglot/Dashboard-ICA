@@ -165,12 +165,10 @@ function AnswerFeedbackBar({ feedback, onContinue }: { feedback: AnswerFeedback;
               </p>
             </>
           ) : (
+            // The answer is already on the card above, so it is not repeated here (Luis, 6 Oct).
             <>
-              <p className='m-0 text-base leading-tight font-black'>{t('Respuesta correcta:')}</p>
-              <p className='m-0 text-xl leading-tight font-extrabold wrap-break-word'>{feedback.card.target}</p>
-              <p className='m-0 mt-0.5 text-sm font-semibold opacity-85'>
-                {feedback.card.native} · {t('volverá pronto para que la repases')}
-              </p>
+              <p className='m-0 text-2xl leading-tight font-black'>{t('A repasar')}</p>
+              <p className='m-0 mt-0.5 text-sm font-bold'>{t('Esta palabra volverá pronto para que la repases.')}</p>
             </>
           )}
         </div>

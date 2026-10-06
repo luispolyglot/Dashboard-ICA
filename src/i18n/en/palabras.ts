@@ -188,6 +188,8 @@ const en: Record<string, string> = {
   'Racha de esta palabra: {n}': 'Streak for this word: {n}',
   'Respuesta correcta:': 'Correct answer:',
   'volverá pronto para que la repases': "it'll come back soon so you can review it",
+  'A repasar': 'Review it',
+  'Esta palabra volverá pronto para que la repases.': "This word will come back soon so you can review it.",
   'Base en construcción': 'Building the base',
   'Hoy tocaba sembrar. Lo importante es seguir, no hacerlo perfecto.':
     "Today was about planting seeds. What matters is keeping going, not being perfect.",
