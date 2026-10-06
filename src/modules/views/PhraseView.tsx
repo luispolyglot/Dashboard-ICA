@@ -332,7 +332,10 @@ export function PhraseView({
   // First-use bubbles that walk a new icademer to the next button (Luis, 6 Oct).
   const [generateTipPending, closeGenerateTip] = useFirstUseTip('phrase-generate')
   const [activateTipPending, closeActivateTip] = useFirstUseTip('phrase-activate')
-  const [reviewTipPending, closeReviewTip] = useFirstUseTip('phrase-review')
+  // One tip per mode, so seeing the Automática one does not hide the others (Luis, 6 Oct).
+  const [pickTipPending, closePickTip] = useFirstUseTip('phrase-pick-words')
+  const [generatePickedTipPending, closeGeneratePickedTip] = useFirstUseTip('phrase-generate-picked')
+  const [reviewTipPending, closeReviewTip] = useFirstUseTip('phrase-write-review')
   const [loading, setLoading] = useState(false)
   const [wordUsageCounts, setWordUsageCounts] = useState<
     Record<string, number>
@@ -1006,6 +1009,12 @@ export function PhraseView({
               : t('Tus últimas 25 palabras')}
           </p>
           {/* Lista desplazable: se difumina abajo para indicar que hay más */}
+          <div className='relative'>
+          {pickTipPending && manualSelectedIds.length === 0 && filteredManualPool.length > 0 ? (
+            <FirstUseTip onClose={closePickTip}>
+              {t('Toca de 5 a 8 palabras de tu lista y luego toca Generar frase.')}
+            </FirstUseTip>
+          ) : null}
           <div
             className={cn(WORD_GRID, '-mx-1 max-h-44 overflow-y-auto px-1 pt-1 pb-6 lg:max-h-80')}
             style={{
@@ -1016,7 +1025,10 @@ export function PhraseView({
             {filteredManualPool.map((word) =>
               renderTile(word, {
                 state: manualSelectedIds.includes(word.id) ? 'selected' : 'idle',
-                onClick: () => toggleCustomWord(word.id),
+                onClick: () => {
+                  if (pickTipPending) closePickTip()
+                  toggleCustomWord(word.id)
+                },
               }),
             )}
             {filteredManualPool.length === 0 ? (
@@ -1024,6 +1036,7 @@ export function PhraseView({
                 {t('No hay palabras con ese filtro.')}
               </p>
             ) : null}
+          </div>
           </div>
           {showUsageLegend ? <UsageLegend /> : null}
         </div>
@@ -1090,13 +1103,9 @@ export function PhraseView({
 
             {/* Paso opcional: revisión con IA */}
             <div className='relative mt-3 flex flex-wrap items-center justify-between gap-2'>
-              {reviewTipPending &&
-              !manualSuggestionLoading &&
-              manualPhraseTarget.trim() &&
-              manualPhraseNative.trim() &&
-              manualDetectedWords.length > 0 ? (
-                <FirstUseTip align='end' onClose={closeReviewTip}>
-                  {t('Toca aquí y la IA revisa tu frase antes de guardarla.')}
+              {reviewTipPending && !manualSuggestionLoading ? (
+                <FirstUseTip align='end' side='bottom' onClose={closeReviewTip}>
+                  {t('Cuando escribas tu frase y su traducción, toca aquí y la IA revisa tu gramática.')}
                 </FirstUseTip>
               ) : null}
               <span className='text-xs font-semibold text-muted-foreground'>{t('Opcional')}</span>
@@ -1211,13 +1220,19 @@ export function PhraseView({
 
       {/* Botón principal */}
       <div className='relative'>
-      {generateTipPending && !isManualPhrase && !primaryDisabled && !result && !loading ? (
-        <FirstUseTip onClose={closeGenerateTip}>{t('Toca aquí y la IA crea tu frase con estas palabras.')}</FirstUseTip>
+      {(mode === 'automatic' ? generateTipPending : mode === 'manual' && generatePickedTipPending) &&
+      !primaryDisabled &&
+      !result &&
+      !loading ? (
+        <FirstUseTip onClose={mode === 'automatic' ? closeGenerateTip : closeGeneratePickedTip}>
+          {t('Toca aquí y la IA crea tu frase con estas palabras.')}
+        </FirstUseTip>
       ) : null}
       <Button
         type='button'
         onClick={() => {
-          if (generateTipPending) closeGenerateTip()
+          if (mode === 'automatic' && generateTipPending) closeGenerateTip()
+          if (mode === 'manual' && generatePickedTipPending) closeGeneratePickedTip()
           handlePrimaryAction()
         }}
         variant={isManualPhrase && manualPhraseApproved ? 'outline' : 'c'}

@@ -43,18 +43,22 @@ export function FirstUseTip({
   onClose,
   className,
   align = 'start',
+  side = 'top',
 }: {
   children: ReactNode
   onClose: () => void
   className?: string
   /** `center`: centred over its anchor (a round button); `end`: on the right, arrow on the right. */
   align?: 'start' | 'center' | 'end'
+  /** `bottom`: hangs below its anchor, arrow pointing up (when the space above is a field being typed in). */
+  side?: 'top' | 'bottom'
 }) {
   return (
     <div
       role='note'
       className={cn(
-        'ica-pop absolute bottom-full z-20 mb-2 flex max-w-[min(20rem,calc(100vw-2rem))] items-start gap-2 rounded-2xl px-3.5 py-2.5 text-[13px] leading-snug font-bold text-white shadow-lg',
+        'ica-pop absolute z-20 flex max-w-[min(20rem,calc(100vw-2rem))] items-start gap-2 rounded-2xl px-3.5 py-2.5 text-[13px] leading-snug font-bold text-white shadow-lg',
+        side === 'bottom' ? 'top-full mt-2' : 'bottom-full mb-2',
         align === 'center' ? 'left-1/2 w-max -translate-x-1/2' : align === 'end' ? 'right-0' : 'left-0',
         className,
       )}
@@ -71,10 +75,11 @@ export function FirstUseTip({
       </button>
       <span
         className={cn(
-          'absolute top-full size-0 border-x-8 border-t-8 border-x-transparent',
+          'absolute size-0 border-x-8 border-x-transparent',
+          side === 'bottom' ? 'bottom-full border-b-8' : 'top-full border-t-8',
           align === 'center' ? 'left-1/2 -translate-x-1/2' : align === 'end' ? 'right-10' : 'left-6',
         )}
-        style={{ borderTopColor: 'var(--ica-i-ink)' }}
+        style={side === 'bottom' ? { borderBottomColor: 'var(--ica-i-ink)' } : { borderTopColor: 'var(--ica-i-ink)' }}
         aria-hidden='true'
       />
     </div>
