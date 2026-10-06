@@ -371,6 +371,9 @@ function isPerfectScore(value: number, maxValue: number): boolean {
   return value >= maxValue - 0.001;
 }
 
+/** First month whose ties are broken by the daily game (same date as the SQL). */
+const DAILY_GAME_TIEBREAK_FROM = "2026-11-01";
+
 /** «¿Y si hay empate?»: how ties in points are decided (Luis, 4 Oct). */
 function TiebreakDialog({
   open,
@@ -392,7 +395,7 @@ function TiebreakDialog({
             {t('¿Y si hay empate?')}
           </DialogTitle>
           <DialogDescription className="m-0 text-sm font-semibold">
-            {t('Si dos o más icademers tienen los mismos puntos, gana quien más aciertos tenga en el reto del día, del día 1 al 28.')}
+            {t('Desde noviembre, si dos o más icademers tienen los mismos puntos, gana quien más aciertos tenga en el reto del día, del día 1 al 28.')}
           </DialogDescription>
           <p className="m-0 text-xs font-semibold text-muted-foreground">
             {t('Solo cuenta la primera partida de cada día: repetirla no suma.')}
@@ -700,7 +703,10 @@ const [tiebreakOpen, setTiebreakOpen] = useState(false);
     const tied = rows.filter((row) => toComparablePoints(row.total_points) === mine);
     return new Set(tied.length > 1 ? tied.map((row) => row.user_id) : []);
   }, [rows, currentUserRow]);
+  // The daily game breaks ties from November 2026 on (Luis, 6 Oct): before that it is not shown.
+  const tiebreakActive = selectedMonth >= DAILY_GAME_TIEBREAK_FROM;
   const tieCorrectFor = (row: LeaderboardEntry): number | null =>
+    tiebreakActive &&
     tiedWithMe.has(row.user_id) && row.daily_game_correct !== null && row.daily_game_correct !== undefined
       ? Math.max(0, row.daily_game_correct)
       : null;

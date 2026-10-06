@@ -286,7 +286,7 @@ const en: Record<string, string> = {
   "Bandera del idioma": "Language flag",
   // Desempate del ranking (4 oct)
   "¿Y si hay empate?": "What if there's a tie?",
-  "Si dos o más icademers tienen los mismos puntos, gana quien más aciertos tenga en el reto del día, del día 1 al 28.": "If two or more icademers have the same points, whoever has more correct answers in the daily challenge from day 1 to 28 wins.",
+  "Desde noviembre, si dos o más icademers tienen los mismos puntos, gana quien más aciertos tenga en el reto del día, del día 1 al 28.": "From November, if two or more icademers have the same points, whoever has more correct answers in the daily challenge from day 1 to 28 wins.",
   "¿Empate?": "Tie?",
   "Solo cuenta la primera partida de cada día: repetirla no suma.": "Only the first game of each day counts: replaying it doesn't add up.",
   "Llevas {n} acierto este mes": "You have {n} correct answer this month",
@@ -295,7 +295,7 @@ const en: Record<string, string> = {
   "{n} acierto": "{n} correct",
   "{n} aciertos": "{n} correct",
   "Aciertos en el reto del día": "Daily challenge correct answers",
-  "Primera partida de cada día, hasta el 28. Deshacen los empates del ranking.": "First game of each day, up to the 28th. They break ties in the ranking.",
+  "Primera partida de cada día, hasta el 28. Desde noviembre deshacen los empates del ranking.": "First game of each day, up to the 28th. From November they break ties in the ranking.",
   "Abrir la nota maestra {name}": "Open the master note {name}",
   "Escuchando": "Listening",
   "Seguir escuchando": "Keep listening",

@@ -263,7 +263,7 @@ export function MyAnalyticsView() {
           icon={<Gamepad2Icon className='size-5' strokeWidth={2.6} />}
           value={summary.dailyGameCorrect !== null ? String(summary.dailyGameCorrect) : summary.loading ? '…' : '–'}
           label={t('Aciertos en el reto del día')}
-          hint={t('Primera partida de cada día, hasta el 28. Deshacen los empates del ranking.')}
+          hint={t('Primera partida de cada día, hasta el 28. Desde noviembre deshacen los empates del ranking.')}
           color='var(--ica-reto)'
         />
       </div>
