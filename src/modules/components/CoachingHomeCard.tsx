@@ -400,15 +400,16 @@ export function CoachingHomeCard({
             <CrownIcon className='size-3' strokeWidth={2.8} aria-hidden='true' />
             {t('Tu coaching')}
           </p>
-          <h2 className='m-0 mt-2 font-display text-2xl leading-none font-black tracking-tight'>
+          {/* Level and coach sit small next to the language, to save a line (Luis, 6 Oct). */}
+          <h2 className='m-0 mt-2 flex flex-wrap items-baseline gap-x-2 font-display text-2xl leading-none font-black tracking-tight'>
             {langName(membership.targetLang)}
+            <span className='font-sans text-xs font-bold tracking-normal text-white/70'>
+              {membership.level} · {(() => {
+                const second = (membership.coachDisplayName || '').trim()
+                return second && second.toLowerCase() !== 'luis' ? t('con Luis y {name}', { name: second }) : t('con Luis')
+              })()}
+            </span>
           </h2>
-          <p className='m-0 mt-1.5 text-xs font-bold text-white/70'>
-            {membership.level} · {(() => {
-              const second = (membership.coachDisplayName || '').trim()
-              return second && second.toLowerCase() !== 'luis' ? t('con Luis y {name}', { name: second }) : t('con Luis')
-            })()}
-          </p>
         </div>
         <p className='m-0 shrink-0 text-right text-xs font-bold text-white/70'>
           {t('Semana')}
@@ -439,28 +440,31 @@ export function CoachingHomeCard({
         })}
       </div>
 
-      {/* Los focos de la semana */}
-      <div className='relative mt-4 space-y-2'>
+      {/* The week's focuses side by side in one row, so the card keeps its height with 1, 2 or 3
+          and your level and ICA games stay in view (Luis, 6 Oct). */}
+      <div className='relative mt-4'>
         {activeFocuses.length === 0 ? (
           <p className='m-0 text-xs font-semibold text-white/70'>{t('Tu coach añadirá tus focos en la próxima clase.')}</p>
         ) : (
-          activeFocuses.map((focus) => {
-            const progress = PHASE_KEYS.filter((key) => focus[key]).length
-            return (
-              <div key={focus.id} className='flex items-center justify-between gap-3'>
-                <span className='min-w-0 truncate text-sm font-bold'>{focus.focusTitle}</span>
-                <span className='flex shrink-0 items-center gap-1' aria-label={t('{n} de 4 fases', { n: progress })}>
-                  {PHASE_KEYS.map((key, idx) => (
-                    <span
-                      key={key}
-                      className='h-2 w-4 rounded-full'
-                      style={{ background: idx < progress ? 'var(--ica-gold)' : 'rgba(255,255,255,0.18)' }}
-                    />
-                  ))}
-                </span>
-              </div>
-            )
-          })
+          <div className='grid grid-cols-3 gap-2'>
+            {activeFocuses.map((focus) => {
+              const progress = PHASE_KEYS.filter((key) => focus[key]).length
+              return (
+                <div key={focus.id} className='min-w-0 rounded-xl bg-white/8 px-2.5 py-2'>
+                  <span className='block truncate text-[13px] leading-tight font-bold'>{focus.focusTitle}</span>
+                  <span className='mt-1.5 flex items-center gap-1' aria-label={t('{n} de 4 fases', { n: progress })}>
+                    {PHASE_KEYS.map((key, idx) => (
+                      <span
+                        key={key}
+                        className='h-1.5 flex-1 rounded-full'
+                        style={{ background: idx < progress ? 'var(--ica-gold)' : 'rgba(255,255,255,0.18)' }}
+                      />
+                    ))}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
         )}
       </div>
 
