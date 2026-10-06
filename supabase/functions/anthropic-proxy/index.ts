@@ -831,9 +831,16 @@ Deno.serve(async (req) => {
           '',
           'PROCESO, en este orden:',
           '1. Interpreta el texto como fromLang.',
-          '2. Corrige ortografia y diacriticos que falten (e a c n o u a e l z s...).',
-          '   Si al quitar los diacriticos coincide con una forma valida del idioma,',
-          '   asume que el alumno los olvido y restauralos.',
+          '2. Corrige la ortografia del original (input_corrected):',
+          '   - Diacriticos que faltan o sobran (e a c n o u ss a e l z s o). Es lo mas frecuente.',
+          '     Si al quitar los diacriticos coincide con una forma valida del idioma,',
+          '     asume que el alumno los olvido y restauralos. Ante la duda, corrige.',
+          '   - Letras cambiadas, dobles, omitidas o transpuestas.',
+          '   - Espaciado y apostrofos (l\'ami, dell\'acqua).',
+          '   - No reformules ni cambies el tiempo verbal. No corrijas nombres propios,',
+          '     marcas ni siglas. No toques mayusculas salvo las obligatorias',
+          '     (sustantivos en aleman).',
+          '   - input_corrected es el texto completo corregido, en fromLang, nunca traducido.',
           '3. Traduce el texto YA CORREGIDO a toLang.',
           '',
           'REGLA ABSOLUTA:',
@@ -861,6 +868,8 @@ Deno.serve(async (req) => {
           '-> detected_lang: "pl" | input_corrected: "pan" | had_correction: false | translation: "señor" | alternatives: ["usted"] | status: "ambiguous"',
           'Input: "pan" | fromLang=es | toLang=pl',
           '-> detected_lang: "es" | input_corrected: "pan" | had_correction: false | translation: "chleb" | alternatives: [] | status: "ok"',
+          'Input: "Entshuldigung" | fromLang=de | toLang=es',
+          '-> detected_lang: "de" | input_corrected: "Entschuldigung" | had_correction: true | translation: "perdón" | alternatives: ["disculpa"] | status: "corrected"',
         ].join('\n'),
         payload.text,
         {
@@ -904,8 +913,17 @@ Deno.serve(async (req) => {
         ? null
         : (parsed.translation || parsed.translationFallback)
 
+      // The same call gives the spelling suggestion for what the student typed, so Inmersión no
+      // longer needs a second (spellcheck) call per word (Luis, 6 Oct).
+      const correctedInput = sanitizeSpellingSuggestion(parsed.inputCorrected || '')
+      const spellingSuggestion =
+        parsed.hadCorrection && correctedInput && correctedInput !== payload.text.trim()
+          ? correctedInput
+          : null
+
       return jsonResponse(200, {
         translation: finalTranslation,
+        spellingSuggestion,
         detectedLang: parsed.detectedLang,
         inputCorrected: parsed.inputCorrected,
         hadCorrection: parsed.hadCorrection,

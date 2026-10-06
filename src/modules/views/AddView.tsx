@@ -17,8 +17,8 @@ import {
   getTodayProgress,
 } from '../constants'
 import {
-  fetchSpellingSuggestion,
   fetchTranslation,
+  fetchTranslationWithSpelling,
 } from '../services/anthropic'
 import { recordWordAddedEvent } from '../services/gamification'
 import { kickLexicardExampleWorker } from '../services/lexicardExampleJobs'
@@ -165,10 +165,8 @@ export function AddView({
   const [showAllRecent, setShowAllRecent] = useState(false)
   const targetDebounceRef = useRef<number | null>(null)
   const nativeDebounceRef = useRef<number | null>(null)
-  const spellingDebounceRef = useRef<number | null>(null)
   const targetRequestRef = useRef(0)
   const nativeRequestRef = useRef(0)
-  const spellingRequestRef = useRef(0)
 
   const recent = cards.slice(-25).reverse()
   const todayProgress = getTodayProgress(dailyProgress)
@@ -217,13 +215,9 @@ export function AddView({
     setSuggestionNative(null)
     setSpellingSuggestion(null)
     targetRequestRef.current += 1
-    spellingRequestRef.current += 1
 
     if (targetDebounceRef.current !== null) {
       window.clearTimeout(targetDebounceRef.current)
-    }
-    if (spellingDebounceRef.current !== null) {
-      window.clearTimeout(spellingDebounceRef.current)
     }
 
     if (nextValue.trim().length < 2) {
@@ -232,44 +226,30 @@ export function AddView({
       return
     }
 
+    // One AI call gives both the translation and the spelling suggestion (Luis, 6 Oct). The
+    // suggestion is still only shown for single words of 4 letters or more, as before.
+    const spellingCandidate = nextValue.trim()
+    const wantsSpelling = !spellingCandidate.includes(' ') && spellingCandidate.length >= 4
     const requestId = targetRequestRef.current
     targetDebounceRef.current = window.setTimeout(async () => {
       setLoadingNative(true)
-      const result = await fetchTranslation(
-        nextValue.trim(),
+      setCheckingSpelling(wantsSpelling)
+      const result = await fetchTranslationWithSpelling(
+        spellingCandidate,
         config.targetLang,
         config.nativeLang,
       )
       if (requestId !== targetRequestRef.current) return
-      setSuggestionNative(result)
+      setSuggestionNative(result.translation)
       setLoadingNative(false)
-    }, 900)
-
-    const spellingCandidate = nextValue.trim()
-    const looksLikeSingleWord = !spellingCandidate.includes(' ')
-    if (!looksLikeSingleWord || spellingCandidate.length < 4) {
-      setCheckingSpelling(false)
-      return
-    }
-
-    const spellRequestId = spellingRequestRef.current
-    spellingDebounceRef.current = window.setTimeout(async () => {
-      setCheckingSpelling(true)
-      const suggestion = await fetchSpellingSuggestion(
-        spellingCandidate,
-        config.targetLang,
-      )
-      if (spellRequestId !== spellingRequestRef.current) return
-
-      const normalizedInput = spellingCandidate.toLowerCase()
-      const normalizedSuggestion = suggestion?.toLowerCase() || ''
+      const suggestion = wantsSpelling ? result.spellingSuggestion : null
       setSpellingSuggestion(
-        normalizedSuggestion && normalizedSuggestion !== normalizedInput
+        suggestion && suggestion.toLowerCase() !== spellingCandidate.toLowerCase()
           ? suggestion
           : null,
       )
       setCheckingSpelling(false)
-    }, 650)
+    }, 900)
   }
 
   const handleNativeChange = (value: string): void => {
@@ -339,17 +319,12 @@ export function AddView({
       window.clearTimeout(targetDebounceRef.current)
       targetDebounceRef.current = null
     }
-    if (spellingDebounceRef.current !== null) {
-      window.clearTimeout(spellingDebounceRef.current)
-      spellingDebounceRef.current = null
-    }
     if (nativeDebounceRef.current !== null) {
       window.clearTimeout(nativeDebounceRef.current)
       nativeDebounceRef.current = null
     }
     targetRequestRef.current += 1
     nativeRequestRef.current += 1
-    spellingRequestRef.current += 1
     setLoadingNative(false)
     setLoadingTarget(false)
     setCheckingSpelling(false)
