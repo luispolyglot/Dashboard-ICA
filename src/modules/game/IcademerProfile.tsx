@@ -25,7 +25,7 @@ import {
   useAchievements,
 } from './achievements'
 import type { FeaturedBadge } from './featuredBadge'
-import { fetchProfileBadges, pickTopBadges, useMyProfileBadges } from './profileBadges'
+import { badgesToShow, fetchProfileBadges, useMyProfileBadges } from './profileBadges'
 import { SwordsIcon } from './icons'
 import type { MedalCategory } from './medals'
 import { FeaturedBadgeMini, UserInitial } from './ranking'
@@ -206,7 +206,7 @@ export function IcademerProfileDialog({
   }, [summary?.userId])
   // Tus propias insignias salen de tus datos (igual que en tu perfil).
   const mine = useAchievements()
-  // The (up to) 3 badges the student chose for their profile. Empty = the 3 best ones.
+  // The (up to) 3 badges the student chose for their profile; the best other ones fill up to 3.
   const myChosen = useMyProfileBadges(isMe ? user?.id : null)
   const [othersChosen, setOthersChosen] = useState<FeaturedBadge[] | null>(null)
   useEffect(() => {
@@ -245,7 +245,7 @@ export function IcademerProfileDialog({
   const level = (isMe ? myLevel : null) || loaded.level
   const totalEarned = earned ? Object.values(earned).reduce((sum, value) => sum + value, 0) : 0
   const totalPossible = ACHIEVEMENT_CATALOG.reduce((sum, def) => sum + def.levels.length, 0)
-  const shownBadges: FeaturedBadge[] = chosen && chosen.length > 0 ? chosen : earned ? pickTopBadges(earned) : []
+  const shownBadges: FeaturedBadge[] = badgesToShow(chosen, earned)
   const topBadges = shownBadges.flatMap((badge) => {
     const def = ACHIEVEMENT_CATALOG.find((item) => item.key === badge.category)
     return def ? [{ def, badge }] : []

@@ -33,15 +33,43 @@ export async function fetchProfileBadges(userId: string): Promise<FeaturedBadge[
 }
 
 /**
- * The 3 badges shown when nobody chose: the highest level of each category, best first
- * (on a tie, catalog order).
+ * The 3 badges shown when nobody chose: first the highest level of each category, best first
+ * (on a tie, catalog order). If that gives fewer than 3 (badges in only one or two categories),
+ * the next levels down fill the rest, so a student with 3 or more badges always shows 3
+ * (Luis, 6 Oct: Nahuel had 6 badges and only 2 showed).
  */
 export function pickTopBadges(earned: Record<MedalCategory, number>, max = PROFILE_BADGES_MAX): FeaturedBadge[] {
-  return ACHIEVEMENT_CATALOG.filter((def) => earned[def.key] > 0)
-    .map((def, order) => ({ def, order, level: earned[def.key] }))
-    .sort((a, b) => b.level - a.level || a.order - b.order)
+  const all = ACHIEVEMENT_CATALOG.flatMap((def, order) =>
+    Array.from({ length: Math.min(earned[def.key] || 0, def.levels.length) }, (_, idx) => ({
+      def,
+      order,
+      level: idx + 1,
+      isTop: idx + 1 === Math.min(earned[def.key] || 0, def.levels.length),
+    })),
+  )
+  const byBest = (a: (typeof all)[number], b: (typeof all)[number]) => b.level - a.level || a.order - b.order
+  const tops = all.filter((item) => item.isTop).sort(byBest)
+  const rest = all.filter((item) => !item.isTop).sort(byBest)
+  return [...tops, ...rest]
     .slice(0, max)
     .map(({ def, level }) => ({ category: def.key, tier: def.levels[level - 1].tier }))
+}
+
+/**
+ * What a profile shows: the badges the student chose and, if there are fewer than 3, their best
+ * other badges up to 3 (with no choice at all, simply the best 3).
+ */
+export function badgesToShow(
+  chosen: FeaturedBadge[] | null,
+  earned: Record<MedalCategory, number> | null,
+  max = PROFILE_BADGES_MAX,
+): FeaturedBadge[] {
+  const picked = (chosen || []).slice(0, max)
+  if (!earned || picked.length >= max) return picked
+  const extra = pickTopBadges(earned, max + picked.length).filter(
+    (badge) => !picked.some((item) => sameBadge(item, badge)),
+  )
+  return [...picked, ...extra].slice(0, max)
 }
 
 /** Your own profile badges, to add or remove them from the badge window. */
