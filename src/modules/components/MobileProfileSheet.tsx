@@ -71,11 +71,11 @@ function QuickTile({
     <Link
       to={to}
       onClick={onNavigate}
-      className='ica-panel ica-press relative flex min-w-0 flex-col items-center gap-2 rounded-2xl px-1 pt-3 pb-2.5 text-center'
+      className='ica-panel ica-press relative flex min-w-0 flex-col items-center gap-1.5 rounded-2xl px-1 pt-2.5 pb-2 text-center'
     >
       {alert ? <span className='absolute top-2 right-2'>{alert}</span> : null}
       <span className='relative'>
-        <IconTile tone={tone} size={46}>
+        <IconTile tone={tone} size={40}>
           {icon}
         </IconTile>
         {badge ? <span className='absolute -right-2.5 -bottom-1.5'>{badge}</span> : null}
@@ -97,7 +97,7 @@ function FichasQuickTile({ userId, onNavigate }: { userId: string | undefined; o
     <QuickTile
       to={DASHBOARD_ROUTES.fichas}
       tone='gold'
-      icon={<FichaIcon size={30} />}
+      icon={<FichaIcon size={26} />}
       label={t('ICA Coins')}
       badge={
         total === null ? null : (
@@ -161,7 +161,7 @@ export function MobileProfileScreen({
     hasCoachingAlert || access.pendingCoachingSessions > 0
 
   return (
-    <div className='mx-auto flex w-full max-w-xl flex-col gap-5 px-4 pt-2 pb-8'>
+    <div className='mx-auto flex w-full max-w-xl flex-col gap-4 px-4 pt-2 pb-8'>
           <div>
             <div className='flex items-center gap-3'>
               {/* El anillo tiene el color de tu nivel real. Al tocarlo: ajustes de cuenta. */}
@@ -175,7 +175,7 @@ export function MobileProfileScreen({
               <div className='min-w-0 flex-1'>
                 <div className='flex min-w-0 items-center gap-2'>
                   {/* El nombre puede ocupar dos líneas: así la insignia siempre se ve entera */}
-                  <h1 className='m-0 line-clamp-2 min-w-0 font-display text-2xl leading-tight font-extrabold break-words'>
+                  <h1 className='m-0 line-clamp-2 min-w-0 font-display text-[22px] leading-tight font-extrabold break-words'>
                     {displayName}
                   </h1>
                   <MyFeaturedBadge size={44} />
@@ -227,7 +227,7 @@ export function MobileProfileScreen({
             </div>
           </div>
 
-          <div className='flex flex-col gap-5'>
+          <div className='flex flex-col gap-4'>
             {/* Tu progreso: nivel real e insignias */}
             <ProfileGameSummary onNavigate={close} />
 
@@ -243,7 +243,7 @@ export function MobileProfileScreen({
               <QuickTile
                 to={DASHBOARD_ROUTES.testsIca}
                 tone='c'
-                icon={<IcaTestGlyph size={30} />}
+                icon={<IcaTestGlyph size={26} />}
                 label={t('Tests ICA')}
                 alert={
                   hasIcaTestAlert ? (

@@ -21,7 +21,7 @@ export function PageLayout({
     return (
       <div className='relative mx-auto flex w-full flex-1 flex-col'>
         {withBackButton && (
-          <div className='px-2 pt-1 lg:px-6 lg:pt-4'>
+          <div className='px-2 lg:px-6 lg:pt-4'>
             <Link
               to={backTo}
               className='inline-flex h-9 items-center gap-0.5 rounded-xl pr-3 pl-1 text-sm font-extrabold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground'

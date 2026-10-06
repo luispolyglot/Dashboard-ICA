@@ -48,7 +48,7 @@ export function GamePage({
   return (
     <section
       className={cn(
-        'mx-auto flex w-full flex-1 flex-col gap-6 px-4 pt-2 pb-8 lg:py-8',
+        'mx-auto flex w-full flex-1 flex-col gap-4 px-4 pt-1 pb-8 lg:gap-6 lg:py-8',
         wide ? 'max-w-5xl' : 'max-w-xl',
         className,
       )}
@@ -76,8 +76,8 @@ export function PageTitle({
     <header className={cn('flex items-center gap-3', className)}>
       {icon ? <span className='flex shrink-0 items-center justify-center'>{icon}</span> : null}
       <div className='min-w-0 flex-1'>
-        <h1 className='m-0 font-display text-2xl leading-tight font-extrabold tracking-tight lg:text-3xl'>{children}</h1>
-        {subtitle ? <p className='m-0 mt-0.5 text-sm font-semibold text-muted-foreground'>{subtitle}</p> : null}
+        <h1 className='m-0 font-display text-[22px] leading-tight font-extrabold tracking-tight lg:text-3xl'>{children}</h1>
+        {subtitle ? <p className='m-0 mt-0.5 text-[13px] leading-snug font-semibold text-muted-foreground lg:text-sm'>{subtitle}</p> : null}
       </div>
       {right ? <div className='shrink-0'>{right}</div> : null}
     </header>
@@ -285,7 +285,7 @@ export function HeroBlock({
 }) {
   const colors = TONES[t]
   return (
-    <div className={cn('rounded-3xl px-5 py-4', className)} style={{ background: colors.soft }}>
+    <div className={cn('rounded-3xl px-4 py-3.5 lg:px-5 lg:py-4', className)} style={{ background: colors.soft }}>
       <div className='flex items-center gap-4'>
         {icon ? <span className='flex shrink-0 items-center justify-center'>{icon}</span> : null}
         <div className='min-w-0 flex-1'>
@@ -294,13 +294,13 @@ export function HeroBlock({
               {eyebrow}
             </p>
           ) : null}
-          <p className='m-0 text-2xl leading-tight font-black tracking-tight' style={{ color: colors.ink }}>
+          <p className='m-0 text-xl leading-tight font-black tracking-tight lg:text-2xl' style={{ color: colors.ink }}>
             {title}
           </p>
           {text ? <p className='m-0 mt-1 text-sm font-semibold text-muted-foreground'>{text}</p> : null}
         </div>
       </div>
-      {children ? <div className='mt-4'>{children}</div> : null}
+      {children ? <div className='mt-3 lg:mt-4'>{children}</div> : null}
     </div>
   )
 }

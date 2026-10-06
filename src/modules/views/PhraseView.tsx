@@ -803,7 +803,7 @@ export function PhraseView({
       ) : null}
 
       {/* Contador del día (como el saldo de ICA Coins) */}
-      <div className='-mt-1 rounded-3xl px-5 py-4' style={{ background: 'var(--ica-c-soft)' }}>
+      <div className='-mt-1 rounded-3xl px-4 py-3 lg:px-5 lg:py-4' style={{ background: 'var(--ica-c-soft)' }}>
         <div className='flex items-center gap-4'>
           <div className='min-w-0 flex-1'>
             <p
@@ -817,8 +817,8 @@ export function PhraseView({
                 className='m-0 mt-1 leading-none font-black tabular-nums'
                 style={{ color: 'var(--ica-c-ink)' }}
               >
-                <span className='text-5xl'>{limitUsed}</span>
-                <span className='text-2xl opacity-60'> / {limitMax}</span>
+                <span className='text-4xl lg:text-5xl'>{limitUsed}</span>
+                <span className='text-xl opacity-60 lg:text-2xl'> / {limitMax}</span>
               </p>
             ) : (
               <p
@@ -831,7 +831,7 @@ export function PhraseView({
           </div>
           <div className='flex shrink-0 flex-col items-center gap-1.5'>
             <span
-              className='flex h-12 min-w-16 items-center justify-center rounded-2xl px-2.5 text-lg font-black text-white'
+              className='flex h-10 min-w-14 items-center justify-center rounded-2xl px-2.5 text-base font-black text-white lg:h-12 lg:min-w-16 lg:text-lg'
               style={{ background: 'var(--ica-c)', boxShadow: '0 4px 0 var(--ica-c-edge)' }}
             >
               {level}
@@ -849,7 +849,7 @@ export function PhraseView({
             <GameProgress
               value={limitMax > 0 ? limitUsed / limitMax : 0}
               color='var(--ica-c)'
-              className='mt-4 bg-card'
+              className='mt-3 bg-card lg:mt-4'
               label={t('Frases nuevas de hoy')}
             />
             <div className='mt-2 flex flex-wrap items-center gap-2'>
@@ -885,7 +885,7 @@ export function PhraseView({
                 aria-label={t(item.label)}
                 onClick={() => setMode(item.value)}
                 className={cn(
-                  'ica-press flex min-h-[84px] min-w-0 flex-col items-center justify-center gap-1.5 rounded-2xl border-2 px-1.5 py-2.5 text-center transition-colors',
+                  'ica-press flex min-h-[64px] min-w-0 flex-col items-center justify-center gap-1 rounded-2xl border-2 px-1.5 py-2 text-center transition-colors lg:min-h-[84px] lg:gap-1.5 lg:py-2.5',
                   !active && 'border-border bg-card text-muted-foreground hover:bg-muted dark:bg-transparent',
                 )}
                 style={
@@ -899,13 +899,13 @@ export function PhraseView({
                     : { boxShadow: '0 4px 0 var(--border)' }
                 }
               >
-                <Icon className='size-6' strokeWidth={2.6} aria-hidden='true' />
+                <Icon className='size-5 lg:size-6' strokeWidth={2.6} aria-hidden='true' />
                 <span className='text-[13px] leading-tight font-extrabold'>{t(item.label)}</span>
               </button>
             )
           })}
         </div>
-        <p className='m-0 mt-3 text-sm font-semibold text-muted-foreground'>{t(activeMode.hint)}</p>
+        <p className='m-0 mt-2 text-[13px] leading-snug font-semibold text-muted-foreground lg:mt-3 lg:text-sm'>{t(activeMode.hint)}</p>
       </div>
 
       {/* La IA la crea: con cuántas palabras */}
@@ -925,7 +925,7 @@ export function PhraseView({
                   disabled={!available}
                   aria-pressed={active}
                   className={cn(
-                    'ica-press flex h-[72px] flex-col items-center justify-center rounded-2xl border-2 disabled:opacity-40',
+                    'ica-press flex h-14 flex-col items-center justify-center rounded-2xl border-2 disabled:opacity-40 lg:h-[72px]',
                     !active && 'border-border bg-card dark:bg-transparent',
                   )}
                   style={
@@ -939,10 +939,10 @@ export function PhraseView({
                       : { boxShadow: '0 4px 0 var(--border)' }
                   }
                 >
-                  <span className='text-2xl leading-none font-black tabular-nums'>{n}</span>
+                  <span className='text-xl leading-none font-black tabular-nums lg:text-2xl'>{n}</span>
                   <span
                     className={cn(
-                      'mt-1 text-[11px] font-bold',
+                      'mt-0.5 text-[11px] font-bold lg:mt-1',
                       active ? 'text-white/85' : 'text-muted-foreground',
                     )}
                   >

@@ -77,7 +77,7 @@ const RECENT_PREVIEW = 5
 
 // Estilo de los campos grandes de la fase I (borde azul al escribir).
 const FIELD_CLASS =
-  'h-14 rounded-2xl px-4 text-lg font-bold md:text-lg placeholder:font-semibold placeholder:text-muted-foreground/75 focus-visible:border-[var(--ica-i)] focus-visible:ring-[color-mix(in_oklab,var(--ica-i)_22%,transparent)]'
+  'h-12 rounded-2xl px-4 text-base font-bold md:text-base lg:h-14 lg:text-lg placeholder:font-semibold placeholder:text-muted-foreground/75 focus-visible:border-[var(--ica-i)] focus-visible:ring-[color-mix(in_oklab,var(--ica-i)_22%,transparent)]'
 
 /** Día (AAAA-MM-DD) de una fecha en milisegundos, en hora local. */
 function dayKeyOf(ms: number | null | undefined): string {
@@ -386,7 +386,7 @@ export function AddView({
   // Contador del día: palabras de hoy / máximo, con la marca del mínimo del ciclo (la C).
   const dayCounter = (
     <div
-      className='order-2 rounded-3xl px-5 pt-4 pb-5'
+      className='order-2 rounded-3xl px-4 pt-3 pb-3.5 lg:px-5 lg:pt-4 lg:pb-5'
       style={{ background: 'var(--ica-i-soft)' }}
     >
       <div className='flex items-start justify-between gap-3'>
@@ -394,15 +394,15 @@ export function AddView({
           <p className='m-0 text-xs font-extrabold tracking-[0.08em] uppercase' style={{ color: 'var(--ica-i-ink)' }}>
             {t('Palabras de hoy')}
           </p>
-          <p className='m-0 mt-1 flex items-baseline gap-1.5 leading-none'>
+          <p className='m-0 mt-0.5 flex items-baseline gap-1.5 leading-none lg:mt-1'>
             <span
               key={shownWords}
-              className='ica-pop text-5xl font-black tabular-nums'
+              className='ica-pop text-[34px] font-black tabular-nums lg:text-5xl'
               style={{ color: 'var(--ica-i-ink)' }}
             >
               {shownWords}
             </span>
-            <span className='text-2xl font-black text-muted-foreground tabular-nums'>
+            <span className='text-xl font-black text-muted-foreground tabular-nums lg:text-2xl'>
               / {wordLimit}
             </span>
           </p>
@@ -423,7 +423,7 @@ export function AddView({
         )}
       </div>
 
-      <div className='relative mt-5'>
+      <div className='relative mt-3 lg:mt-5'>
         <GameProgress
           value={shownWords / Math.max(1, wordLimit)}
           color='var(--ica-i)'
@@ -442,7 +442,7 @@ export function AddView({
         </span>
       </div>
 
-      <div className='mt-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs font-bold text-muted-foreground tabular-nums'>
+      <div className='mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs font-bold text-muted-foreground tabular-nums lg:mt-2.5'>
         <span>{t('Mínimo {n} para tu ciclo', { n: CREATION_WORDS_GOAL })}</span>
         <span>
           {dailyLimits.boosted.words
@@ -632,15 +632,15 @@ export function AddView({
         </PageTitle>
 
         {/* Formulario */}
-        <div className='order-3 flex flex-col gap-6'>
-          <p className='m-0 -mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground'>
+        <div className='order-3 flex flex-col gap-4 lg:gap-6'>
+          <p className='m-0 -mb-1 flex items-center gap-2 text-[13px] leading-snug font-semibold text-muted-foreground lg:-mb-2 lg:text-sm'>
             <SparklesIcon className='size-4 shrink-0' strokeWidth={2.4} style={{ color: 'var(--ica-i)' }} aria-hidden='true' />
-            {t('Escribe en cualquier campo y la IA te sugiere la traducción.')}
+            {t('Escribe en un campo y la IA traduce el otro.')}
           </p>
 
           {/* Idioma que aprendes */}
           <div>
-            <div className='mb-2 flex items-baseline justify-between gap-2'>
+            <div className='mb-1.5 flex items-baseline justify-between gap-2 lg:mb-2'>
               <Label htmlFor='ica-add-target' className='text-base font-extrabold'>
                 {langName(config.targetLang)}
                 <span className='text-sm font-semibold text-muted-foreground'>
@@ -752,7 +752,7 @@ export function AddView({
 
           {/* Tu idioma */}
           <div>
-            <div className='mb-2 flex items-baseline justify-between gap-2'>
+            <div className='mb-1.5 flex items-baseline justify-between gap-2 lg:mb-2'>
               <Label htmlFor='ica-add-native' className='text-base font-extrabold'>
                 {langName(config.nativeLang)}
                 <span className='text-sm font-semibold text-muted-foreground'>
@@ -783,7 +783,7 @@ export function AddView({
 
           {/* Frecuencia */}
           <div>
-            <p className='m-0 mb-2 text-base font-extrabold'>
+            <p className='m-0 mb-1.5 text-base font-extrabold lg:mb-2'>
               {t('Frecuencia de uso')}
             </p>
             <ImportancePicker
@@ -804,7 +804,7 @@ export function AddView({
               disabled={!canSave}
               size='xl'
               variant={saved ? 'success' : 'i'}
-              className={cn('w-full text-lg', saved && 'disabled:opacity-100')}
+              className={cn('w-full text-base lg:text-lg', saved && 'disabled:opacity-100')}
             >
               {saving ? (
                 <>

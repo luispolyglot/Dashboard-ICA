@@ -199,7 +199,7 @@ export function ProfileGameSummary({ onNavigate }: { onNavigate?: () => void }) 
           })}
         </div>
         <p className='m-0 mt-2 text-xs font-semibold text-muted-foreground'>
-          {t('Toca una insignia para ver qué significa. Puedes elegir una para que salga junto a tu nombre y tres para tu perfil.')}
+          {t('Toca una para ver qué significa y elegir cuáles enseñar.')}
         </p>
       </div>
 
@@ -235,17 +235,17 @@ export function ProfileStreakPanel({ onNavigate }: { onNavigate?: () => void }) 
     <Link
       to={DASHBOARD_ROUTES.streaks}
       onClick={onNavigate}
-      className='ica-panel ica-press flex items-center gap-4 px-4 py-3.5'
+      className='ica-panel ica-press flex items-center gap-3.5 px-4 py-3 lg:gap-4 lg:py-3.5'
       style={{
         background: 'var(--ica-fire-soft)',
         borderColor: 'color-mix(in oklab, var(--ica-fire) 38%, transparent)',
         boxShadow: '0 4px 0 color-mix(in oklab, var(--ica-fire) 30%, transparent)',
       }}
     >
-      <FlameIcon size={52} tone={lit ? 'fire' : 'off'} />
+      <FlameIcon size={44} tone={lit ? 'fire' : 'off'} />
       <span className='min-w-0 flex-1'>
         <span className='flex items-baseline gap-1.5' style={{ color: 'var(--ica-fire-ink)' }}>
-          <span className='text-4xl leading-none font-black tabular-nums'>{streakState.streak}</span>
+          <span className='text-3xl leading-none font-black tabular-nums lg:text-4xl'>{streakState.streak}</span>
           <span className='text-sm font-extrabold'>
             {tn(streakState.streak, t('día de racha ICA'), t('días de racha ICA'))}
           </span>
