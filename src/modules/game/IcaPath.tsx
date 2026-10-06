@@ -1114,7 +1114,7 @@ function IcaJourney({
   // El tramo que ya has hecho se pinta de colores.
   // Luis (5 Oct): flatter than before (it dropped 132 px), almost a straight line.
   const DROP = 56
-  const HEIGHT = 18 + DROP + 250
+  const HEIGHT = 18 + DROP + 234
   const W = 1000
   const xs = steps.map((_, index) => 9 + (index * 82) / (steps.length - 1))
   const tops = steps.map((_, index) => (index % 2 === 0 ? 18 : 18 + DROP))
@@ -1122,7 +1122,7 @@ function IcaJourney({
   const centers = steps.map((_, index) => [xs[index] * (W / 100), tops[index] + sizes[index] / 2] as [number, number])
 
   return (
-    <div className='ica-path-skin relative overflow-hidden rounded-[32px] px-4 pt-4 pb-2 xl:px-6'>
+    <div className='ica-path-skin relative overflow-hidden rounded-[32px] px-4 pt-3 pb-1 xl:px-6'>
       <div className='relative w-full' style={{ height: HEIGHT }}>
         <Road centers={centers} reached={reached} width={W} height={HEIGHT} fill={fill} />
 

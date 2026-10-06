@@ -9,6 +9,7 @@ import {
   CoachingHomeCard,
   expectsHomeCoaching,
 } from '../components/CoachingHomeCard'
+import { CoachingInviteCard } from '../components/CoachingInvite'
 import { getTodayProgress } from '../constants'
 import { useDailyGame } from '../game/dailyGame'
 import { CardsIcon, MicGlyph, SwordsIcon, TargetGlyph } from '../game/icons'
@@ -96,6 +97,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
       key={`${user?.id || 'anon'}:${config.targetLang}`}
       targetLang={config.targetLang}
       compact={!isLg}
+      className={isLg ? 'px-5 py-4' : undefined}
       onAvailabilityChange={setHasCoaching}
     />
   )
@@ -152,7 +154,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
     const dateLabel = new Date().toLocaleDateString(uiLocale(), { weekday: 'long', day: 'numeric', month: 'long' })
     return (
       <section className='flex flex-1 justify-center px-8 pt-8 pb-10'>
-        <div className='flex w-full max-w-[1180px] flex-col gap-6'>
+        <div className='flex w-full max-w-[1180px] flex-col gap-4'>
           <div className='flex items-end justify-between gap-6'>
             <div className='min-w-0'>
               <p className='ica-label m-0 first-letter:uppercase'>{dateLabel}</p>
@@ -168,12 +170,19 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           <StreakRiskBanner className='max-w-xl' />
           <IcaPath />
 
+          {/* Luis, 6 Oct: the coaching where people see it (left, wide) and, on the right, one
+              column with your level, ICA games and the ranking, in that order. */}
           <div className='grid grid-cols-3 items-start gap-5'>
-            <LevelCard config={config} />
-            <RankingSnippetCard />
-            {gamesCard}
+            <div className='col-span-2 flex flex-col gap-3'>
+              <div className={hasCoaching ? '' : 'hidden'}>{coachingCard}</div>
+              {hasCoaching ? null : <CoachingInviteCard />}
+            </div>
+            <div className='flex flex-col gap-4'>
+              <LevelCard config={config} />
+              {gamesCard}
+              <RankingSnippetCard />
+            </div>
           </div>
-          <div className={hasCoaching ? '' : 'hidden'}>{coachingCard}</div>
         </div>
         <ChatInvite />
       </section>
