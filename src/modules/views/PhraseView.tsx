@@ -332,6 +332,7 @@ export function PhraseView({
   // First-use bubbles that walk a new icademer to the next button (Luis, 6 Oct).
   const [generateTipPending, closeGenerateTip] = useFirstUseTip('phrase-generate')
   const [activateTipPending, closeActivateTip] = useFirstUseTip('phrase-activate')
+  const [reviewTipPending, closeReviewTip] = useFirstUseTip('phrase-review')
   const [loading, setLoading] = useState(false)
   const [wordUsageCounts, setWordUsageCounts] = useState<
     Record<string, number>
@@ -1088,11 +1089,23 @@ export function PhraseView({
             />
 
             {/* Paso opcional: revisión con IA */}
-            <div className='mt-3 flex flex-wrap items-center justify-between gap-2'>
+            <div className='relative mt-3 flex flex-wrap items-center justify-between gap-2'>
+              {reviewTipPending &&
+              !manualSuggestionLoading &&
+              manualPhraseTarget.trim() &&
+              manualPhraseNative.trim() &&
+              manualDetectedWords.length > 0 ? (
+                <FirstUseTip align='end' onClose={closeReviewTip}>
+                  {t('Toca aquí y la IA revisa tu frase antes de guardarla.')}
+                </FirstUseTip>
+              ) : null}
               <span className='text-xs font-semibold text-muted-foreground'>{t('Opcional')}</span>
               <Button
                 type='button'
-                onClick={() => void handleManualPhraseSuggestion()}
+                onClick={() => {
+                  if (reviewTipPending) closeReviewTip()
+                  void handleManualPhraseSuggestion()
+                }}
                 variant='outline'
                 size='sm'
                 disabled={
@@ -1198,12 +1211,8 @@ export function PhraseView({
 
       {/* Botón principal */}
       <div className='relative'>
-      {generateTipPending && !primaryDisabled && !result && !loading ? (
-        <FirstUseTip onClose={closeGenerateTip}>
-          {isManualPhrase
-            ? t('Cuando tengas tu frase, toca aquí para guardarla.')
-            : t('Toca aquí y la IA crea tu frase con estas palabras.')}
-        </FirstUseTip>
+      {generateTipPending && !isManualPhrase && !primaryDisabled && !result && !loading ? (
+        <FirstUseTip onClose={closeGenerateTip}>{t('Toca aquí y la IA crea tu frase con estas palabras.')}</FirstUseTip>
       ) : null}
       <Button
         type='button'

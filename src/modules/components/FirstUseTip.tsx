@@ -47,15 +47,15 @@ export function FirstUseTip({
   children: ReactNode
   onClose: () => void
   className?: string
-  /** `center`: centred over its anchor (a round button), arrow in the middle. */
-  align?: 'start' | 'center'
+  /** `center`: centred over its anchor (a round button); `end`: on the right, arrow on the right. */
+  align?: 'start' | 'center' | 'end'
 }) {
   return (
     <div
       role='note'
       className={cn(
         'ica-pop absolute bottom-full z-20 mb-2 flex max-w-[min(20rem,calc(100vw-2rem))] items-start gap-2 rounded-2xl px-3.5 py-2.5 text-[13px] leading-snug font-bold text-white shadow-lg',
-        align === 'center' ? 'left-1/2 w-max -translate-x-1/2' : 'left-0',
+        align === 'center' ? 'left-1/2 w-max -translate-x-1/2' : align === 'end' ? 'right-0' : 'left-0',
         className,
       )}
       style={{ background: 'var(--ica-i-ink)' }}
@@ -72,7 +72,7 @@ export function FirstUseTip({
       <span
         className={cn(
           'absolute top-full size-0 border-x-8 border-t-8 border-x-transparent',
-          align === 'center' ? 'left-1/2 -translate-x-1/2' : 'left-6',
+          align === 'center' ? 'left-1/2 -translate-x-1/2' : align === 'end' ? 'right-10' : 'left-6',
         )}
         style={{ borderTopColor: 'var(--ica-i-ink)' }}
         aria-hidden='true'

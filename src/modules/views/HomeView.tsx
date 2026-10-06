@@ -153,7 +153,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
     const firstName = String(user?.user_metadata?.display_name || user?.email?.split('@')[0] || '').trim().split(/\s+/)[0]
     const dateLabel = new Date().toLocaleDateString(uiLocale(), { weekday: 'long', day: 'numeric', month: 'long' })
     return (
-      <section className='flex flex-1 justify-center px-8 pt-8 pb-10'>
+      <section className='flex flex-1 justify-center px-8 pt-3 pb-10'>
         <div className='flex w-full max-w-[1180px] flex-col gap-4'>
           <div className='flex items-end justify-between gap-6'>
             <div className='min-w-0'>
@@ -172,16 +172,21 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
 
           {/* Luis, 6 Oct: the coaching where people see it (left, wide) and, on the right, one
               column with your level, ICA games and the ranking, in that order. */}
-          <div className='grid grid-cols-3 items-start gap-5'>
-            <div className='col-span-2 flex flex-col gap-3'>
+          {/* Luis, 6 Oct (second try): coaching on top with your level and ICA games under it,
+              and the ranking on the right from the top of the coaching to the bottom of the games,
+              so the block is square. */}
+          <div className='grid grid-cols-3 gap-5'>
+            <div className='col-span-2'>
               <div className={hasCoaching ? '' : 'hidden'}>{coachingCard}</div>
               {hasCoaching ? null : <CoachingInviteCard />}
             </div>
-            <div className='flex flex-col gap-4'>
-              <LevelCard config={config} />
-              {gamesCard}
+            <div className='row-span-2 flex flex-col [&>*]:flex-1'>
               <RankingSnippetCard />
             </div>
+            <div className='flex flex-col [&>*]:flex-1'>
+              <LevelCard config={config} />
+            </div>
+            <div className='flex flex-col [&>*]:flex-1'>{gamesCard}</div>
           </div>
         </div>
         <ChatInvite />

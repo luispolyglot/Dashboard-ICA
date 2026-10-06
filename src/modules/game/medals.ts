@@ -201,16 +201,17 @@ const EMBLEM = {
     <polygon points="80,88 76.8,97.6 70.4,91.2" fill="#ffffff" stroke="#9aa7b0" stroke-width="0.8" stroke-linejoin="round"/>
     <path d="M50 119 L56 111.5 M50 119 L57.5 116" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>`,
   // Las espadas «cute» de Desafíos ICA (SwordsIcon de la app), siempre del mismo color.
+  // Luis (6 Oct): blades longer than the app icon, so they read as swords on the medal.
   espadas: () => {
     const sword = `
-      <path d="M12 1.6 14 4.3v9.5h-4V4.3z" fill="#E2E8F0" stroke="#94A3B8" stroke-width="0.8" stroke-linejoin="round"/>
-      <path d="M12 3v10.6" stroke="#ffffff" stroke-width="0.8" stroke-linecap="round"/>
+      <path d="M12 -7 14 -3.4v17.2h-4V-3.4z" fill="#E2E8F0" stroke="#94A3B8" stroke-width="0.8" stroke-linejoin="round"/>
+      <path d="M12 -4.8v18.4" stroke="#ffffff" stroke-width="0.8" stroke-linecap="round"/>
       <rect x="7.6" y="13.5" width="8.8" height="2.2" rx="1.1" fill="#FFC72C" stroke="#D99A00" stroke-width="0.6"/>
       <rect x="11" y="15.6" width="2" height="4.2" rx="0.6" fill="#8E4717"/>
       <circle cx="12" cy="20.6" r="1.5" fill="#FFC72C" stroke="#D99A00" stroke-width="0.6"/>`
-    return `<g transform="translate(51.2 59.5) scale(2.4)">
-      <g transform="translate(12 12) scale(0.92) rotate(-42) translate(-12 -12)">${sword}</g>
-      <g transform="translate(12 12) scale(0.92) rotate(42) translate(-12 -12)">${sword}</g>
+    return `<g transform="translate(52.4 60.7) scale(2.3)">
+      <g transform="translate(12 12) scale(0.92) rotate(-42) translate(-12 -7.5)">${sword}</g>
+      <g transform="translate(12 12) scale(0.92) rotate(42) translate(-12 -7.5)">${sword}</g>
     </g>`
   },
   // La copa de la app (TrophyIcon), siempre dorada y sin estrella: las estrellas son de la Leyenda.

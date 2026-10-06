@@ -258,6 +258,7 @@ const en: Record<string, string> = {
   "Toca aquí y la IA crea tu frase con estas palabras.": "Tap here and the AI creates your sentence with these words.",
   "Ahora graba tu frase en voz alta: toca aquí para ir a Activación.": "Now record your sentence out loud: tap here to go to Activation.",
   "Toca el micro y lee tu frase en voz alta.": "Tap the mic and read your sentence out loud.",
+  "Toca aquí y la IA revisa tu frase antes de guardarla.": "Tap here and the AI checks your sentence before you save it.",
   "Toca otra vez para pagar {n} ICA Coins": "Tap again to pay {n} ICA Coins",
   "Mostrar en mi perfil ({n} de {max})": "Show on my profile ({n} of {max})",
   "Quitar de mi perfil": "Remove from my profile",
