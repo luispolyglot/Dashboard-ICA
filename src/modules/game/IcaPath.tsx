@@ -149,6 +149,11 @@ function chestTileStyle(state: NodeState): CSSProperties {
 
 /** Reto del día: bloqueado, ficha clara en azul; disponible y hecho, morado (su color de minijuego); hecho, con borde fino. */
 const CHEST_RING = 'rgb(255 199 44 / 0.45)'
+/** Border of the chest and challenge boxes (mobile) once they are unlocked. */
+const OPEN_SLOT_BORDER: CSSProperties = {
+  borderWidth: 3,
+  borderColor: 'color-mix(in oklab, var(--ica-i) 70%, transparent)',
+}
 const RETO_RING = 'rgb(162 89 240 / 0.35)'
 function retoTileStyle(state: NodeState): CSSProperties {
   if (state === 'locked') return bonusTileStyle(state)
@@ -824,14 +829,15 @@ export function IcaPath() {
     <div ref={pathRef} className='relative mx-auto w-full max-w-[460px]' style={{ height: mobileHeight, ...boxVars }}>
       {/* Recuadros (estilo casillas): el del ciclo I·C·A y los del cofre y el reto. */}
       <div className='ica-panel pointer-events-none absolute inset-x-0' style={{ top: 0, height: panelBottom }} aria-hidden='true' />
+      {/* Once unlocked, each box gets a slightly stronger blue border (Luis, 6 Oct). */}
       <div
-        className='ica-panel pointer-events-none absolute'
-        style={{ left: 0, width: `calc(50% - ${SLOT_GAP / 2}px)`, top: slotTop, height: slotBottom - slotTop }}
+        className='ica-panel pointer-events-none absolute transition-[border-color,border-width] duration-500'
+        style={{ left: 0, width: `calc(50% - ${SLOT_GAP / 2}px)`, top: slotTop, height: slotBottom - slotTop, ...(chestLocked ? null : OPEN_SLOT_BORDER) }}
         aria-hidden='true'
       />
       <div
-        className='ica-panel pointer-events-none absolute'
-        style={{ right: 0, width: `calc(50% - ${SLOT_GAP / 2}px)`, top: slotTop, height: slotBottom - slotTop }}
+        className='ica-panel pointer-events-none absolute transition-[border-color,border-width] duration-500'
+        style={{ right: 0, width: `calc(50% - ${SLOT_GAP / 2}px)`, top: slotTop, height: slotBottom - slotTop, ...(reviewLocked ? null : OPEN_SLOT_BORDER) }}
         aria-hidden='true'
       />
       <svg viewBox={`0 0 100 ${mobileHeight}`} preserveAspectRatio='none' className='absolute inset-0 h-full w-full' aria-hidden='true'>
@@ -960,7 +966,7 @@ export function IcaPath() {
           className='ica-glow-pulse pointer-events-none absolute rounded-full'
           style={{
             left: at(X.chest, -60),
-            top: bonusTop - 18,
+            top: bonusTop - 12,
             width: 120,
             height: 104,
             background: 'radial-gradient(closest-side, #ffd54acc, #ffd54a55 55%, transparent)',
@@ -971,7 +977,7 @@ export function IcaPath() {
       {chestReady ? (
         <span
           className='pointer-events-none absolute rounded-[32px] border-[6px]'
-          style={{ left: at(X.chest, -52), top: bonusTop - 16, width: 104, height: 96, borderColor: CHEST_RING }}
+          style={{ left: at(X.chest, -52), top: bonusTop - 10, width: 104, height: 100, borderColor: CHEST_RING }}
           aria-hidden='true'
         />
       ) : null}
@@ -990,9 +996,9 @@ export function IcaPath() {
         className={`absolute flex items-center justify-center ${chestReady ? 'ica-chest-ready' : ''} ${chestLocked ? 'cursor-not-allowed' : 'active:scale-95'}`}
         style={{
           left: at(X.chest, -44),
-          top: bonusTop - 8,
+          top: bonusTop - 2,
           width: 88,
-          height: 80,
+          height: 84,
           borderRadius: 26,
           ...chestTileStyle(chestOpened ? 'done' : chestReady ? 'next' : 'locked'),
         }}
@@ -1004,15 +1010,15 @@ export function IcaPath() {
           className={chestLocked ? 'opacity-60' : undefined}
         />
       </button>
-      {chestOpened ? <DoneBadge style={{ left: at(X.chest, 24), top: bonusTop - 14 }} /> : null}
+      {chestOpened ? <DoneBadge style={{ left: at(X.chest, 24), top: bonusTop - 8 }} /> : null}
       {chestReady ? (
         <>
-          <Sparkle style={{ left: at(X.chest, 36), top: bonusTop - 14 }} delay='0s' size={14} />
-          <Sparkle style={{ left: at(X.chest, -49), top: bonusTop + 6 }} delay='0.6s' size={11} />
-          <Sparkle style={{ left: at(X.chest, 22), top: bonusTop + 62 }} delay='1.1s' size={10} />
+          <Sparkle style={{ left: at(X.chest, 36), top: bonusTop - 8 }} delay='0s' size={14} />
+          <Sparkle style={{ left: at(X.chest, -49), top: bonusTop + 12 }} delay='0.6s' size={11} />
+          <Sparkle style={{ left: at(X.chest, 22), top: bonusTop + 68 }} delay='1.1s' size={10} />
         </>
       ) : null}
-      {chestLocked ? <LockBadge style={{ left: at(X.chest, 24), top: bonusTop - 14 }} /> : null}
+      {chestLocked ? <LockBadge style={{ left: at(X.chest, 24), top: bonusTop - 8 }} /> : null}
       <Label top={bonusLabelTop} cx={X.chest} maxWidth={164}>
         {next === 'chest' ? <StartChip label={t('¡ÁBRELO!')} color='#a16207' /> : null}
         <span className='text-[13px] font-extrabold tracking-[0.04em] whitespace-nowrap' style={{ color: 'var(--ica-brand-ink)' }}>
@@ -1027,7 +1033,7 @@ export function IcaPath() {
       {next === 'review' ? (
         <span
           className='pointer-events-none absolute rounded-[32px] border-[6px]'
-          style={{ left: at(X.review, -50), top: bonusTop - 8, width: 100, height: 100, borderColor: RETO_RING }}
+          style={{ left: at(X.review, -52), top: bonusTop - 10, width: 104, height: 100, borderColor: RETO_RING }}
           aria-hidden='true'
         />
       ) : null}
@@ -1050,9 +1056,9 @@ export function IcaPath() {
         }
         className={`absolute flex items-center justify-center rounded-[26px] transition-transform ${next === 'review' ? 'ica-bob' : ''} ${reviewLocked ? 'cursor-not-allowed' : 'active:scale-95'}`}
         style={{
-          left: at(X.review, -42),
-          top: bonusTop,
-          width: 84,
+          left: at(X.review, -44),
+          top: bonusTop - 2,
+          width: 88,
           height: 84,
           ...retoTileStyle(reviewDone ? 'done' : reviewLocked ? 'locked' : 'pending'),
         }}
@@ -1063,8 +1069,8 @@ export function IcaPath() {
           style={retoIconStyle(reviewDone ? 'done' : reviewLocked ? 'locked' : 'pending')}
         />
       </button>
-      {reviewDone ? <DoneBadge style={{ left: at(X.review, 22), top: bonusTop - 6 }} /> : null}
-      {reviewLocked ? <LockBadge style={{ left: at(X.review, 22), top: bonusTop - 6 }} /> : null}
+      {reviewDone ? <DoneBadge style={{ left: at(X.review, 24), top: bonusTop - 8 }} /> : null}
+      {reviewLocked ? <LockBadge style={{ left: at(X.review, 24), top: bonusTop - 8 }} /> : null}
       <Label top={bonusLabelTop} cx={X.review} maxWidth={164}>
         {next === 'review' ? <StartChip label='TERMINA AQUÍ' color='var(--ica-reto-edge)' /> : null}
         <span className='text-[13px] font-extrabold tracking-[0.04em] whitespace-nowrap' style={{ color: 'var(--ica-brand-ink)' }}>{t('RETO DEL DÍA')}</span>
@@ -1117,7 +1123,11 @@ function IcaJourney({
   const HEIGHT = 18 + DROP + 234
   const W = 1000
   const xs = steps.map((_, index) => 9 + (index * 82) / (steps.length - 1))
-  const tops = steps.map((_, index) => (index % 2 === 0 ? 18 : 18 + DROP))
+  // I high, C low, A high; the chest and the daily challenge both low, at the same height
+  // (Luis, 6 Oct), so the road goes down to the chest and straight on to the challenge.
+  const tops = steps.map((step, index) =>
+    step.key === 'chest' || step.key === 'review' ? 18 + DROP : index % 2 === 0 ? 18 : 18 + DROP,
+  )
   const sizes = steps.map((step) => (typeof step.content === 'string' ? 120 : 100))
   const centers = steps.map((_, index) => [xs[index] * (W / 100), tops[index] + sizes[index] / 2] as [number, number])
 
