@@ -149,8 +149,8 @@ function chestTileStyle(state: NodeState): CSSProperties {
 
 /** Reto del día: bloqueado, ficha clara en azul; disponible y hecho, morado (su color de minijuego); hecho, con borde fino. */
 const CHEST_RING = 'rgb(255 199 44 / 0.45)'
-/** Border of the chest and challenge boxes (mobile) once they are unlocked. */
-const OPEN_SLOT_BORDER: CSSProperties = {
+/** Border of the mobile boxes (I·C·A, chest, challenge) once that part is done. */
+const DONE_SLOT_BORDER: CSSProperties = {
   borderWidth: 3,
   borderColor: 'color-mix(in oklab, var(--ica-i) 70%, transparent)',
 }
@@ -828,16 +828,21 @@ export function IcaPath() {
     <div className='ica-path-skin pt-1 pb-1'>
     <div ref={pathRef} className='relative mx-auto w-full max-w-[460px]' style={{ height: mobileHeight, ...boxVars }}>
       {/* Recuadros (estilo casillas): el del ciclo I·C·A y los del cofre y el reto. */}
-      <div className='ica-panel pointer-events-none absolute inset-x-0' style={{ top: 0, height: panelBottom }} aria-hidden='true' />
-      {/* Once unlocked, each box gets a slightly stronger blue border (Luis, 6 Oct). */}
+      {/* Blue border once that part is DONE (Luis, 6 Oct): the I·C·A box when the three are done,
+          the chest box once opened and the challenge box once played. */}
       <div
-        className='ica-panel pointer-events-none absolute transition-[border-color,border-width] duration-500'
-        style={{ left: 0, width: `calc(50% - ${SLOT_GAP / 2}px)`, top: slotTop, height: slotBottom - slotTop, ...(chestLocked ? null : OPEN_SLOT_BORDER) }}
+        className='ica-panel pointer-events-none absolute inset-x-0 transition-[border-color,border-width] duration-500'
+        style={{ top: 0, height: panelBottom, ...(cycleDone ? DONE_SLOT_BORDER : null) }}
         aria-hidden='true'
       />
       <div
         className='ica-panel pointer-events-none absolute transition-[border-color,border-width] duration-500'
-        style={{ right: 0, width: `calc(50% - ${SLOT_GAP / 2}px)`, top: slotTop, height: slotBottom - slotTop, ...(reviewLocked ? null : OPEN_SLOT_BORDER) }}
+        style={{ left: 0, width: `calc(50% - ${SLOT_GAP / 2}px)`, top: slotTop, height: slotBottom - slotTop, ...(chestOpened ? DONE_SLOT_BORDER : null) }}
+        aria-hidden='true'
+      />
+      <div
+        className='ica-panel pointer-events-none absolute transition-[border-color,border-width] duration-500'
+        style={{ right: 0, width: `calc(50% - ${SLOT_GAP / 2}px)`, top: slotTop, height: slotBottom - slotTop, ...(reviewDone ? DONE_SLOT_BORDER : null) }}
         aria-hidden='true'
       />
       <svg viewBox={`0 0 100 ${mobileHeight}`} preserveAspectRatio='none' className='absolute inset-0 h-full w-full' aria-hidden='true'>
