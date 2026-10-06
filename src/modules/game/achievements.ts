@@ -182,14 +182,14 @@ export async function fetchRankingHistoryFor(
     months.map((start) => fetchMonthlySnapshotLeaderboard(start, 400).catch(() => null)),
   )
   const anyOk = results.some((rows) => rows !== null)
-  for (const rows of results) {
+  for (const [index, rows] of results.entries()) {
     if (!rows) continue
     const row = rows.find((item) => item.user_id === userId)
     if (!row) continue
     if (row.rank === 1) stats.first += 1
     else if (row.rank === 2) stats.second += 1
     else if (row.rank === 3) stats.third += 1
-    const efficacy = closedMonthEfficacy(row)
+    const efficacy = closedMonthEfficacy(row, months[index])
     best = best === null ? efficacy : Math.max(best, efficacy)
   }
   return { rankings: anyOk ? stats : null, bestEfficacy: best }

@@ -306,6 +306,7 @@ function buildScoreBreakdown(
   includeIcaTest: boolean,
   isCurrentUser: boolean,
   scoringDayCap: number,
+  monthStart: string,
 ): ScoreBreakdown {
   const monthlyPoints = getMonthlyPercentPoints(row);
   const icaTestPoints = includeIcaTest ? getIcaTestPoints(row) : 0;
@@ -313,10 +314,7 @@ function buildScoreBreakdown(
   const pregunticaPoints = getPregunticaPoints(row);
   const instagramPoints = getInstagramPoints(row);
   const listeningMaxPoints = scoringDayCap * MAX_LISTENING_POINTS_PER_DAY;
-  const pregunticaMaxPoints = getPregunticaMaxPoints(
-    scoringDayCap,
-    pregunticaPoints,
-  );
+  const pregunticaMaxPoints = getPregunticaMaxPoints(monthStart, scoringDayCap);
   const instagramMaxPoints = scoringDayCap * MAX_INSTAGRAM_POINTS_PER_DAY;
   const totalPoints = getDisplayedTotalPoints(row, includeIcaTest);
   const totalMaxPoints =
@@ -653,6 +651,7 @@ const [selectedPrizeRank, setSelectedPrizeRank] = useState<LeaderboardPrizeRank 
         includeIcaTestInScoreExplanation,
         row.user_id === user?.id,
         scoringDayCap,
+        selectedMonth,
       ),
     );
   };
@@ -667,6 +666,7 @@ const [selectedPrizeRank, setSelectedPrizeRank] = useState<LeaderboardPrizeRank 
         includeIcaTestInScoreExplanation,
         true,
         scoringDayCap,
+        selectedMonth,
       ),
     );
   }, [
@@ -683,6 +683,7 @@ const [selectedPrizeRank, setSelectedPrizeRank] = useState<LeaderboardPrizeRank 
       includeIcaTestInScoreExplanation,
       false,
       scoringDayCap,
+      selectedMonth,
     );
     return (
       <span className="inline-flex items-center gap-1">
