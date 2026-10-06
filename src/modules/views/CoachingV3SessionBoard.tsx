@@ -494,6 +494,11 @@ export function CoachingV3SessionBoard({
   const isSelectedPeriodClosed = Boolean(selectedPeriodActivation?.endedAt);
   const canEditSelectedPeriod = !isSelectedPeriodClosed;
   const currentActivePeriod = board?.periodState.currentActivePeriod || null;
+  // The coach can open the next week before activating it to prepare it (focuses, classes,
+  // tasks, report); the student does not see it until it is activated (Luis, 6 Oct).
+  const preparablePeriod = mode === "coach" ? board?.periodState.nextPeriodEligible || null : null;
+  const canOpenPeriod = (period: number) => activatedPeriods.has(period) || period === preparablePeriod;
+  const isPreparingSelectedPeriod = mode === "coach" && !selectedPeriodActivation;
   const canAddFocus = activeFocuses.length < 3;
   const titleRecorrido =
     mode === "coach" ? t("Recorrido del alumno") : t("Tu recorrido");
@@ -877,9 +882,12 @@ export function CoachingV3SessionBoard({
   const handleCloseCurrentWeek = async () => {
     setSavingPeriodAction(true);
     try {
+      const closedPeriod = currentActivePeriod;
       await closeCoachingV2Period({ sessionId });
       toast.success(t("Semana cerrada correctamente."));
-      await loadBoard(undefined, { silent: true });
+      // Straight to the next week, ready to be prepared before activating it.
+      const nextPeriod = closedPeriod ? closedPeriod + 1 : null;
+      await loadBoard(nextPeriod && nextPeriod <= durationPeriods ? nextPeriod : undefined, { silent: true });
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : t("No se pudo cerrar la semana."),
@@ -1267,13 +1275,16 @@ export function CoachingV3SessionBoard({
                 const isActivated = Boolean(activation);
                 const isClosed = Boolean(activation?.endedAt);
                 const isActive = currentActivePeriod === period;
+                const isPreparable = !isActivated && period === preparablePeriod;
                 return (
                   <button
                     key={`period-${period}`}
                     type="button"
-                    className={`flex h-10 min-w-0 items-center justify-center rounded-xl text-sm font-black tabular-nums transition md:h-12 ${isActivated ? "hover:-translate-y-0.5" : "cursor-not-allowed"} ${isSelected ? "ring-2 ring-white ring-offset-2 ring-offset-[#1b2450]" : ""}`}
+                    className={`flex h-10 min-w-0 items-center justify-center rounded-xl text-sm font-black tabular-nums transition md:h-12 ${isActivated || isPreparable ? "hover:-translate-y-0.5" : "cursor-not-allowed"} ${isSelected ? "ring-2 ring-white ring-offset-2 ring-offset-[#1b2450]" : ""}`}
                     style={
-                      !isActivated
+                      isPreparable
+                        ? { background: "rgba(255,255,255,0.1)", color: "#fff", border: "2px dashed rgba(255,255,255,0.6)" }
+                        : !isActivated
                         ? { background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.35)" }
                         : isClosed
                           ? { background: "var(--ica-gold)", color: "#4a3200", boxShadow: "0 3px 0 var(--ica-gold-edge)" }
@@ -1282,10 +1293,10 @@ export function CoachingV3SessionBoard({
                             : { background: "rgba(255,255,255,0.22)", color: "#fff" }
                     }
                     onClick={() => {
-                      if (!activatedPeriods.has(period)) return;
+                      if (!canOpenPeriod(period)) return;
                       void loadBoard(period);
                     }}
-                    disabled={!activatedPeriods.has(period)}
+                    disabled={!canOpenPeriod(period)}
                     aria-label={t("Semana {n}", { n: period })}
                     aria-current={isSelected ? "true" : undefined}
                   >
@@ -1297,6 +1308,14 @@ export function CoachingV3SessionBoard({
             {isSelectedPeriodClosed ? (
               <p className="m-0 mt-3 text-xs font-bold" style={{ color: "var(--ica-gold)" }}>
                 {t("Semana cerrada: solo lectura para alumno y coach.")}
+              </p>
+            ) : isPreparingSelectedPeriod ? (
+              <p className="m-0 mt-3 rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold" style={{ color: "var(--ica-gold)" }}>
+                {t("Estás preparando la Semana {n}: pon los focos, las clases, las tareas y el reporte. El alumno no verá nada hasta que la actives.", { n: selectedPeriod })}
+              </p>
+            ) : preparablePeriod && !currentActivePeriod ? (
+              <p className="m-0 mt-3 text-xs font-bold text-white/70">
+                {t("Toca la Semana {n} para prepararla antes de activarla.", { n: preparablePeriod })}
               </p>
             ) : null}
           </div>
@@ -1311,7 +1330,11 @@ export function CoachingV3SessionBoard({
               onClick={() => void handleActivateNextWeek()}
               disabled={savingPeriodAction || !board.periodState.nextPeriodEligible}
             >
-              {savingPeriodAction ? t("Activando...") : t("Activar siguiente semana")}
+              {savingPeriodAction
+                ? t("Activando...")
+                : board.periodState.nextPeriodEligible
+                  ? t("Activar Semana {n}", { n: board.periodState.nextPeriodEligible })
+                  : t("Activar siguiente semana")}
             </Button>
             <Button
               type="button"

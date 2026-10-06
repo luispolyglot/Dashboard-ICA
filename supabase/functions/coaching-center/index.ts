@@ -1317,6 +1317,64 @@ async function fetchProfileTimezone(
   return safeString(data?.timezone) || null
 }
 
+/** Sends the «scheduled» message and queues the reminder for every upcoming class of a week. */
+async function notifyPreparedClassesOnActivation(input: {
+  adminClient: any
+  sessionId: string
+  userId: string
+  weekNumber: number
+  classJoinUrl: string | null
+}): Promise<void> {
+  try {
+    const { data: classRows, error } = await input.adminClient
+      .from('coaching_session_classes')
+      .select('week_number, loom_url, report, report_image_path, scheduled_at')
+      .eq('session_id', input.sessionId)
+      .eq('week_number', input.weekNumber)
+      .gt('scheduled_at', new Date().toISOString())
+    if (error || !Array.isArray(classRows) || classRows.length === 0) return
+
+    const { data: preferences } = await input.adminClient
+      .from('user_coaching_notification_preferences')
+      .select('class_schedule_reminder_minutes')
+      .eq('user_id', input.userId)
+      .maybeSingle()
+    const reminderMinutesRaw = Number(preferences?.class_schedule_reminder_minutes ?? 30)
+    const reminderMinutes: 10 | 30 | 60 =
+      reminderMinutesRaw === 10 || reminderMinutesRaw === 60 ? reminderMinutesRaw : 30
+
+    for (const row of classRows as ClassNotificationRow[]) {
+      if (hasPostClassResources(row) || !hasUpcomingClassResources(row, input.classJoinUrl)) continue
+      const signature = buildClassScheduleSignature(row, input.classJoinUrl)
+      if (!signature) continue
+      await logAndSendCoachingClassNotification({
+        adminClient: input.adminClient,
+        sessionId: input.sessionId,
+        userId: input.userId,
+        weekNumber: input.weekNumber,
+        type: 'scheduled',
+        scheduleSignature: signature,
+        scheduledAt: row.scheduled_at,
+        classJoinUrl: input.classJoinUrl,
+        reminderMinutes: 0,
+      })
+      await enqueueCoachingClassReminderNotification({
+        adminClient: input.adminClient,
+        sessionId: input.sessionId,
+        userId: input.userId,
+        weekNumber: input.weekNumber,
+        scheduleSignature: signature,
+        scheduledAt: row.scheduled_at,
+        classJoinUrl: input.classJoinUrl,
+        reminderMinutes,
+      })
+    }
+  } catch (error) {
+    // The activation itself already succeeded; a failed message must not undo it.
+    console.warn('coaching-center: prepared class notifications failed', error instanceof Error ? error.message : String(error))
+  }
+}
+
 async function logAndSendCoachingClassNotification(input: {
   adminClient: any
   sessionId: string
@@ -2450,12 +2508,17 @@ Deno.serve(async (req) => {
 
     const periodState = buildV2PeriodState(activations)
 
+    // The student only sees weeks that were activated: the coach may be preparing the next one
+    // (focuses, classes, tasks, report) before activating it (Luis, 6 Oct).
+    const visibleUpToPeriod = periodState.lastActivatedPeriod
     const fallbackPeriod =
       periodState.currentActivePeriod ||
       periodState.lastActivatedPeriod ||
-      periodState.nextPeriodEligible ||
       1
-    const periodNumber = normalizePeriodNumber(payload.periodNumber) || fallbackPeriod
+    const periodNumber = Math.min(
+      normalizePeriodNumber(payload.periodNumber) || fallbackPeriod,
+      Math.max(1, visibleUpToPeriod),
+    )
 
     const [allFocusesResult, snapshotResult, previousSnapshotResult, classesResult, exercisesResult, attemptsResult, periodReportResult] = await Promise.all([
       auth.adminClient
@@ -2594,8 +2657,12 @@ Deno.serve(async (req) => {
       coachNamesResult.rows.map((row) => [row.id, row.displayName]),
     )
 
-    const focuses = ((allFocusesResult.data || []) as CoachingV2FocusRow[]).map(toV2FocusState)
+    const focuses = ((allFocusesResult.data || []) as CoachingV2FocusRow[])
+      .filter((row) => row.period_number <= visibleUpToPeriod)
+      .map(toV2FocusState)
+    const visibleFocusIds = new Set(focuses.map((row) => row.id))
     const focusExercises = ((exercisesResult.data || []) as CoachingV2FocusExerciseRow[])
+      .filter((row) => visibleFocusIds.has(row.focus_id))
       .map(toV2FocusExercise)
     const latestAttemptByFocus = new Map<string, CoachingV2FocusExerciseAttempt>()
     for (const row of ((attemptsResult.data || []) as CoachingV2FocusExerciseAttemptRow[])) {
@@ -2628,9 +2695,9 @@ Deno.serve(async (req) => {
       focusExercises,
       focusExerciseAttempts,
       canCreateFocus: canCreateFocus(periodFocuses),
-      classes,
+      classes: classes.filter((row) => row.periodNumber <= visibleUpToPeriod),
       periodReport:
-        periodReportRow
+        periodReportRow && periodNumber <= visibleUpToPeriod
           ? toV2PeriodReport({
               row: periodReportRow,
               reportImageUrl: periodReportImageSigned.data?.signedUrl || null,
@@ -2714,6 +2781,17 @@ Deno.serve(async (req) => {
         sessionId,
         weekNumber: nextEligible,
       },
+    })
+
+    // Classes the coach scheduled while preparing this week (Luis, 6 Oct: prepare the week before
+    // activating it). Nothing was sent then, because only the active week notifies; now the
+    // student gets the usual «agendó tu clase» message and the reminder for each upcoming class.
+    await notifyPreparedClassesOnActivation({
+      adminClient: admin.adminClient,
+      sessionId,
+      userId: sessionRow.user_id,
+      weekNumber: nextEligible,
+      classJoinUrl: sessionRow.class_join_url,
     })
 
     const latest = await fetchV2PeriodActivations(admin.adminClient, sessionId)
