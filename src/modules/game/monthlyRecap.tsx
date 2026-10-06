@@ -82,7 +82,7 @@ export function useMonthSummary(monthStart: string | null, refreshKey = 0): Mont
         return {
           rank: row.rank || index + 1,
           points: rowTotalPoints(row),
-          efficacy: isCurrent ? monthEfficacy(row, dayCap) : closedMonthEfficacy(row),
+          efficacy: isCurrent ? monthEfficacy(row, dayCap, monthStart) : closedMonthEfficacy(row, monthStart),
           dailyGameCorrect: row.daily_game_correct ?? null,
         }
       } catch {
