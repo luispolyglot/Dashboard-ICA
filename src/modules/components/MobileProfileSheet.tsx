@@ -1,4 +1,4 @@
-import { CoachingInviteCard } from './CoachingInvite'
+import { CoachingInviteCard, useCoachingInviteSmall } from './CoachingInvite'
 import { t, tn, langName } from '@/i18n'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
@@ -38,7 +38,6 @@ import {
   memberSinceLabel,
   MyFeaturedBadge,
   ProfileGameSummary,
-  ProfileStreakPanel,
 } from '../game/ProfileGameSummary'
 import { isGameSoundEnabled, setGameSoundEnabled } from '../game/sfx'
 import { isPronunciationEnabled, setPronunciationEnabled } from '../pronunciation/pronunciation'
@@ -157,6 +156,8 @@ export function MobileProfileScreen({
   const hasCoaching = access.canSeeCoachingPersonalized || access.canManageCoaching
   const hasAdmin = access.canSeeAdminAnalytics || access.isSuperAdmin
   const pendingCoachingNotes = access.pendingCoachingNotes
+  const showCoachingInvite = access.loaded && (!hasCoaching || access.canManageCoaching)
+  const [coachingInviteSmall, makeCoachingInviteSmall] = useCoachingInviteSmall()
   const showCoachingAlert =
     hasCoachingAlert || access.pendingCoachingSessions > 0
 
@@ -262,11 +263,10 @@ export function MobileProfileScreen({
               <FichasQuickTile userId={user?.id} onNavigate={close} />
             </div>
 
-            {/* Comunidad: la racha en grande y el track de Instagram */}
+            {/* Comunidad: el track de Instagram (la racha ya está arriba, en la barra; Luis, 6 oct) */}
             <div>
               <SectionLabel>{t('Comunidad')}</SectionLabel>
               <div className='flex flex-col gap-3'>
-                <ProfileStreakPanel onNavigate={close} />
                 <RowGroup>
                   <div onClick={close}>
                     <ListRow
@@ -285,10 +285,10 @@ export function MobileProfileScreen({
             </div>
 
             {/* Quien no está en el coaching ve la invitación; los admins de coaching, como vista previa. */}
-            {access.loaded && (!hasCoaching || access.canManageCoaching) && (
+            {showCoachingInvite && !coachingInviteSmall && (
               <div>
                 <SectionLabel>{access.canManageCoaching ? t('Coaching (vista de alumno)') : t('Coaching')}</SectionLabel>
-                <CoachingInviteCard preview={access.canManageCoaching} />
+                <CoachingInviteCard preview={access.canManageCoaching} onDismiss={makeCoachingInviteSmall} />
               </div>
             )}
 
@@ -448,6 +448,9 @@ export function MobileProfileScreen({
                 </div>
               </RowGroup>
             </div>
+
+            {/* Closed with the X: it stays here, small, between account settings and log out. */}
+            {showCoachingInvite && coachingInviteSmall ? <CoachingInviteCard compact /> : null}
 
             {hasAdmin && (
               <div>

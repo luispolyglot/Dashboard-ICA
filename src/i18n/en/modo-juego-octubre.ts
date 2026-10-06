@@ -250,6 +250,7 @@ const en: Record<string, string> = {
   // Insignias del perfil (4 oct)
   "Toca una insignia para ver qué significa. Puedes elegir una para que salga junto a tu nombre y tres para tu perfil.": "Tap a badge to see what it means. You can pick one to show next to your name and three for your profile.",
   "Toca una para ver qué significa y elegir cuáles enseñar.": "Tap one to see what it means and choose which ones to show.",
+  "No me interesa ahora": "Not interested right now",
   "Mostrar en mi perfil ({n} de {max})": "Show on my profile ({n} of {max})",
   "Quitar de mi perfil": "Remove from my profile",
   "Ya tienes 3 insignias en tu perfil. Quita una para poner esta.": "You already have 3 badges on your profile. Remove one to add this one.",

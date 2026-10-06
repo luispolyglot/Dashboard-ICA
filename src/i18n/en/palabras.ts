@@ -66,6 +66,8 @@ const en: Record<string, string> = {
   Inmersión: 'Immersion',
   'Escribe en cualquier campo y la IA te sugiere la traducción.': 'Type in either field and the AI suggests the translation.',
   'Escribe en un campo y la IA traduce el otro.': 'Type in one field and the AI translates the other.',
+  'Añade palabras nuevas a': 'Add new words to',
+  'tu baúl ICA': 'your ICA trunk',
   'idioma objetivo': 'target language',
   'idioma materno': 'native language',
   'Máximo {n} caracteres': 'Max {n} characters',

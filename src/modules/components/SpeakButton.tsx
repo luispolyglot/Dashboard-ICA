@@ -17,6 +17,11 @@ type SpeakButtonProps = {
   variant?: 'default' | 'icon' | 'cta'
   isPlaying?: boolean
   onPlayingChange?: (isPlaying: boolean) => void
+  /**
+   * Prepare the premium audio as soon as the button shows. Off where the text changes while
+   * typing (Inmersión): there each prefix would be generated and paid for (Luis, 6 Oct).
+   */
+  prefetch?: boolean
 }
 
 const SPEAK_RATE_STORAGE_KEY = 'speak-button-rate'
@@ -46,6 +51,7 @@ export function SpeakButton({
   variant = 'default',
   isPlaying,
   onPlayingChange,
+  prefetch = true,
 }: SpeakButtonProps) {
   const [internalPlaying, setInternalPlaying] = useState(false)
   const [rate, setRate] = useState<0.75 | 1>(getInitialRate)
@@ -66,8 +72,9 @@ export function SpeakButton({
   // The voice is prepared as soon as the button appears (a new word, a new phrase…), so the
   // first tap does not wait for it.
   useEffect(() => {
+    if (!prefetch) return
     void prefetchSpeech(text, langName)
-  }, [text, langName])
+  }, [text, langName, prefetch])
 
   // Color del modo juego según el color de la frecuencia (azul por defecto).
   const colors =

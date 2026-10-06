@@ -6,12 +6,11 @@ import {
   ChevronRightIcon,
   LoaderCircleIcon,
   LockIcon,
-  SparklesIcon,
   SpellCheckIcon,
   TriangleAlertIcon,
 } from 'lucide-react'
 import type { Dispatch, SetStateAction } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   CREATION_WORDS_GOAL,
   getImportance,
@@ -41,6 +40,8 @@ import {
 import { RomanizationHint } from '../components/RomanizationHint'
 import { PronunciationHint } from '../pronunciation/PronunciationHint'
 import { SpeakButton } from '../components/SpeakButton'
+import { FirstUseTip, useFirstUseTip } from '../components/FirstUseTip'
+import { TRUNK_WOOD, TrunkIcon } from '../game/icons'
 import { TranslationSuggestion } from '../components/TranslationSuggestion'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import {
@@ -90,6 +91,26 @@ function normalizeComparableText(value: string): string {
   return value.normalize('NFKC').trim().toLowerCase()
 }
 
+/**
+ * «tu baúl ICA» as a link to the trunk, in wood colour with the trunk drawn next to it (or on
+ * top of it): people did not find their trunk by scrolling (Luis, 6 Oct).
+ */
+function TrunkLink({ layout = 'beside' }: { layout?: 'beside' | 'above' }) {
+  return (
+    <Link
+      to={DASHBOARD_ROUTES.myIcaWords}
+      className={cn(
+        'inline-flex items-center gap-1 rounded-lg font-extrabold underline decoration-2 underline-offset-2 transition-opacity hover:opacity-80',
+        layout === 'above' && 'flex-col gap-0 align-bottom no-underline',
+      )}
+      style={{ color: TRUNK_WOOD.ink, textDecorationColor: `color-mix(in oklab, ${TRUNK_WOOD.base} 45%, transparent)` }}
+    >
+      <TrunkIcon size={layout === 'above' ? 26 : 20} />
+      <span className={layout === 'above' ? 'underline decoration-2 underline-offset-2' : undefined}>{t('tu baúl ICA')}</span>
+    </Link>
+  )
+}
+
 export function AddView({
   cards,
   setCards,
@@ -110,6 +131,9 @@ export function AddView({
   const [target, setTarget] = useState('')
   const [native, setNative] = useState('')
   const [importance, setImportance] = useState<ImportanceKey | null>(null)
+  // First-use bubbles instead of fixed help lines (Luis, 6 Oct).
+  const [translateTipPending, closeTranslateTip] = useFirstUseTip('add-translate')
+  const [frequencyTipPending, closeFrequencyTip] = useFirstUseTip('add-frequency')
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
   const [suggestionNative, setSuggestionNative] = useState<string | null>(null)
@@ -363,6 +387,7 @@ export function AddView({
       setTarget('')
       setNative('')
       setImportance(null)
+      if (translateTipPending) closeTranslateTip()
       setSaved(true)
       window.setTimeout(() => setSaved(false), 2000)
     } catch (error) {
@@ -386,48 +411,47 @@ export function AddView({
   // Contador del día: palabras de hoy / máximo, con la marca del mínimo del ciclo (la C).
   const dayCounter = (
     <div
-      className='order-2 rounded-3xl px-4 pt-3 pb-3.5 lg:px-5 lg:pt-4 lg:pb-5'
+      className='order-2 rounded-2xl px-4 pt-2.5 pb-3 lg:rounded-3xl lg:px-5 lg:pt-4 lg:pb-5'
       style={{ background: 'var(--ica-i-soft)' }}
     >
-      <div className='flex items-start justify-between gap-3'>
-        <div className='min-w-0'>
-          <p className='m-0 text-xs font-extrabold tracking-[0.08em] uppercase' style={{ color: 'var(--ica-i-ink)' }}>
+      {/* Thin on the phone (Luis, 6 Oct): number and label on one line, the pill on the right. */}
+      <div className='flex items-center justify-between gap-3'>
+        <p className='m-0 flex min-w-0 items-baseline gap-1.5 leading-none'>
+          <span
+            key={shownWords}
+            className='ica-pop text-[26px] font-black tabular-nums lg:text-5xl'
+            style={{ color: 'var(--ica-i-ink)' }}
+          >
+            {shownWords}
+          </span>
+          <span className='text-base font-black text-muted-foreground tabular-nums lg:text-2xl'>
+            / {wordLimit}
+          </span>
+          <span className='ml-1 truncate text-[11px] font-extrabold tracking-[0.08em] uppercase lg:text-xs' style={{ color: 'var(--ica-i-ink)' }}>
             {t('Palabras de hoy')}
-          </p>
-          <p className='m-0 mt-0.5 flex items-baseline gap-1.5 leading-none lg:mt-1'>
-            <span
-              key={shownWords}
-              className='ica-pop text-[34px] font-black tabular-nums lg:text-5xl'
-              style={{ color: 'var(--ica-i-ink)' }}
-            >
-              {shownWords}
-            </span>
-            <span className='text-xl font-black text-muted-foreground tabular-nums lg:text-2xl'>
-              / {wordLimit}
-            </span>
-          </p>
-        </div>
+          </span>
+        </p>
         {wordLimitReached ? (
-          <Pill tone='gold' className='mt-0.5 bg-card!'>
+          <Pill tone='gold' className='shrink-0 bg-card!'>
             {t('MÁXIMO DEL DÍA')}
           </Pill>
         ) : canCreatePhrase ? (
-          <Pill tone='ok' solid className='mt-0.5'>
+          <Pill tone='ok' solid className='shrink-0'>
             <CheckIcon className='size-3.5' strokeWidth={3.2} aria-hidden='true' />
             {t('MÍNIMO HECHO')}
           </Pill>
         ) : (
-          <Pill tone='i' className='mt-0.5 bg-card!'>
+          <Pill tone='i' className='shrink-0 bg-card!'>
             {t('FALTAN {n}', { n: wordsLeftForPhrase })}
           </Pill>
         )}
       </div>
 
-      <div className='relative mt-3 lg:mt-5'>
+      <div className='relative mt-2.5 lg:mt-5'>
         <GameProgress
           value={shownWords / Math.max(1, wordLimit)}
           color='var(--ica-i)'
-          height={16}
+          height={12}
           label={t('Palabras de hoy')}
         />
         {/* Marca del mínimo del ciclo: a partir de aquí se abre la C */}
@@ -437,12 +461,12 @@ export function AddView({
           aria-hidden='true'
         >
           <span className={canCreatePhrase ? '' : 'opacity-60 grayscale-[0.4]'}>
-            <PhaseLetter letter='C' size={26} />
+            <PhaseLetter letter='C' size={22} />
           </span>
         </span>
       </div>
 
-      <div className='mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs font-bold text-muted-foreground tabular-nums lg:mt-2.5'>
+      <div className='mt-2.5 hidden flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs font-bold text-muted-foreground tabular-nums lg:flex'>
         <span>{t('Mínimo {n} para tu ciclo', { n: CREATION_WORDS_GOAL })}</span>
         <span>
           {dailyLimits.boosted.words
@@ -626,21 +650,24 @@ export function AddView({
         <PageTitle
           className='order-1'
           icon={<PhaseLetter letter='I' size={48} />}
-          subtitle={t('Añade palabras nuevas a tu baúl ICA.')}
+          subtitle={
+            <>
+              {t('Añade palabras nuevas a')}{' '}
+              <TrunkLink />
+            </>
+          }
         >
           {t('Inmersión')}
         </PageTitle>
 
         {/* Formulario */}
         <div className='order-3 flex flex-col gap-4 lg:gap-6'>
-          <p className='m-0 -mb-1 flex items-center gap-2 text-[13px] leading-snug font-semibold text-muted-foreground lg:-mb-2 lg:text-sm'>
-            <SparklesIcon className='size-4 shrink-0' strokeWidth={2.4} style={{ color: 'var(--ica-i)' }} aria-hidden='true' />
-            {t('Escribe en un campo y la IA traduce el otro.')}
-          </p>
-
           {/* Idioma que aprendes */}
           <div>
-            <div className='mb-1.5 flex items-baseline justify-between gap-2 lg:mb-2'>
+            <div className='relative mb-1.5 flex items-baseline justify-between gap-2 lg:mb-2'>
+              {translateTipPending ? (
+                <FirstUseTip onClose={closeTranslateTip}>{t('Escribe en un campo y la IA traduce el otro.')}</FirstUseTip>
+              ) : null}
               <Label htmlFor='ica-add-target' className='text-base font-extrabold'>
                 {langName(config.targetLang)}
                 <span className='text-sm font-semibold text-muted-foreground'>
@@ -654,16 +681,31 @@ export function AddView({
                 {targetCharsCount}/{SHARE_TARGET_MAX_CHARS}
               </span>
             </div>
-            <Input
-              id='ica-add-target'
-              value={target}
-              onChange={(e) => handleTargetChange(e.target.value)}
-              disabled={saving}
-              maxLength={SHARE_TARGET_MAX_CHARS}
-              placeholder={t('Escribe en {lang}...', { lang: langName(config.targetLang) })}
-              aria-invalid={showDuplicateWarning || undefined}
-              className={FIELD_CLASS}
-            />
+            <div className='relative'>
+              <Input
+                id='ica-add-target'
+                value={target}
+                onChange={(e) => handleTargetChange(e.target.value)}
+                disabled={saving}
+                maxLength={SHARE_TARGET_MAX_CHARS}
+                placeholder={t('Escribe en {lang}...', { lang: langName(config.targetLang) })}
+                aria-invalid={showDuplicateWarning || undefined}
+                className={cn(FIELD_CLASS, trimmedTarget && 'pr-14')}
+              />
+              {/* Listen inside the field: no extra row. The voice is only made on tap (Luis, 6 Oct). */}
+              {trimmedTarget && (
+                <SpeakButton
+                  text={trimmedTarget}
+                  langName={config.targetLang}
+                  color='#3B82F6'
+                  variant='icon'
+                  prefetch={false}
+                  label={t('Escuchar en {lang}', { lang: langName(config.targetLang) })}
+                  className='absolute top-1/2 right-1.5 -translate-y-1/2 active:-translate-y-1/2'
+                  disabled={saving}
+                />
+              )}
+            </div>
             {showDuplicateWarning && (
               <p
                 className='m-0 mt-2 flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-bold'
@@ -738,16 +780,6 @@ export function AddView({
                 }
               }}
             />
-            {trimmedTarget && (
-              <SpeakButton
-                text={trimmedTarget}
-                langName={config.targetLang}
-                color='#3B82F6'
-                label={t('Escuchar en {lang}', { lang: langName(config.targetLang) })}
-                className='mt-2.5'
-                disabled={saving}
-              />
-            )}
           </div>
 
           {/* Tu idioma */}
@@ -782,19 +814,28 @@ export function AddView({
           </div>
 
           {/* Frecuencia */}
-          <div>
+          <div className='relative'>
+            {frequencyTipPending && !translateTipPending && trimmedTarget && !importance ? (
+              <FirstUseTip onClose={closeFrequencyTip}>{t('Elige cuánto vas a usar esta palabra.')}</FirstUseTip>
+            ) : null}
             <p className='m-0 mb-1.5 text-base font-extrabold lg:mb-2'>
               {t('Frecuencia de uso')}
             </p>
             <ImportancePicker
               value={importance}
-              onChange={(key: ImportanceKey) => !saving && setImportance(key)}
+              onChange={(key: ImportanceKey) => {
+                if (saving) return
+                setImportance(key)
+                if (frequencyTipPending) closeFrequencyTip()
+              }}
               disabled={saving}
+              showHint={false}
             />
           </div>
 
           <div className='flex flex-col gap-3'>
-            {wordLimitReached && !saved && (
+            {/* Only for someone who comes back with the day done, not right after the last word. */}
+            {wordLimitReached && !saved && savesThisVisit === 0 && (
               <DailyLimitNotice kind='words' state={wordLimitsState} />
             )}
 

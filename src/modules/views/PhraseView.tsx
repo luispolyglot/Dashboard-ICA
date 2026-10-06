@@ -100,15 +100,18 @@ const MAX_EXTRA_GENERATIONS = 2
 type PhraseMode = 'automatic' | 'manual' | 'manualPhrase'
 
 // Las tres formas de crear la frase (pestañas grandes).
-const MODES: Array<{ value: PhraseMode; label: string; hint: string; icon: typeof SparklesIcon }> = [
-  { value: 'automatic', label: 'Automática', hint: 'La IA escribe una frase natural con tus últimas palabras ICA.', icon: SparklesIcon },
-  { value: 'manual', label: 'Elijo palabras', hint: 'Tú eliges de 5 a 8 palabras y la IA crea la frase con ellas.', icon: ListChecksIcon },
-  { value: 'manualPhrase', label: 'La escribo yo', hint: 'Escribes tú la frase usando al menos 5 palabras ICA.', icon: PenLineIcon },
+const MODES: Array<{ value: PhraseMode; label: string; icon: typeof SparklesIcon }> = [
+  { value: 'automatic', label: 'Automática', icon: SparklesIcon },
+  { value: 'manual', label: 'Elijo palabras', icon: ListChecksIcon },
+  { value: 'manualPhrase', label: 'La escribo yo', icon: PenLineIcon },
 ]
 
 type WordTileState = 'idle' | 'selected' | 'detected'
 
 /** Ficha grande de una palabra ICA (como una ficha de juego). Borde dorado si ya la usaste en frases. */
+/** Words in tidy columns on the phone, smaller, so the button to create fits (Luis, 6 Oct). */
+const WORD_GRID = 'grid grid-cols-3 gap-1.5 sm:flex sm:flex-wrap sm:gap-2'
+
 function WordTile({
   target,
   native,
@@ -152,10 +155,10 @@ function WordTile({
         <span className={cn('size-2 shrink-0 rounded-full', dotClass)} aria-hidden='true' />
       )}
       <span className='flex min-w-0 flex-col'>
-        <span className='text-[15px] leading-tight font-extrabold break-words'>{target}</span>
+        <span className='text-[13.5px] leading-tight font-extrabold break-words sm:text-[15px]'>{target}</span>
         <span
           className={cn(
-            'text-xs leading-tight font-semibold break-words',
+            'text-[11px] leading-tight font-semibold break-words sm:text-xs',
             state === 'selected' ? 'text-white/80' : state === 'detected' ? 'opacity-75' : 'text-muted-foreground',
           )}
         >
@@ -176,7 +179,7 @@ function WordTile({
   )
 
   const classes = cn(
-    'inline-flex max-w-full min-h-12 items-center gap-2 rounded-2xl border-2 bg-card px-3 py-1.5 text-left dark:bg-transparent',
+    'inline-flex w-full max-w-full min-w-0 min-h-10 items-center gap-1.5 rounded-xl border-2 bg-card px-2 py-1 text-left sm:w-auto sm:min-h-12 sm:gap-2 sm:rounded-2xl sm:px-3 sm:py-1.5 dark:bg-transparent',
     onClick && 'ica-press cursor-pointer',
   )
 
@@ -323,6 +326,8 @@ export function PhraseView({
   const [manualSuggestionReview, setManualSuggestionReview] =
     useState<ManualPhraseReviewResult | null>(null)
   const [result, setResult] = useState<ActivationPhraseResult | null>(null)
+  // A phrase made in this visit: then the «max reached» notice stays hidden (Luis, 6 Oct).
+  const [createdThisVisit, setCreatedThisVisit] = useState(false)
   const [loading, setLoading] = useState(false)
   const [wordUsageCounts, setWordUsageCounts] = useState<
     Record<string, number>
@@ -551,6 +556,7 @@ export function PhraseView({
 
       setResult(response)
       if (response) {
+        setCreatedThisVisit(true)
         if (isRegeneration) {
           setExtraGenerationsCount((prev) => prev + 1)
         } else {
@@ -749,7 +755,6 @@ export function PhraseView({
       (selectedWords.length < minWordsRequired ||
         !manualPhraseTarget.trim() ||
         !manualPhraseNative.trim()))
-  const activeMode = MODES.find((item) => item.value === mode) ?? MODES[0]
   const wordsInView =
     mode === 'manualPhrase'
       ? manualPhraseGuidePool
@@ -802,57 +807,44 @@ export function PhraseView({
         />
       ) : null}
 
-      {/* Contador del día (como el saldo de ICA Coins) */}
-      <div className='-mt-1 rounded-3xl px-4 py-3 lg:px-5 lg:py-4' style={{ background: 'var(--ica-c-soft)' }}>
-        <div className='flex items-center gap-4'>
-          <div className='min-w-0 flex-1'>
-            <p
-              className='m-0 text-xs font-extrabold tracking-[0.08em] uppercase'
-              style={{ color: 'var(--ica-c-ink)' }}
-            >
-              {dailyLimits ? t('Frases nuevas hoy') : t('Tu frase del día')}
+      {/* Contador del día: fino en el móvil (Luis, 6 oct), número y nivel en una sola fila */}
+      <div className='-mt-1 rounded-2xl px-4 pt-2.5 pb-3 lg:rounded-3xl lg:px-5 lg:py-4' style={{ background: 'var(--ica-c-soft)' }}>
+        <div className='flex items-center justify-between gap-3'>
+          {dailyLimits ? (
+            <p className='m-0 flex min-w-0 items-baseline gap-1.5 leading-none font-black tabular-nums' style={{ color: 'var(--ica-c-ink)' }}>
+              <span className='text-[26px] lg:text-5xl'>{limitUsed}</span>
+              <span className='text-base opacity-60 lg:text-2xl'>/ {limitMax}</span>
+              <span className='ml-1 truncate text-[11px] font-extrabold tracking-[0.08em] uppercase lg:text-xs'>
+                {t('Frases nuevas hoy')}
+              </span>
             </p>
-            {dailyLimits ? (
-              <p
-                className='m-0 mt-1 leading-none font-black tabular-nums'
-                style={{ color: 'var(--ica-c-ink)' }}
-              >
-                <span className='text-4xl lg:text-5xl'>{limitUsed}</span>
-                <span className='text-xl opacity-60 lg:text-2xl'> / {limitMax}</span>
-              </p>
-            ) : (
-              <p
-                className='m-0 mt-1 text-2xl leading-tight font-black tracking-tight'
-                style={{ color: 'var(--ica-c-ink)' }}
-              >
-                {t('Adaptada a tu nivel')}
-              </p>
-            )}
-          </div>
-          <div className='flex shrink-0 flex-col items-center gap-1.5'>
+          ) : (
+            <p className='m-0 text-lg leading-tight font-black tracking-tight lg:text-2xl' style={{ color: 'var(--ica-c-ink)' }}>
+              {t('Adaptada a tu nivel')}
+            </p>
+          )}
+          <span className='flex shrink-0 items-center gap-1.5'>
+            <span className='text-[11px] font-extrabold tracking-[0.06em] uppercase' style={{ color: 'var(--ica-c-ink)' }}>
+              {t('Tu nivel')}
+            </span>
             <span
-              className='flex h-10 min-w-14 items-center justify-center rounded-2xl px-2.5 text-base font-black text-white lg:h-12 lg:min-w-16 lg:text-lg'
-              style={{ background: 'var(--ica-c)', boxShadow: '0 4px 0 var(--ica-c-edge)' }}
+              className='flex h-8 min-w-11 items-center justify-center rounded-xl px-2 text-sm font-black text-white lg:h-11 lg:min-w-14 lg:text-lg'
+              style={{ background: 'var(--ica-c)', boxShadow: '0 3px 0 var(--ica-c-edge)' }}
             >
               {level}
             </span>
-            <span
-              className='text-[11px] font-extrabold tracking-[0.06em] uppercase'
-              style={{ color: 'var(--ica-c-ink)' }}
-            >
-              {t('Tu nivel')}
-            </span>
-          </div>
+          </span>
         </div>
         {dailyLimits ? (
           <>
             <GameProgress
               value={limitMax > 0 ? limitUsed / limitMax : 0}
               color='var(--ica-c)'
-              className='mt-3 bg-card lg:mt-4'
+              height={12}
+              className='mt-2.5 bg-card lg:mt-4'
               label={t('Frases nuevas de hoy')}
             />
-            <div className='mt-2 flex flex-wrap items-center gap-2'>
+            <div className='mt-2 hidden flex-wrap items-center gap-2 lg:flex'>
               <p className='m-0 text-xs font-semibold text-muted-foreground'>
                 {t('Pedir otra versión no cuenta.')}
               </p>
@@ -885,7 +877,7 @@ export function PhraseView({
                 aria-label={t(item.label)}
                 onClick={() => setMode(item.value)}
                 className={cn(
-                  'ica-press flex min-h-[64px] min-w-0 flex-col items-center justify-center gap-1 rounded-2xl border-2 px-1.5 py-2 text-center transition-colors lg:min-h-[84px] lg:gap-1.5 lg:py-2.5',
+                  'ica-press flex min-h-[54px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-2xl border-2 px-1.5 py-1.5 text-center transition-colors lg:min-h-[84px] lg:gap-1.5 lg:py-2.5',
                   !active && 'border-border bg-card text-muted-foreground hover:bg-muted dark:bg-transparent',
                 )}
                 style={
@@ -899,13 +891,12 @@ export function PhraseView({
                     : { boxShadow: '0 4px 0 var(--border)' }
                 }
               >
-                <Icon className='size-5 lg:size-6' strokeWidth={2.6} aria-hidden='true' />
-                <span className='text-[13px] leading-tight font-extrabold'>{t(item.label)}</span>
+                <Icon className='size-[18px] lg:size-6' strokeWidth={2.6} aria-hidden='true' />
+                <span className='text-[12.5px] leading-tight font-extrabold lg:text-[13px]'>{t(item.label)}</span>
               </button>
             )
           })}
         </div>
-        <p className='m-0 mt-2 text-[13px] leading-snug font-semibold text-muted-foreground lg:mt-3 lg:text-sm'>{t(activeMode.hint)}</p>
       </div>
 
       {/* La IA la crea: con cuántas palabras */}
@@ -925,7 +916,7 @@ export function PhraseView({
                   disabled={!available}
                   aria-pressed={active}
                   className={cn(
-                    'ica-press flex h-14 flex-col items-center justify-center rounded-2xl border-2 disabled:opacity-40 lg:h-[72px]',
+                    'ica-press flex h-12 flex-col items-center justify-center rounded-2xl border-2 disabled:opacity-40 lg:h-[72px]',
                     !active && 'border-border bg-card dark:bg-transparent',
                   )}
                   style={
@@ -939,10 +930,10 @@ export function PhraseView({
                       : { boxShadow: '0 4px 0 var(--border)' }
                   }
                 >
-                  <span className='text-xl leading-none font-black tabular-nums lg:text-2xl'>{n}</span>
+                  <span className='text-lg leading-none font-black tabular-nums lg:text-2xl'>{n}</span>
                   <span
                     className={cn(
-                      'mt-0.5 text-[11px] font-bold lg:mt-1',
+                      'mt-0.5 text-[10px] font-bold lg:mt-1 lg:text-[11px]',
                       active ? 'text-white/85' : 'text-muted-foreground',
                     )}
                   >
@@ -957,7 +948,7 @@ export function PhraseView({
 
       {/* Elijo palabras: buscador y fichas para tocar */}
       {mode === 'manual' && (
-        <div className='ica-panel p-4'>
+        <div className='ica-panel p-3 lg:p-4'>
           <SectionLabel
             right={
               <Pill tone={selectedWords.length >= minWordsRequired ? 'ok' : 'c'}>
@@ -988,7 +979,7 @@ export function PhraseView({
             role='switch'
             aria-checked={manualOnlyNotActivated}
             onClick={() => setManualOnlyNotActivated((prev) => !prev)}
-            className='mt-3 flex items-center gap-2.5 text-left text-sm font-bold'
+            className='mt-2 mb-2 flex items-center gap-2.5 text-left text-[13px] font-bold lg:mt-3 lg:mb-0 lg:text-sm'
           >
             <span
               className='relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors'
@@ -1003,14 +994,14 @@ export function PhraseView({
             {t('Mostrar solo palabras no activadas')}
           </button>
 
-          <p className='m-0 mt-3 mb-2 text-xs font-semibold text-muted-foreground'>
+          <p className='m-0 mt-3 mb-2 hidden text-xs font-semibold text-muted-foreground lg:block'>
             {manualOnlyNotActivated || manualQuery.trim()
               ? t('Buscando entre todas tus palabras')
               : t('Tus últimas 25 palabras')}
           </p>
           {/* Lista desplazable: se difumina abajo para indicar que hay más */}
           <div
-            className='-mx-1 flex max-h-80 flex-wrap gap-2 overflow-y-auto px-1 pt-1 pb-6'
+            className={cn(WORD_GRID, '-mx-1 max-h-44 overflow-y-auto px-1 pt-1 pb-6 lg:max-h-80')}
             style={{
               maskImage: 'linear-gradient(to bottom, #000 calc(100% - 2.5rem), transparent)',
               WebkitMaskImage: 'linear-gradient(to bottom, #000 calc(100% - 2.5rem), transparent)',
@@ -1039,12 +1030,12 @@ export function PhraseView({
             <SectionLabel>{t('Usa al menos 5 de tus palabras')}</SectionLabel>
             {manualPhraseGuidePool.length > 0 ? (
               <>
-                <div className='flex flex-wrap gap-2'>
+                <div className={WORD_GRID}>
                   {manualPhraseGuidePool.map((word) =>
                     renderTile(word, { state: detectedIds.has(word.id) ? 'detected' : 'idle' }),
                   )}
                 </div>
-                <p className='m-0 mt-3 text-xs font-semibold text-muted-foreground'>
+                <p className='m-0 mt-3 hidden text-xs font-semibold text-muted-foreground lg:block'>
                   {t('Tus últimas 10 palabras ICA: se marcan al usarlas en tu frase.')}
                 </p>
                 {showUsageLegend ? <UsageLegend /> : null}
@@ -1072,7 +1063,7 @@ export function PhraseView({
                 setManualPhraseTarget(event.target.value)
               }}
               placeholder={t('Escribe la frase en {lang}...', { lang: langName(config.targetLang) })}
-              className='min-h-28 rounded-2xl text-lg font-bold md:text-lg'
+              className='min-h-20 rounded-2xl text-base font-bold md:text-base lg:min-h-28 lg:text-lg'
             />
 
             <label htmlFor='phrase-manual-native' className='mt-4 mb-2 flex items-center gap-2'>
@@ -1088,7 +1079,7 @@ export function PhraseView({
                 setManualPhraseNative(event.target.value)
               }}
               placeholder={t('Escribe la frase en {lang}...', { lang: langName(config.nativeLang) })}
-              className='min-h-20 rounded-2xl'
+              className='min-h-16 rounded-2xl lg:min-h-20'
             />
 
             {/* Paso opcional: revisión con IA */}
@@ -1137,7 +1128,7 @@ export function PhraseView({
               </div>
             </div>
             {selectedWords.length > 0 ? (
-              <div className='mt-3 flex flex-wrap gap-2'>
+              <div className='mt-3 hidden flex-wrap gap-2 lg:flex'>
                 {selectedWords.map((word) => renderTile(word, { state: 'detected' }))}
               </div>
             ) : null}
@@ -1147,7 +1138,7 @@ export function PhraseView({
 
       {/* Palabras con las que se creará la frase */}
       {mode !== 'manualPhrase' && (
-        <div>
+        <div className={mode === 'manual' ? 'hidden lg:block' : undefined}>
           <SectionLabel
             right={
               <Pill tone='c'>
@@ -1158,7 +1149,7 @@ export function PhraseView({
             {mode === 'manual' ? t('Tu selección') : t('Palabras seleccionadas')}
           </SectionLabel>
           {selectedWords.length > 0 ? (
-            <div className='flex flex-wrap gap-2'>
+            <div className={WORD_GRID}>
               {selectedWords.map((word) =>
                 renderTile(word, {
                   onRemove: mode === 'manual' ? () => removeSelectedWord(word.id) : undefined,
@@ -1196,7 +1187,7 @@ export function PhraseView({
       ) : null}
 
       {/* Límite del día alcanzado */}
-      {dailyLimits && phraseLimitReached && !loading && (
+      {dailyLimits && phraseLimitReached && !loading && !createdThisVisit && (
         <DailyLimitNotice kind='phrases' state={dailyLimits} className='w-full' />
       )}
 

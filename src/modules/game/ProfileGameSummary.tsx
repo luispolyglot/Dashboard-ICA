@@ -122,7 +122,7 @@ export function ProfileGameSummary({ onNavigate }: { onNavigate?: () => void }) 
         <button
           type='button'
           onClick={() => setLevelOpen(true)}
-          className='ica-panel ica-press flex w-full items-center gap-3.5 px-4 py-3.5 text-left'
+          className='ica-panel ica-press flex w-full items-center gap-3.5 px-4 py-3 text-left'
           aria-label={t('Tu nivel real en {lang}. Ver detalle', { lang: languageName })}
         >
           <span
@@ -133,8 +133,14 @@ export function ProfileGameSummary({ onNavigate }: { onNavigate?: () => void }) 
           </span>
           <span className='min-w-0 flex-1'>
             <span className='block text-base leading-tight font-extrabold'>{t('Tu nivel real en {lang}', { lang: languageName })}</span>
-            <span className='my-1.5 flex items-center gap-2'>
+            <span className='mt-1.5 flex items-center gap-2'>
               <GameProgress value={levelProgress} color={levelColor} height={12} className='min-w-0 flex-1' />
+              {/* The words themselves instead of «Te faltan…» (Luis, 6 Oct): one line less. */}
+              <span className='shrink-0 text-xs font-extrabold text-muted-foreground tabular-nums'>
+                {snapshot.wordsToNext !== null && !snapshot.isNativePath
+                  ? `${snapshot.totalWords.toLocaleString(uiLocale())}/${(snapshot.totalWords + snapshot.wordsToNext).toLocaleString(uiLocale())}`
+                  : snapshot.totalWords.toLocaleString(uiLocale())}
+              </span>
               <span
                 className='flex h-6 min-w-9 shrink-0 items-center justify-center rounded-lg border-2 px-1 text-[11px] font-extrabold'
                 style={{ borderColor: nextColor ?? undefined, color: nextColor ?? undefined }}
@@ -142,24 +148,14 @@ export function ProfileGameSummary({ onNavigate }: { onNavigate?: () => void }) 
                 {snapshot.isNativePath ? t('Nativo') : snapshot.nextLevelKey}
               </span>
             </span>
-            <span className='block text-xs font-semibold text-muted-foreground'>
-              {snapshot.wordsToNext !== null && !snapshot.isNativePath
-                ? t('Te faltan {n} palabras activadas para {level}', {
-                    n: snapshot.wordsToNext.toLocaleString(uiLocale()),
-                    level: snapshot.nextLevelKey,
-                  })
-                : t('{n} palabras · camino a nivel nativo', {
-                    n: snapshot.totalWords.toLocaleString(uiLocale()),
-                  })}
-            </span>
           </span>
           <ChevronRightIcon className='size-5 shrink-0 text-muted-foreground' aria-hidden='true' />
         </button>
       ) : null}
       {config ? <LevelDialog config={config} open={levelOpen} onOpenChange={setLevelOpen} /> : null}
 
-      <div className='ica-panel px-4 pt-3.5 pb-3'>
-        <div className='mb-2.5 flex items-center justify-between gap-2'>
+      <div className='ica-panel px-4 pt-3 pb-2.5'>
+        <div className='mb-1.5 flex items-center justify-between gap-2'>
           <span className='flex min-w-0 items-center gap-2'>
             <span className='text-base font-extrabold'>{t('Insignias')}</span>
             <Pill tone='gold'>
@@ -198,9 +194,6 @@ export function ProfileGameSummary({ onNavigate }: { onNavigate?: () => void }) 
             )
           })}
         </div>
-        <p className='m-0 mt-2 text-xs font-semibold text-muted-foreground'>
-          {t('Toca una para ver qué significa y elegir cuáles enseñar.')}
-        </p>
       </div>
 
       <MedalDetailDialog
