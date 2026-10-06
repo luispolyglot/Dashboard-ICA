@@ -293,6 +293,8 @@ const en: Record<string, string> = {
   "{n} nota grabada · máx. {max}": "{n} note recorded · max {max}",
   "{n} notas grabadas · máx. {max}": "{n} notes recorded · max {max}",
   "Graba 1 nota con tu voz": "Record 1 voice note",
+  "Crea 1 frase": "Create 1 sentence",
+  "Graba 1 nota": "Record 1 note",
   "Cofre del ciclo: abierto": "Cycle chest: opened",
   "Cofre del ciclo: listo para abrir, {coins}": "Cycle chest: ready to open, {coins}",
   "Cofre del ciclo: se abre al completar I·C·A": "Cycle chest: opens when you complete I·C·A",

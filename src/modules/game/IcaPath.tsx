@@ -766,14 +766,14 @@ export function IcaPath() {
   const ROW_TOP = 22
   const rowLabelTop = ROW_TOP + 96
   const rowNext = next === 'I' || next === 'C' || next === 'A' ? next : null
-  // Help line of the step to do, centered under the whole row.
+  // Help line of the step to do, under that step's name.
   const rowHelp =
     rowNext === 'I'
       ? t('{n} de {goal} palabras', { n: today.wordsAdded, goal: CREATION_WORDS_GOAL })
       : rowNext === 'C'
-        ? t('Crea 1 frase con tus palabras')
+        ? t('Crea 1 frase')
         : rowNext === 'A'
-          ? t('Graba 1 nota con tu voz')
+          ? t('Graba 1 nota')
           : null
   const panelBottom = rowLabelTop + (rowNext ? 84 : 40)
   const slotTop = panelBottom + 34
@@ -944,11 +944,13 @@ export function IcaPath() {
         <span className='text-[14px] font-extrabold tracking-[0.04em]' style={{ color: PHASES.A.ink }}>{t('ACTIVACIÓN')}</span>
       </Label>
 
-      {/* Chip and help text of the step to do, centered under the row (keeps the three names aligned). */}
-      {rowHelp ? (
-        <Label top={rowLabelTop + 30} maxWidth={300}>
-          <StartChip label={rowNext === 'I' ? 'EMPIEZA AQUÍ' : 'SIGUE AQUÍ'} color='#ffffff' textColor='#0b84b5' />
-          <span className='text-[13px] font-semibold text-balance' style={{ color: 'var(--ica-brand-sub)' }}>{rowHelp}</span>
+      {/* Chip and help text under the step to do: I, then C, then A (Luis, 6 Oct). */}
+      {rowHelp && rowNext ? (
+        <Label top={rowLabelTop + 30} cx={rowNext === 'I' ? at(X.I, 8) : rowNext === 'A' ? at(X.A, -8) : X.C} maxWidth={124}>
+          <span className='whitespace-nowrap'>
+            <StartChip label={rowNext === 'I' ? 'EMPIEZA AQUÍ' : 'SIGUE AQUÍ'} color='#ffffff' textColor='#0b84b5' />
+          </span>
+          <span className='text-[13px] leading-snug font-semibold' style={{ color: 'var(--ica-brand-sub)' }}>{rowHelp}</span>
         </Label>
       ) : null}
 
