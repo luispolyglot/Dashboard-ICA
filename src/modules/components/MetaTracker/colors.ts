@@ -6,8 +6,9 @@ export const LEVEL_COLORS: Record<string, string> = {
   'A2+': '#22C55E',
   B1: '#EAB308',
   'B1+': '#EAB308',
-  B2: '#F97316',
-  'B2+': '#F97316',
+  // B2 and B2+ in red, C1 stays purple (Luis, 6 Oct).
+  B2: '#EF4444',
+  'B2+': '#EF4444',
   C1: '#A855F7',
 }
 
