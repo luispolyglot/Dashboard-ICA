@@ -28,8 +28,9 @@ function toInstagramTrackPostEntry(row: InstagramTrackPostRow): InstagramTrackPo
   }
 }
 
+/** Month of the student's own calendar (local time), like the days below. */
 export function getCurrentMonthDate(now = new Date()): string {
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
 }
 
 export function getMonthLabel(value: string): string {
@@ -87,7 +88,10 @@ export function getDayUnlockWindow(trackMonth: string, dayIndex: number, now = n
   isEditable: boolean
 } {
   const dayDate = buildTrackPostDayDate(trackMonth, dayIndex)
-  const unlockAt = new Date(`${dayDate}T00:00:00Z`)
+  // Each day opens at local midnight, not midnight UTC (Luis, 6 Oct). The server does the same
+  // with the time zone saved in the profile (migration 20261006120000).
+  const [year, month, day] = dayDate.split('-').map(Number)
+  const unlockAt = new Date(year, month - 1, day)
   const closeAt = new Date(unlockAt.getTime() + 48 * 60 * 60 * 1000)
   const isUnlocked = now.getTime() >= unlockAt.getTime()
   const isEditable = isUnlocked && now.getTime() <= closeAt.getTime()
