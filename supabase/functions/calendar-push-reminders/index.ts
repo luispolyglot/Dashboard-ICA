@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
+import { sendIcaChallengeJobNotices } from '../_shared/ica-challenge-job-notices.ts'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -190,6 +191,15 @@ function parseHourToMinutes(value: string | null): number | null {
   return hours * 60 + minutes
 }
 
+function isValidTimezone(timezone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone })
+    return true
+  } catch {
+    return false
+  }
+}
+
 function isWithinQuietHours(params: {
   date: Date
   timezone: string
@@ -265,6 +275,9 @@ Deno.serve(async (req) => {
   webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey)
+
+  // Challenge notices queued by the expiration job (expired, turn lost). Never blocks the reminders.
+  await sendIcaChallengeJobNotices({ adminClient, webpush })
   const now = new Date()
   const minDate = new Date(now.getTime() - 10 * 60 * 1000)
   const maxDate = new Date(now.getTime() + 120 * 60 * 1000)
@@ -355,6 +368,24 @@ Deno.serve(async (req) => {
     entriesByClass.set(entry.class_key, current)
   }
 
+  // Quiet hours are the person's own night, not Madrid's (Luis, 6 Oct): a teacher in Bogotá who
+  // silences 22:00–08:00 means Bogotá time. Without a valid profile time zone, Madrid as before.
+  const quietUserIds = [
+    ...new Set([...preferences, ...teacherPreferences].map((preference) => preference.user_id)),
+  ]
+  const userTimezones = new Map<string, string>()
+  if (quietUserIds.length > 0) {
+    const { data: profileRows } = await adminClient
+      .from('profiles')
+      .select('id, timezone')
+      .in('id', quietUserIds)
+    for (const profile of (profileRows || []) as Array<{ id: string; timezone: string | null }>) {
+      const timezone = (profile.timezone || '').trim()
+      if (timezone && isValidTimezone(timezone)) userTimezones.set(profile.id, timezone)
+    }
+  }
+  const quietTimezoneFor = (userId: string) => userTimezones.get(userId) || CALENDAR_CLASS_TIMEZONE
+
   let sent = 0
   let skipped = 0
   let failed = 0
@@ -398,7 +429,7 @@ Deno.serve(async (req) => {
         if (
           isWithinQuietHours({
             date: now,
-            timezone: CALENDAR_CLASS_TIMEZONE,
+            timezone: quietTimezoneFor(preference.user_id),
             quietStart: preference.quiet_hours_start,
             quietEnd: preference.quiet_hours_end,
           })
@@ -445,7 +476,7 @@ Deno.serve(async (req) => {
         if (
           isWithinQuietHours({
             date: now,
-            timezone: CALENDAR_CLASS_TIMEZONE,
+            timezone: quietTimezoneFor(preference.user_id),
             quietStart: preference.quiet_hours_start,
             quietEnd: preference.quiet_hours_end,
           })
@@ -509,7 +540,7 @@ Deno.serve(async (req) => {
             : `Clase ICADEMY: ${(CLASS_FLAGS[item.entry.class_key] || '🌐')} ${item.entry.class_name}`,
         body:
           item.source === 'teacher'
-            ? `${whenLabel} · ${formatHourLabel(item.entry.session_time)} · Preparala con tiempo`
+            ? `${whenLabel} · ${formatHourLabel(item.entry.session_time)} · Prepárala con tiempo`
             : `${whenLabel} · ${formatHourLabel(item.entry.session_time)} · con ${item.entry.teacher}`,
         url: '/calendar-icademy',
         tag: `calendar-reminder-${item.entry.id}`,

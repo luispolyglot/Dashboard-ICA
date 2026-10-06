@@ -848,12 +848,28 @@ async function finalizeChallenge(ctx: GameContext) {
   // Solo avisa quien cierra de verdad el desafío (evita avisos dobles).
   if (((data || []) as unknown[]).length === 0) return
 
+  // The win trigger (award_ica_challenge_win) already credited the coin in the same update.
+  // «Recoge tu recompensa» only when it really added something (weekly cap, full wallet).
+  let winnerGotCoins = false
+  if (winnerUserId) {
+    const { data: winEntry } = await ctx.adminClient
+      .from('preguntica_token_ledger')
+      .select('tokens_delta')
+      .eq('user_id', winnerUserId)
+      .eq('entry_type', 'challenge_win')
+      .eq('reference_key', ctx.challenge.id)
+      .maybeSingle()
+    winnerGotCoins = Number(winEntry?.tokens_delta || 0) > 0
+  }
+
   for (const userId of [ctx.challenge.challenger_user_id, ctx.challenge.challenged_user_id]) {
     const body =
       winnerUserId === null
         ? 'Empate en el desafío ICA. ¡Revisa las palabras!'
         : winnerUserId === userId
-          ? '¡Has ganado el desafío ICA! Mira tus resultados.'
+          ? winnerGotCoins
+            ? '¡Has ganado el desafío ICA! Recoge tu recompensa.'
+            : '¡Has ganado el desafío ICA! Mira tus resultados.'
           : 'Tu rival ha ganado esta vez. Mira tus palabras en Desafíos ICA.'
     await sendPushToUser({
       adminClient: ctx.adminClient,

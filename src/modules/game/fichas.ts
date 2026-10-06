@@ -131,13 +131,26 @@ function rpcError(error: { message?: string } | null): never {
   throw new Error(error?.message || 'ICA_COINS_REQUEST_FAILED')
 }
 
-export async function loadIcaCoinsState(userId?: string | null): Promise<IcaCoinsServerState | null> {
+// Every fresh state is shared with all useFichas hooks, so the top-right counter never lags
+// behind a screen that just loaded the coins itself.
+const STATE_LOADED_EVENT = 'ica:fichas-state-loaded'
+type StateLoadedDetail = { userId: string; state: IcaCoinsServerState }
+
+export async function loadIcaCoinsState(
+  userId?: string | null,
+  options: { beforePublish?: (state: IcaCoinsServerState) => void } = {},
+): Promise<IcaCoinsServerState | null> {
   if (!supabase || !userId) return null
   const { data, error } = await supabase.rpc('get_my_ica_coins_state')
   if (error) rpcError(error)
   const state = parseState(data)
   if (!state) throw new Error('ICA_COINS_STATE_INVALID')
   storeQuick(`${STATE_CACHE_PREFIX}${userId}`, state)
+  // Lets a caller hold back coins (holdCoinsDisplay) before the counter shows the new balance.
+  options.beforePublish?.(state)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent<StateLoadedDetail>(STATE_LOADED_EVENT, { detail: { userId, state } }))
+  }
   return state
 }
 
@@ -284,11 +297,17 @@ export function useFichas(userId: string | null | undefined): FichasState {
     const onVisible = () => {
       if (document.visibilityState === 'visible') void refresh()
     }
+    const onLoaded = (event: Event) => {
+      const detail = (event as CustomEvent<StateLoadedDetail>).detail
+      if (detail && detail.userId === userId) setServerState(detail.state)
+    }
     window.addEventListener(FICHAS_CHANGED_EVENT, onVisible)
+    window.addEventListener(STATE_LOADED_EVENT, onLoaded)
     window.addEventListener('focus', onVisible)
     document.addEventListener('visibilitychange', onVisible)
     return () => {
       window.removeEventListener(FICHAS_CHANGED_EVENT, onVisible)
+      window.removeEventListener(STATE_LOADED_EVENT, onLoaded)
       window.removeEventListener('focus', onVisible)
       document.removeEventListener('visibilitychange', onVisible)
     }
