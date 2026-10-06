@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, type Context, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { HeadphonesIcon, PauseIcon, PlayIcon, XIcon } from 'lucide-react'
 import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
@@ -12,7 +12,15 @@ import { t } from '@/i18n'
 
 type SharedPlayback = ReturnType<typeof useMasterNotePlayback>
 
-const SharedPlaybackContext = createContext<SharedPlayback | null>(null)
+// One context for the whole page, even when the local dev server reloads this file on its own
+// (hot reload): otherwise the layout keeps the old context, the screens read a new empty one and
+// Activación went blank in Luis's local copy (6 Oct). In production it is created once anyway.
+const CONTEXT_KEY = '__icaSharedMasterNotePlaybackContext'
+const globalStore = globalThis as typeof globalThis & {
+  [CONTEXT_KEY]?: Context<SharedPlayback | null>
+}
+const SharedPlaybackContext =
+  globalStore[CONTEXT_KEY] ?? (globalStore[CONTEXT_KEY] = createContext<SharedPlayback | null>(null))
 
 export function MasterNotePlaybackProvider({ children }: { children: ReactNode }) {
   const playback = useMasterNotePlayback()
