@@ -72,7 +72,7 @@ export function VoiceUsagePanel() {
         <SectionLabel>Voz premium (Gemini)</SectionLabel>
         <Panel>
           <p className='m-0 text-sm font-semibold text-muted-foreground'>
-            La voz premium todavía no está en icademy.app. Cuando lo esté, aquí verás cuánto se gasta cada día y cada mes.
+            No se pudo leer el gasto de la voz premium. Si acabas de subir la app, falta que se aplique su migración en Supabase.
           </p>
         </Panel>
       </div>
@@ -87,6 +87,11 @@ export function VoiceUsagePanel() {
         {!usage.enabled ? (
           <p className='m-0 mb-3 text-sm font-bold text-destructive'>
             Falta la clave: pon GEMINI_API_KEY en el archivo .env.local de la copia local.
+          </p>
+        ) : null}
+        {usage.source === 'server' && usage.all.generated === 0 && usage.all.reused === 0 ? (
+          <p className='m-0 mb-3 text-sm font-bold text-muted-foreground'>
+            Todavía no se ha usado. Si sigue a cero, falta poner la clave GEMINI_API_KEY en los secretos de las funciones de Supabase.
           </p>
         ) : null}
         <div className='flex items-center gap-3'>
@@ -136,7 +141,7 @@ export function VoiceUsagePanel() {
           Cada audio se paga una sola vez: escucharlo otra vez no cuesta nada. Precio de Google:{' '}
           {usage.prices.inputPerMillionUsd.toLocaleString('es-ES')} $ por millón de tokens de texto y {usage.prices.outputPerMillionUsd.toLocaleString('es-ES')} $ por millón de
           tokens de audio (unos 25 tokens por segundo de voz); desde el 1 de enero de 2027, el doble. Los euros son aproximados.
-          Esto cuenta la voz de la copia local; el saldo que te queda lo ves en Google AI Studio, en «Gasto».
+          {usage.source === 'server' ? 'Esto cuenta la voz de todos los alumnos (días en hora UTC)' : 'Esto cuenta la voz de la copia local'}; el saldo que te queda lo ves en Google AI Studio, en «Gasto».
         </p>
       </Panel>
     </div>

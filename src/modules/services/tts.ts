@@ -1,4 +1,5 @@
 import { LANG_CODES } from '../constants'
+import { supabase } from '@/lib/supabase'
 
 /** How a call to speakNatural/speakLocal ended. `stopped` means stopTTS() (or a new call) cut it short. */
 export type SpeakResult = { ok: boolean; stopped?: boolean }
@@ -213,12 +214,30 @@ function speakWithDeviceVoice(id: number, text: string, langCode: string, rate: 
 // ---------------------------------------------------------------------------
 // PREMIUM VOICE (Luis, 5 Oct): Gemini 3.8 Flash-Lite TTS.
 // Every text is generated once and then reused (cached by the server and, during the visit, here).
-// For now only the local copy has it: `pnpm dev` serves /__ica/tts (vite.config.ts) with the key in
-// .env.local (GEMINI_API_KEY, never sent to the browser). Without that endpoint or without a key,
-// everything works as before. Production will need its own endpoint (an Edge Function).
+// The local copy (`pnpm dev`) asks its own Vite plugin at /__ica/tts (key in .env.local).
+// Development and production ask the premium-tts Edge Function (key in the GEMINI_API_KEY secret).
+// Without a key, both answer 404 and everything works as before with the old voices.
 // ---------------------------------------------------------------------------
 
-const PREMIUM_TTS_ENDPOINT: string | null = import.meta.env.DEV ? '/__ica/tts' : null
+const SUPABASE_URL: string | undefined = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY: string | undefined = import.meta.env.VITE_SUPABASE_ANON_KEY
+const PREMIUM_TTS_ENDPOINT: string | null = import.meta.env.DEV
+  ? '/__ica/tts'
+  : SUPABASE_URL && SUPABASE_ANON_KEY
+    ? `${SUPABASE_URL}/functions/v1/premium-tts`
+    : null
+
+/** The Edge Function needs the student's session; the local plugin does not. */
+async function premiumHeaders(): Promise<Record<string, string> | null> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (import.meta.env.DEV) return headers
+  const { data } = (await supabase?.auth.getSession()) ?? { data: { session: null } }
+  const token = data.session?.access_token
+  if (!token || !SUPABASE_ANON_KEY) return null
+  headers.Authorization = `Bearer ${token}`
+  headers.apikey = SUPABASE_ANON_KEY
+  return headers
+}
 /** If the premium audio is not ready by then, use the old voices. */
 const PREMIUM_FETCH_TIMEOUT_MS = 9000
 /** A few silent samples: playing them inside the tap «unlocks» the audio element on iPhone. */
@@ -237,14 +256,21 @@ function fetchPremiumAudio(text: string, langCode: string): Promise<string | nul
   if (cached) return cached
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), PREMIUM_FETCH_TIMEOUT_MS)
-  const load = fetch(PREMIUM_TTS_ENDPOINT as string, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, lang: langCode }),
-    signal: controller.signal,
-  })
+  const load = premiumHeaders()
+    .then((headers) => {
+      if (!headers) return null
+      return fetch(PREMIUM_TTS_ENDPOINT as string, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ text, lang: langCode }),
+        signal: controller.signal,
+      })
+    })
     .then(async (response) => {
-      if (response.status === 404) {
+      if (!response) return null
+      // 404 = no key on the server; 429 = this student's daily limit of new audios. Either way,
+      // use the old voices for the rest of this visit instead of asking on every tap.
+      if (response.status === 404 || response.status === 429) {
         premiumAvailable = false
         return null
       }
