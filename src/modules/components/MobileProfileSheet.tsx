@@ -156,7 +156,9 @@ export function MobileProfileScreen({
   const hasCoaching = access.canSeeCoachingPersonalized || access.canManageCoaching
   const hasAdmin = access.canSeeAdminAnalytics || access.isSuperAdmin
   const pendingCoachingNotes = access.pendingCoachingNotes
-  const showCoachingInvite = access.loaded && (!hasCoaching || access.canManageCoaching)
+  // Everyone sees the invite except students in an active coaching (Luis, 6 Oct); coaching
+  // admins see it as a preview.
+  const showCoachingInvite = access.loaded && (!access.hasActiveCoaching || access.canManageCoaching)
   const [coachingInviteSmall, makeCoachingInviteSmall] = useCoachingInviteSmall()
   const showCoachingAlert =
     hasCoachingAlert || access.pendingCoachingSessions > 0
@@ -263,7 +265,7 @@ export function MobileProfileScreen({
               <FichasQuickTile userId={user?.id} onNavigate={close} />
             </div>
 
-            {/* Comunidad: el track de Instagram (la racha ya está arriba, en la barra; Luis, 6 oct) */}
+            {/* Comunidad: el track de Instagram y los trackers (la racha ya está arriba, en la barra; Luis, 6 oct) */}
             <div>
               <SectionLabel>{t('Comunidad')}</SectionLabel>
               <div className='flex flex-col gap-3'>
@@ -278,6 +280,18 @@ export function MobileProfileScreen({
                       }
                       title={t('Track Instagram')}
                       text={t('Cada día con post suma puntos al ranking')}
+                    />
+                  </div>
+                  <div onClick={close}>
+                    <ListRow
+                      to={DASHBOARD_ROUTES.trackers}
+                      icon={
+                        <IconTile tone='i' size={42}>
+                          <Glyph icon={LineChartIcon} />
+                        </IconTile>
+                      }
+                      title={t('Trackers')}
+                      text={t('Pronunciación, fluidez e improvisación')}
                     />
                   </div>
                 </RowGroup>
@@ -344,18 +358,6 @@ export function MobileProfileScreen({
             <div>
               <SectionLabel>{t('Más')}</SectionLabel>
               <RowGroup>
-                <div onClick={close}>
-                  <ListRow
-                    to={DASHBOARD_ROUTES.trackers}
-                    icon={
-                      <IconTile tone='i' size={42}>
-                        <Glyph icon={LineChartIcon} />
-                      </IconTile>
-                    }
-                    title={t('Trackers')}
-                    text={t('Pronunciación, fluidez e improvisación')}
-                  />
-                </div>
                 <div onClick={close}>
                   <ListRow
                     to={DASHBOARD_ROUTES.manageNotifications}
