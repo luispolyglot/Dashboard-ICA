@@ -5,6 +5,7 @@
 -- Only the FIRST attempt of each day counts: the game can be replayed and the best attempt is
 -- still kept for the path, but replaying does not help in the ranking.
 -- Order: points -> daily game correct answers -> previous tiebreaks (avg %, ICA streak).
+-- The daily game step starts with November 2026 (Luis, 6 Oct); October 2026 keeps the old order.
 -- - ica_daily_game_results.first_correct: correct answers of the first attempt of the day.
 --   Rows saved before this migration only know the best attempt, so they keep that value.
 -- - Live ranking (get_monthly_streak_leaderboard_core) and month close (snapshot_monthly_leaderboard)
@@ -308,7 +309,11 @@ as $$
       row_number() over (
         order by
           swp.total_points desc,
-          coalesce(dgs.daily_game_correct, 0) desc,
+          -- The daily game only breaks ties from November 2026 (Luis, 6 Oct): October keeps the old order.
+          case
+            when date_trunc('month', now())::date >= date '2026-11-01' then coalesce(dgs.daily_game_correct, 0)
+            else 0
+          end desc,
           swp.avg_percent desc,
           (
             case
@@ -563,7 +568,11 @@ as $$
       row_number() over (
         order by
           swp.total_points desc,
-          coalesce(dgs.daily_game_correct, 0) desc,
+          -- The daily game only breaks ties from November 2026 (Luis, 6 Oct): October keeps the old order.
+          case
+            when (select b.month_start from bounds b) >= date '2026-11-01' then coalesce(dgs.daily_game_correct, 0)
+            else 0
+          end desc,
           swp.avg_percent desc,
           coalesce(ccs.ica_streak_days, 0) desc,
           swp.user_id

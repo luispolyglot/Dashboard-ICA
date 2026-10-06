@@ -151,6 +151,8 @@ const en: Record<string, string> = {
   "Cargando ejercicio...": "Loading exercise...",
   "Ejercicio de foco": "Focus exercise",
   "Fase Entrenado: tres bloques, unos cinco minutos.": "Trained phase: three blocks, about five minutes.",
+  "Entrenamiento de foco": "Focus training",
+  "Bloques del ejercicio": "Exercise blocks",
   "No se encontro el foco solicitado.": "The requested focus wasn't found.",
   "No hay ejercicio asociado a este foco.": "There's no exercise for this focus.",
   "Estado: {status}": "Status: {status}",
