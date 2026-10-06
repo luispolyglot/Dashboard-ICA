@@ -26,6 +26,7 @@ import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal
 import { InteractivePhraseText } from '../components/InteractivePhraseText'
 import { RomanizationHint } from '../components/RomanizationHint'
 import { SpeakButton } from '../components/SpeakButton'
+import { FirstUseTip, useFirstUseTip } from '../components/FirstUseTip'
 import { useDashboardContext } from '../context/DashboardContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchPhraseHistoryEntry } from '../services/phraseHistory'
@@ -136,6 +137,8 @@ export function MasterNoteActivatePhraseView({
   const rerecordMode = searchParams.get('mode') === 'rerecord'
   // Límite diario de activaciones (2, o 4 con Activación ampliada hoy). Regrabar no cuenta.
   const dailyLimits = useDailyLimits()
+  // First-use bubble over the mic (Luis, 6 Oct): the last step of the I·C·A walk-through.
+  const [recordTipPending, closeRecordTip] = useFirstUseTip('activate-record')
   const activationLimitReached =
     !rerecordMode && dailyLimits.isAtLimit('activations')
   const rerecordChunkId = useMemo(() => {
@@ -959,10 +962,21 @@ export function MasterNoteActivatePhraseView({
                     )}
                   </SquareIconButton>
                 ) : null}
+                <span className='relative'>
+                {recordTipPending && !recording && canRecord && !recordingDraft ? (
+                  <FirstUseTip align='center' onClose={closeRecordTip}>
+                    {t('Toca el micro y lee tu frase en voz alta.')}
+                  </FirstUseTip>
+                ) : null}
                 <RoundActionButton
                   size={112}
                   onClick={
-                    recording ? stopRecording : () => void startRecording()
+                    recording
+                      ? stopRecording
+                      : () => {
+                          if (recordTipPending) closeRecordTip()
+                          void startRecording()
+                        }
                   }
                   disabled={!recording && !canRecord}
                   ariaLabel={
@@ -983,6 +997,7 @@ export function MasterNoteActivatePhraseView({
                     <MicIcon className='size-13' strokeWidth={2.4} />
                   )}
                 </RoundActionButton>
+                </span>
                 {recording ? (
                   <span className='size-13 shrink-0' aria-hidden='true' />
                 ) : null}
@@ -1048,8 +1063,7 @@ export function MasterNoteActivatePhraseView({
                 <div className='flex items-center justify-between gap-3'>
                   <p className='ica-label m-0'>{t('Tu grabación')}</p>
                   <span className='text-xs font-extrabold text-muted-foreground tabular-nums'>
-                    {formatDuration(recordingDraft.durationMs)} ·{' '}
-                    {Math.round(recordingDraft.sizeBytes / 1024)} KB
+                    {formatDuration(recordingDraft.durationMs)}
                   </span>
                 </div>
                 <audio

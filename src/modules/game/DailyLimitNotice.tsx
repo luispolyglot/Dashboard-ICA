@@ -1,9 +1,12 @@
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
+import { toast } from 'sonner'
+import { useAuth } from '@/auth/AuthContext'
 import { cn } from '@/lib/utils'
-import { DASHBOARD_ROUTES } from '../routes/paths'
 import { FichaIcon } from './icons'
-import type { DailyLimitsState } from './limits'
-import { LIMIT_PHASE, PHASE_BOOST_COST, PHASE_BOOST_MULTIPLIER, type DailyLimitKey } from './rules'
+import { LIMIT_LABELS, type DailyLimitsState } from './limits'
+import { buyPhaseBoost, coinsText, useFichas } from './fichas'
+import { gameSfx } from './sfx'
+import { DAILY_LIMITS, LIMIT_PHASE, PHASE_BOOST_COST, PHASE_BOOST_MULTIPLIER, type DailyLimitKey } from './rules'
 import { t } from '@/i18n'
 
 const REACHED_TEXT: Record<DailyLimitKey, (limit: number) => string> = {
@@ -15,20 +18,56 @@ const REACHED_TEXT: Record<DailyLimitKey, (limit: number) => string> = {
 /**
  * Aviso de "máximo del día alcanzado" con la opción de ampliar esa fase hoy con ICA Coins.
  * Se usa en Añadir palabra, Crear frase y Activar frase.
+ * Luis (6 Oct): the boost is bought right here (tap, then tap again to confirm), without going
+ * to the shop.
  */
 export function DailyLimitNotice({
   kind,
   state,
-  onNavigate,
   className,
 }: {
   kind: DailyLimitKey
   state: DailyLimitsState
+  /** Kept for callers that closed a dialog before going to the shop; the purchase is now in place. */
   onNavigate?: () => void
   className?: string
 }) {
+  const { user } = useAuth()
+  const { total } = useFichas(user?.id)
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
   const limit = state.limits[kind]
   const phase = t(LIMIT_PHASE[kind].name)
+  const balance = total ?? 0
+  const canAfford = balance >= PHASE_BOOST_COST
+
+  const buy = async () => {
+    if (busy) return
+    if (!confirming) {
+      setConfirming(true)
+      return
+    }
+    setConfirming(false)
+    setBusy(true)
+    try {
+      if (!(await buyPhaseBoost(user?.id, kind, balance))) throw new Error('PURCHASE_FAILED')
+      gameSfx.celebrate()
+      toast.success(t('{phase} ampliada hoy', { phase }), {
+        description: t('Hoy puedes llegar a {n} {what}.', {
+          n: DAILY_LIMITS[kind] * PHASE_BOOST_MULTIPLIER,
+          what: t(LIMIT_LABELS[kind].many),
+        }),
+      })
+    } catch (error) {
+      toast.error(
+        error instanceof Error && error.message.includes('INSUFFICIENT_TOKENS')
+          ? t('No tienes suficientes ICA Coins.')
+          : t('No se pudo ampliar esta fase. Inténtalo de nuevo.'),
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div
@@ -46,16 +85,25 @@ export function DailyLimitNotice({
         <p className='m-0 mt-2 text-xs font-bold' style={{ color: 'var(--ica-gold-ink)' }}>
           {t('Hoy ya tienes {phase} ampliada (×{n}).', { phase, n: PHASE_BOOST_MULTIPLIER })}
         </p>
-      ) : (
-        <Link
-          to={DASHBOARD_ROUTES.fichas}
-          onClick={onNavigate}
-          className='mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-bold transition-transform active:scale-[0.98]'
+      ) : canAfford || total === null ? (
+        <button
+          type='button'
+          onClick={() => void buy()}
+          disabled={busy || total === null}
+          className='mt-2 inline-flex min-h-10 items-center gap-1.5 rounded-xl px-3 text-sm font-bold transition-transform active:scale-[0.98] disabled:opacity-60'
           style={{ background: 'var(--ica-gold)', color: '#3a2a00' }}
         >
           <FichaIcon size={18} />
-          {t('Ampliar {phase} hoy · {n} ICA Coins', { phase, n: PHASE_BOOST_COST })}
-        </Link>
+          {busy
+            ? t('Ampliando...')
+            : confirming
+              ? t('Toca otra vez para pagar {n} ICA Coins', { n: PHASE_BOOST_COST })
+              : t('Ampliar {phase} hoy · {n} ICA Coins', { phase, n: PHASE_BOOST_COST })}
+        </button>
+      ) : (
+        <p className='m-0 mt-2 text-xs font-bold' style={{ color: 'var(--ica-gold-ink)' }}>
+          {t('Necesitas {n} para ampliar {phase} (tienes {balance}).', { n: coinsText(PHASE_BOOST_COST), phase, balance })}
+        </p>
       )}
     </div>
   )

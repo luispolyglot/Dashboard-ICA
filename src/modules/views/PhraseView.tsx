@@ -71,6 +71,7 @@ import type {
 import { getEffectiveStudyLevel } from '../utils/studyLevel'
 import { DailyLimitNotice } from '../game/DailyLimitNotice'
 import { PendingActivationCard } from '../components/PendingActivationCard'
+import { FirstUseTip, useFirstUseTip } from '../components/FirstUseTip'
 import { usePendingActivationPhrase } from '../hooks/usePendingActivationPhrase'
 import type { DailyLimitsState } from '../game/limits'
 
@@ -328,6 +329,9 @@ export function PhraseView({
   const [result, setResult] = useState<ActivationPhraseResult | null>(null)
   // A phrase made in this visit: then the «max reached» notice stays hidden (Luis, 6 Oct).
   const [createdThisVisit, setCreatedThisVisit] = useState(false)
+  // First-use bubbles that walk a new icademer to the next button (Luis, 6 Oct).
+  const [generateTipPending, closeGenerateTip] = useFirstUseTip('phrase-generate')
+  const [activateTipPending, closeActivateTip] = useFirstUseTip('phrase-activate')
   const [loading, setLoading] = useState(false)
   const [wordUsageCounts, setWordUsageCounts] = useState<
     Record<string, number>
@@ -801,6 +805,7 @@ export function PhraseView({
       {/* Si hoy ya se hizo la C y esa frase aún no se grabó, se recuerda aquí con un botón directo */}
       {!result && creationDoneToday && pendingActivationPhrase ? (
         <PendingActivationCard
+          dismissible
           phrase={pendingActivationPhrase}
           targetLang={config.targetLang}
           nativeLang={config.nativeLang}
@@ -1192,9 +1197,20 @@ export function PhraseView({
       )}
 
       {/* Botón principal */}
+      <div className='relative'>
+      {generateTipPending && !primaryDisabled && !result && !loading ? (
+        <FirstUseTip onClose={closeGenerateTip}>
+          {isManualPhrase
+            ? t('Cuando tengas tu frase, toca aquí para guardarla.')
+            : t('Toca aquí y la IA crea tu frase con estas palabras.')}
+        </FirstUseTip>
+      ) : null}
       <Button
         type='button'
-        onClick={handlePrimaryAction}
+        onClick={() => {
+          if (generateTipPending) closeGenerateTip()
+          handlePrimaryAction()
+        }}
         variant={isManualPhrase && manualPhraseApproved ? 'outline' : 'c'}
         size='xl'
         disabled={primaryDisabled}
@@ -1221,6 +1237,7 @@ export function PhraseView({
           </>
         )}
       </Button>
+      </div>
 
       {/* Resultado: la frase y, justo debajo, el siguiente paso (Activación) */}
       {result && (
@@ -1317,10 +1334,26 @@ export function PhraseView({
               <p className='ica-label m-0 mb-2' style={{ color: 'var(--ica-a-ink)' }}>
                 {t('Siguiente paso · Activación')}
               </p>
-              <Button type='button' onClick={openActivateModal} variant='a' size='xl' className='w-full'>
+              <div className='relative'>
+              {activateTipPending ? (
+                <FirstUseTip onClose={closeActivateTip}>
+                  {t('Ahora graba tu frase en voz alta: toca aquí para ir a Activación.')}
+                </FirstUseTip>
+              ) : null}
+              <Button
+                type='button'
+                onClick={() => {
+                  if (activateTipPending) closeActivateTip()
+                  openActivateModal()
+                }}
+                variant='a'
+                size='xl'
+                className='w-full'
+              >
                 <MicIcon strokeWidth={2.6} aria-hidden='true' />
                 {t('Activar frase')}
               </Button>
+              </div>
             </div>
           )}
         </div>

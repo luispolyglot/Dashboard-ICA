@@ -96,17 +96,28 @@ function normalizeComparableText(value: string): string {
  * top of it): people did not find their trunk by scrolling (Luis, 6 Oct).
  */
 function TrunkLink({ layout = 'beside' }: { layout?: 'beside' | 'above' }) {
+  const color = { color: TRUNK_WOOD.ink, textDecorationColor: `color-mix(in oklab, ${TRUNK_WOOD.base} 45%, transparent)` }
+  if (layout === 'above') {
+    return (
+      <Link
+        to={DASHBOARD_ROUTES.myIcaWords}
+        className='inline-flex flex-col items-center align-bottom font-extrabold transition-opacity hover:opacity-80'
+        style={color}
+      >
+        <TrunkIcon size={26} />
+        <span className='underline decoration-2 underline-offset-2'>{t('tu baúl ICA')}</span>
+      </Link>
+    )
+  }
+  // Inline (not flex) so the words sit on the same line as «Añade palabras nuevas a» (Luis, 6 Oct).
   return (
     <Link
       to={DASHBOARD_ROUTES.myIcaWords}
-      className={cn(
-        'inline-flex items-center gap-1 rounded-lg font-extrabold underline decoration-2 underline-offset-2 transition-opacity hover:opacity-80',
-        layout === 'above' && 'flex-col gap-0 align-bottom no-underline',
-      )}
-      style={{ color: TRUNK_WOOD.ink, textDecorationColor: `color-mix(in oklab, ${TRUNK_WOOD.base} 45%, transparent)` }}
+      className='font-extrabold whitespace-nowrap underline decoration-2 underline-offset-2 transition-opacity hover:opacity-80'
+      style={color}
     >
-      <TrunkIcon size={layout === 'above' ? 26 : 20} />
-      <span className={layout === 'above' ? 'underline decoration-2 underline-offset-2' : undefined}>{t('tu baúl ICA')}</span>
+      <TrunkIcon size={18} className='mr-1 inline-block align-[-0.22em]' />
+      {t('tu baúl ICA')}
     </Link>
   )
 }
@@ -134,6 +145,7 @@ export function AddView({
   // First-use bubbles instead of fixed help lines (Luis, 6 Oct).
   const [translateTipPending, closeTranslateTip] = useFirstUseTip('add-translate')
   const [frequencyTipPending, closeFrequencyTip] = useFirstUseTip('add-frequency')
+  const [goCreateTipPending, closeGoCreateTip] = useFirstUseTip('add-go-create')
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
   const [suggestionNative, setSuggestionNative] = useState<string | null>(null)
@@ -482,9 +494,12 @@ export function AddView({
     <button
       type='button'
       disabled={!canCreatePhrase}
-      onClick={() => navigate(DASHBOARD_ROUTES.activationPhrase)}
+      onClick={() => {
+        if (goCreateTipPending) closeGoCreateTip()
+        navigate(DASHBOARD_ROUTES.activationPhrase)
+      }}
       className={cn(
-        'ica-press order-4 flex w-full items-center gap-4 rounded-3xl border-2 p-4 text-left',
+        'ica-press flex w-full items-center gap-4 rounded-3xl border-2 p-4 text-left',
         canCreatePhrase ? '' : 'cursor-not-allowed',
       )}
       style={{
@@ -870,7 +885,14 @@ export function AddView({
       {/* Columna del día (a la derecha en ordenador; en el móvil se reparte) */}
       <div className='contents lg:flex lg:w-84 lg:shrink-0 lg:flex-col lg:gap-6'>
         {dayCounter}
-        {phraseBlock}
+        <div className='relative order-4'>
+          {canCreatePhrase && goCreateTipPending && !translateTipPending ? (
+            <FirstUseTip onClose={closeGoCreateTip}>
+              {t('¡Ya tienes tus {n} palabras! Toca aquí para crear tu frase.', { n: CREATION_WORDS_GOAL })}
+            </FirstUseTip>
+          ) : null}
+          {phraseBlock}
+        </div>
         {recentSection}
       </div>
     </GamePage>
