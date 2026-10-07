@@ -315,5 +315,17 @@ const en: Record<string, string> = {
   "¡Tienes {n} notas desafiantes esperando!": "You have {n} challenge notes waiting!",
   "Nota desafiante esperando": "Challenge note waiting",
   "{n} notas desafiantes esperando": "{n} challenge notes waiting",
+  // Messages that were still only in Spanish (7 Oct)
+  "No tienes suficientes ICA Coins.": "You don't have enough ICA Coins.",
+  "Aún no has conseguido esa insignia.": "You haven't earned that badge yet.",
+  "No se pudo abrir el cofre. Inténtalo de nuevo.": "The chest could not be opened. Try again.",
+  "Completa el ciclo ICA para abrir el cofre.": "Complete the ICA cycle to open the chest.",
+  "No se pudo ampliar esta fase. Inténtalo de nuevo.": "This phase could not be extended. Try again.",
+  "No se pudo guardar la insignia destacada.": "The featured badge could not be saved.",
+  "No se pudo guardar el resultado del Reto del día.": "The result of the Daily challenge could not be saved.",
+  "No se pudo comprar el pase. Inténtalo de nuevo.": "The pass could not be bought. Try again.",
+  "Ajuste de saldo": "Balance adjustment",
+  "Recompensa del ranking mensual": "Monthly leaderboard reward",
+  "Has alcanzado el límite diario de frases.": "You've reached the daily phrase limit.",
 }
 export default en
