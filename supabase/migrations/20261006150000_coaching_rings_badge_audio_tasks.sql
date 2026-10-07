@@ -156,7 +156,10 @@ begin
   -- Anyone who has (or had) a coaching can earn the badge; for everyone else it is shown locked.
   select exists (
     select 1 from public.coaching_sessions s
-    where s.user_id = v_user_id and s.program_version = 'v2'
+    where s.user_id = v_user_id
+      and s.program_version = 'v2'
+      and s.status in ('active', 'completed', 'cancelled')
+      and s.activated_at is not null
   ) into v_has_coaching;
   return jsonb_build_object(
     'bestRings', coalesce(v_best, 0),

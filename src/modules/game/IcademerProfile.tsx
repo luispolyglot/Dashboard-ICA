@@ -336,7 +336,7 @@ export function IcademerProfileDialog({
         {/* Insignias */}
         <div>
           <div className='mb-2 flex items-baseline justify-between gap-2'>
-            <p className='m-0 text-xs font-extrabold tracking-[0.08em] text-muted-foreground uppercase'>{t('Insignias')}</p>
+            <p className='m-0 text-xs font-extrabold tracking-[0.08em] text-muted-foreground uppercase'>{t('Insignias destacadas')}</p>
           </div>
           {badgesLoading ? (
             <div className='grid grid-cols-3 gap-2' aria-hidden='true'>

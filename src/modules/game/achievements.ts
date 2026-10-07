@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useDashboardContext } from '../context/DashboardContext'
 import { fetchMonthlySnapshotLeaderboard } from '../services/leaderboard'
+import { fetchMyCoachingDashboard } from '../services/coaching'
 import { closedMonthEfficacy } from './rankingMath'
 import { shiftIsoDay } from '../utils'
 import type { MedalCategory, MedalTier } from './medals'
@@ -196,6 +197,18 @@ export async function fetchCoachingRingStats(userId?: string | null): Promise<Co
   }
 }
 
+/**
+ * Your own coaching rings. If the server does not have get_coaching_ring_stats yet (it arrives with
+ * the 6 Oct migration), the coaching list still says whether you ever had a coaching, so the
+ * badge is locked for students who never had one.
+ */
+async function fetchMyCoachingRingStats(userId: string): Promise<CoachingRingStats | null> {
+  const stats = await fetchCoachingRingStats(userId).catch(() => null)
+  if (stats) return stats
+  const memberships = await fetchMyCoachingDashboard().catch(() => null)
+  return memberships && memberships.length === 0 ? { bestRings: 0, totalRings: 0, hasCoaching: false } : null
+}
+
 function monthStarts(fromIso: string, count: number): string[] {
   const now = new Date()
   const out: string[] = []
@@ -231,7 +244,7 @@ async function fetchRemoteStats(): Promise<RemoteStats> {
     vocabPromise,
     winsPromise,
     fetchRankingHistoryFor(userId),
-    fetchCoachingRingStats(userId).catch(() => null),
+    fetchMyCoachingRingStats(userId),
   ])
   return { vocab, wins, bestAccuracy: monthly.bestEfficacy, perfectMonths: monthly.perfectMonths, rankings: monthly.rankings, coaching }
 }
