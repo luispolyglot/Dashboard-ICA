@@ -396,7 +396,8 @@ export function CoachingV3SessionBoard({
         response1: classRow.studentGuidelineResponse1 || "",
         response2: classRow.studentGuidelineResponse2 || "",
         response3: classRow.studentGuidelineResponse3 || "",
-        taskAudio: classRow.taskAudio || [false, false, false],
+        // Same default as a new class: task 3 is answered with an audio.
+        taskAudio: classRow.taskAudio || [false, false, true],
       };
     }
     setClassDrafts(nextDrafts);

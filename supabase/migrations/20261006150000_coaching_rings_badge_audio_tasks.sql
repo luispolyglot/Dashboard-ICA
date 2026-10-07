@@ -23,7 +23,9 @@ alter table public.coaching_session_classes
 alter table public.coaching_session_classes
   alter column task_audio_3 set default true;
 
--- Weeks already prepared but not activated yet: same default, unless task 3 was answered.
+-- Classes that already exist get the same default (Luis, 7 Oct: «tendría que estar activado
+-- directamente»): task 3 becomes an audio in every week that is not closed yet, unless the student
+-- already answered it in writing. Closed weeks stay as they were.
 update public.coaching_session_classes c
 set task_audio_3 = true
 where coalesce(btrim(c.student_guideline_response_3), '') = ''
@@ -32,6 +34,7 @@ where coalesce(btrim(c.student_guideline_response_3), '') = ''
     from public.coaching_v2_period_activations a
     where a.session_id = c.session_id
       and a.period_number = c.week_number
+      and a.ended_at is not null
   );
 
 -- 2. Audio answers and the coach's feedback --------------------------------------------------
