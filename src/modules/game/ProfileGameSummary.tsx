@@ -9,14 +9,14 @@ import { getMetaTrackerSnapshot } from '../components/MetaTracker/progress'
 import { getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
-import { ACHIEVEMENT_CATALOG, longestStreak, useAchievements } from './achievements'
+import { ACHIEVEMENT_CATALOG, longestStreak, reachableAchievements, useAchievements } from './achievements'
 import { FlameIcon } from './icons'
 import { getIcaStreakState } from './streak'
 import { GameProgress, Pill } from './ui'
 import { useFeaturedBadge } from './featuredBadge'
 import { FeaturedBadgeMini, FlagInitial } from './ranking'
 import { useMyFlags } from './languageFlag'
-import { Medal, MedalDefs } from './Medal'
+import { LockedMedal, Medal, MedalDefs } from './Medal'
 import { MedalDetailDialog, type MedalSelection } from './MedalDetail'
 import { tierName } from './medals'
 import { getUiLang, langName, t, tn, uiLocale } from '@/i18n'
@@ -90,7 +90,7 @@ export function LevelAvatar({ size = 64 }: { size?: number }) {
  */
 export function ProfileGameSummary({ onNavigate }: { onNavigate?: () => void }) {
   const { config, metaTrackerProfile } = useDashboardContext()
-  const { byCategory, totalEarned } = useAchievements()
+  const { byCategory, totalEarned, coachingLocked } = useAchievements()
   const [selection, setSelection] = useState<MedalSelection>(null)
   const [levelOpen, setLevelOpen] = useState(false)
   const snapshot =
@@ -108,7 +108,7 @@ export function ProfileGameSummary({ onNavigate }: { onNavigate?: () => void }) 
     snapshot && config
       ? computeLevelPosition(snapshot.totalWords, getLevelThresholds(config.targetLang)).pctWithin
       : 0
-  const totalMedals = ACHIEVEMENT_CATALOG.reduce((sum, def) => sum + def.levels.length, 0)
+  const totalMedals = reachableAchievements(coachingLocked)
   const languageName = config?.targetLang
     ? getUiLang() === 'en'
       ? langName(config.targetLang)
@@ -175,6 +175,19 @@ export function ProfileGameSummary({ onNavigate }: { onNavigate?: () => void }) 
           {ACHIEVEMENT_CATALOG.map((def) => {
             const earned = byCategory[def.key].earned
             const level = def.levels[Math.max(0, earned - 1)]
+            if (coachingLocked && def.key === 'coaching') {
+              // Coaching ICA without a coaching: padlock, nothing to open (Luis, 7 Oct).
+              return (
+                <LockedMedal
+                  key={def.key}
+                  category={def.key}
+                  tier={level.tier}
+                  ribbon={level.ribbon}
+                  label={`${t(def.title)} · ${tierName(level.tier)}`}
+                  className='w-full'
+                />
+              )
+            }
             return (
               <button
                 key={def.key}

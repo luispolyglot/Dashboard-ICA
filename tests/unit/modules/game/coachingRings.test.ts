@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildWeekRings, countRings, isTaskAnswered } from '@/modules/game/coachingRings'
-import { computeAchievements } from '@/modules/game/achievements'
+import { computeAchievements, isCoachingBadgeLocked, reachableAchievements, TOTAL_ACHIEVEMENTS } from '@/modules/game/achievements'
 import type { CoachingV2ClassSlot } from '@/modules/services/coaching'
 import {
   buildTaskAudioPath,
@@ -98,5 +98,20 @@ describe('audios de las tareas (servidor)', () => {
     expect(normalizeAudioMime('video/mp4')).toBeNull()
     expect(countAnsweredTasks(['a', '', null], new Set([2, 3]))).toBe(3)
     expect(countAnsweredTasks(['a', '', null], new Set())).toBe(1)
+  })
+})
+
+describe('Coaching ICA badge lock', () => {
+  it('is locked only when the server says the student never had a coaching', () => {
+    expect(isCoachingBadgeLocked({ bestRings: 0, totalRings: 0, hasCoaching: false })).toBe(true)
+    expect(isCoachingBadgeLocked({ bestRings: 0, totalRings: 0, hasCoaching: true })).toBe(false)
+    // Older server or cached stats without the flag: not locked.
+    expect(isCoachingBadgeLocked({ bestRings: 0, totalRings: 0 })).toBe(false)
+    expect(isCoachingBadgeLocked(null)).toBe(false)
+  })
+
+  it('leaves the 8 coaching badges out of the total when locked', () => {
+    expect(reachableAchievements(false)).toBe(TOTAL_ACHIEVEMENTS)
+    expect(reachableAchievements(true)).toBe(TOTAL_ACHIEVEMENTS - 8)
   })
 })

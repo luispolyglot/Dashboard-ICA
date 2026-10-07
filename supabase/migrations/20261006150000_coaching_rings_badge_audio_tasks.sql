@@ -147,12 +147,22 @@ declare
   v_user_id uuid := coalesce(p_user_id, auth.uid());
   v_best integer;
   v_total integer;
+  v_has_coaching boolean;
 begin
   if auth.uid() is null then raise exception 'AUTH_REQUIRED'; end if;
   select coalesce(max(r.rings), 0)::integer, coalesce(sum(r.rings), 0)::integer
   into v_best, v_total
   from public.coaching_rings_by_session(v_user_id) r;
-  return jsonb_build_object('bestRings', coalesce(v_best, 0), 'totalRings', coalesce(v_total, 0));
+  -- Anyone who has (or had) a coaching can earn the badge; for everyone else it is shown locked.
+  select exists (
+    select 1 from public.coaching_sessions s
+    where s.user_id = v_user_id and s.program_version = 'v2'
+  ) into v_has_coaching;
+  return jsonb_build_object(
+    'bestRings', coalesce(v_best, 0),
+    'totalRings', coalesce(v_total, 0),
+    'hasCoaching', coalesce(v_has_coaching, false)
+  );
 end;
 $$;
 

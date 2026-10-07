@@ -163,7 +163,25 @@ type RemoteStats = {
   coaching?: CoachingRingStats | null
 }
 
-export type CoachingRingStats = { bestRings: number; totalRings: number }
+export type CoachingRingStats = {
+  bestRings: number
+  totalRings: number
+  /** false = never had a coaching, so the badge is locked. Missing (older server or cache) = unknown. */
+  hasCoaching?: boolean
+}
+
+/** The Coaching ICA badge is only for coaching students: locked when we know the student never had one. */
+export function isCoachingBadgeLocked(stats: CoachingRingStats | null | undefined): boolean {
+  return stats?.hasCoaching === false
+}
+
+/** How many badges a student can earn (without the coaching ones when they are locked). */
+export function reachableAchievements(coachingLocked: boolean): number {
+  return ACHIEVEMENT_CATALOG.reduce(
+    (sum, def) => sum + (coachingLocked && def.key === 'coaching' ? 0 : def.levels.length),
+    0,
+  )
+}
 
 /** Coaching rings of any student (the badge is public, like the others). */
 export async function fetchCoachingRingStats(userId?: string | null): Promise<CoachingRingStats | null> {
@@ -171,7 +189,11 @@ export async function fetchCoachingRingStats(userId?: string | null): Promise<Co
   const { data, error } = await supabase.rpc('get_coaching_ring_stats', userId ? { p_user_id: userId } : {})
   if (error || !data || typeof data !== 'object') return null
   const row = data as Record<string, unknown>
-  return { bestRings: Number(row.bestRings) || 0, totalRings: Number(row.totalRings) || 0 }
+  return {
+    bestRings: Number(row.bestRings) || 0,
+    totalRings: Number(row.totalRings) || 0,
+    ...(typeof row.hasCoaching === 'boolean' ? { hasCoaching: row.hasCoaching } : {}),
+  }
 }
 
 function monthStarts(fromIso: string, count: number): string[] {
@@ -400,7 +422,13 @@ export function computeAchievements(values: AchievementValues): {
 }
 
 /** Progreso de cada categoría de insignias con los datos reales del alumno. */
-export function useAchievements(): { byCategory: Record<MedalCategory, AchievementProgress>; totalEarned: number; loading: boolean } {
+export function useAchievements(): {
+  byCategory: Record<MedalCategory, AchievementProgress>
+  totalEarned: number
+  loading: boolean
+  /** True when the student never had a coaching: the Coaching ICA badges are shown locked. */
+  coachingLocked: boolean
+} {
   const { creationDays, savedCreationDays, completedDays } = useDashboardContext()
   const { user } = useAuth()
   const cacheKey = user?.id ? `achievements:${user.id}` : null
@@ -434,6 +462,6 @@ export function useAchievements(): { byCategory: Record<MedalCategory, Achieveme
       rankings: remote?.rankings ?? null,
       coaching: remote?.coaching ?? null,
     })
-    return { byCategory, totalEarned, loading: remote === null }
+    return { byCategory, totalEarned, loading: remote === null, coachingLocked: isCoachingBadgeLocked(remote?.coaching) }
   }, [completedDays, creationDays, remote, savedCreationDays])
 }

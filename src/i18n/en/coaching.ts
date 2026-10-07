@@ -389,6 +389,8 @@ const en: Record<string, string> = {
   "Esta tarea se responde con un audio (hasta 3 minutos).": "Answer this task with an audio (up to 3 minutes).",
   "Esta tarea se respondía con un audio.": "This task was answered with an audio.",
   "Exclusiva del Coaching ICA": "ICA Coaching only",
+  "Solo la pueden conseguir los alumnos del Coaching ICA.": "Only ICA Coaching students can earn it.",
+  "{label} (solo para alumnos del Coaching ICA)": "{label} (ICA Coaching students only)",
   "Falta tu feedback": "Needs your feedback",
   "Feedback actualizado.": "Feedback updated.",
   "Feedback enviado al alumno.": "Feedback sent to the student.",

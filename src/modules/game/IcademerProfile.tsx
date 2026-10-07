@@ -248,8 +248,7 @@ export function IcademerProfileDialog({
       ? getMetaTrackerSnapshot(metaTrackerProfile, config.targetLang).currentLevelKey
       : null
   const level = (isMe ? myLevel : null) || loaded.level
-  const totalEarned = earned ? Object.values(earned).reduce((sum, value) => sum + value, 0) : 0
-  const totalPossible = ACHIEVEMENT_CATALOG.reduce((sum, def) => sum + def.levels.length, 0)
+  // No «8 de 56» counter here: only the badges themselves (Luis, 7 Oct).
   const shownBadges: FeaturedBadge[] = badgesToShow(chosen, earned)
   const topBadges = shownBadges.flatMap((badge) => {
     const def = ACHIEVEMENT_CATALOG.find((item) => item.key === badge.category)
@@ -338,11 +337,6 @@ export function IcademerProfileDialog({
         <div>
           <div className='mb-2 flex items-baseline justify-between gap-2'>
             <p className='m-0 text-xs font-extrabold tracking-[0.08em] text-muted-foreground uppercase'>{t('Insignias')}</p>
-            {earned ? (
-              <span className='text-xs font-extrabold text-muted-foreground tabular-nums'>
-                {t('{n} de {total}', { n: totalEarned, total: totalPossible })}
-              </span>
-            ) : null}
           </div>
           {badgesLoading ? (
             <div className='grid grid-cols-3 gap-2' aria-hidden='true'>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { GraduationCapIcon } from 'lucide-react'
-import { ACHIEVEMENT_CATALOG, TOTAL_ACHIEVEMENTS, useAchievements, type AchievementCategoryDef } from '../game/achievements'
-import { Medal, MedalDefs } from '../game/Medal'
+import { ACHIEVEMENT_CATALOG, reachableAchievements, useAchievements, type AchievementCategoryDef } from '../game/achievements'
+import { LockedMedal, Medal, MedalDefs } from '../game/Medal'
 import { LegendPips, MedalDetailDialog, type MedalSelection } from '../game/MedalDetail'
 import { medalText, tierName } from '../game/medals'
 import { Pill } from '../game/ui'
@@ -13,7 +13,7 @@ import { t } from '@/i18n'
  * Lo que llevas y lo que te falta sale al tocar una insignia, con su barra de avance.
  */
 export function InsigniasView() {
-  const { byCategory, totalEarned } = useAchievements()
+  const { byCategory, totalEarned, coachingLocked } = useAchievements()
   const [selection, setSelection] = useState<MedalSelection>(null)
 
   return (
@@ -22,7 +22,7 @@ export function InsigniasView() {
       <div className='flex items-center justify-between gap-3'>
         <h1 className='m-0 font-display tracking-tight text-2xl leading-tight font-extrabold lg:text-3xl'>{t('Insignias')}</h1>
         <Pill tone='gold' className='px-3 py-1 text-sm tabular-nums'>
-          {totalEarned} / {TOTAL_ACHIEVEMENTS}
+          {totalEarned} / {reachableAchievements(coachingLocked)}
         </Pill>
       </div>
 
@@ -31,6 +31,7 @@ export function InsigniasView() {
           key={def.key}
           def={def}
           earned={byCategory[def.key].earned}
+          locked={coachingLocked && def.key === 'coaching'}
           onOpen={(tier) => setSelection({ def, tier })}
         />
       ))}
@@ -47,10 +48,13 @@ export function InsigniasView() {
 function CategoryCard({
   def,
   earned,
+  locked = false,
   onOpen,
 }: {
   def: AchievementCategoryDef
   earned: number
+  /** Coaching ICA for a student without a coaching: padlocks and nothing to open (Luis, 7 Oct). */
+  locked?: boolean
   onOpen: (tier: AchievementCategoryDef['levels'][number]['tier']) => void
 }) {
   const base = def.levels.slice(0, 5)
@@ -75,7 +79,27 @@ function CategoryCard({
           </span>
         ) : null}
       </h2>
-      <p className='m-0 mt-0.5 text-xs font-semibold text-muted-foreground'>{t(def.description)}</p>
+      <p className='m-0 mt-0.5 text-xs font-semibold text-muted-foreground'>
+        {locked ? t('Solo la pueden conseguir los alumnos del Coaching ICA.') : t(def.description)}
+      </p>
+      {locked ? (
+        <div className='mt-3 grid grid-cols-3 gap-x-2 gap-y-3 sm:grid-cols-6'>
+          {[...base, legend].map((level) => (
+            <div key={level.tier} className='flex w-full flex-col items-center p-1 text-center'>
+              <LockedMedal
+                category={def.key}
+                tier={level.tier}
+                ribbon={level.ribbon}
+                label={`${t(def.title)} · ${tierName(level.tier)}`}
+                className='w-full max-w-[104px]'
+              />
+              <span className='mt-1 text-xs font-extrabold text-muted-foreground'>
+                {level === legend ? t('Leyenda') : tierName(level.tier)}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
       <div className='mt-3 grid grid-cols-3 gap-x-2 gap-y-3 sm:grid-cols-6'>
         {base.map((level, index) => {
           const isEarned = index < earned
@@ -118,6 +142,7 @@ function CategoryCard({
           <LegendPips earned={legendEarned} />
         </button>
       </div>
+      )}
     </div>
   )
 }
