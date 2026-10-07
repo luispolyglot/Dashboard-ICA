@@ -28,4 +28,7 @@ export default {
   '¡Listo! Ya lo tienes': 'Done! You have got it',
   'Empieza hoy por Inmersión: guarda tus primeras 5 palabras.': 'Start today with Immersion: save your first 5 words.',
   'Saltar guía': 'Skip guide',
+  '¡Nota desafiante desbloqueada!': 'Challenge note unlocked!',
+  'Elige una nota maestra terminada: escuchas trozos de tus frases en tu idioma y los dices de memoria en el idioma que aprendes. Es el mejor entrenamiento para hablar sin pensar.':
+    'Pick a finished master note: you hear pieces of your sentences in your language and say them from memory in the language you are learning. It is the best training to speak without thinking.',
 } as Record<string, string>

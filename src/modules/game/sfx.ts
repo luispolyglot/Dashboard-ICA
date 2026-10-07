@@ -347,13 +347,16 @@ export const gameSfx = {
       }
     })
   },
-  /** Confeti de una insignia nueva: un «pof» suave y crujidos muy bajitos. */
+  /**
+   * Confeti de una insignia nueva: un «pof» y crujidos, por detrás del sonido de la insignia.
+   * Luis (7 Oct): a bit louder, so it can be heard under the badge sound.
+   */
   confetti() {
     const ctx = getAudioContext()
     if (!ctx) return
-    noiseBurst(ctx, 0, 0.09, 1400, 'bandpass', 0.1)
-    for (let index = 0; index < 14; index += 1) {
-      noiseBurst(ctx, 0.05 + Math.random() * 0.6, 0.018, 5000 + Math.random() * 3000, 'highpass', 0.02 + Math.random() * 0.025)
+    noiseBurst(ctx, 0, 0.1, 1400, 'bandpass', 0.16)
+    for (let index = 0; index < 18; index += 1) {
+      noiseBurst(ctx, 0.05 + Math.random() * 0.7, 0.02, 5000 + Math.random() * 3000, 'highpass', 0.035 + Math.random() * 0.035)
     }
   },
   /** Paso bloqueado (tocar Creación o Activación sin haber hecho lo anterior): «toc-toc» y vibra. */

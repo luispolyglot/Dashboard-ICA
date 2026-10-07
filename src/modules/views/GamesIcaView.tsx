@@ -9,6 +9,7 @@ import { useChallengeEnabled } from '../services/challengeChunks'
 import { useFeatureFlagsStore } from '../stores/featureFlagsStore'
 import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocalMode'
 import { ChallengeAlertPill, ChallengeNotePill } from '../components/IcaChallenges/ChallengeAlertBadge'
+import { ChallengeNoteUnlockGuide } from '../game/WelcomeTour'
 import { usePendingChallengeNotes } from '../game/usePendingChallengeNotes'
 import {
   challengesRouteForAlerts,
@@ -229,6 +230,7 @@ export function GamesIcaView({
         ) : null}
       </div>
 
+      <ChallengeNoteUnlockGuide unlocked={challengeNoteEnabled && challengeReady} />
     </section>
   )
 }

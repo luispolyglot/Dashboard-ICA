@@ -289,14 +289,19 @@ function StartChip({
   label = 'EMPIEZA AQUÍ',
   color,
   textColor = '#ffffff',
+  compact = false,
 }: {
   label?: string
   color: string
   textColor?: string
+  /** Narrower, to fit centred right under a tile near the edge of the box (Luis, 7 Oct). */
+  compact?: boolean
 }) {
   return (
     <span
-      className='mb-1 inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-extrabold tracking-[0.08em]'
+      className={compact
+        ? 'mb-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-extrabold tracking-[0.04em]'
+        : 'mb-1 inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-extrabold tracking-[0.08em]'}
       style={{ background: color === '#ffffff' ? 'var(--ica-chip-bg, #ffffff)' : color, color: color === '#ffffff' ? 'var(--ica-chip-ink, #0b84b5)' : textColor }}
     >
       {t(label)}
@@ -347,6 +352,7 @@ function Label({
   top,
   cx = '50%',
   maxWidth = 168,
+  plain = false,
   children,
 }: {
   /** Altura a la que empieza (justo debajo de su ficha). */
@@ -354,6 +360,8 @@ function Label({
   /** Horizontal center (the center of its tile). */
   cx?: string
   maxWidth?: number
+  /** Without the backing colour (where there is no road to cover). */
+  plain?: boolean
   children: ReactNode
 }) {
   // Centrado debajo de su ficha.
@@ -362,7 +370,7 @@ function Label({
   return (
     <div
       className='pointer-events-none absolute flex w-max flex-col items-center gap-0.5 rounded-xl px-2 py-0.5 text-center'
-      style={{ ...style, background: 'var(--ica-label-bg, var(--ica-brand))' }}
+      style={{ ...style, background: plain ? 'transparent' : 'var(--ica-label-bg, var(--ica-brand))' }}
     >
       {children}
     </div>
@@ -956,13 +964,14 @@ export function IcaPath() {
         <span className='text-[14px] font-extrabold tracking-[0.04em]' style={{ color: PHASES.A.ink }}>{t('ACTIVACIÓN')}</span>
       </Label>
 
-      {/* Chip and help text under the step to do: I, then C, then A (Luis, 6 Oct). */}
+      {/* Chip and help text under the step to do: I, then C, then A (Luis, 6 Oct), right under its
+          letter and centred like the step name (Luis, 7 Oct). */}
       {rowHelp && rowNext ? (
-        <Label top={rowLabelTop + 26} cx={rowNext === 'I' ? at(X.I, 20) : rowNext === 'A' ? at(X.A, -20) : X.C} maxWidth={124}>
+        <Label top={rowLabelTop + 26} cx={rowNext === 'I' ? X.I : rowNext === 'A' ? X.A : X.C} maxWidth={124} plain>
           <span className='whitespace-nowrap'>
-            <StartChip label={rowNext === 'I' ? 'EMPIEZA AQUÍ' : 'SIGUE AQUÍ'} color='#ffffff' textColor='#0b84b5' />
+            <StartChip label={rowNext === 'I' ? 'EMPIEZA AQUÍ' : 'SIGUE AQUÍ'} color='#ffffff' textColor='#0b84b5' compact />
           </span>
-          <span className='text-[13px] leading-snug font-semibold' style={{ color: 'var(--ica-brand-sub)' }}>{rowHelp}</span>
+          <span className='text-[12px] leading-snug font-semibold whitespace-nowrap' style={{ color: 'var(--ica-brand-sub)' }}>{rowHelp}</span>
         </Label>
       ) : null}
 

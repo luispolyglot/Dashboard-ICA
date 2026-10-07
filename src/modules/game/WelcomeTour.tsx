@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -18,7 +18,10 @@ import { CHALLENGE_NOTE_MIN_CLOSED_NOTES, FLASHCARDS_MIN_ACTIVATED_WORDS } from 
  *   is not on screen (for example a game switched off), that step is skipped.
  */
 
-const SEEN_KEY = 'ica-welcome-tour-v1'
+const WELCOME_KEY = 'ica-welcome-tour-v1'
+const CHALLENGE_NOTE_KEY = 'ica-guide-challenge-note-v1'
+/** Only one guide on screen at a time. */
+let activeGuide: string | null = null
 const NEW_ACCOUNT_DAYS = 14
 const START_DELAY_MS = 900
 const FIND_TIMEOUT_MS = 1500
@@ -109,22 +112,22 @@ function buildSteps(name: string): TourStep[] {
   ]
 }
 
-function seenKey(userId: string): string {
-  return `${SEEN_KEY}:${userId}`
+function seenKey(guideKey: string, userId: string): string {
+  return `${guideKey}:${userId}`
 }
 
-function readSeen(userId: string): boolean {
+function readSeen(guideKey: string, userId: string): boolean {
   try {
-    return window.localStorage.getItem(seenKey(userId)) === '1'
+    return window.localStorage.getItem(seenKey(guideKey, userId)) === '1'
   } catch {
     // Without storage we cannot remember it: better not to show it every time.
     return true
   }
 }
 
-function writeSeen(userId: string): void {
+function writeSeen(guideKey: string, userId: string): void {
   try {
-    window.localStorage.setItem(seenKey(userId), '1')
+    window.localStorage.setItem(seenKey(guideKey, userId), '1')
   } catch {
     /* nothing to do */
   }
@@ -175,39 +178,102 @@ function unionBox(elements: HTMLElement[]): Box {
   }
 }
 
+/** The welcome tour, on Home, for new accounts (or with ?tour=1). */
 export function WelcomeTour() {
   const { user } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+  const forced = wantsTourFromUrl(location.search)
   const firstName = String(user?.user_metadata?.display_name || '').trim().split(/\s+/)[0] ?? ''
   const steps = useMemo(() => buildSteps(firstName), [firstName])
+  const onHome = location.pathname === DASHBOARD_ROUTES.home
+  const isNew = isNewAccount((user as { created_at?: string } | null)?.created_at)
+  return (
+    <GuideTour
+      guideKey={WELCOME_KEY}
+      steps={steps}
+      shouldStart={onHome && (forced || isNew)}
+      force={forced}
+      homeOnSkip
+      lastLabel={t('¡A por ello!')}
+      // Last step: straight to Inmersión, where the day starts.
+      onLastStep={() => navigate(DASHBOARD_ROUTES.newIcaWords)}
+    />
+  )
+}
+
+/**
+ * When the challenge note opens for a student (Luis, 7 Oct), the same guide shows it once in
+ * Juegos ICA and explains how it works.
+ */
+export function ChallengeNoteUnlockGuide({ unlocked }: { unlocked: boolean }) {
+  const steps = useMemo<TourStep[]>(
+    () => [
+      {
+        id: 'challenge-note-unlocked',
+        route: DASHBOARD_ROUTES.gamesIca,
+        targets: ['[data-tour="game-challenge-note"]'],
+        title: t('¡Nota desafiante desbloqueada!'),
+        body: t('Elige una nota maestra terminada: escuchas trozos de tus frases en tu idioma y los dices de memoria en el idioma que aprendes. Es el mejor entrenamiento para hablar sin pensar.'),
+      },
+    ],
+    [],
+  )
+  return <GuideTour guideKey={CHALLENGE_NOTE_KEY} steps={steps} shouldStart={unlocked} lastLabel={t('Entendido')} />
+}
+
+function GuideTour({
+  guideKey,
+  steps,
+  shouldStart,
+  force = false,
+  homeOnSkip = false,
+  lastLabel,
+  onLastStep,
+}: {
+  /** Where it is remembered as seen (per account and device). */
+  guideKey: string
+  steps: TourStep[]
+  /** The guide may start now (it still starts only once unless `force`). */
+  shouldStart: boolean
+  force?: boolean
+  /** Skipping takes you back to Home (the welcome tour wanders through several screens). */
+  homeOnSkip?: boolean
+  lastLabel: string
+  onLastStep?: () => void
+}) {
+  const { user } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
   const [index, setIndex] = useState<number | null>(null)
   const [box, setBox] = useState<Box | null>(null)
   const [ready, setReady] = useState(false)
   const targetsRef = useRef<HTMLElement[] | null>(null)
   const nextRef = useRef<HTMLButtonElement | null>(null)
-  const forced = wantsTourFromUrl(location.search)
 
-  // Start: new account on Home, once; or ?tour=1.
   useEffect(() => {
-    if (!user?.id || index !== null) return
-    if (location.pathname !== DASHBOARD_ROUTES.home) return
-    if (!forced && (readSeen(user.id) || !isNewAccount((user as { created_at?: string }).created_at))) return
-    const timer = window.setTimeout(() => setIndex(0), START_DELAY_MS)
+    if (!user?.id || index !== null || !shouldStart) return
+    if (!force && readSeen(guideKey, user.id)) return
+    const timer = window.setTimeout(() => {
+      if (activeGuide && activeGuide !== guideKey) return
+      activeGuide = guideKey
+      setIndex(0)
+    }, START_DELAY_MS)
     return () => window.clearTimeout(timer)
-  }, [forced, index, location.pathname, user])
+  }, [force, guideKey, index, shouldStart, user?.id])
 
   const step = index !== null ? steps[index] : null
 
   const finish = useCallback(
     (goHome: boolean) => {
-      if (user?.id) writeSeen(user.id)
+      if (user?.id) writeSeen(guideKey, user.id)
+      if (activeGuide === guideKey) activeGuide = null
       setIndex(null)
       setBox(null)
       targetsRef.current = null
-      if (goHome && location.pathname !== DASHBOARD_ROUTES.home) navigate(DASHBOARD_ROUTES.home)
+      if (goHome && homeOnSkip && location.pathname !== DASHBOARD_ROUTES.home) navigate(DASHBOARD_ROUTES.home)
     },
-    [location.pathname, navigate, user?.id],
+    [guideKey, homeOnSkip, location.pathname, navigate, user?.id],
   )
 
   // Go to the step's screen, then wait for its elements (skip the step if they never show up).
@@ -289,10 +355,10 @@ export function WelcomeTour() {
       setIndex(index + 1)
       return
     }
-    // Last step: straight to Inmersión, where the day starts.
     finish(false)
-    navigate(DASHBOARD_ROUTES.newIcaWords)
+    onLastStep?.()
   }
+  const single = steps.length === 1
 
   // The card goes where there is more room: under the light, or above it.
   const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800
@@ -330,16 +396,18 @@ export function WelcomeTour() {
           }`}
         >
           <div key={step.id} className='ica-pop pointer-events-auto flex w-full max-w-md items-end gap-2'>
-            <TourGuide className='w-[72px] shrink-0 sm:w-[84px]' />
+            <TourGuide className='w-[78px] shrink-0 sm:w-[92px]' />
             <div className='relative min-w-0 flex-1 rounded-3xl border-2 border-border bg-card p-4 text-card-foreground shadow-xl'>
               {/* Speech bubble tail towards the guide */}
               <span
                 className='absolute bottom-5 -left-[9px] size-4 rotate-45 border-b-2 border-l-2 border-border bg-card'
                 aria-hidden='true'
               />
-              <p className='m-0 text-[11px] font-extrabold tracking-[0.08em] text-muted-foreground uppercase tabular-nums'>
-                {t('{n} de {total}', { n: index + 1, total: steps.length })}
-              </p>
+              {single ? null : (
+                <p className='m-0 text-[11px] font-extrabold tracking-[0.08em] text-muted-foreground uppercase tabular-nums'>
+                  {t('{n} de {total}', { n: index + 1, total: steps.length })}
+                </p>
+              )}
               <h2 id={titleId} className='m-0 mt-0.5 font-display text-lg leading-tight font-extrabold tracking-tight'>
                 {step.title}
               </h2>
@@ -357,7 +425,7 @@ export function WelcomeTour() {
                   </button>
                 )}
                 <Button ref={nextRef} type='button' onClick={goNext} className='min-w-28'>
-                  {index === 0 ? t('Empezar') : isLast ? t('¡A por ello!') : t('Siguiente')}
+                  {isLast ? lastLabel : index === 0 ? t('Empezar') : t('Siguiente')}
                 </Button>
               </div>
             </div>
@@ -370,40 +438,58 @@ export function WelcomeTour() {
 }
 
 /**
- * The guide: a round, smiling ICA character with the mortarboard of the logo. Drawn here so it
- * matches the app (no emojis, no outside images).
+ * The guide: Luis's ICA globe (round world with the mortarboard of the logo, white gloves and
+ * sneakers, black outline and white sticker edge), drawn here as SVG so it matches the app.
  */
 export function TourGuide({ className }: { className?: string }) {
+  const clipId = `ica-guide-${useId().replace(/:/g, '')}`
   return (
-    <svg viewBox='0 0 120 132' className={`ica-bob ${className ?? ''}`} aria-hidden='true'>
+    <svg viewBox='0 0 150 178' className={`ica-bob ${className ?? ''}`} aria-hidden='true'>
       <defs>
-        <linearGradient id='ica-guide-body' x1='0' y1='0' x2='0' y2='1'>
-          <stop offset='0' stopColor='#38c6f4' />
-          <stop offset='1' stopColor='#0b84b5' />
-        </linearGradient>
+        <clipPath id={clipId}>
+          <circle cx='72' cy='94' r='46' />
+        </clipPath>
       </defs>
-      {/* Shadow */}
-      <ellipse cx='60' cy='126' rx='34' ry='5' fill='rgba(0,0,0,0.22)' />
-      {/* Body */}
-      <rect x='16' y='34' width='88' height='88' rx='40' fill='url(#ica-guide-body)' stroke='#ffffff' strokeWidth='5' />
-      {/* Cheeks */}
-      <ellipse cx='34' cy='88' rx='8' ry='5' fill='#ff8fb1' opacity='0.75' />
-      <ellipse cx='86' cy='88' rx='8' ry='5' fill='#ff8fb1' opacity='0.75' />
-      {/* Eyes */}
-      <ellipse cx='44' cy='74' rx='8' ry='10' fill='#ffffff' />
-      <ellipse cx='76' cy='74' rx='8' ry='10' fill='#ffffff' />
-      <circle cx='46' cy='76' r='5' fill='#0d2a3d' />
-      <circle cx='78' cy='76' r='5' fill='#0d2a3d' />
-      <circle cx='48' cy='73' r='1.8' fill='#ffffff' />
-      <circle cx='80' cy='73' r='1.8' fill='#ffffff' />
-      {/* Smile */}
-      <path d='M48 94 Q60 106 72 94' fill='none' stroke='#0d2a3d' strokeWidth='4.5' strokeLinecap='round' />
-      {/* Mortarboard */}
-      <path d='M30 34 Q60 46 90 34 L90 26 Q60 36 30 26 Z' fill='#0a5f86' />
-      <path d='M60 4 L108 22 L60 40 L12 22 Z' fill='#0b6f9c' stroke='#ffffff' strokeWidth='3' strokeLinejoin='round' />
-      <circle cx='60' cy='22' r='3.5' fill='#ffd54a' />
-      <path d='M60 22 Q86 26 94 30 L94 50' fill='none' stroke='#ffd54a' strokeWidth='3.5' strokeLinecap='round' />
-      <rect x='90' y='48' width='8' height='12' rx='3' fill='#ffd54a' />
+      <g strokeLinejoin="round" strokeLinecap="round">
+      <g stroke="#fff" strokeWidth="14" fill="#fff">
+      <path d="M56 134 L50 158 M88 134 L96 158" fill="none"/>
+      <ellipse cx="45" cy="162" rx="14" ry="7.5"/>
+      <ellipse cx="102" cy="162" rx="14" ry="7.5"/>
+      <path d="M115 92 Q128 84 132 70" fill="none"/>
+      <circle cx="134" cy="62" r="11"/>
+      <circle cx="72" cy="94" r="46"/>
+      <path d="M30 34 L82 14 L132 30 L80 50 Z"/>
+      <path d="M36 38 L36 66" fill="none"/>
+      </g>
+      <path d="M56 134 L50 158 M88 134 L96 158" stroke="#111" strokeWidth="7" fill="none"/>
+      <path d="M31 162 Q33 153 45 154 Q58 155 59 162 Q56 169 45 169 Q32 169 31 162 Z" fill="#fff" stroke="#111" strokeWidth="4"/>
+      <path d="M88 162 Q90 154 102 154 Q115 155 116 162 Q113 169 102 169 Q89 169 88 162 Z" fill="#fff" stroke="#111" strokeWidth="4"/>
+      <path d="M115 92 Q128 84 131 72" stroke="#111" strokeWidth="7" fill="none"/>
+      <path d="M126 66 Q122 56 128 53 Q130 48 135 51 Q141 49 142 55 Q146 58 143 64 Q143 72 135 73 Q128 74 126 66 Z" fill="#fff" stroke="#111" strokeWidth="3.5"/>
+      <path d="M124 74 Q133 78 140 73" stroke="#111" strokeWidth="3.5" fill="#fff"/>
+      <circle cx="72" cy="94" r="46" fill="#35bfd0"/>
+      <g clipPath={`url(#${clipId})`} fill="#fff">
+      <path d="M28 66 Q40 58 50 64 Q56 72 50 82 Q44 90 52 100 Q58 110 52 122 Q46 134 34 128 Q24 112 26 94 Q24 78 28 66 Z"/>
+      <path d="M96 116 Q106 110 116 116 Q118 128 104 136 Q94 130 96 116 Z"/>
+      </g>
+      <circle cx="72" cy="94" r="46" fill="none" stroke="#111" strokeWidth="5"/>
+      <path d="M62 64 Q68 58 74 62" stroke="#111" strokeWidth="3.5" fill="none"/>
+      <path d="M82 62 Q89 57 95 62" stroke="#111" strokeWidth="3.5" fill="none"/>
+      <ellipse cx="69" cy="80" rx="9" ry="13" fill="#fff" stroke="#111" strokeWidth="3.5"/>
+      <ellipse cx="90" cy="80" rx="9" ry="13" fill="#fff" stroke="#111" strokeWidth="3.5"/>
+      <ellipse cx="72" cy="83" rx="4" ry="6" fill="#111"/>
+      <ellipse cx="93" cy="83" rx="4" ry="6" fill="#111"/>
+      <circle cx="73.5" cy="80" r="1.5" fill="#fff"/>
+      <circle cx="94.5" cy="80" r="1.5" fill="#fff"/>
+      <path d="M82 94 Q94 91 96 97 Q95 103 85 102 Q78 101 82 94 Z" fill="#fff" stroke="#111" strokeWidth="3"/>
+      <path d="M52 102 Q66 132 98 106 Q86 112 52 102 Z" fill="#111" stroke="#111" strokeWidth="3"/>
+      <path d="M62 113 Q72 122 86 114 Q76 109 62 113 Z" fill="#35bfd0"/>
+      <path d="M54 44 Q80 54 104 42 L104 52 Q80 64 54 54 Z" fill="#35bfd0" stroke="#111" strokeWidth="4"/>
+      <path d="M30 34 L82 14 L132 30 L80 50 Z" fill="#35bfd0" stroke="#111" strokeWidth="4.5"/>
+      <circle cx="81" cy="32" r="3" fill="#111"/>
+      <path d="M81 32 Q52 30 36 38 L36 56" stroke="#111" strokeWidth="3" fill="none"/>
+      <path d="M32 56 L40 56 L42 70 L30 70 Z" fill="#35bfd0" stroke="#111" strokeWidth="3"/>
+      </g>
     </svg>
   )
 }
