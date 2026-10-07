@@ -215,17 +215,18 @@ const EMBLEM = {
     </g>`
   },
   // Coaching (Luis, 6 Oct): the mortarboard of the ICA logo, in the brand blue. Tassel redrawn
-  // (Luis, 7 Oct): a curved cord over the edge, a knot and a full fringe.
+  // (Luis, 7 Oct): a short curved cord over the front edge, close to the button, a knot and a
+  // full fringe.
   birrete: () => `
     <g transform="translate(80 84) scale(0.52)">
       <path d="M-34 6 L-34 28 Q0 44 34 28 L34 6 L0 18 Z" fill="url(#e-birrete)" stroke="#0b1028" stroke-width="3" stroke-linejoin="round"/>
       <path d="M0 -26 L58 -4 L0 18 L-58 -4 Z" fill="url(#e-birrete)" stroke="#0b1028" stroke-width="4" stroke-linejoin="round"/>
       <path d="M0 -26 L58 -4 L0 18 L-58 -4 Z" fill="none" stroke="#ffffff" stroke-width="2" stroke-linejoin="round" opacity="0.35" transform="translate(0 -3) scale(0.9)"/>
-      <path d="M0 -4 C 18 -9 38 -7 49 -1 C 53 1 53 6 52 12 L 51.5 19" fill="none" stroke="#B87F00" stroke-width="6.5" stroke-linecap="round"/>
-      <path d="M0 -4 C 18 -9 38 -7 49 -1 C 53 1 53 6 52 12 L 51.5 19" fill="none" stroke="#FFD34D" stroke-width="3.6" stroke-linecap="round"/>
-      <path d="M45.5 26 Q 44 36 41.5 44 Q 51.5 47.5 61.5 44 Q 59 36 57.5 26 Z" fill="url(#e-borla)" stroke="#B87F00" stroke-width="2.2" stroke-linejoin="round"/>
-      <g stroke="#C98C00" stroke-width="1.6" stroke-linecap="round" opacity="0.85"><path d="M48.5 28 L46 43"/><path d="M51.5 28 L51.5 45"/><path d="M54.5 28 L57 43"/></g>
-      <rect x="45" y="21.5" width="13" height="6.5" rx="3" fill="#FFD34D" stroke="#B87F00" stroke-width="2.2"/>
+      <path d="M0 -4 C 14.0 -6 30.0 -3.2 40.0 2.8 C 42.5 5.8 42.0 12.8 41.5 16.8" fill="none" stroke="#B87F00" stroke-width="6.5" stroke-linecap="round"/>
+      <path d="M0 -4 C 14.0 -6 30.0 -3.2 40.0 2.8 C 42.5 5.8 42.0 12.8 41.5 16.8" fill="none" stroke="#FFD34D" stroke-width="3.6" stroke-linecap="round"/>
+      <path d="M35.5 23.8 Q 34 33.8 31.5 41.8 Q 41.5 45.3 51.5 41.8 Q 49 33.8 47.5 23.8 Z" fill="url(#e-borla)" stroke="#B87F00" stroke-width="2.2" stroke-linejoin="round"/>
+      <g stroke="#C98C00" stroke-width="1.6" stroke-linecap="round" opacity="0.85"><path d="M38.5 25.8 L36 40.8"/><path d="M41.5 25.8 L41.5 42.8"/><path d="M44.5 25.8 L47 40.8"/></g>
+      <rect x="35" y="18.8" width="13" height="6.5" rx="3" fill="#FFD34D" stroke="#B87F00" stroke-width="2.2"/>
       <circle cx="0" cy="-4" r="6" fill="#FFD34D" stroke="#B87F00" stroke-width="2.4"/>
       <circle cx="-1.5" cy="-5.5" r="1.8" fill="#fff" opacity="0.7"/>
     </g>`,
