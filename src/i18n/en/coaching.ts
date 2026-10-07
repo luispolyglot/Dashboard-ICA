@@ -458,5 +458,7 @@ const en: Record<string, string> = {
   "tu audio": "your audio",
   "tu audio de feedback": "your feedback audio",
   "tu grabación": "your recording",
+  "Queda {n} semana": "{n} week left",
+  "Quedan {n} semanas": "{n} weeks left",
 }
 export default en

@@ -9,6 +9,9 @@ import { TASKS_PER_WEEK, type WeekRing } from '../../game/coachingRings'
 
 const RADIUS = 26
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS
+/** Space between the 6 pieces of a ring, in degrees. */
+const GAP_DEGREES = 9
+const SEGMENT = (CIRCUMFERENCE * (360 / TASKS_PER_WEEK - GAP_DEGREES)) / 360
 
 function RingGlyph({
   ring,
@@ -21,7 +24,6 @@ function RingGlyph({
   showNumber: boolean
   pop?: boolean
 }) {
-  const progress = ring.answered / TASKS_PER_WEEK
   const locked = ring.state === 'locked'
   return (
     <span className={`relative inline-flex shrink-0 ${pop ? 'ica-pop' : ''}`} style={{ width: size, height: size }}>
@@ -33,28 +35,25 @@ function RingGlyph({
           </>
         ) : (
           <>
-            <circle
-              cx='32'
-              cy='32'
-              r={RADIUS}
-              fill={locked ? 'transparent' : 'rgba(255,255,255,0.06)'}
-              stroke={locked ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.2)'}
-              strokeWidth='6'
-            />
-            {progress > 0 ? (
-              <circle
-                cx='32'
-                cy='32'
-                r={RADIUS}
-                fill='none'
-                stroke='var(--ica-gold)'
-                strokeWidth='6'
-                strokeLinecap='round'
-                strokeDasharray={`${progress * CIRCUMFERENCE} ${CIRCUMFERENCE}`}
-                transform='rotate(-90 32 32)'
-                opacity={ring.state === 'closed' ? 0.75 : 1}
-              />
-            ) : null}
+            <circle cx='32' cy='32' r={RADIUS - 3} fill={locked ? 'transparent' : 'rgba(255,255,255,0.06)'} />
+            {/* The ring is split in its 6 tasks (Luis, 7 Oct): one piece per task, gold when done. */}
+            {Array.from({ length: TASKS_PER_WEEK }, (_, index) => {
+              const done = index < ring.answered
+              return (
+                <circle
+                  key={index}
+                  cx='32'
+                  cy='32'
+                  r={RADIUS}
+                  fill='none'
+                  stroke={done ? 'var(--ica-gold)' : locked ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.24)'}
+                  strokeWidth='6'
+                  strokeDasharray={`${SEGMENT} ${CIRCUMFERENCE}`}
+                  transform={`rotate(${-90 + index * (360 / TASKS_PER_WEEK) + GAP_DEGREES / 2} 32 32)`}
+                  opacity={done && ring.state === 'closed' ? 0.75 : 1}
+                />
+              )
+            })}
           </>
         )}
       </svg>

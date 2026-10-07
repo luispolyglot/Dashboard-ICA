@@ -156,18 +156,23 @@ export function SpinningMedal({
     }
 
     // Leyenda (Luis, 7 Oct): while the medal spins one way, the picture in the middle spins the
-    // other way (two turns in the same time) and pops a little. SVG groups cannot use real 3D
-    // rotations in every browser, so the turn is drawn in 2D: the width follows cos (the flip) and
-    // a small tilt follows sin, which shows the direction. The medal's own turn is undone first,
-    // so what you see is the picture turning against the medal.
+    // other way: fast at first, then slower and slower, and it stops just as the last star lands
+    // on the ring. SVG groups cannot use real 3D rotations in every browser, so the turn is drawn
+    // in 2D: the width follows cos (the flip) and a small tilt follows sin (the direction). The
+    // medal's own turn is undone first, so what you see is the picture turning against the medal.
     if (isLegend(tier)) {
+      const lastStarLands = stars > 0 ? duration + 120 + (stars - 1) * 400 + LEGEND_STAR_FALL_MS : duration
       const emblemFrames: Keyframe[] = []
-      const turns = 2
-      for (let index = 0; index <= SAMPLES; index += 1) {
-        const time = index / SAMPLES
-        const eased = spinEase(time)
-        const own = ((-360 * turns - 360) * eased * Math.PI) / 180
-        const pop = 1 + 0.14 * Math.sin(Math.PI * time)
+      const turns = 4
+      const steps = SAMPLES * 2
+      for (let index = 0; index <= steps; index += 1) {
+        const time = index / steps
+        const elapsed = time * lastStarLands
+        const medalAngle = elapsed < duration ? 360 * spinEase(elapsed / duration) : 360
+        // Ease-out: quick start, long slow ending.
+        const settle = 1 - Math.pow(1 - time, 3)
+        const own = ((-360 * turns * settle - medalAngle) * Math.PI) / 180
+        const pop = 1 + 0.14 * Math.sin(Math.PI * Math.min(1, time * 1.6))
         const tilt = -14 * Math.sin(own)
         emblemFrames.push({
           transform: `skewY(${tilt.toFixed(2)}deg) scale(${(Math.cos(own) * pop).toFixed(4)}, ${pop.toFixed(4)})`,
@@ -177,7 +182,7 @@ export function SpinningMedal({
         emblem.style.transformBox = 'fill-box'
         emblem.style.transformOrigin = 'center'
         emblem.getAnimations().forEach((animation) => animation.cancel())
-        emblem.animate(emblemFrames, { duration, easing: 'linear' })
+        emblem.animate(emblemFrames, { duration: lastStarLands, easing: 'linear' })
       }
     }
 
