@@ -348,15 +348,23 @@ export const gameSfx = {
     })
   },
   /**
-   * Confeti de una insignia nueva: un «pof» y crujidos, por detrás del sonido de la insignia.
-   * Luis (7 Oct): a bit louder, so it can be heard under the badge sound.
+   * Confeti de una insignia nueva, por detrás del sonido de la insignia (Luis, 7 Oct: que se oiga).
+   * A party-popper «pop» with a low thump, then lots of small paper crackles falling for about
+   * a second and a half, fading out.
    */
   confetti() {
     const ctx = getAudioContext()
     if (!ctx) return
-    noiseBurst(ctx, 0, 0.1, 1400, 'bandpass', 0.16)
-    for (let index = 0; index < 18; index += 1) {
-      noiseBurst(ctx, 0.05 + Math.random() * 0.7, 0.02, 5000 + Math.random() * 3000, 'highpass', 0.035 + Math.random() * 0.035)
+    noiseBurst(ctx, 0, 0.07, 1800, 'bandpass', 0.7)
+    noiseBurst(ctx, 0.005, 0.05, 4200, 'highpass', 0.35)
+    thump(ctx, 0, 140, 70, 0.09, 0.45)
+    // A soft shimmer of paper under the crackles, fading out. Mid-high frequencies, so phone
+    // speakers (which barely play the very high ones) still sound it.
+    noiseBurst(ctx, 0.03, 1.3, 3500, 'bandpass', 0.22)
+    for (let index = 0; index < 80; index += 1) {
+      const at = 0.04 + Math.pow(Math.random(), 1.4) * 1.5
+      const fade = Math.max(0.25, 1 - at / 1.6)
+      noiseBurst(ctx, at, 0.012 + Math.random() * 0.02, 1800 + Math.random() * 2700, 'bandpass', (0.3 + Math.random() * 0.4) * fade)
     }
   },
   /** Paso bloqueado (tocar Creación o Activación sin haber hecho lo anterior): «toc-toc» y vibra. */

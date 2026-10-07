@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -395,12 +395,12 @@ function GuideTour({
               : 'inset-y-0 items-center'
           }`}
         >
-          <div key={step.id} className='ica-pop pointer-events-auto flex w-full max-w-md items-end gap-2'>
-            <TourGuide className='w-[78px] shrink-0 sm:w-[92px]' />
+          <div key={step.id} className='ica-pop pointer-events-auto flex w-full max-w-md items-center gap-1.5'>
+            <TourGuide className='w-[88px] shrink-0 sm:w-[104px]' />
             <div className='relative min-w-0 flex-1 rounded-3xl border-2 border-border bg-card p-4 text-card-foreground shadow-xl'>
-              {/* Speech bubble tail towards the guide */}
+              {/* Speech bubble tail, coming out of the guide's mouth */}
               <span
-                className='absolute bottom-5 -left-[9px] size-4 rotate-45 border-b-2 border-l-2 border-border bg-card'
+                className='absolute top-1/2 -left-[9px] mt-1 size-4 rotate-45 border-b-2 border-l-2 border-border bg-card'
                 aria-hidden='true'
               />
               {single ? null : (
@@ -438,58 +438,10 @@ function GuideTour({
 }
 
 /**
- * The guide: Luis's ICA globe (round world with the mortarboard of the logo, white gloves and
- * sneakers, black outline and white sticker edge), drawn here as SVG so it matches the app.
+ * The guide: Luis's ICA globe with the mortarboard (his own picture, cut out of its background,
+ * in public/guia-ica.png). Luis, 7 Oct: exactly this one, no legs, and the speech bubble comes
+ * out of it.
  */
 export function TourGuide({ className }: { className?: string }) {
-  const clipId = `ica-guide-${useId().replace(/:/g, '')}`
-  return (
-    <svg viewBox='0 0 150 178' className={`ica-bob ${className ?? ''}`} aria-hidden='true'>
-      <defs>
-        <clipPath id={clipId}>
-          <circle cx='72' cy='94' r='46' />
-        </clipPath>
-      </defs>
-      <g strokeLinejoin="round" strokeLinecap="round">
-      <g stroke="#fff" strokeWidth="14" fill="#fff">
-      <path d="M56 134 L50 158 M88 134 L96 158" fill="none"/>
-      <ellipse cx="45" cy="162" rx="14" ry="7.5"/>
-      <ellipse cx="102" cy="162" rx="14" ry="7.5"/>
-      <path d="M115 92 Q128 84 132 70" fill="none"/>
-      <circle cx="134" cy="62" r="11"/>
-      <circle cx="72" cy="94" r="46"/>
-      <path d="M30 34 L82 14 L132 30 L80 50 Z"/>
-      <path d="M36 38 L36 66" fill="none"/>
-      </g>
-      <path d="M56 134 L50 158 M88 134 L96 158" stroke="#111" strokeWidth="7" fill="none"/>
-      <path d="M31 162 Q33 153 45 154 Q58 155 59 162 Q56 169 45 169 Q32 169 31 162 Z" fill="#fff" stroke="#111" strokeWidth="4"/>
-      <path d="M88 162 Q90 154 102 154 Q115 155 116 162 Q113 169 102 169 Q89 169 88 162 Z" fill="#fff" stroke="#111" strokeWidth="4"/>
-      <path d="M115 92 Q128 84 131 72" stroke="#111" strokeWidth="7" fill="none"/>
-      <path d="M126 66 Q122 56 128 53 Q130 48 135 51 Q141 49 142 55 Q146 58 143 64 Q143 72 135 73 Q128 74 126 66 Z" fill="#fff" stroke="#111" strokeWidth="3.5"/>
-      <path d="M124 74 Q133 78 140 73" stroke="#111" strokeWidth="3.5" fill="#fff"/>
-      <circle cx="72" cy="94" r="46" fill="#35bfd0"/>
-      <g clipPath={`url(#${clipId})`} fill="#fff">
-      <path d="M28 66 Q40 58 50 64 Q56 72 50 82 Q44 90 52 100 Q58 110 52 122 Q46 134 34 128 Q24 112 26 94 Q24 78 28 66 Z"/>
-      <path d="M96 116 Q106 110 116 116 Q118 128 104 136 Q94 130 96 116 Z"/>
-      </g>
-      <circle cx="72" cy="94" r="46" fill="none" stroke="#111" strokeWidth="5"/>
-      <path d="M62 64 Q68 58 74 62" stroke="#111" strokeWidth="3.5" fill="none"/>
-      <path d="M82 62 Q89 57 95 62" stroke="#111" strokeWidth="3.5" fill="none"/>
-      <ellipse cx="69" cy="80" rx="9" ry="13" fill="#fff" stroke="#111" strokeWidth="3.5"/>
-      <ellipse cx="90" cy="80" rx="9" ry="13" fill="#fff" stroke="#111" strokeWidth="3.5"/>
-      <ellipse cx="72" cy="83" rx="4" ry="6" fill="#111"/>
-      <ellipse cx="93" cy="83" rx="4" ry="6" fill="#111"/>
-      <circle cx="73.5" cy="80" r="1.5" fill="#fff"/>
-      <circle cx="94.5" cy="80" r="1.5" fill="#fff"/>
-      <path d="M82 94 Q94 91 96 97 Q95 103 85 102 Q78 101 82 94 Z" fill="#fff" stroke="#111" strokeWidth="3"/>
-      <path d="M52 102 Q66 132 98 106 Q86 112 52 102 Z" fill="#111" stroke="#111" strokeWidth="3"/>
-      <path d="M62 113 Q72 122 86 114 Q76 109 62 113 Z" fill="#35bfd0"/>
-      <path d="M54 44 Q80 54 104 42 L104 52 Q80 64 54 54 Z" fill="#35bfd0" stroke="#111" strokeWidth="4"/>
-      <path d="M30 34 L82 14 L132 30 L80 50 Z" fill="#35bfd0" stroke="#111" strokeWidth="4.5"/>
-      <circle cx="81" cy="32" r="3" fill="#111"/>
-      <path d="M81 32 Q52 30 36 38 L36 56" stroke="#111" strokeWidth="3" fill="none"/>
-      <path d="M32 56 L40 56 L42 70 L30 70 Z" fill="#35bfd0" stroke="#111" strokeWidth="3"/>
-      </g>
-    </svg>
-  )
+  return <img src='/guia-ica.png' alt='' aria-hidden='true' draggable={false} className={`ica-bob select-none ${className ?? ''}`} />
 }
