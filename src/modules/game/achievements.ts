@@ -91,9 +91,28 @@ export const ACHIEVEMENT_CATALOG: AchievementCategoryDef[] = [
     description: 'Desafíos ICA ganados.',
     levels: levelsOf([10, 20, 50, 100, 200, 365, 600, 1000], (value) => ({ ribbon: `${value}`, caption: `${value} ganados` })),
   },
+  {
+    key: 'coaching',
+    title: 'Coaching ICA',
+    description: 'Anillos de tu coaching: cada semana con sus 6 tareas hechas cierra un anillo.',
+    // Luis (6 Oct): up to Leyenda I, rings of your best coaching; then coachings with all 10.
+    levels: [
+      { tier: 'bronce', value: 4, ribbon: '4', caption: '4 anillos' },
+      { tier: 'plata', value: 5, ribbon: '5', caption: '5 anillos' },
+      { tier: 'oro', value: 6, ribbon: '6', caption: '6 anillos' },
+      { tier: 'rubi', value: 8, ribbon: '8', caption: '8 anillos' },
+      { tier: 'diamante', value: 9, ribbon: '9', caption: '9 anillos' },
+      { tier: 'leyenda1', value: 10, ribbon: '10', caption: 'Los 10 anillos' },
+      { tier: 'leyenda2', value: 2, ribbon: '10 ×2', caption: '2 coachings completos' },
+      { tier: 'leyenda3', value: 3, ribbon: '10 ×3', caption: '3 coachings completos' },
+    ],
+  },
 ]
 
-/** Cuántas insignias hay en total (6 categorías × 8 niveles). */
+/** Coaching levels from this index on count coachings with all 10 rings (Leyenda II and III). */
+const COACHING_FULL_FROM = 6
+
+/** Cuántas insignias hay en total (7 categorías × 8 niveles). */
 export const TOTAL_ACHIEVEMENTS = ACHIEVEMENT_CATALOG.reduce((sum, def) => sum + def.levels.length, 0)
 
 /** Lo que llevas y lo que pide un nivel, para la barra de avance. */
@@ -139,6 +158,19 @@ type RemoteStats = {
   /** Meses cerrados con un 100 % de eficacia (no hace falta que sean seguidos). */
   perfectMonths?: number | null
   rankings: { first: number; second: number; third: number } | null
+  /** Anillos del mejor coaching y coachings con los 10 anillos. */
+  coaching?: CoachingRingStats | null
+}
+
+export type CoachingRingStats = { bestRings: number; fullCoachings: number }
+
+/** Coaching rings of any student (the badge is public, like the others). */
+export async function fetchCoachingRingStats(userId?: string | null): Promise<CoachingRingStats | null> {
+  if (!supabase) return null
+  const { data, error } = await supabase.rpc('get_coaching_ring_stats', userId ? { p_user_id: userId } : {})
+  if (error || !data || typeof data !== 'object') return null
+  const row = data as Record<string, unknown>
+  return { bestRings: Number(row.bestRings) || 0, fullCoachings: Number(row.fullCoachings) || 0 }
 }
 
 function monthStarts(fromIso: string, count: number): string[] {
@@ -153,7 +185,7 @@ function monthStarts(fromIso: string, count: number): string[] {
 }
 
 async function fetchRemoteStats(): Promise<RemoteStats> {
-  const empty: RemoteStats = { vocab: null, wins: null, bestAccuracy: null, perfectMonths: null, rankings: null }
+  const empty: RemoteStats = { vocab: null, wins: null, bestAccuracy: null, perfectMonths: null, rankings: null, coaching: null }
   if (!supabase) return empty
   const client = supabase
   const { data: session } = await client.auth.getSession()
@@ -172,8 +204,13 @@ async function fetchRemoteStats(): Promise<RemoteStats> {
     .eq('winner_user_id', userId)
     .then(({ count, error }) => (error ? null : count ?? 0))
 
-  const [vocab, wins, monthly] = await Promise.all([vocabPromise, winsPromise, fetchRankingHistoryFor(userId)])
-  return { vocab, wins, bestAccuracy: monthly.bestEfficacy, perfectMonths: monthly.perfectMonths, rankings: monthly.rankings }
+  const [vocab, wins, monthly, coaching] = await Promise.all([
+    vocabPromise,
+    winsPromise,
+    fetchRankingHistoryFor(userId),
+    fetchCoachingRingStats(userId).catch(() => null),
+  ])
+  return { vocab, wins, bestAccuracy: monthly.bestEfficacy, perfectMonths: monthly.perfectMonths, rankings: monthly.rankings, coaching }
 }
 
 /**
@@ -218,6 +255,8 @@ export type AchievementValues = {
   vocab: number | null
   desafios: number | null
   rankings: { first: number; second: number; third: number } | null
+  /** Coaching: anillos del mejor coaching y coachings completos (null = no se sabe). */
+  coaching?: CoachingRingStats | null
 }
 
 /** Cuántos niveles tiene conseguidos en cada categoría (0-8), con los mismos umbrales que tus insignias. */
@@ -250,8 +289,15 @@ function goalsFor(
   current: number | null,
   perfectMonths: number | null,
   rankings: RemoteStats['rankings'],
+  coaching: CoachingRingStats | null = null,
 ): Array<AchievementGoal | null> {
   return def.levels.map((level, index) => {
+    if (def.key === 'coaching') {
+      if (!coaching) return null
+      return index >= COACHING_FULL_FROM
+        ? { have: coaching.fullCoachings, need: level.value }
+        : { have: coaching.bestRings, need: level.value }
+    }
     if (def.key === 'ranking') {
       if (!rankings) return null
       // Bronce: acabar un mes en el top 3; plata: en el top 2; desde oro: veces 1.º.
@@ -271,8 +317,9 @@ function progressFor(
   current: number | null,
   perfectMonths: number | null,
   rankings: RemoteStats['rankings'],
+  coaching: CoachingRingStats | null = null,
 ): AchievementProgress {
-  const goals = goalsFor(def, current, perfectMonths, rankings)
+  const goals = goalsFor(def, current, perfectMonths, rankings, coaching)
   // Los niveles van en orden: cuenta los conseguidos seguidos desde el bronce.
   let earned = 0
   while (earned < goals.length && goals[earned] && goals[earned]!.have >= goals[earned]!.need) earned += 1
@@ -301,6 +348,11 @@ export function goalText(def: AchievementCategoryDef, index: number, goal: Achie
   }
   if (def.key === 'vocab') return t('{have} / {need} palabras', { have, need: goal.need })
   if (def.key === 'desafios') return t('{have} / {need} ganados', { have, need: goal.need })
+  if (def.key === 'coaching') {
+    return index >= COACHING_FULL_FROM
+      ? t('{have} / {need} coachings completos', { have, need: goal.need })
+      : t('{have} / {need} anillos', { have, need: goal.need })
+  }
   return t('{have} / {need} días seguidos', { have, need: goal.need })
 }
 
@@ -321,6 +373,11 @@ export function unlockHint(def: AchievementCategoryDef, index: number, goal: Ach
       : t('Completa un mes con un {n} % de eficacia para desbloquear esta insignia.', { n })
   }
   if (def.key === 'vocab') return t('Llega a {n} palabras en tu Baúl ICA para desbloquear esta insignia.', { n })
+  if (def.key === 'coaching') {
+    return index >= COACHING_FULL_FROM
+      ? t('Completa los 10 anillos en {n} coachings para desbloquear esta insignia.', { n })
+      : t('Es del Coaching ICA: completa {n} anillos en un mismo coaching (las 6 tareas de {n} semanas) para desbloquear esta insignia.', { n })
+  }
   return t('Gana {n} desafíos ICA para desbloquear esta insignia.', { n })
 }
 
@@ -332,8 +389,9 @@ export function computeAchievements(values: AchievementValues): {
   const byCategory = {} as Record<MedalCategory, AchievementProgress>
   let totalEarned = 0
   for (const def of ACHIEVEMENT_CATALOG) {
-    const value = def.key === 'ranking' ? null : values[def.key]
-    const progress = progressFor(def, value, values.perfectMonths ?? null, values.rankings)
+    const value =
+      def.key === 'ranking' ? null : def.key === 'coaching' ? values.coaching?.bestRings ?? null : values[def.key]
+    const progress = progressFor(def, value, values.perfectMonths ?? null, values.rankings, values.coaching ?? null)
     byCategory[def.key] = progress
     totalEarned += progress.earned
   }
@@ -357,7 +415,7 @@ export function useAchievements(): { byCategory: Record<MedalCategory, Achieveme
         if (cacheKey) storeQuick(cacheKey, stats)
       })
       .catch(() => {
-        if (active) setRemote((previous) => previous ?? { vocab: null, wins: null, bestAccuracy: null, perfectMonths: null, rankings: null })
+        if (active) setRemote((previous) => previous ?? { vocab: null, wins: null, bestAccuracy: null, perfectMonths: null, rankings: null, coaching: null })
       })
     return () => {
       active = false
@@ -373,6 +431,7 @@ export function useAchievements(): { byCategory: Record<MedalCategory, Achieveme
       vocab: remote?.vocab ?? null,
       desafios: remote?.wins ?? null,
       rankings: remote?.rankings ?? null,
+      coaching: remote?.coaching ?? null,
     })
     return { byCategory, totalEarned, loading: remote === null }
   }, [completedDays, creationDays, remote, savedCreationDays])

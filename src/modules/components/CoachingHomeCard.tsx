@@ -10,8 +10,11 @@ import {
   DumbbellIcon,
   FileTextIcon,
   LoaderCircleIcon,
+  MicIcon,
 } from 'lucide-react'
 import { TargetGlyph } from '../game/icons'
+import { buildWeekRings, isTaskAnswered } from '../game/coachingRings'
+import { CoachingWeekRingsMini } from './coaching/CoachingWeekRings'
 import { useAuth } from '@/auth/AuthContext'
 import { cn } from '@/lib/utils'
 import {
@@ -161,12 +164,21 @@ function getNextStep(data: HomeCoachingData): NextStep {
     }
   }
 
-  const tasks = classes.flatMap((row) => [
-    row.studentGuidelineResponse1,
-    row.studentGuidelineResponse2,
-    row.studentGuidelineResponse3,
-  ])
-  const pendingTasks = tasks.filter((value) => !value?.trim()).length
+  // Feedback to an audio task from the last 2 days (Luis, 6 Oct).
+  const recentFeedback = classes
+    .flatMap((row) => row.audioAnswers || [])
+    .some((answer) => answer.feedbackAt && now - new Date(answer.feedbackAt).getTime() < 48 * 3600 * 1000)
+  if (recentFeedback) {
+    return {
+      icon: <MicIcon className='size-3.5' strokeWidth={2.4} />,
+      text: t('Tu coach te ha respondido a tu audio'),
+      cta: { label: t('Escuchar'), to: getCoachingPersonalizedSessionRoute(membership.id) },
+      urgent: true,
+    }
+  }
+
+  const tasks = classes.flatMap((row) => ([1, 2, 3] as const).map((task) => isTaskAnswered(row, task)))
+  const pendingTasks = tasks.filter((answered) => !answered).length
   if (tasks.length > 0 && pendingTasks > 0) {
     return {
       icon: <ClipboardListIcon className='size-3.5' strokeWidth={2.4} />,
@@ -304,6 +316,12 @@ export function CoachingHomeCard({
   const closedWeeks = new Set(
     (board?.periodActivations || []).filter((row) => row.endedAt).map((row) => row.periodNumber),
   )
+  const rings = buildWeekRings({
+    classes: board?.classes || [],
+    durationPeriods: totalWeeks,
+    activatedPeriods: new Set((board?.periodActivations || []).map((row) => row.periodNumber)),
+    closedPeriods: closedWeeks,
+  })
   const activeFocuses = (board?.focuses || [])
     .filter((focus) => focus.periodNumber === currentWeek && !focus.archivedAt)
     .filter((focus) => !PHASE_KEYS.every((key) => focus[key]))
@@ -420,24 +438,9 @@ export function CoachingHomeCard({
         </p>
       </div>
 
-      {/* Recorrido de semanas */}
-      <div
-        className='relative mt-4 grid gap-1'
-        style={{ gridTemplateColumns: `repeat(${totalWeeks}, minmax(0, 1fr))` }}
-        aria-label={t('Semana {n} de {total}', { n: currentWeek, total: totalWeeks })}
-      >
-        {Array.from({ length: totalWeeks }, (_, idx) => {
-          const week = idx + 1
-          const done = closedWeeks.has(week) || week < currentWeek
-          const current = week === currentWeek
-          return (
-            <span
-              key={week}
-              className='h-2 rounded-full'
-              style={{ background: current ? '#ffffff' : done ? 'var(--ica-gold)' : 'rgba(255,255,255,0.15)' }}
-            />
-          )
-        })}
+      {/* Recorrido: un anillo por semana, se llena con las 6 tareas (Luis, 6 oct). */}
+      <div className='relative mt-4'>
+        <CoachingWeekRingsMini rings={rings} currentPeriod={currentWeek} />
       </div>
 
       {/* The week's focuses side by side in one row, so the card keeps its height with 1, 2 or 3

@@ -266,8 +266,23 @@ export type CoachingV2ClassSlot = {
   studentGuidelineResponse1?: string | null
   studentGuidelineResponse2?: string | null
   studentGuidelineResponse3?: string | null
+  /** Which of the 3 tasks are answered with an audio (Luis, 6 Oct). */
+  taskAudio?: [boolean, boolean, boolean]
+  /** Audio answers of this class with the coach's feedback (signed links, valid 1 hour). */
+  audioAnswers?: CoachingTaskAudioAnswer[]
   createdAt: string
   updatedAt: string
+}
+
+export type CoachingTaskAudioAnswer = {
+  taskIndex: 1 | 2 | 3
+  studentAudioUrl: string | null
+  studentAudioSeconds: number | null
+  studentSentAt: string
+  feedbackText: string | null
+  feedbackAudioUrl: string | null
+  feedbackAudioSeconds: number | null
+  feedbackAt: string | null
 }
 
 export type CoachingV2PeriodReport = {
@@ -1012,10 +1027,15 @@ export async function upsertCoachingV2ClassCoachGuidelines(input: {
   coachGuideline1: string | null
   coachGuideline2: string | null
   coachGuideline3: string | null
+  /** Which tasks are answered with an audio; omitted = unchanged. */
+  taskAudio?: [boolean, boolean, boolean]
 }): Promise<CoachingV2ClassSlot | null> {
   const data = await invokeCoachingFunction<{ ok?: boolean; class?: CoachingV2ClassSlot | null }>(
     'coaching-center',
     {
+      ...(input.taskAudio
+        ? { taskAudio1: input.taskAudio[0], taskAudio2: input.taskAudio[1], taskAudio3: input.taskAudio[2] }
+        : {}),
       action: 'v2-upsert-class-coach-guidelines',
       sessionId: input.sessionId,
       periodNumber: input.periodNumber,

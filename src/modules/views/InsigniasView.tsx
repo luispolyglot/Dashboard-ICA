@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { GraduationCapIcon } from 'lucide-react'
 import { ACHIEVEMENT_CATALOG, TOTAL_ACHIEVEMENTS, useAchievements, type AchievementCategoryDef } from '../game/achievements'
 import { Medal, MedalDefs } from '../game/Medal'
 import { LegendPips, MedalDetailDialog, type MedalSelection } from '../game/MedalDetail'
@@ -61,7 +62,19 @@ function CategoryCard({
 
   return (
     <div className='rounded-3xl border-2 border-border p-4'>
-      <h2 className='m-0 text-lg font-extrabold'>{t(def.title)}</h2>
+      <h2 className='m-0 flex flex-wrap items-center gap-2 text-lg font-extrabold'>
+        {t(def.title)}
+        {def.key === 'coaching' ? (
+          // Only students of the coaching can earn it; for everyone else it stays locked (Luis, 6 Oct).
+          <span
+            className='inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-black'
+            style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
+          >
+            <GraduationCapIcon className='size-3.5' strokeWidth={2.6} aria-hidden='true' />
+            {t('Exclusiva del Coaching ICA')}
+          </span>
+        ) : null}
+      </h2>
       <p className='m-0 mt-0.5 text-xs font-semibold text-muted-foreground'>{t(def.description)}</p>
       <div className='mt-3 grid grid-cols-3 gap-x-2 gap-y-3 sm:grid-cols-6'>
         {base.map((level, index) => {

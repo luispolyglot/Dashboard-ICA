@@ -342,6 +342,8 @@ export interface CoachingNotificationPreference {
   userId: string
   masterNoteClosedEnabled: boolean
   activeSessionEnabled: boolean
+  /** Coaches: push when a student sends an audio task (Luis, 6 Oct). */
+  studentAudioEnabled: boolean
   classScheduleReminderMinutes: 10 | 30 | 60
   createdAt: string | null
   updatedAt: string | null
@@ -350,6 +352,7 @@ export interface CoachingNotificationPreference {
 export interface CoachingNotificationPreferenceInput {
   masterNoteClosedEnabled: boolean
   activeSessionEnabled: boolean
+  studentAudioEnabled?: boolean
   classScheduleReminderMinutes: 10 | 30 | 60
 }
 

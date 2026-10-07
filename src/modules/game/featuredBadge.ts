@@ -14,7 +14,7 @@ export type FeaturedBadge = { category: MedalCategory; tier: MedalTier }
 
 const CHANGED_EVENT = 'ica:featured-badge-changed'
 const CACHE_PREFIX = 'featured-badge:'
-const CATEGORIES: MedalCategory[] = ['rachaICA', 'rachaFlash', 'ranking', 'eficacia', 'vocab', 'desafios']
+const CATEGORIES: MedalCategory[] = ['rachaICA', 'rachaFlash', 'ranking', 'eficacia', 'vocab', 'desafios', 'coaching']
 
 /** Convierte "rachaICA:oro" (formato del servidor) en insignia. */
 export function parseFeaturedBadge(value: unknown): FeaturedBadge | null {

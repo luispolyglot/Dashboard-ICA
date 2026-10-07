@@ -8,7 +8,7 @@
 import { t as translate } from '@/i18n'
 
 export type MedalTier = 'bronce' | 'plata' | 'oro' | 'rubi' | 'diamante' | 'leyenda1' | 'leyenda2' | 'leyenda3'
-export type MedalCategory = 'rachaICA' | 'rachaFlash' | 'ranking' | 'eficacia' | 'vocab' | 'desafios'
+export type MedalCategory = 'rachaICA' | 'rachaFlash' | 'ranking' | 'eficacia' | 'vocab' | 'desafios' | 'coaching'
 
 const CX = 80
 const CY = 88
@@ -214,6 +214,17 @@ const EMBLEM = {
       <g transform="translate(12 12) scale(0.92) rotate(42) translate(-12 -7.5)">${sword}</g>
     </g>`
   },
+  // Coaching (Luis, 6 Oct): the mortarboard of the ICA logo, in the brand blue with a gold tassel.
+  birrete: () => `
+    <g transform="translate(80 84) scale(0.52)">
+      <path d="M-34 6 L-34 28 Q0 44 34 28 L34 6 L0 18 Z" fill="url(#e-birrete)" stroke="#0b1028" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M0 -26 L58 -4 L0 18 L-58 -4 Z" fill="url(#e-birrete)" stroke="#0b1028" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M0 -26 L58 -4 L0 18 L-58 -4 Z" fill="none" stroke="#ffffff" stroke-width="2" stroke-linejoin="round" opacity="0.35" transform="translate(0 -3) scale(0.9)"/>
+      <path d="M44 0 L44 28" stroke="#FFC72C" stroke-width="4.5" stroke-linecap="round"/>
+      <path d="M38.5 26 h11 l-2 12 h-7 z" fill="#FFC72C" stroke="#D99A00" stroke-width="2" stroke-linejoin="round"/>
+      <circle cx="0" cy="-4" r="5" fill="#FFC72C" stroke="#D99A00" stroke-width="2"/>
+      <path d="M0 -4 L44 0" stroke="#FFC72C" stroke-width="3.5" stroke-linecap="round"/>
+    </g>`,
   // La copa de la app (TrophyIcon), siempre dorada y sin estrella: las estrellas son de la Leyenda.
   copa: () => `
     <g transform="translate(52.4 64.6) scale(2.3)">
@@ -245,6 +256,7 @@ const CATEGORY_STYLE: Record<MedalCategory, { disc: string; accent: string; ribb
   desafios: { disc: 'gd-desafio', accent: '#f59e0b', ribbonGrad: 'rb-desafio', ribbonDark: '#7c2d12' },
   eficacia: { disc: 'gd-eficacia', accent: '#14b8a6', ribbonGrad: 'rb-eficacia', ribbonDark: '#0f766e' },
   ranking: { disc: 'gd-rank', accent: '#d4af37', ribbonGrad: 'rb-rank', ribbonDark: '#3f2d12' },
+  coaching: { disc: 'gd-coaching', accent: '#e8b84a', ribbonGrad: 'rb-coaching', ribbonDark: '#0b1028' },
 }
 
 function emblemFor(category: MedalCategory): string {
@@ -261,6 +273,8 @@ function emblemFor(category: MedalCategory): string {
       return EMBLEM.diana()
     case 'ranking':
       return EMBLEM.copa()
+    case 'coaching':
+      return EMBLEM.birrete()
   }
 }
 
@@ -360,6 +374,9 @@ export const MEDAL_DEFS_SVG = `<svg width="0" height="0" style="position:absolut
   <radialGradient id="gd-vocab" cx=".5" cy=".42" r=".62"><stop offset="0" stop-color="#123324"/><stop offset="1" stop-color="#0a1610"/></radialGradient>
   <radialGradient id="gd-desafio" cx=".5" cy=".42" r=".62"><stop offset="0" stop-color="#33200f"/><stop offset="1" stop-color="#160c07"/></radialGradient>
   <radialGradient id="gd-eficacia" cx=".5" cy=".42" r=".62"><stop offset="0" stop-color="#0e3a37"/><stop offset="1" stop-color="#071a19"/></radialGradient>
+  <radialGradient id="gd-coaching" cx=".5" cy=".42" r=".62"><stop offset="0" stop-color="#26346e"/><stop offset="1" stop-color="#0b1028"/></radialGradient>
+  <linearGradient id="rb-coaching" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34459a"/><stop offset="1" stop-color="#1b2450"/></linearGradient>
+  <linearGradient id="e-birrete" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9be2ff"/><stop offset="1" stop-color="#2fa8e0"/></linearGradient>
   <linearGradient id="rb-ica" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fb923c"/><stop offset="1" stop-color="#ea580c"/></linearGradient>
   <linearGradient id="rb-flash" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#818cf8"/><stop offset="1" stop-color="#4f46e5"/></linearGradient>
   <linearGradient id="rb-rank" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d4af37"/><stop offset="1" stop-color="#a67c1a"/></linearGradient>

@@ -21,6 +21,7 @@ import { useFeatureFlagsStore } from '../stores/featureFlagsStore'
 import {
   ACHIEVEMENT_CATALOG,
   earnedLevelsFrom,
+  fetchCoachingRingStats,
   fetchRankingHistoryFor,
   useAchievements,
 } from './achievements'
@@ -89,6 +90,7 @@ function useIcademerProfile(summary: IcademerSummary | null, isMe: boolean): Loa
     setState(fromCache(cacheKey))
     const serverPromise = fetchIcademerPublicProfile(userId)
     const rankingPromise = fetchRankingHistoryFor(userId)
+    const coachingPromise = fetchCoachingRingStats(userId).catch(() => null)
 
     // Idioma, nivel y botón de desafiar: en cuanto responde el servidor.
     serverPromise.then(
@@ -112,6 +114,7 @@ function useIcademerProfile(summary: IcademerSummary | null, isMe: boolean): Loa
 
     void (async () => {
       const [serverResult, rankingResult] = await Promise.allSettled([serverPromise, rankingPromise])
+      const coaching = await coachingPromise
       if (!active) return
       const ranking = rankingResult.status === 'fulfilled' ? rankingResult.value : { rankings: null, bestEfficacy: null, perfectMonths: null }
 
@@ -125,6 +128,7 @@ function useIcademerProfile(summary: IcademerSummary | null, isMe: boolean): Loa
           eficacia: ranking.bestEfficacy,
           perfectMonths: ranking.perfectMonths,
           rankings: ranking.rankings,
+          coaching,
         })
         setState((prev) => ({ ...prev, earned }))
         if (cacheKey) {
@@ -147,6 +151,7 @@ function useIcademerProfile(summary: IcademerSummary | null, isMe: boolean): Loa
         eficacia: ranking.bestEfficacy,
         perfectMonths: ranking.perfectMonths,
         rankings: ranking.rankings,
+        coaching,
       })
       let challengeState: ChallengeState = { kind: 'hidden' }
       let targetLang: string | null = null
