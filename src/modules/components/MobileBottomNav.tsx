@@ -90,7 +90,7 @@ export function MobileBottomNav({
             {({ isActive }) => <TabItem icon={HouseIcon} label={t('Inicio')} active={isActive} />}
           </NavLink>
 
-          <NavLink to={DASHBOARD_ROUTES.leaderboard} className='outline-none'>
+          <NavLink to={DASHBOARD_ROUTES.leaderboard} className='outline-none' data-tour='nav-ranking'>
             {({ isActive }) => <TabItem icon={TrophyIcon} label={t('Ranking')} active={isActive} />}
           </NavLink>
 
@@ -105,7 +105,7 @@ export function MobileBottomNav({
             </NavLink>
           </div>
 
-          <NavLink to={DASHBOARD_ROUTES.gamesIca} className='outline-none'>
+          <NavLink to={DASHBOARD_ROUTES.gamesIca} className='outline-none' data-tour='nav-games'>
             {({ isActive }) => (
               <TabItem
                 icon={Gamepad2Icon}

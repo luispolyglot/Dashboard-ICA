@@ -58,7 +58,7 @@ export const GameStatsBar = forwardRef<HTMLButtonElement>(function GameStatsBar(
     'flex min-h-11 items-center gap-1 rounded-xl px-2 text-base font-bold tabular-nums transition-colors hover:bg-muted active:bg-muted'
 
   return (
-    <div className='flex items-center gap-0.5'>
+    <div className='flex items-center gap-0.5' data-tour='wallet'>
       <HoverPanel
         label={t('Tu racha ICA')}
         trigger={

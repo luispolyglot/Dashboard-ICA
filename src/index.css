@@ -499,6 +499,19 @@ button:disabled {
   }
 }
 
+@keyframes ica-tour-ring {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.45;
+    transform: scale(1.03);
+  }
+}
+
 @keyframes ica-pop {
   0% {
     transform: scale(0.4);
@@ -809,6 +822,10 @@ button:disabled {
     animation: ica-shake 0.4s ease-in-out;
   }
 
+  .ica-tour-ring {
+    animation: ica-tour-ring 1.6s ease-in-out infinite;
+  }
+
   .ica-pop {
     animation: ica-pop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both;
   }
@@ -875,6 +892,7 @@ button:disabled {
 
   @media (prefers-reduced-motion: reduce) {
     .ica-bob,
+    .ica-tour-ring,
     .ica-wiggle,
     .ica-chest-ready,
     .ica-pop,
