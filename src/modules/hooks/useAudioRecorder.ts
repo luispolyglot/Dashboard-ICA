@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 // Records one audio from the microphone (coaching audio tasks, Luis 6 Oct). It only asks for the
-// microphone when the person taps «Grabar», and stops by itself at `maxSeconds`.
+// microphone when the person taps «Grabar», can pause and resume like Activación, and stops by
+// itself at `maxSeconds` (paused time does not count). `stream` feeds the live waveform.
 
 const MIME_CANDIDATES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
 
@@ -15,6 +16,8 @@ export function isAudioRecordingSupported(): boolean {
 
 export function useAudioRecorder(maxSeconds = 180) {
   const [recording, setRecording] = useState(false)
+  const [paused, setPaused] = useState(false)
+  const [stream, setStream] = useState<MediaStream | null>(null)
   const [elapsed, setElapsed] = useState(0)
   const [audio, setAudio] = useState<RecordedAudio | null>(null)
   const [error, setError] = useState<AudioRecorderError | null>(null)
@@ -22,12 +25,22 @@ export function useAudioRecorder(maxSeconds = 180) {
   const streamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const startedAtRef = useRef(0)
+  const pausedMsRef = useRef(0)
+  const pausedAtRef = useRef<number | null>(null)
   const timerRef = useRef<number | null>(null)
   const urlRef = useRef<string | null>(null)
+
+  // Seconds recorded so far, without the paused stretches.
+  const recordedSeconds = useCallback(() => {
+    const now = Date.now()
+    const pausedNow = pausedAtRef.current !== null ? now - pausedAtRef.current : 0
+    return Math.max(0, (now - startedAtRef.current - pausedMsRef.current - pausedNow) / 1000)
+  }, [])
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
+    setStream(null)
     if (timerRef.current !== null) {
       window.clearInterval(timerRef.current)
       timerRef.current = null
@@ -37,6 +50,23 @@ export function useAudioRecorder(maxSeconds = 180) {
   const stop = useCallback(() => {
     const recorder = recorderRef.current
     if (recorder && recorder.state !== 'inactive') recorder.stop()
+  }, [])
+
+  const pause = useCallback(() => {
+    const recorder = recorderRef.current
+    if (!recorder || recorder.state !== 'recording' || typeof recorder.pause !== 'function') return
+    recorder.pause()
+    pausedAtRef.current = Date.now()
+    setPaused(true)
+  }, [])
+
+  const resume = useCallback(() => {
+    const recorder = recorderRef.current
+    if (!recorder || recorder.state !== 'paused') return
+    recorder.resume()
+    if (pausedAtRef.current !== null) pausedMsRef.current += Date.now() - pausedAtRef.current
+    pausedAtRef.current = null
+    setPaused(false)
   }, [])
 
   const clear = useCallback(() => {
@@ -54,21 +84,27 @@ export function useAudioRecorder(maxSeconds = 180) {
       return
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
+      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = micStream
+      setStream(micStream)
       const mime = MIME_CANDIDATES.find((candidate) => MediaRecorder.isTypeSupported(candidate)) || ''
-      const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)
+      const recorder = mime ? new MediaRecorder(micStream, { mimeType: mime }) : new MediaRecorder(micStream)
       // The bucket accepts the base type («audio/webm»), not the codec part.
       const baseType = (recorder.mimeType || mime || 'audio/webm').split(';')[0]
       recorderRef.current = recorder
       chunksRef.current = []
       startedAtRef.current = Date.now()
+      pausedMsRef.current = 0
+      pausedAtRef.current = null
+      setPaused(false)
       clear()
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) chunksRef.current.push(event.data)
       }
       recorder.onstop = () => {
-        const seconds = Math.max(0, (Date.now() - startedAtRef.current) / 1000)
+        const seconds = recordedSeconds()
+        pausedAtRef.current = null
+        setPaused(false)
         const blob = new Blob(chunksRef.current, { type: baseType })
         chunksRef.current = []
         stopStream()
@@ -84,7 +120,7 @@ export function useAudioRecorder(maxSeconds = 180) {
       setRecording(true)
       setElapsed(0)
       timerRef.current = window.setInterval(() => {
-        const seconds = (Date.now() - startedAtRef.current) / 1000
+        const seconds = recordedSeconds()
         setElapsed(seconds)
         if (seconds >= maxSeconds) stop()
       }, 250)
@@ -94,7 +130,7 @@ export function useAudioRecorder(maxSeconds = 180) {
       const name = (err as { name?: string })?.name
       setError(name === 'NotAllowedError' || name === 'SecurityError' ? 'denied' : 'failed')
     }
-  }, [clear, maxSeconds, recording, stop, stopStream])
+  }, [clear, maxSeconds, recordedSeconds, recording, stop, stopStream])
 
   useEffect(
     () => () => {
@@ -109,7 +145,7 @@ export function useAudioRecorder(maxSeconds = 180) {
     [stopStream],
   )
 
-  return { recording, elapsed, audio, error, start, stop, clear, maxSeconds }
+  return { recording, paused, stream, elapsed, audio, error, start, stop, pause, resume, clear, maxSeconds }
 }
 
 export function formatClock(seconds: number): string {

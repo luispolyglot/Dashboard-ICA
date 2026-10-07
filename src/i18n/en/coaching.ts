@@ -445,5 +445,18 @@ const en: Record<string, string> = {
   "No se pudo preparar la subida del audio.": "The audio upload could not be prepared.",
   "No se pudo guardar el audio.": "The audio could not be saved.",
   "La respuesta en audio no se ha guardado: el servidor todavía no tiene esta función. Funcionará cuando se suba la nueva versión.": "The audio answer was not saved: the server does not have this feature yet. It will work once the new version is uploaded.",
+  // Audio recorder look (7 Oct)
+  "Cancelar y dejar mi audio anterior": "Cancel and keep my previous audio",
+  "Enviado": "Sent",
+  "Escuchar {label}": "Play {label}",
+  "Pausar {label}": "Pause {label}",
+  "Hasta 5 minutos. También puedes escribir abajo.": "Up to 5 minutes. You can also write below.",
+  "Toca el micro y responde en voz alta. Hasta 3 minutos.": "Tap the mic and answer out loud. Up to 3 minutes.",
+  "Tu coach te responderá aquí.": "Your coach will reply here.",
+  "el audio de tu coach": "your coach's audio",
+  "el audio del alumno": "the student's audio",
+  "tu audio": "your audio",
+  "tu audio de feedback": "your feedback audio",
+  "tu grabación": "your recording",
 }
 export default en
