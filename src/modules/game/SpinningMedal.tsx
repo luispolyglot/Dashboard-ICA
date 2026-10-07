@@ -155,18 +155,23 @@ export function SpinningMedal({
       }
     }
 
-    // Leyenda (Luis, 7 Oct): while the medal spins, the picture in the middle spins too (two turns
-    // in the same time, so it goes faster than the medal) and pops a little. scaleX(cos) draws
-    // the flip and works on SVG in every browser (3D rotations on SVG groups do not).
+    // Leyenda (Luis, 7 Oct): while the medal spins one way, the picture in the middle spins the
+    // other way (two turns in the same time) and pops a little. SVG groups cannot use real 3D
+    // rotations in every browser, so the turn is drawn in 2D: the width follows cos (the flip) and
+    // a small tilt follows sin, which shows the direction. The medal's own turn is undone first,
+    // so what you see is the picture turning against the medal.
     if (isLegend(tier)) {
       const emblemFrames: Keyframe[] = []
       const turns = 2
       for (let index = 0; index <= SAMPLES; index += 1) {
         const time = index / SAMPLES
-        const angle = 360 * turns * spinEase(time)
-        const flip = Math.cos((angle * Math.PI) / 180)
+        const eased = spinEase(time)
+        const own = ((-360 * turns - 360) * eased * Math.PI) / 180
         const pop = 1 + 0.14 * Math.sin(Math.PI * time)
-        emblemFrames.push({ transform: `scale(${(flip * pop).toFixed(4)}, ${pop.toFixed(4)})` })
+        const tilt = -14 * Math.sin(own)
+        emblemFrames.push({
+          transform: `skewY(${tilt.toFixed(2)}deg) scale(${(Math.cos(own) * pop).toFixed(4)}, ${pop.toFixed(4)})`,
+        })
       }
       for (const emblem of Array.from(rotorRef.current.querySelectorAll<SVGGElement>('.ica-emblem'))) {
         emblem.style.transformBox = 'fill-box'
