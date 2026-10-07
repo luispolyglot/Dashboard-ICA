@@ -12,8 +12,12 @@ import { MedalDefs } from './Medal'
 import { LeaderboardRow, rowName, rowTotalPoints } from './ranking'
 import { t } from '@/i18n'
 
-/** Tarjeta del ranking del mes para la columna derecha (ordenador): top 3 y tu puesto. */
-export function RankingSnippetCard() {
+/**
+ * Tarjeta del ranking del mes para la columna derecha (ordenador): top 3 y tu puesto.
+ * With maxRows (Home without coaching, Luis 7 Oct) it shows that many people in total: the top ones
+ * and, if you are further down, you in the last place.
+ */
+export function RankingSnippetCard({ maxRows }: { maxRows?: number } = {}) {
   const { user } = useAuth()
   const { badge: myBadge } = useFeaturedBadge(user?.id)
   const { shown: myFlag } = useMyFlags(user?.id)
@@ -35,7 +39,8 @@ export function RankingSnippetCard() {
   }, [])
 
   const myIndex = rows ? rows.findIndex((row) => row.user_id === user?.id) : -1
-  const top = rows ? rows.slice(0, 3) : []
+  const shownTop = maxRows ? (myIndex >= maxRows ? maxRows - 1 : maxRows) : 3
+  const top = rows ? rows.slice(0, shownTop) : []
 
   return (
     <div className='rounded-3xl border-2 border-border p-4'>
@@ -69,11 +74,12 @@ export function RankingSnippetCard() {
               isMe={row.user_id === user?.id}
               badge={row.user_id === user?.id ? myBadge : parseFeaturedBadge(row.featured_badge)}
               flag={row.user_id === user?.id ? myFlag : row.display_flag ?? null}
+              dense={Boolean(maxRows)}
             />
           ))}
-          {myIndex >= 3 ? (
+          {myIndex >= shownTop ? (
             <>
-              <div className='text-center text-sm font-extrabold text-muted-foreground'>···</div>
+              <div className={`text-center text-sm font-extrabold text-muted-foreground ${maxRows ? 'leading-3' : ''}`}>···</div>
               <LeaderboardRow
                 rank={rows[myIndex].rank || myIndex + 1}
                 name={rowName(rows[myIndex])}
@@ -81,6 +87,7 @@ export function RankingSnippetCard() {
                 isMe
                 badge={myBadge}
                 flag={myFlag}
+                dense={Boolean(maxRows)}
               />
             </>
           ) : null}

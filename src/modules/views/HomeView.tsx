@@ -9,7 +9,6 @@ import {
   CoachingHomeCard,
   expectsHomeCoaching,
 } from '../components/CoachingHomeCard'
-import { CoachingInviteCard } from '../components/CoachingInvite'
 import { getTodayProgress } from '../constants'
 import { useDailyGame } from '../game/dailyGame'
 import { CardsIcon, MicGlyph, SwordsIcon, TargetGlyph } from '../game/icons'
@@ -175,19 +174,34 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           {/* Luis, 6 Oct (second try): coaching on top with your level and ICA games under it,
               and the ranking on the right from the top of the coaching to the bottom of the games,
               so the block is square. */}
-          <div className='grid grid-cols-3 gap-5'>
-            <div className='col-span-2'>
-              <div className={hasCoaching ? '' : 'hidden'}>{coachingCard}</div>
-              {hasCoaching ? null : <CoachingInviteCard />}
+          {/* Luis, 7 Oct: without a coaching there is no big coaching invite here (it stays in the
+              profile). One row instead: your level, ICA games and a short ranking (3 people), all
+              the same height. The coaching card is still mounted, hidden, to find out if you have one. */}
+          {hasCoaching ? (
+            <div className='grid grid-cols-3 gap-5'>
+              <div className='col-span-2'>{coachingCard}</div>
+              <div className='row-span-2 flex flex-col [&>*]:flex-1'>
+                <RankingSnippetCard />
+              </div>
+              <div className='flex flex-col [&>*]:flex-1'>
+                <LevelCard config={config} />
+              </div>
+              <div className='flex flex-col [&>*]:flex-1'>{gamesCard}</div>
             </div>
-            <div className='row-span-2 flex flex-col [&>*]:flex-1'>
-              <RankingSnippetCard />
-            </div>
-            <div className='flex flex-col [&>*]:flex-1'>
-              <LevelCard config={config} />
-            </div>
-            <div className='flex flex-col [&>*]:flex-1'>{gamesCard}</div>
-          </div>
+          ) : (
+            <>
+              <div className='hidden'>{coachingCard}</div>
+              <div className='grid grid-cols-3 gap-5'>
+                <div className='flex flex-col [&>*]:flex-1'>
+                  <LevelCard config={config} />
+                </div>
+                <div className='flex flex-col [&>*]:flex-1'>{gamesCard}</div>
+                <div className='flex flex-col [&>*]:flex-1'>
+                  <RankingSnippetCard maxRows={3} />
+                </div>
+              </div>
+            </>
+          )}
         </div>
         <ChatInvite />
       </section>

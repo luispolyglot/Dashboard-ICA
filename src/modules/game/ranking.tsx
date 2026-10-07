@@ -206,6 +206,7 @@ export function LeaderboardRow({
   onPointsClick,
   onProfileClick,
   tieCorrect = null,
+  dense = false,
 }: {
   rank: number
   name: string
@@ -221,11 +222,13 @@ export function LeaderboardRow({
   onPointsClick?: () => void
   /** Tocar la inicial o el nombre abre el perfil de este icademer. */
   onProfileClick?: () => void
+  /** Shorter row (Home without coaching, Luis 7 Oct) so the ranking card is as tall as its neighbours. */
+  dense?: boolean
 }) {
   const rankNode = <RankBadge rank={rank} />
   const who = (
     <>
-      <UserInitial name={name} flag={flag} />
+      <UserInitial name={name} flag={flag} size={dense ? 28 : 36} />
       <div className='min-w-0 flex-1'>
         <div className='flex min-w-0 items-center gap-1.5'>
           <span className={cn('truncate text-[15px]', isMe ? 'font-extrabold' : 'font-bold')}>
@@ -245,7 +248,7 @@ export function LeaderboardRow({
   return (
     <div
       className={cn(
-        'flex min-h-[60px] items-center gap-2.5 rounded-2xl border-2 px-2 py-2',
+        dense ? 'flex min-h-[44px] items-center gap-2 rounded-2xl border-2 px-2 py-0.5' : 'flex min-h-[60px] items-center gap-2.5 rounded-2xl border-2 px-2 py-2',
         isMe ? 'border-[color-mix(in_oklab,var(--ica-me)_45%,transparent)] bg-[var(--ica-me-soft)]' : 'border-transparent',
       )}
     >
@@ -273,7 +276,7 @@ export function LeaderboardRow({
           (la más grande, con rayos), no se tocan. */}
       {badge ? (
         <span className='inline-flex shrink-0'>
-          <FeaturedBadgeMini badge={badge} size={42} compact />
+          <FeaturedBadgeMini badge={badge} size={dense ? 34 : 42} compact />
         </span>
       ) : null}
       {onPointsClick ? (
