@@ -40,6 +40,7 @@ const en: Record<string, string> = {
   "Ingresa un nickname para tu perfil": "Enter a nickname for your profile",
   "Si eres miembro de la comunidad Icademy en Skool, recibirás un email para confirmar tu acceso. Revisa también la carpeta de spam.": "If you're a member of the Icademy community on Skool, you'll get an email to confirm your access. Check your spam folder too.",
   "Crea tu cuenta": "Create your account",
+  "Idioma de la app": "App language",
   "Únete a Icademy y empieza a construir tu racha.": "Join Icademy and start building your streak.",
   "Email de tu comunidad Icademy": "Your Icademy community email",
   "Nombre": "Name",
@@ -309,6 +310,7 @@ const en: Record<string, string> = {
   "RETO DEL DÍA": "DAILY CHALLENGE",
   "{correct} de {total} · {mode}": "{correct} of {total} · {mode}",
   "Con {n} palabras en tu baúl": "With {n} words in your vault",
+  "Con {n} palabras ICA": "With {n} ICA words",
   "{mode} con tus palabras": "{mode} with your words",
 }
 export default en

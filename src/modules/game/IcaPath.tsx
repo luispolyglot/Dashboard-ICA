@@ -646,7 +646,7 @@ export function IcaPath() {
           mode: t(gameMode.name),
         })
       : reviewLocked && reviewNeedsWords
-        ? t('Con {n} palabras en tu baúl', { n: DAILY_GAME_MIN_WORDS })
+        ? t('Con {n} palabras ICA', { n: DAILY_GAME_MIN_WORDS })
         : t('Mínimo {n} correctas', { n: DAILY_GAME_PASS })
     const steps: JourneyStep[] = [
       {
@@ -780,7 +780,8 @@ export function IcaPath() {
         : rowNext === 'A'
           ? t('Graba 1 nota')
           : null
-  const panelBottom = rowLabelTop + (rowNext ? 84 : 40)
+  // Room for the chip and its help line inside the box, clear of the bottom corners (Luis, 7 Oct).
+  const panelBottom = rowLabelTop + (rowNext ? 92 : 40)
   const slotTop = panelBottom + 34
   const bonusTop = slotTop + 24
   const bonusLabelTop = bonusTop + 96
@@ -796,7 +797,7 @@ export function IcaPath() {
         mode: t(gameMode.name),
       })
     : reviewLocked && reviewNeedsWords
-      ? t('Con {n} palabras en tu baúl', { n: DAILY_GAME_MIN_WORDS })
+      ? t('Con {n} palabras ICA', { n: DAILY_GAME_MIN_WORDS })
       : !reviewLocked
         ? t('Mínimo {n} correctas', { n: DAILY_GAME_PASS })
         : null
@@ -957,7 +958,7 @@ export function IcaPath() {
 
       {/* Chip and help text under the step to do: I, then C, then A (Luis, 6 Oct). */}
       {rowHelp && rowNext ? (
-        <Label top={rowLabelTop + 30} cx={rowNext === 'I' ? at(X.I, 8) : rowNext === 'A' ? at(X.A, -8) : X.C} maxWidth={124}>
+        <Label top={rowLabelTop + 26} cx={rowNext === 'I' ? at(X.I, 20) : rowNext === 'A' ? at(X.A, -20) : X.C} maxWidth={124}>
           <span className='whitespace-nowrap'>
             <StartChip label={rowNext === 'I' ? 'EMPIEZA AQUÍ' : 'SIGUE AQUÍ'} color='#ffffff' textColor='#0b84b5' />
           </span>
@@ -1080,7 +1081,7 @@ export function IcaPath() {
         {next === 'review' ? <StartChip label='TERMINA AQUÍ' color='var(--ica-reto-edge)' /> : null}
         <span className='text-[13px] font-extrabold tracking-[0.04em] whitespace-nowrap' style={{ color: 'var(--ica-brand-ink)' }}>{t('RETO DEL DÍA')}</span>
         {reviewHelpText ? (
-          <span className='text-[12px] font-semibold text-balance' style={{ color: 'var(--ica-brand-sub)' }}>{reviewHelpText}</span>
+          <span className='text-[12px] font-semibold whitespace-nowrap' style={{ color: 'var(--ica-brand-sub)' }}>{reviewHelpText}</span>
         ) : null}
       </Label>
     </div>
