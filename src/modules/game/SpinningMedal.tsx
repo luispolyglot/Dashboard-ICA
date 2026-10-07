@@ -169,8 +169,10 @@ export function SpinningMedal({
         const time = index / steps
         const elapsed = time * lastStarLands
         const medalAngle = elapsed < duration ? 360 * spinEase(elapsed / duration) : 360
-        // Ease-out: quick start, long slow ending.
-        const settle = 1 - Math.pow(1 - time, 3)
+        // Slows down steadily but never crawls: at the end it still turns at a quarter of its
+        // starting speed, so the stop is seen right when the star lands (a usual ease-out looks
+        // stopped half a second earlier).
+        const settle = (time - 0.375 * time * time) / 0.625
         const own = ((-360 * turns * settle - medalAngle) * Math.PI) / 180
         const pop = 1 + 0.14 * Math.sin(Math.PI * Math.min(1, time * 1.6))
         const tilt = -14 * Math.sin(own)
