@@ -841,6 +841,14 @@ export function CoachingV3SessionBoard({
         );
       }
       toast.success(t("Clase {n} actualizada.", { n: classIndex }));
+      // A server without audio tasks (an older coaching-center) saves the class but drops the
+      // audio choice and sends no taskAudio back: say so instead of pretending it was saved.
+      if (updatedClass && !updatedClass.taskAudio && draft.taskAudio.some(Boolean)) {
+        toast.warning(
+          t("La respuesta en audio no se ha guardado: el servidor todavía no tiene esta función. Funcionará cuando se suba la nueva versión."),
+          { duration: 10000 },
+        );
+      }
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : t("No se pudo guardar la clase."),

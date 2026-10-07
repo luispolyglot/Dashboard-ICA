@@ -444,5 +444,6 @@ const en: Record<string, string> = {
   "No se pudo preparar la subida.": "The upload could not be prepared.",
   "No se pudo preparar la subida del audio.": "The audio upload could not be prepared.",
   "No se pudo guardar el audio.": "The audio could not be saved.",
+  "La respuesta en audio no se ha guardado: el servidor todavía no tiene esta función. Funcionará cuando se suba la nueva versión.": "The audio answer was not saved: the server does not have this feature yet. It will work once the new version is uploaded.",
 }
 export default en
