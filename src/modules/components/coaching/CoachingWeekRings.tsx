@@ -1,6 +1,6 @@
 import { CheckIcon } from 'lucide-react'
 import type { CSSProperties } from 'react'
-import { t } from '@/i18n'
+import { t, tn } from '@/i18n'
 import { TASKS_PER_WEEK, type WeekRing } from '../../game/coachingRings'
 
 // «Tu recorrido» (Luis, 6 Oct): one ring per week of the coaching. The 6 tasks of the week fill
@@ -141,25 +141,56 @@ export function CoachingWeekRingsStrip({
   )
 }
 
-/** Small rings for the Home coaching card. */
-export function CoachingWeekRingsMini({ rings, currentPeriod }: { rings: WeekRing[]; currentPeriod: number }) {
+/**
+ * Rings for the Home coaching card (Luis, 7 Oct: like «Tu recorrido» of the board): a header with
+ * the weeks left, then one numbered ring per week with «4/6» under the ones still open.
+ * `compact` (mobile card) drops the header and the captions.
+ */
+export function CoachingWeekRingsMini({
+  rings,
+  currentPeriod,
+  size = 40,
+  compact = false,
+}: {
+  rings: WeekRing[]
+  currentPeriod: number
+  size?: number
+  compact?: boolean
+}) {
   const done = rings.filter((ring) => ring.complete).length
+  const left = Math.max(0, rings.length - currentPeriod)
   return (
-    <div
-      className='grid gap-1'
-      style={{ gridTemplateColumns: `repeat(${rings.length}, minmax(0, 1fr))` }}
-      role='img'
-      aria-label={t('{done} de {total} anillos del coaching', { done, total: rings.length })}
-    >
-      {rings.map((ring) => (
-        <span
-          key={ring.period}
-          className='flex justify-center rounded-full'
-          style={ring.period === currentPeriod && !ring.complete ? { outline: '1.5px solid rgba(255,255,255,0.85)', outlineOffset: 1 } : undefined}
-        >
-          <RingGlyph ring={ring} size={26} showNumber={false} />
-        </span>
-      ))}
+    <div role='img' aria-label={t('{done} de {total} anillos del coaching', { done, total: rings.length })}>
+      {compact ? null : (
+        <div className='mb-2.5 flex items-center justify-between gap-2'>
+          <span className='text-[11px] font-black tracking-[0.12em] text-white/70 uppercase'>{t('Tu recorrido')}</span>
+          <span className='text-xs font-bold text-white/70'>{tn(left, 'Queda {n} semana', 'Quedan {n} semanas')}</span>
+        </div>
+      )}
+      <div className='grid gap-x-1 gap-y-1' style={{ gridTemplateColumns: `repeat(${rings.length}, minmax(0, 1fr))` }}>
+        {rings.map((ring) => {
+          const current = ring.period === currentPeriod
+          const caption = ring.state === 'locked' ? '' : ring.complete ? '' : `${ring.answered}/6`
+          return (
+            <span key={ring.period} className='flex min-w-0 flex-col items-center gap-1'>
+              <span
+                className='flex justify-center rounded-full'
+                style={current && !ring.complete ? { outline: '2px solid rgba(255,255,255,0.85)', outlineOffset: 2 } : undefined}
+              >
+                <RingGlyph ring={ring} size={size} showNumber />
+              </span>
+              {compact ? null : (
+                <span
+                  className='min-h-4 text-[11px] font-extrabold tabular-nums'
+                  style={{ color: ring.complete ? 'rgba(255,255,255,0.7)' : 'var(--ica-gold)' }}
+                >
+                  {ring.complete ? ring.period : caption}
+                </span>
+              )}
+            </span>
+          )
+        })}
+      </div>
     </div>
   )
 }

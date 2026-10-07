@@ -4,7 +4,7 @@
 --    stay at 4/6 if the student does not answer the rest before the coach closes it.
 -- 2. New badge family «coaching», counted on the student's best coaching:
 --      Bronce 4 rings · Plata 5 · Oro 6 · Rubí 8 · Diamante 9 · Leyenda I 10 (all of them)
---      Leyenda II = 2 coachings with the 10 rings · Leyenda III = 3 coachings with the 10 rings.
+--      Leyenda II = 20 rings and Leyenda III = 30 rings, adding up all the student's coachings.
 -- 3. The coach chooses which tasks are answered with an audio (task 3 of each class by default).
 --    The student records it, the coach listens and answers with an audio, a text or both.
 --    Audios live in the private bucket «coaching-task-audio» and only the coaching-center
@@ -134,7 +134,7 @@ $$;
 
 revoke all on function public.coaching_rings_by_session(uuid) from public, anon, authenticated;
 
--- What the badge needs: rings of the best coaching and coachings with all 10 rings.
+-- What the badge needs: rings of the best coaching and rings of all coachings together.
 -- Any signed-in student may ask for anyone (badges are public in profiles and the ranking).
 create or replace function public.get_coaching_ring_stats(p_user_id uuid default null)
 returns jsonb
@@ -146,13 +146,13 @@ as $$
 declare
   v_user_id uuid := coalesce(p_user_id, auth.uid());
   v_best integer;
-  v_full integer;
+  v_total integer;
 begin
   if auth.uid() is null then raise exception 'AUTH_REQUIRED'; end if;
-  select coalesce(max(r.rings), 0)::integer, (count(*) filter (where r.rings >= 10))::integer
-  into v_best, v_full
+  select coalesce(max(r.rings), 0)::integer, coalesce(sum(r.rings), 0)::integer
+  into v_best, v_total
   from public.coaching_rings_by_session(v_user_id) r;
-  return jsonb_build_object('bestRings', coalesce(v_best, 0), 'fullCoachings', coalesce(v_full, 0));
+  return jsonb_build_object('bestRings', coalesce(v_best, 0), 'totalRings', coalesce(v_total, 0));
 end;
 $$;
 
@@ -185,7 +185,7 @@ declare
   best_efficacy numeric;
   perfect_months integer;
   best_rings integer;
-  full_coachings integer;
+  total_rings integer;
 begin
   if p_badge is null
     or p_badge !~ '^(rachaICA|rachaFlash|ranking|eficacia|vocab|desafios|coaching):(bronce|plata|oro|rubi|diamante|leyenda1|leyenda2|leyenda3)$' then
@@ -211,13 +211,14 @@ begin
     select count(*)::numeric into current_value from public.ica_challenges c where c.winner_user_id = p_user_id;
     return current_value >= (array[10, 20, 50, 100, 200, 365, 600, 1000])[level];
   elsif category = 'coaching' then
-    select coalesce(max(r.rings), 0)::integer, (count(*) filter (where r.rings >= 10))::integer
-    into best_rings, full_coachings
+    select coalesce(max(r.rings), 0)::integer, coalesce(sum(r.rings), 0)::integer
+    into best_rings, total_rings
     from public.coaching_rings_by_session(p_user_id) r;
-    if level <= 6 then
-      return coalesce(best_rings, 0) >= (array[4, 5, 6, 8, 9, 10])[level];
+    -- Leyenda II and III also need Leyenda I (one coaching with all 10 rings).
+    if coalesce(best_rings, 0) < (array[4, 5, 6, 8, 9, 10, 10, 10])[level] then
+      return false;
     end if;
-    return coalesce(full_coachings, 0) >= (array[0, 0, 0, 0, 0, 1, 2, 3])[level];
+    return level <= 6 or coalesce(total_rings, 0) >= (array[0, 0, 0, 0, 0, 0, 20, 30])[level];
   elsif category = 'ranking' then
     select count(*) filter (where ls.rank = 1)::integer,
            count(*) filter (where ls.rank = 2)::integer,

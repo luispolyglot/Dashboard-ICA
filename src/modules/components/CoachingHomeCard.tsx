@@ -350,10 +350,11 @@ export function CoachingHomeCard({
           }
         }}
         className={cn(
-          'coaching-hero relative flex w-full cursor-pointer items-center gap-3 overflow-hidden rounded-2xl px-3 py-2.5 text-left text-white active:translate-y-[2px]',
+          'coaching-hero relative flex w-full cursor-pointer flex-col gap-2.5 overflow-hidden rounded-2xl px-3 py-2.5 text-left text-white active:translate-y-[2px]',
           className,
         )}
       >
+        <div className='flex w-full items-center gap-3'>
         <span
           className='flex size-10 shrink-0 items-center justify-center rounded-xl'
           style={{ background: 'var(--ica-gold)', boxShadow: '0 3px 0 var(--ica-gold-edge)' }}
@@ -387,6 +388,9 @@ export function CoachingHomeCard({
         ) : (
           <ChevronRightIcon className='size-5 shrink-0 text-white/70' aria-hidden='true' />
         )}
+        </div>
+        {/* The weeks as rings, also on the phone (Luis, 7 Oct). */}
+        <CoachingWeekRingsMini rings={rings} currentPeriod={currentWeek} size={26} compact />
       </div>
     )
   }
@@ -438,9 +442,9 @@ export function CoachingHomeCard({
         </p>
       </div>
 
-      {/* Recorrido: un anillo por semana, se llena con las 6 tareas (Luis, 6 oct). */}
-      <div className='relative mt-4'>
-        <CoachingWeekRingsMini rings={rings} currentPeriod={currentWeek} />
+      {/* Recorrido: un anillo por semana, se llena con las 6 tareas (Luis, 6-7 oct). */}
+      <div className='relative mt-4 rounded-2xl bg-white/6 px-3 pt-3 pb-2'>
+        <CoachingWeekRingsMini rings={rings} currentPeriod={currentWeek} size={40} />
       </div>
 
       {/* The week's focuses side by side in one row, so the card keeps its height with 1, 2 or 3

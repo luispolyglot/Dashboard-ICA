@@ -56,8 +56,8 @@ describe('anillos del coaching', () => {
     expect(isTaskAnswered(classes[2], 2)).toBe(false)
   })
 
-  it('la insignia Coaching: bronce 4, plata 5, oro 6, rubí 8, diamante 9 y Leyenda con 10, 2 y 3 coachings', () => {
-    const levels = (bestRings: number, fullCoachings: number) =>
+  it('la insignia Coaching: bronce 4, plata 5, oro 6, rubí 8, diamante 9 y Leyenda con 10, 20 y 30 anillos', () => {
+    const levels = (bestRings: number, totalRings: number) =>
       computeAchievements({
         rachaICA: 0,
         rachaFlash: 0,
@@ -65,16 +65,19 @@ describe('anillos del coaching', () => {
         vocab: null,
         desafios: null,
         rankings: null,
-        coaching: { bestRings, fullCoachings },
+        coaching: { bestRings, totalRings },
       }).byCategory.coaching.earned
-    expect(levels(3, 0)).toBe(0)
-    expect(levels(4, 0)).toBe(1)
-    expect(levels(7, 0)).toBe(3)
-    expect(levels(8, 0)).toBe(4)
-    expect(levels(9, 0)).toBe(5)
-    expect(levels(10, 1)).toBe(6)
-    expect(levels(10, 2)).toBe(7)
-    expect(levels(10, 3)).toBe(8)
+    expect(levels(3, 3)).toBe(0)
+    expect(levels(4, 4)).toBe(1)
+    expect(levels(7, 7)).toBe(3)
+    expect(levels(8, 8)).toBe(4)
+    expect(levels(9, 9)).toBe(5)
+    expect(levels(10, 10)).toBe(6)
+    expect(levels(10, 19)).toBe(6)
+    expect(levels(10, 20)).toBe(7)
+    expect(levels(10, 30)).toBe(8)
+    // 30 rings over several coachings without one full coaching stays at Diamante.
+    expect(levels(9, 30)).toBe(5)
   })
 })
 

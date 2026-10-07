@@ -95,7 +95,8 @@ export const ACHIEVEMENT_CATALOG: AchievementCategoryDef[] = [
     key: 'coaching',
     title: 'Coaching ICA',
     description: 'Anillos de tu coaching: cada semana con sus 6 tareas hechas cierra un anillo.',
-    // Luis (6 Oct): up to Leyenda I, rings of your best coaching; then coachings with all 10.
+    // Luis (6-7 Oct): up to Leyenda I, rings of your best coaching; Leyenda II and III count the
+    // rings of all your coachings together (20 and 30).
     levels: [
       { tier: 'bronce', value: 4, ribbon: '4', caption: '4 anillos' },
       { tier: 'plata', value: 5, ribbon: '5', caption: '5 anillos' },
@@ -103,14 +104,14 @@ export const ACHIEVEMENT_CATALOG: AchievementCategoryDef[] = [
       { tier: 'rubi', value: 8, ribbon: '8', caption: '8 anillos' },
       { tier: 'diamante', value: 9, ribbon: '9', caption: '9 anillos' },
       { tier: 'leyenda1', value: 10, ribbon: '10', caption: 'Los 10 anillos' },
-      { tier: 'leyenda2', value: 2, ribbon: '10 ×2', caption: '2 coachings completos' },
-      { tier: 'leyenda3', value: 3, ribbon: '10 ×3', caption: '3 coachings completos' },
+      { tier: 'leyenda2', value: 20, ribbon: '20', caption: '20 anillos' },
+      { tier: 'leyenda3', value: 30, ribbon: '30', caption: '30 anillos' },
     ],
   },
 ]
 
-/** Coaching levels from this index on count coachings with all 10 rings (Leyenda II and III). */
-const COACHING_FULL_FROM = 6
+/** Coaching levels from this index on count the rings of all coachings (Leyenda II and III). */
+const COACHING_TOTAL_FROM = 6
 
 /** Cuántas insignias hay en total (7 categorías × 8 niveles). */
 export const TOTAL_ACHIEVEMENTS = ACHIEVEMENT_CATALOG.reduce((sum, def) => sum + def.levels.length, 0)
@@ -158,11 +159,11 @@ type RemoteStats = {
   /** Meses cerrados con un 100 % de eficacia (no hace falta que sean seguidos). */
   perfectMonths?: number | null
   rankings: { first: number; second: number; third: number } | null
-  /** Anillos del mejor coaching y coachings con los 10 anillos. */
+  /** Anillos del mejor coaching y anillos de todos tus coachings juntos. */
   coaching?: CoachingRingStats | null
 }
 
-export type CoachingRingStats = { bestRings: number; fullCoachings: number }
+export type CoachingRingStats = { bestRings: number; totalRings: number }
 
 /** Coaching rings of any student (the badge is public, like the others). */
 export async function fetchCoachingRingStats(userId?: string | null): Promise<CoachingRingStats | null> {
@@ -170,7 +171,7 @@ export async function fetchCoachingRingStats(userId?: string | null): Promise<Co
   const { data, error } = await supabase.rpc('get_coaching_ring_stats', userId ? { p_user_id: userId } : {})
   if (error || !data || typeof data !== 'object') return null
   const row = data as Record<string, unknown>
-  return { bestRings: Number(row.bestRings) || 0, fullCoachings: Number(row.fullCoachings) || 0 }
+  return { bestRings: Number(row.bestRings) || 0, totalRings: Number(row.totalRings) || 0 }
 }
 
 function monthStarts(fromIso: string, count: number): string[] {
@@ -255,7 +256,7 @@ export type AchievementValues = {
   vocab: number | null
   desafios: number | null
   rankings: { first: number; second: number; third: number } | null
-  /** Coaching: anillos del mejor coaching y coachings completos (null = no se sabe). */
+  /** Coaching: anillos del mejor coaching y de todos tus coachings (null = no se sabe). */
   coaching?: CoachingRingStats | null
 }
 
@@ -294,8 +295,8 @@ function goalsFor(
   return def.levels.map((level, index) => {
     if (def.key === 'coaching') {
       if (!coaching) return null
-      return index >= COACHING_FULL_FROM
-        ? { have: coaching.fullCoachings, need: level.value }
+      return index >= COACHING_TOTAL_FROM
+        ? { have: coaching.totalRings, need: level.value }
         : { have: coaching.bestRings, need: level.value }
     }
     if (def.key === 'ranking') {
@@ -349,8 +350,8 @@ export function goalText(def: AchievementCategoryDef, index: number, goal: Achie
   if (def.key === 'vocab') return t('{have} / {need} palabras', { have, need: goal.need })
   if (def.key === 'desafios') return t('{have} / {need} ganados', { have, need: goal.need })
   if (def.key === 'coaching') {
-    return index >= COACHING_FULL_FROM
-      ? t('{have} / {need} coachings completos', { have, need: goal.need })
+    return index >= COACHING_TOTAL_FROM
+      ? t('{have} / {need} anillos en todos tus coachings', { have, need: goal.need })
       : t('{have} / {need} anillos', { have, need: goal.need })
   }
   return t('{have} / {need} días seguidos', { have, need: goal.need })
@@ -374,8 +375,8 @@ export function unlockHint(def: AchievementCategoryDef, index: number, goal: Ach
   }
   if (def.key === 'vocab') return t('Llega a {n} palabras en tu Baúl ICA para desbloquear esta insignia.', { n })
   if (def.key === 'coaching') {
-    return index >= COACHING_FULL_FROM
-      ? t('Completa los 10 anillos en {n} coachings para desbloquear esta insignia.', { n })
+    return index >= COACHING_TOTAL_FROM
+      ? t('Suma {n} anillos entre todos tus coachings para desbloquear esta insignia.', { n })
       : t('Es del Coaching ICA: completa {n} anillos en un mismo coaching (las 6 tareas de {n} semanas) para desbloquear esta insignia.', { n })
   }
   return t('Gana {n} desafíos ICA para desbloquear esta insignia.', { n })

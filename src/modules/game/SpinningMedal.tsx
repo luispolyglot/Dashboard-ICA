@@ -155,6 +155,28 @@ export function SpinningMedal({
       }
     }
 
+    // Leyenda (Luis, 7 Oct): when the medal settles, the picture in the middle spins too, twice,
+    // like a coin flipped inside the medal, and pops a little. scaleX(cos) draws the flip and
+    // works on SVG in every browser (3D rotations on SVG groups do not).
+    if (isLegend(tier)) {
+      const emblemFrames: Keyframe[] = []
+      const turns = 2
+      for (let index = 0; index <= SAMPLES; index += 1) {
+        const time = index / SAMPLES
+        const eased = 1 - Math.pow(1 - time, 3)
+        const angle = 360 * turns * eased
+        const flip = Math.cos((angle * Math.PI) / 180)
+        const pop = 1 + 0.14 * Math.sin(Math.PI * time)
+        emblemFrames.push({ transform: `scale(${(flip * pop).toFixed(4)}, ${pop.toFixed(4)})` })
+      }
+      for (const emblem of Array.from(rotorRef.current.querySelectorAll<SVGGElement>('.ica-emblem'))) {
+        emblem.style.transformBox = 'fill-box'
+        emblem.style.transformOrigin = 'center'
+        emblem.getAnimations().forEach((animation) => animation.cancel())
+        emblem.animate(emblemFrames, { duration: 1100, delay: Math.round(duration * 0.8), easing: 'linear' })
+      }
+    }
+
     const rotor: Keyframe[] = []
     const front: Keyframe[] = []
     const back: Keyframe[] = []

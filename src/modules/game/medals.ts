@@ -214,16 +214,20 @@ const EMBLEM = {
       <g transform="translate(12 12) scale(0.92) rotate(42) translate(-12 -7.5)">${sword}</g>
     </g>`
   },
-  // Coaching (Luis, 6 Oct): the mortarboard of the ICA logo, in the brand blue with a gold tassel.
+  // Coaching (Luis, 6 Oct): the mortarboard of the ICA logo, in the brand blue. Tassel redrawn
+  // (Luis, 7 Oct): a curved cord over the edge, a knot and a full fringe.
   birrete: () => `
     <g transform="translate(80 84) scale(0.52)">
       <path d="M-34 6 L-34 28 Q0 44 34 28 L34 6 L0 18 Z" fill="url(#e-birrete)" stroke="#0b1028" stroke-width="3" stroke-linejoin="round"/>
       <path d="M0 -26 L58 -4 L0 18 L-58 -4 Z" fill="url(#e-birrete)" stroke="#0b1028" stroke-width="4" stroke-linejoin="round"/>
       <path d="M0 -26 L58 -4 L0 18 L-58 -4 Z" fill="none" stroke="#ffffff" stroke-width="2" stroke-linejoin="round" opacity="0.35" transform="translate(0 -3) scale(0.9)"/>
-      <path d="M44 0 L44 28" stroke="#FFC72C" stroke-width="4.5" stroke-linecap="round"/>
-      <path d="M38.5 26 h11 l-2 12 h-7 z" fill="#FFC72C" stroke="#D99A00" stroke-width="2" stroke-linejoin="round"/>
-      <circle cx="0" cy="-4" r="5" fill="#FFC72C" stroke="#D99A00" stroke-width="2"/>
-      <path d="M0 -4 L44 0" stroke="#FFC72C" stroke-width="3.5" stroke-linecap="round"/>
+      <path d="M0 -4 C 18 -9 38 -7 49 -1 C 53 1 53 6 52 12 L 51.5 19" fill="none" stroke="#B87F00" stroke-width="6.5" stroke-linecap="round"/>
+      <path d="M0 -4 C 18 -9 38 -7 49 -1 C 53 1 53 6 52 12 L 51.5 19" fill="none" stroke="#FFD34D" stroke-width="3.6" stroke-linecap="round"/>
+      <path d="M45.5 26 Q 44 36 41.5 44 Q 51.5 47.5 61.5 44 Q 59 36 57.5 26 Z" fill="url(#e-borla)" stroke="#B87F00" stroke-width="2.2" stroke-linejoin="round"/>
+      <g stroke="#C98C00" stroke-width="1.6" stroke-linecap="round" opacity="0.85"><path d="M48.5 28 L46 43"/><path d="M51.5 28 L51.5 45"/><path d="M54.5 28 L57 43"/></g>
+      <rect x="45" y="21.5" width="13" height="6.5" rx="3" fill="#FFD34D" stroke="#B87F00" stroke-width="2.2"/>
+      <circle cx="0" cy="-4" r="6" fill="#FFD34D" stroke="#B87F00" stroke-width="2.4"/>
+      <circle cx="-1.5" cy="-5.5" r="1.8" fill="#fff" opacity="0.7"/>
     </g>`,
   // La copa de la app (TrophyIcon), siempre dorada y sin estrella: las estrellas son de la Leyenda.
   copa: () => `
@@ -332,7 +336,8 @@ export function buildMedalSvg(
   </g>`
   svg += `<ellipse cx="${CX}" cy="${CY - R + 12}" rx="26" ry="9" fill="#ffffff" opacity="0.18"/>`
   if (t.studs) svg += studs()
-  svg += `<g clip-path="url(#clip-disc)">${emblemFor(category)}</g>`
+  // `ica-emblem`: the Leyenda makes it spin on its own after the medal (SpinningMedal).
+  svg += `<g clip-path="url(#clip-disc)"><g class="ica-emblem">${emblemFor(category)}</g></g>`
   if (t.gems) svg += gemsRing(t.gems, t.gem)
   if (t.sparkle) svg += sparkles()
   // Rubí y diamante brillan: un destello cruza la medalla y aparecen estrellitas.
@@ -377,6 +382,7 @@ export const MEDAL_DEFS_SVG = `<svg width="0" height="0" style="position:absolut
   <radialGradient id="gd-coaching" cx=".5" cy=".42" r=".62"><stop offset="0" stop-color="#26346e"/><stop offset="1" stop-color="#0b1028"/></radialGradient>
   <linearGradient id="rb-coaching" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34459a"/><stop offset="1" stop-color="#1b2450"/></linearGradient>
   <linearGradient id="e-birrete" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9be2ff"/><stop offset="1" stop-color="#2fa8e0"/></linearGradient>
+  <linearGradient id="e-borla" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE07A"/><stop offset="1" stop-color="#F2A900"/></linearGradient>
   <linearGradient id="rb-ica" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fb923c"/><stop offset="1" stop-color="#ea580c"/></linearGradient>
   <linearGradient id="rb-flash" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#818cf8"/><stop offset="1" stop-color="#4f46e5"/></linearGradient>
   <linearGradient id="rb-rank" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d4af37"/><stop offset="1" stop-color="#a67c1a"/></linearGradient>
