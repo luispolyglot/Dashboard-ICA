@@ -15,13 +15,15 @@ import {
 import {
   enqueueMasterNoteListeningDelta,
   flushPendingMasterNoteListeningDeltas,
-  getUtcDayStamp,
 } from '../services/masterNoteListeningMetrics'
+import { getLocalListeningDayStamp } from '../services/listeningCalendar'
 
 type PlaybackTrack = {
   url: string
   durationSec: number
 }
+
+const LISTENING_FLUSH_EVERY_MS = 30_000
 
 type UnifiedChunkCacheEntry = {
   url: string
@@ -183,6 +185,8 @@ export function useMasterNotePlayback() {
     nativeLang: string
   } | null>(null)
   const listeningLastTickAtRef = useRef<number | null>(null)
+  const listeningLastAudioTimeRef = useRef<number | null>(null)
+  const listeningLastFlushAtRef = useRef(0)
   const listeningBufferedSecondsRef = useRef(0)
   const listeningFlushIntervalRef = useRef<number | null>(null)
   // Nota desafiante: cuánto audio de ESTA nota ha sonado de verdad (para desbloquearla al 80 %)
@@ -371,33 +375,48 @@ export function useMasterNotePlayback() {
       return
     }
 
+    const occurredAt = new Date().toISOString()
     enqueueMasterNoteListeningDelta({
       userId: currentUserId,
-      day: getUtcDayStamp(),
+      day: getLocalListeningDayStamp(new Date(occurredAt)),
       targetLang: meta.targetLang,
       nativeLang: meta.nativeLang,
       deltaSeconds: wholeSeconds,
+      occurredAt,
     })
 
-    if (forceFlush || wholeSeconds >= 15) {
+    const now = Date.now()
+    if (forceFlush || now - listeningLastFlushAtRef.current >= LISTENING_FLUSH_EVERY_MS) {
+      listeningLastFlushAtRef.current = now
       void flushListeningAsync().catch(() => {})
     }
   }
 
   const checkpointListening = (forceFlush = false): void => {
-    if (!audioRef.current || audioRef.current.paused) {
-      commitListeningDelta(forceFlush)
-      listeningLastTickAtRef.current = null
-      return
-    }
+    const audio = audioRef.current
+    if (audio) {
+      const now = Date.now()
+      const audioNow = audio.currentTime || 0
+      const lastAt = listeningLastTickAtRef.current
+      const lastAudio = listeningLastAudioTimeRef.current
 
-    const now = Date.now()
-    const last = listeningLastTickAtRef.current
-    listeningLastTickAtRef.current = now
+      if (lastAt !== null && lastAudio !== null) {
+        // Timer callbacks can be throttled while the app is backgrounded. Count actual audio
+        // progress, bounded by elapsed wall time, instead of assuming each callback was on time.
+        const playedSeconds = audioNow - lastAudio
+        const elapsedSeconds = (now - lastAt) / 1000
+        if (playedSeconds > 0 && playedSeconds <= elapsedSeconds + 2) {
+          listeningBufferedSecondsRef.current += playedSeconds
+        }
+      }
 
-    if (last !== null) {
-      const deltaSec = clamp((now - last) / 1000, 0, 15)
-      listeningBufferedSecondsRef.current += deltaSec
+      if (audio.paused) {
+        listeningLastTickAtRef.current = null
+        listeningLastAudioTimeRef.current = null
+      } else {
+        listeningLastTickAtRef.current = now
+        listeningLastAudioTimeRef.current = audioNow
+      }
     }
 
     commitListeningDelta(forceFlush)
@@ -409,6 +428,7 @@ export function useMasterNotePlayback() {
       listeningFlushIntervalRef.current = null
     }
     listeningLastTickAtRef.current = null
+    listeningLastAudioTimeRef.current = null
   }
 
   const startListeningTicker = (): void => {
@@ -416,6 +436,7 @@ export function useMasterNotePlayback() {
     if (listeningFlushIntervalRef.current !== null) return
 
     listeningLastTickAtRef.current = Date.now()
+    listeningLastAudioTimeRef.current = audioRef.current.currentTime || 0
     listeningFlushIntervalRef.current = window.setInterval(() => {
       checkpointListening(false)
     }, 10_000)

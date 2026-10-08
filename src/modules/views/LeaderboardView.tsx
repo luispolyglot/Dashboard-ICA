@@ -70,6 +70,7 @@ type ScoreBreakdown = {
   icaTestMaxPoints: number;
   listeningPoints: number;
   listeningMaxPoints: number;
+  listeningDayCap: number;
   pregunticaPoints: number;
   pregunticaMaxPoints: number;
   instagramPoints: number;
@@ -310,9 +311,17 @@ function buildScoreBreakdown(
   const monthlyPoints = getMonthlyPercentPoints(row);
   const icaTestPoints = includeIcaTest ? getIcaTestPoints(row) : 0;
   const listeningPoints = getListeningPoints(row);
+  const listeningDayCap = Math.min(
+    28,
+    Math.max(
+      1,
+      toSafeNumber(row.listening_day_cap, scoringDayCap),
+      Math.ceil(listeningPoints * 10),
+    ),
+  );
   const pregunticaPoints = getPregunticaPoints(row);
   const instagramPoints = getInstagramPoints(row);
-  const listeningMaxPoints = scoringDayCap * MAX_LISTENING_POINTS_PER_DAY;
+  const listeningMaxPoints = listeningDayCap * MAX_LISTENING_POINTS_PER_DAY;
   const pregunticaMaxPoints = getPregunticaMaxPoints(
     scoringDayCap,
     pregunticaPoints,
@@ -334,6 +343,7 @@ function buildScoreBreakdown(
     icaTestMaxPoints: MAX_ICA_TEST_POINTS,
     listeningPoints,
     listeningMaxPoints,
+    listeningDayCap,
     pregunticaPoints,
     pregunticaMaxPoints,
     instagramPoints,
