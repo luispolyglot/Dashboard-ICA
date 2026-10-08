@@ -48,7 +48,6 @@ export async function fetchMyMonthlyAnalytics(
   const normalizedNativeLang = nativeLang.trim().toLowerCase()
 
   const startDay = startIso.slice(0, 10)
-  const endDay = endIso.slice(0, 10)
 
   const [wordsRes, phrasesRes, notesRes, reviewsRes, listeningRes] = await Promise.all([
     supabase
@@ -87,14 +86,11 @@ export async function fetchMyMonthlyAnalytics(
       .eq('lexicards.native_lang', nativeLang)
       .gte('created_at', startIso)
       .lt('created_at', endIso),
-    supabase
-      .from('master_note_listening_daily_metrics')
-      .select('listened_seconds')
-      .eq('user_id', userId)
-      .ilike('target_lang', normalizedTargetLang)
-      .ilike('native_lang', normalizedNativeLang)
-      .gte('day', startDay)
-      .lt('day', endDay),
+    supabase.rpc('get_my_monthly_listening_seconds', {
+      p_month_start: startDay,
+      p_target_lang: normalizedTargetLang,
+      p_native_lang: normalizedNativeLang,
+    }),
   ])
 
   if (wordsRes.error) throw wordsRes.error
@@ -103,16 +99,15 @@ export async function fetchMyMonthlyAnalytics(
   if (reviewsRes.error) throw reviewsRes.error
   if (listeningRes.error) throw listeningRes.error
 
-  const listenedSeconds = (listeningRes.data || []).reduce((sum, row) => {
-    const value = Number((row as { listened_seconds?: number }).listened_seconds || 0)
-    return sum + (Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0)
-  }, 0)
+  const listenedSeconds = Number(listeningRes.data || 0)
 
   return {
     wordsAdded: wordsRes.count ?? 0,
     phrasesCreated: phrasesRes.count ?? 0,
     masterNotesClosed: notesRes.count ?? 0,
-    masterNotesListenedMinutes: Math.floor(listenedSeconds / 60),
+    masterNotesListenedMinutes: Number.isFinite(listenedSeconds)
+      ? Math.floor(Math.max(0, listenedSeconds) / 60)
+      : 0,
     flashcardsCorrect: reviewsRes.count ?? 0,
   }
 }

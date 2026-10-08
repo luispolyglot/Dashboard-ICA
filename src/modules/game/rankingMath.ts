@@ -38,10 +38,20 @@ export function rowTotalPoints(row: LeaderboardEntry, includeIcaTest = true): nu
  */
 export function monthEfficacy(row: LeaderboardEntry, dayCap: number, monthStart: string): number {
   const days = Math.max(1, Math.min(CLOSED_MONTH_DAYS, Math.floor(dayCap)))
+  const listeningDays = Math.max(
+    1,
+    Math.min(
+      CLOSED_MONTH_DAYS,
+      Math.max(
+        Math.floor(num(row.listening_day_cap ?? days)),
+        Math.ceil(num(row.listening_points) * 10),
+      ),
+    ),
+  )
   const hasIcaTest = row.ica_test_points !== null && row.ica_test_points !== undefined
   const max =
     MAX_MONTHLY_POINTS +
-    days * MAX_LISTENING_POINTS_PER_DAY +
+    listeningDays * MAX_LISTENING_POINTS_PER_DAY +
     getPregunticaMaxPoints(monthStart, days) +
     days * MAX_INSTAGRAM_POINTS_PER_DAY +
     (hasIcaTest ? MAX_ICA_TEST_POINTS : 0)

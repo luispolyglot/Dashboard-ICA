@@ -16,15 +16,14 @@ import {
   enqueueMasterNoteListeningDelta,
   flushPendingMasterNoteListeningDeltas,
 } from '../services/masterNoteListeningMetrics'
-import { todayKey } from '../utils'
-
-/** While playing, listening seconds go to the server about every 30 s (ranking and 10-min message). */
-const LISTENING_FLUSH_EVERY_MS = 30_000
+import { getLocalListeningDayStamp } from '../services/listeningCalendar'
 
 type PlaybackTrack = {
   url: string
   durationSec: number
 }
+
+const LISTENING_FLUSH_EVERY_MS = 30_000
 
 type UnifiedChunkCacheEntry = {
   url: string
@@ -378,19 +377,19 @@ export function useMasterNotePlayback() {
       return
     }
 
+    const occurredAt = new Date().toISOString()
     enqueueMasterNoteListeningDelta({
       userId: currentUserId,
-      // The student's own day (like the ranking and the ICA cycle), not the UTC one: in Latin
-      // America the UTC date changes in the evening and that listening was counted on the next day.
-      day: todayKey(),
+      day: getLocalListeningDayStamp(new Date(occurredAt)),
       targetLang: meta.targetLang,
       nativeLang: meta.nativeLang,
       deltaSeconds: wholeSeconds,
+      occurredAt,
     })
 
-    // Send it while listening (every ~30 s), not only when stopping: the ranking sees it right away.
-    if (forceFlush || Date.now() - listeningLastFlushAtRef.current >= LISTENING_FLUSH_EVERY_MS) {
-      listeningLastFlushAtRef.current = Date.now()
+    const now = Date.now()
+    if (forceFlush || now - listeningLastFlushAtRef.current >= LISTENING_FLUSH_EVERY_MS) {
+      listeningLastFlushAtRef.current = now
       void flushListeningAsync().catch(() => {})
     }
   }
@@ -403,10 +402,6 @@ export function useMasterNotePlayback() {
       const lastAt = listeningLastTickAtRef.current
       const lastAudio = listeningLastAudioTimeRef.current
       if (lastAt !== null && lastAudio !== null) {
-        // Count how far the audio really moved. With the screen off the phone pauses our timers
-        // but the audio keeps playing, so the clock between ticks is not reliable; the audio
-        // position is. Never more than the real time that passed (+2 s margin), and jumps back
-        // or forward with the buttons do not count.
         const played = audioNow - lastAudio
         const wall = (now - lastAt) / 1000
         if (played > 0 && played <= wall + 2) {

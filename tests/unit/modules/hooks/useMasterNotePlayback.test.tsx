@@ -26,7 +26,6 @@ vi.mock('@/modules/services/masterNoteListeningMetrics', () => ({
   enqueueMasterNoteListeningDelta: vi.fn(),
   flushPendingMasterNoteListeningDeltas: (...args: unknown[]) =>
     flushPendingMasterNoteListeningDeltasMock(...args),
-  getUtcDayStamp: () => '2026-06-22',
 }))
 
 import { useMasterNotePlayback } from '@/modules/hooks/useMasterNotePlayback'

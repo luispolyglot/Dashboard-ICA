@@ -73,6 +73,7 @@ export interface LeaderboardEntry {
   creation_percent?: number
   ica_test_points?: number | null
   listening_points?: number | null
+  listening_day_cap?: number | null
   preguntica_points?: number | null
   instagram_points?: number | null
   total_points?: number

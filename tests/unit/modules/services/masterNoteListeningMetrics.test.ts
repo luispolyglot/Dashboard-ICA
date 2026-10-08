@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { getLocalListeningDayStamp } from '@/modules/services/listeningCalendar'
 
 const rpcMock = vi.fn()
 const selectRows: { value: Array<{ listened_seconds: number }> } = { value: [] }
@@ -25,13 +26,26 @@ import {
   enqueueMasterNoteListeningDelta,
   flushPendingMasterNoteListeningDeltas,
 } from '@/modules/services/masterNoteListeningMetrics'
-import { todayKey } from '@/modules/utils'
 
-const STORAGE_KEY = 'icademy:master-note-listening:pending:v1'
-const base = { userId: 'u1', day: '2026-10-05', targetLang: 'Polaco', nativeLang: 'Español' }
+const storageKey = 'icademy:master-note-listening:pending:v1'
+const goalCelebratedKey = 'icademy:master-note-listening:goal-celebrated-day'
+const userId = 'user-1'
+const firstOccurrence = '2026-10-05T21:00:00.000Z'
 
-function pending(): Array<{ id: string; deltaSeconds: number }> {
-  return JSON.parse(window.localStorage.getItem(STORAGE_KEY) || '[]')
+function enqueue(deltaSeconds: number, occurredAt: string): void {
+  enqueueMasterNoteListeningDelta({
+    userId,
+    day: getLocalListeningDayStamp(new Date(occurredAt)),
+    targetLang: 'italiano',
+    nativeLang: 'español',
+    deltaSeconds,
+    occurredAt,
+  })
+}
+
+function getPendingDeltas(): number[] {
+  return JSON.parse(window.localStorage.getItem(storageKey) || '[]')
+    .map((event: { deltaSeconds: number }) => event.deltaSeconds)
 }
 
 describe('master note listening metrics', () => {
@@ -43,28 +57,30 @@ describe('master note listening metrics', () => {
   })
 
   it('keeps the seconds listened while a send is on its way', async () => {
-    enqueueMasterNoteListeningDelta({ ...base, deltaSeconds: 10 })
-    let release: () => void = () => undefined
-    rpcMock.mockImplementationOnce(
-      () => new Promise((resolve) => { release = () => resolve({ data: null, error: null }) }),
-    )
-    const flushing = flushPendingMasterNoteListeningDeltas('u1')
+    enqueue(10, firstOccurrence)
+    let releaseFirstRequest: (value: { data: null; error: null }) => void = () => undefined
+    rpcMock
+      .mockImplementationOnce(
+        () => new Promise((resolve) => { releaseFirstRequest = resolve }),
+      )
+      .mockResolvedValue({ data: null, error: null })
+
+    const flushing = flushPendingMasterNoteListeningDeltas(userId)
     await Promise.resolve()
-    // Listening goes on while the first 10 s travel to the server.
-    enqueueMasterNoteListeningDelta({ ...base, deltaSeconds: 7 })
-    release()
+    enqueue(7, '2026-10-05T21:00:20.000Z')
+    releaseFirstRequest({ data: null, error: null })
     await flushing
 
-    expect(rpcMock).toHaveBeenCalledTimes(1)
-    expect(rpcMock.mock.calls[0][1]).toMatchObject({ p_delta_seconds: 10 })
-    expect(pending().map((event) => event.deltaSeconds)).toEqual([7])
+    expect(rpcMock).toHaveBeenCalledTimes(2)
+    expect(rpcMock.mock.calls.map(([, args]) => args.p_delta_seconds)).toEqual([10, 7])
+    expect(getPendingDeltas()).toEqual([])
   })
 
   it('celebrates 10 minutes once per day', async () => {
     selectRows.value = [{ listened_seconds: 420 }, { listened_seconds: 200 }]
     expect(await celebrateListeningGoalIfReached('u1')).toBe(true)
     expect(toastSuccess).toHaveBeenCalledTimes(1)
-    expect(window.localStorage.getItem('icademy:master-note-listening:goal-celebrated-day')).toBe(todayKey())
+    expect(window.localStorage.getItem(goalCelebratedKey)).toBe(getLocalListeningDayStamp())
 
     expect(await celebrateListeningGoalIfReached('u1')).toBe(false)
     expect(toastSuccess).toHaveBeenCalledTimes(1)

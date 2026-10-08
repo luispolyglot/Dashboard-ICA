@@ -1,8 +1,8 @@
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { t } from '@/i18n'
-import { todayKey } from '../utils'
 import { notifyListeningMetricsChanged } from './creationMetricsSync'
+import { getLocalListeningDayStamp } from './listeningCalendar'
 
 /** Seconds of listening in a day that give +0.1 points in the monthly ranking (server rule). */
 export const LISTENING_GOAL_SECONDS = 600
@@ -16,6 +16,7 @@ type PendingListeningDeltaEvent = {
   nativeLang: string
   deltaSeconds: number
   createdAt: string
+  occurredAt: string
 }
 
 const STORAGE_KEY = 'icademy:master-note-listening:pending:v1'
@@ -31,6 +32,11 @@ function safeString(value: unknown): string {
 function safeDay(value: unknown): string {
   const text = safeString(value)
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : ''
+}
+
+function safeTimestamp(value: unknown): string {
+  const text = safeString(value)
+  return text && Number.isFinite(Date.parse(text)) ? new Date(text).toISOString() : ''
 }
 
 function createEventId(): string {
@@ -58,11 +64,13 @@ function readPendingEvents(): PendingListeningDeltaEvent[] {
 
         const id = safeString(row.id)
         const userId = safeString(row.userId)
-        const day = safeDay(row.day)
+        const legacyDay = safeDay(row.day)
         const targetLang = safeString(row.targetLang)
         const nativeLang = safeString(row.nativeLang)
         const deltaSeconds = Math.max(0, Math.floor(Number(row.deltaSeconds) || 0))
-        const createdAt = safeString(row.createdAt) || new Date().toISOString()
+        const createdAt = safeTimestamp(row.createdAt) || new Date().toISOString()
+        const occurredAt = safeTimestamp(row.occurredAt) || createdAt
+        const day = getLocalListeningDayStamp(new Date(occurredAt)) || legacyDay
 
         if (!id || !userId || !day || !targetLang || !nativeLang || deltaSeconds <= 0) {
           return null
@@ -76,6 +84,7 @@ function readPendingEvents(): PendingListeningDeltaEvent[] {
           nativeLang,
           deltaSeconds,
           createdAt,
+          occurredAt,
         }
       })
       .filter((item): item is PendingListeningDeltaEvent => Boolean(item))
@@ -98,24 +107,22 @@ function normalizeLanguage(value: string): string {
   return value.trim()
 }
 
-export function getUtcDayStamp(date = new Date()): string {
-  return date.toISOString().slice(0, 10)
-}
-
 export function enqueueMasterNoteListeningDelta(input: {
   userId: string
   day: string
   targetLang: string
   nativeLang: string
   deltaSeconds: number
+  occurredAt: string
 }): void {
   const userId = safeString(input.userId)
   const day = safeDay(input.day)
   const targetLang = normalizeLanguage(safeString(input.targetLang))
   const nativeLang = normalizeLanguage(safeString(input.nativeLang))
   const deltaSeconds = Math.max(0, Math.floor(input.deltaSeconds || 0))
+  const occurredAt = safeTimestamp(input.occurredAt)
 
-  if (!userId || !day || !targetLang || !nativeLang || deltaSeconds <= 0) return
+  if (!userId || !day || !targetLang || !nativeLang || deltaSeconds <= 0 || !occurredAt) return
 
   const events = readPendingEvents()
 
@@ -145,6 +152,7 @@ export function enqueueMasterNoteListeningDelta(input: {
     nativeLang,
     deltaSeconds,
     createdAt: new Date().toISOString(),
+    occurredAt,
   })
   writePendingEvents(events)
 }
@@ -153,41 +161,45 @@ export async function flushPendingMasterNoteListeningDeltas(userId: string): Pro
   const normalizedUserId = safeString(userId)
   if (!normalizedUserId || !supabase) return
 
-  if (flushInFlight) {
-    await flushInFlight
-    return
-  }
+  while (flushInFlight) await flushInFlight
 
-  flushInFlight = (async () => {
-    let events = readPendingEvents()
-    if (events.length === 0) return
-
-    const queue = events.filter((event) => event.userId === normalizedUserId)
-    if (queue.length === 0) return
+  const nextFlush = (async () => {
     let flushedCount = 0
 
-    for (const event of queue) {
-      inFlightEventIds.add(event.id)
-      try {
-        const { error } = await supabase.rpc('bump_master_note_listening_metrics', {
-          p_event_id: event.id,
-          p_day: event.day,
-          p_target_lang: event.targetLang,
-          p_native_lang: event.nativeLang,
-          p_delta_seconds: event.deltaSeconds,
-        })
+    while (true) {
+      const queue = readPendingEvents().filter((event) => event.userId === normalizedUserId)
+      if (queue.length === 0) break
 
-        if (error) {
-          break
+      let flushedFromQueue = false
+      let stoppedOnError = false
+      for (const event of queue) {
+        inFlightEventIds.add(event.id)
+        try {
+          const { error } = await supabase.rpc('bump_master_note_listening_metrics', {
+            p_event_id: event.id,
+            p_day: event.day,
+            p_target_lang: event.targetLang,
+            p_native_lang: event.nativeLang,
+            p_delta_seconds: event.deltaSeconds,
+            p_occurred_at: event.occurredAt,
+          })
+
+          if (error) {
+            stoppedOnError = true
+            break
+          }
+
+          // Re-read because listening may have enqueued a separate event during this request.
+          const remainingEvents = readPendingEvents().filter((row) => row.id !== event.id)
+          writePendingEvents(remainingEvents)
+          flushedCount += 1
+          flushedFromQueue = true
+        } finally {
+          inFlightEventIds.delete(event.id)
         }
-
-        // Re-read: seconds listened while this request was on its way are kept.
-        events = readPendingEvents().filter((row) => row.id !== event.id)
-        writePendingEvents(events)
-        flushedCount += 1
-      } finally {
-        inFlightEventIds.delete(event.id)
       }
+
+      if (stoppedOnError || !flushedFromQueue) break
     }
 
     if (flushedCount > 0) {
@@ -196,10 +208,11 @@ export async function flushPendingMasterNoteListeningDeltas(userId: string): Pro
     }
   })()
 
+  flushInFlight = nextFlush
   try {
-    await flushInFlight
+    await nextFlush
   } finally {
-    flushInFlight = null
+    if (flushInFlight === nextFlush) flushInFlight = null
   }
 }
 
@@ -218,7 +231,7 @@ function readCelebratedDay(): string | null {
  */
 export async function celebrateListeningGoalIfReached(userId: string): Promise<boolean> {
   if (!supabase || typeof window === 'undefined') return false
-  const day = todayKey()
+  const day = getLocalListeningDayStamp()
   if (readCelebratedDay() === day) return false
 
   const { data, error } = await supabase
