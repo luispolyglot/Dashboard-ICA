@@ -341,8 +341,6 @@ returns table (
   instagram_points numeric,
   total_points numeric,
   featured_badge text,
-  display_flag text,
-  daily_game_correct integer,
   listening_day_cap integer
 )
 language sql
@@ -355,7 +353,6 @@ as $$
       coalesce(tzn.name, 'UTC') as profile_timezone,
       date_trunc('month', now() at time zone coalesce(tzn.name, 'UTC'))::date as profile_month,
       fb.badge as featured_badge,
-      df.lang as display_flag,
       floor.listening_points as october_score_floor,
       listening.listening_points as local_listening_points,
       listening.listening_day_cap
@@ -363,7 +360,6 @@ as $$
     left join public.profiles p on p.id = core.user_id
     left join pg_timezone_names tzn on tzn.name = nullif(p.timezone, '')
     left join public.ica_featured_badges fb on fb.user_id = core.user_id
-    left join public.ica_display_flags df on df.user_id = core.user_id
     left join public.master_note_listening_monthly_score_floors floor
       on floor.user_id = core.user_id and floor.period_start = date '2026-10-01'
     cross join lateral public.get_user_monthly_listening_score(core.user_id, null, null) listening
@@ -396,11 +392,6 @@ as $$
       row_number() over (
         order by
           s.adjusted_total_points desc,
-          case
-            when date_trunc('month', now())::date >= date '2026-11-01'
-              then coalesce(s.daily_game_correct, 0)
-            else 0
-          end desc,
           s.avg_percent desc,
           s.ica_streak_days desc,
           s.user_id
@@ -424,8 +415,6 @@ as $$
     r.instagram_points,
     r.adjusted_total_points,
     r.featured_badge,
-    r.display_flag,
-    r.daily_game_correct,
     r.listening_day_cap
   from ranked r
   order by r.adjusted_rank
@@ -472,7 +461,6 @@ begin
         floor.listening_points as october_score_floor,
         coalesce(nullif(s.payload ->> 'listening_points', '')::numeric, 0) as previous_listening_points,
         coalesce(nullif(s.payload ->> 'total_points', '')::numeric, 0) as previous_total_points,
-        coalesce(nullif(s.payload ->> 'daily_game_correct', '')::integer, 0) as daily_game_correct,
         listening.listening_points as local_listening_points
       from public.leaderboard_snapshots s
       left join public.master_note_listening_monthly_score_floors floor
@@ -514,12 +502,7 @@ begin
       select
         a.*,
         row_number() over (
-          order by
-            a.total_points desc,
-            case when target_month >= date '2026-11-01' then a.daily_game_correct else 0 end desc,
-            a.avg_percent desc,
-            a.ica_streak_days desc,
-            a.user_id
+          order by a.total_points desc, a.avg_percent desc, a.ica_streak_days desc, a.user_id
         )::integer as new_rank
       from adjusted a
     )
