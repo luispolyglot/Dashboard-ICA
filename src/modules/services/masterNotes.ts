@@ -446,7 +446,11 @@ export async function addMasterNoteChunk({
   const phraseNativeLang = typeof phraseRow.native_lang === 'string' ? phraseRow.native_lang.trim() : ''
 
   if (noteTargetLang && noteNativeLang && phraseTargetLang && phraseNativeLang) {
-    if (noteTargetLang !== phraseTargetLang || noteNativeLang !== phraseNativeLang) {
+    // Case-insensitive: some phrases were saved as "polaco" while the note says "Polaco".
+    if (
+      noteTargetLang.toLowerCase() !== phraseTargetLang.toLowerCase() ||
+      noteNativeLang.toLowerCase() !== phraseNativeLang.toLowerCase()
+    ) {
       throw new Error('La frase pertenece a otro idioma y no puede activarse en esta nota')
     }
   }

@@ -8,10 +8,8 @@ import type {
 
 type TranslateResponse = {
   translation?: string | null
-}
-
-type SpellcheckResponse = {
-  suggestion?: string | null
+  /** Corrected spelling of what was typed, or null when it was already right. */
+  spellingSuggestion?: string | null
 }
 
 type ManualPhraseSuggestionResponse = {
@@ -47,12 +45,22 @@ type PhraseTokenInsightResponse = {
   result?: PhraseTokenInsightResult | null
 }
 
-export async function fetchTranslation(
+export type TranslationWithSpelling = {
+  translation: string | null
+  spellingSuggestion: string | null
+}
+
+/**
+ * Translation plus the spelling suggestion for the original text, in one AI call
+ * (it replaced the separate spellcheck call in Inmersión; Luis, 6 Oct).
+ */
+export async function fetchTranslationWithSpelling(
   text: string,
   fromLang: string,
   toLang: string,
-): Promise<string | null> {
-  if (!supabase) return null
+): Promise<TranslationWithSpelling> {
+  const empty = { translation: null, spellingSuggestion: null }
+  if (!supabase) return empty
 
   try {
     const { data, error } = await supabase.functions.invoke<TranslateResponse>('anthropic-proxy', {
@@ -66,43 +74,24 @@ export async function fetchTranslation(
 
     if (error) {
       console.error(error)
-      return null
+      return empty
     }
 
-    const result = data?.translation?.trim()
-    return result ? result : null
+    const translation = data?.translation?.trim() || null
+    const spellingSuggestion = data?.spellingSuggestion?.trim() || null
+    return { translation, spellingSuggestion }
   } catch (error) {
     console.error(error)
-    return null
+    return empty
   }
 }
 
-export async function fetchSpellingSuggestion(
+export async function fetchTranslation(
   text: string,
-  lang: string,
+  fromLang: string,
+  toLang: string,
 ): Promise<string | null> {
-  if (!supabase) return null
-
-  try {
-    const { data, error } = await supabase.functions.invoke<SpellcheckResponse>('anthropic-proxy', {
-      body: {
-        action: 'spellcheck',
-        text,
-        lang,
-      },
-    })
-
-    if (error) {
-      console.error(error)
-      return null
-    }
-
-    const result = data?.suggestion?.trim()
-    return result ? result : null
-  } catch (error) {
-    console.error(error)
-    return null
-  }
+  return (await fetchTranslationWithSpelling(text, fromLang, toLang)).translation
 }
 
 export async function fetchManualPhraseSuggestion(

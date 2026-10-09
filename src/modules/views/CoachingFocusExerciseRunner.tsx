@@ -1,7 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
-import { Badge } from "@/components/ui/badge";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  ArrowRightIcon,
+  CheckIcon,
+  LightbulbIcon,
+  RotateCcwIcon,
+  TargetIcon,
+  XIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+import { GameProgress, Pill, SectionLabel, tone } from "../game/ui";
 import {
   correctorContextOf,
   detectWrongBuildCandidate,
@@ -23,6 +32,61 @@ function displayQuestion(question: string): string {
 
 function displayAnswer(answer: string): string {
   return answer === "en blanco" ? t("en blanco") : answer;
+}
+
+/* Look of the exercise (Luis, 6 Oct): the same pieces as the rest of the new app. */
+type AnswerState = "idle" | "ok" | "no" | "off";
+
+function answerStyle(state: AnswerState): CSSProperties {
+  if (state === "ok" || state === "no") {
+    const colors = tone(state === "ok" ? "ok" : "bad");
+    return {
+      background: colors.soft,
+      borderColor: colors.solid,
+      color: colors.ink,
+      boxShadow: `0 3px 0 ${colors.edge}`,
+    };
+  }
+  return {
+    background: "var(--card)",
+    borderColor: "var(--border)",
+    boxShadow: "0 3px 0 var(--border)",
+    opacity: state === "off" ? 0.55 : 1,
+  };
+}
+
+function ResultMark({ ok, size = 22 }: { ok: boolean; size?: number }) {
+  const colors = tone(ok ? "ok" : "bad");
+  return (
+    <span
+      className="flex shrink-0 items-center justify-center rounded-full text-white"
+      style={{ width: size, height: size, background: colors.solid }}
+      aria-label={ok ? t("Correcto") : t("Incorrecto")}
+    >
+      {ok ? (
+        <CheckIcon style={{ width: size * 0.64, height: size * 0.64 }} strokeWidth={3.4} aria-hidden="true" />
+      ) : (
+        <XIcon style={{ width: size * 0.64, height: size * 0.64 }} strokeWidth={3.4} aria-hidden="true" />
+      )}
+    </span>
+  );
+}
+
+function ItemCard({ number, title, children }: { number: number; title: ReactNode; children: ReactNode }) {
+  return (
+    <div className="ica-panel p-4">
+      <div className="mb-3 flex items-start gap-3">
+        <span
+          className="flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-black"
+          style={{ background: "var(--ica-gold-soft)", color: "var(--ica-gold-ink)" }}
+        >
+          {number}
+        </span>
+        <p className="m-0 min-w-0 flex-1 pt-0.5 text-[15px] leading-snug font-bold">{title}</p>
+      </div>
+      {children}
+    </div>
+  );
 }
 
 /* Ejercicio de foco (fase Entrenado): los tres bloques + resultado.
@@ -427,443 +491,442 @@ export function CoachingFocusExerciseRunner({
   ]);
 
 
+  const resetAll = () => {
+    setStep(0);
+    setScores({});
+    setAnswered({});
+    setPicked({});
+    setWritten({});
+    setSaid({});
+    setWarnings({});
+    setFound({});
+    setAttemptSaved(false);
+    setAttemptFeedback(null);
+  };
+
+  // Speakers of the conversation in order of appearance: the first one on the left, the rest on the right.
+  const firstSpeaker = data.conversacion.lineas[0]?.quien || "";
+
   return (
-    <div className="space-y-4">
-          <div className="grid gap-2 md:grid-cols-3">
-            {blockList.map((block, idx) => (
-              <div
-                key={block.id}
-                className="rounded-md border border-primary/20 bg-card/80 p-2"
+    <div className="flex flex-col gap-4">
+      {/* Progress by block */}
+      <ol className="m-0 grid list-none grid-cols-3 gap-2 p-0" aria-label={t("Bloques del ejercicio")}>
+        {blockList.map((block, idx) => {
+          const done = idx < step;
+          const current = idx === step && step < 3;
+          return (
+            <li key={block.id} className="min-w-0" aria-current={current ? "step" : undefined}>
+              <span
+                className="block h-2 rounded-full transition-colors"
+                style={{
+                  background: done ? "var(--ica-ok)" : current ? "var(--ica-gold)" : "var(--muted)",
+                }}
+              />
+              <p
+                className="m-0 mt-1.5 flex items-center gap-1 text-[11px] font-extrabold tracking-[0.06em] uppercase"
+                style={{
+                  color: done ? "var(--ica-ok-ink)" : current ? "var(--ica-gold-ink)" : "var(--muted-foreground)",
+                }}
               >
-                <p className="text-xs text-muted-foreground">
-                  {t("Bloque {n}", { n: idx + 1 })}
-                </p>
-                <p className="font-medium">{block.titulo}</p>
-                <Badge variant={idx === step ? "default" : "outline"}>
-                  {idx < step
-                    ? t("Respondido")
-                    : idx === step
-                      ? t("Actual")
-                      : t("Pendiente")}
-                </Badge>
-              </div>
-            ))}
+                {done ? <CheckIcon className="size-3" strokeWidth={3.4} aria-hidden="true" /> : null}
+                {t("Bloque {n}", { n: idx + 1 })}
+              </p>
+              <p className="m-0 truncate text-sm font-bold">{block.titulo}</p>
+            </li>
+          );
+        })}
+      </ol>
+
+      {step < 3 && currentBlock ? (
+        <div>
+          <h2 className="m-0 font-display text-xl leading-tight font-extrabold tracking-tight">
+            {currentBlock.titulo}
+          </h2>
+          {currentBlock.instruccion ? (
+            <p className="m-0 mt-1 text-sm font-semibold text-muted-foreground">{currentBlock.instruccion}</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {step < 3 && currentBlock?.id === "reconocer" && (
+        <div className="flex flex-col gap-3">
+          {data.reconocer.items.map((item, itemIdx) => {
+            const key = itemKey(0, itemIdx);
+            const selectedIndex = picked[key];
+            const isDone = Boolean(answered[key]);
+            const pickedOk = isDone && Boolean(item.options[selectedIndex]?.ok);
+            return (
+              <ItemCard key={key} number={itemIdx + 1} title={item.lead}>
+                <div className="flex flex-col gap-2">
+                  {item.options.map((option, optionIdx) => {
+                    const state: AnswerState = !isDone
+                      ? "idle"
+                      : option.ok
+                        ? "ok"
+                        : selectedIndex === optionIdx
+                          ? "no"
+                          : "off";
+                    return (
+                      <button
+                        key={`${key}-${optionIdx}`}
+                        type="button"
+                        className={cn(
+                          "flex w-full items-center gap-3 rounded-2xl border-2 px-4 py-3 text-left text-[15px] font-bold transition-colors",
+                          isDone ? "cursor-default" : "ica-press hover:border-[var(--ica-gold-edge)]",
+                        )}
+                        style={answerStyle(state)}
+                        onClick={() => answerReco(itemIdx, optionIdx)}
+                        disabled={isDone}
+                      >
+                        <span className="min-w-0 flex-1">{option.t}</span>
+                        {state === "ok" || state === "no" ? <ResultMark ok={state === "ok"} /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+                {isDone && item.options[selectedIndex]?.why ? (
+                  <p
+                    className="m-0 mt-3 rounded-2xl px-3.5 py-2.5 text-sm font-semibold"
+                    style={{ background: tone(pickedOk ? "ok" : "bad").soft, color: tone(pickedOk ? "ok" : "bad").ink }}
+                  >
+                    {item.options[selectedIndex]?.why}
+                  </p>
+                ) : null}
+              </ItemCard>
+            );
+          })}
+        </div>
+      )}
+
+      {step < 3 && currentBlock?.id === "construir" && (
+        <div className="flex flex-col gap-3">
+          {data.construir.items.map((item, itemIdx) => {
+            const key = itemKey(1, itemIdx);
+            const isDone = Boolean(answered[key]);
+            return (
+              <ItemCard key={key} number={itemIdx + 1} title={item.situacion}>
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  {item.verbos.map((verb, verbIdx) => {
+                    const ok = scores[unitKey(1, itemIdx, verbIdx)];
+                    return (
+                      <Pill
+                        key={`${key}-verb-${verbIdx}`}
+                        tone={typeof ok === "boolean" ? (ok ? "ok" : "bad") : "gold"}
+                        className="inline-flex items-center gap-1"
+                      >
+                        {typeof ok === "boolean" ? (
+                          ok ? (
+                            <CheckIcon className="size-3" strokeWidth={3.4} aria-hidden="true" />
+                          ) : (
+                            <XIcon className="size-3" strokeWidth={3.4} aria-hidden="true" />
+                          )
+                        ) : null}
+                        {verb.nombre}
+                      </Pill>
+                    );
+                  })}
+                </div>
+
+                <label htmlFor={`${key}-input`} className="sr-only">
+                  {t("Respuesta libre del item {n}", { n: itemIdx + 1 })}
+                </label>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    id={`${key}-input`}
+                    value={written[key] || ""}
+                    onChange={(event) =>
+                      setWritten((prev) => ({
+                        ...prev,
+                        [key]: event.target.value,
+                      }))
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !isDone) evaluateBuildItem(itemIdx);
+                    }}
+                    placeholder={t("Escribe tu frase")}
+                    disabled={isDone}
+                    className="h-12 flex-1 rounded-2xl text-base font-semibold"
+                  />
+                  {!isDone ? (
+                    <Button type="button" variant="gold" size="lg" className="h-12 rounded-2xl" onClick={() => evaluateBuildItem(itemIdx)}>
+                      {t("Comprobar")}
+                    </Button>
+                  ) : null}
+                </div>
+                {!isDone && warnings[key] ? (
+                  <p className="m-0 mt-2 text-xs font-bold" style={{ color: "var(--ica-bad-ink)" }}>
+                    {t("Escribe una respuesta antes de comprobar.")}
+                  </p>
+                ) : null}
+
+                {isDone && (
+                  <div className="mt-3 flex flex-col gap-2">
+                    {item.verbos.map((verb, verbIdx) => {
+                      const ok = Boolean(scores[unitKey(1, itemIdx, verbIdx)]);
+                      const hit = found[unitKey(1, itemIdx, verbIdx)];
+                      const good = readablePattern(verb.formas[0] || "");
+                      const okInk = tone("ok").ink;
+                      const badInk = tone("bad").ink;
+                      return (
+                        <div key={`${key}-feedback-${verbIdx}`} className="flex items-start gap-2.5 text-sm font-semibold">
+                          <ResultMark ok={ok} size={20} />
+                          <p className="m-0 min-w-0 flex-1 text-muted-foreground">
+                            {ok ? (
+                              <>
+                                {t("En tu frase:")}{" "}
+                                <b className="font-extrabold" style={{ color: okInk }}>«{hit}»</b>. {verb.nota}
+                              </>
+                            ) : (
+                              <>
+                                {hit ? (
+                                  <>
+                                    {t("Has escrito")}{" "}
+                                    <b className="font-extrabold" style={{ color: badInk }}>«{hit}»</b>.{" "}
+                                  </>
+                                ) : (
+                                  t("No encuentro esta forma en tu frase.") + " "
+                                )}
+                                {t("Aquí va")}{" "}
+                                <b className="font-extrabold" style={{ color: okInk }}>{good}</b>. {verb.nota}
+                              </>
+                            )}
+                          </p>
+                        </div>
+                      );
+                    })}
+                    {item.ejemplo ? (
+                      <div
+                        className="flex items-start gap-2.5 rounded-2xl px-3.5 py-2.5 text-sm font-semibold"
+                        style={{ background: "var(--ica-gold-soft)", color: "var(--ica-gold-ink)" }}
+                      >
+                        <LightbulbIcon className="mt-0.5 size-4 shrink-0" strokeWidth={2.6} aria-hidden="true" />
+                        <p className="m-0">
+                          {t("Una forma de decirlo entre muchas (el resto de palabras es libre):")}{" "}
+                          <span className="font-extrabold text-foreground">{item.ejemplo}</span>
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </ItemCard>
+            );
+          })}
+        </div>
+      )}
+
+      {step < 3 && currentBlock?.id === "conversacion" && (
+        <div className="flex flex-col gap-3">
+          <div className="ica-panel flex flex-col gap-3 p-4">
+            {data.conversacion.lineas.map((line, lineIdx) => {
+              const mine = line.quien !== firstSpeaker;
+              return (
+                <div key={`line-${lineIdx}`} className={cn("flex flex-col", mine ? "items-end" : "items-start")}>
+                  <span className="mb-1 px-1 text-[11px] font-extrabold tracking-[0.06em] text-muted-foreground uppercase">
+                    {line.quien}
+                  </span>
+                  <div
+                    className={cn(
+                      "max-w-[92%] rounded-3xl px-4 py-2.5 text-[15px] leading-loose font-semibold",
+                      mine ? "rounded-tr-lg" : "rounded-tl-lg",
+                    )}
+                    style={{ background: mine ? "var(--ica-i-soft)" : "var(--muted)" }}
+                  >
+                    {line.texto.split(/(\{\d+\})/g).map((part, partIdx) => {
+                      const match = part.match(/^\{(\d+)\}$/);
+                      if (!match) return <span key={`${lineIdx}-${partIdx}`}>{part}</span>;
+                      const index = Number(match[1]);
+                      const item = data.conversacion.items[index];
+                      if (!item) return <span key={`${lineIdx}-${partIdx}`}>{part}</span>;
+                      const key = unitKey(2, index);
+                      const result = scores[key];
+                      const state: AnswerState = result === true ? "ok" : result === false ? "no" : "idle";
+                      return (
+                        <span key={`${lineIdx}-${partIdx}`} className="mx-0.5 inline-flex flex-wrap items-center gap-1 align-middle">
+                          <Input
+                            value={written[key] || ""}
+                            onChange={(event) =>
+                              setWritten((prev) => ({
+                                ...prev,
+                                [key]: event.target.value,
+                              }))
+                            }
+                            placeholder={item.verbo}
+                            disabled={dialogSubmitted}
+                            className="inline-block h-9 w-36 rounded-xl border-2 px-2.5 text-center text-[15px] font-bold disabled:opacity-100"
+                            style={answerStyle(state)}
+                            aria-label={t("Hueco {n} ({verb})", { n: index + 1, verb: item.verbo })}
+                          />
+                          {result === false ? (
+                            <span className="text-sm font-extrabold" style={{ color: tone("ok").ink }}>
+                              {item.show || item.formas[0]}
+                            </span>
+                          ) : null}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
-          {step < 3 && currentBlock?.id === "reconocer" && (
-            <div className="space-y-4">
-              {currentBlock.instruccion && (
-                <p className="text-sm text-muted-foreground">
-                  {currentBlock.instruccion}
-                </p>
-              )}
-              {data.reconocer.items.map((item, itemIdx) => {
-                const key = itemKey(0, itemIdx);
-                const selectedIndex = picked[key];
-                const isDone = Boolean(answered[key]);
-                return (
-                  <div
-                    key={key}
-                    className="rounded-md border border-primary/20 bg-card/80 p-3"
-                  >
-                    <p className="mb-2 text-sm font-medium">
-                      {itemIdx + 1}. {item.lead}
-                    </p>
-                    <div className="space-y-2">
-                      {item.options.map((option, optionIdx) => {
-                        const state = !isDone
-                          ? "idle"
-                          : option.ok
-                            ? "ok"
-                            : selectedIndex === optionIdx
-                              ? "no"
-                              : "off";
-                        return (
-                          <button
-                            key={`${key}-${optionIdx}`}
-                            type="button"
-                            className={`w-full rounded-md border p-2 text-left text-sm ${
-                              state === "ok"
-                                ? "border-emerald-600 bg-emerald-100 text-emerald-950 dark:border-emerald-500 dark:bg-emerald-950/60 dark:text-emerald-100"
-                                : state === "no"
-                                  ? "border-rose-600 bg-rose-100 text-rose-950 dark:border-rose-500 dark:bg-rose-950/60 dark:text-rose-100"
-                                  : "border-border bg-background text-foreground"
-                            }`}
-                            onClick={() => answerReco(itemIdx, optionIdx)}
-                            disabled={isDone}
-                          >
-                            {option.t}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {isDone && (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {item.options[selectedIndex]?.why || ""}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {step < 3 && currentBlock?.id === "construir" && (
-            <div className="space-y-4">
-              {currentBlock.instruccion && (
-                <p className="text-sm text-muted-foreground">
-                  {currentBlock.instruccion}
-                </p>
-              )}
-              {data.construir.items.map((item, itemIdx) => {
-                const key = itemKey(1, itemIdx);
-                const isDone = Boolean(answered[key]);
-                return (
-                  <div
-                    key={key}
-                    className="rounded-md border border-primary/20 bg-card/80 p-3"
-                  >
-                    <p className="mb-2 text-sm font-medium">
-                      {itemIdx + 1}. {item.situacion}
-                    </p>
-
-                    <div className="mb-2 flex flex-wrap gap-1">
-                      {item.verbos.map((verb, verbIdx) => {
-                        const ok = scores[unitKey(1, itemIdx, verbIdx)];
-                        return (
-                          <Badge
-                            key={`${key}-verb-${verbIdx}`}
-                            variant="outline"
-                          >
-                            {typeof ok === "boolean"
-                              ? ok
-                                ? "✓ "
-                                : "✗ "
-                              : ""}
-                            {verb.nombre}
-                          </Badge>
-                        );
-                      })}
-                    </div>
-
-                    <label htmlFor={`${key}-input`} className="sr-only">
-                      {t("Respuesta libre del item {n}", { n: itemIdx + 1 })}
-                    </label>
-                    <Input
-                      id={`${key}-input`}
-                      value={written[key] || ""}
-                      onChange={(event) =>
-                        setWritten((prev) => ({
-                          ...prev,
-                          [key]: event.target.value,
-                        }))
-                      }
-                      placeholder={t("Escribe tu frase")}
-                      disabled={isDone}
-                    />
-
-                    {!isDone && (
-                      <div className="mt-2 flex items-center gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => evaluateBuildItem(itemIdx)}
-                        >
-                          {t("Comprobar")}
-                        </Button>
-                        {warnings[key] && (
-                          <p className="text-xs text-destructive">
-                            {t("Escribe una respuesta antes de comprobar.")}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {isDone && (
-                      <div className="mt-2 space-y-2 text-xs text-muted-foreground">
-                        {item.verbos.map((verb, verbIdx) => {
-                          const ok = scores[unitKey(1, itemIdx, verbIdx)];
-                          return (
-                            <p key={`${key}-feedback-${verbIdx}`}>
-                              <span
-                                className={
-                                  ok
-                                    ? "font-medium text-emerald-700 dark:text-emerald-300"
-                                    : "font-medium text-rose-700 dark:text-rose-300"
-                                }
-                              >
-                                {ok ? "✓ " : "✗ "}
-                              </span>
-                              {(() => {
-                                const hit =
-                                  found[unitKey(1, itemIdx, verbIdx)];
-                                const good = readablePattern(
-                                  verb.formas[0] || "",
-                                );
-                                if (ok) {
-                                  return (
-                                    <>
-                                      {t("En tu frase:")}{" "}
-                                      <b className="font-medium text-emerald-700 dark:text-emerald-300">
-                                        «{hit}»
-                                      </b>
-                                      . {verb.nota}
-                                    </>
-                                  );
-                                }
-                                return (
-                                  <>
-                                    {hit ? (
-                                      <>
-                                        {t("Has escrito")}{" "}
-                                        <b className="font-medium text-rose-700 dark:text-rose-300">
-                                          «{hit}»
-                                        </b>
-                                        .{" "}
-                                      </>
-                                    ) : (
-                                      t("No encuentro esta forma en tu frase.") + " "
-                                    )}
-                                    {t("Aquí va")}{" "}
-                                    <b className="font-medium text-emerald-700 dark:text-emerald-300">
-                                      {good}
-                                    </b>
-                                    . {verb.nota}
-                                  </>
-                                );
-                              })()}
-                            </p>
-                          );
-                        })}
-                        {item.ejemplo && (
-                          <p className="rounded-md bg-muted p-2">
-                            {t("Una forma de decirlo entre muchas (el resto de palabras es libre):")}{" "}
-                            <span className="font-medium text-foreground">
-                              {item.ejemplo}
-                            </span>
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {step < 3 && currentBlock?.id === "conversacion" && (
-            <div className="space-y-4">
-              {currentBlock.instruccion && (
-                <p className="text-sm text-muted-foreground">
-                  {currentBlock.instruccion}
-                </p>
-              )}
-
-              <div className="space-y-3 rounded-md border bg-card/60 p-3">
-                {data.conversacion.lineas.map((line, lineIdx) => (
-                  <div
-                    key={`line-${lineIdx}`}
-                    className="flex flex-wrap items-center gap-2 text-sm"
-                  >
-                    <span className="font-medium">{line.quien}:</span>
-                    <span>
-                      {line.texto
-                        .split(/(\{\d+\})/g)
-                        .map((part, partIdx) => {
-                          const match = part.match(/^\{(\d+)\}$/);
-                          if (!match)
-                            return (
-                              <span key={`${lineIdx}-${partIdx}`}>
-                                {part}
-                              </span>
-                            );
-                          const index = Number(match[1]);
-                          const item = data.conversacion.items[index];
-                          if (!item)
-                            return (
-                              <span key={`${lineIdx}-${partIdx}`}>
-                                {part}
-                              </span>
-                            );
-                          const key = unitKey(2, index);
-                          const currentValue = written[key] || "";
-                          const result = scores[key];
-                          return (
-                            <span
-                              key={`${lineIdx}-${partIdx}`}
-                              className="inline-flex items-center gap-1"
-                            >
-                              <Input
-                                value={currentValue}
-                                onChange={(event) =>
-                                  setWritten((prev) => ({
-                                    ...prev,
-                                    [key]: event.target.value,
-                                  }))
-                                }
-                                placeholder={item.verbo}
-                                disabled={dialogSubmitted}
-                                className={`inline-block h-8 w-36 text-foreground ${
-                                  result === true
-                                    ? "border-emerald-600 bg-emerald-100 text-emerald-950 dark:border-emerald-500 dark:bg-emerald-950/60 dark:text-emerald-100"
-                                    : result === false
-                                      ? "border-rose-600 bg-rose-100 text-rose-950 dark:border-rose-500 dark:bg-rose-950/60 dark:text-rose-100"
-                                      : ""
-                                }`}
-                                aria-label={t("Hueco {n} ({verb})", { n: index + 1, verb: item.verbo })}
-                              />
-                              {result === false && (
-                                <span className="text-xs text-emerald-700 dark:text-emerald-300">
-                                  {item.show || item.formas[0]}
-                                </span>
-                              )}
-                            </span>
-                          );
-                        })}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              {!dialogSubmitted && (
-                <Button
-                  type="button"
-                  onClick={submitDialog}
-                  disabled={!dialogCanSubmit}
-                >
-                  {dialogCanSubmit
-                    ? t("Corregir conversacion")
-                    : t("Completa todos los huecos")}
-                </Button>
-              )}
-
-              {dialogSubmitted && (
-                <div className="space-y-1 text-xs text-muted-foreground">
-                  {data.conversacion.items.map((item, idx) =>
-                    scores[unitKey(2, idx)] === false ? (
-                      <p key={`dialog-why-${idx}`}>
-                        <span className="font-medium text-foreground">
-                          {item.show || item.formas[0]}
-                        </span>{" "}
-                        - {item.why}
-                      </p>
-                    ) : null,
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {step < 3 && (
-            <Button
-              type="button"
-              onClick={() => setStep((prev) => prev + 1)}
-              disabled={!blockDone}
-            >
-              {blockDone
-                ? step === 2
-                  ? t("Ver resultado")
-                  : t("Seguir a {block}", { block: blockList[step + 1]?.titulo || t("siguiente bloque") })
-                : t("Responde todo el bloque para continuar")}
+          {!dialogSubmitted ? (
+            <Button type="button" variant="gold" size="xl" className="w-full" onClick={submitDialog} disabled={!dialogCanSubmit}>
+              {dialogCanSubmit ? t("Corregir conversacion") : t("Completa todos los huecos")}
             </Button>
+          ) : (
+            data.conversacion.items.some((_, idx) => scores[unitKey(2, idx)] === false) && (
+              <div className="flex flex-col gap-2">
+                {data.conversacion.items.map((item, idx) =>
+                  scores[unitKey(2, idx)] === false ? (
+                    <div key={`dialog-why-${idx}`} className="flex items-start gap-2.5 text-sm font-semibold">
+                      <ResultMark ok={false} size={20} />
+                      <p className="m-0 min-w-0 flex-1 text-muted-foreground">
+                        <b className="font-extrabold" style={{ color: tone("ok").ink }}>
+                          {item.show || item.formas[0]}
+                        </b>{" "}
+                        · {item.why}
+                      </p>
+                    </div>
+                  ) : null,
+                )}
+              </div>
+            )
           )}
+        </div>
+      )}
 
-          {step === 3 && (
-            <div className="space-y-4 rounded-md border border-primary/20 bg-card/85 p-4 shadow-sm">
-              {attemptSaving && (
-                <p className="text-xs text-muted-foreground">
-                  {t("Guardando tu resultado...")}
-                </p>
-              )}
-              {attemptFeedback && (
-                <p className="text-xs text-muted-foreground">
-                  {attemptFeedback}
-                </p>
-              )}
-              <div>
-                <p className="text-3xl font-semibold">
+      {step < 3 && (
+        <Button
+          type="button"
+          variant={blockDone ? "gold" : "outline"}
+          size="xl"
+          className="w-full"
+          onClick={() => setStep((prev) => prev + 1)}
+          disabled={!blockDone}
+        >
+          {blockDone
+            ? step === 2
+              ? t("Ver resultado")
+              : t("Seguir a {block}", { block: blockList[step + 1]?.titulo || t("siguiente bloque") })
+            : t("Responde todo el bloque para continuar")}
+          {blockDone ? <ArrowRightIcon strokeWidth={2.8} aria-hidden="true" /> : null}
+        </Button>
+      )}
+
+      {step === 3 && (
+        <div className="flex flex-col gap-4">
+          {/* Score */}
+          <div
+            className="rounded-3xl px-5 py-5"
+            style={{ background: tone(passed ? "ok" : "bad").soft }}
+          >
+            <div className="flex items-center gap-4">
+              <span
+                className="flex size-14 shrink-0 items-center justify-center rounded-2xl text-white"
+                style={{ background: tone(passed ? "ok" : "bad").solid, boxShadow: `0 4px 0 ${tone(passed ? "ok" : "bad").edge}` }}
+              >
+                {passed ? (
+                  <CheckIcon className="size-8" strokeWidth={3.2} aria-hidden="true" />
+                ) : (
+                  <TargetIcon className="size-8" strokeWidth={2.6} aria-hidden="true" />
+                )}
+              </span>
+              <div className="min-w-0 flex-1" style={{ color: tone(passed ? "ok" : "bad").ink }}>
+                <p className="m-0 font-display text-3xl leading-none font-black tabular-nums">
                   {t("{n} de {total}", { n: correctCount, total: totalUnits })}
                 </p>
-                <p className="text-sm text-muted-foreground">
+                <p className="m-0 mt-1.5 text-sm font-bold">
                   {passed
                     ? t("Superado: necesitabas {need} de {total}. El foco pasa a Entrenado.", { need: data.umbral, total: totalUnits })
                     : t("No superado: te faltan {n} aciertos para llegar a {need} de {total}. Repásalo y vuelve a intentarlo.", { n: Math.max(0, data.umbral - correctCount), need: data.umbral, total: totalUnits })}
                 </p>
               </div>
-
-              <div className="space-y-2">
-                <p className="text-sm font-medium">{t("Por bloque")}</p>
-                {blockScore.map((row) => (
-                  <p
-                    key={`block-score-${row.id}`}
-                    className="text-sm text-muted-foreground"
-                  >
-                    {row.title}: {row.got}/{row.max}
-                  </p>
-                ))}
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-sm font-medium">{t("Por etiqueta")}</p>
-                {tagScore.map((row) => (
-                  <p
-                    key={`tag-score-${row.tag}`}
-                    className="text-sm text-muted-foreground"
-                  >
-                    {data.etiquetas[row.tag] || row.tag}: {row.ok}/
-                    {row.total}
-                  </p>
-                ))}
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-sm font-medium">{t("Tus fallos")}</p>
-                {failures.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    {t("No hubo fallos.")}
-                  </p>
-                ) : (
-                  failures.map((row, idx) => (
-                    <div
-                      key={`failure-${idx}`}
-                      className="rounded-md border p-2 text-xs"
-                    >
-                      <p className="font-medium">{row.block}</p>
-                      <p>{displayQuestion(row.question)}</p>
-                      <p className="text-destructive">
-                        {t("Escribiste: {answer}", { answer: displayAnswer(row.mine) })}
-                      </p>
-                      <p className="text-emerald-700 dark:text-emerald-300">
-                        {t("Esperado: {answer}", { answer: row.expected })}
-                      </p>
-                      {row.why && (
-                        <p className="text-muted-foreground">{row.why}</p>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setStep(0);
-                  setScores({});
-                  setAnswered({});
-                  setPicked({});
-                  setWritten({});
-                  setSaid({});
-                  setWarnings({});
-                  setFound({});
-                  setAttemptSaved(false);
-                  setAttemptFeedback(null);
-                }}
-              >
-                {t("Repetir ejercicio")}
-              </Button>
             </div>
-          )}
+            <GameProgress
+              className="mt-4"
+              value={totalUnits ? correctCount / totalUnits : 0}
+              color={tone(passed ? "ok" : "bad").solid}
+              label={t("{n} de {total}", { n: correctCount, total: totalUnits })}
+            />
+            {attemptSaving || attemptFeedback ? (
+              <p className="m-0 mt-3 text-xs font-bold text-muted-foreground">
+                {attemptSaving ? t("Guardando tu resultado...") : attemptFeedback}
+              </p>
+            ) : null}
+          </div>
+
+          {/* By block */}
+          <div>
+            <SectionLabel>{t("Por bloque")}</SectionLabel>
+            <div className="ica-panel flex flex-col gap-3 p-4">
+              {blockScore.map((row) => (
+                <div key={`block-score-${row.id}`}>
+                  <div className="mb-1.5 flex items-center justify-between gap-3 text-sm font-bold">
+                    <span className="min-w-0 truncate">{row.title}</span>
+                    <span className="shrink-0 tabular-nums">{row.got}/{row.max}</span>
+                  </div>
+                  <GameProgress
+                    value={row.max ? row.got / row.max : 0}
+                    height={10}
+                    color={row.got === row.max ? "var(--ica-ok)" : "var(--ica-gold)"}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* By label */}
+          {tagScore.length > 0 ? (
+            <div>
+              <SectionLabel>{t("Por etiqueta")}</SectionLabel>
+              <div className="flex flex-wrap gap-2">
+                {tagScore.map((row) => (
+                  <Pill key={`tag-score-${row.tag}`} tone={row.ok === row.total ? "ok" : row.ok === 0 ? "bad" : "gold"}>
+                    {data.etiquetas[row.tag] || row.tag} · {row.ok}/{row.total}
+                  </Pill>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {/* Mistakes */}
+          <div>
+            <SectionLabel>{t("Tus fallos")}</SectionLabel>
+            {failures.length === 0 ? (
+              <div className="ica-panel flex items-center gap-3 p-4">
+                <ResultMark ok size={26} />
+                <p className="m-0 text-sm font-bold">{t("No hubo fallos.")}</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {failures.map((row, idx) => (
+                  <div key={`failure-${idx}`} className="ica-panel p-4 text-sm">
+                    <p className="ica-label m-0">{row.block}</p>
+                    <p className="m-0 mt-1 font-bold">{displayQuestion(row.question)}</p>
+                    <div className="mt-2 flex flex-col gap-1.5">
+                      <p className="m-0 flex items-start gap-2 font-semibold" style={{ color: tone("bad").ink }}>
+                        <ResultMark ok={false} size={18} />
+                        <span className="min-w-0">{t("Escribiste: {answer}", { answer: displayAnswer(row.mine) })}</span>
+                      </p>
+                      <p className="m-0 flex items-start gap-2 font-semibold" style={{ color: tone("ok").ink }}>
+                        <ResultMark ok size={18} />
+                        <span className="min-w-0">{t("Esperado: {answer}", { answer: row.expected })}</span>
+                      </p>
+                    </div>
+                    {row.why ? <p className="m-0 mt-2 text-xs font-semibold text-muted-foreground">{row.why}</p> : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Button type="button" variant="outline" size="xl" className="w-full" onClick={resetAll}>
+            <RotateCcwIcon strokeWidth={2.8} aria-hidden="true" />
+            {t("Repetir ejercicio")}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

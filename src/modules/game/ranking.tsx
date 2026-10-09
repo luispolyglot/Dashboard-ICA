@@ -7,7 +7,8 @@ import type { FeaturedBadge } from './featuredBadge'
 import { Medal } from './Medal'
 import { medalText, tierName } from './medals'
 import { SpinningMedal } from './SpinningMedal'
-import { t, uiLocale } from '@/i18n'
+import { t, tn, uiLocale } from '@/i18n'
+import { LanguageFlag } from '../components/LanguagePicker'
 
 export { closedMonthEfficacy, rowName, rowTotalPoints } from './rankingMath'
 
@@ -48,15 +49,69 @@ export function RankBadge({ rank }: { rank: number }) {
   )
 }
 
-/** Inicial del alumno: el mismo color para todos. */
-export function UserInitial({ name, size = 36 }: { name: string; size?: number }) {
+/**
+ * Inicial del alumno: el mismo color para todos. Con `flag` (la bandera comprada en la tienda),
+ * la bandera hace de fondo y la letra va en blanco.
+ */
+export function UserInitial({ name, size = 36, flag }: { name: string; size?: number; flag?: string | null }) {
+  const initial = name.trim().charAt(0).toUpperCase() || '?'
+  if (flag) {
+    return <FlagInitial initial={initial} flag={flag} size={size} />
+  }
   return (
     <span
       className='flex shrink-0 items-center justify-center rounded-full border-2 border-border bg-muted font-extrabold text-foreground'
       style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }}
       aria-hidden='true'
     >
-      {name.trim().charAt(0).toUpperCase() || '?'}
+      {initial}
+    </span>
+  )
+}
+
+/** Circle with the flag as background and the initial on top (also used by the profile avatar). */
+export function FlagInitial({
+  initial,
+  flag,
+  size,
+  ring,
+}: {
+  initial: string
+  flag: string
+  size: number
+  /** Border colour (e.g. the level colour in the profile); the normal border if not given. */
+  ring?: string
+}) {
+  // The flag is 3:2: drawn 1.5× wider than the circle and centred, so it covers it.
+  return (
+    <span
+      className='relative flex shrink-0 items-center justify-center overflow-hidden rounded-full font-extrabold text-white'
+      style={{
+        width: size,
+        height: size,
+        fontSize: Math.round(size * 0.42),
+      }}
+      aria-hidden='true'
+    >
+      <span className='absolute' style={{ left: -size * 0.25, top: 0 }}>
+        <LanguageFlag language={flag} size={size * 1.5} />
+      </span>
+      <span className='absolute inset-0 bg-black/20' />
+      {/* Dark outline around the white letter so it reads on any flag (also on white stripes). */}
+      <span
+        className='relative'
+        style={{
+          WebkitTextStroke: `${Math.max(2, Math.round(size * 0.07))}px rgba(0,0,0,.7)`,
+          paintOrder: 'stroke fill',
+          textShadow: '0 1px 2px rgba(0,0,0,.5)',
+        }}
+      >
+        {initial}
+      </span>
+      <span
+        className='pointer-events-none absolute inset-0 rounded-full'
+        style={{ boxShadow: `inset 0 0 0 ${size >= 56 ? 4 : 2}px ${ring ?? 'var(--border)'}` }}
+      />
     </span>
   )
 }
@@ -119,6 +174,26 @@ export function FeaturedBadgeMini({ badge, size = 34, compact = false }: { badge
   )
 }
 
+/**
+ * Tie-break hint (Luis, 5 Oct): first-try correct answers in the daily challenge. Only shown
+ * to the people tied on points with you, so each of you sees who would win the tie.
+ */
+export function TieCorrectPill({ correct, onDark = false }: { correct: number; onDark?: boolean }) {
+  return (
+    <span
+      className='inline-flex shrink-0 items-center rounded-full px-1.5 py-[3px] text-[10px] leading-none font-black tabular-nums'
+      style={
+        onDark
+          ? { background: 'rgba(255, 255, 255, 0.22)', color: '#fff' }
+          : { background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }
+      }
+    >
+      <span className='sr-only'>{t('Empate a puntos:')} </span>
+      {tn(correct, '{n} acierto', '{n} aciertos')}
+    </span>
+  )
+}
+
 export function LeaderboardRow({
   rank,
   name,
@@ -126,25 +201,34 @@ export function LeaderboardRow({
   isMe = false,
   detail,
   badge,
+  flag,
   onRankClick,
   onPointsClick,
   onProfileClick,
+  tieCorrect = null,
+  dense = false,
 }: {
   rank: number
   name: string
   points: number
   isMe?: boolean
   detail?: ReactNode
+  /** Daily challenge correct answers, only when this row is tied on points with you. */
+  tieCorrect?: number | null
   badge?: FeaturedBadge | null
+  /** Bandera comprada en la tienda que ha elegido enseñar (nombre del idioma). */
+  flag?: string | null
   onRankClick?: () => void
   onPointsClick?: () => void
   /** Tocar la inicial o el nombre abre el perfil de este icademer. */
   onProfileClick?: () => void
+  /** Shorter row (Home without coaching, Luis 7 Oct) so the ranking card is as tall as its neighbours. */
+  dense?: boolean
 }) {
   const rankNode = <RankBadge rank={rank} />
   const who = (
     <>
-      <UserInitial name={name} />
+      <UserInitial name={name} flag={flag} size={dense ? 28 : 36} />
       <div className='min-w-0 flex-1'>
         <div className='flex min-w-0 items-center gap-1.5'>
           <span className={cn('truncate text-[15px]', isMe ? 'font-extrabold' : 'font-bold')}>
@@ -152,14 +236,19 @@ export function LeaderboardRow({
             {isMe ? t(' (tú)') : ''}
           </span>
         </div>
-        {detail ? <div className='truncate text-xs font-medium text-muted-foreground'>{detail}</div> : null}
+        {detail || tieCorrect !== null ? (
+          <div className='flex min-w-0 items-center gap-1.5 text-xs font-medium text-muted-foreground'>
+            {tieCorrect !== null ? <TieCorrectPill correct={tieCorrect} /> : null}
+            {detail ? <span className='min-w-0 truncate'>{detail}</span> : null}
+          </div>
+        ) : null}
       </div>
     </>
   )
   return (
     <div
       className={cn(
-        'flex min-h-[60px] items-center gap-2.5 rounded-2xl border-2 px-2 py-2',
+        dense ? 'flex min-h-[44px] items-center gap-2 rounded-2xl border-2 px-2 py-0.5' : 'flex min-h-[60px] items-center gap-2.5 rounded-2xl border-2 px-2 py-2',
         isMe ? 'border-[color-mix(in_oklab,var(--ica-me)_45%,transparent)] bg-[var(--ica-me-soft)]' : 'border-transparent',
       )}
     >
@@ -187,7 +276,7 @@ export function LeaderboardRow({
           (la más grande, con rayos), no se tocan. */}
       {badge ? (
         <span className='inline-flex shrink-0'>
-          <FeaturedBadgeMini badge={badge} size={42} compact />
+          <FeaturedBadgeMini badge={badge} size={dense ? 34 : 42} compact />
         </span>
       ) : null}
       {onPointsClick ? (
@@ -227,11 +316,15 @@ export type PodiumEntry = {
   points: number
   isMe: boolean
   badge?: FeaturedBadge | null
+  /** Bandera comprada que enseña (nombre del idioma). */
+  flag?: string | null
   /** Puntos del mes (cómo se calculan). */
   onOpen: () => void
   onPrize: () => void
   /** Tocar la inicial o el nombre abre el perfil. Sin esto, la inicial abre los puntos. */
   onProfile?: () => void
+  /** Daily challenge correct answers, only when tied on points with you. */
+  tieCorrect?: number | null
 }
 
 /** Los tres primeros, en su podio: el 1.º en el centro y más alto, con corona. */
@@ -267,20 +360,31 @@ export function Podium({ entries }: { entries: PodiumEntry[] }) {
                     aria-hidden='true'
                   />
                 ) : null}
-                <span
-                  className='flex items-center justify-center rounded-full font-black'
-                  style={{
-                    width: avatar,
-                    height: avatar,
-                    fontSize: Math.round(avatar * 0.4),
-                    background: entry.isMe ? 'var(--ica-me)' : 'var(--card)',
-                    color: entry.isMe ? '#fff' : 'var(--foreground)',
-                    border: `4px solid ${plinth.top}`,
-                    boxShadow: `0 4px 0 ${plinth.edge}`,
-                  }}
-                >
-                  {entry.name.trim().charAt(0).toUpperCase() || '?'}
-                </span>
+                {entry.flag ? (
+                  <span className='flex rounded-full' style={{ boxShadow: `0 4px 0 ${plinth.edge}` }}>
+                    <FlagInitial
+                      initial={entry.name.trim().charAt(0).toUpperCase() || '?'}
+                      flag={entry.flag}
+                      size={avatar}
+                      ring={plinth.top}
+                    />
+                  </span>
+                ) : (
+                  <span
+                    className='flex items-center justify-center rounded-full font-black'
+                    style={{
+                      width: avatar,
+                      height: avatar,
+                      fontSize: Math.round(avatar * 0.4),
+                      background: entry.isMe ? 'var(--ica-me)' : 'var(--card)',
+                      color: entry.isMe ? '#fff' : 'var(--foreground)',
+                      border: `4px solid ${plinth.top}`,
+                      boxShadow: `0 4px 0 ${plinth.edge}`,
+                    }}
+                  >
+                    {entry.name.trim().charAt(0).toUpperCase() || '?'}
+                  </span>
+                )}
               </button>
               <span className='mt-1 flex max-w-full min-w-0 items-center gap-1'>
                 {entry.onProfile ? (
@@ -313,6 +417,9 @@ export function Podium({ entries }: { entries: PodiumEntry[] }) {
                   {pointsFormatter.format(entry.points)} pts
                 </span>
               )}
+              {entry.tieCorrect !== null && entry.tieCorrect !== undefined ? (
+                <TieCorrectPill correct={entry.tieCorrect} />
+              ) : null}
             </div>
             <button
               type='button'
@@ -341,11 +448,14 @@ export function MyRankCard({
   name,
   points,
   onOpen,
+  tieCorrect = null,
 }: {
   rank: number
   name: string
   points: number
   onOpen: () => void
+  /** Your daily challenge correct answers, only when you are tied on points with someone. */
+  tieCorrect?: number | null
 }) {
   return (
     <button
@@ -363,7 +473,10 @@ export function MyRankCard({
       </span>
       <span className='min-w-0 flex-1'>
         <span className='block text-[11px] font-black tracking-[0.1em] uppercase opacity-85'>{t('Tu puesto')}</span>
-        <span className='block truncate text-base font-black'>{shortName(name)}</span>
+        <span className='flex min-w-0 items-center gap-1.5'>
+          <span className='truncate text-base font-black'>{shortName(name)}</span>
+          {tieCorrect !== null ? <TieCorrectPill correct={tieCorrect} onDark /> : null}
+        </span>
       </span>
       <span className='flex shrink-0 items-center gap-1'>
         <span className='text-right'>

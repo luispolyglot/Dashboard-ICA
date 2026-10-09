@@ -21,7 +21,9 @@ import {
   type DailyLimitKey,
 } from './rules'
 import { getIcaStreakState } from './streak'
-import { t, tn } from '@/i18n'
+import { langName, t, tn } from '@/i18n'
+import { FLAG_COST, useMyFlags } from './languageFlag'
+import { FlagInitial } from './ranking'
 
 /**
  * Arriba a la derecha: racha ICA e ICA Coins. Nada más.
@@ -56,7 +58,7 @@ export const GameStatsBar = forwardRef<HTMLButtonElement>(function GameStatsBar(
     'flex min-h-11 items-center gap-1 rounded-xl px-2 text-base font-bold tabular-nums transition-colors hover:bg-muted active:bg-muted'
 
   return (
-    <div className='flex items-center gap-0.5'>
+    <div className='flex items-center gap-0.5' data-tour='wallet'>
       <HoverPanel
         label={t('Tu racha ICA')}
         trigger={
@@ -295,6 +297,12 @@ function CoinsPanel({
   onNavigate: (to: string) => void
 }) {
   const balance = total ?? 0
+  const { user } = useAuth()
+  const { config } = useDashboardContext()
+  const { owned } = useMyFlags(user?.id)
+  const targetLang = config?.targetLang ?? null
+  const myName: string = user?.user_metadata?.display_name || user?.email?.split('@')[0] || ''
+  const myInitial = myName.trim().charAt(0).toUpperCase() || '?'
   const items: Array<{
     key: string
     icon: ReactNode
@@ -329,6 +337,20 @@ function CoinsPanel({
       cost: PREGUNTICA_EXTRA_COST,
       to: `${DASHBOARD_ROUTES.preguntica}?extra=1`,
     },
+    // La más cara, al final: así va todo de menos a más (Luis, 4 oct).
+    ...(targetLang
+      ? [
+          {
+            key: 'flag',
+            icon: <FlagInitial initial={myInitial} flag={targetLang} size={40} />,
+            tint: 'transparent',
+            title: t('Bandera de {lang}', { lang: langName(targetLang) }),
+            cost: FLAG_COST,
+            to: DASHBOARD_ROUTES.fichas,
+            doneLabel: owned.includes(targetLang) ? t('Tuya') : undefined,
+          },
+        ]
+      : []),
   ]
 
   return (
@@ -353,14 +375,8 @@ function CoinsPanel({
 
       <div className='flex flex-col gap-1'>
         {items.map((item) => {
-          const missing = Math.max(0, item.cost - balance)
-          const status = item.doneLabel
-            ? { text: item.doneLabel, color: 'var(--ica-c-ink)' }
-            : total === null
-              ? null
-              : missing === 0
-                ? { text: t('Te alcanza'), color: 'var(--ica-ok-ink)' }
-                : { text: t('Te faltan {n}', { n: missing }), color: 'var(--muted-foreground)' }
+          // Sin «Te alcanza» / «Te faltan N» (Luis, 4 oct): solo «Activo hoy» si ya lo compró.
+          const status = item.doneLabel ? { text: item.doneLabel, color: 'var(--ica-c-ink)' } : null
           return (
             <button
               key={item.key}

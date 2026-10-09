@@ -5,11 +5,14 @@
 //   bronce: un swish corto · plata: un swish algo más largo y brillante · oro: un whoosh
 //   con un brillo muy bajito al final · rubí: whoosh más largo con dos brillos · diamante:
 //   whoosh de ida y vuelta con un acorde de brillo casi en susurro.
+//   leyenda (3 oct, noche): «más glorioso» que el diamante. Lo del diamante, más grande
+//   (cuatro brillos en vez de tres), un acorde que se abre debajo, polvo de brillo y un
+//   golpe hondo cuando la insignia se para.
 //
 // Hay tres «packs» para escuchar en la página de sonidos; la app usa BADGE_SOUND_PACK.
 // Este archivo no importa nada de la app: así también lo usa esa página.
 
-export type BadgeTier = 'bronce' | 'plata' | 'oro' | 'rubi' | 'diamante'
+export type BadgeTier = 'bronce' | 'plata' | 'oro' | 'rubi' | 'diamante' | 'leyenda'
 export type BadgeSoundPack = 'whoosh' | 'aire' | 'swish'
 
 /** Pack que suena en la app. */
@@ -98,6 +101,62 @@ function glint(ctx: BaseAudioContext, out: AudioNode, at: number, note: number, 
 type Event =
   | { kind: 'air'; at: number; duration: number; from: number; to: number; volume: number; peak?: number; pan?: [number, number] }
   | { kind: 'glint'; at: number; note: number; volume: number; decay?: number }
+  | { kind: 'boom'; at: number; volume: number }
+  | { kind: 'dust'; at: number; duration: number; volume: number }
+  | { kind: 'pad'; at: number; notes: number[]; volume: number; decay: number }
+
+/** Acorde que se abre despacio (la «gloria» de la Leyenda): suave, sin ataque. */
+function pad(ctx: BaseAudioContext, out: AudioNode, at: number, notes: number[], volume: number, decay: number) {
+  notes.forEach((note, index) => {
+    const osc = ctx.createOscillator()
+    osc.type = 'triangle'
+    osc.frequency.value = midi(note)
+    const gain = ctx.createGain()
+    const when = at + index * 0.04
+    gain.gain.setValueAtTime(0.0001, when)
+    gain.gain.exponentialRampToValueAtTime(volume, when + 0.18)
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + decay)
+    osc.connect(gain).connect(out)
+    osc.start(when)
+    osc.stop(when + decay + 0.1)
+  })
+}
+
+/** Golpe hondo y suave (la Leyenda al pararse): grave que baja, sin ataque seco. */
+function boom(ctx: BaseAudioContext, out: AudioNode, at: number, volume: number) {
+  const osc = ctx.createOscillator()
+  osc.frequency.setValueAtTime(90, at)
+  osc.frequency.exponentialRampToValueAtTime(42, at + 0.7)
+  const gain = ctx.createGain()
+  gain.gain.setValueAtTime(0.0001, at)
+  gain.gain.exponentialRampToValueAtTime(volume, at + 0.03)
+  gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.8)
+  osc.connect(gain).connect(out)
+  osc.start(at)
+  osc.stop(at + 0.85)
+}
+
+/** Polvo de brillo: muchos «tic» agudísimos y muy bajitos, al azar (no es una melodía). */
+function dust(ctx: BaseAudioContext, out: AudioNode, at: number, duration: number, volume: number) {
+  const count = 16
+  for (let index = 0; index < count; index += 1) {
+    const when = at + (duration * index) / count + Math.random() * 0.03
+    const source = ctx.createBufferSource()
+    source.buffer = softNoise(ctx)
+    const band = ctx.createBiquadFilter()
+    band.type = 'bandpass'
+    band.Q.value = 18
+    band.frequency.value = 6500 + Math.random() * 4500
+    const gain = ctx.createGain()
+    const level = volume * (1 - index / (count + 4))
+    gain.gain.setValueAtTime(0.0001, when)
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, level), when + 0.004)
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.09)
+    source.connect(band).connect(gain).connect(out)
+    source.start(when, Math.random() * 1.5)
+    source.stop(when + 0.12)
+  }
+}
 
 /** Segundos desde que empieza el sonido hasta su golpe de aire más fuerte (pack «whoosh»). */
 export function badgeWhooshPeak(tier: BadgeTier): number {
@@ -124,6 +183,17 @@ const SCORES: Record<BadgeTier, Event[]> = {
     { kind: 'glint', at: 0.4, note: 96, volume: 0.03, decay: 1.2 },
     { kind: 'glint', at: 0.48, note: 100, volume: 0.028, decay: 1.2 },
     { kind: 'glint', at: 0.56, note: 103, volume: 0.026, decay: 1.3 },
+  ],
+  leyenda: [
+    { kind: 'air', at: 0, duration: 0.6, from: 300, to: 3400, volume: 0.62, peak: 0.75, pan: [-0.7, 0.5] },
+    { kind: 'air', at: 0.48, duration: 0.42, from: 4600, to: 1400, volume: 0.4, peak: 0.25, pan: [0.5, -0.3] },
+    { kind: 'glint', at: 0.4, note: 96, volume: 0.045, decay: 1.2 },
+    { kind: 'glint', at: 0.47, note: 100, volume: 0.043, decay: 1.2 },
+    { kind: 'glint', at: 0.54, note: 103, volume: 0.041, decay: 1.3 },
+    { kind: 'glint', at: 0.61, note: 108, volume: 0.04, decay: 1.6 },
+    { kind: 'pad', at: 0.5, notes: [72, 76, 79, 84], volume: 0.035, decay: 1.9 },
+    { kind: 'dust', at: 0.6, duration: 0.8, volume: 0.07 },
+    { kind: 'boom', at: 0.62, volume: 0.2 },
   ],
 }
 
@@ -190,7 +260,11 @@ export function playBadgeFanfare(
   const start = ctx.currentTime + 0.02 + Math.max(0, options.delay ?? 0)
   for (const event of transform(SCORES[tier], pack)) {
     if (event.kind === 'air') air(ctx, bus, start + event.at, event)
-    else if (!locked) glint(ctx, bus, start + event.at, event.note, event.volume, event.decay)
+    else if (event.kind === 'boom') boom(ctx, bus, start + event.at, event.volume)
+    else if (locked) continue
+    else if (event.kind === 'dust') dust(ctx, bus, start + event.at, event.duration, event.volume)
+    else if (event.kind === 'pad') pad(ctx, bus, start + event.at, event.notes, event.volume, event.decay)
+    else glint(ctx, bus, start + event.at, event.note, event.volume, event.decay)
   }
 
   return () => {

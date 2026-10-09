@@ -420,6 +420,16 @@ export function composeRecognitionText(segments: Segment[], interim: string): st
 
 let microphoneReady = false
 
+/** ¿Ya se abrió el micro antes (en esta visita a la app)? Entonces no hace falta calentarlo. */
+export function isMicrophoneWarm(): boolean {
+  return microphoneReady
+}
+
+/** Espera a que el reconocimiento de voz esté cerrado del todo. */
+export async function waitMicrophoneReleased(maxMs = 1500): Promise<void> {
+  await waitRecognitionIdle(maxMs)
+}
+
 /**
  * Abre el reconocimiento de voz un momento, antes del primer trozo, para que los
  * permisos (micrófono y reconocimiento de voz) salgan al empezar y no en mitad del juego.

@@ -46,7 +46,7 @@ import {
   Volume2Icon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { t, tn, langName } from '@/i18n'
+import { t, tn, langName, uiLocale } from '@/i18n'
 import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
 import { PREGUNTICA_EXTRA_COST } from '../game/rules'
 import { coinsText, useFichas } from '../game/fichas'
@@ -115,7 +115,8 @@ function parseDateOnly(value: string): Date | null {
   const month = Number(match[2])
   const day = Number(match[3])
   if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null
-  return new Date(Date.UTC(year, month - 1, day))
+  // The server closes the week at midnight in the student's own time zone, not UTC.
+  return new Date(year, month - 1, day)
 }
 
 function getCountdownLabel(status: PregunticaWeekStatus | null): string {
@@ -128,10 +129,26 @@ function getCountdownLabel(status: PregunticaWeekStatus | null): string {
   const days = Math.floor(totalSeconds / 86400)
   const hours = Math.floor((totalSeconds % 86400) / 3600)
   const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
 
   const pad = (value: number) => String(value).padStart(2, '0')
-  return `${days} d ${pad(hours)} h ${pad(minutes)} min ${pad(seconds)} s`
+  return days > 0 ? `${days} d ${pad(hours)} h ${pad(minutes)} min` : `${pad(hours)} h ${pad(minutes)} min`
+}
+
+/**
+ * Last day of the PreguntICA week, said the way people talk: «hoy», «mañana» or «el jueves».
+ * Weeks run Friday to Thursday (server rule), which is why people were lost (Luis, 5 Oct).
+ */
+function weekLastDayWords(weekEnd: string | undefined): { when: string; next: string } | null {
+  const end = weekEnd ? parseDateOnly(weekEnd) : null
+  if (!end) return null
+  const lastDay = new Date(end)
+  lastDay.setDate(lastDay.getDate() - 1)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const daysLeft = Math.round((lastDay.getTime() - today.getTime()) / 86_400_000)
+  const weekday = (date: Date) => date.toLocaleDateString(uiLocale(), { weekday: 'long' })
+  const when = daysLeft <= 0 ? t('hoy') : daysLeft === 1 ? t('mañana') : t('el {day}', { day: weekday(lastDay) })
+  return { when, next: weekday(end) }
 }
 
 function normalizeComparableText(value: string): string {
@@ -901,7 +918,10 @@ export function PregunticaView({
     }
   }
 
-  const countdown = !hasCompletedWeek ? <WeekCountdown label={countdownLabel} /> : null
+  const weekCountdown = (state: 'locked' | 'open' | 'active') =>
+    !hasCompletedWeek ? (
+      <WeekCountdown label={countdownLabel} weekEnd={status?.weekEnd} state={state} requiredWords={requiredWords} />
+    ) : null
 
   return (
     <div ref={pageSectionRef} className='flex flex-1 flex-col'>
@@ -939,8 +959,8 @@ export function PregunticaView({
                 {t('Progreso de desbloqueo: {count}/{required} palabras activadas.', { count: activationCount, required: requiredWords })}
               </p>
             ) : null}
-            <div className='mt-1 flex flex-wrap items-center justify-between gap-2'>
-              {countdown}
+            {weekCountdown('active')}
+            <div className='mt-1 flex flex-wrap items-center justify-end gap-2'>
               <button
                 type='button'
                 onClick={() => setInfoModalOpen(true)}
@@ -1008,7 +1028,7 @@ export function PregunticaView({
                 className='mt-2.5'
                 label={t('Progreso de desbloqueo')}
               />
-              {countdown}
+              {weekCountdown('locked')}
             </HeroBlock>
             {paidAttemptPending ? (
               <PaidAttemptRow disabled={working} onStart={() => void handleStartAttempt('mixed')} />
@@ -1054,7 +1074,7 @@ export function PregunticaView({
               <MicIcon className='size-5' strokeWidth={2.6} aria-hidden='true' />
               {t('Iniciar PreguntICA')}
             </Button>
-            {countdown}
+            {weekCountdown('open')}
           </HeroBlock>
         )}
 
@@ -1630,15 +1650,40 @@ function HeroMic({ state }: { state: 'locked' | 'open' | 'done' | 'active' }) {
   )
 }
 
-/** "La semana termina en 3 d 04 h 12 min 05 s". */
-function WeekCountdown({ label }: { label: string }) {
+/**
+ * How long this week's PreguntICA is still valid, and what that means for you right now
+ * (Luis, 5 Oct): people saw «la semana termina en 3 d» and didn't know why or if they could play.
+ */
+function WeekCountdown({
+  label,
+  weekEnd,
+  state,
+  requiredWords,
+}: {
+  label: string
+  weekEnd?: string
+  state: 'locked' | 'open' | 'active'
+  requiredWords: number
+}) {
   if (!label || label === '-') return null
+  const words = weekLastDayWords(weekEnd)
+  const deadline = words ? t('Tienes hasta {when} a las 23:59', { when: words.when }) : t('Tiempo para esta semana')
+  const next = words?.next ?? ''
+  const explanation =
+    state === 'locked'
+      ? t('Si llegas a {n} palabras antes, podrás responderla. El {next} empieza otra semana: llega una pregunta nueva y el contador vuelve a 0.', { n: requiredWords, next })
+      : state === 'open'
+        ? t('Ya puedes responderla. Si no lo haces antes de esa hora, la de esta semana se pierde y el {next} llega una nueva.', { next })
+        : t('Termínala antes de esa hora para que cuente como la PreguntICA de esta semana.')
   return (
-    <p className='m-0 mt-3 flex flex-wrap items-center gap-x-1.5 text-sm font-bold text-muted-foreground'>
-      <TimerIcon className='size-4' strokeWidth={2.6} aria-hidden='true' />
-      {t('La semana termina en')}
-      <span className='font-extrabold text-foreground tabular-nums'>{label}</span>
-    </p>
+    <div className='mt-3 rounded-2xl bg-muted/60 px-3.5 py-3 text-left'>
+      <p className='m-0 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm font-extrabold'>
+        <TimerIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' style={{ color: 'var(--ica-c-ink)' }} />
+        <span>{deadline}</span>
+        <span className='font-bold text-muted-foreground tabular-nums'>{t('(quedan {time})', { time: label })}</span>
+      </p>
+      <p className='m-0 mt-1 text-xs leading-snug font-semibold text-muted-foreground'>{explanation}</p>
+    </div>
   )
 }
 

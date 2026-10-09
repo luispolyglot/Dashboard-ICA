@@ -48,6 +48,8 @@ import { t } from '@/i18n'
 const PAIRS_PER_BOARD = 5
 const FEEDBACK_MS_CORRECT = 1000
 const FEEDBACK_MS_WRONG = 2000
+/** Al fallar: da tiempo a oír cómo se dice la palabra. */
+const FEEDBACK_MS_WRONG_SPOKEN = 3400
 
 type Feedback = {
   isCorrect: boolean
@@ -69,7 +71,7 @@ function scoreMessage(correct: number, total: number): string {
 }
 
 /**
- * RETO DEL DÍA: minijuego de 10 palabras con tu Baúl ICA, después del cofre del ciclo.
+ * RETO DEL DÍA: minijuego de 10 palabras con tu Baúl ICA; se abre al completar el ciclo, a la vez que el cofre.
  * Mismas piezas y motor que Desafíos ICA, pero sin rival. Cuenta como hecho con 5 aciertos.
  */
 export function DailyGameView({ config, cards }: { config: AppConfig; cards: Lexicard[] }) {
@@ -174,7 +176,13 @@ const stopConfettiRef = useRef<(() => void) | null>(null)
     setFeedback({ isCorrect, timedOut, myAnswer, pairs: null })
     setPhase('feedback')
     setEndsAt(null)
-    advance(nextPlayed, 1, isCorrect ? FEEDBACK_MS_CORRECT : FEEDBACK_MS_WRONG)
+    // Al fallar (en todos los modos menos Parejas), se ve la buena y una voz la dice (Luis, 3-4 oct).
+    const sayAnswer = !isCorrect && question.kind !== 'pairs'
+    if (sayAnswer) {
+      const word = question.answer.target
+      window.setTimeout(() => void speakAsync(word, config.targetLang), 450)
+    }
+    advance(nextPlayed, 1, isCorrect ? FEEDBACK_MS_CORRECT : sayAnswer ? FEEDBACK_MS_WRONG_SPOKEN : FEEDBACK_MS_WRONG)
   }
 
   const answerBoard = (matches: Array<number | null>) => {
@@ -221,37 +229,51 @@ const stopConfettiRef = useRef<(() => void) | null>(null)
 
   const startListening = useCallback(async () => {
     if (question?.kind !== 'speak' || !endsAt) return
-    const remaining = endsAt - Date.now()
-    if (remaining < 900) return
     cancelListenRef.current?.()
     setMicMessage(null)
     setSpeakStatus('starting')
-    const session = listenOnce(config.targetLang, {
-      noSpeechMs: Math.min(remaining, 6000),
-      endSilenceMs: 900,
-      maxMs: remaining,
-      onInterim: (text) => {
-        heardRef.current = text
-        setHeard(text)
-        setSpeakStatus('listening')
-      },
-    })
-    cancelListenRef.current = session.cancel
-    setSpeakStatus('listening')
-    const outcome = await session.promise
-    if (outcome.status === 'cancelled') return
-    cancelListenRef.current = null
-    if (outcome.status === 'heard') {
-      heardRef.current = outcome.transcript
-      setHeard(outcome.transcript)
-      setSpeakStatus('checking')
-      answerRef.current({ transcripts: outcome.candidates.length ? outcome.candidates : [outcome.transcript] })
-      return
+    // The mic stays open for the whole turn: silence never stops it or asks to tap anything.
+    let stopped = false
+    for (;;) {
+      const remaining = endsAt - Date.now()
+      if (remaining < 900) return
+      const session = listenOnce(config.targetLang, {
+        noSpeechMs: remaining,
+        endSilenceMs: 900,
+        maxMs: remaining,
+        onInterim: (text) => {
+          heardRef.current = text
+          setHeard(text)
+          setSpeakStatus('listening')
+        },
+      })
+      cancelListenRef.current = () => {
+        stopped = true
+        session.cancel()
+      }
+      setSpeakStatus('listening')
+      const outcome = await session.promise
+      if (stopped || outcome.status === 'cancelled') return
+      cancelListenRef.current = null
+      if (outcome.status === 'heard') {
+        heardRef.current = outcome.transcript
+        setHeard(outcome.transcript)
+        setSpeakStatus('checking')
+        answerRef.current({ transcripts: outcome.candidates.length ? outcome.candidates : [outcome.transcript] })
+        return
+      }
+      if (outcome.status === 'error') {
+        setSpeakStatus('idle')
+        setMicMessage(t(outcome.message))
+        return
+      }
+      // Silence or nothing understood: keep listening quietly while time is left.
+      cancelListenRef.current = () => {
+        stopped = true
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 250))
+      if (stopped) return
     }
-    setSpeakStatus('idle')
-    setMicMessage(
-      outcome.status === 'error' ? t(outcome.message) : t('No te he oído bien. Toca «Repetir» y dila otra vez.'),
-    )
   }, [config.targetLang, endsAt, question?.kind])
 
   useEffect(() => {

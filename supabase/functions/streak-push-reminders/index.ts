@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
+import { sendIcaChallengeJobNotices } from '../_shared/ica-challenge-job-notices.ts'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -81,9 +82,16 @@ type ReminderEvent = {
 }
 
 const HABIT_MESSAGES: Record<1 | 2 | 3, string> = {
-  1: 'Hey, no falles hoy también a tu racha ICA para no perder el hábito',
-  2: 'Todavía estas a tiempo de recuperar tu ritmo ICA. Sólo necesitas unos minutos para sumar ese 1%.',
-  3: 'Veo que las notificaciones no están funcionando contigo. No te defraudes. Ya no te molestaré más',
+  1: 'Ayer no hiciste tu ciclo ICA. Hazlo hoy y no pierdas el hábito.',
+  2: 'Todavía estás a tiempo de recuperar tu ritmo. Solo necesitas unos minutos para sumar ese 1 %.',
+  3: 'Dejo de mandarte estos avisos. Cuando quieras volver, tu ciclo ICA te espera.',
+}
+
+// The last notice says goodbye, so it gets its own title (Luis, 6 Oct).
+const HABIT_TITLES: Record<1 | 2 | 3, string> = {
+  1: 'Recupera tu hábito ICA',
+  2: 'Recupera tu hábito ICA',
+  3: 'Te esperamos en ICA',
 }
 
 // RACHA EN PELIGRO: se avisa cuando quedan estas horas para medianoche (a las 19:00 locales).
@@ -193,6 +201,9 @@ Deno.serve(async (req) => {
   webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey)
+
+  // Challenge notices queued by the expiration job (expired, turn lost). Never blocks the reminders.
+  await sendIcaChallengeJobNotices({ adminClient, webpush })
   const now = new Date()
 
   const [subscriptionsResult, preferencesResult] = await Promise.all([
@@ -339,8 +350,8 @@ Deno.serve(async (req) => {
           kind: 'ica_streak',
           localDay: local.day,
           payload: {
-            title: 'Racha ICA pendiente',
-            body: 'Todavia no completaste hoy tu racha ICA. Te toma solo unos minutos.',
+            title: 'Tu ciclo ICA de hoy',
+            body: 'Todavía no lo has hecho. Solo cinco minutos y ya lo tienes.',
             url: '/streaks',
             tag: `ica-streak-${local.day}`,
           },
@@ -391,7 +402,7 @@ Deno.serve(async (req) => {
         localDay: local.day,
         payload: {
           title: `Te quedan ${STREAK_RISK_HOURS} horas`,
-          body: 'Haz tu ciclo ICA antes de que sea tarde para no perder tu racha.',
+          body: 'Salva tu racha ICA antes de que sea muy tarde.',
           url: '/',
           tag: `ica-streak-risk-${local.day}`,
           icon: '/push-clock-192.png',
@@ -424,7 +435,7 @@ Deno.serve(async (req) => {
               kind: 'habit_loss',
               stage: dueStage,
               payload: {
-                title: 'Recupera tu hábito ICA',
+                title: HABIT_TITLES[dueStage],
                 body: HABIT_MESSAGES[dueStage],
                 url: '/streaks',
                 tag: `habit-loss-stage-${dueStage}`,

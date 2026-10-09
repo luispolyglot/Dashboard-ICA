@@ -79,6 +79,10 @@ export interface LeaderboardEntry {
   total_points?: number
   /** Insignia destacada del alumno ("categoria:rango"), cuando el servidor la devuelva. */
   featured_badge?: string | null
+  /** Bandera que enseña el alumno (nombre del idioma, p. ej. "Polaco"), si ha comprado alguna. */
+  display_flag?: string | null
+  /** Tiebreak: correct answers in the first daily-game attempt of each day (days 1-28). */
+  daily_game_correct?: number | null
 }
 
 export interface PhraseGenerationEntry {
@@ -339,6 +343,8 @@ export interface CoachingNotificationPreference {
   userId: string
   masterNoteClosedEnabled: boolean
   activeSessionEnabled: boolean
+  /** Coaches: push when a student sends an audio task (Luis, 6 Oct). */
+  studentAudioEnabled: boolean
   classScheduleReminderMinutes: 10 | 30 | 60
   createdAt: string | null
   updatedAt: string | null
@@ -347,6 +353,7 @@ export interface CoachingNotificationPreference {
 export interface CoachingNotificationPreferenceInput {
   masterNoteClosedEnabled: boolean
   activeSessionEnabled: boolean
+  studentAudioEnabled?: boolean
   classScheduleReminderMinutes: 10 | 30 | 60
 }
 

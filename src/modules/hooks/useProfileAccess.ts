@@ -13,6 +13,8 @@ export type ProfileAccess = {
   canSeeAdminAnalytics: boolean
   isSuperAdmin: boolean
   canSeeCoachingPersonalized: boolean
+  /** In a coaching right now (finished or cancelled ones do not count). */
+  hasActiveCoaching: boolean
   canManageCoaching: boolean
   pendingCoachingSessions: number
   pendingCoachingNotes: number
@@ -23,6 +25,7 @@ const EMPTY_ACCESS: ProfileAccess = {
   canSeeAdminAnalytics: false,
   isSuperAdmin: false,
   canSeeCoachingPersonalized: false,
+  hasActiveCoaching: false,
   canManageCoaching: false,
   pendingCoachingSessions: 0,
   pendingCoachingNotes: 0,
@@ -65,6 +68,8 @@ export function useProfileAccess(
         isSuperAdmin: role === 'super_admin',
         canSeeCoachingPersonalized:
           Array.isArray(coachingMemberships) && coachingMemberships.length > 0,
+        hasActiveCoaching:
+          Array.isArray(coachingMemberships) && coachingMemberships.some((row) => row.status === 'active'),
         canManageCoaching: Boolean(coachingAccess?.isCoachingAdmin),
         pendingCoachingSessions: pendingSummary.pendingSessions,
         pendingCoachingNotes: pendingSummary.pendingNotes,

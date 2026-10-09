@@ -1,4 +1,4 @@
-import { CoachingInviteCard } from "../components/CoachingInvite";
+import { CoachingInviteCard, useCoachingInviteSmall } from "../components/CoachingInvite";
 import { t, tn, langName } from '@/i18n'
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
@@ -53,7 +53,6 @@ import {
   memberSinceLabel,
   MyFeaturedBadge,
   ProfileGameSummary,
-  ProfileStreakPanel,
 } from "../game/ProfileGameSummary";
 import { isGameSoundEnabled, setGameSoundEnabled } from "../game/sfx";
 import { isPronunciationEnabled, setPronunciationEnabled } from "../pronunciation/pronunciation";
@@ -113,6 +112,8 @@ export function ProfileView({
   const [canSeeCoachingPersonalized, setCanSeeCoachingPersonalized] =
     useState(false);
   const [canManageCoaching, setCanManageCoaching] = useState(false);
+  const [hasActiveCoaching, setHasActiveCoaching] = useState(false);
+  const [coachingInviteSmall, makeCoachingInviteSmall] = useCoachingInviteSmall();
   const [accessLoaded, setAccessLoaded] = useState(false);
   const [pendingCoachingSessions, setPendingCoachingSessions] = useState(0);
   const [pendingCoachingNotes, setPendingCoachingNotes] = useState(0);
@@ -178,6 +179,10 @@ export function ProfileView({
       setCanSeeCoachingPersonalized(
         Array.isArray(coachingMemberships) && coachingMemberships.length > 0,
       );
+      setHasActiveCoaching(
+        Array.isArray(coachingMemberships) &&
+          coachingMemberships.some((row) => row.status === "active"),
+      );
       setCanManageCoaching(Boolean(coachingAccess?.isCoachingAdmin));
       setPendingCoachingSessions(pendingSummary.pendingSessions);
       setPendingCoachingNotes(pendingSummary.pendingNotes);
@@ -190,6 +195,8 @@ export function ProfileView({
       isMounted = false;
     };
   }, [user?.id, config?.targetLang]);
+
+  const showCoachingInvite = accessLoaded && (canManageCoaching || !hasActiveCoaching);
 
   const handleLogout = async (): Promise<void> => {
     if (isLoggingOut) return;
@@ -399,7 +406,6 @@ export function ProfileView({
           <div>
             <SectionLabel>{t("Comunidad")}</SectionLabel>
             <div className="flex flex-col gap-3">
-              <ProfileStreakPanel />
               <RowGroup>
                 <ListRow
                   onClick={() => navigate(DASHBOARD_ROUTES.leaderboard)}
@@ -420,6 +426,16 @@ export function ProfileView({
                   }
                   title={t("Track Instagram")}
                   text={t("Cada día con post suma puntos al ranking.")}
+                />
+                <ListRow
+                  onClick={() => navigate(DASHBOARD_ROUTES.trackers)}
+                  icon={
+                    <IconTile tone="i" size={42}>
+                      <LineChartIcon className="size-[22px]" strokeWidth={2.5} aria-hidden="true" />
+                    </IconTile>
+                  }
+                  title={t("Trackers")}
+                  text={t("Pronunciación, fluidez e improvisación mensual.")}
                 />
               </RowGroup>
             </div>
@@ -650,27 +666,12 @@ export function ProfileView({
             </Panel>
           </div>
 
-          <div>
-            <SectionLabel>{t("Más")}</SectionLabel>
-            <RowGroup>
-              <ListRow
-                onClick={() => navigate(DASHBOARD_ROUTES.trackers)}
-                icon={
-                  <IconTile tone="i" size={42}>
-                    <LineChartIcon className="size-[22px]" strokeWidth={2.5} aria-hidden="true" />
-                  </IconTile>
-                }
-                title={t("Trackers")}
-                text={t("Pronunciación, fluidez e improvisación mensual.")}
-              />
-            </RowGroup>
-          </div>
-
-          {/* Quien no está en el coaching ve la invitación; los admins de coaching, como vista previa. */}
-          {accessLoaded && (canManageCoaching || !canSeeCoachingPersonalized) && (
+          {/* Everyone sees the invite except students in an active coaching; coaching admins see it
+              as a preview. The X moves it, small, just above "Cerrar sesión" (Luis, 6 Oct). */}
+          {showCoachingInvite && !coachingInviteSmall && (
             <div>
               <SectionLabel>{canManageCoaching ? t("Coaching (vista de alumno)") : t("Coaching")}</SectionLabel>
-              <CoachingInviteCard preview={canManageCoaching} />
+              <CoachingInviteCard preview={canManageCoaching} onDismiss={makeCoachingInviteSmall} />
             </div>
           )}
 
@@ -790,7 +791,8 @@ export function ProfileView({
           )}
         </div>
 
-        <div className="[grid-area:logout]">
+        <div className="flex flex-col gap-3 [grid-area:logout]">
+          {showCoachingInvite && coachingInviteSmall ? <CoachingInviteCard compact /> : null}
           <button
             type="button"
             onClick={() => void handleLogout()}
@@ -807,7 +809,7 @@ export function ProfileView({
             <LogOutIcon className="size-5" strokeWidth={2.6} aria-hidden="true" />
             {isLoggingOut ? t("Cerrando sesión...") : t("Cerrar sesión")}
           </button>
-          <p className="m-0 mt-2 text-center text-xs font-semibold text-muted-foreground">
+          <p className="m-0 -mt-1 text-center text-xs font-semibold text-muted-foreground">
             {t("Finaliza tu sesión actual en el dispositivo.")}
           </p>
         </div>

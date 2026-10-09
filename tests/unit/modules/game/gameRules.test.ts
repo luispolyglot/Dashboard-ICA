@@ -145,10 +145,13 @@ describe('modo juego: reglas y estado de ICA Coins del servidor', () => {
     expect(nextCoinProgress(null)).toBe(0)
   })
 
-  it('el reto del día rota entre todos los modos', () => {
-    const kinds = ['2026-09-30', '2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04'].map((day) => dailyGameModeFor(day).kind)
+  it('el reto del día sigue el calendario del mes, igual para todos', () => {
+    const kinds = ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05'].map((day) => dailyGameModeFor(day).kind)
+    expect(kinds).toEqual(['speak', 'listen', 'write', 'choice', 'pairs'])
     expect(new Set(kinds).size).toBe(DAILY_GAME_MODES.length)
-    expect(dailyGameModeFor('2026-09-30').kind).toBe(dailyGameModeFor('2026-10-05').kind)
+    expect(dailyGameModeFor('2026-10-06').kind).toBe('speak')
+    expect(dailyGameModeFor('2026-11-01').kind).toBe('speak')
+    expect(dailyGameModeFor('2026-10-31').kind).toBe('speak')
   })
 
   it('el nombre corto conserva sitio para la insignia del ranking', () => {

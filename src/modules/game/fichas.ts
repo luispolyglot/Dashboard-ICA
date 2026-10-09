@@ -4,6 +4,7 @@ import { todayKey } from '../utils'
 import type { DailyLimitKey } from './rules'
 import { uiLocale } from '@/i18n'
 import { peekQuick, storeQuick } from '../services/quickCache'
+import { gameSfx } from './sfx'
 
 // ICA Coins tienen una única fuente de verdad: preguntica_token_ledger en Supabase.
 // El estado local solo conserva una copia rápida de lectura y nunca acredita ni gasta monedas.
@@ -20,6 +21,7 @@ export type IcaCoinEntry = {
     | 'phase_boost'
     | 'challenge_slot'
     | 'challenge_win'
+    | 'flag_purchase'
   delta: number
   day: string
   createdAt: number
@@ -66,7 +68,7 @@ function parseEntry(value: unknown): IcaCoinEntry | null {
   if (!row || typeof row.id !== 'string' || typeof row.type !== 'string') return null
   const allowed = new Set([
     'monthly_earn', 'redeem_unlock', 'manual_adjustment', 'cycle_chest', 'streak_milestone',
-    'flash_milestone', 'phase_boost', 'challenge_slot', 'challenge_win',
+    'flash_milestone', 'phase_boost', 'challenge_slot', 'challenge_win', 'flag_purchase',
   ])
   if (!allowed.has(row.type)) return null
   return {
@@ -129,13 +131,26 @@ function rpcError(error: { message?: string } | null): never {
   throw new Error(error?.message || 'ICA_COINS_REQUEST_FAILED')
 }
 
-export async function loadIcaCoinsState(userId?: string | null): Promise<IcaCoinsServerState | null> {
+// Every fresh state is shared with all useFichas hooks, so the top-right counter never lags
+// behind a screen that just loaded the coins itself.
+const STATE_LOADED_EVENT = 'ica:fichas-state-loaded'
+type StateLoadedDetail = { userId: string; state: IcaCoinsServerState }
+
+export async function loadIcaCoinsState(
+  userId?: string | null,
+  options: { beforePublish?: (state: IcaCoinsServerState) => void } = {},
+): Promise<IcaCoinsServerState | null> {
   if (!supabase || !userId) return null
   const { data, error } = await supabase.rpc('get_my_ica_coins_state')
   if (error) rpcError(error)
   const state = parseState(data)
   if (!state) throw new Error('ICA_COINS_STATE_INVALID')
   storeQuick(`${STATE_CACHE_PREFIX}${userId}`, state)
+  // Lets a caller hold back coins (holdCoinsDisplay) before the counter shows the new balance.
+  options.beforePublish?.(state)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent<StateLoadedDetail>(STATE_LOADED_EVENT, { detail: { userId, state } }))
+  }
   return state
 }
 
@@ -213,6 +228,7 @@ export async function buyPhaseBoost(
   _clientBalance?: number,
 ): Promise<boolean> {
   const result = await callCoinRpc('buy_phase_boost', { p_phase: phase })
+  if (result.ok && !result.alreadyOwned) gameSfx.spend()
   return Boolean(result.ok)
 }
 
@@ -221,6 +237,7 @@ export async function buyChallengeSlot(
   _clientBalance?: number,
 ): Promise<boolean> {
   const result = await callCoinRpc('buy_challenge_pass')
+  if (result.ok && !result.alreadyOwned) gameSfx.spend()
   return Boolean(result.ok)
 }
 
@@ -280,11 +297,17 @@ export function useFichas(userId: string | null | undefined): FichasState {
     const onVisible = () => {
       if (document.visibilityState === 'visible') void refresh()
     }
+    const onLoaded = (event: Event) => {
+      const detail = (event as CustomEvent<StateLoadedDetail>).detail
+      if (detail && detail.userId === userId) setServerState(detail.state)
+    }
     window.addEventListener(FICHAS_CHANGED_EVENT, onVisible)
+    window.addEventListener(STATE_LOADED_EVENT, onLoaded)
     window.addEventListener('focus', onVisible)
     document.addEventListener('visibilitychange', onVisible)
     return () => {
       window.removeEventListener(FICHAS_CHANGED_EVENT, onVisible)
+      window.removeEventListener(STATE_LOADED_EVENT, onLoaded)
       window.removeEventListener('focus', onVisible)
       document.removeEventListener('visibilitychange', onVisible)
     }

@@ -19,7 +19,7 @@ import {
   zoneCity,
   type ChatMessageKind,
 } from '../game/icademerChat'
-import { markChatInviteSeen } from '../game/useIcademerChat'
+import { markChatInviteSeen, markIcademerChatRead } from '../game/useIcademerChat'
 import { enablePushOnCurrentDevice } from '../services/pushNotifications'
 import {
   fetchIcademerChat,
@@ -167,6 +167,8 @@ export function IcademerChatView() {
   const loadChat = useCallback(async () => {
     try {
       const chat = await fetchIcademerChat(targetLang)
+      // Leer el chat lo marca como leído: el aviso de mensajes nuevos se apaga en todos lados.
+      markIcademerChatRead()
       setMessages(chat.messages)
       setMemberCount(chat.memberCount)
       setError(null)
@@ -514,9 +516,16 @@ export function IcademerChatView() {
                       key={item.kind}
                       type='button'
                       onClick={() => void send(item.kind)}
+                      onPointerMove={(event) => {
+                        // El brillo sigue al ratón dentro del mensaje.
+                        if (event.pointerType !== 'mouse') return
+                        const box = event.currentTarget.getBoundingClientRect()
+                        event.currentTarget.style.setProperty('--mx', `${event.clientX - box.left}px`)
+                        event.currentTarget.style.setProperty('--my', `${event.clientY - box.top}px`)
+                      }}
                       disabled={sending || waitForOthers}
                       className={cn(
-                        'ica-press flex min-h-11 items-center gap-1.5 rounded-2xl border-2 px-3 py-2 text-left text-sm leading-tight font-extrabold disabled:opacity-50',
+                        'ica-press ica-chat-option flex min-h-11 items-center gap-1.5 rounded-2xl border-2 px-3 py-2 text-left text-sm leading-tight font-extrabold disabled:opacity-50',
                         item.kind === 'club' ? 'col-span-2 border-transparent text-white' : 'border-border bg-background',
                         item.kind === 'animo' ? 'col-span-2' : '',
                       )}
@@ -527,7 +536,8 @@ export function IcademerChatView() {
                       }
                     >
                       {item.kind === 'hora' ? <ClockIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' /> : null}
-                      {item.kind === 'hora' ? t('¿A las…?') : t(item.text)}
+                      <span className='relative min-w-0 flex-1'>{item.kind === 'hora' ? t('¿A las…?') : t(item.text)}</span>
+                      <SendIcon className='ica-chat-send relative size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' />
                     </button>
                   ))}
                 </div>

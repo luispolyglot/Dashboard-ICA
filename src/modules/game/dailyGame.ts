@@ -9,11 +9,12 @@ import { isSpeechRecognitionSupported } from '../components/NotaDesafiante/chall
 import type { Lexicard } from '../types'
 import { todayKey } from '../utils'
 import { supabase } from '../../lib/supabase'
+import { peekQuick, storeQuick } from '../services/quickCache'
 
-// RETO DEL DÍA: el minijuego que sale en el camino después del cofre.
+// RETO DEL DÍA: el minijuego que se abre al completar el ciclo, a la vez que el cofre.
 // Usa el mismo motor que Desafíos ICA, pero lo juegas tú solo con tus palabras ICA.
-// Cada día toca uno de los modos de Desafíos (Parejas, Lectura, Escritura, Escucha, Habla;
-// van rotando). Cuenta como hecho con 5 aciertos o más. El mejor resultado diario se sincroniza
+// Cada día del mes toca el mismo modo para todos (Luis, 6 oct): día 1 Habla, 2 Escucha,
+// 3 Escritura, 4 Lectura, 5 Parejas, y vuelta a empezar (día 6 Habla…). Cuenta como hecho con 5 aciertos o más. El mejor resultado diario se sincroniza
 // con el servidor para que el camino se comparta entre dispositivos.
 
 export type DailyGameKind = 'pairs' | 'choice' | 'write' | 'listen' | 'speak'
@@ -62,15 +63,17 @@ function speechSupported(): boolean {
   }
 }
 
-function dayNumber(day: string): number {
-  const [year, month, date] = day.split('-').map(Number)
-  return Math.floor(Date.UTC(year || 1970, (month || 1) - 1, date || 1) / 86_400_000)
-}
+/** Order of the month calendar: day 1 Habla, 2 Escucha, 3 Escritura, 4 Lectura, 5 Parejas. */
+export const DAILY_GAME_CALENDAR: DailyGameKind[] = ['speak', 'listen', 'write', 'choice', 'pairs']
 
-/** El modo que toca hoy (rota cada día). */
+/**
+ * El modo que toca hoy: el mismo para todos según el día del mes, para que el reto sea justo.
+ * Si tu dispositivo o tu baúl no permiten ese modo, buildDailyGame pasa al siguiente.
+ */
 export function dailyGameModeFor(day = todayKey()): DailyGameMode {
-  const index = ((dayNumber(day) % DAILY_GAME_MODES.length) + DAILY_GAME_MODES.length) % DAILY_GAME_MODES.length
-  return DAILY_GAME_MODES[index]
+  const dayOfMonth = Number(day.split('-')[2]) || 1
+  const kind = DAILY_GAME_CALENDAR[(dayOfMonth - 1) % DAILY_GAME_CALENDAR.length]
+  return DAILY_GAME_MODES.find((mode) => mode.kind === kind) ?? DAILY_GAME_MODES[0]
 }
 
 export function toEngineCards(cards: Lexicard[], ownerUserId: string): EngineCard[] {
@@ -94,7 +97,11 @@ export function buildDailyGame(
   language: string,
 ): { mode: DailyGameMode; questions: GeneratedQuestion[] } | null {
   if (cards.length < DAILY_GAME_MIN_WORDS) return null
-  const order = [preferred, ...DAILY_GAME_MODES.filter((mode) => mode.kind !== preferred.kind)]
+  // Fallback follows the same calendar order after today's mode, so it is predictable too.
+  const start = Math.max(0, DAILY_GAME_CALENDAR.indexOf(preferred.kind))
+  const order = DAILY_GAME_CALENDAR.map((_, offset) => DAILY_GAME_CALENDAR[(start + offset) % DAILY_GAME_CALENDAR.length])
+    .map((kind) => DAILY_GAME_MODES.find((mode) => mode.kind === kind))
+    .filter((mode): mode is DailyGameMode => Boolean(mode))
   // Habla necesita el reconocimiento de voz del navegador; si no lo hay, se salta.
   const canSpeak = speechSupported()
   for (const mode of order) {
@@ -161,22 +168,32 @@ export function useDailyGame(userId: string | null | undefined, cards?: Lexicard
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [preferred.kind, cards?.length, language],
   )
-  const [result, setResult] = useState<DailyGameResult | null>(null)
+  // Last known result of today, shown at once when coming back to Home (Luis, 5 Oct: after
+  // going to Ranking and back, the finished challenge showed as not done for a moment and the
+  // path played its «unlock» again). `loaded` tells whether we know today's result yet.
+  const cacheKey = userId ? `daily-game:${userId}:${day}` : null
+  const cached = cacheKey ? peekQuick<DailyGameResult | null>(cacheKey) : undefined
+  const [result, setResult] = useState<DailyGameResult | null>(cached ?? null)
+  const [loaded, setLoaded] = useState(cached !== undefined)
 
   const refresh = useCallback(async () => {
     if (!supabase || !userId) {
       setResult(null)
+      setLoaded(true)
       return null
     }
     const { data, error } = await supabase.rpc('get_my_daily_game_result')
     if (error) throw error
     const next = parseDailyGameRow(data)
     setResult(next)
+    setLoaded(true)
+    storeQuick(`daily-game:${userId}:${todayKey()}`, next)
     return next
   }, [userId])
 
   useEffect(() => {
-    const onRefresh = () => { void refresh().catch(() => undefined) }
+    // If the server cannot answer, stop waiting (the path must not stay asleep).
+    const onRefresh = () => { void refresh().catch(() => setLoaded(true)) }
     onRefresh()
     window.addEventListener(DAILY_GAME_CHANGED_EVENT, onRefresh)
     window.addEventListener('focus', onRefresh)
@@ -186,5 +203,5 @@ export function useDailyGame(userId: string | null | undefined, cards?: Lexicard
     }
   }, [refresh, day])
 
-  return { mode: playable ?? preferred, result, done: isDailyGamePassed(result) }
+  return { mode: playable ?? preferred, result, done: isDailyGamePassed(result), loaded }
 }

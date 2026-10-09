@@ -40,10 +40,24 @@ import {
   type CoachingV2FocusState,
 } from './v2-focus.ts'
 import {
-  hasAllStudentGuidelineResponses,
   hasCoachGuidelinesCompleted,
 } from './v2-class.ts'
 import { evaluateCoachingFocusExerciseAttempt } from '../_shared/coaching-focus-exercise.ts'
+import {
+  buildTaskAudioPath,
+  clampAudioSeconds,
+  countAnsweredTasks,
+  fetchTaskAudioByClass,
+  isTaskAudioPathFor,
+  normalizeAudioMime,
+  normalizeTaskIndex,
+  removeTaskAudioFiles,
+  TASK_AUDIO_BUCKET,
+  TASK_AUDIO_SELECT,
+  taskAudioFlags,
+  toTaskAudioAnswer,
+  type TaskAudioRow,
+} from './task-audio.ts'
 
 const OWNER_SUPPORT_COACH_USER_ID = '68890bd8-894d-422d-b865-08806acdb312'
 
@@ -61,6 +75,18 @@ function withDefaultClassGuideline(value: string | null, index: 0 | 1 | 2): stri
 type CoachingCenterPayload = {
   action?: string
   answers?: unknown
+  // Audio tasks (Luis, 6 Oct)
+  taskIndex?: number
+  mimeType?: string
+  path?: string
+  seconds?: number
+  feedbackText?: string | null
+  feedbackAudioPath?: string | null
+  feedbackAudioSeconds?: number | null
+  removeFeedbackAudio?: boolean
+  taskAudio1?: boolean
+  taskAudio2?: boolean
+  taskAudio3?: boolean
   sessionId?: string
   masterNoteId?: string
   feedbackLoomUrl?: string | null
@@ -184,6 +210,9 @@ type CoachingSessionClassRow = {
   student_guideline_response_1: string | null
   student_guideline_response_2: string | null
   student_guideline_response_3: string | null
+  task_audio_1?: boolean | null
+  task_audio_2?: boolean | null
+  task_audio_3?: boolean | null
   created_at: string
   updated_at: string
 }
@@ -909,6 +938,7 @@ function serializeClassSessions(rows: CoachingSessionClassRow[]): unknown[] {
     studentGuidelineResponse1: row.student_guideline_response_1,
     studentGuidelineResponse2: row.student_guideline_response_2,
     studentGuidelineResponse3: row.student_guideline_response_3,
+    taskAudio: taskAudioFlags(row),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }))
@@ -1121,7 +1151,7 @@ async function fetchProgramDataBySessionIds(
     adminClient
       .from('coaching_session_classes')
       .select(
-        'id, session_id, week_number, class_index, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, coach_guideline_1, coach_guideline_2, coach_guideline_3, student_completed_at, student_report_text, student_report_image_path, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, created_at, updated_at',
+        'id, session_id, week_number, class_index, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, coach_guideline_1, coach_guideline_2, coach_guideline_3, student_completed_at, student_report_text, student_report_image_path, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, task_audio_1, task_audio_2, task_audio_3, created_at, updated_at',
       )
       .in('session_id', sessionIds)
       .order('created_at', { ascending: false }),
@@ -1212,14 +1242,17 @@ async function sendCoachingActiveSessionNotification(input: {
   url: string
   tag: string
   data?: Record<string, unknown>
+  /** Preference that can switch this push off (default: «Tu coaching»). */
+  preferenceColumn?: 'active_session_enabled' | 'student_audio_enabled'
 }): Promise<{ sent: boolean; skippedReason: string | null }> {
+  const preferenceColumn = input.preferenceColumn || 'active_session_enabled'
   const { data: preference } = await input.adminClient
     .from('user_coaching_notification_preferences')
-    .select('active_session_enabled')
+    .select(preferenceColumn)
     .eq('user_id', input.recipientUserId)
-    .maybeSingle<{ active_session_enabled: boolean }>()
+    .maybeSingle()
 
-  if (preference && !preference.active_session_enabled) {
+  if (preference && (preference as Record<string, unknown>)[preferenceColumn] === false) {
     return { sent: false, skippedReason: 'notifications_disabled' }
   }
 
@@ -1315,6 +1348,64 @@ async function fetchProfileTimezone(
     .maybeSingle<{ timezone: string | null }>()
 
   return safeString(data?.timezone) || null
+}
+
+/** Sends the «scheduled» message and queues the reminder for every upcoming class of a week. */
+async function notifyPreparedClassesOnActivation(input: {
+  adminClient: any
+  sessionId: string
+  userId: string
+  weekNumber: number
+  classJoinUrl: string | null
+}): Promise<void> {
+  try {
+    const { data: classRows, error } = await input.adminClient
+      .from('coaching_session_classes')
+      .select('week_number, loom_url, report, report_image_path, scheduled_at')
+      .eq('session_id', input.sessionId)
+      .eq('week_number', input.weekNumber)
+      .gt('scheduled_at', new Date().toISOString())
+    if (error || !Array.isArray(classRows) || classRows.length === 0) return
+
+    const { data: preferences } = await input.adminClient
+      .from('user_coaching_notification_preferences')
+      .select('class_schedule_reminder_minutes')
+      .eq('user_id', input.userId)
+      .maybeSingle()
+    const reminderMinutesRaw = Number(preferences?.class_schedule_reminder_minutes ?? 30)
+    const reminderMinutes: 10 | 30 | 60 =
+      reminderMinutesRaw === 10 || reminderMinutesRaw === 60 ? reminderMinutesRaw : 30
+
+    for (const row of classRows as ClassNotificationRow[]) {
+      if (hasPostClassResources(row) || !hasUpcomingClassResources(row, input.classJoinUrl)) continue
+      const signature = buildClassScheduleSignature(row, input.classJoinUrl)
+      if (!signature) continue
+      await logAndSendCoachingClassNotification({
+        adminClient: input.adminClient,
+        sessionId: input.sessionId,
+        userId: input.userId,
+        weekNumber: input.weekNumber,
+        type: 'scheduled',
+        scheduleSignature: signature,
+        scheduledAt: row.scheduled_at,
+        classJoinUrl: input.classJoinUrl,
+        reminderMinutes: 0,
+      })
+      await enqueueCoachingClassReminderNotification({
+        adminClient: input.adminClient,
+        sessionId: input.sessionId,
+        userId: input.userId,
+        weekNumber: input.weekNumber,
+        scheduleSignature: signature,
+        scheduledAt: row.scheduled_at,
+        classJoinUrl: input.classJoinUrl,
+        reminderMinutes,
+      })
+    }
+  } catch (error) {
+    // The activation itself already succeeded; a failed message must not undo it.
+    console.warn('coaching-center: prepared class notifications failed', error instanceof Error ? error.message : String(error))
+  }
 }
 
 async function logAndSendCoachingClassNotification(input: {
@@ -1521,6 +1612,57 @@ async function fetchV2PeriodReport(input: {
 
   if (error) return { row: null, error: error.message }
   return { row: data || null, error: null }
+}
+
+
+type TaskAudioClassRow = {
+  id: string
+  student_guideline_response_1: string | null
+  student_guideline_response_2: string | null
+  student_guideline_response_3: string | null
+  task_audio_1: boolean | null
+  task_audio_2: boolean | null
+  task_audio_3: boolean | null
+}
+
+/** Class slot and current audio answer of one task, after the caller checked who may touch it. */
+async function loadTaskAudioTarget(input: {
+  adminClient: any
+  sessionId: string
+  periodNumber: number
+  classIndex: number
+  taskIndex: 1 | 2 | 3
+}): Promise<
+  | { ok: true; classRow: TaskAudioClassRow; existing: TaskAudioRow | null }
+  | { ok: false; status: number; error: string }
+> {
+  const { data: classRow, error: classError } = await input.adminClient
+    .from('coaching_session_classes')
+    .select('id, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, task_audio_1, task_audio_2, task_audio_3')
+    .eq('session_id', input.sessionId)
+    .eq('week_number', input.periodNumber)
+    .eq('class_index', input.classIndex)
+    .maybeSingle()
+  if (classError) return { ok: false, status: 500, error: classError.message }
+  if (!classRow) return { ok: false, status: 404, error: 'Class slot not found' }
+
+  const { data: existing, error: existingError } = await input.adminClient
+    .from('coaching_v2_task_audio')
+    .select(TASK_AUDIO_SELECT)
+    .eq('class_id', classRow.id)
+    .eq('task_index', input.taskIndex)
+    .maybeSingle()
+  if (existingError) return { ok: false, status: 500, error: existingError.message }
+  return { ok: true, classRow: classRow as TaskAudioClassRow, existing: (existing as TaskAudioRow | null) || null }
+}
+
+async function storageObjectExists(adminClient: any, path: string): Promise<boolean> {
+  const { data, error } = await adminClient.storage.from(TASK_AUDIO_BUCKET).createSignedUrl(path, 60)
+  return !error && Boolean(data?.signedUrl)
+}
+
+function firstWord(value: string): string {
+  return value.trim().split(/\s+/)[0] || value.trim()
 }
 
 async function fetchProfileDisplayNamesByIds(
@@ -2254,11 +2396,14 @@ Deno.serve(async (req) => {
       })
     }
 
-    const allAnswered = hasAllStudentGuidelineResponses({
-      response1: guidelineResponse1,
-      response2: guidelineResponse2,
-      response3: guidelineResponse3,
-    })
+    // Audio tasks count as answered once their audio was sent (Luis, 6 Oct).
+    const { data: sentAudioRows } = await auth.adminClient
+      .from('coaching_v2_task_audio')
+      .select('task_index')
+      .eq('class_id', classRow.id)
+    const sentAudioTasks = new Set(((sentAudioRows || []) as Array<{ task_index: number }>).map((row) => row.task_index))
+    const allAnswered =
+      countAnsweredTasks([guidelineResponse1, guidelineResponse2, guidelineResponse3], sentAudioTasks) === 3
 
     const { error: updateError } = await auth.adminClient
       .from('coaching_session_classes')
@@ -2277,7 +2422,7 @@ Deno.serve(async (req) => {
     const { data: updatedClassRow, error: updatedClassError } = await auth.adminClient
       .from('coaching_session_classes')
       .select(
-        'id, session_id, week_number, class_index, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, coach_guideline_1, coach_guideline_2, coach_guideline_3, student_completed_at, student_report_text, student_report_image_path, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, created_at, updated_at',
+        'id, session_id, week_number, class_index, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, coach_guideline_1, coach_guideline_2, coach_guideline_3, student_completed_at, student_report_text, student_report_image_path, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, task_audio_1, task_audio_2, task_audio_3, created_at, updated_at',
       )
       .eq('id', classRow.id)
       .maybeSingle<CoachingSessionClassRow>()
@@ -2450,12 +2595,17 @@ Deno.serve(async (req) => {
 
     const periodState = buildV2PeriodState(activations)
 
+    // The student only sees weeks that were activated: the coach may be preparing the next one
+    // (focuses, classes, tasks, report) before activating it (Luis, 6 Oct).
+    const visibleUpToPeriod = periodState.lastActivatedPeriod
     const fallbackPeriod =
       periodState.currentActivePeriod ||
       periodState.lastActivatedPeriod ||
-      periodState.nextPeriodEligible ||
       1
-    const periodNumber = normalizePeriodNumber(payload.periodNumber) || fallbackPeriod
+    const periodNumber = Math.min(
+      normalizePeriodNumber(payload.periodNumber) || fallbackPeriod,
+      Math.max(1, visibleUpToPeriod),
+    )
 
     const [allFocusesResult, snapshotResult, previousSnapshotResult, classesResult, exercisesResult, attemptsResult, periodReportResult] = await Promise.all([
       auth.adminClient
@@ -2475,7 +2625,7 @@ Deno.serve(async (req) => {
       auth.adminClient
         .from('coaching_session_classes')
         .select(
-          'id, session_id, week_number, class_index, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, coach_guideline_1, coach_guideline_2, coach_guideline_3, student_completed_at, student_report_text, student_report_image_path, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, created_at, updated_at',
+          'id, session_id, week_number, class_index, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, coach_guideline_1, coach_guideline_2, coach_guideline_3, student_completed_at, student_report_text, student_report_image_path, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, task_audio_1, task_audio_2, task_audio_3, created_at, updated_at',
         )
         .eq('session_id', sessionId)
         .order('week_number', { ascending: true })
@@ -2522,6 +2672,10 @@ Deno.serve(async (req) => {
       })
     }
 
+    const audioResult = await fetchTaskAudioByClass(auth.adminClient, sessionId)
+    if (audioResult.error) return jsonResponse(500, { error: audioResult.error })
+    const audioByClass = audioResult.byClass
+
     const classes = await Promise.all(
       ((classesResult.data || []) as CoachingSessionClassRow[]).map(async (row) => {
         const reportImagePath = safeString(row.report_image_path)
@@ -2561,6 +2715,8 @@ Deno.serve(async (req) => {
           studentGuidelineResponse1: row.student_guideline_response_1,
           studentGuidelineResponse2: row.student_guideline_response_2,
           studentGuidelineResponse3: row.student_guideline_response_3,
+          taskAudio: taskAudioFlags(row),
+          audioAnswers: audioByClass.get(row.id) || [],
           createdAt: row.created_at,
           updatedAt: row.updated_at,
         }
@@ -2594,8 +2750,12 @@ Deno.serve(async (req) => {
       coachNamesResult.rows.map((row) => [row.id, row.displayName]),
     )
 
-    const focuses = ((allFocusesResult.data || []) as CoachingV2FocusRow[]).map(toV2FocusState)
+    const focuses = ((allFocusesResult.data || []) as CoachingV2FocusRow[])
+      .filter((row) => row.period_number <= visibleUpToPeriod)
+      .map(toV2FocusState)
+    const visibleFocusIds = new Set(focuses.map((row) => row.id))
     const focusExercises = ((exercisesResult.data || []) as CoachingV2FocusExerciseRow[])
+      .filter((row) => visibleFocusIds.has(row.focus_id))
       .map(toV2FocusExercise)
     const latestAttemptByFocus = new Map<string, CoachingV2FocusExerciseAttempt>()
     for (const row of ((attemptsResult.data || []) as CoachingV2FocusExerciseAttemptRow[])) {
@@ -2628,9 +2788,9 @@ Deno.serve(async (req) => {
       focusExercises,
       focusExerciseAttempts,
       canCreateFocus: canCreateFocus(periodFocuses),
-      classes,
+      classes: classes.filter((row) => row.periodNumber <= visibleUpToPeriod),
       periodReport:
-        periodReportRow
+        periodReportRow && periodNumber <= visibleUpToPeriod
           ? toV2PeriodReport({
               row: periodReportRow,
               reportImageUrl: periodReportImageSigned.data?.signedUrl || null,
@@ -2644,6 +2804,132 @@ Deno.serve(async (req) => {
       snapshot: snapshotResult.row?.snapshot || null,
       previousSnapshot:
         periodNumber > 1 ? previousSnapshotResult.row?.snapshot || null : null,
+    })
+  }
+
+  // Audio tasks, student side: get an upload link, then confirm the recorded audio (Luis, 6 Oct).
+  if (action === 'v2-task-audio-upload-url' || action === 'v2-submit-task-audio') {
+    const sessionId = safeString(payload.sessionId)
+    const periodNumber = normalizePeriodNumber(payload.periodNumber)
+    const classIndex = normalizeClassIndex(payload.classIndex)
+    const taskIndex = normalizeTaskIndex(payload.taskIndex)
+    if (!sessionId || !periodNumber || !taskIndex) {
+      return jsonResponse(400, { error: 'sessionId, periodNumber and taskIndex are required' })
+    }
+
+    const { row: sessionRow, error: sessionError } = await fetchCoachingV2Session(auth.adminClient, sessionId)
+    if (sessionError) return jsonResponse(500, { error: sessionError })
+    if (!sessionRow || sessionRow.user_id !== auth.userId) return jsonResponse(403, { error: 'Forbidden' })
+    if (sessionRow.program_version !== 'v2') return jsonResponse(400, { error: 'Session is not v2' })
+
+    const activations = await fetchV2PeriodActivations(auth.adminClient, sessionId)
+    if (activations.error) return jsonResponse(500, { error: activations.error })
+    const activation = activations.rows.find((row) => row.period_number === periodNumber)
+    if (!activation) return jsonResponse(400, { code: 'WEEK_NOT_ACTIVE', error: 'Esta semana todavía no está activa.' })
+    if (activation.ended_at) return jsonResponse(400, { code: 'WEEK_CLOSED', error: 'La semana está cerrada. Ya no se puede editar.' })
+
+    const target = await loadTaskAudioTarget({ adminClient: auth.adminClient, sessionId, periodNumber, classIndex, taskIndex })
+    if (!target.ok) return jsonResponse(target.status, { error: target.error })
+    if (!taskAudioFlags(target.classRow)[taskIndex - 1]) {
+      return jsonResponse(400, { code: 'NOT_AUDIO_TASK', error: 'Esta tarea se responde por escrito.' })
+    }
+    if (target.existing?.feedback_at) {
+      return jsonResponse(400, { code: 'ALREADY_REVIEWED', error: 'Tu coach ya respondió a este audio.' })
+    }
+
+    if (action === 'v2-task-audio-upload-url') {
+      const mime = normalizeAudioMime(payload.mimeType)
+      if (!mime) return jsonResponse(400, { code: 'AUDIO_FORMAT', error: 'Formato de audio no admitido.' })
+      const path = buildTaskAudioPath({ sessionId, periodNumber, classIndex, taskIndex, who: 'student', mime })
+      const { data: upload, error: uploadError } = await auth.adminClient.storage
+        .from(TASK_AUDIO_BUCKET)
+        .createSignedUploadUrl(path)
+      if (uploadError || !upload?.token) {
+        return jsonResponse(500, { error: uploadError?.message || 'No se pudo preparar la subida.' })
+      }
+      return jsonResponse(200, { ok: true, path, token: upload.token })
+    }
+
+    const path = safeString(payload.path) || ''
+    if (!isTaskAudioPathFor(path, { sessionId, periodNumber, classIndex, taskIndex, who: 'student' })) {
+      return jsonResponse(400, { error: 'Audio inválido.' })
+    }
+    if (!(await storageObjectExists(auth.adminClient, path))) {
+      return jsonResponse(400, { code: 'AUDIO_NOT_UPLOADED', error: 'El audio no se subió. Inténtalo de nuevo.' })
+    }
+
+    const nowIso = new Date().toISOString()
+    const { data: saved, error: saveError } = await auth.adminClient
+      .from('coaching_v2_task_audio')
+      .upsert(
+        {
+          class_id: target.classRow.id,
+          session_id: sessionId,
+          period_number: periodNumber,
+          class_index: classIndex,
+          task_index: taskIndex,
+          student_user_id: auth.userId,
+          student_audio_path: path,
+          student_audio_seconds: clampAudioSeconds(payload.seconds),
+          student_sent_at: nowIso,
+        },
+        { onConflict: 'class_id,task_index' },
+      )
+      .select(TASK_AUDIO_SELECT)
+      .single()
+    if (saveError || !saved) return jsonResponse(500, { error: saveError?.message || 'No se pudo guardar el audio.' })
+    if (target.existing && target.existing.student_audio_path !== path) {
+      await removeTaskAudioFiles(auth.adminClient, [target.existing.student_audio_path])
+    }
+
+    // The class counts as done when its 3 tasks are answered (text or audio).
+    const { data: audioRows } = await auth.adminClient
+      .from('coaching_v2_task_audio')
+      .select('task_index')
+      .eq('class_id', target.classRow.id)
+    const sentAudioTasks = new Set(((audioRows || []) as Array<{ task_index: number }>).map((row) => row.task_index))
+    const classDone =
+      countAnsweredTasks(
+        [
+          target.classRow.student_guideline_response_1,
+          target.classRow.student_guideline_response_2,
+          target.classRow.student_guideline_response_3,
+        ],
+        sentAudioTasks,
+      ) === 3
+    const studentCompletedAt = classDone ? nowIso : null
+    await auth.adminClient
+      .from('coaching_session_classes')
+      .update({ student_completed_at: studentCompletedAt })
+      .eq('id', target.classRow.id)
+
+    // First audio of this task: tell the coaches (they can switch it off in Notificaciones).
+    if (!target.existing) {
+      const names = await fetchProfileDisplayNamesByIds(auth.adminClient, [auth.userId])
+      const studentName = firstWord(names.rows[0]?.displayName || '') || 'Tu alumno'
+      const absoluteTask = classIndex === 1 ? taskIndex : taskIndex + 3
+      const coachIds = Array.from(
+        new Set([sessionRow.coach_user_id, sessionRow.support_coach_user_id].filter((id): id is string => Boolean(id))),
+      )
+      for (const coachId of coachIds) {
+        await sendCoachingActiveSessionNotification({
+          adminClient: auth.adminClient,
+          recipientUserId: coachId,
+          title: `Audio de ${studentName}`,
+          body: `${studentName} te ha mandado su audio de la tarea ${absoluteTask} (Semana ${periodNumber}). Escúchalo y dale feedback.`,
+          url: `/manage-coaching/${sessionRow.user_id}?sessionId=${sessionId}`,
+          tag: `coaching-task-audio-${target.classRow.id}-${taskIndex}`,
+          preferenceColumn: 'student_audio_enabled',
+        }).catch(() => undefined)
+      }
+    }
+
+    return jsonResponse(200, {
+      ok: true,
+      periodNumber,
+      classIndex,
+      studentCompletedAt,
+      answer: await toTaskAudioAnswer(auth.adminClient, saved as TaskAudioRow),
     })
   }
 
@@ -2716,6 +3002,17 @@ Deno.serve(async (req) => {
       },
     })
 
+    // Classes the coach scheduled while preparing this week (Luis, 6 Oct: prepare the week before
+    // activating it). Nothing was sent then, because only the active week notifies; now the
+    // student gets the usual «agendó tu clase» message and the reminder for each upcoming class.
+    await notifyPreparedClassesOnActivation({
+      adminClient: admin.adminClient,
+      sessionId,
+      userId: sessionRow.user_id,
+      weekNumber: nextEligible,
+      classJoinUrl: sessionRow.class_join_url,
+    })
+
     const latest = await fetchV2PeriodActivations(admin.adminClient, sessionId)
     if (latest.error) return jsonResponse(500, { error: latest.error })
 
@@ -2781,7 +3078,7 @@ Deno.serve(async (req) => {
       admin.adminClient
         .from('coaching_session_classes')
         .select(
-          'id, session_id, week_number, class_index, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, coach_guideline_1, coach_guideline_2, coach_guideline_3, student_completed_at, student_report_text, student_report_image_path, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, created_at, updated_at',
+          'id, session_id, week_number, class_index, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, coach_guideline_1, coach_guideline_2, coach_guideline_3, student_completed_at, student_report_text, student_report_image_path, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, task_audio_1, task_audio_2, task_audio_3, created_at, updated_at',
         )
         .eq('session_id', sessionId)
         .order('week_number', { ascending: true })
@@ -2827,6 +3124,10 @@ Deno.serve(async (req) => {
       })
     }
 
+    const audioResult = await fetchTaskAudioByClass(admin.adminClient, sessionId)
+    if (audioResult.error) return jsonResponse(500, { error: audioResult.error })
+    const audioByClass = audioResult.byClass
+
     const classes = await Promise.all(
       ((classesResult.data || []) as CoachingSessionClassRow[]).map(async (row) => {
         const reportImagePath = safeString(row.report_image_path)
@@ -2866,6 +3167,8 @@ Deno.serve(async (req) => {
           studentGuidelineResponse1: row.student_guideline_response_1,
           studentGuidelineResponse2: row.student_guideline_response_2,
           studentGuidelineResponse3: row.student_guideline_response_3,
+          taskAudio: taskAudioFlags(row),
+          audioAnswers: audioByClass.get(row.id) || [],
           createdAt: row.created_at,
           updatedAt: row.updated_at,
         }
@@ -3818,6 +4121,103 @@ Deno.serve(async (req) => {
     })
   }
 
+  // Audio tasks, coach side: optional audio upload link, then save the feedback (audio, text or both).
+  if (action === 'v2-task-feedback-upload-url' || action === 'v2-save-task-feedback') {
+    const sessionId = safeString(payload.sessionId)
+    const periodNumber = normalizePeriodNumber(payload.periodNumber)
+    const classIndex = normalizeClassIndex(payload.classIndex)
+    const taskIndex = normalizeTaskIndex(payload.taskIndex)
+    if (!sessionId || !periodNumber || !taskIndex) {
+      return jsonResponse(400, { error: 'sessionId, periodNumber and taskIndex are required' })
+    }
+
+    const { row: sessionRow, error: sessionError } = await fetchCoachingV2Session(admin.adminClient, sessionId)
+    if (sessionError) return jsonResponse(500, { error: sessionError })
+    if (!sessionRow) return jsonResponse(404, { error: 'Coaching session not found' })
+    if (!canManageSession(admin, sessionRow.coach_user_id, sessionRow.support_coach_user_id)) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    if (sessionRow.program_version !== 'v2') return jsonResponse(400, { error: 'Session is not v2' })
+
+    const target = await loadTaskAudioTarget({ adminClient: admin.adminClient, sessionId, periodNumber, classIndex, taskIndex })
+    if (!target.ok) return jsonResponse(target.status, { error: target.error })
+    if (!target.existing) {
+      return jsonResponse(400, { code: 'NO_STUDENT_AUDIO', error: 'El alumno todavía no ha mandado su audio.' })
+    }
+
+    if (action === 'v2-task-feedback-upload-url') {
+      const mime = normalizeAudioMime(payload.mimeType)
+      if (!mime) return jsonResponse(400, { code: 'AUDIO_FORMAT', error: 'Formato de audio no admitido.' })
+      const path = buildTaskAudioPath({ sessionId, periodNumber, classIndex, taskIndex, who: 'coach', mime })
+      const { data: upload, error: uploadError } = await admin.adminClient.storage
+        .from(TASK_AUDIO_BUCKET)
+        .createSignedUploadUrl(path)
+      if (uploadError || !upload?.token) {
+        return jsonResponse(500, { error: uploadError?.message || 'No se pudo preparar la subida.' })
+      }
+      return jsonResponse(200, { ok: true, path, token: upload.token })
+    }
+
+    const feedbackText = (safeString(payload.feedbackText) || '').slice(0, 4000) || null
+    const newAudioPath = safeString(payload.feedbackAudioPath) || null
+    const removeAudio = payload.removeFeedbackAudio === true
+    if (newAudioPath) {
+      if (!isTaskAudioPathFor(newAudioPath, { sessionId, periodNumber, classIndex, taskIndex, who: 'coach' })) {
+        return jsonResponse(400, { error: 'Audio inválido.' })
+      }
+      if (!(await storageObjectExists(admin.adminClient, newAudioPath))) {
+        return jsonResponse(400, { code: 'AUDIO_NOT_UPLOADED', error: 'El audio no se subió. Inténtalo de nuevo.' })
+      }
+    }
+    const previousAudio = target.existing.feedback_audio_path
+    const nextAudio = newAudioPath || (removeAudio ? null : previousAudio)
+    if (!feedbackText && !nextAudio) {
+      return jsonResponse(400, { code: 'EMPTY_FEEDBACK', error: 'Graba un audio o escribe tu feedback.' })
+    }
+
+    const firstFeedback = !target.existing.feedback_at
+    const { data: saved, error: saveError } = await admin.adminClient
+      .from('coaching_v2_task_audio')
+      .update({
+        feedback_text: feedbackText,
+        feedback_audio_path: nextAudio,
+        feedback_audio_seconds: newAudioPath
+          ? clampAudioSeconds(payload.feedbackAudioSeconds)
+          : nextAudio
+            ? target.existing.feedback_audio_seconds
+            : null,
+        feedback_by: admin.userId,
+        feedback_at: new Date().toISOString(),
+      })
+      .eq('id', target.existing.id)
+      .select(TASK_AUDIO_SELECT)
+      .single()
+    if (saveError || !saved) return jsonResponse(500, { error: saveError?.message || 'No se pudo guardar el feedback.' })
+    if (previousAudio && previousAudio !== nextAudio) {
+      await removeTaskAudioFiles(admin.adminClient, [previousAudio])
+    }
+
+    if (firstFeedback) {
+      await sendCoachingActiveSessionNotification({
+        adminClient: admin.adminClient,
+        recipientUserId: sessionRow.user_id,
+        title: 'Tu coach te ha respondido',
+        body: nextAudio
+          ? `Escucha su feedback a tu audio de la Semana ${periodNumber}.`
+          : `Lee su feedback a tu audio de la Semana ${periodNumber}.`,
+        url: `/coaching-personalized/${sessionId}`,
+        tag: `coaching-task-feedback-${target.classRow.id}-${taskIndex}`,
+      }).catch(() => undefined)
+    }
+
+    return jsonResponse(200, {
+      ok: true,
+      periodNumber,
+      classIndex,
+      answer: await toTaskAudioAnswer(admin.adminClient, saved as TaskAudioRow),
+    })
+  }
+
   if (action === 'v2-upsert-class-coach-guidelines') {
     const sessionId = safeString(payload.sessionId)
     const periodNumber = normalizePeriodNumber(payload.periodNumber)
@@ -3858,7 +4258,7 @@ Deno.serve(async (req) => {
     const { data: previousClassRow, error: previousClassError } = await admin.adminClient
       .from('coaching_session_classes')
       .select(
-        'id, session_id, week_number, class_index, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, coach_guideline_1, coach_guideline_2, coach_guideline_3, student_completed_at, student_report_text, student_report_image_path, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, created_at, updated_at',
+        'id, session_id, week_number, class_index, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, coach_guideline_1, coach_guideline_2, coach_guideline_3, student_completed_at, student_report_text, student_report_image_path, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, task_audio_1, task_audio_2, task_audio_3, created_at, updated_at',
       )
       .eq('session_id', sessionId)
       .eq('week_number', periodNumber)
@@ -3885,6 +4285,10 @@ Deno.serve(async (req) => {
           coach_guideline_1: withDefaultClassGuideline(safeString(payload.coachGuideline1), 0),
           coach_guideline_2: withDefaultClassGuideline(safeString(payload.coachGuideline2), 1),
           coach_guideline_3: withDefaultClassGuideline(safeString(payload.coachGuideline3), 2),
+          // Which tasks are answered with an audio; left as they are when the app does not send them.
+          ...(typeof payload.taskAudio1 === 'boolean' ? { task_audio_1: payload.taskAudio1 } : {}),
+          ...(typeof payload.taskAudio2 === 'boolean' ? { task_audio_2: payload.taskAudio2 } : {}),
+          ...(typeof payload.taskAudio3 === 'boolean' ? { task_audio_3: payload.taskAudio3 } : {}),
           updated_at: nowIso,
           created_at: nowIso,
         },
@@ -3898,7 +4302,7 @@ Deno.serve(async (req) => {
     const { data: updatedClassRow, error: updatedClassError } = await admin.adminClient
       .from('coaching_session_classes')
       .select(
-        'id, session_id, week_number, class_index, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, coach_guideline_1, coach_guideline_2, coach_guideline_3, student_completed_at, student_report_text, student_report_image_path, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, created_at, updated_at',
+        'id, session_id, week_number, class_index, title, loom_url, report, report_image_path, scheduled_at, assigned_by_coach_user_id, coach_guideline_1, coach_guideline_2, coach_guideline_3, student_completed_at, student_report_text, student_report_image_path, student_guideline_response_1, student_guideline_response_2, student_guideline_response_3, task_audio_1, task_audio_2, task_audio_3, created_at, updated_at',
       )
       .eq('session_id', sessionId)
       .eq('week_number', periodNumber)

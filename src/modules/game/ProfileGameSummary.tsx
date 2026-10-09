@@ -9,13 +9,14 @@ import { getMetaTrackerSnapshot } from '../components/MetaTracker/progress'
 import { getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
-import { ACHIEVEMENT_CATALOG, longestStreak, useAchievements } from './achievements'
+import { ACHIEVEMENT_CATALOG, longestStreak, reachableAchievements, useAchievements } from './achievements'
 import { FlameIcon } from './icons'
 import { getIcaStreakState } from './streak'
 import { GameProgress, Pill } from './ui'
 import { useFeaturedBadge } from './featuredBadge'
-import { FeaturedBadgeMini } from './ranking'
-import { Medal, MedalDefs } from './Medal'
+import { FeaturedBadgeMini, FlagInitial } from './ranking'
+import { useMyFlags } from './languageFlag'
+import { LockedMedal, Medal, MedalDefs } from './Medal'
 import { MedalDetailDialog, type MedalSelection } from './MedalDetail'
 import { tierName } from './medals'
 import { getUiLang, langName, t, tn, uiLocale } from '@/i18n'
@@ -49,9 +50,13 @@ export function LevelAvatar({ size = 64 }: { size?: number }) {
       ? getMetaTrackerSnapshot(metaTrackerProfile, config.targetLang)
       : null
   const levelColor = snapshot ? getMetaTrackerLevelColor(snapshot.currentLevelKey) : 'var(--border-strong)'
+  const { shown: flag } = useMyFlags(user?.id)
 
   return (
     <span className='relative inline-flex shrink-0' style={{ width: size, height: size + 8 }}>
+      {flag ? (
+        <FlagInitial initial={initial} flag={flag} size={size} ring={levelColor} />
+      ) : (
       <span
         className='flex items-center justify-center rounded-full font-extrabold'
         style={{
@@ -65,6 +70,7 @@ export function LevelAvatar({ size = 64 }: { size?: number }) {
       >
         {initial}
       </span>
+      )}
       {snapshot ? (
         <span
           className='absolute left-1/2 -translate-x-1/2 rounded-full border-2 border-background px-2 text-[11px] leading-5 font-extrabold text-white'
@@ -84,7 +90,7 @@ export function LevelAvatar({ size = 64 }: { size?: number }) {
  */
 export function ProfileGameSummary({ onNavigate }: { onNavigate?: () => void }) {
   const { config, metaTrackerProfile } = useDashboardContext()
-  const { byCategory, totalEarned } = useAchievements()
+  const { byCategory, totalEarned, coachingLocked } = useAchievements()
   const [selection, setSelection] = useState<MedalSelection>(null)
   const [levelOpen, setLevelOpen] = useState(false)
   const snapshot =
@@ -102,7 +108,7 @@ export function ProfileGameSummary({ onNavigate }: { onNavigate?: () => void }) 
     snapshot && config
       ? computeLevelPosition(snapshot.totalWords, getLevelThresholds(config.targetLang)).pctWithin
       : 0
-  const totalMedals = ACHIEVEMENT_CATALOG.reduce((sum, def) => sum + def.levels.length, 0)
+  const totalMedals = reachableAchievements(coachingLocked)
   const languageName = config?.targetLang
     ? getUiLang() === 'en'
       ? langName(config.targetLang)
@@ -116,7 +122,7 @@ export function ProfileGameSummary({ onNavigate }: { onNavigate?: () => void }) 
         <button
           type='button'
           onClick={() => setLevelOpen(true)}
-          className='ica-panel ica-press flex w-full items-center gap-3.5 px-4 py-3.5 text-left'
+          className='ica-panel ica-press flex w-full items-center gap-3.5 px-4 py-3 text-left'
           aria-label={t('Tu nivel real en {lang}. Ver detalle', { lang: languageName })}
         >
           <span
@@ -127,8 +133,14 @@ export function ProfileGameSummary({ onNavigate }: { onNavigate?: () => void }) 
           </span>
           <span className='min-w-0 flex-1'>
             <span className='block text-base leading-tight font-extrabold'>{t('Tu nivel real en {lang}', { lang: languageName })}</span>
-            <span className='my-1.5 flex items-center gap-2'>
+            <span className='mt-1.5 flex items-center gap-2'>
               <GameProgress value={levelProgress} color={levelColor} height={12} className='min-w-0 flex-1' />
+              {/* The words themselves instead of «Te faltan…» (Luis, 6 Oct): one line less. */}
+              <span className='shrink-0 text-xs font-extrabold text-muted-foreground tabular-nums'>
+                {snapshot.wordsToNext !== null && !snapshot.isNativePath
+                  ? `${snapshot.totalWords.toLocaleString(uiLocale())}/${(snapshot.totalWords + snapshot.wordsToNext).toLocaleString(uiLocale())}`
+                  : snapshot.totalWords.toLocaleString(uiLocale())}
+              </span>
               <span
                 className='flex h-6 min-w-9 shrink-0 items-center justify-center rounded-lg border-2 px-1 text-[11px] font-extrabold'
                 style={{ borderColor: nextColor ?? undefined, color: nextColor ?? undefined }}
@@ -136,24 +148,14 @@ export function ProfileGameSummary({ onNavigate }: { onNavigate?: () => void }) 
                 {snapshot.isNativePath ? t('Nativo') : snapshot.nextLevelKey}
               </span>
             </span>
-            <span className='block text-xs font-semibold text-muted-foreground'>
-              {snapshot.wordsToNext !== null && !snapshot.isNativePath
-                ? t('Te faltan {n} palabras activadas para {level}', {
-                    n: snapshot.wordsToNext.toLocaleString(uiLocale()),
-                    level: snapshot.nextLevelKey,
-                  })
-                : t('{n} palabras · camino a nivel nativo', {
-                    n: snapshot.totalWords.toLocaleString(uiLocale()),
-                  })}
-            </span>
           </span>
           <ChevronRightIcon className='size-5 shrink-0 text-muted-foreground' aria-hidden='true' />
         </button>
       ) : null}
       {config ? <LevelDialog config={config} open={levelOpen} onOpenChange={setLevelOpen} /> : null}
 
-      <div className='ica-panel px-4 pt-3.5 pb-3'>
-        <div className='mb-2.5 flex items-center justify-between gap-2'>
+      <div className='ica-panel px-4 pt-3 pb-2.5'>
+        <div className='mb-1.5 flex items-center justify-between gap-2'>
           <span className='flex min-w-0 items-center gap-2'>
             <span className='text-base font-extrabold'>{t('Insignias')}</span>
             <Pill tone='gold'>
@@ -173,6 +175,19 @@ export function ProfileGameSummary({ onNavigate }: { onNavigate?: () => void }) 
           {ACHIEVEMENT_CATALOG.map((def) => {
             const earned = byCategory[def.key].earned
             const level = def.levels[Math.max(0, earned - 1)]
+            if (coachingLocked && def.key === 'coaching') {
+              // Coaching ICA without a coaching: padlock, nothing to open (Luis, 7 Oct).
+              return (
+                <LockedMedal
+                  key={def.key}
+                  category={def.key}
+                  tier={level.tier}
+                  ribbon={level.ribbon}
+                  label={`${t(def.title)} · ${tierName(level.tier)}`}
+                  className='w-full'
+                />
+              )
+            }
             return (
               <button
                 key={def.key}
@@ -192,9 +207,6 @@ export function ProfileGameSummary({ onNavigate }: { onNavigate?: () => void }) 
             )
           })}
         </div>
-        <p className='m-0 mt-2 text-xs font-semibold text-muted-foreground'>
-          {t('Toca una insignia para ver qué significa. Puedes elegir una para que salga junto a tu nombre.')}
-        </p>
       </div>
 
       <MedalDetailDialog
@@ -229,17 +241,17 @@ export function ProfileStreakPanel({ onNavigate }: { onNavigate?: () => void }) 
     <Link
       to={DASHBOARD_ROUTES.streaks}
       onClick={onNavigate}
-      className='ica-panel ica-press flex items-center gap-4 px-4 py-3.5'
+      className='ica-panel ica-press flex items-center gap-3.5 px-4 py-3 lg:gap-4 lg:py-3.5'
       style={{
         background: 'var(--ica-fire-soft)',
         borderColor: 'color-mix(in oklab, var(--ica-fire) 38%, transparent)',
         boxShadow: '0 4px 0 color-mix(in oklab, var(--ica-fire) 30%, transparent)',
       }}
     >
-      <FlameIcon size={52} tone={lit ? 'fire' : 'off'} />
+      <FlameIcon size={44} tone={lit ? 'fire' : 'off'} />
       <span className='min-w-0 flex-1'>
         <span className='flex items-baseline gap-1.5' style={{ color: 'var(--ica-fire-ink)' }}>
-          <span className='text-4xl leading-none font-black tabular-nums'>{streakState.streak}</span>
+          <span className='text-3xl leading-none font-black tabular-nums lg:text-4xl'>{streakState.streak}</span>
           <span className='text-sm font-extrabold'>
             {tn(streakState.streak, t('día de racha ICA'), t('días de racha ICA'))}
           </span>

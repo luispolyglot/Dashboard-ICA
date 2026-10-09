@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { PRONUNCIATION_MAX_WORDS, buildPronunciationPrompt, parsePronunciationReply, pronunciationMaxTokens } from '../_shared/pronunciation-prompt.ts'
+import { readCachedRespellings, storeRespellings, type PronunciationCacheClient } from '../_shared/pronunciation-cache.ts'
 import { ensureCoachingAdmin, scopeAllows } from '../_shared/coaching-auth.ts'
 import { getModelRequestConfig, isClaudeSonnet55, makeStrictTool } from '../_shared/anthropic-model.ts'
 import {
@@ -830,9 +831,16 @@ Deno.serve(async (req) => {
           '',
           'PROCESO, en este orden:',
           '1. Interpreta el texto como fromLang.',
-          '2. Corrige ortografia y diacriticos que falten (e a c n o u a e l z s...).',
-          '   Si al quitar los diacriticos coincide con una forma valida del idioma,',
-          '   asume que el alumno los olvido y restauralos.',
+          '2. Corrige la ortografia del original (input_corrected):',
+          '   - Diacriticos que faltan o sobran (e a c n o u ss a e l z s o). Es lo mas frecuente.',
+          '     Si al quitar los diacriticos coincide con una forma valida del idioma,',
+          '     asume que el alumno los olvido y restauralos. Ante la duda, corrige.',
+          '   - Letras cambiadas, dobles, omitidas o transpuestas.',
+          '   - Espaciado y apostrofos (l\'ami, dell\'acqua).',
+          '   - No reformules ni cambies el tiempo verbal. No corrijas nombres propios,',
+          '     marcas ni siglas. No toques mayusculas salvo las obligatorias',
+          '     (sustantivos en aleman).',
+          '   - input_corrected es el texto completo corregido, en fromLang, nunca traducido.',
           '3. Traduce el texto YA CORREGIDO a toLang.',
           '',
           'REGLA ABSOLUTA:',
@@ -860,6 +868,8 @@ Deno.serve(async (req) => {
           '-> detected_lang: "pl" | input_corrected: "pan" | had_correction: false | translation: "señor" | alternatives: ["usted"] | status: "ambiguous"',
           'Input: "pan" | fromLang=es | toLang=pl',
           '-> detected_lang: "es" | input_corrected: "pan" | had_correction: false | translation: "chleb" | alternatives: [] | status: "ok"',
+          'Input: "Entshuldigung" | fromLang=de | toLang=es',
+          '-> detected_lang: "de" | input_corrected: "Entschuldigung" | had_correction: true | translation: "perdón" | alternatives: ["disculpa"] | status: "corrected"',
         ].join('\n'),
         payload.text,
         {
@@ -903,8 +913,17 @@ Deno.serve(async (req) => {
         ? null
         : (parsed.translation || parsed.translationFallback)
 
+      // The same call gives the spelling suggestion for what the student typed, so Inmersión no
+      // longer needs a second (spellcheck) call per word (Luis, 6 Oct).
+      const correctedInput = sanitizeSpellingSuggestion(parsed.inputCorrected || '')
+      const spellingSuggestion =
+        parsed.hadCorrection && correctedInput && correctedInput !== payload.text.trim()
+          ? correctedInput
+          : null
+
       return jsonResponse(200, {
         translation: finalTranslation,
+        spellingSuggestion,
         detectedLang: parsed.detectedLang,
         inputCorrected: parsed.inputCorrected,
         hadCorrection: parsed.hadCorrection,
@@ -970,9 +989,19 @@ Deno.serve(async (req) => {
       if (words.length === 0 || !payload.targetLang || !payload.nativeLang) {
         return jsonResponse(400, { error: 'words, targetLang and nativeLang are required' })
       }
-      const { system, prompt } = buildPronunciationPrompt(words, payload.targetLang, payload.nativeLang)
-      const raw = await callAnthropic(system, prompt, { model: FAST_MODEL, maxTokens: pronunciationMaxTokens(words.length), temperature: 0 })
-      return jsonResponse(200, { result: parsePronunciationReply(raw.text || '', words) })
+      // Shared cache first: each word is asked to the AI only once for everyone.
+      const cacheClient = createAdminClient() as unknown as PronunciationCacheClient | null
+      const cached = await readCachedRespellings(cacheClient, words, payload.targetLang, payload.nativeLang)
+      const missing = words.filter((word) => !cached[word])
+      if (missing.length === 0) return jsonResponse(200, { result: cached })
+
+      const { system, prompt } = buildPronunciationPrompt(missing, payload.targetLang, payload.nativeLang)
+      // General model (not the fast one): the fast one got many wrong (Luis, 4 Oct). Cheap anyway,
+      // because each word is generated once and then read from the table.
+      const raw = await callAnthropic(system, prompt, { maxTokens: pronunciationMaxTokens(missing.length), temperature: 0 })
+      const fresh = parsePronunciationReply(raw.text || '', missing)
+      await storeRespellings(cacheClient, fresh, payload.targetLang, payload.nativeLang, Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6')
+      return jsonResponse(200, { result: { ...cached, ...fresh } })
     }
 
     if (payload.action === 'word_example') {

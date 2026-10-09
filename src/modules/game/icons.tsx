@@ -153,6 +153,36 @@ export function ChestIcon({
   )
 }
 
+/** Wood tones of the word trunk (baúl ICA), also used for its link text. */
+export const TRUNK_WOOD = { base: '#A86B3C', dark: '#6E4524', light: '#C99060', iron: '#4A3628', ink: '#7A4A22' }
+
+/**
+ * Baúl ICA (Luis, 6 Oct): a plain wooden trunk with planks and iron bands, so it never gets
+ * mixed up with the golden cycle chest.
+ */
+export function TrunkIcon({ size = 24, className }: IconProps) {
+  const w = TRUNK_WOOD
+  return (
+    <svg viewBox='0 0 32 28' width={size} height={size * (28 / 32)} className={className} aria-hidden='true' style={{ flexShrink: 0 }}>
+      {/* Box */}
+      <rect x='2' y='11' width='28' height='16' rx='2.5' fill={w.dark} />
+      <rect x='2' y='11' width='28' height='14.5' rx='2.5' fill={w.base} />
+      <path d='M2.5 16.5h27M2.5 21h27' stroke={w.dark} strokeWidth='0.9' opacity='0.55' />
+      {/* Lid */}
+      <path d='M2 12.5V9a6 6 0 0 1 6-6h16a6 6 0 0 1 6 6v3.5z' fill={w.dark} />
+      <path d='M2 11.3V9a6 6 0 0 1 6-6h16a6 6 0 0 1 6 6v2.3z' fill={w.base} />
+      <path d='M5.5 6.6a3.8 3.8 0 0 1 3.2-1.6h12' stroke={w.light} strokeWidth='1.3' strokeLinecap='round' fill='none' />
+      {/* Iron bands */}
+      <rect x='5.5' y='3.4' width='2.6' height='23.4' rx='0.6' fill={w.iron} />
+      <rect x='23.9' y='3.4' width='2.6' height='23.4' rx='0.6' fill={w.iron} />
+      <rect x='2' y='11.2' width='28' height='2' fill={w.iron} />
+      {/* Latch */}
+      <rect x='13.4' y='10' width='5.2' height='7' rx='1.4' fill={w.iron} />
+      <circle cx='16' cy='13.2' r='1.1' fill={w.light} />
+    </svg>
+  )
+}
+
 /** Copa dorada (ranking del mes, premios). */
 export function TrophyIcon({ size = 24, className }: IconProps) {
   return (

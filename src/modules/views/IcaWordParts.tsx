@@ -99,7 +99,7 @@ export function ImportancePicker({
               onClick={() => onChange(level.key)}
               disabled={disabled}
               className={cn(
-                'flex h-12 min-w-0 items-center justify-center gap-1.5 rounded-2xl border-2 px-1.5 text-sm font-extrabold transition-[transform,box-shadow,background-color] active:translate-y-[3px] active:shadow-none disabled:opacity-60',
+                'flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-2xl lg:h-12 border-2 px-1.5 text-sm font-extrabold transition-[transform,box-shadow,background-color] active:translate-y-[3px] active:shadow-none disabled:opacity-60',
                 index < 3 ? 'col-span-2' : 'col-span-3',
                 active ? '' : 'border-border bg-card text-foreground dark:bg-transparent',
               )}

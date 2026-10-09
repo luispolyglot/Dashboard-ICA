@@ -1,5 +1,6 @@
 import { memo, useEffect } from 'react'
-import { buildMedalSvg, MEDAL_DEFS_SVG, type MedalCategory, type MedalTier } from './medals'
+import { LockIcon } from 'lucide-react'
+import { buildMedalSvg, isLegend, MEDAL_DEFS_SVG, type MedalCategory, type MedalTier } from './medals'
 import { getUiLang, t } from '@/i18n'
 
 const DEFS_ID = 'ica-medal-defs'
@@ -59,10 +60,29 @@ export const Medal = memo(function Medal({ category, tier, ribbon, label, earned
       style={{
         filter: earned ? undefined : 'grayscale(1)',
         // Rubí y diamante sin conseguir: apagadas pero con su brillo bien visible.
-        opacity: earned ? 1 : tier === 'rubi' || tier === 'diamante' ? 0.55 : 0.32,
+        opacity: earned ? 1 : tier === 'rubi' || tier === 'diamante' || isLegend(tier) ? 0.55 : 0.32,
       }}
       aria-label={earned ? label : t('{label} (aún no)', { label })}
       dangerouslySetInnerHTML={{ __html: buildMedalSvg(category, tier, ribbonText(ribbon), label, compact) }}
     />
   )
 })
+
+/**
+ * A medal the student cannot earn (Coaching ICA badges for students without a coaching, Luis 7 Oct):
+ * switched off like any medal not yet earned, with a padlock on top.
+ */
+export function LockedMedal({ className, label, ...medal }: Omit<MedalProps, 'earned'>) {
+  return (
+    <div className={`relative ${className ?? ''}`} role='img' aria-label={t('{label} (solo para alumnos del Coaching ICA)', { label })}>
+      <div aria-hidden='true'>
+        <Medal {...medal} label={label} earned={false} className='w-full' />
+      </div>
+      <span className='pointer-events-none absolute inset-0 flex items-center justify-center' aria-hidden='true'>
+        <span className='flex aspect-square w-[36%] max-w-11 items-center justify-center rounded-full border-2 border-border bg-background shadow-sm'>
+          <LockIcon className='size-[52%] text-muted-foreground' strokeWidth={2.6} />
+        </span>
+      </span>
+    </div>
+  )
+}

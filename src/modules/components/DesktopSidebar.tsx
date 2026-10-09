@@ -28,6 +28,8 @@ type Item = {
   end?: boolean
   alert?: ReactNode
   badge?: ReactNode
+  /** Marker for the welcome tour. */
+  tour?: string
 }
 
 /**
@@ -55,11 +57,12 @@ export function DesktopNav({
 
   const items: Item[] = [
     { to: DASHBOARD_ROUTES.home, label: t('Inicio'), icon: HouseIcon, end: true },
-    { to: DASHBOARD_ROUTES.leaderboard, label: t('Ranking'), icon: TrophyIcon },
+    { to: DASHBOARD_ROUTES.leaderboard, label: t('Ranking'), icon: TrophyIcon, tour: 'nav-ranking' },
     {
       to: DASHBOARD_ROUTES.gamesIca,
       label: t('Juegos'),
       icon: Gamepad2Icon,
+      tour: 'nav-games',
       badge: (
         <ChallengeAlertBadge
           count={challengeAlerts.total}
@@ -78,7 +81,7 @@ export function DesktopNav({
       className='hidden items-center gap-1 rounded-[20px] border-2 border-border bg-muted/60 p-1 md:flex dark:bg-card/60'
     >
       {items.map((item) => (
-        <NavLink key={item.to} to={item.to} end={item.end} aria-label={item.label}>
+        <NavLink key={item.to} to={item.to} end={item.end} aria-label={item.label} data-tour={item.tour}>
           {({ isActive }) => (
             <span
               className={cn(

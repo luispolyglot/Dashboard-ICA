@@ -23,6 +23,18 @@ type Detail = {
 
 const SHOWN_KEY = 'ica-streak-day-shown-v1'
 
+// The ICA path waits while this screen is open (Luis, 5 Oct: first the flame of the new day, then
+// the lines to the chest and the daily challenge fill up).
+export const STREAK_DAY_CELEBRATION_EVENT = 'ica:streak-day-celebration'
+let streakDayCelebrationOpen = false
+export function isStreakDayCelebrationOpen(): boolean {
+  return streakDayCelebrationOpen
+}
+function setStreakDayCelebrationOpen(open: boolean): void {
+  streakDayCelebrationOpen = open
+  window.dispatchEvent(new CustomEvent<boolean>(STREAK_DAY_CELEBRATION_EVENT, { detail: open }))
+}
+
 function shownKey(userId: string | undefined, kind: Kind, day: string): string {
   return `${SHOWN_KEY}:${userId ?? 'anon'}:${kind}:${day}`
 }
@@ -109,6 +121,7 @@ export function StreakDayCelebrationHost() {
     if (!next) return
 
     setDetail(next)
+    setStreakDayCelebrationOpen(true)
     gameSfx.streak()
     try {
       if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -129,6 +142,7 @@ export function StreakDayCelebrationHost() {
       detail={detail}
       onClose={() => {
         setDetail(null)
+        setStreakDayCelebrationOpen(false)
         // Racha ICA hecha: a Inicio, donde espera el cofre del ciclo.
         if (detail.kind === 'ica') navigate(DASHBOARD_ROUTES.home)
       }}

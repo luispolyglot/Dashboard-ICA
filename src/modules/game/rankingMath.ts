@@ -36,7 +36,7 @@ export function rowTotalPoints(row: LeaderboardEntry, includeIcaTest = true): nu
  * Eficacia del mes: puntos conseguidos entre los puntos máximos posibles hasta ese día
  * (la "eficacia aplicada" del detalle de puntuación). `dayCap` = días que cuentan (máx. 28).
  */
-export function monthEfficacy(row: LeaderboardEntry, dayCap: number): number {
+export function monthEfficacy(row: LeaderboardEntry, dayCap: number, monthStart: string): number {
   const days = Math.max(1, Math.min(CLOSED_MONTH_DAYS, Math.floor(dayCap)))
   const listeningDays = Math.max(
     1,
@@ -49,11 +49,10 @@ export function monthEfficacy(row: LeaderboardEntry, dayCap: number): number {
     ),
   )
   const hasIcaTest = row.ica_test_points !== null && row.ica_test_points !== undefined
-  const preguntica = num(row.preguntica_points)
   const max =
     MAX_MONTHLY_POINTS +
     listeningDays * MAX_LISTENING_POINTS_PER_DAY +
-    getPregunticaMaxPoints(days, preguntica) +
+    getPregunticaMaxPoints(monthStart, days) +
     days * MAX_INSTAGRAM_POINTS_PER_DAY +
     (hasIcaTest ? MAX_ICA_TEST_POINTS : 0)
   if (max <= 0) return 0
@@ -61,6 +60,6 @@ export function monthEfficacy(row: LeaderboardEntry, dayCap: number): number {
 }
 
 /** Eficacia de un mes CERRADO (28 días). */
-export function closedMonthEfficacy(row: LeaderboardEntry): number {
-  return monthEfficacy(row, CLOSED_MONTH_DAYS)
+export function closedMonthEfficacy(row: LeaderboardEntry, monthStart: string): number {
+  return monthEfficacy(row, CLOSED_MONTH_DAYS, monthStart)
 }

@@ -335,5 +335,8 @@ const en: Record<string, string> = {
   "Tu navegador no tiene reconocimiento de voz. Abre la app en Google Chrome.": "Your browser doesn't support speech recognition. Open the app in Google Chrome.",
   "No se encuentra ningún micrófono.": "Couldn't find a microphone.",
   "El reconocimiento de voz necesita conexión a internet.": "Speech recognition needs an internet connection.",
+  // 10 minutos de escucha (5 oct)
+  "¡10 minutos de escucha hoy!": "10 minutes of listening today!",
+  "Ya tienes +0,1 puntos en el ranking de hoy.": "You already have +0.1 points in today's ranking.",
 }
 export default en

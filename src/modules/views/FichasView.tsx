@@ -41,7 +41,10 @@ import { getIcaStreakState } from '../game/streak'
 import { useDashboardContext } from '../context/DashboardContext'
 import { getStreak } from '../utils'
 import { getTodayProgress } from '../constants'
-import { t } from '@/i18n'
+import { langName, t } from '@/i18n'
+import { FLAG_COST, useMyFlags } from '../game/languageFlag'
+import { LanguageFlag } from '../components/LanguagePicker'
+import { FlagInitial } from '../game/ranking'
 
 const LIMIT_ROWS: Array<{ key: DailyLimitKey; letter: 'I' | 'C' | 'A'; color: string; soft: string }> = [
   { key: 'words', letter: 'I', color: 'var(--ica-i)', soft: 'var(--ica-i-soft)' },
@@ -59,6 +62,7 @@ function entryLabel(entry: IcaCoinEntry): string {
   if (entry.type === 'monthly_earn') return t('Recompensa del ranking mensual')
   if (entry.type === 'redeem_unlock') return t('PreguntICA extra')
   if (entry.type === 'manual_adjustment') return t('Ajuste de saldo')
+  if (entry.type === 'flag_purchase') return t('Bandera del idioma')
   return t('ICA Coins')
 }
 
@@ -198,11 +202,17 @@ export function FichasView() {
   const { user } = useAuth()
   const { total, realBalance, entries, unusedPasses: slots, challengeWinsThisWeek, refresh } = useFichas(user?.id)
   const { limits, used, boosted } = useDailyLimits()
-  const [confirming, setConfirming] = useState<DailyLimitKey | 'challenge' | null>(null)
+  const [confirming, setConfirming] = useState<DailyLimitKey | 'challenge' | 'flag' | null>(null)
   const [purchaseBusy, setPurchaseBusy] = useState(false)
   const [openRow, setOpenRow] = useState<'ica' | 'flash' | 'ranking' | null>(null)
-  const { completedDays, creationDays, savedCreationDays, creationSavesUsedThisMonth, creationSavesLimit, dailyProgress } =
+  const { completedDays, creationDays, savedCreationDays, creationSavesUsedThisMonth, creationSavesLimit, dailyProgress, config } =
     useDashboardContext()
+  const flags = useMyFlags(user?.id)
+  const targetLang = config?.targetLang ?? null
+  const ownsTargetFlag = Boolean(targetLang && flags.owned.includes(targetLang))
+  // La tienda enseña ya cómo quedaría tu inicial con la bandera (como en el ranking y el perfil).
+  const myName: string = user?.user_metadata?.display_name || user?.email?.split('@')[0] || ''
+  const myInitial = myName.trim().charAt(0).toUpperCase() || '?'
   const icaStreak = getIcaStreakState({
     creationDays,
     savedCreationDays,
@@ -276,6 +286,43 @@ export function FichasView() {
         : t('No se pudo comprar el pase. Inténtalo de nuevo.'))
     } finally {
       setPurchaseBusy(false)
+    }
+  }
+
+  // Bandera del idioma que aprendes ahora: primer toque pide confirmar, el segundo compra.
+  const tryFlag = async () => {
+    if (purchaseBusy || !targetLang) return
+    if (confirming !== 'flag') {
+      if (balance < FLAG_COST) {
+        toast.error(t('Necesitas {n} para la bandera (tienes {balance}).', { n: coinsText(FLAG_COST), balance }))
+        return
+      }
+      setConfirming('flag')
+      return
+    }
+    setConfirming(null)
+    setPurchaseBusy(true)
+    try {
+      await flags.buy()
+      await refresh()
+      gameSfx.celebrate()
+      toast.success(t('¡La bandera de {lang} ya es tuya!', { lang: langName(targetLang) }), {
+        description: t('Sale de fondo en tu inicial, en tu perfil y en el ranking.'),
+      })
+    } catch (error) {
+      toast.error(error instanceof Error && error.message.includes('INSUFFICIENT_TOKENS')
+        ? t('No tienes suficientes ICA Coins.')
+        : t('No se pudo comprar la bandera. Inténtalo de nuevo.'))
+    } finally {
+      setPurchaseBusy(false)
+    }
+  }
+
+  const chooseFlag = async (lang: string | null) => {
+    try {
+      await flags.show(lang)
+    } catch {
+      toast.error(t('No se pudo cambiar la bandera.'))
     }
   }
 
@@ -389,13 +436,75 @@ export function FichasView() {
               />
             }
           />
+          {targetLang ? (
+            <Row
+              icon={<FlagInitial initial={myInitial} flag={targetLang} size={48} />}
+              title={t('Bandera de {lang}', { lang: langName(targetLang) })}
+              text={
+                ownsTargetFlag
+                  ? t('Ya es tuya. Elige abajo cuál sale de fondo en tu inicial.')
+                  : t('De fondo en tu inicial: en tu perfil y en el ranking. Para siempre.')
+              }
+              right={
+                <PriceButton
+                  cost={FLAG_COST}
+                  onClick={tryFlag}
+                  confirming={confirming === 'flag'}
+                  disabled={purchaseBusy}
+                  doneLabel={ownsTargetFlag ? t('Tuya') : undefined}
+                />
+              }
+            />
+          ) : null}
         </div>
         {confirming ? (
           <p className='mt-1 text-xs font-semibold text-muted-foreground'>
             {t('Toca «Confirmar» para gastar {coins}.', {
-              coins: coinsText(confirming === 'challenge' ? EXTRA_CHALLENGE_COST : PHASE_BOOST_COST),
+              coins: coinsText(
+                confirming === 'challenge' ? EXTRA_CHALLENGE_COST : confirming === 'flag' ? FLAG_COST : PHASE_BOOST_COST,
+              ),
             })}
           </p>
+        ) : null}
+        {flags.owned.length > 0 ? (
+          <div className='mt-3'>
+            <p className='m-0 mb-2 text-xs font-extrabold tracking-[0.08em] text-muted-foreground uppercase'>{t('Tus banderas')}</p>
+            <div className='flex flex-wrap gap-2' role='radiogroup' aria-label={t('Bandera que se ve')}>
+              {flags.owned.map((lang) => {
+                const selected = flags.shown === lang
+                return (
+                  <button
+                    key={lang}
+                    type='button'
+                    role='radio'
+                    aria-checked={selected}
+                    onClick={() => void chooseFlag(lang)}
+                    className={cn(
+                      'flex items-center gap-2 rounded-2xl border-2 px-3 py-2 text-sm font-extrabold transition-colors',
+                      selected ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted',
+                    )}
+                  >
+                    <span className='inline-flex overflow-hidden rounded-[5px] ring-1 ring-black/10'>
+                      <LanguageFlag language={lang} size={26} />
+                    </span>
+                    {langName(lang)}
+                  </button>
+                )
+              })}
+              <button
+                type='button'
+                role='radio'
+                aria-checked={flags.shown === null}
+                onClick={() => void chooseFlag(null)}
+                className={cn(
+                  'rounded-2xl border-2 px-3 py-2 text-sm font-extrabold transition-colors',
+                  flags.shown === null ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted',
+                )}
+              >
+                {t('Ninguna')}
+              </button>
+            </div>
+          </div>
         ) : null}
       </div>
 

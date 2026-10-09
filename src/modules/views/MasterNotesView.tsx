@@ -44,7 +44,7 @@ import {
   getMetaTrackerLevelColor,
 } from '../components/MetaTracker/colors'
 import { DASHBOARD_ROUTES } from '../routes/paths'
-import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
+import { useSharedMasterNotePlayback } from '../components/MasterNotePlaybackProvider'
 import { useLoopedMasterNotePlayback } from '../hooks/useLoopedMasterNotePlayback'
 import {
   getLoopCuePlaybackSource,
@@ -81,6 +81,7 @@ import {
 } from '../game/ui'
 import type { MasterNote } from '../types'
 import { PendingActivationCard } from '../components/PendingActivationCard'
+import { PendingActivationPopup } from '../components/PendingActivationPopup'
 import { usePendingActivationPhrase } from '../hooks/usePendingActivationPhrase'
 import { langName, t, tn } from '@/i18n'
 
@@ -179,7 +180,7 @@ export function MasterNotesView({
     isPaused,
     positionSec,
     durationSec,
-  } = useMasterNotePlayback()
+  } = useSharedMasterNotePlayback()
 
   const {
     playlists,
@@ -850,6 +851,7 @@ export function MasterNotesView({
 
   return (
     <GamePage>
+      <PendingActivationPopup phrase={pendingPhraseToRecord} targetLang={targetLang} nativeLang={nativeLang} />
       <PageTitle
         icon={<PhaseLetter letter='A' size={46} />}
         subtitle={t('Tus notas maestras en {lang}, con tu voz', { lang: langName(targetLang) })}

@@ -3,7 +3,8 @@ import type { CSSProperties, MouseEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { langName as displayLangName, t } from '@/i18n'
-import { speakNatural, stopTTS } from '../services/tts'
+import { toast } from 'sonner'
+import { prefetchSpeech, speakNatural, stopTTS, type SpeakResult } from '../services/tts'
 import { SquareIcon, Volume2Icon } from 'lucide-react'
 
 type SpeakButtonProps = {
@@ -16,6 +17,11 @@ type SpeakButtonProps = {
   variant?: 'default' | 'icon' | 'cta'
   isPlaying?: boolean
   onPlayingChange?: (isPlaying: boolean) => void
+  /**
+   * Prepare the premium audio as soon as the button shows. Off where the text changes while
+   * typing (Inmersión): there each prefix would be generated and paid for (Luis, 6 Oct).
+   */
+  prefetch?: boolean
 }
 
 const SPEAK_RATE_STORAGE_KEY = 'speak-button-rate'
@@ -45,6 +51,7 @@ export function SpeakButton({
   variant = 'default',
   isPlaying,
   onPlayingChange,
+  prefetch = true,
 }: SpeakButtonProps) {
   const [internalPlaying, setInternalPlaying] = useState(false)
   const [rate, setRate] = useState<0.75 | 1>(getInitialRate)
@@ -61,6 +68,13 @@ export function SpeakButton({
     if (typeof window === 'undefined') return
     window.localStorage.setItem(SPEAK_RATE_STORAGE_KEY, String(rate))
   }, [rate])
+
+  // The voice is prepared as soon as the button appears (a new word, a new phrase…), so the
+  // first tap does not wait for it.
+  useEffect(() => {
+    if (!prefetch) return
+    void prefetchSpeech(text, langName)
+  }, [text, langName, prefetch])
 
   // Color del modo juego según el color de la frecuencia (azul por defecto).
   const colors =
@@ -80,6 +94,15 @@ export function SpeakButton({
     boxShadow: `0 3px 0 color-mix(in oklab, ${colors.solid} 36%, transparent)`,
   }
 
+  // When nothing could be played (Google voice and device voice both failed), say so instead of
+  // silently going back to «Escuchar».
+  const handleEnd = (result: SpeakResult) => {
+    setPlaying(false)
+    if (!result.ok) {
+      toast.error(t('No se pudo reproducir el audio. Toca otra vez.'), { id: 'speak-button-failed' })
+    }
+  }
+
   const go = (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
     if (playing) {
@@ -88,7 +111,7 @@ export function SpeakButton({
       return
     }
     setPlaying(true)
-    speakNatural(text, langName, () => setPlaying(false), rate)
+    speakNatural(text, langName, handleEnd, rate)
   }
 
   const handleRate = (e: MouseEvent<HTMLButtonElement>, nextRate: 0.75 | 1) => {
@@ -99,7 +122,7 @@ export function SpeakButton({
 
     stopTTS()
     setPlaying(true)
-    speakNatural(text, langName, () => setPlaying(false), nextRate)
+    speakNatural(text, langName, handleEnd, nextRate)
   }
 
   if (variant === 'icon') {

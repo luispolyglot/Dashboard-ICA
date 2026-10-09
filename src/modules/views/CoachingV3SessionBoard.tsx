@@ -1,6 +1,5 @@
 import { AppSelect } from "@/components/ui/app-select"
 import {
-  type CSSProperties,
   type ReactNode,
   useCallback,
   useEffect,
@@ -86,6 +85,11 @@ import { t, tn, langName, uiLocale } from "@/i18n";
 import { IconTile } from "../game/ui";
 import { TargetGlyph } from "../game/icons";
 import { ContentLoading } from "@/components/ui/loading-state";
+import { buildWeekRings, isTaskAnswered } from "../game/coachingRings";
+import { gameSfx } from "../game/sfx";
+import { CoachingWeekRingsStrip } from "../components/coaching/CoachingWeekRings";
+import { CoachTaskAudioFeedback, StudentTaskAudio } from "../components/coaching/CoachingTaskAudio";
+import type { CoachingTaskAudioAnswer } from "../services/coaching";
 
 type CoachingV3SessionBoardProps = {
   sessionId: string;
@@ -277,10 +281,14 @@ export function CoachingV3SessionBoard({
         response1: string;
         response2: string;
         response3: string;
+        taskAudio: [boolean, boolean, boolean];
       }
     >
   >({});
   const [savingClassKey, setSavingClassKey] = useState<string | null>(null);
+  // Week whose ring was just completed here: it pops once with a sound.
+  const [sealedPopPeriod, setSealedPopPeriod] = useState<number | null>(null);
+  const lastRingRef = useRef<{ period: number; complete: boolean } | null>(null);
   const [savingPeriodAction, setSavingPeriodAction] = useState(false);
   const [openReviewFocusId, setOpenReviewFocusId] = useState<string | null>(
     null,
@@ -365,6 +373,7 @@ export function CoachingV3SessionBoard({
         response1: string;
         response2: string;
         response3: string;
+        taskAudio: [boolean, boolean, boolean];
       }
     > = {};
     for (const classRow of board.classes) {
@@ -387,6 +396,8 @@ export function CoachingV3SessionBoard({
         response1: classRow.studentGuidelineResponse1 || "",
         response2: classRow.studentGuidelineResponse2 || "",
         response3: classRow.studentGuidelineResponse3 || "",
+        // Same default as a new class: task 3 is answered with an audio.
+        taskAudio: classRow.taskAudio || [false, false, true],
       };
     }
     setClassDrafts(nextDrafts);
@@ -448,7 +459,8 @@ export function CoachingV3SessionBoard({
         classIndex: classRow.classIndex,
         title: row.title,
         prompt: row.prompt,
-        done: Boolean(row.prompt.trim()),
+        // Audio tasks count once the audio is sent (Luis, 6 Oct).
+        done: isTaskAnswered(classRow, (idx + 1) as 1 | 2 | 3),
       }));
     },
   );
@@ -494,6 +506,31 @@ export function CoachingV3SessionBoard({
   const isSelectedPeriodClosed = Boolean(selectedPeriodActivation?.endedAt);
   const canEditSelectedPeriod = !isSelectedPeriodClosed;
   const currentActivePeriod = board?.periodState.currentActivePeriod || null;
+  // The coach can open the next week before activating it to prepare it (focuses, classes,
+  // tasks, report); the student does not see it until it is activated (Luis, 6 Oct).
+  const preparablePeriod = mode === "coach" ? board?.periodState.nextPeriodEligible || null : null;
+  const canOpenPeriod = (period: number) => activatedPeriods.has(period) || period === preparablePeriod;
+  const isPreparingSelectedPeriod = mode === "coach" && !selectedPeriodActivation;
+  // One ring per week: the 6 tasks fill it (Luis, 6 Oct).
+  const weekRings = buildWeekRings({
+    classes: board?.classes || [],
+    durationPeriods,
+    activatedPeriods,
+    closedPeriods: new Set(
+      (board?.periodActivations || []).filter((row) => row.endedAt).map((row) => row.periodNumber),
+    ),
+  });
+  const selectedRing = weekRings.find((ring) => ring.period === selectedPeriod) || null;
+  const selectedRingComplete = Boolean(selectedRing?.complete);
+  useEffect(() => {
+    const previous = lastRingRef.current;
+    lastRingRef.current = { period: selectedPeriod, complete: selectedRingComplete };
+    if (!previous || previous.period !== selectedPeriod || previous.complete || !selectedRingComplete) return;
+    setSealedPopPeriod(selectedPeriod);
+    if (mode === "student") gameSfx.celebrate();
+    const timer = window.setTimeout(() => setSealedPopPeriod(null), 900);
+    return () => window.clearTimeout(timer);
+  }, [mode, selectedPeriod, selectedRingComplete]);
   const canAddFocus = activeFocuses.length < 3;
   const titleRecorrido =
     mode === "coach" ? t("Recorrido del alumno") : t("Tu recorrido");
@@ -743,6 +780,7 @@ export function CoachingV3SessionBoard({
       response1: string;
       response2: string;
       response3: string;
+      taskAudio: [boolean, boolean, boolean];
     },
     classRow: CoachingV2ClassSlot | null,
   ) => {
@@ -768,6 +806,7 @@ export function CoachingV3SessionBoard({
         coachGuideline1: draft.coachGuideline1.trim() || null,
         coachGuideline2: draft.coachGuideline2.trim() || null,
         coachGuideline3: draft.coachGuideline3.trim() || null,
+        taskAudio: draft.taskAudio,
       });
       if (updatedClass) {
         setBoard((prev) =>
@@ -782,7 +821,16 @@ export function CoachingV3SessionBoard({
                         row.classIndex === updatedClass.classIndex
                       ),
                   )
-                  .concat(updatedClass)
+                  .concat({
+                    ...updatedClass,
+                    audioAnswers:
+                      updatedClass.audioAnswers ??
+                      prev.classes.find(
+                        (row) =>
+                          row.periodNumber === updatedClass.periodNumber &&
+                          row.classIndex === updatedClass.classIndex,
+                      )?.audioAnswers,
+                  })
                   .sort(
                     (a, b) =>
                       a.periodNumber - b.periodNumber ||
@@ -793,6 +841,14 @@ export function CoachingV3SessionBoard({
         );
       }
       toast.success(t("Clase {n} actualizada.", { n: classIndex }));
+      // A server without audio tasks (an older coaching-center) saves the class but drops the
+      // audio choice and sends no taskAudio back: say so instead of pretending it was saved.
+      if (updatedClass && !updatedClass.taskAudio && draft.taskAudio.some(Boolean)) {
+        toast.warning(
+          t("La respuesta en audio no se ha guardado: el servidor todavía no tiene esta función. Funcionará cuando se suba la nueva versión."),
+          { duration: 10000 },
+        );
+      }
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : t("No se pudo guardar la clase."),
@@ -800,6 +856,34 @@ export function CoachingV3SessionBoard({
     } finally {
       setSavingClassKey(null);
     }
+  };
+
+  // Puts a sent audio (or the coach's feedback) into the board without reloading it.
+  const applyTaskAudioAnswer = (
+    periodNumber: number,
+    classIndex: 1 | 2,
+    answer: CoachingTaskAudioAnswer,
+    studentCompletedAt?: string | null,
+  ) => {
+    setBoard((prev) =>
+      prev
+        ? {
+            ...prev,
+            classes: prev.classes.map((row) =>
+              row.periodNumber === periodNumber && row.classIndex === classIndex
+                ? {
+                    ...row,
+                    ...(studentCompletedAt !== undefined ? { studentCompletedAt } : {}),
+                    audioAnswers: [
+                      ...(row.audioAnswers || []).filter((item) => item.taskIndex !== answer.taskIndex),
+                      answer,
+                    ].sort((a, b) => a.taskIndex - b.taskIndex),
+                  }
+                : row,
+            ),
+          }
+        : prev,
+    );
   };
 
   const handleSaveStudentTask = async (
@@ -839,7 +923,16 @@ export function CoachingV3SessionBoard({
                         row.classIndex === updatedClass.classIndex
                       ),
                   )
-                  .concat(updatedClass)
+                  .concat({
+                    ...updatedClass,
+                    audioAnswers:
+                      updatedClass.audioAnswers ??
+                      prev.classes.find(
+                        (row) =>
+                          row.periodNumber === updatedClass.periodNumber &&
+                          row.classIndex === updatedClass.classIndex,
+                      )?.audioAnswers,
+                  })
                   .sort(
                     (a, b) =>
                       a.periodNumber - b.periodNumber ||
@@ -877,9 +970,12 @@ export function CoachingV3SessionBoard({
   const handleCloseCurrentWeek = async () => {
     setSavingPeriodAction(true);
     try {
+      const closedPeriod = currentActivePeriod;
       await closeCoachingV2Period({ sessionId });
       toast.success(t("Semana cerrada correctamente."));
-      await loadBoard(undefined, { silent: true });
+      // Straight to the next week, ready to be prepared before activating it.
+      const nextPeriod = closedPeriod ? closedPeriod + 1 : null;
+      await loadBoard(nextPeriod && nextPeriod <= durationPeriods ? nextPeriod : undefined, { silent: true });
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : t("No se pudo cerrar la semana."),
@@ -1256,47 +1352,46 @@ export function CoachingV3SessionBoard({
               <span className="tracking-[0.1em] uppercase">{titleRecorrido}</span>
               <span>{tn(Math.max(0, durationPeriods - selectedPeriod), "Queda {n} semana", "Quedan {n} semanas")}</span>
             </div>
-            <div
-              className="grid grid-cols-6 gap-1.5 md:[grid-template-columns:repeat(var(--weeks),minmax(0,1fr))]"
-              style={{ "--weeks": durationPeriods } as CSSProperties}
-            >
-              {Array.from({ length: durationPeriods }, (_, idx) => {
-                const period = idx + 1;
-                const isSelected = period === selectedPeriod;
-                const activation = periodActivationByNumber.get(period);
-                const isActivated = Boolean(activation);
-                const isClosed = Boolean(activation?.endedAt);
-                const isActive = currentActivePeriod === period;
-                return (
+            <CoachingWeekRingsStrip
+              rings={weekRings}
+              selectedPeriod={selectedPeriod}
+              preparablePeriod={preparablePeriod}
+              canOpen={canOpenPeriod}
+              onOpen={(period) => void loadBoard(period)}
+              popPeriod={sealedPopPeriod}
+            />
+            {selectedRing?.complete ? (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <p className="m-0 text-sm font-black" style={{ color: "var(--ica-gold)" }}>
+                  {mode === "coach"
+                    ? t("Semana {n} sellada · el alumno hizo las 6 tareas", { n: selectedPeriod })
+                    : board.periodReport
+                      ? t("Semana {n} sellada · tu reporte se ha abierto", { n: selectedPeriod })
+                      : t("Semana {n} sellada · tu coach está preparando tu reporte", { n: selectedPeriod })}
+                </p>
+                {mode === "student" && board.periodReport ? (
                   <button
-                    key={`period-${period}`}
                     type="button"
-                    className={`flex h-10 min-w-0 items-center justify-center rounded-xl text-sm font-black tabular-nums transition md:h-12 ${isActivated ? "hover:-translate-y-0.5" : "cursor-not-allowed"} ${isSelected ? "ring-2 ring-white ring-offset-2 ring-offset-[#1b2450]" : ""}`}
-                    style={
-                      !isActivated
-                        ? { background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.35)" }
-                        : isClosed
-                          ? { background: "var(--ica-gold)", color: "#4a3200", boxShadow: "0 3px 0 var(--ica-gold-edge)" }
-                          : isActive
-                            ? { background: "#ffffff", color: "#1b2450", boxShadow: "0 3px 0 rgba(255,255,255,0.4)" }
-                            : { background: "rgba(255,255,255,0.22)", color: "#fff" }
-                    }
-                    onClick={() => {
-                      if (!activatedPeriods.has(period)) return;
-                      void loadBoard(period);
-                    }}
-                    disabled={!activatedPeriods.has(period)}
-                    aria-label={t("Semana {n}", { n: period })}
-                    aria-current={isSelected ? "true" : undefined}
+                    onClick={handleScrollToReport}
+                    className="ica-press rounded-2xl px-4 py-2 text-sm font-black"
+                    style={{ background: "var(--ica-gold)", color: "#4a3200", boxShadow: "0 4px 0 var(--ica-gold-edge)" }}
                   >
-                    {isClosed ? <CheckIcon className="size-4" strokeWidth={3.4} aria-hidden="true" /> : period}
+                    {t("Ver mi reporte")}
                   </button>
-                );
-              })}
-            </div>
+                ) : null}
+              </div>
+            ) : null}
             {isSelectedPeriodClosed ? (
               <p className="m-0 mt-3 text-xs font-bold" style={{ color: "var(--ica-gold)" }}>
                 {t("Semana cerrada: solo lectura para alumno y coach.")}
+              </p>
+            ) : isPreparingSelectedPeriod ? (
+              <p className="m-0 mt-3 rounded-2xl bg-white/10 px-3 py-2 text-xs font-bold" style={{ color: "var(--ica-gold)" }}>
+                {t("Estás preparando la Semana {n}: pon los focos, las clases, las tareas y el reporte. El alumno no verá nada hasta que la actives.", { n: selectedPeriod })}
+              </p>
+            ) : preparablePeriod && !currentActivePeriod ? (
+              <p className="m-0 mt-3 text-xs font-bold text-white/70">
+                {t("Toca la Semana {n} para prepararla antes de activarla.", { n: preparablePeriod })}
               </p>
             ) : null}
           </div>
@@ -1311,7 +1406,11 @@ export function CoachingV3SessionBoard({
               onClick={() => void handleActivateNextWeek()}
               disabled={savingPeriodAction || !board.periodState.nextPeriodEligible}
             >
-              {savingPeriodAction ? t("Activando...") : t("Activar siguiente semana")}
+              {savingPeriodAction
+                ? t("Activando...")
+                : board.periodState.nextPeriodEligible
+                  ? t("Activar Semana {n}", { n: board.periodState.nextPeriodEligible })
+                  : t("Activar siguiente semana")}
             </Button>
             <Button
               type="button"
@@ -2214,6 +2313,8 @@ export function CoachingV3SessionBoard({
                 response1: classRow?.studentGuidelineResponse1 || "",
                 response2: classRow?.studentGuidelineResponse2 || "",
                 response3: classRow?.studentGuidelineResponse3 || "",
+                // New classes: task 3 is answered with an audio by default (Luis, 6 Oct).
+                taskAudio: classRow?.taskAudio || [false, false, true],
               };
               const embedUrl = getEmbeddableVideoUrl(classRow?.loomUrl || null);
               const classEditOpen = Boolean(classEditOpenByKey[key]);
@@ -2328,15 +2429,35 @@ export function CoachingV3SessionBoard({
                                   <p className="text-xs text-muted-foreground">
                                     {isAssigned
                                       ? isDone
-                                        ? t("Hecha")
-                                        : t("Por completar")
+                                        ? classRow?.audioAnswers?.find((item) => item.taskIndex === localIndex)?.feedbackAt
+                                          ? t("Hecha · tu coach te ha respondido")
+                                          : t("Hecha")
+                                        : classRow?.taskAudio?.[localIndex - 1]
+                                          ? t("Por completar · en audio")
+                                          : t("Por completar")
                                       : t("Pendiente de asignar por tu coach")}
                                   </p>
                                 </div>
                               </div>
                             </AccordionTrigger>
                             <AccordionContent>
-                              {isAssigned ? (
+                              {isAssigned && classRow?.taskAudio?.[localIndex - 1] && !responseValue.trim() ? (
+                                <StudentTaskAudio
+                                  target={{
+                                    sessionId,
+                                    periodNumber: selectedPeriod,
+                                    classIndex: slot as 1 | 2,
+                                    taskIndex: localIndex as 1 | 2 | 3,
+                                  }}
+                                  answer={
+                                    classRow.audioAnswers?.find((item) => item.taskIndex === localIndex) || null
+                                  }
+                                  canEdit={canEditSelectedPeriod}
+                                  onSent={(answer, studentCompletedAt) =>
+                                    applyTaskAudioAnswer(selectedPeriod, slot as 1 | 2, answer, studentCompletedAt)
+                                  }
+                                />
+                              ) : isAssigned ? (
                                 <>
                                   <Textarea
                                     value={responseValue}
@@ -2553,23 +2674,28 @@ export function CoachingV3SessionBoard({
                         {[
                           {
                             absoluteIndex: slot === 1 ? 1 : 4,
+                            localIndex: 1 as const,
                             guidelineKey: "coachGuideline1" as const,
                             responseValue: draft.response1,
                           },
                           {
                             absoluteIndex: slot === 1 ? 2 : 5,
+                            localIndex: 2 as const,
                             guidelineKey: "coachGuideline2" as const,
                             responseValue: draft.response2,
                           },
                           {
                             absoluteIndex: slot === 1 ? 3 : 6,
+                            localIndex: 3 as const,
                             guidelineKey: "coachGuideline3" as const,
                             responseValue: draft.response3,
                           },
                         ].map((item) => {
-                          const isAnswered = Boolean(
-                            item.responseValue?.trim(),
-                          );
+                          const isAnswered = isTaskAnswered(classRow, item.localIndex);
+                          const audioAnswer =
+                            classRow?.audioAnswers?.find((row) => row.taskIndex === item.localIndex) || null;
+                          const isAudioTask = draft.taskAudio[item.localIndex - 1];
+                          const hasTextAnswer = Boolean(item.responseValue?.trim());
                           return (
                             <AccordionItem
                               key={`coach-task-${slot}-${item.absoluteIndex}`}
@@ -2589,6 +2715,16 @@ export function CoachingV3SessionBoard({
                                   <span className="text-sm font-medium">
                                     {t("Tarea {n}", { n: item.absoluteIndex })}
                                   </span>
+                                  {isAudioTask ? (
+                                    <span className="rounded-full border px-1.5 py-px text-[10px] font-bold" style={{ borderColor: "var(--v3-line)" }}>
+                                      {t("Audio")}
+                                    </span>
+                                  ) : null}
+                                  {audioAnswer && !audioAnswer.feedbackAt ? (
+                                    <span className="rounded-full px-1.5 py-px text-[10px] font-black" style={{ background: "var(--v3-gold)", color: "#3a2a00" }}>
+                                      {t("Falta tu feedback")}
+                                    </span>
+                                  ) : null}
                                 </div>
                               </AccordionTrigger>
                               <AccordionContent className="space-y-2">
@@ -2609,7 +2745,35 @@ export function CoachingV3SessionBoard({
                                     isAnswered || !canEditSelectedPeriod
                                   }
                                 />
-                                {isAnswered ? (
+                                <label className="flex items-center gap-2 text-xs font-medium">
+                                  <input
+                                    type="checkbox"
+                                    className="size-4 accent-current"
+                                    checked={isAudioTask}
+                                    disabled={isAnswered || !canEditSelectedPeriod}
+                                    onChange={(event) =>
+                                      setClassDrafts((prev) => {
+                                        const nextAudio = [...draft.taskAudio] as [boolean, boolean, boolean];
+                                        nextAudio[item.localIndex - 1] = event.target.checked;
+                                        return { ...prev, [key]: { ...draft, taskAudio: nextAudio } };
+                                      })
+                                    }
+                                  />
+                                  {t("El alumno responde con un audio")}
+                                </label>
+                                {audioAnswer || (isAudioTask && !hasTextAnswer) ? (
+                                  <CoachTaskAudioFeedback
+                                    key={`${key}-${item.localIndex}-${audioAnswer?.feedbackAt || "new"}`}
+                                    target={{
+                                      sessionId,
+                                      periodNumber: selectedPeriod,
+                                      classIndex: slot as 1 | 2,
+                                      taskIndex: item.localIndex,
+                                    }}
+                                    answer={audioAnswer}
+                                    onSaved={(answer) => applyTaskAudioAnswer(selectedPeriod, slot as 1 | 2, answer)}
+                                  />
+                                ) : hasTextAnswer ? (
                                   <div
                                     className="rounded-md border p-2 text-xs"
                                     style={{ borderColor: "var(--v3-line)" }}

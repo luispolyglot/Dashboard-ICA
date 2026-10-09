@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   AudioLinesIcon,
+  MicIcon,
   BellIcon,
   BellOffIcon,
   BellRingIcon,
@@ -373,13 +374,16 @@ export function ManageNotificationsView() {
       activeSessionEnabled:
         nextPartial.activeSessionEnabled ??
         coachingNotificationPrefs.activeSessionEnabled,
+      studentAudioEnabled:
+        nextPartial.studentAudioEnabled ??
+        coachingNotificationPrefs.studentAudioEnabled,
       classScheduleReminderMinutes:
         nextPartial.classScheduleReminderMinutes ??
         coachingNotificationPrefs.classScheduleReminderMinutes,
     }
 
     try {
-      if (next.masterNoteClosedEnabled || next.activeSessionEnabled) {
+      if (next.masterNoteClosedEnabled || next.activeSessionEnabled || next.studentAudioEnabled) {
         await ensurePushOnCurrentDevice()
       }
       await saveCoachingNotificationPreferences(next)
@@ -712,6 +716,18 @@ export function ManageNotificationsView() {
                 checked={coachingNotificationPrefs.masterNoteClosedEnabled}
                 disabled={isSavingCoachingNotificationPrefs}
                 onCheckedChange={(checked) => void handleUpdateCoachingNotificationPreferences({ masterNoteClosedEnabled: checked })}
+              />
+            ) : null}
+            {isCoachingAdmin ? (
+              <ReminderRow
+                id='manage-coaching-student-audio-switch'
+                icon={<MicIcon className='size-6' strokeWidth={2.4} aria-hidden='true' />}
+                iconTone='gold'
+                title={t('Audios de tus alumnos')}
+                text={t('Cuando un alumno te manda el audio de una tarea para que le des feedback.')}
+                checked={coachingNotificationPrefs.studentAudioEnabled}
+                disabled={isSavingCoachingNotificationPrefs}
+                onCheckedChange={(checked) => void handleUpdateCoachingNotificationPreferences({ studentAudioEnabled: checked })}
               />
             ) : null}
           </RowGroup>

@@ -1,4 +1,4 @@
-import { CoachingInviteCard } from './CoachingInvite'
+import { CoachingInviteCard, useCoachingInviteSmall } from './CoachingInvite'
 import { t, tn, langName } from '@/i18n'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
@@ -32,12 +32,12 @@ import { useDashboardContext } from '../context/DashboardContext'
 import { fichasFormatter, useFichas } from '../game/fichas'
 import { FichaIcon } from '../game/icons'
 import { ChatProfileRow } from '../game/ChatProfileRow'
+import { ChatQuickButton } from '../game/ChatQuickButton'
 import {
   LevelAvatar,
   memberSinceLabel,
   MyFeaturedBadge,
   ProfileGameSummary,
-  ProfileStreakPanel,
 } from '../game/ProfileGameSummary'
 import { isGameSoundEnabled, setGameSoundEnabled } from '../game/sfx'
 import { isPronunciationEnabled, setPronunciationEnabled } from '../pronunciation/pronunciation'
@@ -70,11 +70,11 @@ function QuickTile({
     <Link
       to={to}
       onClick={onNavigate}
-      className='ica-panel ica-press relative flex min-w-0 flex-col items-center gap-2 rounded-2xl px-1 pt-3 pb-2.5 text-center'
+      className='ica-panel ica-press relative flex min-w-0 flex-col items-center gap-1.5 rounded-2xl px-1 pt-2.5 pb-2 text-center'
     >
       {alert ? <span className='absolute top-2 right-2'>{alert}</span> : null}
       <span className='relative'>
-        <IconTile tone={tone} size={46}>
+        <IconTile tone={tone} size={40}>
           {icon}
         </IconTile>
         {badge ? <span className='absolute -right-2.5 -bottom-1.5'>{badge}</span> : null}
@@ -96,7 +96,7 @@ function FichasQuickTile({ userId, onNavigate }: { userId: string | undefined; o
     <QuickTile
       to={DASHBOARD_ROUTES.fichas}
       tone='gold'
-      icon={<FichaIcon size={30} />}
+      icon={<FichaIcon size={26} />}
       label={t('ICA Coins')}
       badge={
         total === null ? null : (
@@ -156,11 +156,15 @@ export function MobileProfileScreen({
   const hasCoaching = access.canSeeCoachingPersonalized || access.canManageCoaching
   const hasAdmin = access.canSeeAdminAnalytics || access.isSuperAdmin
   const pendingCoachingNotes = access.pendingCoachingNotes
+  // Everyone sees the invite except students in an active coaching (Luis, 6 Oct); coaching
+  // admins see it as a preview.
+  const showCoachingInvite = access.loaded && (!access.hasActiveCoaching || access.canManageCoaching)
+  const [coachingInviteSmall, makeCoachingInviteSmall] = useCoachingInviteSmall()
   const showCoachingAlert =
     hasCoachingAlert || access.pendingCoachingSessions > 0
 
   return (
-    <div className='mx-auto flex w-full max-w-xl flex-col gap-5 px-4 pt-2 pb-8'>
+    <div className='mx-auto flex w-full max-w-xl flex-col gap-4 px-4 pt-2 pb-8'>
           <div>
             <div className='flex items-center gap-3'>
               {/* El anillo tiene el color de tu nivel real. Al tocarlo: ajustes de cuenta. */}
@@ -174,7 +178,7 @@ export function MobileProfileScreen({
               <div className='min-w-0 flex-1'>
                 <div className='flex min-w-0 items-center gap-2'>
                   {/* El nombre puede ocupar dos líneas: así la insignia siempre se ve entera */}
-                  <h1 className='m-0 line-clamp-2 min-w-0 font-display text-2xl leading-tight font-extrabold break-words'>
+                  <h1 className='m-0 line-clamp-2 min-w-0 font-display text-[22px] leading-tight font-extrabold break-words'>
                     {displayName}
                   </h1>
                   <MyFeaturedBadge size={44} />
@@ -188,6 +192,7 @@ export function MobileProfileScreen({
             </div>
 
             <div className='mt-3 flex gap-2'>
+              <ChatQuickButton className='size-11' onNavigate={close} />
               <button
                 type='button'
                 onClick={() => setShowLangModal(true)}
@@ -225,7 +230,7 @@ export function MobileProfileScreen({
             </div>
           </div>
 
-          <div className='flex flex-col gap-5'>
+          <div className='flex flex-col gap-4'>
             {/* Tu progreso: nivel real e insignias */}
             <ProfileGameSummary onNavigate={close} />
 
@@ -241,7 +246,7 @@ export function MobileProfileScreen({
               <QuickTile
                 to={DASHBOARD_ROUTES.testsIca}
                 tone='c'
-                icon={<IcaTestGlyph size={30} />}
+                icon={<IcaTestGlyph size={26} />}
                 label={t('Tests ICA')}
                 alert={
                   hasIcaTestAlert ? (
@@ -260,11 +265,10 @@ export function MobileProfileScreen({
               <FichasQuickTile userId={user?.id} onNavigate={close} />
             </div>
 
-            {/* Comunidad: la racha en grande y el track de Instagram */}
+            {/* Comunidad: el track de Instagram y los trackers (la racha ya está arriba, en la barra; Luis, 6 oct) */}
             <div>
               <SectionLabel>{t('Comunidad')}</SectionLabel>
               <div className='flex flex-col gap-3'>
-                <ProfileStreakPanel onNavigate={close} />
                 <RowGroup>
                   <div onClick={close}>
                     <ListRow
@@ -278,15 +282,27 @@ export function MobileProfileScreen({
                       text={t('Cada día con post suma puntos al ranking')}
                     />
                   </div>
+                  <div onClick={close}>
+                    <ListRow
+                      to={DASHBOARD_ROUTES.trackers}
+                      icon={
+                        <IconTile tone='i' size={42}>
+                          <Glyph icon={LineChartIcon} />
+                        </IconTile>
+                      }
+                      title={t('Trackers')}
+                      text={t('Pronunciación, fluidez e improvisación')}
+                    />
+                  </div>
                 </RowGroup>
               </div>
             </div>
 
             {/* Quien no está en el coaching ve la invitación; los admins de coaching, como vista previa. */}
-            {access.loaded && (!hasCoaching || access.canManageCoaching) && (
+            {showCoachingInvite && !coachingInviteSmall && (
               <div>
                 <SectionLabel>{access.canManageCoaching ? t('Coaching (vista de alumno)') : t('Coaching')}</SectionLabel>
-                <CoachingInviteCard preview={access.canManageCoaching} />
+                <CoachingInviteCard preview={access.canManageCoaching} onDismiss={makeCoachingInviteSmall} />
               </div>
             )}
 
@@ -342,18 +358,6 @@ export function MobileProfileScreen({
             <div>
               <SectionLabel>{t('Más')}</SectionLabel>
               <RowGroup>
-                <div onClick={close}>
-                  <ListRow
-                    to={DASHBOARD_ROUTES.trackers}
-                    icon={
-                      <IconTile tone='i' size={42}>
-                        <Glyph icon={LineChartIcon} />
-                      </IconTile>
-                    }
-                    title={t('Trackers')}
-                    text={t('Pronunciación, fluidez e improvisación')}
-                  />
-                </div>
                 <div onClick={close}>
                   <ListRow
                     to={DASHBOARD_ROUTES.manageNotifications}
@@ -446,6 +450,9 @@ export function MobileProfileScreen({
                 </div>
               </RowGroup>
             </div>
+
+            {/* Closed with the X: it stays here, small, between account settings and log out. */}
+            {showCoachingInvite && coachingInviteSmall ? <CoachingInviteCard compact /> : null}
 
             {hasAdmin && (
               <div>

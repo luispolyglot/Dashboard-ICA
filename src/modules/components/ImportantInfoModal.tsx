@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -8,37 +7,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import importantInfoIcaChallengesImage from '@/images/important-info-ica-challenges.png'
-import { DASHBOARD_ROUTES } from '../routes/paths'
+import importantInfoMasterclassImage from '@/images/important-info-masterclass.png'
 import { t } from '@/i18n'
 
-type ImportantInfoMode = 'video' | 'image'
-
-const IMPORTANT_INFO_VERSION = 'ica_challenges_image_v1'
-const IMPORTANT_INFO_MODE_BY_VERSION: Record<string, ImportantInfoMode> = {
-  ica_challenges_image_v1: 'image',
-  nm_image_v1: 'image',
-  nm_video_monthly_score_v1: 'video',
-  nm_video_monthly_score_v2: 'video',
-}
-
-function resolveImportantInfoMode(version: string): ImportantInfoMode {
-  return IMPORTANT_INFO_MODE_BY_VERSION[version] ?? 'video'
-}
-
-const IMPORTANT_INFO_MODE = resolveImportantInfoMode(IMPORTANT_INFO_VERSION)
+const IMPORTANT_INFO_VERSION = 'masterclass_monday_v1'
 const DISMISS_STORAGE_KEY = `important_info_calendar_notifications_modal_dismissed_${IMPORTANT_INFO_VERSION}`
-const VIDEO_DISMISS_DELAY_SECONDS = 10
-const IMAGE_DISMISS_DELAY_SECONDS = 5
-const DISMISS_DELAY_SECONDS =
-  IMPORTANT_INFO_MODE === 'image'
-    ? IMAGE_DISMISS_DELAY_SECONDS
-    : VIDEO_DISMISS_DELAY_SECONDS
-const IMPORTANT_INFO_VIDEO_URL =
-  'https://www.loom.com/embed/1932cdc979874bd7b5ab636920e80aa2'
-const IMPORTANT_INFO_IMAGE_ALT = 'Información importante sobre Desafíos ICA'
-
-type ConfirmAction = 'close_once' | 'dismiss_forever' | null
+const MASTERCLASS_SIGNUP_URL = 'https://www.skool.com/icademy/masterclass-incominnn-apuntate'
 
 function getInitialOpenState(): boolean {
   if (typeof window === 'undefined') return false
@@ -46,165 +20,53 @@ function getInitialOpenState(): boolean {
 }
 
 export function ImportantInfoModal() {
-  const navigate = useNavigate()
   const [open, setOpen] = useState(getInitialOpenState)
-  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
-  const [secondsLeft, setSecondsLeft] = useState(DISMISS_DELAY_SECONDS)
-  const isImageMode = IMPORTANT_INFO_MODE === 'image'
-
-  useEffect(() => {
-    if (isImageMode) return
-    if (!open) return
-
-    setSecondsLeft(DISMISS_DELAY_SECONDS)
-    const intervalId = window.setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 1) {
-          window.clearInterval(intervalId)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-
-    return () => {
-      window.clearInterval(intervalId)
-    }
-  }, [isImageMode, open])
-
-  const handleEscapeAction = (): void => {
-    if (isImageMode) {
-      handleTemporaryClose()
-      return
-    }
-    setConfirmAction('close_once')
-  }
-
-  const handleTemporaryClose = (): void => {
-    setOpen(false)
-    setConfirmAction(null)
-  }
-
-  const handleKeepOpen = (): void => {
-    setConfirmAction(null)
-  }
-
-  const handleAskDismissForever = (): void => {
-    if (secondsLeft > 0) return
-    setConfirmAction('dismiss_forever')
-  }
-
-  const handleConfirmYes = (): void => {
-    if (confirmAction === 'dismiss_forever') {
-      window.localStorage.setItem(DISMISS_STORAGE_KEY, '1')
-      setOpen(false)
-      setConfirmAction(null)
-      return
-    }
-
-    handleTemporaryClose()
-  }
-
-  const handleNavigateTo = (): void => {
+  const dismiss = (): void => {
     window.localStorage.setItem(DISMISS_STORAGE_KEY, '1')
     setOpen(false)
-    navigate(DASHBOARD_ROUTES.challengesIca)
   }
 
-  const handleClose = (): void => {
-    if (isImageMode) {
-      window.localStorage.setItem(DISMISS_STORAGE_KEY, '1')
-      setOpen(false)
-    }
+  const handleSignup = (): void => {
+    window.open(MASTERCLASS_SIGNUP_URL, '_blank', 'noopener,noreferrer')
+    dismiss()
   }
 
   if (!open) return null
 
   return (
-    <Dialog open={open} onOpenChange={isImageMode ? handleClose : () => null}>
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) dismiss() }}>
       <DialogContent
-        showCloseButton={isImageMode ? true : false}
-        className='sm:max-w-3xl p-0 overflow-hidden'
+        className='max-h-[90vh] overflow-y-auto p-0 sm:max-w-4xl'
         onPointerDownOutside={(event) => event.preventDefault()}
-        onEscapeKeyDown={(event) => {
-          event.preventDefault()
-          handleEscapeAction()
-        }}
       >
         <div className='relative p-5 pb-4'>
-            <DialogHeader>
-              <DialogTitle>{t('INFORMACIÓN IMPORTANTE')}</DialogTitle>
-              <DialogDescription>
-                {IMPORTANT_INFO_MODE === 'video'
-                  ? t('Conoce Desafíos ICA, el nuevo juego disponible en Juegos ICA.')
-                  : t('Revisa esta imagen para conocer los nuevos Desafíos ICA en Juegos ICA.')}
-              </DialogDescription>
-            </DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{t('Hey, recuerda la masterclass que voy a hacer el lunes.')}</DialogTitle>
+            <DialogDescription className='sr-only'>
+              {t('Apúntate a la masterclass o confirma que ya estás apuntado.')}
+            </DialogDescription>
+          </DialogHeader>
 
-          <div className='mt-4 overflow-hidden rounded-lg border border-border/70'>
-            {IMPORTANT_INFO_MODE === 'video' ? (
-              <iframe
-                src={IMPORTANT_INFO_VIDEO_URL}
-                title={t('Información importante en vídeo')}
-                className='h-65 w-full sm:h-105'
-                allow='autoplay; fullscreen; picture-in-picture'
-                allowFullScreen
-              />
-            ) : (
-              <img
-                src={importantInfoIcaChallengesImage}
-                alt={t(IMPORTANT_INFO_IMAGE_ALT)}
-                className='h-auto w-full'
-                onClick={handleNavigateTo}
-              />
-            )}
-          </div>
+          <img
+            src={importantInfoMasterclassImage}
+            alt={t('Anuncio de la masterclass online de fluidez con Luis')}
+            className='mt-4 h-auto w-full rounded-lg border border-border/70'
+          />
 
-          <div className='mt-4'>
-            {isImageMode ? (
-              <Button
-                type='button'
-                onClick={handleNavigateTo}
-                className='w-full'
-              >
-                {t('Ir a Desafíos ICA')}
-              </Button>
-            ) : !confirmAction ? (
-              <Button
-                type='button'
-                onClick={handleAskDismissForever}
-                disabled={secondsLeft > 0}
-                className='w-full'
-              >
-                {secondsLeft > 0
-                  ? t('No volver a mostrar ({n})', { n: secondsLeft })
-                  : t('No volver a mostrar')}
-              </Button>
-            ) : (
-              <div className='space-y-2'>
-                <p className='text-sm font-semibold'>
-                  {IMPORTANT_INFO_MODE === 'video'
-                    ? t('¿Estás seguro/a de que has visto el vídeo hasta el final?')
-                    : t('¿Estás seguro/a de que revisaste toda la información?')}
-                </p>
-                <div className='grid grid-cols-2 gap-2'>
-                  <Button
-                    type='button'
-                    variant='destructive'
-                    onClick={handleConfirmYes}
-                  >
-                    {t('SÍ')}
-                  </Button>
-                  <Button
-                    type='button'
-                    variant='outline'
-                    onClick={handleKeepOpen}
-                  >
-                    NO
-                  </Button>
-                </div>
-              </div>
-            )}
+          <div className='mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2'>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={dismiss}
+            >
+              {t('Ya estoy apuntado')}
+            </Button>
+            <Button
+              type='button'
+              onClick={handleSignup}
+            >
+              {t('Apuntarme')}
+            </Button>
           </div>
         </div>
       </DialogContent>

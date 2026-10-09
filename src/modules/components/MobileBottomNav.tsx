@@ -7,7 +7,8 @@ import { PendingReviewDot } from './PendingReviewDot'
 import { ChallengeAlertBadge } from './IcaChallenges/ChallengeAlertBadge'
 import { describeIcaChallengeAlerts, useIcaChallengeAlerts } from '../hooks/useIcaChallengeAlerts'
 import { DASHBOARD_ROUTES } from '../routes/paths'
-import { t } from '@/i18n'
+import { t, tn } from '@/i18n'
+import { useChatUnread } from '../game/ChatQuickButton'
 
 /** Pestaña de la barra de abajo: icono de línea y texto; la activa va en una píldora. */
 function TabItem({
@@ -58,6 +59,8 @@ export function MobileBottomNav({
   const location = useLocation()
   // Retos nuevos o turnos pendientes en Desafíos ICA: globito encima del mando.
   const challengeAlerts = useIcaChallengeAlerts()
+  // Mensajes nuevos en el chat de icademers: puntito en Perfil (el chat se abre desde ahí).
+  const chatUnread = useChatUnread()
   const isOnProfileRoute = location.pathname.startsWith(DASHBOARD_ROUTES.profile)
   const isOnIcaTestsRoute = location.pathname.startsWith(DASHBOARD_ROUTES.testsIca)
   const isOnManageCoachingRoute = location.pathname.startsWith(
@@ -87,7 +90,7 @@ export function MobileBottomNav({
             {({ isActive }) => <TabItem icon={HouseIcon} label={t('Inicio')} active={isActive} />}
           </NavLink>
 
-          <NavLink to={DASHBOARD_ROUTES.leaderboard} className='outline-none'>
+          <NavLink to={DASHBOARD_ROUTES.leaderboard} className='outline-none' data-tour='nav-ranking'>
             {({ isActive }) => <TabItem icon={TrophyIcon} label={t('Ranking')} active={isActive} />}
           </NavLink>
 
@@ -102,7 +105,7 @@ export function MobileBottomNav({
             </NavLink>
           </div>
 
-          <NavLink to={DASHBOARD_ROUTES.gamesIca} className='outline-none'>
+          <NavLink to={DASHBOARD_ROUTES.gamesIca} className='outline-none' data-tour='nav-games'>
             {({ isActive }) => (
               <TabItem
                 icon={Gamepad2Icon}
@@ -129,6 +132,14 @@ export function MobileBottomNav({
                     title={profileAlertTitle}
                     useIconSpeaker={hasCoachingProfileAlert}
                   />
+                ) : chatUnread > 0 && !isOnProfileRoute ? (
+                  <span
+                    className='flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-card px-1 text-[10px] font-black text-white tabular-nums'
+                    style={{ background: 'var(--ica-bad-strong)' }}
+                    aria-label={tn(chatUnread, t('{n} mensaje nuevo en el chat'), t('{n} mensajes nuevos en el chat'))}
+                  >
+                    {chatUnread > 9 ? '9+' : chatUnread}
+                  </span>
                 ) : null
               }
             />

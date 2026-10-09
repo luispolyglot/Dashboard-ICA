@@ -9,6 +9,7 @@ import {
   GiftIcon,
   GraduationCapIcon,
   HeadphonesIcon,
+  InfoIcon,
   MicIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -34,12 +35,13 @@ import {
 import { LISTENING_METRICS_CHANGED_EVENT } from "../services/creationMetricsSync";
 import { getIcaTestWindowStartDay } from "../services/icaTests";
 import { parseFeaturedBadge, useFeaturedBadge } from "../game/featuredBadge";
+import { useMyFlags } from "../game/languageFlag";
 import { MedalDefs } from "../game/Medal";
 import { FichaIcon, FlameIcon, TargetGlyph, TrophyIcon } from "../game/icons";
 import { LeaderboardRow, MyRankCard, Podium, RankingFadeOut, rankingFadeOpacity } from "../game/ranking";
 import { IcademerProfileDialog, type IcademerSummary } from "../game/IcademerProfile";
 import { IconTile, RowGroup, tone, type Tone } from "../game/ui";
-import { t, uiLocale } from '@/i18n'
+import { t, tn, uiLocale } from '@/i18n'
 
 const HISTORY_START_MONTH = "2026-05-01";
 const FOCUS_TOP_LIMIT = 30;
@@ -190,16 +192,19 @@ function buildVisibleRowsWithSharedRank(
   let prevStreak: number | null = null;
   let prevPercent: number | null = null;
   let prevPoints: number | null = null;
+  let prevDailyGame: number | null = null;
 
   rows.forEach((row, index) => {
     const currentStreak = row.ica_streak_days || 0;
     const currentPercent = toComparablePercent(row.avg_percent);
     const currentPoints = toComparablePoints(row.total_points);
+    const currentDailyGame = row.daily_game_correct ?? null;
     const sameAsPrevious =
       index > 0 &&
       currentStreak === prevStreak &&
       currentPercent === prevPercent &&
-      currentPoints === prevPoints;
+      currentPoints === prevPoints &&
+      currentDailyGame === prevDailyGame;
 
     if (!sameAsPrevious) {
       sharedRank = index + 1;
@@ -214,6 +219,7 @@ function buildVisibleRowsWithSharedRank(
     prevStreak = currentStreak;
     prevPercent = currentPercent;
     prevPoints = currentPoints;
+    prevDailyGame = currentDailyGame;
   });
 
   return result;
@@ -307,6 +313,7 @@ function buildScoreBreakdown(
   includeIcaTest: boolean,
   isCurrentUser: boolean,
   scoringDayCap: number,
+  monthStart: string,
 ): ScoreBreakdown {
   const monthlyPoints = getMonthlyPercentPoints(row);
   const icaTestPoints = includeIcaTest ? getIcaTestPoints(row) : 0;
@@ -322,10 +329,7 @@ function buildScoreBreakdown(
   const pregunticaPoints = getPregunticaPoints(row);
   const instagramPoints = getInstagramPoints(row);
   const listeningMaxPoints = listeningDayCap * MAX_LISTENING_POINTS_PER_DAY;
-  const pregunticaMaxPoints = getPregunticaMaxPoints(
-    scoringDayCap,
-    pregunticaPoints,
-  );
+  const pregunticaMaxPoints = getPregunticaMaxPoints(monthStart, scoringDayCap);
   const instagramMaxPoints = scoringDayCap * MAX_INSTAGRAM_POINTS_PER_DAY;
   const totalPoints = getDisplayedTotalPoints(row, includeIcaTest);
   const totalMaxPoints =
@@ -375,6 +379,49 @@ function formatAppliedPercent(value: number, maxValue: number): string {
 function isPerfectScore(value: number, maxValue: number): boolean {
   if (maxValue <= 0) return false;
   return value >= maxValue - 0.001;
+}
+
+/** First month whose ties are broken by the daily game (same date as the SQL). */
+const DAILY_GAME_TIEBREAK_FROM = "2026-11-01";
+
+/** «¿Y si hay empate?»: how ties in points are decided (Luis, 4 Oct). */
+function TiebreakDialog({
+  open,
+  onOpenChange,
+  myCorrect,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  myCorrect: number | null;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <IconTile tone="gold" solid size={56}>
+            <TargetGlyph size={30} />
+          </IconTile>
+          <DialogTitle className="font-display text-xl font-black tracking-tight">
+            {t('¿Y si hay empate?')}
+          </DialogTitle>
+          <DialogDescription className="m-0 text-sm font-semibold">
+            {t('Desde noviembre, si dos o más icademers tienen los mismos puntos, gana quien más aciertos tenga en el reto del día, del día 1 al 28.')}
+          </DialogDescription>
+          <p className="m-0 text-xs font-semibold text-muted-foreground">
+            {t('Solo cuenta la primera partida de cada día: repetirla no suma.')}
+          </p>
+          {myCorrect !== null ? (
+            <p
+              className="m-0 w-full rounded-2xl px-4 py-2.5 text-sm font-extrabold"
+              style={{ background: "var(--ica-gold-soft)", color: "var(--ica-gold-ink)" }}
+            >
+              {tn(myCorrect, 'Llevas {n} acierto este mes', 'Llevas {n} aciertos este mes')}
+            </p>
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 /** Detalle de puntos con el estilo de la app: cada apartado con su barra y cómo se gana. */
@@ -529,6 +576,7 @@ function FlameGlyph({ className }: { className?: string }) {
 export function LeaderboardView() {
   const { user } = useAuth();
   const { badge: myBadge } = useFeaturedBadge(user?.id);
+  const { shown: myFlag } = useMyFlags(user?.id);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const currentMonthStart = useMemo(() => toLocalMonthStart(new Date()), []);
   const monthOptions = useMemo(
@@ -544,6 +592,7 @@ const [error, setError] = useState<string | null>(null);
 const [selectedScoreBreakdown, setSelectedScoreBreakdown] = useState<ScoreBreakdown | null>(null);
 const [refreshTick, setRefreshTick] = useState(0);
 const [selectedPrizeRank, setSelectedPrizeRank] = useState<LeaderboardPrizeRank | null>(null);
+const [tiebreakOpen, setTiebreakOpen] = useState(false);
   const rows = fetchedRows;
 
   const isCurrentMonth = selectedMonth === currentMonthStart;
@@ -656,6 +705,22 @@ const [selectedPrizeRank, setSelectedPrizeRank] = useState<LeaderboardPrizeRank 
     [rows, user?.id],
   );
 
+  // Tie-break hint (Luis, 5 Oct): only the people tied on points with you (you included)
+  // show their first-try correct answers in the daily challenge.
+  const tiedWithMe = useMemo(() => {
+    if (!currentUserRow) return new Set<string>();
+    const mine = toComparablePoints(currentUserRow.total_points);
+    const tied = rows.filter((row) => toComparablePoints(row.total_points) === mine);
+    return new Set(tied.length > 1 ? tied.map((row) => row.user_id) : []);
+  }, [rows, currentUserRow]);
+  // The daily game breaks ties from November 2026 on (Luis, 6 Oct): before that it is not shown.
+  const tiebreakActive = selectedMonth >= DAILY_GAME_TIEBREAK_FROM;
+  const tieCorrectFor = (row: LeaderboardEntry): number | null =>
+    tiebreakActive &&
+    tiedWithMe.has(row.user_id) && row.daily_game_correct !== null && row.daily_game_correct !== undefined
+      ? Math.max(0, row.daily_game_correct)
+      : null;
+
   const openScoreBreakdown = (row: LeaderboardEntry) => {
     setSelectedScoreBreakdown(
       buildScoreBreakdown(
@@ -663,6 +728,7 @@ const [selectedPrizeRank, setSelectedPrizeRank] = useState<LeaderboardPrizeRank 
         includeIcaTestInScoreExplanation,
         row.user_id === user?.id,
         scoringDayCap,
+        selectedMonth,
       ),
     );
   };
@@ -677,6 +743,7 @@ const [selectedPrizeRank, setSelectedPrizeRank] = useState<LeaderboardPrizeRank 
         includeIcaTestInScoreExplanation,
         true,
         scoringDayCap,
+        selectedMonth,
       ),
     );
   }, [
@@ -693,6 +760,7 @@ const [selectedPrizeRank, setSelectedPrizeRank] = useState<LeaderboardPrizeRank 
       includeIcaTestInScoreExplanation,
       false,
       scoringDayCap,
+      selectedMonth,
     );
     return (
       <span className="inline-flex items-center gap-1">
@@ -710,6 +778,7 @@ const [selectedPrizeRank, setSelectedPrizeRank] = useState<LeaderboardPrizeRank 
       userId: row.user_id,
       name: row.display_name || row.username || "Usuario",
       badge: row.user_id === user?.id ? myBadge : parseFeaturedBadge(row.featured_badge),
+      flag: row.user_id === user?.id ? myFlag : row.display_flag ?? null,
     });
   };
 
@@ -724,6 +793,7 @@ const [selectedPrizeRank, setSelectedPrizeRank] = useState<LeaderboardPrizeRank 
         isMe={isMe}
         detail={rowDetail(row)}
         badge={isMe ? myBadge : parseFeaturedBadge(row.featured_badge)}
+        flag={isMe ? myFlag : row.display_flag ?? null}
         onRankClick={
           sharedRank <= 3
             ? () => setSelectedPrizeRank(sharedRank as LeaderboardPrizeRank)
@@ -731,6 +801,7 @@ const [selectedPrizeRank, setSelectedPrizeRank] = useState<LeaderboardPrizeRank 
         }
         onPointsClick={() => openScoreBreakdown(row)}
         onProfileClick={() => openProfile(row)}
+        tieCorrect={tieCorrectFor(row)}
       />
     );
   };
@@ -796,7 +867,21 @@ const [selectedPrizeRank, setSelectedPrizeRank] = useState<LeaderboardPrizeRank 
             {t('máx. {max} pts', { max: REFERENCE_MAX_POINTS })}
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setTiebreakOpen(true)}
+          className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border-2 px-3 text-xs font-extrabold transition-colors hover:bg-background/60"
+          style={{ borderColor: "var(--ica-gold-edge)", color: "var(--ica-gold-ink)" }}
+        >
+          <InfoIcon className="size-4" strokeWidth={2.8} aria-hidden="true" />
+          {t('¿Empate?')}
+        </button>
       </div>
+      <TiebreakDialog
+        open={tiebreakOpen}
+        onOpenChange={setTiebreakOpen}
+        myCorrect={myRankRow?.row.daily_game_correct ?? null}
+      />
 
       {/* Tu puesto: siempre arriba y en azul */}
       {!loading && !error && myRankRow ? (
@@ -806,6 +891,7 @@ const [selectedPrizeRank, setSelectedPrizeRank] = useState<LeaderboardPrizeRank 
             name={myRankRow.row.display_name || myRankRow.row.username || "Usuario"}
             points={getDisplayedTotalPoints(myRankRow.row, includeIcaTestInScoreExplanation)}
             onOpen={() => openScoreBreakdown(myRankRow.row)}
+            tieCorrect={tieCorrectFor(myRankRow.row)}
           />
         </div>
       ) : null}
@@ -835,9 +921,11 @@ const [selectedPrizeRank, setSelectedPrizeRank] = useState<LeaderboardPrizeRank 
                 points: getDisplayedTotalPoints(row, includeIcaTestInScoreExplanation),
                 isMe: row.user_id === user?.id,
                 badge: row.user_id === user?.id ? myBadge : parseFeaturedBadge(row.featured_badge),
+                flag: row.user_id === user?.id ? myFlag : row.display_flag ?? null,
                 onOpen: () => openScoreBreakdown(row),
                 onProfile: () => openProfile(row),
                 onPrize: () => setSelectedPrizeRank(Math.min(3, sharedRank) as LeaderboardPrizeRank),
+                tieCorrect: tieCorrectFor(row),
               }))}
             />
             <div className="ica-group mt-0 flex flex-col gap-0.5 py-1.5">

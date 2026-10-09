@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type Dispatch,
   type ReactNode,
   type SetStateAction,
@@ -63,7 +64,8 @@ import {
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { refreshIcaChallengeAlerts } from '../hooks/useIcaChallengeAlerts'
 import { FichaIcon, TrophyIcon } from '../game/icons'
-import { loadIcaCoinsState } from '../game/fichas'
+import { holdCoinsDisplay, loadIcaCoinsState, releaseCoinsDisplay, toWholeFichas } from '../game/fichas'
+import { gameSfx } from '../game/sfx'
 import { CHALLENGE_WIN_REWARD, CHALLENGE_WIN_WEEKLY_CAP } from '../game/rules'
 import { ReactionPanel } from '../game/reactions'
 import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocalMode'
@@ -169,6 +171,8 @@ const MODE_INFO: Record<string, { name: string; icon: LucideIcon; howTo: string 
 
 const FEEDBACK_MS_CORRECT = 1100
 const FEEDBACK_MS_WRONG = 2000
+/** Al fallar: da tiempo a oír cómo se dice la palabra (Luis, 3-4 oct). */
+const FEEDBACK_MS_WRONG_SPOKEN = 3400
 // Parejas: hay 5 resultados que leer.
 const FEEDBACK_MS_PAIRS_PERFECT = 1800
 const FEEDBACK_MS_PAIRS = 3800
@@ -181,6 +185,36 @@ function normalizeComparable(value: string): string {
 
 function firstName(name: string): string {
   return name.trim().split(/\s+/)[0] || name
+}
+
+
+// Coin that flies to the counter when you open a challenge you won (Luis, 6 Oct).
+const WIN_COIN_FLY_DELAY_MS = 1100
+const WIN_COIN_FLY_MS = 750
+const WIN_COIN_FLY_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000
+const WIN_COIN_COLLECTED_KEY = 'ica-challenge-win-coin-collected'
+
+function readCollectedWinCoins(): string[] {
+  try {
+    const raw = window.localStorage.getItem(WIN_COIN_COLLECTED_KEY)
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function winCoinCollected(challengeId: string): boolean {
+  return readCollectedWinCoins().includes(challengeId)
+}
+
+function markWinCoinCollected(challengeId: string): void {
+  try {
+    const next = [challengeId, ...readCollectedWinCoins().filter((item) => item !== challengeId)].slice(0, 60)
+    window.localStorage.setItem(WIN_COIN_COLLECTED_KEY, JSON.stringify(next))
+  } catch {
+    // Without storage the coin may fly again on a later visit; nothing else changes.
+  }
 }
 
 export function IcaChallengePlayView({
@@ -413,6 +447,12 @@ export function IcaChallengePlayView({
               key: Date.now(),
             })
             playQuickAnswer(step.result.isCorrect)
+            // Al fallar, una voz dice la buena mientras sigue el reloj (Luis, 4 oct).
+            if (!step.result.isCorrect) {
+              const word = step.result.reveal.target
+              const lang = answeredQuestion.language.target
+              later(() => void speakAsync(word, lang), 250)
+            }
           }
           applyStep(step)
           return
@@ -435,6 +475,12 @@ export function IcaChallengePlayView({
         })
         setPhase('feedback')
         playAnswer(step.result.isCorrect)
+        // Al fallar (en todos los modos menos Parejas), una voz dice cómo se dice de verdad la palabra.
+        const sayAnswer = !step.result.isCorrect && answeredQuestion.data.kind !== 'pairs' && Boolean(step.result.reveal.target)
+        if (sayAnswer) {
+          const word = step.result.reveal.target
+          later(() => void speakAsync(word, answeredQuestion.language.target), 450)
+        }
 
         if (step.pairs) {
           // Parejas: el siguiente tablero se pide al acabar de enseñar el resultado,
@@ -458,7 +504,7 @@ export function IcaChallengePlayView({
           )
           return
         }
-        later(() => applyStep(step), step.result.isCorrect ? FEEDBACK_MS_CORRECT : FEEDBACK_MS_WRONG)
+        later(() => applyStep(step), step.result.isCorrect ? FEEDBACK_MS_CORRECT : sayAnswer ? FEEDBACK_MS_WRONG_SPOKEN : FEEDBACK_MS_WRONG)
       } catch (error) {
         const message = error instanceof Error ? translateChallengeMessage(error.message) : t('No se pudo enviar tu respuesta.')
         toast.error(message)
@@ -493,39 +539,53 @@ export function IcaChallengePlayView({
 
   const startListening = useCallback(async () => {
     if (!question || question.kind !== 'speak') return
-    const remaining = (questionEndsAt ?? Date.now()) - Date.now()
-    if (remaining < 900) return
     cancelListenRef.current?.()
     setMicMessage(null)
     setSpeakStatus('starting')
-    const session = listenOnce(question.language.target, {
-      noSpeechMs: Math.min(remaining, 6000),
-      endSilenceMs: 900,
-      maxMs: remaining,
-      onInterim: (text) => {
-        heardRef.current = text
-        setHeard(text)
-        setSpeakStatus('listening')
-      },
-    })
-    cancelListenRef.current = session.cancel
-    setSpeakStatus('listening')
-    const outcome = await session.promise
-    if (!mountedRef.current) return
-    cancelListenRef.current = null
+    // The mic stays open for the whole turn: people often think for a few seconds
+    // before speaking, so silence never stops the turn or asks them to tap anything.
+    let stopped = false
+    for (;;) {
+      const remaining = (questionEndsAt ?? Date.now()) - Date.now()
+      if (remaining < 900) return
+      const session = listenOnce(question.language.target, {
+        noSpeechMs: remaining,
+        endSilenceMs: 900,
+        maxMs: remaining,
+        onInterim: (text) => {
+          heardRef.current = text
+          setHeard(text)
+          setSpeakStatus('listening')
+        },
+      })
+      cancelListenRef.current = () => {
+        stopped = true
+        session.cancel()
+      }
+      setSpeakStatus('listening')
+      const outcome = await session.promise
+      if (!mountedRef.current || stopped || outcome.status === 'cancelled') return
+      cancelListenRef.current = null
 
-    if (outcome.status === 'cancelled') return
-    if (outcome.status === 'heard') {
-      heardRef.current = outcome.transcript
-      setHeard(outcome.transcript)
-      setSpeakStatus('checking')
-      void submit({ transcripts: outcome.candidates.length ? outcome.candidates : [outcome.transcript] })
-      return
+      if (outcome.status === 'heard') {
+        heardRef.current = outcome.transcript
+        setHeard(outcome.transcript)
+        setSpeakStatus('checking')
+        void submit({ transcripts: outcome.candidates.length ? outcome.candidates : [outcome.transcript] })
+        return
+      }
+      if (outcome.status === 'error') {
+        setSpeakStatus('idle')
+        setMicMessage(t(outcome.message))
+        return
+      }
+      // Silence or nothing understood: keep listening quietly while time is left.
+      cancelListenRef.current = () => {
+        stopped = true
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 250))
+      if (!mountedRef.current || stopped) return
     }
-    setSpeakStatus('idle')
-    setMicMessage(
-      outcome.status === 'error' ? t(outcome.message) : t('No te he oído bien. Toca «Repetir» y dila otra vez.'),
-    )
   }, [question, questionEndsAt, submit])
 
   useEffect(() => {
@@ -633,20 +693,78 @@ export function IcaChallengePlayView({
     Boolean(state?.me.userId) &&
     challenge?.winnerUserId === state?.me.userId
 
+  // The won coin flies from the «+1 ICA Coin» pill to the top-right counter, once per
+  // challenge (Luis, 6 Oct). The server already credited it; the counter just waits for it.
+  const winCoinPillRef = useRef<HTMLSpanElement>(null)
+  const [winCoinFlyer, setWinCoinFlyer] = useState<{ x: number; y: number; dx: number; dy: number } | null>(null)
+  const heldWinCoinRef = useRef(false)
+
   useEffect(() => {
     if (!iWon || celebratedRef.current) return
     celebratedRef.current = true
+    const timers: number[] = []
     if (challenge?.id && state?.me.userId) {
-      void loadIcaCoinsState(state.me.userId).then((coins) => {
+      const challengeId = challenge.id
+      let flyPending = false
+      void loadIcaCoinsState(state.me.userId, {
+        beforePublish: (coins) => {
+          const entry = coins.entries.find(
+            (item) => item.type === 'challenge_win' && item.challengeId === challengeId,
+          )
+          if (!entry || entry.delta <= 0 || winCoinCollected(challengeId)) return
+          if (Date.now() - entry.createdAt > WIN_COIN_FLY_MAX_AGE_MS) return
+          flyPending = true
+          heldWinCoinRef.current = true
+          holdCoinsDisplay(toWholeFichas(coins.balance) - toWholeFichas(coins.balance - entry.delta))
+        },
+      }).then((coins) => {
         const entry = coins?.entries.find(
-          (item) => item.type === 'challenge_win' && item.challengeId === challenge.id,
+          (item) => item.type === 'challenge_win' && item.challengeId === challengeId,
         )
         if (entry && entry.delta <= 0) {
           setWinCoin((coins?.challengeWinsThisWeek ?? 0) >= CHALLENGE_WIN_WEEKLY_CAP ? 'week' : 'wallet')
         }
+        if (!flyPending) return
+        timers.push(window.setTimeout(() => {
+          markWinCoinCollected(challengeId)
+          heldWinCoinRef.current = false
+          const source = winCoinPillRef.current?.getBoundingClientRect()
+          const target = Array.from(document.querySelectorAll<HTMLElement>('[data-coin-target]'))
+            .map((element) => element.getBoundingClientRect())
+            .find((rect) => rect.width > 0 && rect.height > 0 && rect.bottom > 0)
+          const reduceMotion =
+            typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+          if (!source || !target || reduceMotion) {
+            releaseCoinsDisplay(0)
+            return
+          }
+          const x = source.left + 12 - 14
+          const y = source.top + source.height / 2 - 14
+          setWinCoinFlyer({
+            x,
+            y,
+            dx: target.left + target.width / 2 - 14 - x,
+            dy: target.top + target.height / 2 - 14 - y,
+          })
+          timers.push(window.setTimeout(() => {
+            gameSfx.coin()
+            releaseCoinsDisplay(0)
+          }, WIN_COIN_FLY_MS))
+          timers.push(window.setTimeout(() => setWinCoinFlyer(null), WIN_COIN_FLY_MS + 150))
+        }, WIN_COIN_FLY_DELAY_MS))
       }).catch(() => undefined)
     }
-    return launchWinConfetti()
+    const stopConfetti = launchWinConfetti()
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer))
+      // Left before the coin flew: show the real balance; it flies on the next visit.
+      if (heldWinCoinRef.current) {
+        heldWinCoinRef.current = false
+        releaseCoinsDisplay(0)
+      }
+      if (typeof stopConfetti === 'function') stopConfetti()
+      celebratedRef.current = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [iWon])
 
@@ -916,6 +1034,23 @@ export function IcaChallengePlayView({
 
     return renderPage(
       <>
+        {winCoinFlyer ? (
+          <div className='pointer-events-none fixed inset-0 z-[140]' aria-hidden='true'>
+            <span
+              className='ica-coin-fly absolute'
+              style={
+                {
+                  left: winCoinFlyer.x,
+                  top: winCoinFlyer.y,
+                  '--dx': `${winCoinFlyer.dx}px`,
+                  '--dy': `${winCoinFlyer.dy}px`,
+                } as CSSProperties
+              }
+            >
+              <FichaIcon size={28} />
+            </span>
+          </div>
+        ) : null}
         {header}
         <div className='mb-4 text-center'>
           {completed && (won || draw) && (
@@ -929,6 +1064,7 @@ export function IcaChallengePlayView({
           {subtitle && <p className='mt-1 text-sm font-semibold text-muted-foreground'>{subtitle}</p>}
           {won ? (
             <span
+              ref={winCoinPillRef}
               className='ica-pop mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-black'
               style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
             >

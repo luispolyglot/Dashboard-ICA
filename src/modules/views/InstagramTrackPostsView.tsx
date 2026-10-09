@@ -37,7 +37,6 @@ function formatDate(value: Date): string {
   return value.toLocaleString(uiLocale(), {
     dateStyle: 'short',
     timeStyle: 'short',
-    timeZone: 'UTC',
   })
 }
 

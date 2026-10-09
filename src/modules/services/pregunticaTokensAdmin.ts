@@ -5,6 +5,7 @@ type PregunticaTokensAdminRow = {
   username: string | null
   monthly_tokens: number | string | null
   manual_tokens: number | string | null
+  balance?: number | string | null
 }
 
 type PregunticaManualUpdateRow = {
@@ -18,6 +19,8 @@ export type PregunticaTokensAdminUser = {
   username: string
   monthlyTokens: number
   manualTokens: number
+  /** Saldo real de ICA Coins (todo lo ganado, dado y gastado). */
+  balance: number
 }
 
 export type PregunticaManualTokensUpdateResult = {
@@ -73,6 +76,7 @@ export async function fetchPregunticaTokensAdminOverview(): Promise<PregunticaTo
     username: row.username?.trim() || 'sin-username',
     monthlyTokens: toNumber(row.monthly_tokens),
     manualTokens: toNumber(row.manual_tokens),
+    balance: toNumber(row.balance),
   }))
 }
 
@@ -105,6 +109,49 @@ export async function updatePregunticaManualTokensForUser(
     ? data[0]
     : data) as PregunticaManualUpdateRow | undefined
 
+  if (!row) {
+    throw new PregunticaTokensAdminError('Respuesta inválida al actualizar las ICA Coins.')
+  }
+
+  return {
+    manualTokens: toNumber(row.manual_tokens),
+    appliedDelta: toNumber(row.applied_delta),
+    balanceAfter: toNumber(row.balance_after),
+  }
+}
+
+/**
+ * Da (cantidad > 0) o quita (cantidad < 0) ICA Coins a una persona: suma o resta exactamente eso.
+ * El servidor no deja que el saldo baje de 0.
+ */
+export async function adjustPregunticaManualTokensForUser(
+  userId: string,
+  delta: number,
+): Promise<PregunticaManualTokensUpdateResult> {
+  if (!supabase) {
+    throw new PregunticaTokensAdminError('Supabase no está configurado.')
+  }
+  if (!Number.isInteger(delta) || delta === 0 || Math.abs(delta) > 10000) {
+    throw new PregunticaTokensAdminError('Escribe un número entero entre 1 y 10.000.')
+  }
+
+  const { data, error } = await supabase.rpc('adjust_preguntica_manual_tokens', {
+    p_user_id: userId,
+    p_delta: delta,
+  })
+
+  if (error) {
+    const status = getErrorStatus(error)
+    if (status === 403 || error.message?.includes('FORBIDDEN')) {
+      throw new PregunticaTokensAdminError('No tienes permisos para cambiar ICA Coins.', 403)
+    }
+    if (error.message?.includes('BALANCE_WOULD_BE_NEGATIVE')) {
+      throw new PregunticaTokensAdminError('No puede quedarse con menos de 0 ICA Coins.', status)
+    }
+    throw new PregunticaTokensAdminError('No se pudieron actualizar las ICA Coins.', status)
+  }
+
+  const row = (Array.isArray(data) ? data[0] : data) as PregunticaManualUpdateRow | undefined
   if (!row) {
     throw new PregunticaTokensAdminError('Respuesta inválida al actualizar las ICA Coins.')
   }

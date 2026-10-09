@@ -1,4 +1,5 @@
 import { jsonResponse } from '../_shared/http.ts'
+import { buildChallengeJobPush, firstNameOf } from '../_shared/ica-challenge-job-notices.ts'
 import type { AdminClient, ChallengeScope, LanguagePair } from './types.ts'
 import {
   buildModeSettings,
@@ -296,11 +297,24 @@ export async function createChallenge(
 
   const challengeId = deps.toText(challengeIdValue)
 
+  // The invite names who sent it: «Sofía te retó a ...» (Luis, 6 Oct).
+  const { data: challengerProfile } = await adminClient
+    .from('profiles')
+    .select('display_name, username')
+    .eq('id', userId)
+    .maybeSingle()
+  const challengerName = firstNameOf(
+    deps.toText(challengerProfile?.display_name),
+    deps.toText(challengerProfile?.username),
+  )
+
   await deps.sendPushToUser({
     adminClient,
     userId: challengedUserId,
     title: 'Nuevo desafío ICA',
-    body: `Te retaron a «${challengeType.nombre}». Respóndelo para empezar.`,
+    body: challengerName
+      ? `${challengerName} te retó a «${challengeType.nombre}». Respóndelo para empezar.`
+      : `Te retaron a «${challengeType.nombre}». Respóndelo para empezar.`,
     tag: `ica-challenge-created-${challengeId}`,
     url: '/desafios-ica',
   })
@@ -331,7 +345,7 @@ export async function respondInvitation(
   const nowTs = Date.now()
   const acceptUntilTs = existing.accept_until ? Date.parse(existing.accept_until) : NaN
   if (Number.isFinite(acceptUntilTs) && acceptUntilTs <= nowTs) {
-    await adminClient
+    const { data: expiredRows } = await adminClient
       .from('ica_challenges')
       .update({
         status: 'not_accepted',
@@ -342,6 +356,31 @@ export async function respondInvitation(
         turn_expires_at: null,
       })
       .eq('id', challengeId)
+      .eq('status', 'created')
+      .select('id')
+    if (((expiredRows || []) as unknown[]).length === 0) {
+      return jsonResponse(400, { error: 'El reto ya caducó.' })
+    }
+    // Same notice the expiration job would have sent to the challenger.
+    const { data: lateProfile } = await adminClient
+      .from('profiles')
+      .select('display_name, username')
+      .eq('id', userId)
+      .maybeSingle()
+    const notice = buildChallengeJobPush(
+      {
+        id: 0,
+        challenge_id: challengeId,
+        user_id: deps.toText(existing.challenger_user_id),
+        rival_user_id: userId,
+        kind: 'invite_expired',
+        outcome: null,
+        timed_out: false,
+      },
+      firstNameOf(deps.toText(lateProfile?.display_name), deps.toText(lateProfile?.username)),
+      false,
+    )
+    if (notice) await deps.sendPushToUser({ adminClient, ...notice })
     return jsonResponse(400, { error: 'El reto ya caducó.' })
   }
 

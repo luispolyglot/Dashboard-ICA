@@ -63,8 +63,9 @@ export async function fetchMyMonthlyAnalytics(
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
       .eq('success', true)
-      .eq('target_lang', targetLang)
-      .eq('native_lang', nativeLang)
+      // Case-insensitive (see phraseHistory.ts): some phrases were saved in lower case.
+      .ilike('target_lang', targetLang.replace(/[\\%_]/g, (char) => `\\${char}`))
+      .ilike('native_lang', nativeLang.replace(/[\\%_]/g, (char) => `\\${char}`))
       .gte('created_at', startIso)
       .lt('created_at', endIso),
     supabase

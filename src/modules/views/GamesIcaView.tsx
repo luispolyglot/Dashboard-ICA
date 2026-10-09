@@ -8,7 +8,9 @@ import { DASHBOARD_ROUTES } from '../routes/paths'
 import { useChallengeEnabled } from '../services/challengeChunks'
 import { useFeatureFlagsStore } from '../stores/featureFlagsStore'
 import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocalMode'
-import { ChallengeAlertPill } from '../components/IcaChallenges/ChallengeAlertBadge'
+import { ChallengeAlertPill, ChallengeNotePill } from '../components/IcaChallenges/ChallengeAlertBadge'
+import { ChallengeNoteUnlockGuide } from '../game/WelcomeTour'
+import { usePendingChallengeNotes } from '../game/usePendingChallengeNotes'
 import {
   challengesRouteForAlerts,
   describeIcaChallengeAlerts,
@@ -22,7 +24,7 @@ import {
 } from '../game/rules'
 import { useActivatedWords } from '../game/useActivatedWords'
 import { useClosedMasterNotes } from '../game/useClosedMasterNotes'
-import { t } from '@/i18n'
+import { t, tn } from '@/i18n'
 
 type GamesIcaViewProps = {
   flashcardsReady: boolean
@@ -66,6 +68,7 @@ function GameTile({
   disabled = false,
   color,
   badge,
+  tour,
 }: {
   icon: ReactNode
   title: string
@@ -76,12 +79,15 @@ function GameTile({
   disabled?: boolean
   color: string
   badge?: ReactNode
+  /** Marker for the welcome tour. */
+  tour?: string
 }) {
   return (
     <button
       type='button'
       onClick={onClick}
       disabled={disabled}
+      data-tour={tour}
       className='relative flex min-h-[156px] flex-col items-start gap-1.5 rounded-3xl border-2 border-border bg-card p-4 text-left transition-colors hover:bg-muted/50 active:bg-muted disabled:cursor-not-allowed disabled:opacity-60 lg:min-h-[176px] lg:p-5'
     >
       <span
@@ -126,12 +132,13 @@ export function GamesIcaView({
   const challengeAlertText = describeIcaChallengeAlerts(challengeAlerts)
   const challengeNoteEnabled = useChallengeEnabled()
   const { activatedWords, flashcardsUnlocked } = useActivatedWords()
-  const { count: closedNotes } = useClosedMasterNotes(config?.targetLang, config?.nativeLang)
+  const { notes: closedNoteList, count: closedNotes } = useClosedMasterNotes(config?.targetLang, config?.nativeLang)
   const progress = parseProgress(pregunticaProgress)
   const pregunticaPct = (progress.current / progress.total) * 100
   const reviewedToday = Math.min(getTodayProgress(dailyProgress).reviewCorrect, GOAL)
   const flashcardsOpen = flashcardsReady && flashcardsUnlocked
   const challengeReady = closedNotes !== null && closedNotes >= CHALLENGE_NOTE_MIN_CLOSED_NOTES
+  const pendingChallengeNotes = usePendingChallengeNotes(closedNoteList, challengeNoteEnabled && challengeReady)
 
   useEffect(() => {
     void loadFlags()
@@ -148,6 +155,7 @@ export function GamesIcaView({
         <GameTile
           icon={<CardsIcon size={30} />}
           title={t('Flashcards')}
+          tour='game-flashcards'
           color='var(--primary)'
           disabled={!flashcardsReady}
           locked={flashcardsReady && !flashcardsUnlocked}
@@ -170,6 +178,7 @@ export function GamesIcaView({
           <GameTile
             icon={<SwordsIcon size={32} />}
             title={t('Desafíos ICA')}
+            tour='game-challenges'
             color='var(--ica-a)'
             onClick={() => navigate(challengesRouteForAlerts(challengeAlerts))}
             status={challengeAlertText ? t('¡Tienes retos esperando!') : t('Retos 1 vs 1 con tus palabras ICA')}
@@ -180,6 +189,7 @@ export function GamesIcaView({
         <GameTile
           icon={<MicGlyph size={30} />}
           title={t('PreguntICA')}
+          tour='game-preguntica'
           color='var(--ica-c)'
           locked={!pregunticaUnlocked}
           onClick={() => navigate(DASHBOARD_ROUTES.preguntica)}
@@ -195,11 +205,21 @@ export function GamesIcaView({
           <GameTile
             icon={<TargetGlyph size={30} />}
             title={t('Nota desafiante')}
+            tour='game-challenge-note'
             color='var(--ica-gold-edge)'
             locked={closedNotes !== null && !challengeReady}
             onClick={() => navigate(DASHBOARD_ROUTES.notaDesafiante)}
+            badge={
+              pendingChallengeNotes.length > 0 ? <ChallengeNotePill count={pendingChallengeNotes.length} /> : undefined
+            }
             status={
-              closedNotes === null
+              pendingChallengeNotes.length > 0
+                ? tn(
+                    pendingChallengeNotes.length,
+                    '¡Tienes una nota desafiante esperando!',
+                    '¡Tienes {n} notas desafiantes esperando!',
+                  )
+                : closedNotes === null
                 ? t('Elige una nota maestra terminada')
                 : challengeReady
                   ? t('Elige una nota maestra terminada')
@@ -210,6 +230,7 @@ export function GamesIcaView({
         ) : null}
       </div>
 
+      <ChallengeNoteUnlockGuide unlocked={challengeNoteEnabled && challengeReady} />
     </section>
   )
 }

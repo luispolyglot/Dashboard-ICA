@@ -10,8 +10,11 @@ import {
   DumbbellIcon,
   FileTextIcon,
   LoaderCircleIcon,
+  MicIcon,
 } from 'lucide-react'
 import { TargetGlyph } from '../game/icons'
+import { buildWeekRings, isTaskAnswered } from '../game/coachingRings'
+import { CoachingWeekRingsMini } from './coaching/CoachingWeekRings'
 import { useAuth } from '@/auth/AuthContext'
 import { cn } from '@/lib/utils'
 import {
@@ -161,12 +164,21 @@ function getNextStep(data: HomeCoachingData): NextStep {
     }
   }
 
-  const tasks = classes.flatMap((row) => [
-    row.studentGuidelineResponse1,
-    row.studentGuidelineResponse2,
-    row.studentGuidelineResponse3,
-  ])
-  const pendingTasks = tasks.filter((value) => !value?.trim()).length
+  // Feedback to an audio task from the last 2 days (Luis, 6 Oct).
+  const recentFeedback = classes
+    .flatMap((row) => row.audioAnswers || [])
+    .some((answer) => answer.feedbackAt && now - new Date(answer.feedbackAt).getTime() < 48 * 3600 * 1000)
+  if (recentFeedback) {
+    return {
+      icon: <MicIcon className='size-3.5' strokeWidth={2.4} />,
+      text: t('Tu coach te ha respondido a tu audio'),
+      cta: { label: t('Escuchar'), to: getCoachingPersonalizedSessionRoute(membership.id) },
+      urgent: true,
+    }
+  }
+
+  const tasks = classes.flatMap((row) => ([1, 2, 3] as const).map((task) => isTaskAnswered(row, task)))
+  const pendingTasks = tasks.filter((answered) => !answered).length
   if (tasks.length > 0 && pendingTasks > 0) {
     return {
       icon: <ClipboardListIcon className='size-3.5' strokeWidth={2.4} />,
@@ -304,6 +316,12 @@ export function CoachingHomeCard({
   const closedWeeks = new Set(
     (board?.periodActivations || []).filter((row) => row.endedAt).map((row) => row.periodNumber),
   )
+  const rings = buildWeekRings({
+    classes: board?.classes || [],
+    durationPeriods: totalWeeks,
+    activatedPeriods: new Set((board?.periodActivations || []).map((row) => row.periodNumber)),
+    closedPeriods: closedWeeks,
+  })
   const activeFocuses = (board?.focuses || [])
     .filter((focus) => focus.periodNumber === currentWeek && !focus.archivedAt)
     .filter((focus) => !PHASE_KEYS.every((key) => focus[key]))
@@ -332,10 +350,11 @@ export function CoachingHomeCard({
           }
         }}
         className={cn(
-          'coaching-hero relative flex w-full cursor-pointer items-center gap-3 overflow-hidden rounded-2xl px-3 py-2.5 text-left text-white active:translate-y-[2px]',
+          'coaching-hero relative flex w-full cursor-pointer flex-col gap-2.5 overflow-hidden rounded-2xl px-3 py-2.5 text-left text-white active:translate-y-[2px]',
           className,
         )}
       >
+        <div className='flex w-full items-center gap-3'>
         <span
           className='flex size-10 shrink-0 items-center justify-center rounded-xl'
           style={{ background: 'var(--ica-gold)', boxShadow: '0 3px 0 var(--ica-gold-edge)' }}
@@ -369,6 +388,9 @@ export function CoachingHomeCard({
         ) : (
           <ChevronRightIcon className='size-5 shrink-0 text-white/70' aria-hidden='true' />
         )}
+        </div>
+        {/* The weeks as rings, also on the phone (Luis, 7 Oct). */}
+        <CoachingWeekRingsMini rings={rings} currentPeriod={currentWeek} size={26} compact />
       </div>
     )
   }
@@ -400,15 +422,16 @@ export function CoachingHomeCard({
             <CrownIcon className='size-3' strokeWidth={2.8} aria-hidden='true' />
             {t('Tu coaching')}
           </p>
-          <h2 className='m-0 mt-2 font-display text-2xl leading-none font-black tracking-tight'>
+          {/* Level and coach sit small next to the language, to save a line (Luis, 6 Oct). */}
+          <h2 className='m-0 mt-2 flex flex-wrap items-baseline gap-x-2 font-display text-2xl leading-none font-black tracking-tight'>
             {langName(membership.targetLang)}
+            <span className='font-sans text-xs font-bold tracking-normal text-white/70'>
+              {membership.level} · {(() => {
+                const second = (membership.coachDisplayName || '').trim()
+                return second && second.toLowerCase() !== 'luis' ? t('con Luis y {name}', { name: second }) : t('con Luis')
+              })()}
+            </span>
           </h2>
-          <p className='m-0 mt-1.5 text-xs font-bold text-white/70'>
-            {membership.level} · {(() => {
-              const second = (membership.coachDisplayName || '').trim()
-              return second && second.toLowerCase() !== 'luis' ? t('con Luis y {name}', { name: second }) : t('con Luis')
-            })()}
-          </p>
         </div>
         <p className='m-0 shrink-0 text-right text-xs font-bold text-white/70'>
           {t('Semana')}
@@ -419,48 +442,36 @@ export function CoachingHomeCard({
         </p>
       </div>
 
-      {/* Recorrido de semanas */}
-      <div
-        className='relative mt-4 grid gap-1'
-        style={{ gridTemplateColumns: `repeat(${totalWeeks}, minmax(0, 1fr))` }}
-        aria-label={t('Semana {n} de {total}', { n: currentWeek, total: totalWeeks })}
-      >
-        {Array.from({ length: totalWeeks }, (_, idx) => {
-          const week = idx + 1
-          const done = closedWeeks.has(week) || week < currentWeek
-          const current = week === currentWeek
-          return (
-            <span
-              key={week}
-              className='h-2 rounded-full'
-              style={{ background: current ? '#ffffff' : done ? 'var(--ica-gold)' : 'rgba(255,255,255,0.15)' }}
-            />
-          )
-        })}
+      {/* Recorrido: un anillo por semana, se llena con las 6 tareas (Luis, 6-7 oct). */}
+      <div className='relative mt-4 rounded-2xl bg-white/6 px-3 pt-3 pb-2'>
+        <CoachingWeekRingsMini rings={rings} currentPeriod={currentWeek} size={40} />
       </div>
 
-      {/* Los focos de la semana */}
-      <div className='relative mt-4 space-y-2'>
+      {/* The week's focuses side by side in one row, so the card keeps its height with 1, 2 or 3
+          and your level and ICA games stay in view (Luis, 6 Oct). */}
+      <div className='relative mt-4'>
         {activeFocuses.length === 0 ? (
           <p className='m-0 text-xs font-semibold text-white/70'>{t('Tu coach añadirá tus focos en la próxima clase.')}</p>
         ) : (
-          activeFocuses.map((focus) => {
-            const progress = PHASE_KEYS.filter((key) => focus[key]).length
-            return (
-              <div key={focus.id} className='flex items-center justify-between gap-3'>
-                <span className='min-w-0 truncate text-sm font-bold'>{focus.focusTitle}</span>
-                <span className='flex shrink-0 items-center gap-1' aria-label={t('{n} de 4 fases', { n: progress })}>
-                  {PHASE_KEYS.map((key, idx) => (
-                    <span
-                      key={key}
-                      className='h-2 w-4 rounded-full'
-                      style={{ background: idx < progress ? 'var(--ica-gold)' : 'rgba(255,255,255,0.18)' }}
-                    />
-                  ))}
-                </span>
-              </div>
-            )
-          })
+          <div className='grid grid-cols-3 gap-2'>
+            {activeFocuses.map((focus) => {
+              const progress = PHASE_KEYS.filter((key) => focus[key]).length
+              return (
+                <div key={focus.id} className='min-w-0 rounded-xl bg-white/8 px-2.5 py-2'>
+                  <span className='block truncate text-[13px] leading-tight font-bold'>{focus.focusTitle}</span>
+                  <span className='mt-1.5 flex items-center gap-1' aria-label={t('{n} de 4 fases', { n: progress })}>
+                    {PHASE_KEYS.map((key, idx) => (
+                      <span
+                        key={key}
+                        className='h-1.5 flex-1 rounded-full'
+                        style={{ background: idx < progress ? 'var(--ica-gold)' : 'rgba(255,255,255,0.18)' }}
+                      />
+                    ))}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
         )}
       </div>
 

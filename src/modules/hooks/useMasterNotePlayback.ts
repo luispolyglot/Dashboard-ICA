@@ -170,6 +170,8 @@ function clamp(value: number, min: number, max: number): number {
 export function useMasterNotePlayback() {
   const { user } = useAuth()
   const [playingNoteId, setPlayingNoteId] = useState<string | null>(null)
+  // Name of the note that is playing (the mini player shows it on other screens).
+  const [playingNoteName, setPlayingNoteName] = useState<string | null>(null)
   const [isPaused, setIsPaused] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [positionSec, setPositionSec] = useState(0)
@@ -399,17 +401,13 @@ export function useMasterNotePlayback() {
       const audioNow = audio.currentTime || 0
       const lastAt = listeningLastTickAtRef.current
       const lastAudio = listeningLastAudioTimeRef.current
-
       if (lastAt !== null && lastAudio !== null) {
-        // Timer callbacks can be throttled while the app is backgrounded. Count actual audio
-        // progress, bounded by elapsed wall time, instead of assuming each callback was on time.
-        const playedSeconds = audioNow - lastAudio
-        const elapsedSeconds = (now - lastAt) / 1000
-        if (playedSeconds > 0 && playedSeconds <= elapsedSeconds + 2) {
-          listeningBufferedSecondsRef.current += playedSeconds
+        const played = audioNow - lastAudio
+        const wall = (now - lastAt) / 1000
+        if (played > 0 && played <= wall + 2) {
+          listeningBufferedSecondsRef.current += played
         }
       }
-
       if (audio.paused) {
         listeningLastTickAtRef.current = null
         listeningLastAudioTimeRef.current = null
@@ -819,6 +817,7 @@ export function useMasterNotePlayback() {
     setDurationSec(track.durationSec)
     setPositionSec(0)
     setPlayingNoteId(note.id)
+    setPlayingNoteName(note.name || null)
     // Nota desafiante: solo cuenta la escucha de notas maestras cerradas.
     challengeNoteRef.current =
       note.state === 'closed' ? { id: note.id, durationMs: note.total_duration_ms } : null
@@ -837,6 +836,7 @@ export function useMasterNotePlayback() {
     error,
     clearError: () => setError(null),
     playingNoteId,
+    playingNoteName,
     canPlay,
     play,
     playTransitionCue,

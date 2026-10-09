@@ -9,6 +9,7 @@ import { CREATION_WORDS_GOAL, getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { CYCLE_CELEBRATION_CLOSED_EVENT, openCycleCelebration } from './CycleCelebration'
+import { STREAK_DAY_CELEBRATION_EVENT, isStreakDayCelebrationOpen } from './StreakDayCelebration'
 import {
   claimCycleChest,
   claimReachedMilestones,
@@ -41,6 +42,10 @@ import { t, tn } from '@/i18n'
 //
 // En el móvil, el nombre de cada paso va debajo de su ficha. Al volver a Inicio tras hacer un
 // paso, el camino se rellena (una vez) hasta el siguiente, que se despierta (ver pathFill.ts).
+//
+// MOBILE (Luis, 5 Oct, mix of mockups B3 + B6): I, C and A in a row joined by the dashed road;
+// below, the road forks into the cycle chest and the daily challenge, which unlock TOGETHER
+// when the cycle is done. The ready chest rattles every couple of seconds to ask to be opened.
 
 type Phase = {
   letter: 'I' | 'C' | 'A'
@@ -144,6 +149,11 @@ function chestTileStyle(state: NodeState): CSSProperties {
 
 /** Reto del día: bloqueado, ficha clara en azul; disponible y hecho, morado (su color de minijuego); hecho, con borde fino. */
 const CHEST_RING = 'rgb(255 199 44 / 0.45)'
+/** Border of the mobile boxes (I·C·A, chest, challenge) once that part is done. */
+const DONE_SLOT_BORDER: CSSProperties = {
+  borderWidth: 3,
+  borderColor: 'color-mix(in oklab, var(--ica-i) 70%, transparent)',
+}
 const RETO_RING = 'rgb(162 89 240 / 0.35)'
 function retoTileStyle(state: NodeState): CSSProperties {
   if (state === 'locked') return bonusTileStyle(state)
@@ -159,45 +169,37 @@ function retoIconStyle(state: NodeState): CSSProperties {
 type NodeState = 'done' | 'next' | 'pending' | 'locked'
 type StepKey = 'I' | 'C' | 'A' | 'chest' | 'review'
 
-// Posiciones del camino (en píxeles). En el móvil va apretado; en ordenador hay sitio
-// y las fases se separan más (más recorrido entre la I, la C y la A).
-type Geometry = { width: number; height: number; tops: Record<StepKey, number>; centers: Array<[number, number]> }
-
 // Paradas del camino, en orden (el relleno del camino va de una a la siguiente).
 const STEP_ORDER: StepKey[] = ['I', 'C', 'A', 'chest', 'review']
+/** Gap between the chest unlock sound and the challenge unlock sound. */
+const CHALLENGE_UNLOCK_SOUND_DELAY_MS = 850
+/** The chest rattle (index.css) lasts 2.2 s and starts shaking at 56-58 %. */
+const CHEST_RATTLE_SHAKE_AT_MS = 1230
 
-/** Centro de las fichas del móvil, medido desde su borde (izquierdo o derecho). */
-const TILE_CENTER = 66
+/** CSS position relative to a horizontal anchor (`cx`, e.g. '18%'), in px. */
+const at = (cx: string, offset: number): string => `calc(${cx} + ${offset}px)`
 
-function geometry(wide: boolean): Geometry {
-  // En el móvil el camino es algo más estrecho que la pantalla: así el nombre de cada paso,
-  // centrado debajo de su ficha, cabe aunque sea largo («COFRE DEL CICLO»).
-  const width = wide ? 420 : 322
-  const step = wide ? 150 : 100
-  const tops: Record<StepKey, number> = { I: 4, C: 4 + step, A: 4 + step * 2, chest: 4 + step * 3, review: 4 + step * 3 + (wide ? 130 : 92) }
-  const right = width - 66
-  const centers: Array<[number, number]> = [
-    [66, tops.I + 42],
-    [right, tops.C + 42],
-    [66, tops.A + 42],
-    [right, tops.chest + 34],
-    [66, tops.review + 38],
-  ]
-  // En el móvil, debajo del Reto del día va su nombre (y el texto de ayuda si toca).
-  return { width, height: tops.review + (wide ? 86 : 176), tops, centers }
-}
+/** Cuánto se separa la S del centro, a un lado y a otro (px). */
+const S_SWING = 95
 
-const MOBILE_GEOMETRY = geometry(false)
-export const PATH_HEIGHT = MOBILE_GEOMETRY.height
-const DESKTOP_GEOMETRY = geometry(true)
-
-function pathD(centers: Array<[number, number]>): string {
+/**
+ * Camino que pasa por el centro de cada ficha. Entre dos fichas en la misma columna hace una S
+ * (una vez sale por la derecha, la siguiente por la izquierda); si no, una curva suave.
+ * `firstIndex` es la parada en la que empieza (para que los tramos parciales sigan la misma S).
+ */
+function pathD(centers: Array<[number, number]>, firstIndex = 0): string {
   let d = `M${centers[0][0]} ${centers[0][1]}`
   for (let index = 1; index < centers.length; index += 1) {
     const [x1, y1] = centers[index - 1]
     const [x2, y2] = centers[index]
-    const mid = (x1 + x2) / 2
-    d += ` C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`
+    if (Math.abs(x1 - x2) < 1) {
+      const side = (firstIndex + index - 1) % 2 === 0 ? 1 : -1
+      const bend = (y2 - y1) / 3
+      d += ` C ${x1 + side * S_SWING} ${y1 + bend}, ${x2 + side * S_SWING} ${y2 - bend}, ${x2} ${y2}`
+    } else {
+      const mid = (x1 + x2) / 2
+      d += ` C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`
+    }
   }
   return d
 }
@@ -225,7 +227,7 @@ function Road({
   const road = pathD(centers)
   const painted = fill ? fill.from : reached
   const doneRoad = painted > 0 ? pathD(centers.slice(0, painted + 1)) : null
-  const fillRoad = fill ? pathD(centers.slice(fill.from, fill.to + 1)) : null
+  const fillRoad = fill ? pathD(centers.slice(fill.from, fill.to + 1), fill.from) : null
   const dashed = {
     fill: 'none',
     strokeLinecap: 'round' as const,
@@ -258,17 +260,14 @@ function Road({
   )
 }
 
-/** Al tocar algo bloqueado: tiembla un poco (y el móvil vibra), para que se note que no se puede. */
+/** Al tocar algo bloqueado: tiembla, suena «toc-toc» y el móvil vibra, para que se note que no se puede. */
 function shakeLocked(event: MouseEvent<HTMLElement>): void {
   const element = event.currentTarget
   element.classList.remove('ica-shake')
   void element.offsetWidth
   element.classList.add('ica-shake')
-  try {
-    navigator.vibrate?.(35)
-  } catch {
-    /* sin vibración */
-  }
+  // «toc-toc» y vibración (Luis, 3 oct: el sonido del paso bloqueado).
+  gameSfx.locked()
 }
 
 /**
@@ -290,14 +289,19 @@ function StartChip({
   label = 'EMPIEZA AQUÍ',
   color,
   textColor = '#ffffff',
+  compact = false,
 }: {
   label?: string
   color: string
   textColor?: string
+  /** Narrower, to fit centred right under a tile near the edge of the box (Luis, 7 Oct). */
+  compact?: boolean
 }) {
   return (
     <span
-      className='mb-1 inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-extrabold tracking-[0.08em]'
+      className={compact
+        ? 'mb-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-extrabold tracking-[0.04em]'
+        : 'mb-1 inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-extrabold tracking-[0.08em]'}
       style={{ background: color === '#ffffff' ? 'var(--ica-chip-bg, #ffffff)' : color, color: color === '#ffffff' ? 'var(--ica-chip-ink, #0b84b5)' : textColor }}
     >
       {t(label)}
@@ -345,25 +349,28 @@ function Sparkle({ style, delay, size }: { style: CSSProperties; delay: string; 
 }
 
 function Label({
-  side,
   top,
+  cx = '50%',
+  maxWidth = 168,
+  plain = false,
   children,
 }: {
-  side: 'left' | 'right'
   /** Altura a la que empieza (justo debajo de su ficha). */
   top: number
+  /** Horizontal center (the center of its tile). */
+  cx?: string
+  maxWidth?: number
+  /** Without the backing colour (where there is no road to cover). */
+  plain?: boolean
   children: ReactNode
 }) {
-  // Centrado debajo de su ficha. Puede salirse un poco del camino para que quepa.
-  const style: CSSProperties =
-    side === 'left'
-      ? { left: TILE_CENTER, top, transform: 'translateX(-50%)' }
-      : { right: TILE_CENTER, top, transform: 'translateX(50%)' }
+  // Centrado debajo de su ficha.
+  const style: CSSProperties = { left: cx, top, transform: 'translateX(-50%)', maxWidth }
   // Solo tapa el camino donde está el texto (así el camino se ve entero alrededor).
   return (
     <div
-      className='pointer-events-none absolute flex w-max max-w-[168px] flex-col items-center gap-0.5 rounded-xl px-2 py-0.5 text-center'
-      style={{ ...style, background: 'var(--ica-label-bg, var(--ica-brand))' }}
+      className='pointer-events-none absolute flex w-max flex-col items-center gap-0.5 rounded-xl px-2 py-0.5 text-center'
+      style={{ ...style, background: plain ? 'transparent' : 'var(--ica-label-bg, var(--ica-brand))' }}
     >
       {children}
     </div>
@@ -373,19 +380,20 @@ function Label({
 function PhaseTile({
   phase,
   state,
-  side,
   onClick,
   onLockedClick,
   ariaLabel,
   top,
+  cx = '50%',
 }: {
   phase: Phase
   state: NodeState
-  side: 'left' | 'right'
   onClick: () => void
   onLockedClick: (event: MouseEvent<HTMLElement>) => void
   ariaLabel: string
   top: number
+  /** Horizontal center of the tile. */
+  cx?: string
 }) {
   const locked = state === 'locked'
   return (
@@ -393,7 +401,7 @@ function PhaseTile({
       {state === 'next' ? (
         <span
           className='pointer-events-none absolute rounded-[32px] border-[6px]'
-          style={{ [side]: 16, top: top - 8, width: 100, height: 100, borderColor: phase.soft }}
+          style={{ left: at(cx, -50), top: top - 8, width: 100, height: 100, borderColor: phase.soft }}
           aria-hidden='true'
         />
       ) : null}
@@ -405,7 +413,7 @@ function PhaseTile({
         aria-label={ariaLabel}
         className={`absolute flex items-center justify-center rounded-[26px] transition-transform ${locked ? 'cursor-not-allowed' : 'active:scale-95'} ${state === 'next' ? 'ica-bob' : ''}`}
         style={{
-          [side]: 24,
+          left: at(cx, -42),
           top,
           width: 84,
           height: 84,
@@ -424,8 +432,8 @@ function PhaseTile({
         {state === 'done' ? <DoneShine letter={phase.letter} /> : null}
       </button>
       {/* El check y el candado sobresalen lo mismo (8 px) en todas las fichas, a los dos lados. */}
-      {state === 'done' ? <DoneBadge style={{ [side]: side === 'left' ? 88 : 16, top: top - 6 }} /> : null}
-      {locked ? <LockBadge style={{ [side]: side === 'left' ? 88 : 16, top: top - 6 }} /> : null}
+      {state === 'done' ? <DoneBadge style={{ left: at(cx, 22), top: top - 6 }} /> : null}
+      {locked ? <LockBadge style={{ left: at(cx, 22), top: top - 6 }} /> : null}
     </>
   )
 }
@@ -433,7 +441,6 @@ function PhaseTile({
 export function IcaPath() {
   const navigate = useNavigate()
   const { isLg } = useBreakpoints()
-  const geo = isLg ? DESKTOP_GEOMETRY : MOBILE_GEOMETRY
   const { user } = useAuth()
   const {
     config,
@@ -454,7 +461,7 @@ export function IcaPath() {
     refresh: refreshCoins,
   } = useFichas(user?.id)
   const { limits } = useDailyLimits()
-  const { mode: gameMode, result: gameResult } = useDailyGame(user?.id, cards, config?.targetLang)
+  const { mode: gameMode, result: gameResult, loaded: gameLoaded } = useDailyGame(user?.id, cards, config?.targetLang)
   const today = getTodayProgress(dailyProgress)
   const streakState = getIcaStreakState({
     creationDays,
@@ -479,41 +486,109 @@ export function IcaPath() {
   // Relleno del camino al avanzar: la parada nueva sigue «dormida» hasta que llega el relleno.
   // Con la celebración del cofre encima se espera a que se cierre.
   const [celebrationOpen, setCelebrationOpen] = useState(false)
+  // The «new streak day» flame comes first; the path fills once it is closed.
+  const [streakDayOpen, setStreakDayOpen] = useState(isStreakDayCelebrationOpen)
+  useEffect(() => {
+    const onStreakDay = (event: Event) => setStreakDayOpen(Boolean((event as CustomEvent<boolean>).detail))
+    window.addEventListener(STREAK_DAY_CELEBRATION_EVENT, onStreakDay)
+    return () => window.removeEventListener(STREAK_DAY_CELEBRATION_EVENT, onStreakDay)
+  }, [])
   useEffect(() => {
     const onClosed = () => setCelebrationOpen(false)
     window.addEventListener(CYCLE_CELEBRATION_CLOSED_EVENT, onClosed)
     return () => window.removeEventListener(CYCLE_CELEBRATION_CLOSED_EVENT, onClosed)
   }, [])
   const pathRef = useRef<HTMLDivElement>(null)
+  const forkMaskId = `ica-fork-fill-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
+  // Read inside onArrive (a stable callback) to know if the challenge really opens with the chest.
+  const challengeOpensRef = useRef(false)
+  const challengeOpens = !isDailyGamePassed(gameResult) && cards.length >= DAILY_GAME_MIN_WORDS
+  useEffect(() => {
+    challengeOpensRef.current = challengeOpens
+  }, [challengeOpens])
   const onArrive = useCallback((stop: number) => {
     // La parada a la que llega el camino da un salto y suena.
-    const target = pathRef.current?.querySelector<HTMLElement>(`[data-ica-step="${STEP_ORDER[stop]}"]`)
-    gameSfx.streak()
-    if (!target) return
-    target.classList.remove('ica-nudge')
-    void target.offsetWidth
-    target.classList.add('ica-nudge')
-    target.addEventListener('animationend', () => target.classList.remove('ica-nudge'), { once: true })
+    const nudge = (step: StepKey) => {
+      const target = pathRef.current?.querySelector<HTMLElement>(`[data-ica-step="${step}"]`)
+      if (!target) return
+      target.classList.remove('ica-nudge')
+      void target.offsetWidth
+      target.classList.add('ica-nudge')
+      target.addEventListener('animationend', () => target.classList.remove('ica-nudge'), { once: true })
+    }
+    const step = STEP_ORDER[stop]
+    if (step === 'chest') {
+      // SOUNDS (Luis, 5 Oct): the chest and the challenge open together, but they sound one after
+      // the other: first the chest («something achieved»), then the challenge.
+      gameSfx.chestUnlock()
+      nudge('chest')
+      if (challengeOpensRef.current) {
+        window.setTimeout(() => {
+          gameSfx.challengeUnlock()
+          nudge('review')
+        }, CHALLENGE_UNLOCK_SOUND_DELAY_MS)
+      }
+      return
+    }
+    // The challenge already sounded when the chest unlocked: reaching it now only nudges it.
+    if (step !== 'review') gameSfx.streak()
+    nudge(step)
   }, [])
   const { fill, holdStop } = usePathFill({
     userId: user?.id,
     reached: mobileReached,
-    ready: !loading,
-    paused: celebrationOpen,
+    // Wait for today's challenge result too: otherwise a finished challenge counts as pending for
+    // a moment and the path «unlocks» it again (with its sound).
+    ready: !loading && gameLoaded,
+    paused: celebrationOpen || streakDayOpen,
     onArrive,
   })
   const held = holdStop === null ? null : STEP_ORDER[holdStop]
   // Esperando a rellenar: el tramo de colores llega solo hasta la parada anterior.
   const roadReached = holdStop !== null && !fill ? holdStop - 1 : mobileReached
 
-  // Orden obligatorio: C tras I, A tras C, cofre tras el ciclo, reto del día tras el cofre.
+  // Orden obligatorio: C tras I, A tras C; al acabar el ciclo se abren a la vez el cofre y el reto del día.
   const cLocked = !iDone || cards.length < CREATION_WORDS_GOAL || held === 'C'
   const aLocked = !cDone || held === 'A'
   const chestReady = cycleDone && !chestOpened && held !== 'chest'
   // Un cofre ya abierto hoy se queda abierto aunque luego se borre la C o la A (las monedas ya se cobraron).
   const chestLocked = (!cycleDone && !chestOpened) || held === 'chest'
   const reviewNeedsWords = cards.length < DAILY_GAME_MIN_WORDS
-  const reviewLocked = (!reviewDone && (!chestOpened || reviewNeedsWords)) || held === 'review'
+  // The challenge opens with the chest: while the path is still filling up to the chest, both wait.
+  const reviewLocked =
+    (!reviewDone && ((!cycleDone && !chestOpened) || reviewNeedsWords)) || held === 'review' || held === 'chest'
+
+  // CHEST WAITING SOUND (Luis, 5 Oct): like in Clash Royale, the ready chest knocks every time it
+  // shakes, the first shake included. Synced with the CSS rattle: the animation starts when the
+  // chest becomes ready (first knocks right away) and every new cycle of «ica-chest-rattle»
+  // schedules the next ones for the moment the shake starts. With reduced motion there is no
+  // animation, so only that first knock would play: it is skipped too.
+  useEffect(() => {
+    if (!chestReady || celebrationOpen || streakDayOpen) return
+    const timers = new Set<number>()
+    const knockSoon = () => {
+      const timer = window.setTimeout(() => {
+        timers.delete(timer)
+        if (!document.hidden) gameSfx.chestWaiting()
+      }, CHEST_RATTLE_SHAKE_AT_MS)
+      timers.add(timer)
+    }
+    let reducedMotion = false
+    try {
+      reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    } catch {
+      reducedMotion = false
+    }
+    if (!reducedMotion) knockSoon()
+    const onIteration = (event: AnimationEvent) => {
+      if (event.animationName === 'ica-chest-rattle') knockSoon()
+    }
+    document.addEventListener('animationiteration', onIteration)
+    return () => {
+      document.removeEventListener('animationiteration', onIteration)
+      timers.forEach((timer) => window.clearTimeout(timer))
+    }
+  }, [chestReady, celebrationOpen, streakDayOpen])
 
   const next: StepKey | null = !iDone
     ? 'I'
@@ -579,7 +654,7 @@ export function IcaPath() {
           mode: t(gameMode.name),
         })
       : reviewLocked && reviewNeedsWords
-        ? t('Con {n} palabras en tu baúl', { n: DAILY_GAME_MIN_WORDS })
+        ? t('Con {n} palabras ICA', { n: DAILY_GAME_MIN_WORDS })
         : t('Mínimo {n} correctas', { n: DAILY_GAME_PASS })
     const steps: JourneyStep[] = [
       {
@@ -675,7 +750,7 @@ export function IcaPath() {
           : reviewLocked
             ? reviewNeedsWords
               ? t('Reto del día: necesitas {n} palabras en tu Baúl ICA', { n: DAILY_GAME_MIN_WORDS })
-              : t('Reto del día: se abre después del cofre')
+              : t('Reto del día: se abre al completar I·C·A')
             : t('Reto del día: tu minijuego con palabras ICA'),
       },
     ]
@@ -688,55 +763,174 @@ export function IcaPath() {
     )
   }
 
-  // Debajo del Reto del día solo hace falta sitio para el chip y el texto de ayuda cuando salen;
-  // si no, el camino acaba justo bajo «RETO DEL DÍA» (sin hueco hasta lo siguiente).
-  const reviewHelp = next === 'review' || (reviewLocked && reviewNeedsWords)
-  const mobileHeight = reviewHelp ? geo.height : geo.tops.review + 124
+  // MÓVIL (Luis, 5 oct, mezcla de B3 y B6): I·C·A en fila dentro de su recuadro y, debajo, el
+  // cofre y el reto del día en dos recuadros (como las casillas de Clash Royale), que se abren a
+  // la vez al acabar el ciclo. Todo cabe en la pantalla sin bajar.
+  // Horizontal centers (as % of the width) and vertical positions in px.
+  const SLOT_GAP = 12
+  const X = {
+    I: '16%',
+    C: '50%',
+    A: '84%',
+    chest: `calc(25% - ${SLOT_GAP / 4}px)`,
+    review: `calc(75% + ${SLOT_GAP / 4}px)`,
+  } as const
+  const XN = { I: 16, C: 50, A: 84, chest: 25, review: 75 }
+  const ROW_TOP = 22
+  const rowLabelTop = ROW_TOP + 96
+  const rowNext = next === 'I' || next === 'C' || next === 'A' ? next : null
+  // Help line of the step to do, under that step's name.
+  const rowHelp =
+    rowNext === 'I'
+      ? t('{n} de {goal} palabras', { n: today.wordsAdded, goal: CREATION_WORDS_GOAL })
+      : rowNext === 'C'
+        ? t('Crea 1 frase')
+        : rowNext === 'A'
+          ? t('Graba 1 nota')
+          : null
+  // Room for the chip and its help line inside the box, clear of the bottom corners (Luis, 7 Oct).
+  const panelBottom = rowLabelTop + (rowNext ? 92 : 40)
+  const slotTop = panelBottom + 34
+  const bonusTop = slotTop + 24
+  const bonusLabelTop = bonusTop + 96
+  const chestHelp = chestOpened
+    ? t('Abierto: +{coins}', { coins: coinsText(todayChestCoins(entries)) })
+    : chestReady
+      ? t('Gana de {min} a {max} ICA Coins', { min: CYCLE_CHEST_MIN, max: CYCLE_CHEST_MAX })
+      : null
+  const reviewHelpText = reviewDone
+    ? t('{correct} de {total} · {mode}', {
+        correct: gameResult?.correct ?? 0,
+        total: gameResult?.total ?? 0,
+        mode: t(gameMode.name),
+      })
+    : reviewLocked && reviewNeedsWords
+      ? t('Con {n} palabras ICA', { n: DAILY_GAME_MIN_WORDS })
+      : !reviewLocked
+        ? t('Mínimo {n} correctas', { n: DAILY_GAME_PASS })
+        : null
+  const slotBottom = bonusLabelTop + (next === 'chest' || next === 'review' ? 86 : 58)
+  const mobileHeight = slotBottom + 6
+  const rowCenterY = ROW_TOP + 42
+  // The road in the row only covers I → C → A; the fork below the box lights up once the cycle is done.
+  const rowFill = fill && fill.to <= 2 ? fill : null
+  // While the two branches are filling, the base stays grey under them (the fill paints on top).
+  const forkDone = roadReached >= 3 && !(fill && fill.to === 3)
+  const forkStroke = forkDone ? 'var(--ica-road-done)' : 'var(--ica-road-todo)'
+  const forkY = panelBottom + 14
+  const forkD = [
+    `M${XN.C} ${panelBottom} V${forkY}`,
+    `M${XN.C} ${forkY} C${XN.C} ${forkY + 10}, ${XN.chest} ${forkY + 4}, ${XN.chest} ${slotTop}`,
+    `M${XN.C} ${forkY} C${XN.C} ${forkY + 10}, ${XN.review} ${forkY + 4}, ${XN.review} ${slotTop}`,
+  ].join(' ')
+  // When the cycle is done the two branches fill up at the same time, from the box down to the
+  // chest and to the daily challenge (Luis, 5 Oct).
+  const forkFilling = Boolean(fill && fill.to === 3)
+  const forkBranches = [
+    `M${XN.C} ${panelBottom} V${forkY} C${XN.C} ${forkY + 10}, ${XN.chest} ${forkY + 4}, ${XN.chest} ${slotTop}`,
+    `M${XN.C} ${panelBottom} V${forkY} C${XN.C} ${forkY + 10}, ${XN.review} ${forkY + 4}, ${XN.review} ${slotTop}`,
+  ]
+  // Labels sit on the boxes: their backing color is the box color, so they blend in.
+  const boxVars = { '--ica-label-bg': 'var(--card)', '--ica-brand': 'var(--card)' } as CSSProperties
   return (
     <>
-    <div className='ica-path-skin rounded-[28px] pt-5 pb-1'>
-    <div ref={pathRef} className='relative mx-auto w-full' style={{ height: mobileHeight, maxWidth: geo.width }}>
+    <div className='ica-path-skin pt-1 pb-1'>
+    <div ref={pathRef} className='relative mx-auto w-full max-w-[460px]' style={{ height: mobileHeight, ...boxVars }}>
+      {/* Recuadros (estilo casillas): el del ciclo I·C·A y los del cofre y el reto. */}
+      {/* Blue border once that part is DONE (Luis, 6 Oct): the I·C·A box when the three are done,
+          the chest box once opened and the challenge box once played. */}
+      <div
+        className='ica-panel pointer-events-none absolute inset-x-0 transition-[border-color,border-width] duration-500'
+        style={{ top: 0, height: panelBottom, ...(cycleDone ? DONE_SLOT_BORDER : null) }}
+        aria-hidden='true'
+      />
+      <div
+        className='ica-panel pointer-events-none absolute transition-[border-color,border-width] duration-500'
+        style={{ left: 0, width: `calc(50% - ${SLOT_GAP / 2}px)`, top: slotTop, height: slotBottom - slotTop, ...(chestOpened ? DONE_SLOT_BORDER : null) }}
+        aria-hidden='true'
+      />
+      <div
+        className='ica-panel pointer-events-none absolute transition-[border-color,border-width] duration-500'
+        style={{ right: 0, width: `calc(50% - ${SLOT_GAP / 2}px)`, top: slotTop, height: slotBottom - slotTop, ...(reviewDone ? DONE_SLOT_BORDER : null) }}
+        aria-hidden='true'
+      />
+      <svg viewBox={`0 0 100 ${mobileHeight}`} preserveAspectRatio='none' className='absolute inset-0 h-full w-full' aria-hidden='true'>
+        <path
+          d={forkD}
+          fill='none'
+          stroke={forkStroke}
+          strokeLinecap='round'
+          strokeWidth={6}
+          strokeDasharray='3 13'
+          vectorEffect='non-scaling-stroke'
+        />
+        {forkFilling ? (
+          <>
+            {/* One mask with both branches growing at once; the dashes are the same path as above. */}
+            <mask id={forkMaskId} maskUnits='userSpaceOnUse' x={0} y={0} width={100} height={mobileHeight}>
+              {forkBranches.map((branch) => (
+                <path
+                  key={branch}
+                  d={branch}
+                  fill='none'
+                  stroke='#ffffff'
+                  strokeWidth={14}
+                  strokeLinecap='round'
+                  pathLength={1}
+                  className='ica-road-fill'
+                  style={{ animationDelay: `${PATH_FILL_DELAY_MS}ms`, animationDuration: `${PATH_FILL_MS}ms` }}
+                />
+              ))}
+            </mask>
+            <path
+              d={forkD}
+              fill='none'
+              stroke='var(--ica-road-done)'
+              strokeLinecap='round'
+              strokeWidth={6}
+              strokeDasharray='3 13'
+              vectorEffect='non-scaling-stroke'
+              mask={`url(#${forkMaskId})`}
+            />
+          </>
+        ) : null}
+      </svg>
       <Road
-        centers={geo.centers}
-        reached={roadReached}
-        width={geo.width}
+        centers={[
+          [XN.I, rowCenterY],
+          [XN.C, rowCenterY],
+          [XN.A, rowCenterY],
+        ]}
+        reached={Math.min(roadReached, 2)}
+        width={100}
         height={mobileHeight}
-        fill={fill}
+        fill={rowFill}
       />
 
       {/* I */}
       <PhaseTile
         onLockedClick={tapLocked}
         phase={PHASES.I}
-        top={geo.tops.I}
+        top={ROW_TOP}
+        cx={X.I}
         state={phaseState('I', iDone)}
-        side='left'
         onClick={() => navigate(DASHBOARD_ROUTES.newIcaWords)}
         ariaLabel={t('Inmersión: {n} de {goal} palabras', {
           n: Math.min(today.wordsAdded, CREATION_WORDS_GOAL),
           goal: CREATION_WORDS_GOAL,
         })}
       />
-      <Label side='left' top={geo.tops.I + 96}>
-        {next === 'I' ? <StartChip color='#ffffff' textColor='#0b84b5' /> : null}
-        <span className='text-[15px] font-extrabold tracking-[0.06em]' style={{ color: PHASES.I.ink }}>{t('INMERSIÓN')}</span>
-        {/* El texto de ayuda solo en el paso que toca (en los demás no aporta). */}
-        {next === 'I' ? (
-          <span className='text-[13px] font-semibold text-balance' style={{ color: 'var(--ica-brand-sub)' }}>
-            {iDone
-              ? t('{n} palabras hoy · máx. {max}', { n: today.wordsAdded, max: limits.words })
-              : t('{n} de {goal} palabras', { n: today.wordsAdded, goal: CREATION_WORDS_GOAL })}
-          </span>
-        ) : null}
+      <Label top={rowLabelTop} cx={X.I} maxWidth={116}>
+        <span className='text-[14px] font-extrabold tracking-[0.04em]' style={{ color: PHASES.I.ink }}>{t('INMERSIÓN')}</span>
       </Label>
 
       {/* C */}
       <PhaseTile
         onLockedClick={tapLocked}
         phase={PHASES.C}
-        top={geo.tops.C}
+        top={ROW_TOP}
+        cx={X.C}
         state={phaseState('C', cDone, cLocked)}
-        side='right'
         onClick={() => navigate(DASHBOARD_ROUTES.activationPhrase)}
         ariaLabel={
           cDone
@@ -746,25 +940,17 @@ export function IcaPath() {
               : t('Creación: crea una frase con tus palabras')
         }
       />
-      <Label side='right' top={geo.tops.C + 96}>
-        {next === 'C' ? <StartChip label='SIGUE AQUÍ' color='#ffffff' textColor='#0b84b5' /> : null}
-        <span className='text-[15px] font-extrabold tracking-[0.06em]' style={{ color: PHASES.C.ink }}>{t('CREACIÓN')}</span>
-        {next === 'C' ? (
-          <span className='text-[13px] font-semibold text-balance' style={{ color: 'var(--ica-brand-sub)' }}>
-            {cDone
-              ? t('Frase creada · máx. {max} hoy', { max: limits.phrases })
-              : t('Crea 1 frase con tus palabras')}
-          </span>
-        ) : null}
+      <Label top={rowLabelTop} cx={X.C} maxWidth={116}>
+        <span className='text-[14px] font-extrabold tracking-[0.04em]' style={{ color: PHASES.C.ink }}>{t('CREACIÓN')}</span>
       </Label>
 
       {/* A */}
       <PhaseTile
         onLockedClick={tapLocked}
         phase={PHASES.A}
-        top={geo.tops.A}
+        top={ROW_TOP}
+        cx={X.A}
         state={phaseState('A', aDone, aLocked)}
-        side='left'
         onClick={() => navigate(DASHBOARD_ROUTES.masterNotes)}
         ariaLabel={
           aDone
@@ -774,27 +960,28 @@ export function IcaPath() {
               : t('Activación: graba una nota con tu voz')
         }
       />
-      <Label side='left' top={geo.tops.A + 96}>
-        {next === 'A' ? <StartChip label='SIGUE AQUÍ' color='#ffffff' textColor='#0b84b5' /> : null}
-        <span className='text-[15px] font-extrabold tracking-[0.06em]' style={{ color: PHASES.A.ink }}>{t('ACTIVACIÓN')}</span>
-        {next === 'A' ? (
-          <span className='text-[13px] font-semibold text-balance' style={{ color: 'var(--ica-brand-sub)' }}>
-            {aDone
-              ? tn(today.voiceActivationsCount, t('{n} nota grabada · máx. {max}'), t('{n} notas grabadas · máx. {max}'), {
-                  max: limits.activations,
-                })
-              : t('Graba 1 nota con tu voz')}
-          </span>
-        ) : null}
+      <Label top={rowLabelTop} cx={X.A} maxWidth={116}>
+        <span className='text-[14px] font-extrabold tracking-[0.04em]' style={{ color: PHASES.A.ink }}>{t('ACTIVACIÓN')}</span>
       </Label>
+
+      {/* Chip and help text under the step to do: I, then C, then A (Luis, 6 Oct), right under its
+          letter and centred like the step name (Luis, 7 Oct). */}
+      {rowHelp && rowNext ? (
+        <Label top={rowLabelTop + 26} cx={rowNext === 'I' ? X.I : rowNext === 'A' ? X.A : X.C} maxWidth={124} plain>
+          <span className='whitespace-nowrap'>
+            <StartChip label={rowNext === 'I' ? 'EMPIEZA AQUÍ' : 'SIGUE AQUÍ'} color='#ffffff' textColor='#0b84b5' compact />
+          </span>
+          <span className='text-[12px] leading-snug font-semibold whitespace-nowrap' style={{ color: 'var(--ica-brand-sub)' }}>{rowHelp}</span>
+        </Label>
+      ) : null}
 
       {/* Cofre */}
       {chestReady ? (
         <span
           className='ica-glow-pulse pointer-events-none absolute rounded-full'
           style={{
-            right: 6,
-            top: geo.tops.chest - 18,
+            left: at(X.chest, -60),
+            top: bonusTop - 12,
             width: 120,
             height: 104,
             background: 'radial-gradient(closest-side, #ffd54acc, #ffd54a55 55%, transparent)',
@@ -803,10 +990,9 @@ export function IcaPath() {
         />
       ) : null}
       {chestReady ? (
-        // Aro como el de las fichas que tocan (I·C·A y Reto del día), en dorado.
         <span
           className='pointer-events-none absolute rounded-[32px] border-[6px]'
-          style={{ right: 14, top: geo.tops.chest - 16, width: 104, height: 96, borderColor: CHEST_RING }}
+          style={{ left: at(X.chest, -52), top: bonusTop - 10, width: 104, height: 100, borderColor: CHEST_RING }}
           aria-hidden='true'
         />
       ) : null}
@@ -822,12 +1008,12 @@ export function IcaPath() {
               ? t('Cofre del ciclo: listo para abrir, de {min} a {max} ICA Coins', { min: CYCLE_CHEST_MIN, max: CYCLE_CHEST_MAX })
               : t('Cofre del ciclo: se abre al completar I·C·A')
         }
-        className={`absolute flex items-center justify-center ${chestReady ? 'ica-wiggle' : ''} ${chestLocked ? 'cursor-not-allowed' : 'active:scale-95'}`}
+        className={`absolute flex items-center justify-center ${chestReady ? 'ica-chest-ready' : ''} ${chestLocked ? 'cursor-not-allowed' : 'active:scale-95'}`}
         style={{
-          right: 22,
-          top: geo.tops.chest - 8,
+          left: at(X.chest, -44),
+          top: bonusTop - 2,
           width: 88,
-          height: 80,
+          height: 84,
           borderRadius: 26,
           ...chestTileStyle(chestOpened ? 'done' : chestReady ? 'next' : 'locked'),
         }}
@@ -839,32 +1025,33 @@ export function IcaPath() {
           className={chestLocked ? 'opacity-60' : undefined}
         />
       </button>
-      {chestOpened ? <DoneBadge style={{ right: 14, top: geo.tops.chest - 14 }} /> : null}
+      {chestOpened ? <DoneBadge style={{ left: at(X.chest, 24), top: bonusTop - 8 }} /> : null}
       {chestReady ? (
         <>
-          <Sparkle style={{ right: 16, top: geo.tops.chest - 14 }} delay='0s' size={14} />
-          <Sparkle style={{ right: 104, top: geo.tops.chest + 6 }} delay='0.6s' size={11} />
-          <Sparkle style={{ right: 34, top: geo.tops.chest + 62 }} delay='1.1s' size={10} />
+          <Sparkle style={{ left: at(X.chest, 36), top: bonusTop - 8 }} delay='0s' size={14} />
+          <Sparkle style={{ left: at(X.chest, -49), top: bonusTop + 12 }} delay='0.6s' size={11} />
+          <Sparkle style={{ left: at(X.chest, 22), top: bonusTop + 68 }} delay='1.1s' size={10} />
         </>
       ) : null}
-      {chestLocked ? <LockBadge style={{ right: 14, top: geo.tops.chest - 14 }} /> : null}
-      <Label side='right' top={geo.tops.chest + 86}>
+      {chestLocked ? <LockBadge style={{ left: at(X.chest, 24), top: bonusTop - 8 }} /> : null}
+      <Label top={bonusLabelTop} cx={X.chest} maxWidth={164}>
         {next === 'chest' ? <StartChip label={t('¡ÁBRELO!')} color='#a16207' /> : null}
-        <span className='text-[15px] font-extrabold tracking-[0.06em]' style={{ color: 'var(--ica-brand-ink)' }}>
+        <span className='text-[13px] font-extrabold tracking-[0.04em] whitespace-nowrap' style={{ color: 'var(--ica-brand-ink)' }}>
           {t('COFRE DEL CICLO')}
         </span>
-        {next === 'chest' ? (
-          <span className='text-[13px] font-semibold text-balance' style={{ color: 'var(--ica-brand-sub)' }}>
-            {chestOpened
-              ? t('Abierto: +{coins}', { coins: coinsText(todayChestCoins(entries)) })
-              : chestReady
-                ? t('Gana de {min} a {max} ICA Coins', { min: CYCLE_CHEST_MIN, max: CYCLE_CHEST_MAX })
-                : t('Consigue hasta {max} ICA Coins', { max: CYCLE_CHEST_MAX })}
-          </span>
+        {chestHelp ? (
+          <span className='text-[12px] font-semibold text-balance' style={{ color: 'var(--ica-brand-sub)' }}>{chestHelp}</span>
         ) : null}
       </Label>
 
       {/* Reto del día (minijuego con tus palabras) */}
+      {next === 'review' ? (
+        <span
+          className='pointer-events-none absolute rounded-[32px] border-[6px]'
+          style={{ left: at(X.review, -52), top: bonusTop - 10, width: 104, height: 100, borderColor: RETO_RING }}
+          aria-hidden='true'
+        />
+      ) : null}
       <button
         type='button'
         onClick={reviewLocked ? tapLocked : () => navigate(DASHBOARD_ROUTES.dailyGame)}
@@ -879,14 +1066,14 @@ export function IcaPath() {
             : reviewLocked
               ? reviewNeedsWords
                 ? t('Reto del día: necesitas {n} palabras en tu Baúl ICA', { n: DAILY_GAME_MIN_WORDS })
-                : t('Reto del día: se abre después del cofre')
+                : t('Reto del día: se abre al completar I·C·A')
               : t('Reto del día: tu minijuego con palabras ICA')
         }
         className={`absolute flex items-center justify-center rounded-[26px] transition-transform ${next === 'review' ? 'ica-bob' : ''} ${reviewLocked ? 'cursor-not-allowed' : 'active:scale-95'}`}
         style={{
-          left: 24,
-          top: geo.tops.review,
-          width: 84,
+          left: at(X.review, -44),
+          top: bonusTop - 2,
+          width: 88,
           height: 84,
           ...retoTileStyle(reviewDone ? 'done' : reviewLocked ? 'locked' : 'pending'),
         }}
@@ -897,32 +1084,13 @@ export function IcaPath() {
           style={retoIconStyle(reviewDone ? 'done' : reviewLocked ? 'locked' : 'pending')}
         />
       </button>
-      {reviewDone ? <DoneBadge style={{ left: 88, top: geo.tops.review - 6 }} /> : null}
-      {next === 'review' ? (
-        <span
-          className='pointer-events-none absolute rounded-[32px] border-[6px]'
-          style={{ left: 16, top: geo.tops.review - 8, width: 100, height: 100, borderColor: RETO_RING }}
-          aria-hidden='true'
-        />
-      ) : null}
-      {reviewLocked ? <LockBadge style={{ left: 88, top: geo.tops.review - 6 }} /> : null}
-      <Label side='left' top={geo.tops.review + 96}>
-        {next === 'review' ? (
-          <StartChip label='TERMINA AQUÍ' color='var(--ica-reto-edge)' />
-        ) : null}
-        <span className='text-[15px] font-extrabold tracking-[0.06em]' style={{ color: 'var(--ica-brand-ink)' }}>{t('RETO DEL DÍA')}</span>
-        {reviewHelp ? (
-          <span className='text-[13px] font-semibold text-balance' style={{ color: 'var(--ica-brand-sub)' }}>
-            {reviewDone
-              ? t('{correct} de {total} · {mode}', {
-                  correct: gameResult?.correct ?? 0,
-                  total: gameResult?.total ?? 0,
-                  mode: t(gameMode.name),
-                })
-              : reviewLocked && reviewNeedsWords
-                ? t('Con {n} palabras en tu baúl', { n: DAILY_GAME_MIN_WORDS })
-                : t('Mínimo {n} correctas', { n: DAILY_GAME_PASS })}
-          </span>
+      {reviewDone ? <DoneBadge style={{ left: at(X.review, 24), top: bonusTop - 8 }} /> : null}
+      {reviewLocked ? <LockBadge style={{ left: at(X.review, 24), top: bonusTop - 8 }} /> : null}
+      <Label top={bonusLabelTop} cx={X.review} maxWidth={164}>
+        {next === 'review' ? <StartChip label='TERMINA AQUÍ' color='var(--ica-reto-edge)' /> : null}
+        <span className='text-[13px] font-extrabold tracking-[0.04em] whitespace-nowrap' style={{ color: 'var(--ica-brand-ink)' }}>{t('RETO DEL DÍA')}</span>
+        {reviewHelpText ? (
+          <span className='text-[12px] font-semibold whitespace-nowrap' style={{ color: 'var(--ica-brand-sub)' }}>{reviewHelpText}</span>
         ) : null}
       </Label>
     </div>
@@ -965,15 +1133,21 @@ function IcaJourney({
 }) {
   // Un caminito que sube y baja entre las estaciones (como un tablero de juego).
   // El tramo que ya has hecho se pinta de colores.
-  const HEIGHT = 400
+  // Luis (5 Oct): flatter than before (it dropped 132 px), almost a straight line.
+  const DROP = 56
+  const HEIGHT = 18 + DROP + 234
   const W = 1000
   const xs = steps.map((_, index) => 9 + (index * 82) / (steps.length - 1))
-  const tops = steps.map((_, index) => (index % 2 === 0 ? 18 : 150))
+  // I high, C low, A high; the chest and the daily challenge both low, at the same height
+  // (Luis, 6 Oct), so the road goes down to the chest and straight on to the challenge.
+  const tops = steps.map((step, index) =>
+    step.key === 'chest' || step.key === 'review' ? 18 + DROP : index % 2 === 0 ? 18 : 18 + DROP,
+  )
   const sizes = steps.map((step) => (typeof step.content === 'string' ? 120 : 100))
   const centers = steps.map((_, index) => [xs[index] * (W / 100), tops[index] + sizes[index] / 2] as [number, number])
 
   return (
-    <div className='ica-path-skin relative overflow-hidden rounded-[32px] px-4 pt-4 pb-2 xl:px-6'>
+    <div className='ica-path-skin relative overflow-hidden rounded-[32px] px-4 pt-3 pb-1 xl:px-6'>
       <div className='relative w-full' style={{ height: HEIGHT }}>
         <Road centers={centers} reached={reached} width={W} height={HEIGHT} fill={fill} />
 
@@ -1016,7 +1190,7 @@ function IcaJourney({
                   data-ica-step={step.key}
                   aria-disabled={locked || undefined}
                   aria-label={step.ariaLabel}
-                  className={`relative flex items-center justify-center transition-transform ${locked ? 'cursor-not-allowed' : 'hover:-translate-y-0.5 active:scale-95'} ${state === 'next' ? (step.bare ? 'ica-wiggle' : 'ica-bob') : ''}`}
+                  className={`relative flex items-center justify-center transition-transform ${locked ? 'cursor-not-allowed' : 'hover:-translate-y-0.5 active:scale-95'} ${state === 'next' ? (step.bare ? 'ica-chest-ready' : 'ica-bob') : ''}`}
                   style={
                     step.bare
                       ? { width: size + 8, height: size, borderRadius: 28, ...chestTileStyle(state) }

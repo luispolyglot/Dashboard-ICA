@@ -4,7 +4,7 @@ import { AlertTriangleIcon, EyeIcon, EyeOffIcon } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { IcaLogo } from '@/modules/game/IcaLogo'
-import { t } from '@/i18n'
+import { setUiLang, t, useUiLang, type UiLang } from '@/i18n'
 
 type AuthShellProps = PropsWithChildren<{
   title: string
@@ -34,6 +34,8 @@ export function AuthShell({ title, subtitle, footer, showMethod = false, childre
         <div className='absolute top-1/3 -right-24 size-72 rounded-full opacity-20 blur-3xl' style={{ background: 'var(--ica-c)' }} />
         <div className='absolute -bottom-28 left-1/4 size-72 rounded-full opacity-15 blur-3xl' style={{ background: 'var(--ica-a)' }} />
       </div>
+
+      <AuthLanguageSwitch />
 
       <div className='relative flex w-full max-w-[400px] flex-col items-center'>
         <div className='ica-fade-up flex flex-col items-center gap-2'>
@@ -69,6 +71,45 @@ export function AuthShell({ title, subtitle, footer, showMethod = false, childre
         {footer ? <div className='mt-5 w-full text-center'>{footer}</div> : null}
       </div>
     </main>
+  )
+}
+
+const AUTH_LANGUAGES: { value: UiLang; label: string }[] = [
+  { value: 'es', label: 'Español' },
+  { value: 'en', label: 'English' },
+]
+
+/**
+ * Spanish or English before signing in (Luis, 7 Oct). Each option is written in its own language.
+ * Once inside, the app follows the student's native language as before.
+ */
+function AuthLanguageSwitch() {
+  const lang = useUiLang()
+  return (
+    <div
+      role='group'
+      aria-label={t('Idioma de la app')}
+      className='relative z-10 mb-4 flex self-center rounded-full border-2 border-border bg-card p-1 sm:absolute sm:top-6 sm:right-6 sm:mb-0'
+    >
+      {AUTH_LANGUAGES.map((option) => {
+        const active = option.value === lang
+        return (
+          <button
+            key={option.value}
+            type='button'
+            lang={option.value}
+            aria-pressed={active}
+            onClick={() => setUiLang(option.value)}
+            className={cn(
+              'rounded-full px-3.5 py-1.5 text-sm font-extrabold transition-colors',
+              active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {option.label}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 

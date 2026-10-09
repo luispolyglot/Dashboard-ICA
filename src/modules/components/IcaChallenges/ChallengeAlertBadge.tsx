@@ -1,4 +1,4 @@
-import { SwordsIcon } from '../../game/icons'
+import { SwordsIcon, TargetGlyph } from '../../game/icons'
 
 /**
  * Globito de aviso de Desafíos ICA (número con pulso), para poner encima de un icono.
@@ -30,6 +30,21 @@ export function ChallengeAlertPill({ text }: { text: string }) {
         <SwordsIcon size={15} />
       </span>
       {text}
+    </span>
+  )
+}
+
+/** Reminder on the Nota desafiante card: finished notes whose challenge is still to be played. */
+export function ChallengeNotePill({ count, text }: { count: number; text?: string }) {
+  return (
+    <span
+      className='inline-flex items-center gap-1.5 rounded-full py-0.5 pr-2.5 pl-1 text-[11px] font-extrabold'
+      style={{ background: 'var(--ica-gold)', color: '#5a3b00', boxShadow: '0 2px 0 var(--ica-gold-edge)' }}
+    >
+      <span className='flex size-5 items-center justify-center rounded-full bg-white'>
+        <TargetGlyph size={14} />
+      </span>
+      {text ?? count}
     </span>
   )
 }

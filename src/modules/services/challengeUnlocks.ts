@@ -455,6 +455,9 @@ export function useOnChallengeUnlocked(callback: (noteId: string) => void): void
 // Partidas terminadas (para el punto diario del ranking: escuchar + nota desafiante)
 // ---------------------------------------------------------------------------
 
+/** Fired after a nota desafiante is saved (Juegos ICA updates its reminder). */
+export const CHALLENGE_PLAY_RECORDED_EVENT = 'ica:challenge-play-recorded'
+
 /** Guarda que has hecho la nota desafiante de una nota hoy. Si falla, no pasa nada. */
 export async function recordChallengePlay(noteId: string, correct: number, total: number): Promise<void> {
   if (!supabase || !noteId) return
@@ -468,6 +471,7 @@ export async function recordChallengePlay(noteId: string, correct: number, total
       p_total: total,
     })
     if (error) console.error('[nota desafiante] no se pudo guardar la partida', error)
+    else window.dispatchEvent(new Event(CHALLENGE_PLAY_RECORDED_EVENT))
   } catch (error) {
     console.error('[nota desafiante] no se pudo guardar la partida', error)
   }
