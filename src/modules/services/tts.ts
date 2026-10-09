@@ -80,6 +80,7 @@ export function stopTTS(): void {
     audio.removeAttribute('src')
   }
   currentUtterance = null
+  stopWebAudioSpeech()
   if (window.speechSynthesis && (window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
     window.speechSynthesis.cancel()
   }
@@ -332,21 +333,184 @@ function useMediaAudioSession(): void {
   }
 }
 
+/**
+ * iPhone only lets an audio element play later (after the download, outside the tap) if it
+ * already played inside a tap. This plays a silent sample on the voice's element. It runs on the
+ * first taps anywhere in the app (see below) and again when a voice is asked inside a tap, until
+ * it works once. While unlocking, the sound session is «ambient», so it does not stop the music
+ * the student may have playing (Spotify…).
+ */
+function unlockPremiumAudio(): void {
+  if (premiumUnlocked || !PREMIUM_TTS_ENDPOINT || typeof Audio === 'undefined') return
+  premiumAudio = premiumAudio || new Audio()
+  const audio = premiumAudio
+  // Never touch the element while it is saying something.
+  if (ttsAudio === audio) return
+  let session: { type: string } | undefined
+  let changedSession = false
+  try {
+    session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession
+    if (session && session.type === 'auto') {
+      session.type = 'ambient'
+      changedSession = true
+    }
+  } catch {
+    // No Audio Session API: nothing to do.
+  }
+  // Back to normal right after, so the notes and the voice sound as always (also in silent mode).
+  const restoreSession = () => {
+    if (!changedSession) return
+    changedSession = false
+    try {
+      if (session && session.type === 'ambient') session.type = 'auto'
+    } catch {
+      // Nothing to restore.
+    }
+  }
+  audio.src = SILENT_WAV
+  const playing = audio.play()
+  if (playing && typeof playing.then === 'function') {
+    playing
+      .then(() => {
+        premiumUnlocked = true
+      })
+      .catch(() => undefined)
+      .finally(() => window.setTimeout(restoreSession, 300))
+  } else {
+    window.setTimeout(restoreSession, 300)
+  }
+}
+
+/** Call it inside a tap (e.g. «Start») so the next voices can play on iPhone. */
+export function unlockSpeechAudio(): void {
+  unlockPremiumAudio()
+  primeSpeechContext()
+}
+
+// ---------------------------------------------------------------------------
+// Second way to play the premium voice: Web Audio. If iPhone still refuses to play the audio
+// element (play() rejected outside a tap), the same audio is played through an AudioContext that
+// was woken up inside a tap. Only if this also fails does the device voice speak.
+// ---------------------------------------------------------------------------
+
+let speechContext: AudioContext | null = null
+let speechSource: AudioBufferSourceNode | null = null
+let restoreAfterWebAudio: (() => void) | null = null
+
+/** Creates the voice's AudioContext and wakes it up (it only wakes up inside a tap). */
+function primeSpeechContext(): void {
+  if (typeof window === 'undefined') return
+  try {
+    const AudioCtor =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!AudioCtor) return
+    speechContext = speechContext || new AudioCtor()
+    const state = speechContext.state as string
+    if (state === 'suspended' || state === 'interrupted') void speechContext.resume().catch(() => undefined)
+  } catch {
+    speechContext = null
+  }
+}
+
+function stopWebAudioSpeech(): void {
+  const source = speechSource
+  speechSource = null
+  if (source) {
+    source.onended = null
+    try {
+      source.stop()
+    } catch {
+      // Already stopped.
+    }
+  }
+  restoreAfterWebAudio?.()
+  restoreAfterWebAudio = null
+}
+
+/** Plays a premium audio (blob URL) through Web Audio. Resolves false if it could not start. */
+async function playWithWebAudio(id: number, url: string, rate: number): Promise<boolean> {
+  const ctx = speechContext
+  if (!ctx) return false
+  try {
+    if ((ctx.state as string) !== 'running') await ctx.resume()
+    if ((ctx.state as string) !== 'running') return false
+    const data = await (await fetch(url)).arrayBuffer()
+    const buffer = await ctx.decodeAudioData(data)
+    if (!isCurrent(id)) return true
+    // Web Audio follows the silent switch on iPhone unless the session says «playback».
+    let session: { type: string } | undefined
+    let previous: string | null = null
+    try {
+      session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession
+      if (session) {
+        previous = session.type
+        session.type = 'playback'
+      }
+    } catch {
+      session = undefined
+    }
+    restoreAfterWebAudio = () => {
+      try {
+        if (session && previous && session.type === 'playback') session.type = previous === 'ambient' ? 'auto' : previous
+      } catch {
+        // Nothing to restore.
+      }
+    }
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    source.playbackRate.value = Math.min(1.25, Math.max(0.5, rate))
+    source.connect(ctx.destination)
+    source.onended = () => {
+      if (speechSource === source) speechSource = null
+      restoreAfterWebAudio?.()
+      restoreAfterWebAudio = null
+      endSession(id, { ok: true })
+    }
+    speechSource = source
+    source.start()
+    return true
+  } catch {
+    return false
+  }
+}
+
+if (typeof window !== 'undefined' && PREMIUM_TTS_ENDPOINT) {
+  const events = ['pointerdown', 'touchend', 'click', 'keydown'] as const
+  const onGesture = () => {
+    if (premiumUnlocked) {
+      events.forEach((name) => window.removeEventListener(name, onGesture, true))
+      return
+    }
+    unlockPremiumAudio()
+  }
+  events.forEach((name) => window.addEventListener(name, onGesture, { capture: true, passive: true }))
+}
+
 function speakWithPremiumVoice(id: number, text: string, langCode: string, rate: number): void {
   premiumAudio = premiumAudio || new Audio()
   const audio = premiumAudio
-  // iPhone only lets an audio element play later (after the download) if it already played inside a tap.
-  if (!premiumUnlocked) {
-    premiumUnlocked = true
-    audio.src = SILENT_WAV
-    void audio.play().catch(() => undefined)
-  }
+  // Both run here, synchronously: when the voice is asked for inside a tap, they count as the tap.
+  unlockPremiumAudio()
+  primeSpeechContext()
   const useOldVoices = () => {
     if (!isCurrent(id)) return
     if (ttsAudio === audio) ttsAudio = null
     audio.onended = null
     audio.onerror = null
     speakWithoutPremium(id, text, langCode, rate)
+  }
+  // The audio element refused to play: same audio through Web Audio, and only then the old voices.
+  let triedWebAudio = false
+  const tryWebAudio = (url: string) => {
+    if (triedWebAudio || !isCurrent(id)) return
+    triedWebAudio = true
+    if (ttsAudio === audio) ttsAudio = null
+    audio.onended = null
+    audio.onerror = null
+    void playWithWebAudio(id, url, rate).then((ok) => {
+      if (!ok) useOldVoices()
+    })
   }
   void fetchPremiumAudio(text, langCode).then((url) => {
     if (!isCurrent(id)) return
@@ -361,13 +525,13 @@ function speakWithPremiumVoice(id: number, text: string, langCode: string, rate:
       if (ttsAudio === audio) ttsAudio = null
       endSession(id, { ok: true })
     }
-    audio.onerror = useOldVoices
+    audio.onerror = () => tryWebAudio(url)
     audio.src = url
     // A new src resets the speed: set it after.
     const speed = Math.min(1.25, Math.max(0.5, rate))
     audio.defaultPlaybackRate = speed
     audio.playbackRate = speed
-    audio.play().catch(useOldVoices)
+    audio.play().catch(() => tryWebAudio(url))
   })
 }
 

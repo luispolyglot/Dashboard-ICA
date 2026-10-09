@@ -9,7 +9,7 @@
  * y modo bolsillo.
  */
 import { LANG_CODES } from '../../constants'
-import { speakNatural, stopTTS } from '../../services/tts'
+import { speakNatural, stopTTS, unlockSpeechAudio } from '../../services/tts'
 import { t } from '@/i18n'
 
 export const getLangCode = (langName: string): string => LANG_CODES[langName] || 'en-US'
@@ -117,9 +117,19 @@ function speakWithSynthesis(text: string, langName: string, rate = 1): Promise<v
   })
 }
 
+/**
+ * Says a text and resolves when it ends. The premium voice (Gemini) on every device, iPhone
+ * included (Luis, 9 Oct: on iPhone the games still used the robotic device voice). If the premium
+ * voice cannot play, speakNatural falls back to the device voice by itself.
+ */
 export function speakAsync(text: string, langName: string, rate = 1): Promise<void> {
-  if (isIOSDevice()) return speakWithSynthesis(text, langName, rate)
+  if (!text.trim()) return Promise.resolve()
   return new Promise((resolve) => speakNatural(text, langName, () => resolve(), rate))
+}
+
+/** Only the device voice (kept for the cases where the premium voice is not wanted). */
+export function speakDeviceVoiceAsync(text: string, langName: string, rate = 1): Promise<void> {
+  return speakWithSynthesis(text, langName, rate)
 }
 
 export function stopSpeaking(): void {
@@ -141,6 +151,8 @@ async function resumeAudioContext(ctx: AudioContext): Promise<void> {
  * aquí se "desbloquean" los dos con un sonido mudo, y después ya suenan solos.
  */
 export function unlockChallengeAudio(): void {
+  // The premium voice (Gemini) too: on iPhone it can only play later if it was unlocked in a tap.
+  unlockSpeechAudio()
   try {
     audioContext = audioContext || new AudioContext()
     void audioContext.resume().catch(() => {})
