@@ -175,11 +175,7 @@ export function NotaDesafianteOverlay({
         // VOICES READY BEFORE PLAYING (Luis, 5 Oct): the premium voice takes 1-2 s the first time
         // it reads a text. All the game's lines are prepared now, in order, while «Preparing…» is
         // on screen; the game starts once the first rounds are ready (at most ~10 s of waiting)
-        // and the rest keep loading ahead of the student. (On iPhone the game uses the device voice.)
-        if (isIOSDevice()) {
-          setPhase('intro')
-          return
-        }
+        // and the rest keep loading ahead of the student. Also on iPhone (Luis, 9 Oct).
         const { nativeLang: native, targetLang: target } = langsRef.current
         for (const line of [...CHALLENGE_FIXED_LINES, ...Object.values(ENCOURAGEMENT_SPOKEN)]) {
           void prefetchSpeech(t(line), native)
