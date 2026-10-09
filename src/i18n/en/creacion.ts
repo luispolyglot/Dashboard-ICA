@@ -185,5 +185,9 @@ const en: Record<string, string> = {
   "Tú eliges de 5 a 8 palabras y la IA crea la frase con ellas.": "You pick 5 to 8 words and the AI creates the phrase with them.",
   "La escribo yo": "I write it",
   "Escribes tú la frase usando al menos 5 palabras ICA.": "You write the phrase using at least 5 ICA words.",
+  // Barra al crear la frase (Luis, 9 Oct)
+  "Creando tu frase…": "Creating your phrase…",
+  "Revisando tu frase…": "Checking your phrase…",
+  "Progreso": "Progress",
 }
 export default en

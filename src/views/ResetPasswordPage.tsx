@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { LockIcon } from 'lucide-react'
+import { CheckIcon, LockIcon } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { Button } from '@/components/ui/button'
 import { AuthField, AuthNotice, AuthShell } from './components/AuthShell'
@@ -14,14 +14,13 @@ export function ResetPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
+  const [done, setDone] = useState(false)
 
   const canSubmit = Boolean(session && isPasswordRecovery)
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError(null)
-    setSuccess(null)
 
     if (!session) {
       setError(t('El enlace es inválido o expiró. Solicita uno nuevo desde recuperar contraseña.'))
@@ -44,14 +43,37 @@ export function ResetPasswordPage() {
     try {
       await updatePassword(password)
       await signOut()
-      setSuccess(t('Contraseña actualizada. Ya puedes iniciar sesión con tu nueva clave.'))
-      window.setTimeout(() => navigate('/login', { replace: true }), 7000)
+      // A clear end screen with its own button, instead of a message that vanishes (Luis, 9 Oct).
+      setDone(true)
     } catch (err) {
       const message = err instanceof Error ? err.message : t('No se pudo actualizar la contraseña')
       setError(message)
     } finally {
       setBusy(false)
     }
+  }
+
+  if (done) {
+    return (
+      <AuthShell title={t('Contraseña cambiada')} subtitle={t('Ya puedes entrar con tu nueva contraseña.')}>
+        <div className='flex flex-col items-center gap-4 text-center'>
+          <span
+            className='ica-pop flex size-16 items-center justify-center rounded-full text-white'
+            style={{ background: 'var(--ica-ok)', boxShadow: '0 4px 0 var(--ica-ok-edge)' }}
+            aria-hidden='true'
+          >
+            <CheckIcon className='size-8' strokeWidth={3} />
+          </span>
+          <p className='m-0 text-base font-extrabold'>{t('Tu contraseña se ha cambiado.')}</p>
+          <p className='m-0 text-sm font-semibold text-muted-foreground'>
+            {t('Entra de nuevo con tu correo y tu nueva contraseña.')}
+          </p>
+          <Button type='button' size='xl' className='mt-1 w-full' onClick={() => navigate('/login', { replace: true })}>
+            {t('Entrar')}
+          </Button>
+        </div>
+      </AuthShell>
+    )
   }
 
   return (
@@ -65,7 +87,7 @@ export function ResetPasswordPage() {
       }
     >
       <form className='flex flex-col gap-4' onSubmit={handleSubmit}>
-        {!loading && !canSubmit && !success && (
+        {!loading && !canSubmit && (
           <AuthNotice tone='warning'>{t('No detectamos una sesión de recuperación válida. Pide un nuevo enlace.')}</AuthNotice>
         )}
 
@@ -95,7 +117,6 @@ export function ResetPasswordPage() {
         />
 
         {error && <AuthNotice tone='error'>{error}</AuthNotice>}
-        {success && <AuthNotice tone='success'>{success}</AuthNotice>}
 
         <Button type='submit' size='xl' disabled={busy || loading || !canSubmit} className='mt-1 w-full'>
           {busy ? t('Guardando...') : t('Actualizar contraseña')}

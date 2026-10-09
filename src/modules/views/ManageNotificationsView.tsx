@@ -73,11 +73,11 @@ const REMINDER_HOUR_OPTIONS = Array.from(
 function getDefaultReminderPreferences(): PushReminderPreferences {
   return {
     userId: '',
-    icaStreakEnabled: false,
+    icaStreakEnabled: true,
     icaStreakHour: 20,
-    flashcardsStreakEnabled: false,
+    flashcardsStreakEnabled: true,
     flashcardsStreakHour: 20,
-    habitLossEnabled: false,
+    habitLossEnabled: true,
     habitLossLastStage: 0,
     streakRiskEnabled: true,
     createdAt: null,

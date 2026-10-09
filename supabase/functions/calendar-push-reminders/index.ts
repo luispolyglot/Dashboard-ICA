@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
 import { sendIcaChallengeJobNotices } from '../_shared/ica-challenge-job-notices.ts'
+import { sendCalendarChangeNotices } from '../_shared/calendar-change-notices.ts'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -278,6 +279,8 @@ Deno.serve(async (req) => {
 
   // Challenge notices queued by the expiration job (expired, turn lost). Never blocks the reminders.
   await sendIcaChallengeJobNotices({ adminClient, webpush })
+  // Classes moved to another day or time: notice to the people who follow them (Luis, 9 Oct).
+  await sendCalendarChangeNotices({ adminClient, webpush })
   const now = new Date()
   const minDate = new Date(now.getTime() - 10 * 60 * 1000)
   const maxDate = new Date(now.getTime() + 120 * 60 * 1000)

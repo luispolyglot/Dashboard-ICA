@@ -8,7 +8,9 @@ import {
   LockIcon,
   SpellCheckIcon,
   TriangleAlertIcon,
+  ZapIcon,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import type { Dispatch, SetStateAction } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -23,6 +25,7 @@ import {
 import { recordWordAddedEvent } from '../services/gamification'
 import { kickLexicardExampleWorker } from '../services/lexicardExampleJobs'
 import { insertWord } from '../services/storage'
+import { BOOST_GAMES, boostLexicard, isBoosted } from '../services/lexicardBoost'
 import { generateId, todayKey } from '../utils'
 import { DailyLimitNotice } from '../game/DailyLimitNotice'
 import { useDailyLimits } from '../game/limits'
@@ -148,6 +151,9 @@ export function AddView({
   const [goCreateTipPending, closeGoCreateTip] = useFirstUseTip('add-go-create')
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
+  // Potenciar (Luis, 8 Oct): the word was already in the Baúl ICA and the student boosted it.
+  const [boosting, setBoosting] = useState(false)
+  const [boostedWord, setBoostedWord] = useState<string | null>(null)
   const [suggestionNative, setSuggestionNative] = useState<string | null>(null)
   const [suggestionTarget, setSuggestionTarget] = useState<string | null>(null)
   const [loadingNative, setLoadingNative] = useState(false)
@@ -205,6 +211,38 @@ export function AddView({
   )
   const isDuplicate = Boolean(trimmedTarget && duplicateWord)
   const showDuplicateWarning = isDuplicate && !saving && !saved
+  const duplicateAlreadyBoosted = Boolean(
+    duplicateWord && (isBoosted(duplicateWord, 'flash') || isBoosted(duplicateWord, 'daily') || isBoosted(duplicateWord, 'duel')),
+  )
+
+  /**
+   * POTENCIAR: instead of saving the same word again, it becomes Vital and comes first in the next
+   * 2 flashcards rounds, 2 daily challenges and 2 Desafíos. It does not count as a new word.
+   */
+  const handleBoost = async (): Promise<void> => {
+    if (!duplicateWord || boosting) return
+    setBoosting(true)
+    try {
+      await boostLexicard(duplicateWord.id)
+      setCards((prev) =>
+        prev.map((card) =>
+          card.id === duplicateWord.id
+            ? { ...card, importance: 'vital', boostFlash: BOOST_GAMES, boostDaily: BOOST_GAMES, boostDuel: BOOST_GAMES }
+            : card,
+        ),
+      )
+      setBoostedWord(duplicateWord.target)
+      setTarget('')
+      setNative('')
+      setImportance(null)
+      window.setTimeout(() => setBoostedWord(null), 5000)
+    } catch (error) {
+      console.error(error)
+      toast.error(t('No se pudo potenciar la palabra. Inténtalo de nuevo.'))
+    } finally {
+      setBoosting(false)
+    }
+  }
 
   const clampTarget = (value: string): string =>
     Array.from(value).slice(0, SHARE_TARGET_MAX_CHARS).join('')
@@ -697,13 +735,41 @@ export function AddView({
               )}
             </div>
             {showDuplicateWarning && (
-              <p
-                className='m-0 mt-2 flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-bold'
+              <div
+                className='mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl px-3 py-2 text-sm font-bold'
                 style={{ background: 'var(--ica-bad-soft)', color: 'var(--ica-bad-ink)' }}
                 role='alert'
               >
-                <TriangleAlertIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' />
-                {t('Esta palabra ya existe en tu baúl ICA.')}
+                <span className='flex min-w-0 flex-1 items-center gap-2'>
+                  <TriangleAlertIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' />
+                  <span>
+                    {t('Esta palabra ya existe en tu baúl ICA.')}{' '}
+                    {duplicateAlreadyBoosted ? t('Ya está potenciada.') : t('¿Quieres potenciarla?')}
+                  </span>
+                </span>
+                {duplicateAlreadyBoosted ? null : (
+                  <Button type='button' size='sm' variant='i' className='shrink-0' disabled={boosting} onClick={() => void handleBoost()}>
+                    {boosting ? (
+                      <LoaderCircleIcon className='animate-spin' strokeWidth={2.6} aria-hidden='true' />
+                    ) : (
+                      <ZapIcon strokeWidth={2.6} aria-hidden='true' />
+                    )}
+                    {t('Potenciar')}
+                  </Button>
+                )}
+              </div>
+            )}
+            {boostedWord && !trimmedTarget && (
+              <p
+                className='m-0 mt-2 flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-bold'
+                style={{ background: 'var(--ica-ok-soft)', color: 'var(--ica-ok-ink)' }}
+                role='status'
+              >
+                <ZapIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' />
+                <span>
+                  <b className='font-black'>{boostedWord}</b>{' '}
+                  {t('potenciada. Saldrá con preferencia en tus próximas flashcards, reto del día y Desafíos ICA.')}
+                </span>
               </p>
             )}
             {sharedPrefillStatus === 'prefilled' && (

@@ -89,7 +89,7 @@ const CATALOG: Array<{
   config: Record<string, unknown>
 }> = [
   { id: 'ica-own-words', name: 'Lectura', iconKey: 'book-open', isActive: true, order: 10, config: { pitch: 'Lees la palabra en tu idioma y eliges la correcta entre 4 opciones.', maxLevelGap: 3 } },
-  { id: 'ica-writing', name: 'Escritura · por palabra', iconKey: 'pencil', isActive: true, order: 20, config: { pitch: 'Ves la palabra en tu idioma y la escribes en tu idioma objetivo. 10 palabras por turnos.', secondsPerQuestion: 7, maxLevelGap: 3 } },
+  { id: 'ica-writing', name: 'Escritura · por palabra', iconKey: 'pencil', isActive: true, order: 20, config: { pitch: 'Ves la palabra en tu idioma y la escribes en tu idioma objetivo. 10 palabras por turnos.', secondsPerQuestion: 10, maxLevelGap: 3 } },
   { id: 'ica-lightning', name: 'Escritura · cuenta atrás', iconKey: 'zap', isActive: true, order: 30, config: { pitch: 'Escribe todas las palabras que puedas antes de que acabe la cuenta atrás. Gana quien acierte más.', sessionSeconds: 60, maxLevelGap: 3 } },
   { id: 'ica-listen', name: 'Escucha', iconKey: 'headphones', isActive: true, order: 40, config: { pitch: 'Escuchas una palabra ICA en tu idioma objetivo y eliges qué significa.', secondsPerQuestion: 8, needsAudio: true, maxLevelGap: 3 } },
   { id: 'ica-speak', name: 'Habla', iconKey: 'mic', isActive: true, order: 50, config: { pitch: 'Ves la palabra en tu idioma y la dices en voz alta en tu idioma objetivo.', secondsPerQuestion: 10, needsMicrophone: true, maxLevelGap: 3 } },
@@ -1068,8 +1068,8 @@ function review(ctx: Ctx) {
   const theirs = playsOf(ctx.challenge.id, ctx.rivalId)
   return {
     items,
-    me: { correct: scoreOf(playsOf(ctx.challenge.id, ctx.userId)), answered: items.length },
-    rival: { correct: scoreOf(theirs), answered: theirs.length, done: isDone(ctx, ctx.rivalId) },
+    me: { correct: scoreOf(playsOf(ctx.challenge.id, ctx.userId)), answered: items.length, ms: totalMsOf(playsOf(ctx.challenge.id, ctx.userId)) },
+    rival: { correct: scoreOf(theirs), answered: theirs.length, done: isDone(ctx, ctx.rivalId), ms: totalMsOf(theirs) },
     wordSource: ctx.settings.wordSource,
   }
 }

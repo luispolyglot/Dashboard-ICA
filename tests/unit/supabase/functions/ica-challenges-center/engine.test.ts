@@ -92,6 +92,12 @@ describe('Escribe la palabra: corrección', () => {
     expect(evaluateResponse({ kind: 'write', answer, response: { text: 'Samochód' }, language: 'Polaco' })).toBe(true)
   })
 
+  it('las mayúsculas nunca cuentan, tampoco la «İ» turca ni una palabra entera en mayúsculas', () => {
+    expect(evaluateResponse({ kind: 'write', answer: secret('Warszawa', ['Warszawa']), response: { text: 'warszawa' }, language: 'Polaco' })).toBe(true)
+    expect(evaluateResponse({ kind: 'write', answer: secret('jabłko', ['jabłko']), response: { text: 'JABŁKO' }, language: 'Polaco' })).toBe(true)
+    expect(evaluateResponse({ kind: 'write', answer: secret('istanbul', ['istanbul']), response: { text: 'İstanbul' }, language: 'Turco' })).toBe(true)
+  })
+
   it('exige las tildes y letras especiales (el alumno usa el teclado del idioma)', () => {
     const answer = secret('jabłko', ['jabłko'])
     expect(evaluateResponse({ kind: 'write', answer, response: { text: 'jablko' }, language: 'Polaco' })).toBe(false)
@@ -377,7 +383,10 @@ describe('Configuración, tiempo, rondas y turnos', () => {
   it('rechaza respuestas fuera de tiempo', () => {
     const settings = buildModeSettings({ typeId: 'ica-writing', typeConfig: {}, rounds: 2, responseSeconds: 5, wordSource: 'own' })!
     expect(isAnswerInTime({ settings, servedAtMs: 0, nowMs: 6000, clientMs: 5000, sessionEndsAtMs: null })).toBe(true)
-    expect(isAnswerInTime({ settings, servedAtMs: 0, nowMs: 6000, clientMs: 9000, sessionEndsAtMs: null })).toBe(false)
+    // Escritura: 10 s por palabra (Luis, 8 Oct).
+    expect(settings.secondsPerQuestion).toBe(10)
+    expect(isAnswerInTime({ settings, servedAtMs: 0, nowMs: 9500, clientMs: 9000, sessionEndsAtMs: null })).toBe(true)
+    expect(isAnswerInTime({ settings, servedAtMs: 0, nowMs: 12000, clientMs: 11000, sessionEndsAtMs: null })).toBe(false)
     expect(isAnswerInTime({ settings, servedAtMs: 0, nowMs: 20000, clientMs: 3000, sessionEndsAtMs: null })).toBe(false)
     expect(isPendingQuestionStale({ settings, servedAtMs: 0, nowMs: 60000 })).toBe(true)
 
@@ -518,5 +527,17 @@ describe('Lista de rivales: los que más juegan, su racha y quién está inactiv
     expect(isRecentlyActive({ lastAppActivityDay: '2026-08-20', lastChallengeAtMs: null, nowMs: now })).toBe(false)
     expect(isRecentlyActive({ lastAppActivityDay: null, lastChallengeAtMs: Date.parse(day(10)), nowMs: now })).toBe(true)
     expect(isRecentlyActive({ lastAppActivityDay: null, lastChallengeAtMs: null, nowMs: now })).toBe(false)
+  })
+})
+
+describe('Palabras potenciadas (Luis, 8 Oct)', () => {
+  it('una palabra potenciada entra siempre en la partida', () => {
+    for (let seed = 1; seed <= 20; seed += 1) {
+      const pool = Array.from({ length: 40 }, (_, index) => card(`słowo${index}`, `palabra${index}`))
+      const boosted = card('żółw', 'tortuga', { boosted: true })
+      const result = pickPromptCards({ kind: 'choice', pools: [[...pool, boosted]], count: 10, language: 'Polaco', rng: seededRng(seed) })
+      expect(result.ok).toBe(true)
+      if (result.ok) expect(result.cards.some((item) => item.id === boosted.id)).toBe(true)
+    }
   })
 })

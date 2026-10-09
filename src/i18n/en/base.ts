@@ -264,7 +264,7 @@ const en: Record<string, string> = {
   "Te faltan {n} para {level}": "{n} more to reach {level}",
   "Se calcula con tus": "It's based on your",
   "palabras ICA activadas": "activated ICA words",
-  "más las que ya tenías antes de empezar. Los umbrales salen de otros alumnos que han aplicado ICA: son acertados, pero no exactos.": "plus the ones you already knew before you started. The thresholds come from other students who have used ICA: they're accurate, but not exact.",
+  ". Los umbrales salen de otros alumnos que han aplicado ICA: son acertados, pero no exactos.": ". The thresholds come from other students who have used ICA: they're accurate, but not exact.",
   "Sitúa tu nivel real en {lang}": "Find your real level in {lang}",
   "Tu nivel real en {lang}. Ver detalle": "Your real level in {lang}. See details",
   "Sube con cada palabra ICA que activas en una frase, sumada a las que ya sabías.": "It goes up with every ICA word you activate in a sentence, plus the ones you already knew.",

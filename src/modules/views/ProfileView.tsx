@@ -12,6 +12,7 @@ import {
   ClipboardCheckIcon,
   CoinsIcon,
   GraduationCapIcon,
+  InfoIcon,
   LanguagesIcon,
   LineChartIcon,
   ListChecksIcon,
@@ -79,7 +80,8 @@ import {
   ICA_TEST_REQUIRED_WORDS,
 } from "../services/icaTests";
 import type { AppConfig, Lexicard } from "../types";
-import { DISPLAY_NAME_MAX_LENGTH } from "../constants";
+import { DISPLAY_NAME_MAX_LENGTH, NAME_RECOMMENDED_LENGTH } from "../constants";
+import { FlagPickerRow } from "../game/FlagPicker";
 
 type ProfileViewProps = {
   config: AppConfig | null;
@@ -119,6 +121,8 @@ export function ProfileView({
   const [pendingCoachingNotes, setPendingCoachingNotes] = useState(0);
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
+  // Tip about the length of the name (Luis, 9 Oct): over 13 characters it gets cut («…») in the ranking.
+  const [showNameTip, setShowNameTip] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
   const [nameSuccess, setNameSuccess] = useState<string | null>(null);
   const [isSavingName, setIsSavingName] = useState(false);
@@ -375,6 +379,7 @@ export function ProfileView({
               <ProfileFeatureCard
                 title={t("Calendario")}
                 icon={CalendarDaysIcon}
+                tourId="profile-calendar"
                 iconTone="a"
                 onMainAction={() => navigate(DASHBOARD_ROUTES.calendarIcademy)}
                 description={t("Horarios por idioma y sesiones activas.")}
@@ -453,8 +458,17 @@ export function ProfileView({
                     <UserIcon className="size-[22px]" strokeWidth={2.5} aria-hidden="true" />
                   </IconTile>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-xs font-bold text-muted-foreground">
+                    <span className="flex items-center gap-1 text-xs font-bold text-muted-foreground">
                       {t("Nombre")}
+                      <button
+                        type="button"
+                        onClick={() => setShowNameTip((value) => !value)}
+                        aria-label={t("Consejo sobre el nombre")}
+                        aria-expanded={showNameTip}
+                        className="flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        <InfoIcon className="size-3.5" strokeWidth={2.6} aria-hidden="true" />
+                      </button>
                     </span>
                     <span className="block truncate leading-tight font-extrabold">
                       {displayName}
@@ -517,10 +531,29 @@ export function ProfileView({
                         <XIcon className="size-5" strokeWidth={2.6} />
                       </Button>
                     </div>
-                    <span className="text-right text-xs font-bold text-muted-foreground tabular-nums">
+                    <span
+                      className="text-right text-xs font-bold tabular-nums"
+                      style={{
+                        color:
+                          cleanNameDraft.length > NAME_RECOMMENDED_LENGTH
+                            ? "var(--ica-gold-ink)"
+                            : "var(--muted-foreground)",
+                      }}
+                    >
                       {cleanNameDraft.length}/{DISPLAY_NAME_MAX_LENGTH}
                     </span>
                   </form>
+                )}
+                {(showNameTip || (isEditingName && cleanNameDraft.length > NAME_RECOMMENDED_LENGTH)) && (
+                  <p
+                    className="m-0 mt-2 flex items-start gap-2 rounded-2xl px-3 py-2 text-xs font-bold"
+                    style={{ background: "var(--ica-gold-soft)", color: "var(--ica-gold-ink)" }}
+                  >
+                    <InfoIcon className="mt-px size-3.5 shrink-0" strokeWidth={2.6} aria-hidden="true" />
+                    {t("Te recomendamos {n} caracteres o menos: así tu nombre se ve entero en el ranking.", {
+                      n: NAME_RECOMMENDED_LENGTH,
+                    })}
+                  </p>
                 )}
                 {nameError && (
                   <p className="m-0 mt-2 text-xs font-bold" style={{ color: "var(--ica-bad-ink)" }}>
@@ -560,6 +593,9 @@ export function ProfileView({
                 }
               />
 
+              {/* Tu bandera: también se cambia aquí, no solo en la tienda (Luis, 9 Oct). */}
+              <FlagPickerRow />
+
               <ListRow
                 onClick={() => {
                   setPasswordError(null);
@@ -578,16 +614,18 @@ export function ProfileView({
                 text={t("Actualiza tu contraseña con validación de seguridad.")}
               />
 
-              <ListRow
-                onClick={() => navigate(DASHBOARD_ROUTES.manageNotifications)}
-                icon={
-                  <IconTile tone="gold" size={42}>
-                    <BellIcon className="size-[22px]" strokeWidth={2.5} aria-hidden="true" />
-                  </IconTile>
-                }
-                title={t("Notificaciones")}
-                text={t("Recordatorios de rachas y hábitos por push.")}
-              />
+              <div data-tour="profile-notifications">
+                <ListRow
+                  onClick={() => navigate(DASHBOARD_ROUTES.manageNotifications)}
+                  icon={
+                    <IconTile tone="gold" size={42}>
+                      <BellIcon className="size-[22px]" strokeWidth={2.5} aria-hidden="true" />
+                    </IconTile>
+                  }
+                  title={t("Notificaciones")}
+                  text={t("Recordatorios de rachas y hábitos por push.")}
+                />
+              </div>
               {config?.targetLang ? <ChatProfileRow targetLang={config.targetLang} /> : null}
             </RowGroup>
           </div>
@@ -702,9 +740,9 @@ export function ProfileView({
                     title={t("Administrar coaching")}
                     text={
                       pendingCoachingSessions > 0
-                        ? t("Pendientes: {notes} en {sessions}.", {
-                            notes: tn(pendingCoachingNotes, "{n} nota", "{n} notas"),
-                            sessions: tn(pendingCoachingSessions, "{n} sesión", "{n} sesiones"),
+                        ? t("Por revisar: {n} en {sessions}.", {
+                            n: pendingCoachingNotes,
+                            sessions: tn(pendingCoachingSessions, "{n} alumno", "{n} alumnos"),
                           })
                         : t("Gestiona usuarios, feedback y objetivos personalizados.")
                     }
@@ -712,7 +750,7 @@ export function ProfileView({
                       pendingCoachingSessions > 0 ? (
                         <span className="flex shrink-0 items-center gap-2">
                           <PendingReviewDot
-                            title={t("Tienes {notes} notas pendientes de revisión en {sessions} sesiones.", { notes: pendingCoachingNotes, sessions: pendingCoachingSessions })}
+                            title={t("Tienes tareas o notas maestras por revisar.")}
                             useIconSpeaker
                           />
                           {chevron}

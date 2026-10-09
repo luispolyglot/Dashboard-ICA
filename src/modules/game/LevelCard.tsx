@@ -149,10 +149,9 @@ export function LevelCard({ config, bare = false }: { config: AppConfig; bare?: 
 
       {infoOpen ? (
         <p className='m-0 rounded-2xl bg-muted/70 p-3 text-xs leading-relaxed font-medium text-muted-foreground'>
-          {t('Se calcula con tus')} <b className='text-foreground'>{t('palabras ICA activadas')}</b>{' '}
-          {t(
-            t('más las que ya tenías antes de empezar. Los umbrales salen de otros alumnos que han aplicado ICA: son acertados, pero no exactos.'),
-          )}
+          {t('Se calcula con tus')} <b className='text-foreground'>{t('palabras ICA activadas')}</b>
+          {/* Everyone who joins now starts with ICA from zero (Luis, 9 Oct): no «words you already had». */}
+          {t('. Los umbrales salen de otros alumnos que han aplicado ICA: son acertados, pero no exactos.')}
         </p>
       ) : null}
     </div>

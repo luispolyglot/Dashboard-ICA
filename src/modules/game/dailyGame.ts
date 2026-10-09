@@ -50,7 +50,8 @@ export const DAILY_GAME_MIN_WORDS = 10
 export const DAILY_GAME_SECONDS: Record<DailyGameKind, number> = {
   pairs: 45,
   choice: 8,
-  write: 12,
+  // 10 s per word, like the Desafíos ICA (Luis, 8 Oct).
+  write: 10,
   listen: 10,
   speak: 10,
 }
@@ -84,6 +85,7 @@ export function toEngineCards(cards: Lexicard[], ownerUserId: string): EngineCar
     native: card.native,
     examplePhrase: card.examplePhrase ?? null,
     exampleTranslation: card.exampleTranslation ?? null,
+    boosted: (card.boostDaily ?? 0) > 0,
   }))
 }
 

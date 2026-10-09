@@ -13,8 +13,10 @@ import { useIcaTestsOverview } from '../hooks/useIcaTestsOverview'
 import { LangEditModal } from '../components/LangEditModal'
 import { MobileBottomNav } from '../components/MobileBottomNav'
 import { MonthlyRecapHost } from '../game/monthlyRecap'
+import { IcaWrappedHost } from '../game/wrapped/IcaWrapped'
 import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
+import { useGamesWaiting } from '../hooks/useGamesWaiting'
 
 import {
   fetchCoachingNavSummary,
@@ -35,7 +37,7 @@ import {
 import { LanguageSetup } from '../views/LanguageSetup'
 import { CycleCelebration } from '../game/CycleCelebration'
 import { NewBadgeCelebration } from '../game/NewBadgeCelebration'
-import { WelcomeTour } from '../game/WelcomeTour'
+import { ProfileGuide, WelcomeTour } from '../game/WelcomeTour'
 import { TapHaptics } from '../game/TapHaptics'
 import { ChallengesUnlockWatcher } from '../game/ChallengesUnlocked'
 import { prefetchAchievementStats } from '../game/achievements'
@@ -150,6 +152,7 @@ export function DashboardLayout() {
   } = useDashboardContext()
 
   const boltButtonRef = useRef<HTMLButtonElement | null>(null)
+  const gamesWaiting = useGamesWaiting(config?.targetLang, config?.nativeLang)
   const hasCheckedCalendarNotificationsRef = useRef(false)
   const previousMilestonesRef = useRef<DailyMilestones | null>(null)
   const milestonesReadyRef = useRef(false)
@@ -403,6 +406,7 @@ export function DashboardLayout() {
           shouldHighlightProfileButton={canHighlightCurrentMonth}
           shouldHighlightCoachingProfileButton={hasPendingCoachingReview}
           coachStudents={coachStudents}
+          gamesWaiting={gamesWaiting}
           boltButtonRef={(node) => {
             boltButtonRef.current = node
           }}
@@ -429,15 +433,18 @@ export function DashboardLayout() {
         <MobileBottomNav
           shouldHighlightProfileButton={canHighlightCurrentMonth}
           shouldHighlightCoachingProfileButton={hasPendingCoachingReview}
+          gamesWaiting={gamesWaiting}
         />
 
         <CycleCelebration />
         <NewBadgeCelebration />
         <WelcomeTour />
+        <ProfileGuide />
         <TapHaptics />
         <ChallengesUnlockWatcher />
         <StreakDayCelebrationHost />
         <MonthlyRecapHost />
+        <IcaWrappedHost />
         <StreakRewardsWatcher />
 
         <BoltFlightFx

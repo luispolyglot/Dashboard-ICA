@@ -464,7 +464,7 @@ function ScoreBreakdownContent({
       icon: MicIcon,
       tone: "c",
       title: t("PreguntICA"),
-      text: t("2 por cada semana completada."),
+      text: t("2 por semana: del 1 al 7, del 8 al 14, del 15 al 21 y del 22 al 28."),
       value: breakdown.pregunticaPoints,
       max: breakdown.pregunticaMaxPoints,
     },

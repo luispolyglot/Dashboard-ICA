@@ -65,7 +65,7 @@ export function useMyFlags(userId: string | null | undefined) {
     if (error) throw new Error(error.message)
     const row = (data ?? {}) as { ok?: boolean; alreadyOwned?: boolean; lang?: string }
     if (!row.ok || typeof row.lang !== 'string') throw new Error('FLAG_PURCHASE_FAILED')
-    if (!row.alreadyOwned) gameSfx.spend()
+    if (!row.alreadyOwned) gameSfx.purchase()
     signalIcaCoinsStateChanged()
     window.dispatchEvent(new Event(CHANGED_EVENT))
     return { lang: row.lang, alreadyOwned: Boolean(row.alreadyOwned) }

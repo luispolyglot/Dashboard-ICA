@@ -51,3 +51,14 @@ describe('buildReviewRound (modo aleatorio)', () => {
     expect(round).toHaveLength(5)
   })
 })
+
+describe('buildReviewRound: palabras potenciadas (Luis, 8 Oct)', () => {
+  it('una palabra potenciada sale la primera, aunque sea nueva y haya muchas', () => {
+    const cards: Lexicard[] = [
+      ...Array.from({ length: 30 }, (_, i) => card(`vital-${i}`, 'vital')),
+      card('boosted', 'vital', { lastReviewed: null, createdAt: Date.now(), boostFlash: 2 }),
+    ]
+    const round = buildReviewRound(cards, 'mixed', 10, 0, cards.length)
+    expect(round[0].id).toBe('boosted')
+  })
+})

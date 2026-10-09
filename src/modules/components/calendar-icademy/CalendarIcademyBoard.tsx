@@ -71,6 +71,8 @@ type CalendarIcademyBoardProps = {
   lockToCurrentMonth?: boolean
   /** Botones grandes debajo del título (los usa la gestión de admin). */
   topActions?: ReactNode
+  /** Aviso debajo del título (p. ej. dónde se entra a las clases). */
+  notice?: ReactNode
   /** Algo pequeño a la derecha del título (p. ej. la campana de recordatorios). */
   headerRight?: ReactNode
   /** Filas extra para la sección «Ajustes» (p. ej. recordatorios). */
@@ -263,6 +265,7 @@ export function CalendarIcademyBoard({
   allowMonthNavigation = false,
   lockToCurrentMonth = false,
   topActions,
+  notice,
   headerRight,
   settingsRows,
   onEntryClick,
@@ -1370,6 +1373,8 @@ export function CalendarIcademyBoard({
       </PageTitle>
 
       {topActions ? <div className='-mt-2 flex flex-wrap gap-2'>{topActions}</div> : null}
+
+      {notice ? <div className='-mt-2'>{notice}</div> : null}
 
       {error ? (
         <Panel tone='bad' className='text-sm font-bold'>

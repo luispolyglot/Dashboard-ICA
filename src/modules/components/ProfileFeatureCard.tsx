@@ -17,6 +17,8 @@ type ProfileFeatureCardProps = {
   tone?: ProfileFeatureTone;
   /** Color del cuadrado del icono (si no, sale del `tone`). */
   iconTone?: Tone;
+  /** Marca la tarjeta para la guía del perfil. */
+  tourId?: string;
   className?: string;
 };
 
@@ -38,6 +40,7 @@ export function ProfileFeatureCard({
   onMainAction,
   tone = "default",
   iconTone,
+  tourId,
   className,
 }: ProfileFeatureCardProps) {
   const isInteractive = typeof onMainAction === "function";
@@ -53,6 +56,7 @@ export function ProfileFeatureCard({
   return (
     <div
       onClick={onMainAction}
+      data-tour={tourId}
       onKeyDown={handleKeyDown}
       role={isInteractive ? "button" : undefined}
       tabIndex={isInteractive ? 0 : undefined}

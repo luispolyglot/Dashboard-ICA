@@ -47,3 +47,4 @@ La function envia payload con:
 - Evita duplicados por `subscription_id + calendar_entry_id`
 - La hora de la clase se lee en hora de Madrid (asi se guardan las clases)
 - En cada pasada tambien envia los avisos de Desafios ICA que dejo en cola el job de caducidad (`ica_challenge_push_outbox`)
+- Tambien envia el aviso de clase cambiada de dia u hora que deja en cola el trigger de `calendar_icademy` (`calendar_change_push_outbox`): a quien tiene el recordatorio de esa clase y al profesor con sus avisos activos. Respeta quiet hours (lo deja para la siguiente pasada) y no avisa si la clase ya empezo

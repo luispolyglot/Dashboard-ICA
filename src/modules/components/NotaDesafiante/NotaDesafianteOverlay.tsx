@@ -40,7 +40,6 @@ import {
   listenOnce,
   playBeep,
   playFailTone,
-  playSuccessChime,
   speakAsync,
   stopSpeaking,
   unlockChallengeAudio,
@@ -77,7 +76,7 @@ const VOICES_READY_BEFORE_START = 6
 /** Never wait longer than this for the voices: the rest load while playing. */
 const VOICES_MAX_WAIT_MS = 10_000
 /** Fixed lines the game may say (prepared ahead too). */
-const CHALLENGE_FIXED_LINES = ['Casi.', 'No te he entendido.']
+const CHALLENGE_FIXED_LINES = ['¡Genial!', 'Casi.', 'No te he entendido.']
 
 /**
  * End of the game (Luis, 5 Oct): after «You got X out of Y», a few words that depend on the result.
@@ -95,6 +94,11 @@ const ENCOURAGEMENT_SPOKEN: Record<ResultLevel, string> = {
   good: '¡Sigue así, vas muy bien!',
   some: 'Seguro que la próxima vez sale mejor.',
   none: 'No pasa nada: cada intento cuenta. ¡A por la siguiente!',
+}
+
+/** What the voice says at the end: the score and a few words that depend on it, in one go. */
+function closingLine(score: number, total: number): string {
+  return `${t('Has acertado {score} de {total}.', { score, total })} ${t(ENCOURAGEMENT_SPOKEN[resultLevel(score, total)])}`
 }
 
 type Feedback = {
@@ -177,8 +181,13 @@ export function NotaDesafianteOverlay({
         // on screen; the game starts once the first rounds are ready (at most ~10 s of waiting)
         // and the rest keep loading ahead of the student. Also on iPhone (Luis, 9 Oct).
         const { nativeLang: native, targetLang: target } = langsRef.current
-        for (const line of [...CHALLENGE_FIXED_LINES, ...Object.values(ENCOURAGEMENT_SPOKEN)]) {
+        for (const line of CHALLENGE_FIXED_LINES) {
           void prefetchSpeech(t(line), native)
+        }
+        // The closing line («You got 3 out of 4…») for every possible score, so it is said at once
+        // when the game ends (Luis, 9 Oct: it took 5 seconds or more).
+        for (let score = 0; score <= result.rounds.length; score += 1) {
+          void prefetchSpeech(closingLine(score, result.rounds.length), native)
         }
         const ready = prefetchSpeechQueue(
           result.rounds.flatMap((round) => [
@@ -262,8 +271,7 @@ export function NotaDesafianteOverlay({
         // Se guarda la partida: escuchar una nota + hacer su nota desafiante suma el punto del día.
         if (noteId) void recordChallengePlay(noteId, correct, total)
         await wait(300)
-        if (!cancelled()) await speakAsync(`Has acertado ${correct} de ${total}.`, nativeLang)
-        if (!cancelled()) await speakAsync(t(ENCOURAGEMENT_SPOKEN[resultLevel(correct, total)]), nativeLang)
+        if (!cancelled()) await speakAsync(closingLine(correct, total), nativeLang)
         return
       }
 
@@ -343,8 +351,9 @@ export function NotaDesafianteOverlay({
       setStep('feedback')
 
       if (outcomeFeedback.correct) {
-        await playSuccessChime()
-        await wait(600)
+        // The voice says «¡Genial!» instead of the chime (Luis, 9 Oct).
+        await speakAsync(t('¡Genial!'), nativeLang)
+        await wait(400)
       } else {
         // «Casi» si ha dicho bien varias palabras; si no, tono de fallo.
         // Después, en los dos casos, suena la versión correcta como siempre.

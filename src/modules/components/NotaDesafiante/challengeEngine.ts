@@ -132,6 +132,34 @@ export function speakDeviceVoiceAsync(text: string, langName: string, rate = 1):
   return speakWithSynthesis(text, langName, rate)
 }
 
+/**
+ * After a miss: a voice says the right answer and only then does the game move on (Luis, 8 Oct:
+ * the voice arrived when the next word was already on screen). `next` runs once, never before
+ * `minMs`, a short breath after the voice ends, and at the latest at `maxMs` (if the voice hangs,
+ * the next question cuts it). `schedule` is the screen's own timer, so leaving the screen cancels it.
+ */
+export function sayAnswerThenContinue(
+  text: string,
+  langName: string,
+  schedule: (fn: () => void, ms: number) => void,
+  next: () => void,
+  { delayMs = 450, minMs = 3400, afterVoiceMs = 700, maxMs = 8000 } = {},
+): void {
+  const startedAt = Date.now()
+  let done = false
+  const go = () => {
+    if (done) return
+    done = true
+    next()
+  }
+  schedule(() => {
+    void speakAsync(text, langName).then(() => {
+      if (!done) schedule(go, Math.max(afterVoiceMs, minMs - (Date.now() - startedAt)))
+    })
+  }, delayMs)
+  schedule(go, maxMs)
+}
+
 export function stopSpeaking(): void {
   stopTTS()
   if (currentUtterance) currentUtterance = null

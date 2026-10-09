@@ -42,6 +42,7 @@ import {
   type CoachingManagedUser,
   upsertCoachingAdmin,
   upsertCoachingUser,
+  pendingReviewOf,
 } from '../services/coaching'
 import { LANGUAGES } from '../constants'
 import {
@@ -509,7 +510,7 @@ export function ManageCoachingView() {
               <span className='mt-1 text-[11px] font-bold text-white/70'>{t('activos')}</span>
             </span>
             <span className='flex min-w-24 flex-col items-center rounded-2xl px-4 py-2.5' style={{ background: 'color-mix(in oklab, var(--ica-gold) 25%, transparent)' }}>
-              <span className='text-2xl leading-none font-black tabular-nums' style={{ color: 'var(--ica-gold)' }}>{users.reduce((sum, row) => sum + (row.pendingMasterNotesReviewCount || (row.hasPendingMasterNotesReview ? 1 : 0)), 0)}</span>
+              <span className='text-2xl leading-none font-black tabular-nums' style={{ color: 'var(--ica-gold)' }}>{users.reduce((sum, row) => sum + pendingReviewOf(row).total, 0)}</span>
               <span className='mt-1 text-[11px] font-bold text-white/70'>{t('por revisar')}</span>
             </span>
           </div>
@@ -629,12 +630,23 @@ export function ManageCoachingView() {
           ) : (
             <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-3'>
               {filteredUsers.map((row) => {
-                const pendingReviewCount = row.pendingMasterNotesReviewCount || 0
-                const hasPendingReview = row.hasPendingMasterNotesReview || pendingReviewCount > 0
-                const pendingReviewLabel =
-                  pendingReviewCount === 1
-                    ? t('1 nota maestra pendiente de revisión')
-                    : t('{n} notas maestras pendientes de revisión', { n: pendingReviewCount })
+                const pending = pendingReviewOf(row)
+                const hasPendingReview = pending.total > 0
+                // Homework audios first: they are what the student is waiting for (Luis, 9 Oct).
+                const pendingReviewLabel = [
+                  pending.audios > 0
+                    ? pending.audios === 1
+                      ? t('1 audio de tarea esperando tu feedback')
+                      : t('{n} audios de tareas esperando tu feedback', { n: pending.audios })
+                    : null,
+                  pending.notes > 0
+                    ? pending.notes === 1
+                      ? t('1 nota maestra pendiente de revisión')
+                      : t('{n} notas maestras pendientes de revisión', { n: pending.notes })
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
                 const totalWeeks = row.durationPeriods || row.durationWeeks || 12
                 const week = row.weekActivation?.lastActivatedWeek || 0
                 const statusTone =

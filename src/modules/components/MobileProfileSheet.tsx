@@ -56,6 +56,7 @@ function QuickTile({
   label,
   alert,
   badge,
+  tourId,
   onNavigate,
 }: {
   to: string
@@ -64,12 +65,15 @@ function QuickTile({
   label: string
   alert?: ReactNode
   badge?: ReactNode
+  /** Marks the tile for the guided tour. */
+  tourId?: string
   onNavigate: () => void
 }) {
   return (
     <Link
       to={to}
       onClick={onNavigate}
+      data-tour={tourId}
       className='ica-panel ica-press relative flex min-w-0 flex-col items-center gap-1.5 rounded-2xl px-1 pt-2.5 pb-2 text-center'
     >
       {alert ? <span className='absolute top-2 right-2'>{alert}</span> : null}
@@ -257,6 +261,7 @@ export function MobileProfileScreen({
               />
               <QuickTile
                 to={DASHBOARD_ROUTES.calendarIcademy}
+                tourId='profile-calendar'
                 tone='a'
                 icon={<Glyph icon={CalendarDaysIcon} />}
                 label={t('Calendario')}
@@ -336,13 +341,13 @@ export function MobileProfileScreen({
                         title={t('Administrar coaching')}
                         text={
                           access.pendingCoachingSessions > 0
-                            ? tn(pendingCoachingNotes, '{n} nota pendiente de revisión', '{n} notas pendientes de revisión')
+                            ? t('{n} por revisar (tareas y notas maestras)', { n: pendingCoachingNotes })
                             : t('Alumnos, feedback y objetivos')
                         }
                         right={
                           showCoachingAlert ? (
                             <PendingReviewDot
-                              title={t('Tienes notas maestras pendientes de revisión.')}
+                              title={t('Tienes tareas o notas maestras por revisar.')}
                               useIconSpeaker
                             />
                           ) : undefined
@@ -358,7 +363,7 @@ export function MobileProfileScreen({
             <div>
               <SectionLabel>{t('Más')}</SectionLabel>
               <RowGroup>
-                <div onClick={close}>
+                <div onClick={close} data-tour='profile-notifications'>
                   <ListRow
                     to={DASHBOARD_ROUTES.manageNotifications}
                     icon={

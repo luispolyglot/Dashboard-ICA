@@ -25,7 +25,15 @@ import {
   SoundToggleButton,
   useChallengeSounds,
 } from '../components/IcaChallenges/challengeFeedback'
-import { listenOnce, speakAsync, stopSpeaking, unlockChallengeAudio } from '../components/NotaDesafiante/challengeEngine'
+import {
+  listenOnce,
+  sayAnswerThenContinue,
+  speakAsync,
+  stopSpeaking,
+  unlockChallengeAudio,
+} from '../components/NotaDesafiante/challengeEngine'
+import { prefetchSpeechQueue } from '../services/tts'
+import { consumeLexicardBoosts } from '../services/lexicardBoost'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import {
   buildDailyGame,
@@ -89,6 +97,7 @@ const [feedback, setFeedback] = useState<Feedback | null>(null)
 const [endsAt, setEndsAt] = useState<number | null>(null)
 const pairMatchesRef = useRef<Array<number | null>>([])
 const timersRef = useRef<number[]>([])
+const unmountedRef = useRef(false)
 const stopConfettiRef = useRef<(() => void) | null>(null)
 
   const available = useMemo(
@@ -100,6 +109,7 @@ const stopConfettiRef = useRef<(() => void) | null>(null)
 
   useEffect(
     () => () => {
+      unmountedRef.current = true
       timersRef.current.forEach((id) => window.clearTimeout(id))
       stopConfettiRef.current?.()
       stopSpeaking()
@@ -122,6 +132,8 @@ const stopConfettiRef = useRef<(() => void) | null>(null)
       setEndsAt(Date.now() + DAILY_GAME_SECONDS[current.mode.kind] * 1000)
       const next = current.questions[nextIndex]
       if (next?.question.kind === 'listen') void speakAsync(next.question.audioText, config.targetLang)
+      // A voice still saying the previous answer stops here.
+      else stopSpeaking()
     },
     [config.targetLang],
   )
@@ -143,17 +155,26 @@ const stopConfettiRef = useRef<(() => void) | null>(null)
     [user?.id],
   )
 
+  /** Timer of this screen: cancelled when leaving it. */
+  const later = useCallback((fn: () => void, ms: number) => {
+    const id = window.setTimeout(() => {
+      if (!unmountedRef.current) fn()
+    }, ms)
+    timersRef.current.push(id)
+  }, [])
+
   const advance = useCallback(
-    (allPlayed: Played[], step: number, waitMs: number) => {
+    (allPlayed: Played[], step: number, waitMs: number, sayFirst?: string) => {
       if (!game) return
-      const id = window.setTimeout(() => {
+      const next = () => {
         const nextIndex = index + step
         if (nextIndex >= game.questions.length) finish(allPlayed, game)
         else startQuestion(nextIndex, game)
-      }, waitMs)
-      timersRef.current.push(id)
+      }
+      if (sayFirst) sayAnswerThenContinue(sayFirst, config.targetLang, later, next, { minMs: waitMs })
+      else later(next, waitMs)
     },
-    [finish, game, index, startQuestion],
+    [config.targetLang, finish, game, index, later, startQuestion],
   )
 
   const answerSingle = (
@@ -177,12 +198,14 @@ const stopConfettiRef = useRef<(() => void) | null>(null)
     setPhase('feedback')
     setEndsAt(null)
     // Al fallar (en todos los modos menos Parejas), se ve la buena y una voz la dice (Luis, 3-4 oct).
+    // The next word only comes once the voice has finished (Luis, 8 Oct).
     const sayAnswer = !isCorrect && question.kind !== 'pairs'
-    if (sayAnswer) {
-      const word = question.answer.target
-      window.setTimeout(() => void speakAsync(word, config.targetLang), 450)
-    }
-    advance(nextPlayed, 1, isCorrect ? FEEDBACK_MS_CORRECT : sayAnswer ? FEEDBACK_MS_WRONG_SPOKEN : FEEDBACK_MS_WRONG)
+    advance(
+      nextPlayed,
+      1,
+      isCorrect ? FEEDBACK_MS_CORRECT : sayAnswer ? FEEDBACK_MS_WRONG_SPOKEN : FEEDBACK_MS_WRONG,
+      sayAnswer ? question.answer.target : undefined,
+    )
   }
 
   const answerBoard = (matches: Array<number | null>) => {
@@ -298,6 +321,20 @@ const stopConfettiRef = useRef<(() => void) | null>(null)
     setGame(available)
     setPlayed([])
     startQuestion(0, available)
+    // Boosted words (Potenciar) that came up today: one daily challenge less to go.
+    const boostedIds = new Set(
+      available.questions
+        .map((item) => item.answer.cardId)
+        .filter((id) => engineCards.some((card) => card.id === id && card.boosted)),
+    )
+    void consumeLexicardBoosts([...boostedIds], 'daily')
+    // The voice of each answer is prepared now, so after a miss it sounds at once (Luis, 8 Oct).
+    prefetchSpeechQueue(
+      available.questions
+        .filter((item) => item.kind !== 'pairs' && item.answer.target)
+        .map((item) => ({ text: item.answer.target, langName: config.targetLang })),
+      2,
+    )
   }
 
   // ------------------------------------------------------------------ pantallas

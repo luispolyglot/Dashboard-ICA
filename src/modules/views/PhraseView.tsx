@@ -71,6 +71,7 @@ import type {
 import { getEffectiveStudyLevel } from '../utils/studyLevel'
 import { DailyLimitNotice } from '../game/DailyLimitNotice'
 import { PendingActivationCard } from '../components/PendingActivationCard'
+import { CreatingPhraseProgress } from '../components/CreatingPhraseProgress'
 import { FirstUseTip, useFirstUseTip } from '../components/FirstUseTip'
 import { usePendingActivationPhrase } from '../hooks/usePendingActivationPhrase'
 import type { DailyLimitsState } from '../game/limits'
@@ -1241,10 +1242,7 @@ export function PhraseView({
         className='w-full'
       >
         {loading ? (
-          <>
-            <span className='inline-block size-4.5 animate-spin rounded-full border-[3px] border-white/40 border-t-white' />
-            {isManualPhrase ? t('Registrando frase...') : t('Generando {level}...', { level })}
-          </>
+          <>{isManualPhrase ? t('Registrando frase...') : t('Generando {level}...', { level })}</>
         ) : isManualPhrase ? (
           manualPhraseApproved ? (
             <>
@@ -1262,6 +1260,9 @@ export function PhraseView({
         )}
       </Button>
       </div>
+
+      {/* Mientras la IA trabaja: barra que se va llenando (Luis, 9 Oct) */}
+      {loading && !result ? <CreatingPhraseProgress manual={isManualPhrase} /> : null}
 
       {/* Resultado: la frase y, justo debajo, el siguiente paso (Activación) */}
       {result && (
@@ -1296,11 +1297,12 @@ export function PhraseView({
                   disabled={loading}
                   aria-label={t('Quedan {n}', { n: regenerationsLeft })}
                 >
-                  <RefreshCwIcon className={loading ? 'animate-spin' : undefined} strokeWidth={2.6} aria-hidden='true' />
+                  <RefreshCwIcon strokeWidth={2.6} aria-hidden='true' />
                   {t('No me convence')}
                 </Button>
               ) : null}
             </div>
+            {loading ? <CreatingPhraseProgress className='mt-4' /> : null}
 
             <p className='m-0 mt-4 font-display text-2xl leading-snug font-extrabold tracking-tight break-words'>
               {highlightUsedWords(result.phrase, result.words_used)}

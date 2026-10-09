@@ -147,7 +147,7 @@ const FLAME_INNER =
 type RecapStat = { value: string; label: string; color: string }
 
 /** Dibuja el logo ICA (marco, birrete y letras, como IcaLogo) en blanco. Mide 300 × 210 por `scale`. */
-function drawRecapLogo(context: CanvasRenderingContext2D, x: number, y: number, scale: number) {
+export function drawRecapLogo(context: CanvasRenderingContext2D, x: number, y: number, scale: number) {
   context.save()
   context.translate(x, y)
   context.scale(scale, scale)
@@ -176,7 +176,7 @@ function drawRecapLogo(context: CanvasRenderingContext2D, x: number, y: number, 
   context.restore()
 }
 
-function recapRoundRect(context: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+export function recapRoundRect(context: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   context.beginPath()
   context.moveTo(x + r, y)
   context.arcTo(x + w, y, x + w, y + h, r)

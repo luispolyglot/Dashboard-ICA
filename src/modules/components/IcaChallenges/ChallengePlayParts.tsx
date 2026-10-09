@@ -8,6 +8,7 @@ import {
   ArrowRightIcon,
   CheckIcon,
   CornerDownLeftIcon,
+  KeyboardIcon,
   MicIcon,
   PlusIcon,
   RotateCcwIcon,
@@ -270,6 +271,15 @@ export function WriteAnswerForm({
 
   return (
     <form ref={formRef} onSubmit={handleSubmit} className='space-y-2'>
+      {/* Attention before typing (Luis, 8 Oct): the accents and special letters count. */}
+      <p
+        className='m-0 flex items-center justify-center gap-1.5 rounded-xl px-3 py-1.5 text-center text-xs font-bold'
+        style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
+        role='note'
+      >
+        <KeyboardIcon className='size-3.5 shrink-0' strokeWidth={2.6} aria-hidden='true' />
+        {t('Pon tu teclado en {lang}: las tildes y letras especiales cuentan; las mayúsculas, no.', { lang: langName(targetLang) })}
+      </p>
       {hint && (
         <p className='text-center text-sm text-muted-foreground'>
           {t('Empieza por')} <span className='font-semibold text-foreground'>{hint.replace('…', '')}</span>…

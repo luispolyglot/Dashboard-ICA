@@ -321,8 +321,15 @@ export function buildReviewRound(
   )
   let includedNewCards = 0
 
+  // Boosted words (Potenciar, Luis 8 Oct) come first, without the limits for new words.
   for (const card of sortedPool) {
     if (selected.length >= roundSize) break
+    if ((card.boostFlash ?? 0) > 0) selected.push(card)
+  }
+
+  for (const card of sortedPool) {
+    if (selected.length >= roundSize) break
+    if ((card.boostFlash ?? 0) > 0) continue
 
     const isNew = isCardNew(card)
     if (!isNew) {

@@ -12,13 +12,15 @@ import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { PendingReviewDot } from './PendingReviewDot'
-import { ChallengeAlertBadge } from './IcaChallenges/ChallengeAlertBadge'
+import { ChallengeAlertBadge, GamesWaitingDot } from './IcaChallenges/ChallengeAlertBadge'
 import { describeIcaChallengeAlerts, useIcaChallengeAlerts } from '../hooks/useIcaChallengeAlerts'
 import { t } from '@/i18n'
 
 type DesktopNavProps = {
   shouldHighlightProfileButton: boolean
   shouldHighlightCoachingProfileButton?: boolean
+  /** A nota desafiante or a PreguntICA waiting in Juegos. */
+  gamesWaiting?: boolean
 }
 
 type Item = {
@@ -39,6 +41,7 @@ type Item = {
 export function DesktopNav({
   shouldHighlightProfileButton,
   shouldHighlightCoachingProfileButton = false,
+  gamesWaiting = false,
 }: DesktopNavProps) {
   const location = useLocation()
   const challengeAlerts = useIcaChallengeAlerts()
@@ -48,7 +51,7 @@ export function DesktopNav({
       <PendingReviewDot
         title={
           shouldHighlightCoachingProfileButton
-            ? t('Tienes notas maestras pendientes de revisión en coaching.')
+            ? t('Tienes tareas o notas maestras por revisar en coaching.')
             : t('Tienes un test ICA disponible este mes.')
         }
         useIconSpeaker={shouldHighlightCoachingProfileButton}
@@ -69,6 +72,11 @@ export function DesktopNav({
           title={t('Desafíos ICA: {detail}', { detail: describeIcaChallengeAlerts(challengeAlerts) })}
         />
       ),
+      // Top right corner of «Juegos» (Luis, 8 Oct).
+      alert:
+        challengeAlerts.total === 0 && gamesWaiting ? (
+          <GamesWaitingDot label={t('Tienes algo por jugar en Juegos')} className='relative' />
+        ) : undefined,
     },
     { to: DASHBOARD_ROUTES.streaks, label: t('Rachas'), icon: FlameIcon },
     { to: DASHBOARD_ROUTES.myAnalytics, label: t('Estadísticas'), icon: BarChart3Icon },

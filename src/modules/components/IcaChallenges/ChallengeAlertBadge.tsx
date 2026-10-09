@@ -7,13 +7,25 @@ export function ChallengeAlertBadge({ count, title }: { count: number; title: st
   if (count <= 0) return null
   return (
     <span className='pointer-events-none absolute -right-2 -top-1.5 inline-flex' aria-label={title}>
-      <span className='absolute inline-flex h-full w-full animate-ping rounded-full opacity-60' style={{ background: 'var(--ica-a)' }} />
-      <span
-        className='relative inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-extrabold leading-none text-white ring-2 ring-background'
-        style={{ background: 'var(--ica-a)' }}
-      >
+      {/* Red, like a notification, so it stands out on the menu (Luis, 8 Oct). */}
+      <span className='ica-alert-ping absolute inline-flex h-full w-full rounded-full bg-rose-500' />
+      <span className='relative inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-extrabold leading-none text-white ring-2 ring-background'>
         {count > 9 ? '9+' : count}
       </span>
+    </span>
+  )
+}
+
+/**
+ * Dot on «Juegos» when something waits there that is not a Desafío ICA (those have the number):
+ * a nota desafiante to play or a PreguntICA ready (Luis, 8 Oct).
+ */
+export function GamesWaitingDot({ label, className = 'absolute -right-1 -top-1' }: { label: string; className?: string }) {
+  return (
+    <span className={`pointer-events-none inline-flex size-2.5 ${className}`} aria-label={label}>
+      {/* A small dot that keeps pulsing, so it is clear something is waiting (Luis, 8 Oct). */}
+      <span className='ica-dot-ping absolute inline-flex h-full w-full rounded-full bg-rose-500' />
+      <span className='ica-alert-beat relative inline-flex size-2.5 rounded-full bg-rose-500 ring-[1.5px] ring-background' />
     </span>
   )
 }

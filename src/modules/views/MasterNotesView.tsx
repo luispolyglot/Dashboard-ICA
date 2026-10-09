@@ -80,10 +80,12 @@ import {
   tone,
 } from '../game/ui'
 import type { MasterNote } from '../types'
+import { RenameMasterNoteDialog } from '../components/RenameMasterNoteDialog'
 import { PendingActivationCard } from '../components/PendingActivationCard'
 import { PendingActivationPopup } from '../components/PendingActivationPopup'
 import { usePendingActivationPhrase } from '../hooks/usePendingActivationPhrase'
 import { langName, t, tn } from '@/i18n'
+import { FirstUseTip, useFirstUseTip } from '../components/FirstUseTip'
 
 type MasterNotesViewProps = {
   targetLang: string
@@ -133,6 +135,9 @@ export function MasterNotesView({
   todayVoiceActivationsCount,
 }: MasterNotesViewProps) {
   const challengeEnabled = useChallengeEnabled()
+  // First master note (Luis, 9 Oct): bubbles that say where to tap.
+  const [createTipPending, closeCreateTip] = useFirstUseTip('notes-create')
+  const [recordTipPending, closeRecordTip] = useFirstUseTip('notes-record')
   const pendingPhrase = usePendingActivationPhrase(targetLang)
   const navigate = useNavigate()
   const [items, setItems] = useState<MasterNote[]>([])
@@ -157,6 +162,7 @@ export function MasterNotesView({
   const [activePlayerPlaylistId, setActivePlayerPlaylistId] = useState<
     string | null
   >(null)
+  const [renameCandidate, setRenameCandidate] = useState<MasterNote | null>(null)
   const [deleteCandidate, setDeleteCandidate] = useState<MasterNote | null>(
     null,
   )
@@ -597,7 +603,7 @@ export function MasterNotesView({
       ? t('Graba 1 frase con tu voz para completar la A de hoy.')
       : atDailyLimit
         ? t('Máximo del día alcanzado. Mañana el contador vuelve a cero.')
-        : t('A completada hoy. Puedes grabar {n} más.', { n: activationsLeft })
+        : t('A completada hoy.')
 
   // La nota en curso es la abierta más antigua (ahí cae la próxima frase). Las demás van en la lista.
   const currentOpenNote = openItems[0] || null
@@ -667,7 +673,11 @@ export function MasterNotesView({
             </DropdownMenuItem>
           )}
           {extra}
-          {item.state === 'closed' || extra ? <DropdownMenuSeparator /> : null}
+          <DropdownMenuItem className={MENU_ITEM_CLASS} onSelect={() => setRenameCandidate(item)}>
+            <PencilIcon strokeWidth={2.4} />
+            {t('Cambiar nombre')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             variant='destructive'
             className={MENU_ITEM_CLASS}
@@ -788,9 +798,15 @@ export function MasterNotesView({
           ) : null}
         </div>
       ) : null}
-      <div className='mt-5 flex items-center gap-3'>
+      <div className='relative mt-5 flex items-center gap-3'>
+        {recordTipPending ? (
+          <FirstUseTip onClose={closeRecordTip}>
+            {t('Toca aquí para grabar tu frase en voz alta. Cada frase grabada suma tiempo a tu nota maestra hasta llegar a 3:00.')}
+          </FirstUseTip>
+        ) : null}
         <Button asChild size='xl' variant='a' className='min-w-0 flex-1'>
           <Link
+            onClick={() => (recordTipPending ? closeRecordTip() : undefined)}
             to={
               pendingPhraseToRecord
                 ? `${noteHref(currentOpenNote)}/activate/${pendingPhraseToRecord.id}`
@@ -835,17 +851,27 @@ export function MasterNotesView({
           {t('Graba frases en {lang} con tu voz: la nota se completa sola al llegar a 3:00.', { lang: langName(targetLang) })}
         </p>
       </div>
-      <Button
-        type='button'
-        size='xl'
-        variant='a'
-        className='mt-1 w-full'
-        onClick={() => void handleCreate()}
-        disabled={creating}
-      >
-        <PlusIcon className='size-5' strokeWidth={2.8} />
-        {creating ? t('Creando...') : t('Crear nota maestra')}
-      </Button>
+      <div className='relative mt-1 w-full'>
+        {createTipPending ? (
+          <FirstUseTip onClose={closeCreateTip}>
+            {t('Empieza aquí: crea tu primera nota maestra. En ella grabarás tus frases en voz alta.')}
+          </FirstUseTip>
+        ) : null}
+        <Button
+          type='button'
+          size='xl'
+          variant='a'
+          className='w-full'
+          onClick={() => {
+            if (createTipPending) closeCreateTip()
+            void handleCreate()
+          }}
+          disabled={creating}
+        >
+          <PlusIcon className='size-5' strokeWidth={2.8} />
+          {creating ? t('Creando...') : t('Crear nota maestra')}
+        </Button>
+      </div>
     </Panel>
   )
 
@@ -859,46 +885,30 @@ export function MasterNotesView({
         {t('Activación')}
       </PageTitle>
 
-      {/* Progreso del día */}
-      <div className='-mt-1 rounded-3xl px-5 py-4' style={{ background: a.soft }}>
-        <div className='flex items-center gap-4'>
-          <IconTile tone='a' solid size={56}>
-            <MicIcon className='size-7' strokeWidth={2.6} />
-          </IconTile>
-          <div className='min-w-0 flex-1'>
-            <p className='m-0 text-4xl leading-none font-black tabular-nums' style={{ color: a.ink }}>
-              {activationsDone}
-              <span className='text-xl font-extrabold'> / {activationsMax}</span>
-            </p>
-            <p className='m-0 mt-1 text-sm font-extrabold' style={{ color: a.ink }}>
-              {t('activaciones hoy')}
-            </p>
-          </div>
-          {dailyLimits.boosted.activations ? (
-            <Pill tone='c' solid>
-              {t('AMPLIADA HOY')}
-            </Pill>
-          ) : null}
-        </div>
-        <GameProgress
-          className='mt-3'
-          value={activationsMax > 0 ? activationsDone / activationsMax : 0}
-          color='var(--ica-a)'
-          label={t('Activaciones de hoy')}
-        />
-        <div className='mt-2 flex flex-wrap items-center justify-between gap-2'>
-          <p className='m-0 text-xs font-semibold text-muted-foreground'>{dayText}</p>
-          {atDailyLimit && !dailyLimits.boosted.activations ? (
-            <Link
-              to={DASHBOARD_ROUTES.fichas}
-              className='inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-extrabold'
-              style={{ background: 'var(--ica-gold)', color: '#3a2a00', boxShadow: '0 3px 0 var(--ica-gold-edge)' }}
-            >
-              <FichaIcon size={16} />
-              {t('Ampliar Activación · {n}', { n: PHASE_BOOST_COST })}
-            </Link>
-          ) : null}
-        </div>
+      {/* El día, sin contador: «0 de 2» hacía pensar que había que hacer 2 (Luis, 9 Oct).
+          Como en Creación, solo se dice si la A de hoy está hecha y, si llega, el máximo. */}
+      <div className='-mt-1 flex flex-wrap items-center gap-3 rounded-3xl px-5 py-4' style={{ background: a.soft }}>
+        <IconTile tone='a' solid size={44}>
+          <MicIcon className='size-6' strokeWidth={2.6} />
+        </IconTile>
+        <p className='m-0 min-w-0 flex-1 text-sm font-extrabold' style={{ color: a.ink }}>
+          {dayText}
+        </p>
+        {dailyLimits.boosted.activations ? (
+          <Pill tone='c' solid>
+            {t('AMPLIADA HOY')}
+          </Pill>
+        ) : null}
+        {atDailyLimit && !dailyLimits.boosted.activations ? (
+          <Link
+            to={DASHBOARD_ROUTES.fichas}
+            className='inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-extrabold'
+            style={{ background: 'var(--ica-gold)', color: '#3a2a00', boxShadow: '0 3px 0 var(--ica-gold-edge)' }}
+          >
+            <FichaIcon size={16} />
+            {t('Ampliar Activación · {n}', { n: PHASE_BOOST_COST })}
+          </Link>
+        ) : null}
       </div>
 
       {shownError ? <ErrorNote>{shownError}</ErrorNote> : null}
@@ -1160,6 +1170,14 @@ export function MasterNotesView({
           void handleNextLoopTrack()
         }}
         onClose={handleClosePlaylistPlayer}
+      />
+
+      <RenameMasterNoteDialog
+        note={renameCandidate}
+        onClose={() => setRenameCandidate(null)}
+        onRenamed={(updated) =>
+          setItems((prev) => prev.map((item) => (item.id === updated.id ? { ...item, name: updated.name } : item)))
+        }
       />
 
       <IcaDeletionWarningDialog

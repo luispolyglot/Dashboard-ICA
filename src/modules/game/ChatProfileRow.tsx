@@ -15,7 +15,7 @@ export function ChatProfileRow({ targetLang, onNavigate }: { targetLang: string;
     : t('Únete al grupo de icademers de {lang}', { lang: language })
 
   return (
-    <div onClick={onNavigate}>
+    <div onClick={onNavigate} data-tour='profile-chat'>
       <ListRow
         to={DASHBOARD_ROUTES.icademerChat}
         icon={

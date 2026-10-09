@@ -32,16 +32,16 @@ type PreferencesRow = {
   streak_risk_last_day: string | null
 }
 
-// Usuarios con el móvil/navegador suscrito pero sin fila de preferencias: solo
-// «racha en peligro», que viene activada por defecto.
+// Usuarios con el móvil/navegador suscrito pero sin fila de preferencias: todos los avisos
+// vienen activados por defecto (Luis, 7 oct), igual que los valores por defecto de la tabla.
 function defaultPreferences(userId: string): PreferencesRow {
   return {
     user_id: userId,
-    ica_streak_enabled: false,
+    ica_streak_enabled: true,
     ica_streak_hour: 20,
-    flashcards_streak_enabled: false,
+    flashcards_streak_enabled: true,
     flashcards_streak_hour: 20,
-    habit_loss_enabled: false,
+    habit_loss_enabled: true,
     habit_loss_last_stage: 0,
     ica_streak_last_reminded_day: null,
     flashcards_streak_last_reminded_day: null,

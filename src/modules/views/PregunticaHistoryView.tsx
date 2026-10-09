@@ -99,7 +99,7 @@ function parseDateOnly(value: string): Date | null {
   return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
 }
 
-/** "22 – 28 sept" (la semana acaba el día antes de `weekEnd`, que es el lunes siguiente). */
+/** "22 – 28 sept" (la semana acaba el día antes de `weekEnd`, que no está incluido). */
 function formatWeekRange(weekStart: string, weekEnd: string): string {
   const start = parseDateOnly(weekStart)
   const endExclusive = parseDateOnly(weekEnd)
