@@ -267,7 +267,7 @@ export function CoachingHomeCard({
       <div
         role='status'
         aria-label={t('Cargando tu coaching')}
-        className={cn('coaching-hero relative flex min-h-[230px] w-full flex-col overflow-hidden rounded-[28px] px-6 py-5 text-white', className)}
+        className={cn('coaching-hero relative flex min-h-[200px] w-full flex-col overflow-hidden rounded-[28px] px-6 py-5 text-white', className)}
       >
         <span className='coaching-hero-glow pointer-events-none absolute -top-20 -right-16 size-64 rounded-full' aria-hidden='true' />
         <div className='relative flex items-start justify-between gap-3'>
@@ -413,17 +413,19 @@ export function CoachingHomeCard({
       )}
     >
       <span className='coaching-hero-glow pointer-events-none absolute -top-20 -right-16 size-64 rounded-full' aria-hidden='true' />
-      <div className='relative flex items-start justify-between gap-3'>
-        <div className='min-w-0'>
+      {/* Everything in one line, so the card is shorter and your level and ICA games fit on the
+          screen under it (Luis, 8 Oct). */}
+      <div className='relative flex items-center justify-between gap-3'>
+        <div className='flex min-w-0 items-center gap-3'>
           <p
-            className='m-0 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-black tracking-[0.14em] uppercase'
+            className='m-0 inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-black tracking-[0.14em] uppercase'
             style={{ color: 'var(--ica-gold)' }}
           >
             <CrownIcon className='size-3' strokeWidth={2.8} aria-hidden='true' />
             {t('Tu coaching')}
           </p>
           {/* Level and coach sit small next to the language, to save a line (Luis, 6 Oct). */}
-          <h2 className='m-0 mt-2 flex flex-wrap items-baseline gap-x-2 font-display text-2xl leading-none font-black tracking-tight'>
+          <h2 className='m-0 flex min-w-0 flex-wrap items-baseline gap-x-2 font-display text-2xl leading-none font-black tracking-tight'>
             {langName(membership.targetLang)}
             <span className='font-sans text-xs font-bold tracking-normal text-white/70'>
               {membership.level} · {(() => {
@@ -433,9 +435,9 @@ export function CoachingHomeCard({
             </span>
           </h2>
         </div>
-        <p className='m-0 shrink-0 text-right text-xs font-bold text-white/70'>
+        <p className='m-0 flex shrink-0 items-baseline gap-1.5 text-xs font-bold text-white/70'>
           {t('Semana')}
-          <b className='block font-display text-3xl leading-none font-black text-white'>
+          <b className='font-display text-2xl leading-none font-black text-white'>
             {currentWeek}
             <span className='text-sm font-bold text-white/50'>/{totalWeeks}</span>
           </b>
@@ -443,13 +445,13 @@ export function CoachingHomeCard({
       </div>
 
       {/* Recorrido: un anillo por semana, se llena con las 6 tareas (Luis, 6-7 oct). */}
-      <div className='relative mt-4 rounded-2xl bg-white/6 px-3 pt-3 pb-2'>
-        <CoachingWeekRingsMini rings={rings} currentPeriod={currentWeek} size={40} />
+      <div className='relative mt-3 rounded-2xl bg-white/6 px-3 pt-2 pb-1'>
+        <CoachingWeekRingsMini rings={rings} currentPeriod={currentWeek} size={32} header={false} />
       </div>
 
       {/* The week's focuses side by side in one row, so the card keeps its height with 1, 2 or 3
           and your level and ICA games stay in view (Luis, 6 Oct). */}
-      <div className='relative mt-4'>
+      <div className='relative mt-3'>
         {activeFocuses.length === 0 ? (
           <p className='m-0 text-xs font-semibold text-white/70'>{t('Tu coach añadirá tus focos en la próxima clase.')}</p>
         ) : (
@@ -457,7 +459,7 @@ export function CoachingHomeCard({
             {activeFocuses.map((focus) => {
               const progress = PHASE_KEYS.filter((key) => focus[key]).length
               return (
-                <div key={focus.id} className='min-w-0 rounded-xl bg-white/8 px-2.5 py-2'>
+                <div key={focus.id} className='min-w-0 rounded-xl bg-white/8 px-2.5 py-1.5'>
                   <span className='block truncate text-[13px] leading-tight font-bold'>{focus.focusTitle}</span>
                   <span className='mt-1.5 flex items-center gap-1' aria-label={t('{n} de 4 fases', { n: progress })}>
                     {PHASE_KEYS.map((key, idx) => (
@@ -476,7 +478,7 @@ export function CoachingHomeCard({
       </div>
 
       {/* Siguiente paso */}
-      <div className='relative mt-4 flex items-center justify-between gap-3 border-t border-white/12 pt-3'>
+      <div className='relative mt-3 flex items-center justify-between gap-3 border-t border-white/12 pt-2.5'>
         <p className='m-0 flex items-center gap-1.5 text-xs font-bold text-white/80'>
           <span className='flex items-center' aria-hidden='true'>{step.icon}</span>
           <span>{step.text}</span>

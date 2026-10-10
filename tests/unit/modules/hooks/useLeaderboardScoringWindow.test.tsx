@@ -8,7 +8,7 @@ import {
 } from '@/modules/hooks/useLeaderboardScoringWindow'
 
 describe('useLeaderboardScoringWindow', () => {
-  it('uses the third monthly window on day 18 (4/6 behavior)', () => {
+  it('counts every week that can score by day 18', () => {
     const nowMs = new Date(2026, 7, 18, 12, 0, 0).getTime()
     const { result } = renderHook(() =>
       useLeaderboardScoringWindow({
@@ -20,9 +20,10 @@ describe('useLeaderboardScoringWindow', () => {
 
     expect(result.current.currentDay).toBe(18)
     expect(result.current.scoringDayCap).toBe(18)
-    // August 2026 starts on a Saturday: weeks open on the 1st, 7th and 14th.
-    expect(result.current.pregunticaWindowCount).toBe(3)
-    expect(getPregunticaMaxPoints('2026-08-01', result.current.scoringDayCap)).toBe(6)
+    // The week of 24 Jul (finished on 29-30 Jul it counts in August), the week of 31 Jul and the
+    // weeks of 7 and 14 Aug.
+    expect(result.current.pregunticaWindowCount).toBe(4)
+    expect(getPregunticaMaxPoints('2026-08-01', result.current.scoringDayCap)).toBe(8)
   })
 
   it('caps current month scoring day at 28 after cutoff', () => {
@@ -51,10 +52,22 @@ describe('useLeaderboardScoringWindow', () => {
     expect(getPregunticaMaxPoints('2026-10-01', 28)).toBe(8)
   })
 
-  it('starts with one week when the month begins on a Friday', () => {
-    // May 2026 starts on a Friday.
-    expect(getPregunticaWindowCount('2026-05-01', 7)).toBe(1)
-    expect(getPregunticaWindowCount('2026-05-01', 8)).toBe(2)
+  it('counts the week finished on days 29-31 of last month', () => {
+    // May 2026 starts on a Friday: the week of 24 Apr (open on 29-30 Apr) and the one of 1 May.
+    expect(getPregunticaWindowCount('2026-05-01', 7)).toBe(2)
+    expect(getPregunticaWindowCount('2026-05-01', 8)).toBe(3)
     expect(getPregunticaMaxPoints('2026-05-01', 28)).toBe(8)
+  })
+
+  it('uses the weeks of the month from November 2026 (1-7, 8-14, 15-21, 22-28)', () => {
+    expect(getPregunticaWindowCount('2026-11-01', 1)).toBe(1)
+    expect(getPregunticaWindowCount('2026-11-01', 7)).toBe(1)
+    expect(getPregunticaWindowCount('2026-11-01', 8)).toBe(2)
+    expect(getPregunticaWindowCount('2026-11-01', 15)).toBe(3)
+    expect(getPregunticaWindowCount('2026-11-01', 22)).toBe(4)
+    expect(getPregunticaMaxPoints('2026-11-01', 28)).toBe(8)
+    // February 2027 too: 4 weeks by day 28.
+    expect(getPregunticaMaxPoints('2027-02-01', 28)).toBe(8)
+    expect(getPregunticaWindowCount('2027-03-01', 5)).toBe(1)
   })
 })

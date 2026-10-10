@@ -34,6 +34,10 @@ import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { CalendarIcademyBoard } from '../components/calendar-icademy/CalendarIcademyBoard'
 import {
+  CommunityClassesNotice,
+  CommunityClassLinkButton,
+} from '../components/calendar-icademy/CommunityClassesNotice'
+import {
   FlagTile,
   getClassMeta,
 } from '../components/calendar-icademy/calendarIcademyUi'
@@ -537,6 +541,7 @@ export function CalendarIcademyView() {
         error={error}
         emptyMessage={t('Aun no hay clases cargadas para este calendario.')}
         lockToCurrentMonth
+        notice={<CommunityClassesNotice />}
         onEntryClick={(entry) => setSelectedEntry(entry)}
         onLocalTimePreferenceChange={setShowLocalTime}
         canMuteEntry={canMuteEntry}
@@ -548,6 +553,7 @@ export function CalendarIcademyView() {
           <button
             type='button'
             onClick={handleOpenPrefsModal}
+            data-tour='calendar-reminders'
             aria-label={t('Preferencias de recordatorios')}
             className='ica-press relative flex size-11 items-center justify-center rounded-2xl border-2 border-border bg-card dark:bg-transparent'
             style={{
@@ -632,6 +638,8 @@ export function CalendarIcademyView() {
                   </span>
                 </p>
               </div>
+
+              <CommunityClassLinkButton />
 
               {canManageSelectedEntryMute ? (
                 <Button

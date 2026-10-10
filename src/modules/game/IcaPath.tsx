@@ -1,5 +1,5 @@
 import useBreakpoints from '../hooks/useBreakpoints'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent, ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -187,12 +187,14 @@ const S_SWING = 95
  * (una vez sale por la derecha, la siguiente por la izquierda); si no, una curva suave.
  * `firstIndex` es la parada en la que empieza (para que los tramos parciales sigan la misma S).
  */
-function pathD(centers: Array<[number, number]>, firstIndex = 0): string {
+function pathD(centers: Array<[number, number]>, firstIndex = 0, straight = false): string {
   let d = `M${centers[0][0]} ${centers[0][1]}`
   for (let index = 1; index < centers.length; index += 1) {
     const [x1, y1] = centers[index - 1]
     const [x2, y2] = centers[index]
-    if (Math.abs(x1 - x2) < 1) {
+    if (straight) {
+      d += ` L ${x2} ${y2}`
+    } else if (Math.abs(x1 - x2) < 1) {
       const side = (firstIndex + index - 1) % 2 === 0 ? 1 : -1
       const bend = (y2 - y1) / 3
       d += ` C ${x1 + side * S_SWING} ${y1 + bend}, ${x2 + side * S_SWING} ${y2 - bend}, ${x2} ${y2}`
@@ -214,6 +216,7 @@ function Road({
   width,
   height,
   fill = null,
+  straight = false,
 }: {
   centers: Array<[number, number]>
   /** Índice de la última parada a la que has llegado (0 = ninguna hecha). */
@@ -222,12 +225,14 @@ function Road({
   height: number
   /** Tramo que se está rellenando ahora (se pinta poco a poco con una máscara). */
   fill?: PathFill | null
+  /** Straight segments instead of the S curves (desktop, Luis 8 Oct). */
+  straight?: boolean
 }) {
   const maskId = `ica-road-fill-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
-  const road = pathD(centers)
+  const road = pathD(centers, 0, straight)
   const painted = fill ? fill.from : reached
-  const doneRoad = painted > 0 ? pathD(centers.slice(0, painted + 1)) : null
-  const fillRoad = fill ? pathD(centers.slice(fill.from, fill.to + 1), fill.from) : null
+  const doneRoad = painted > 0 ? pathD(centers.slice(0, painted + 1), 0, straight) : null
+  const fillRoad = fill ? pathD(centers.slice(fill.from, fill.to + 1), fill.from, straight) : null
   const dashed = {
     fill: 'none',
     strokeLinecap: 'round' as const,
@@ -1117,6 +1122,23 @@ type JourneyStep = {
   ariaLabel: string
 }
 
+/**
+ * ORDENADOR (Luis, 8 Oct): I, C and A in a straight row and, from the A, the road opens in two:
+ * up to the cycle chest and down to the daily challenge, each with its name and text on its right.
+ * Same tile sizes as the zigzag it replaces. Everything is placed in px from the measured width, so
+ * the whole drawing stays centred on any screen (same space left of the I as right of the texts).
+ * The chest and the challenge unlock together when the cycle is done.
+ */
+/** Empty space at each end of the drawing. */
+const JOURNEY_SIDE = 12
+/** Extra length of the fork, so the chest and the challenge sit 1.5 cm further from the A (Luis, 8 Oct). */
+const JOURNEY_FORK_EXTRA = 56
+/** Room for the name and text on the right of the chest and the challenge. */
+const JOURNEY_LABEL_W = 190
+const JOURNEY_LABEL_GAP = 26
+/** Width shared between I→C, C→A and the fork: each step 1 part, the fork 1.2 (Luis, 8 Oct: more air between I, C and A). */
+const JOURNEY_PARTS = 3.2
+
 function IcaJourney({
   steps,
   chestReady,
@@ -1131,121 +1153,214 @@ function IcaJourney({
   /** Hasta qué parada va pintado el camino. */
   reached: number
 }) {
-  // Un caminito que sube y baja entre las estaciones (como un tablero de juego).
-  // El tramo que ya has hecho se pinta de colores.
-  // Luis (5 Oct): flatter than before (it dropped 132 px), almost a straight line.
-  const DROP = 56
-  const HEIGHT = 18 + DROP + 234
-  const W = 1000
-  const xs = steps.map((_, index) => 9 + (index * 82) / (steps.length - 1))
-  // I high, C low, A high; the chest and the daily challenge both low, at the same height
-  // (Luis, 6 Oct), so the road goes down to the chest and straight on to the challenge.
-  const tops = steps.map((step, index) =>
-    step.key === 'chest' || step.key === 'review' ? 18 + DROP : index % 2 === 0 ? 18 : 18 + DROP,
-  )
-  const sizes = steps.map((step) => (typeof step.content === 'string' ? 120 : 100))
-  const centers = steps.map((_, index) => [xs[index] * (W / 100), tops[index] + sizes[index] / 2] as [number, number])
+  const forkMaskId = `ica-fork-fill-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState(1100)
+  useLayoutEffect(() => {
+    const box = boxRef.current
+    if (!box) return
+    const measure = () => setWidth(box.clientWidth || 1100)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(box)
+    return () => observer.disconnect()
+  }, [])
+  const byKey = (key: StepKey): JourneyStep => steps.find((step) => step.key === key) as JourneyStep
+  const phases = [byKey('I'), byKey('C'), byKey('A')]
+  const chest = byKey('chest')
+  const review = byKey('review')
 
-  return (
-    <div className='ica-path-skin relative overflow-hidden rounded-[32px] px-4 pt-3 pb-1 xl:px-6'>
-      <div className='relative w-full' style={{ height: HEIGHT }}>
-        <Road centers={centers} reached={reached} width={W} height={HEIGHT} fill={fill} />
+  const LETTER = 120
+  const BONUS = 100
+  const chestTop = 12 // room for the glow of the chest when it is ready
+  // Chest and challenge close together, so the whole path is lower and the cards under it fit (Luis, 8 Oct).
+  const reviewTop = chestTop + BONUS + 30
+  const chestCy = chestTop + BONUS / 2
+  const reviewCy = reviewTop + BONUS / 2
+  const cy = (chestCy + reviewCy) / 2
+  const letterTop = cy - LETTER / 2
+  const height = Math.max(reviewTop + BONUS, letterTop + LETTER + 12 + 24 + 26 + 22) + 6
 
-        {steps.map((step, index) => {
-          const { colors, state } = step
-          const locked = state === 'locked'
-          const isLetter = typeof step.content === 'string'
-          const size = sizes[index]
-          return (
-            <div
-              key={step.key}
-              className='absolute flex w-[180px] -translate-x-1/2 flex-col items-center text-center'
-              style={{ left: `${xs[index]}%`, top: tops[index] }}
-            >
-              <div className='relative flex items-center justify-center' style={{ width: size + 24, height: size }}>
-                {state === 'next' && !step.bare ? (
-                  <span
-                    className='pointer-events-none absolute rounded-[40px] border-[6px]'
-                    style={{ width: size + 22, height: size + 22, borderColor: colors.soft }}
-                    aria-hidden='true'
-                  />
-                ) : null}
-                {step.bare && chestReady ? (
-                  <span
-                    className='pointer-events-none absolute rounded-[36px] border-[6px]'
-                    style={{ width: size + 30, height: size + 22, borderColor: CHEST_RING }}
-                    aria-hidden='true'
-                  />
-                ) : null}
-                {step.bare && chestReady ? (
-                  <span
-                    className='ica-glow-pulse pointer-events-none absolute rounded-full'
-                    style={{ width: 150, height: 130, background: 'radial-gradient(closest-side, #ffd54acc, #ffd54a55 55%, transparent)' }}
-                    aria-hidden='true'
-                  />
-                ) : null}
-                <button
-                  type='button'
-                  onClick={locked ? onLockedTap : step.onClick}
-                  data-ica-step={step.key}
-                  aria-disabled={locked || undefined}
-                  aria-label={step.ariaLabel}
-                  className={`relative flex items-center justify-center transition-transform ${locked ? 'cursor-not-allowed' : 'hover:-translate-y-0.5 active:scale-95'} ${state === 'next' ? (step.bare ? 'ica-chest-ready' : 'ica-bob') : ''}`}
-                  style={
-                    step.bare
-                      ? { width: size + 8, height: size, borderRadius: 28, ...chestTileStyle(state) }
-                      : isLetter
-                        ? { width: size, height: size, borderRadius: 34, ...brandTileStyle(state), color: brandLetterColor(state) }
-                        : {
-                            width: size,
-                            height: size,
-                            borderRadius: 28,
-                            ...retoTileStyle(state),
-                          }
-                  }
-                >
-                  {isLetter ? (
-                    <>
-                      <span className='font-ica text-[64px] leading-none font-extrabold' style={{ marginTop: -6 }}>
-                        {step.content}
-                      </span>
-                      {state === 'done' ? <DoneShine letter={String(step.content)} /> : null}
-                    </>
-                  ) : (
-                    step.content
-                  )}
-                </button>
-                {/* Mismo sitio en todas: 8 px fuera de la esquina de su ficha (el cofre es 8 px más ancho). */}
-                {state === 'done' ? (
-                  <DoneBadge style={{ top: -6, right: step.bare ? 0 : 4 }} />
-                ) : locked ? (
-                  <LockBadge style={{ top: -6, right: step.bare ? 0 : 4 }} />
-                ) : null}
-              </div>
-              <div className='mt-3 flex min-h-6 items-center'>
-                {state === 'next' ? (
-                  <StartChip
-                    label={step.chip}
-                    color={isLetter ? '#ffffff' : step.bare ? '#a16207' : 'var(--ica-reto-edge)'}
-                    textColor={isLetter ? '#0b84b5' : '#ffffff'}
-                  />
-                ) : null}
-              </div>
+  const xI = JOURNEY_SIDE + LETTER / 2
+  const xEnd = width - JOURNEY_SIDE - JOURNEY_LABEL_W - JOURNEY_LABEL_GAP - BONUS / 2
+  const stepX = (xEnd - xI - JOURNEY_FORK_EXTRA) / JOURNEY_PARTS
+  const xC = xI + stepX
+  const xA = xI + stepX * 2
+  const xs = [xI, xC, xA]
+  const rowFill = fill && fill.to <= 2 ? fill : null
+  const forkFilling = Boolean(fill && fill.to === 3)
+  const forkDone = reached >= 3 && !forkFilling
+  const forkStroke = forkDone ? 'var(--ica-road-done)' : 'var(--ica-road-todo)'
+  // Out of the A, a soft S up (or down) and straight on into the chest (or the challenge).
+  const branch = (toY: number): string => {
+    const x1 = xA + (xEnd - xA) * 0.18
+    const x2 = xA + (xEnd - xA) * 0.62
+    return `M${xA} ${cy} H${x1} C${(x1 + x2) / 2} ${cy}, ${(x1 + x2) / 2} ${toY}, ${x2} ${toY} H${xEnd}`
+  }
+  const forkD = `${branch(chestCy)} ${branch(reviewCy)}`
+  const dashed = {
+    fill: 'none',
+    strokeLinecap: 'round' as const,
+    vectorEffect: 'non-scaling-stroke' as const,
+    strokeWidth: 6,
+    strokeDasharray: '3 13',
+  }
+
+  const node = (step: JourneyStep, x: number, top: number, size: number, showLabel: boolean) => {
+    const { colors, state } = step
+    const locked = state === 'locked'
+    const isLetter = typeof step.content === 'string'
+    return (
+      <div
+        key={step.key}
+        className='absolute flex w-[230px] -translate-x-1/2 flex-col items-center text-center'
+        style={{ left: x, top }}
+      >
+        <div className='relative flex items-center justify-center' style={{ width: size + 24, height: size }}>
+          {state === 'next' && !step.bare ? (
+            <span
+              className='pointer-events-none absolute rounded-[40px] border-[6px]'
+              style={{ width: size + 22, height: size + 22, borderColor: isLetter ? colors.soft : RETO_RING }}
+              aria-hidden='true'
+            />
+          ) : null}
+          {step.bare && chestReady ? (
+            <>
               <span
-                className='mt-0.5 rounded-lg px-1.5 text-lg leading-tight font-black'
-                style={{ color: 'var(--ica-brand-ink)', background: 'var(--ica-label-bg, var(--ica-brand))', opacity: locked ? 0.75 : 1 }}
-              >
-                {step.title}
-              </span>
-              {state === 'next' ? (
-                // El texto de ayuda solo en el paso que toca.
-                <span className='mt-0.5 rounded-lg px-1.5 text-sm font-semibold text-balance' style={{ color: 'var(--ica-brand-sub)', background: 'var(--ica-label-bg, var(--ica-brand))' }}>
-                  {step.text}
+                className='pointer-events-none absolute rounded-[36px] border-[6px]'
+                style={{ width: size + 30, height: size + 22, borderColor: CHEST_RING }}
+                aria-hidden='true'
+              />
+              <span
+                className='ica-glow-pulse pointer-events-none absolute rounded-full'
+                style={{ width: 150, height: 130, background: 'radial-gradient(closest-side, #ffd54acc, #ffd54a55 55%, transparent)' }}
+                aria-hidden='true'
+              />
+            </>
+          ) : null}
+          <button
+            type='button'
+            onClick={locked ? onLockedTap : step.onClick}
+            data-ica-step={step.key}
+            aria-disabled={locked || undefined}
+            aria-label={step.ariaLabel}
+            className={`relative flex items-center justify-center transition-transform ${locked ? 'cursor-not-allowed' : 'hover:-translate-y-0.5 active:scale-95'} ${state === 'next' ? (step.bare ? 'ica-chest-ready' : 'ica-bob') : ''}`}
+            style={
+              step.bare
+                ? { width: size + 8, height: size, borderRadius: 28, ...chestTileStyle(state) }
+                : isLetter
+                  ? { width: size, height: size, borderRadius: 34, ...brandTileStyle(state), color: brandLetterColor(state) }
+                  : { width: size, height: size, borderRadius: 28, ...retoTileStyle(state) }
+            }
+          >
+            {isLetter ? (
+              <>
+                <span className='font-ica text-[64px] leading-none font-extrabold' style={{ marginTop: -6 }}>
+                  {step.content}
                 </span>
+                {state === 'done' ? <DoneShine letter={String(step.content)} /> : null}
+              </>
+            ) : (
+              step.content
+            )}
+          </button>
+          {state === 'done' ? (
+            <DoneBadge style={{ top: -6, right: step.bare ? 0 : 4 }} />
+          ) : locked ? (
+            <LockBadge style={{ top: -6, right: step.bare ? 0 : 4 }} />
+          ) : null}
+        </div>
+        {showLabel ? (
+          <>
+            <div className='mt-3 flex min-h-6 items-center'>
+              {state === 'next' ? (
+                <StartChip
+                  label={step.chip}
+                  color={isLetter ? '#ffffff' : step.bare ? '#a16207' : 'var(--ica-reto-edge)'}
+                  textColor={isLetter ? '#0b84b5' : '#ffffff'}
+                />
               ) : null}
             </div>
-          )
-        })}
+            <span
+              className='mt-0.5 rounded-lg px-1.5 text-lg leading-tight font-black'
+              style={{ color: 'var(--ica-brand-ink)', background: 'var(--ica-label-bg, var(--ica-brand))', opacity: locked ? 0.75 : 1 }}
+            >
+              {step.title}
+            </span>
+            {state === 'next' ? (
+              <span className='mt-0.5 rounded-lg px-1.5 text-sm font-semibold text-balance' style={{ color: 'var(--ica-brand-sub)', background: 'var(--ica-label-bg, var(--ica-brand))' }}>
+                {step.text}
+              </span>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    )
+  }
+
+  const sideLabel = (step: JourneyStep, top: number) => {
+    const isChest = step.key === 'chest'
+    const locked = step.state === 'locked'
+    return (
+      <div
+        key={`${step.key}-label`}
+        className='pointer-events-none absolute flex flex-col items-start gap-0.5'
+        style={{ left: xEnd + BONUS / 2 + JOURNEY_LABEL_GAP, top, height: BONUS, justifyContent: 'center', maxWidth: JOURNEY_LABEL_W + 30 }}
+      >
+        {step.state === 'next' ? (
+          <StartChip label={step.chip} color={isChest ? '#a16207' : 'var(--ica-reto-edge)'} textColor='#ffffff' compact />
+        ) : null}
+        <span className='text-lg leading-tight font-black' style={{ color: 'var(--ica-brand-ink)', opacity: locked ? 0.75 : 1 }}>
+          {step.title}
+        </span>
+        <span className='text-sm leading-snug font-semibold text-balance' style={{ color: 'var(--ica-brand-sub)' }}>{step.text}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className='ica-path-skin relative overflow-hidden rounded-[32px] px-4 pt-1 pb-0 xl:px-6'>
+      <div ref={boxRef} className='relative w-full' style={{ height }}>
+        <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio='none' className='absolute inset-0 h-full w-full' aria-hidden='true'>
+          <path d={forkD} {...dashed} stroke={forkStroke} />
+          {forkFilling ? (
+            <>
+              <mask id={forkMaskId} maskUnits='userSpaceOnUse' x={0} y={0} width={width} height={height}>
+                {[chestCy, reviewCy].map((toY) => (
+                  <path
+                    key={toY}
+                    d={branch(toY)}
+                    fill='none'
+                    stroke='#ffffff'
+                    strokeWidth={14}
+                    strokeLinecap='round'
+                    pathLength={1}
+                    className='ica-road-fill'
+                    style={{ animationDelay: `${PATH_FILL_DELAY_MS}ms`, animationDuration: `${PATH_FILL_MS}ms` }}
+                  />
+                ))}
+              </mask>
+              <path d={forkD} {...dashed} stroke='var(--ica-road-done)' mask={`url(#${forkMaskId})`} />
+            </>
+          ) : null}
+        </svg>
+        <Road
+          centers={[
+            [xI, cy],
+            [xC, cy],
+            [xA, cy],
+          ]}
+          reached={Math.min(reached, 2)}
+          width={width}
+          height={height}
+          fill={rowFill}
+          straight
+        />
+        {phases.map((step, index) => node(step, xs[index], letterTop, LETTER, true))}
+        {node(chest, xEnd, chestTop, BONUS, false)}
+        {node(review, xEnd, reviewTop, BONUS, false)}
+        {sideLabel(chest, chestTop)}
+        {sideLabel(review, reviewTop)}
       </div>
     </div>
   )

@@ -233,6 +233,7 @@ export function GamesIcaPage() {
   )
   const [pregunticaProgress, setPregunticaProgress] = useState('0/20')
   const [pregunticaUnlocked, setPregunticaUnlocked] = useState(false)
+  const [pregunticaClosed, setPregunticaClosed] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -249,6 +250,8 @@ export function GamesIcaPage() {
         if (!active || !status) return
 
         setPregunticaUnlocked(status.isUnlocked)
+        // Days 29-31: no PreguntICA until day 1 (Luis, 9 Oct).
+        setPregunticaClosed(status.isClosed)
         const displayActivationCount = status.completedAt
           ? status.requiredActivationWords
           : status.activationWordsCount
@@ -288,6 +291,7 @@ export function GamesIcaPage() {
         pregunticaUnlocked={pregunticaUnlocked}
         pregunticaLabel={pregunticaLabel}
         pregunticaProgress={pregunticaProgress}
+        pregunticaClosed={pregunticaClosed}
       />
     </PageLayout>
   )

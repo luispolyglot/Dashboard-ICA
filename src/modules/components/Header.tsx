@@ -8,7 +8,8 @@ import {
   DASHBOARD_ROUTES,
   getManageCoachingUserRoute,
 } from '../routes/paths'
-import type { CoachingManagedUser } from '../services/coaching'
+import { pendingReviewOf, type CoachingManagedUser } from '../services/coaching'
+import { PendingReviewDot } from './PendingReviewDot'
 import type { DailyProgressMap } from '../types'
 import { WelcomeBrand } from '../game/WelcomeBrand'
 import { GameStatsBar } from '../game/GameStatsBar'
@@ -30,6 +31,8 @@ type HeaderProps = {
   shouldHighlightCoachingProfileButton?: boolean
   /** Solo para coaches: alumnos con coaching activo (null = no es coach). */
   coachStudents?: CoachingManagedUser[] | null
+  /** A nota desafiante or a PreguntICA waiting in Juegos (dot on the menu). */
+  gamesWaiting?: boolean
   boltButtonRef: (node: HTMLButtonElement | null) => void
 }
 
@@ -132,7 +135,7 @@ function CoachQuickAccess({
 
   // El botón de fijar va fuera de la opción del menú: así fijar no abre al alumno.
   const renderStudent = (student: CoachingManagedUser, isPinned: boolean) => {
-    const pending = student.pendingMasterNotesReviewCount || (student.hasPendingMasterNotesReview ? 1 : 0)
+    const pending = pendingReviewOf(student).total
     return (
       <div key={student.id} className='group flex items-center gap-1 pr-1'>
         <DropdownMenuItem
@@ -156,7 +159,7 @@ function CoachQuickAccess({
             <span
               className='shrink-0 rounded-full px-2 py-0.5 text-[11px] font-black'
               style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
-              aria-label={t('Notas maestras pendientes de revisar')}
+              aria-label={t('Tareas y notas maestras pendientes de revisar')}
             >
               {t('{n} por revisar', { n: pending })}
             </span>
@@ -203,7 +206,10 @@ function CoachQuickAccess({
             </span>
           ) : null}
           {hasPending ? (
-            <span className='absolute -top-1 -right-1 size-3 rounded-full ring-2 ring-background' style={{ background: 'var(--ica-gold)' }} />
+            // Blinks while there is something to review (Luis, 9 Oct).
+            <span className='absolute -top-1.5 -right-1.5'>
+              <PendingReviewDot title={t('Tienes tareas o notas maestras por revisar.')} />
+            </span>
           ) : null}
         </button>
       </DropdownMenuTrigger>
@@ -261,6 +267,7 @@ export function Header({
   shouldHighlightProfileButton,
   shouldHighlightCoachingProfileButton = false,
   coachStudents = null,
+  gamesWaiting = false,
   boltButtonRef,
 }: HeaderProps) {
   return (
@@ -273,6 +280,7 @@ export function Header({
         <DesktopNav
           shouldHighlightProfileButton={shouldHighlightProfileButton}
           shouldHighlightCoachingProfileButton={shouldHighlightCoachingProfileButton}
+          gamesWaiting={gamesWaiting}
         />
 
         <div className='flex items-center justify-end gap-2 lg:flex-1'>

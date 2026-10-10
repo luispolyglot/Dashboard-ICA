@@ -20,6 +20,8 @@ type RpcWeekStatusRow = {
   attempts_used: number
   token_unlocks_used: number
   can_start: boolean
+  /** Days 29-31: no PreguntICA until day 1 (week_start is then the next week). */
+  is_closed?: boolean | null
 }
 
 type ActiveLanguagePair = {
@@ -106,6 +108,11 @@ export type PregunticaWeekStatus = {
   attemptsUsed: number
   tokenUnlocksUsed: number
   canStart: boolean
+  /**
+   * Days 29-31 of the month: no PreguntICA (the month's ranking has closed). `weekStart` is then
+   * day 1 of next month, when the next one opens (Luis, 9 Oct).
+   */
+  isClosed: boolean
 }
 
 export type PregunticaWordSuggestion = {
@@ -408,6 +415,7 @@ function mapStatus(row: RpcWeekStatusRow): PregunticaWeekStatus {
     attemptsUsed: Number(row.attempts_used || 0),
     tokenUnlocksUsed: Number(row.token_unlocks_used || 0),
     canStart: Boolean(row.can_start),
+    isClosed: Boolean(row.is_closed),
   }
 }
 

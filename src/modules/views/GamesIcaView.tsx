@@ -32,6 +32,8 @@ type GamesIcaViewProps = {
   pregunticaUnlocked: boolean
   pregunticaLabel: string
   pregunticaProgress: string
+  /** Days 29-31: no PreguntICA until day 1. */
+  pregunticaClosed?: boolean
 }
 
 function parseProgress(value: string): { current: number; total: number } {
@@ -119,6 +121,7 @@ export function GamesIcaView({
   flashcardsCount,
   pregunticaUnlocked,
   pregunticaProgress,
+  pregunticaClosed = false,
 }: GamesIcaViewProps) {
   const navigate = useNavigate()
   const { dailyProgress, config } = useDashboardContext()
@@ -134,7 +137,7 @@ export function GamesIcaView({
   const { activatedWords, flashcardsUnlocked } = useActivatedWords()
   const { notes: closedNoteList, count: closedNotes } = useClosedMasterNotes(config?.targetLang, config?.nativeLang)
   const progress = parseProgress(pregunticaProgress)
-  const pregunticaPct = (progress.current / progress.total) * 100
+  const pregunticaPct = pregunticaClosed ? 0 : (progress.current / progress.total) * 100
   const reviewedToday = Math.min(getTodayProgress(dailyProgress).reviewCorrect, GOAL)
   const flashcardsOpen = flashcardsReady && flashcardsUnlocked
   const challengeReady = closedNotes !== null && closedNotes >= CHALLENGE_NOTE_MIN_CLOSED_NOTES
@@ -194,9 +197,11 @@ export function GamesIcaView({
           locked={!pregunticaUnlocked}
           onClick={() => navigate(DASHBOARD_ROUTES.preguntica)}
           status={
-            pregunticaUnlocked
-              ? t('Desbloqueada esta semana · extra: {PREGUNTICA_EXTRA_COST} ICA Coins', { PREGUNTICA_EXTRA_COST })
-              : t('{pregunticaProgress} palabras activadas esta semana', { pregunticaProgress })
+            pregunticaClosed
+              ? t('Vuelve el día 1 del mes que viene')
+              : pregunticaUnlocked
+                ? t('Desbloqueada esta semana · extra: {PREGUNTICA_EXTRA_COST} ICA Coins', { PREGUNTICA_EXTRA_COST })
+                : t('{pregunticaProgress} palabras activadas esta semana', { pregunticaProgress })
           }
           progress={pregunticaPct}
         />

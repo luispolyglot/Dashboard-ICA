@@ -74,13 +74,14 @@ async function getCurrentUserId(): Promise<string> {
 }
 
 function getDefaultPreferences(userId: string): PushReminderPreferences {
+  // Everything on by default (Luis, 7 Oct); the server treats a missing row the same way.
   return {
     userId,
-    icaStreakEnabled: false,
+    icaStreakEnabled: true,
     icaStreakHour: DEFAULT_HOUR,
-    flashcardsStreakEnabled: false,
+    flashcardsStreakEnabled: true,
     flashcardsStreakHour: DEFAULT_HOUR,
-    habitLossEnabled: false,
+    habitLossEnabled: true,
     habitLossLastStage: 0,
     streakRiskEnabled: true,
     createdAt: null,

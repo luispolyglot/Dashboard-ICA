@@ -31,4 +31,24 @@ export default {
   '¡Nota desafiante desbloqueada!': 'Challenge note unlocked!',
   'Elige una nota maestra terminada: escuchas trozos de tus frases en tu idioma y los dices de memoria en el idioma que aprendes. Es el mejor entrenamiento para hablar sin pensar.':
     'Pick a finished master note: you hear pieces of your sentences in your language and say them from memory in the language you are learning. It is the best training to speak without thinking.',
+  // Profile guide (Luis, 7 Oct)
+  'Tus insignias': 'Your badges',
+  'Aquí están tus insignias. Las vas consiguiendo poco a poco con lo que haces en ICA.':
+    'Here are your badges. You earn them little by little with what you do in ICA.',
+  'Tus notificaciones': 'Your notifications',
+  'Los avisos de tu racha y de tus hábitos vienen activados. Toca el botón para recibirlos también en este dispositivo.':
+    'The reminders for your streak and your habits come turned on. Tap the button to get them on this device too.',
+  'Activar en este dispositivo': 'Turn on for this device',
+  'Activadas en este dispositivo': 'Turned on for this device',
+  'Notificaciones activadas en este dispositivo.': 'Notifications turned on for this device.',
+  'No se pudieron activar las notificaciones.': 'Notifications could not be turned on.',
+  'Aquí está el chat de icademers de tu idioma. Habla con otras personas que aprenden como tú y crea nuevas conexiones.':
+    'Here is the icademers chat for your language. Talk to other people who are learning like you and make new connections.',
+  '¿Vas a las clases de ICADEMY?': 'Do you go to the ICADEMY classes?',
+  'Este es el calendario de las clases en directo. Si vas a alguna, te enseño cómo activar su recordatorio.':
+    'This is the calendar of the live classes. If you go to any, I will show you how to turn on its reminder.',
+  'Sí': 'Yes',
+  'Activa el recordatorio de tu clase': 'Turn on your class reminder',
+  'Pulsa la campana y escoge la clase a la que vas. Activa su recordatorio y te avisamos unos minutos antes.':
+    'Tap the bell and pick the class you go to. Turn on its reminder and we will notify you a few minutes before.',
 } as Record<string, string>

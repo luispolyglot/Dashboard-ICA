@@ -1860,6 +1860,7 @@ export function ManageCoachingUserView({
                   userId={selectedMembership.userId}
                   coachDisplayName={selectedMembership.coachDisplayName}
                   onSelectedPeriodChange={setV3CoachCurrentPeriod}
+                  pendingAudioPeriods={selectedMembership.pendingTaskAudioPeriods}
                   coachExtraContent={
                     <Card>
                       <CardHeader>

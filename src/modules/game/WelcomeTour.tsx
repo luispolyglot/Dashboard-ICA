@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/auth/AuthContext'
 import { t } from '@/i18n'
+import { turnOnRemindersOnThisDevice } from '../services/notificationOnboarding'
+import { getPushPermissionState } from '../services/pushNotifications'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { CHALLENGE_NOTE_MIN_CLOSED_NOTES, FLASHCARDS_MIN_ACTIVATED_WORDS } from './rules'
 
@@ -20,6 +23,7 @@ import { CHALLENGE_NOTE_MIN_CLOSED_NOTES, FLASHCARDS_MIN_ACTIVATED_WORDS } from 
 
 const WELCOME_KEY = 'ica-welcome-tour-v1'
 const CHALLENGE_NOTE_KEY = 'ica-guide-challenge-note-v1'
+const PROFILE_KEY = 'ica-guide-profile-v1'
 /** Only one guide on screen at a time. */
 let activeGuide: string | null = null
 const NEW_ACCOUNT_DAYS = 14
@@ -34,6 +38,14 @@ type TourStep = {
   targets?: string[]
   title: string
   body: string
+  /** How long to wait for the targets before skipping the step (default FIND_TIMEOUT_MS). */
+  waitMs?: number
+  /** A yes/no question instead of «Siguiente». «Sí» goes on; «No» ends the guide. */
+  ask?: { yes: string; no: string }
+  /** Only shown unless the answer to the question in step `step` was the opposite of `answer`. */
+  onlyIf?: { step: string; answer: boolean }
+  /** An extra button on the card, for something that needs a tap (for example a browser permission). */
+  action?: { label: string; doneLabel: string; errorText: string; successText: string; run: () => Promise<void> }
 }
 
 function buildSteps(name: string): TourStep[] {
@@ -140,8 +152,8 @@ function isNewAccount(createdAt: string | undefined): boolean {
   return Date.now() - created < NEW_ACCOUNT_DAYS * 24 * 60 * 60 * 1000
 }
 
-function wantsTourFromUrl(search: string): boolean {
-  return new URLSearchParams(search).get('tour') === '1'
+function wantsTourFromUrl(search: string, value = '1'): boolean {
+  return new URLSearchParams(search).get('tour') === value
 }
 
 type Box = { top: number; left: number; width: number; height: number }
@@ -222,6 +234,74 @@ export function ChallengeNoteUnlockGuide({ unlocked }: { unlocked: boolean }) {
   return <GuideTour guideKey={CHALLENGE_NOTE_KEY} steps={steps} shouldStart={unlocked} lastLabel={t('Entendido')} />
 }
 
+/**
+ * Profile guide (Luis, 7 Oct): the first time an icademer opens Profile, the same guide shows one
+ * bubble after another: badges, notifications, the icademers chat and the class calendar. If the
+ * person goes to ICADEMY classes it takes them to the calendar to turn on a class reminder.
+ * Shown once per account and device (to everyone, not only new accounts); `?tour=perfil` shows it again.
+ */
+export function ProfileGuide() {
+  const location = useLocation()
+  const forced = wantsTourFromUrl(location.search, 'perfil')
+  const onProfile = location.pathname === DASHBOARD_ROUTES.profile
+  const steps = useMemo<TourStep[]>(() => {
+    const profile = DASHBOARD_ROUTES.profile
+    // Without push support in this browser there is nothing to turn on, so no button.
+    const canTurnOnPush = getPushPermissionState() !== 'unsupported'
+    return [
+      {
+        id: 'profile-badges',
+        route: profile,
+        targets: ['[data-tour="profile-badges"]'],
+        title: t('Tus insignias'),
+        body: t('Aquí están tus insignias. Las vas consiguiendo poco a poco con lo que haces en ICA.'),
+      },
+      {
+        id: 'profile-notifications',
+        route: profile,
+        targets: ['[data-tour="profile-notifications"]'],
+        title: t('Tus notificaciones'),
+        body: t('Los avisos de tu racha y de tus hábitos vienen activados. Toca el botón para recibirlos también en este dispositivo.'),
+        action: canTurnOnPush
+          ? {
+              label: t('Activar en este dispositivo'),
+              doneLabel: t('Activadas en este dispositivo'),
+              successText: t('Notificaciones activadas en este dispositivo.'),
+              errorText: t('No se pudieron activar las notificaciones.'),
+              run: turnOnRemindersOnThisDevice,
+            }
+          : undefined,
+      },
+      {
+        id: 'profile-chat',
+        route: profile,
+        targets: ['[data-tour="profile-chat"]'],
+        title: t('Chat de icademers'),
+        body: t('Aquí está el chat de icademers de tu idioma. Habla con otras personas que aprenden como tú y crea nuevas conexiones.'),
+      },
+      {
+        id: 'profile-calendar',
+        route: profile,
+        targets: ['[data-tour="profile-calendar"]'],
+        title: t('¿Vas a las clases de ICADEMY?'),
+        body: t('Este es el calendario de las clases en directo. Si vas a alguna, te enseño cómo activar su recordatorio.'),
+        ask: { yes: t('Sí'), no: t('No') },
+      },
+      {
+        id: 'calendar-reminders',
+        route: DASHBOARD_ROUTES.calendarIcademy,
+        targets: ['[data-tour="calendar-reminders"]'],
+        // The calendar loads its classes first; give it time before giving up on this step.
+        waitMs: 4000,
+        onlyIf: { step: 'profile-calendar', answer: true },
+        title: t('Activa el recordatorio de tu clase'),
+        body: t('Pulsa la campana y escoge la clase a la que vas. Activa su recordatorio y te avisamos unos minutos antes.'),
+      },
+    ]
+  }, [])
+  return <GuideTour guideKey={PROFILE_KEY} steps={steps} shouldStart={onProfile} force={forced} lastLabel={t('Entendido')} />
+}
+
 function GuideTour({
   guideKey,
   steps,
@@ -248,6 +328,8 @@ function GuideTour({
   const [index, setIndex] = useState<number | null>(null)
   const [box, setBox] = useState<Box | null>(null)
   const [ready, setReady] = useState(false)
+  const [answers, setAnswers] = useState<Record<string, boolean>>({})
+  const [actionState, setActionState] = useState<'idle' | 'running' | 'done'>('idle')
   const targetsRef = useRef<HTMLElement[] | null>(null)
   const nextRef = useRef<HTMLButtonElement | null>(null)
 
@@ -262,7 +344,16 @@ function GuideTour({
     return () => window.clearTimeout(timer)
   }, [force, guideKey, index, shouldStart, user?.id])
 
-  const step = index !== null ? steps[index] : null
+  // A step that depends on an answer stays in until the answer says otherwise (so the count is right).
+  const visibleSteps = useMemo(
+    () => steps.filter((item) => !item.onlyIf || answers[item.onlyIf.step] !== !item.onlyIf.answer),
+    [answers, steps],
+  )
+  const step = index !== null ? visibleSteps[index] : null
+
+  useEffect(() => {
+    setActionState('idle')
+  }, [step?.id])
 
   const finish = useCallback(
     (goHome: boolean) => {
@@ -272,8 +363,10 @@ function GuideTour({
       setBox(null)
       targetsRef.current = null
       if (goHome && homeOnSkip && location.pathname !== DASHBOARD_ROUTES.home) navigate(DASHBOARD_ROUTES.home)
+      // Forced with ?tour=…: drop it from the address, or the guide would start again.
+      else if (force && location.search) navigate(location.pathname, { replace: true })
     },
-    [guideKey, homeOnSkip, location.pathname, navigate, user?.id],
+    [force, guideKey, homeOnSkip, location.pathname, location.search, navigate, user?.id],
   )
 
   // Go to the step's screen, then wait for its elements (skip the step if they never show up).
@@ -306,9 +399,9 @@ function GuideTour({
         }, 380)
         return
       }
-      if (performance.now() - started > FIND_TIMEOUT_MS) {
+      if (performance.now() - started > (step.waitMs ?? FIND_TIMEOUT_MS)) {
         // Not on screen (for example a game that is switched off): skip this step.
-        if (index !== null && index + 1 < steps.length) setIndex(index + 1)
+        if (index !== null && index + 1 < visibleSteps.length) setIndex(index + 1)
         else finish(true)
         return
       }
@@ -318,7 +411,7 @@ function GuideTour({
     return () => window.cancelAnimationFrame(frame)
     // finish and index are read when the step changes; re-running on their change would restart the search.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, navigate, step, steps.length])
+  }, [location.pathname, navigate, step, visibleSteps.length])
 
   // Keep the light on its elements while the page scrolls or the window changes size.
   useLayoutEffect(() => {
@@ -349,7 +442,7 @@ function GuideTour({
 
   if (index === null || !step || typeof document === 'undefined') return null
 
-  const isLast = index === steps.length - 1
+  const isLast = index === visibleSteps.length - 1
   const goNext = () => {
     if (!isLast) {
       setIndex(index + 1)
@@ -358,7 +451,26 @@ function GuideTour({
     finish(false)
     onLastStep?.()
   }
-  const single = steps.length === 1
+  // «Sí» opens the steps that wait for it; «No» ends the guide.
+  const answerQuestion = (value: boolean) => {
+    setAnswers((previous) => ({ ...previous, [step.id]: value }))
+    if (value) setIndex(index + 1)
+    else finish(false)
+  }
+  const runAction = async () => {
+    const action = step.action
+    if (!action || actionState !== 'idle') return
+    setActionState('running')
+    try {
+      await action.run()
+      setActionState('done')
+      toast.success(action.successText)
+    } catch (error) {
+      setActionState('idle')
+      toast.error(error instanceof Error && error.message ? error.message : action.errorText)
+    }
+  }
+  const single = visibleSteps.length === 1
 
   // The card goes where there is more room: under the light, or above it.
   const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800
@@ -405,14 +517,25 @@ function GuideTour({
               />
               {single ? null : (
                 <p className='m-0 text-[11px] font-extrabold tracking-[0.08em] text-muted-foreground uppercase tabular-nums'>
-                  {t('{n} de {total}', { n: index + 1, total: steps.length })}
+                  {t('{n} de {total}', { n: index + 1, total: visibleSteps.length })}
                 </p>
               )}
               <h2 id={titleId} className='m-0 mt-0.5 font-display text-lg leading-tight font-extrabold tracking-tight'>
                 {step.title}
               </h2>
               <p className='m-0 mt-1.5 text-sm leading-snug font-semibold text-muted-foreground'>{step.body}</p>
-              <div className='mt-3 flex items-center justify-between gap-2'>
+              {step.action ? (
+                <Button
+                  type='button'
+                  variant='secondary'
+                  className='mt-3 w-full'
+                  disabled={actionState !== 'idle'}
+                  onClick={() => void runAction()}
+                >
+                  {actionState === 'done' ? step.action.doneLabel : step.action.label}
+                </Button>
+              ) : null}
+              <div className='mt-3 flex flex-wrap items-center justify-between gap-2'>
                 {isLast ? (
                   <span />
                 ) : (
@@ -424,9 +547,20 @@ function GuideTour({
                     {t('Saltar guía')}
                   </button>
                 )}
-                <Button ref={nextRef} type='button' onClick={goNext} className='min-w-28'>
-                  {isLast ? lastLabel : index === 0 ? t('Empezar') : t('Siguiente')}
-                </Button>
+                {step.ask ? (
+                  <div className='flex items-center gap-2'>
+                    <Button type='button' variant='outline' onClick={() => answerQuestion(false)}>
+                      {step.ask.no}
+                    </Button>
+                    <Button ref={nextRef} type='button' onClick={() => answerQuestion(true)}>
+                      {step.ask.yes}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button ref={nextRef} type='button' onClick={goNext} className='min-w-28'>
+                    {isLast ? lastLabel : step.id === 'hello' ? t('Empezar') : t('Siguiente')}
+                  </Button>
+                )}
               </div>
             </div>
           </div>

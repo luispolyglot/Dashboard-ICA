@@ -6,6 +6,7 @@ import { getSessionSafe } from '../lib/supabaseAuthSafe'
 import { recordBootstrapDiagnostic } from '@/modules/utils/bootstrapDiagnostics'
 import { checkLoginEmail, normalizeEmail } from './whitelist'
 import { t } from '@/i18n'
+import { authErrorMessage } from './authErrors'
 import { clearQuickCache } from '@/modules/services/quickCache'
 
 type AuthContextValue = {
@@ -177,7 +178,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         }
 
         const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password })
-        if (error) throw error
+        if (error) throw new Error(authErrorMessage(error, t('No se pudo iniciar sesión')))
         setIsPasswordRecovery(false)
 
         const postCheck = await checkLoginEmail(normalizedEmail)
@@ -218,7 +219,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       updatePassword: async (password) => {
         if (!supabase) throw new Error(t('Falta configurar Supabase'))
         const { error } = await supabase.auth.updateUser({ password })
-        if (error) throw error
+        if (error) throw new Error(authErrorMessage(error, t('No se pudo actualizar la contraseña')))
         setIsPasswordRecovery(false)
       },
       changePassword: async (currentPassword, nextPassword) => {
@@ -235,7 +236,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         }
 
         const { error: updateError } = await supabase.auth.updateUser({ password: nextPassword })
-        if (updateError) throw updateError
+        if (updateError) throw new Error(authErrorMessage(updateError, t('No se pudo actualizar la contraseña')))
       },
       updateDisplayName: async (displayName) => {
         if (!supabase) throw new Error(t('Falta configurar Supabase'))

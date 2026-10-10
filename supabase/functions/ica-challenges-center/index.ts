@@ -368,6 +368,10 @@ async function fetchCards(
 
   if (scoped.error) throw new Error(scoped.error.message)
   let rows = (scoped.data || []) as Array<Record<string, unknown>>
+  const boostedRows = await fetchBoostedCards(adminClient, userId, pair)
+  const boosted = new Set(boostedRows.map((row) => toText(row.id)))
+  const loaded = new Set(rows.map((row) => toText(row.id)))
+  rows = [...rows, ...boostedRows.filter((row) => !loaded.has(toText(row.id)))]
 
   if (rows.length === 0) {
     // Palabras antiguas sin idioma guardado (igual que hace la app al cargar el baúl).
@@ -392,6 +396,52 @@ async function fetchCards(
       exampleTranslation: toText(row.example_translation) || null,
     }))
     .filter((card) => card.id && card.target && card.native)
+    .map((card) => (boosted.has(card.id) ? { ...card, boosted: true } : card))
+}
+
+/**
+ * Potenciadas (Luis, 8 Oct): the player's words with Desafíos left in their boost. Asked apart, so
+ * a database without the boost columns yet plays exactly as before. They are also added to the
+ * pool when the MAX_CARDS_PER_PLAYER limit left them out.
+ */
+async function fetchBoostedCards(
+  adminClient: AdminClient,
+  userId: string,
+  pair: LanguagePair,
+): Promise<Array<Record<string, unknown>>> {
+  try {
+    const { data, error } = await adminClient
+      .from('lexicards')
+      .select('id, target, native, example_phrase, example_translation')
+      .eq('user_id', userId)
+      .eq('target_lang', pair.targetLang)
+      .eq('native_lang', pair.nativeLang)
+      .gt('boost_duel', 0)
+      .limit(50)
+    if (error) return []
+    return (data || []) as Array<Record<string, unknown>>
+  } catch {
+    return []
+  }
+}
+
+/** One Desafío played with these boosted words of each owner. Never blocks the game. */
+async function consumeDuelBoosts(adminClient: AdminClient, questions: Array<{ answer: { cardId: string; ownerUserId: string } }>, pools: EngineCard[][]) {
+  const boostedIds = new Set(pools.flat().filter((card) => card.boosted).map((card) => card.id))
+  const byOwner = new Map<string, Set<string>>()
+  for (const { answer } of questions) {
+    if (!boostedIds.has(answer.cardId)) continue
+    const ids = byOwner.get(answer.ownerUserId) || new Set<string>()
+    ids.add(answer.cardId)
+    byOwner.set(answer.ownerUserId, ids)
+  }
+  await Promise.all(
+    [...byOwner].map(([owner, ids]) =>
+      adminClient
+        .rpc('consume_lexicard_boosts', { p_ids: [...ids], p_game: 'duel', p_user_id: owner })
+        .then(() => undefined, () => undefined),
+    ),
+  )
 }
 
 /** Idiomas con los que juega cada alumno: los del desafío (por idioma) o los suyos (global). */
@@ -765,6 +815,8 @@ async function ensureQuestions(ctx: GameContext): Promise<QuestionRow[]> {
   const { error } = await ctx.adminClient.from('desafio_preguntas').insert(rows)
   // Si justo las ha creado el rival (mezcla de baúles), se usan las suyas.
   if (error && (error as { code?: string }).code !== '23505') throw new GameError(500, error.message)
+  // Boosted words that came up: one Desafío less to go (only for the questions really saved here).
+  if (!error) await consumeDuelBoosts(ctx.adminClient, generated.questions, pools)
 
   return readRows()
 }
@@ -1508,8 +1560,9 @@ async function reviewGame(ctx: GameContext) {
   return {
     items,
     rivalWords,
-    me: { correct: scoreOf(ctx.myPlays), answered: ctx.myPlays.length },
-    rival: { correct: scoreOf(ctx.rivalPlays), answered: ctx.rivalPlays.length, done: isRivalDone(ctx) },
+    // Total time played: in Parejas it breaks a tie, so the result says how much faster (Luis, 8 Oct).
+    me: { correct: scoreOf(ctx.myPlays), answered: ctx.myPlays.length, ms: totalMsOf(ctx.myPlays) },
+    rival: { correct: scoreOf(ctx.rivalPlays), answered: ctx.rivalPlays.length, done: isRivalDone(ctx), ms: totalMsOf(ctx.rivalPlays) },
     wordSource: ctx.settings.wordSource,
   }
 }

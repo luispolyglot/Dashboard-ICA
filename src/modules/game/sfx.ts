@@ -216,6 +216,13 @@ function noiseBurst(ctx: AudioContext, at: number, duration: number, frequency: 
   source.stop(start + duration + 0.02)
 }
 
+/** Campanilla de caja registradora: parciales metálicos, cada uno se apaga a su ritmo. */
+function registerBell(ctx: AudioContext, at: number, frequency: number, duration: number, volume: number): void {
+  for (const [ratio, level, decay] of [[1, 1, 1], [2, 0.5, 0.6], [2.76, 0.35, 0.4], [5.4, 0.2, 0.2]] as const) {
+    shortTone(ctx, at, frequency * ratio, duration * decay, 'sine', volume * level)
+  }
+}
+
 /** Golpe sordo que baja de tono (el «toc» del paso bloqueado). */
 function thump(ctx: AudioContext, at: number, from: number, to: number, duration: number, volume: number): void {
   const oscillator = ctx.createOscillator()
@@ -317,6 +324,34 @@ export const gameSfx = {
   /** A coin lands in the counter (G01), each one slightly higher or lower. */
   coin() {
     playSample('coinLand', 0.6, 0.94 + Math.random() * 0.12)
+  },
+  /**
+   * Comprar algo grande (la bandera), Luis 9 Oct: la caja registradora (P1 de las 10 opciones),
+   * más larga y épica. El cajón golpea, suena la campanilla, una segunda y una tercera más
+   * altas, y las monedas brillan al final (unos 2 segundos). Es el único sonido de la compra.
+   */
+  purchase() {
+    const ctx = getAudioContext()
+    if (!ctx) return
+    vibrate([20, 40, 30, 60, 40])
+    // «Ka»: el cajón de la caja registradora.
+    noiseBurst(ctx, 0, 0.07, 1400, 'bandpass', 0.35)
+    thump(ctx, 0, 180, 70, 0.09, 0.28)
+    noiseBurst(ctx, 0.08, 0.05, 2600, 'bandpass', 0.2)
+    thump(ctx, 0.1, 120, 50, 0.16, 0.18)
+    // «Ching»: tres campanillas cada vez más altas, con cola larga.
+    registerBell(ctx, 0.13, 2093, 1.9, 0.14)
+    registerBell(ctx, 0.24, 2637, 1.5, 0.09)
+    registerBell(ctx, 0.36, 3136, 1.6, 0.07)
+    // Brillo de monedas al final.
+    for (let index = 0; index < 8; index += 1) {
+      const at = 0.5 + index * 0.09 + Math.random() * 0.02
+      shortTone(ctx, at, 3200 + Math.random() * 1800, 0.22, 'sine', 0.035 * (1 - index * 0.08))
+    }
+  },
+  /** La bandera aterriza: sin sonido (Luis, 9 Oct: solo suena la caja registradora). */
+  acquired() {
+    // Intentionally silent.
   },
   /**
    * Pagar con ICA Coins en la tienda (Luis, 4 oct): unas monedas que caen y tintinean,

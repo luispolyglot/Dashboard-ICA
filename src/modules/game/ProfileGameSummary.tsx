@@ -154,7 +154,7 @@ export function ProfileGameSummary({ onNavigate }: { onNavigate?: () => void }) 
       ) : null}
       {config ? <LevelDialog config={config} open={levelOpen} onOpenChange={setLevelOpen} /> : null}
 
-      <div className='ica-panel px-4 pt-3 pb-2.5'>
+      <div className='ica-panel px-4 pt-3 pb-2.5' data-tour='profile-badges'>
         <div className='mb-1.5 flex items-center justify-between gap-2'>
           <span className='flex min-w-0 items-center gap-2'>
             <span className='text-base font-extrabold'>{t('Insignias')}</span>

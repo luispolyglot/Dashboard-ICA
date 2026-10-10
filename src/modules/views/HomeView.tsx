@@ -96,7 +96,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
       key={`${user?.id || 'anon'}:${config.targetLang}`}
       targetLang={config.targetLang}
       compact={!isLg}
-      className={isLg ? 'px-5 py-4' : undefined}
+      className={isLg ? 'px-5 py-3.5' : undefined}
       onAvailabilityChange={setHasCoaching}
     />
   )
@@ -177,8 +177,9 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           {/* Luis, 7 Oct: without a coaching there is no big coaching invite here (it stays in the
               profile). One row instead: your level, ICA games and a short ranking (3 people), all
               the same height. The coaching card is still mounted, hidden, to find out if you have one. */}
+          {/* Luis, 8 Oct: the cards 1 cm (36 px) further from the path. */}
           {hasCoaching ? (
-            <div className='grid grid-cols-3 gap-5'>
+            <div className='mt-9 grid grid-cols-3 gap-5'>
               <div className='col-span-2'>{coachingCard}</div>
               <div className='row-span-2 flex flex-col [&>*]:flex-1'>
                 <RankingSnippetCard />
@@ -191,7 +192,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           ) : (
             <>
               <div className='hidden'>{coachingCard}</div>
-              <div className='grid grid-cols-3 gap-5'>
+              <div className='mt-9 grid grid-cols-3 gap-5'>
                 <div className='flex flex-col [&>*]:flex-1'>
                   <LevelCard config={config} />
                 </div>

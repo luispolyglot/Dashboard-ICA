@@ -150,17 +150,20 @@ export function CoachingWeekRingsMini({
   currentPeriod,
   size = 40,
   compact = false,
+  header = !compact,
 }: {
   rings: WeekRing[]
   currentPeriod: number
   size?: number
   compact?: boolean
+  /** The «Tu recorrido · Quedan N semanas» line (off on the computer's Home, Luis 8 Oct). */
+  header?: boolean
 }) {
   const done = rings.filter((ring) => ring.complete).length
   const left = Math.max(0, rings.length - currentPeriod)
   return (
     <div role='img' aria-label={t('{done} de {total} anillos del coaching', { done, total: rings.length })}>
-      {compact ? null : (
+      {!header ? null : (
         <div className='mb-2.5 flex items-center justify-between gap-2'>
           <span className='text-[11px] font-black tracking-[0.12em] text-white/70 uppercase'>{t('Tu recorrido')}</span>
           <span className='text-xs font-bold text-white/70'>{tn(left, 'Queda {n} semana', 'Quedan {n} semanas')}</span>

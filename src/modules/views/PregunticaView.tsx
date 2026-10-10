@@ -135,8 +135,9 @@ function getCountdownLabel(status: PregunticaWeekStatus | null): string {
 }
 
 /**
- * Last day of the PreguntICA week, said the way people talk: «hoy», «mañana» or «el jueves».
- * Weeks run Friday to Thursday (server rule), which is why people were lost (Luis, 5 Oct).
+ * Last day of the PreguntICA week, said the way people talk: «hoy», «mañana» or «el jueves 14»,
+ * and when the next one opens: «el jueves 15», or «el día 1 del mes que viene» after the 4th week.
+ * From November 2026 the weeks are those of the month: 1-7, 8-14, 15-21, 22-28 (Luis, 9 Oct).
  */
 function weekLastDayWords(weekEnd: string | undefined): { when: string; next: string } | null {
   const end = weekEnd ? parseDateOnly(weekEnd) : null
@@ -146,9 +147,18 @@ function weekLastDayWords(weekEnd: string | undefined): { when: string; next: st
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const daysLeft = Math.round((lastDay.getTime() - today.getTime()) / 86_400_000)
-  const weekday = (date: Date) => date.toLocaleDateString(uiLocale(), { weekday: 'long' })
-  const when = daysLeft <= 0 ? t('hoy') : daysLeft === 1 ? t('mañana') : t('el {day}', { day: weekday(lastDay) })
-  return { when, next: weekday(end) }
+  const dayWords = (date: Date) =>
+    t('el {day}', { day: date.toLocaleDateString(uiLocale(), { weekday: 'long', day: 'numeric' }) })
+  const when = daysLeft <= 0 ? t('hoy') : daysLeft === 1 ? t('mañana') : dayWords(lastDay)
+  // After day 28 the next PreguntICA is on day 1 of next month.
+  const next = end.getDate() > 28 ? t('el día 1 del mes que viene') : dayWords(end)
+  return { when, next }
+}
+
+/** «1 de noviembre»: when the next PreguntICA opens after days 29-31. */
+function openingDayWords(weekStart: string | undefined): string {
+  const start = weekStart ? parseDateOnly(weekStart) : null
+  return start ? start.toLocaleDateString(uiLocale(), { day: 'numeric', month: 'long' }) : t('el día 1')
 }
 
 function normalizeComparableText(value: string): string {
@@ -523,7 +533,13 @@ export function PregunticaView({
       setMode(selectedMode)
       toast.success(t('Intento PreguntICA iniciado'))
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('No se pudo crear el intento'))
+      const message = error instanceof Error ? error.message : ''
+      if (/PREGUNTICA_CLOSED/.test(message)) {
+        toast.error(t('Del día 29 a fin de mes no hay PreguntICA. Vuelve el día 1.'))
+        void refreshStatus()
+      } else {
+        toast.error(message || t('No se pudo crear el intento'))
+      }
     } finally {
       setWorking(false)
     }
@@ -554,6 +570,12 @@ export function PregunticaView({
       const message = error instanceof Error ? error.message : ''
       if (/REDEEM_COST_MUST_BE_|WEEK_MUST_BE_COMPLETED_BEFORE_REDEEM|WEEK_NOT_FOUND/.test(message)) {
         toast.error(t('El nuevo canje ({coins}, también sin desbloquear la semana) aún no está activo en el servidor.', { coins: coinsText(PREGUNTICA_EXTRA_COST) }))
+      } else if (/PREGUNTICA_CLOSED/.test(message)) {
+        toast.error(t('Del día 29 a fin de mes no hay PreguntICA. Vuelve el día 1.'))
+        void refreshStatus()
+      } else if (/WEEK_NOT_CURRENT/.test(message)) {
+        toast.error(t('La semana acaba de cambiar. Vuelve a intentarlo.'))
+        void refreshStatus()
       } else if (/INSUFFICIENT_TOKENS/.test(message)) {
         toast.error(t('Necesitas {coins} para una PreguntICA extra.', { coins: coinsText(PREGUNTICA_EXTRA_COST) }))
       } else {
@@ -972,6 +994,15 @@ export function PregunticaView({
               </button>
             </div>
           </HeroBlock>
+        ) : status?.isClosed ? (
+          // Days 29-31: no PreguntICA until day 1 (the month's ranking has closed; Luis, 9 Oct).
+          <HeroBlock
+            tone='c'
+            icon={<HeroMic state='locked' />}
+            eyebrow={t('Reto de esta semana')}
+            title={t('Vuelve el {date}', { date: openingDayWords(status.weekStart) })}
+            text={t('Hay una PreguntICA en cada semana del mes: del 1 al 7, del 8 al 14, del 15 al 21 y del 22 al 28. Del 29 a fin de mes descansa, porque el ranking del mes ya ha cerrado.')}
+          />
         ) : hasCompletedWeek ? (
           <>
             <HeroBlock
@@ -1671,9 +1702,9 @@ function WeekCountdown({
   const next = words?.next ?? ''
   const explanation =
     state === 'locked'
-      ? t('Si llegas a {n} palabras antes, podrás responderla. El {next} empieza otra semana: llega una pregunta nueva y el contador vuelve a 0.', { n: requiredWords, next })
+      ? t('Si llegas a {n} palabras antes, podrás responderla. Otra semana empieza {next}: llega una pregunta nueva y el contador vuelve a 0.', { n: requiredWords, next })
       : state === 'open'
-        ? t('Ya puedes responderla. Si no lo haces antes de esa hora, la de esta semana se pierde y el {next} llega una nueva.', { next })
+        ? t('Ya puedes responderla. Si no lo haces antes de esa hora, la de esta semana se pierde y {next} llega una nueva.', { next })
         : t('Termínala antes de esa hora para que cuente como la PreguntICA de esta semana.')
   return (
     <div className='mt-3 rounded-2xl bg-muted/60 px-3.5 py-3 text-left'>

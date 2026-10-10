@@ -4,7 +4,7 @@ import { Gamepad2Icon, HouseIcon, PlusIcon, TrophyIcon, UserIcon } from 'lucide-
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PendingReviewDot } from './PendingReviewDot'
-import { ChallengeAlertBadge } from './IcaChallenges/ChallengeAlertBadge'
+import { ChallengeAlertBadge, GamesWaitingDot } from './IcaChallenges/ChallengeAlertBadge'
 import { describeIcaChallengeAlerts, useIcaChallengeAlerts } from '../hooks/useIcaChallengeAlerts'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { t, tn } from '@/i18n'
@@ -50,11 +50,14 @@ function TabItem({
 type MobileBottomNavProps = {
   shouldHighlightProfileButton: boolean
   shouldHighlightCoachingProfileButton?: boolean
+  /** A nota desafiante or a PreguntICA waiting in Juegos. */
+  gamesWaiting?: boolean
 }
 
 export function MobileBottomNav({
   shouldHighlightProfileButton,
   shouldHighlightCoachingProfileButton = false,
+  gamesWaiting = false,
 }: MobileBottomNavProps) {
   const location = useLocation()
   // Retos nuevos o turnos pendientes en Desafíos ICA: globito encima del mando.
@@ -76,7 +79,7 @@ export function MobileBottomNav({
   const profileAlertTitle = hasCoachingProfileAlert
     ? hasIcaProfileAlert
       ? t('Tienes novedades: test ICA y coaching pendiente de revisión.')
-      : t('Tienes notas maestras pendientes de revisión en coaching.')
+      : t('Tienes tareas o notas maestras por revisar en coaching.')
     : t('Tienes un test ICA disponible este mes.')
 
   return (
@@ -112,10 +115,14 @@ export function MobileBottomNav({
                 label={t('Juegos')}
                 active={isActive}
                 badge={
-                  <ChallengeAlertBadge
-                    count={challengeAlerts.total}
-                    title={t('Desafíos ICA: {detail}', { detail: describeIcaChallengeAlerts(challengeAlerts) })}
-                  />
+                  challengeAlerts.total > 0 ? (
+                    <ChallengeAlertBadge
+                      count={challengeAlerts.total}
+                      title={t('Desafíos ICA: {detail}', { detail: describeIcaChallengeAlerts(challengeAlerts) })}
+                    />
+                  ) : gamesWaiting ? (
+                    <GamesWaitingDot label={t('Tienes algo por jugar en Juegos')} />
+                  ) : null
                 }
               />
             )}

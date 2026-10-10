@@ -111,6 +111,20 @@ export type CoachingManagedUser = {
   activeLevel: string | null
   hasPendingMasterNotesReview?: boolean
   pendingMasterNotesReviewCount?: number
+  /** Homework audios the student sent that still have no feedback from the coach. */
+  pendingTaskAudioCount?: number
+  /** Weeks (periods) where those audios are. */
+  pendingTaskAudioPeriods?: number[]
+}
+
+/**
+ * What a coach still has to review for one student (Luis, 9 Oct): closed master notes without
+ * feedback and homework audios without feedback.
+ */
+export function pendingReviewOf(row: CoachingManagedUser): { notes: number; audios: number; total: number } {
+  const notes = Math.max(0, row.pendingMasterNotesReviewCount || 0) || (row.hasPendingMasterNotesReview ? 1 : 0)
+  const audios = Math.max(0, row.pendingTaskAudioCount || 0)
+  return { notes, audios, total: notes + audios }
 }
 
 export type CoachingPendingReviewSummary = {
@@ -218,6 +232,9 @@ export type CoachingUserMembership = {
   weekActivation?: WeekActivationState
   weekTimeline?: WeekTimelineItem[]
   updatedAt: string
+  /** Weeks with homework audios still waiting for the coach's feedback (coach view only). */
+  pendingTaskAudioPeriods?: number[]
+  pendingTaskAudioCount?: number
 }
 
 export type CoachingAdminRow = {
@@ -481,15 +498,9 @@ export async function fetchCoachingPendingReviewSummary(): Promise<CoachingPendi
   }
 
   const rows = await fetchCoachingManagedUsers()
-  const pendingSessions = rows.filter((row) => {
-    const count = row.pendingMasterNotesReviewCount || 0
-    return row.hasPendingMasterNotesReview || count > 0
-  }).length
-
-  const pendingNotes = rows.reduce((total, row) => {
-    const count = row.pendingMasterNotesReviewCount || 0
-    return total + (count > 0 ? count : 0)
-  }, 0)
+  const pendingSessions = rows.filter((row) => pendingReviewOf(row).total > 0).length
+  // Everything to review: master notes and homework audios.
+  const pendingNotes = rows.reduce((total, row) => total + pendingReviewOf(row).total, 0)
 
   return {
     hasPendingReviews: pendingSessions > 0,
@@ -518,16 +529,12 @@ export async function fetchCoachingNavSummary(): Promise<CoachingNavSummary> {
   }
 
   const rows = await fetchCoachingManagedUsers()
-  const pendingRows = rows.filter(
-    (row) =>
-      row.hasPendingMasterNotesReview || (row.pendingMasterNotesReviewCount || 0) > 0,
-  )
+  const pendingRows = rows.filter((row) => pendingReviewOf(row).total > 0)
   const activeStudents = rows
     .filter((row) => row.status === 'active')
     .sort(
       (a, b) =>
-        Number(Boolean(b.hasPendingMasterNotesReview)) -
-          Number(Boolean(a.hasPendingMasterNotesReview)) ||
+        Number(pendingReviewOf(b).total > 0) - Number(pendingReviewOf(a).total > 0) ||
         a.userDisplayName.localeCompare(b.userDisplayName, 'es'),
     )
 
@@ -536,10 +543,7 @@ export async function fetchCoachingNavSummary(): Promise<CoachingNavSummary> {
     activeStudents,
     hasPendingReviews: pendingRows.length > 0,
     pendingSessions: pendingRows.length,
-    pendingNotes: rows.reduce(
-      (total, row) => total + Math.max(0, row.pendingMasterNotesReviewCount || 0),
-      0,
-    ),
+    pendingNotes: rows.reduce((total, row) => total + pendingReviewOf(row).total, 0),
   }
 }
 

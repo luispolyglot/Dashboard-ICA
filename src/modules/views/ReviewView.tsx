@@ -51,6 +51,7 @@ import { SoundToggleButton } from '../game/SoundToggleButton'
 import { PronunciationHint } from '../pronunciation/PronunciationHint'
 import { prefetchPronunciations } from '../pronunciation/pronunciation'
 import { EmptyState, GamePage, GameProgress, Panel, Pill, tone, type Tone } from '../game/ui'
+import { consumeLexicardBoosts } from '../services/lexicardBoost'
 
 type ReviewViewProps = {
   cards: Lexicard[]
@@ -380,7 +381,11 @@ export function ReviewView({
     setShowExample(false)
     setShowExampleTranslation(false)
 
-    const updated = updateCardAfterReview(sourceCard, knew, reviewSession)
+    const reviewed = updateCardAfterReview(sourceCard, knew, reviewSession)
+    // A boosted word (Potenciar) has one flashcards round less to go.
+    const boostedNow = (sourceCard.boostFlash ?? 0) > 0
+    const updated = boostedNow ? { ...reviewed, boostFlash: (sourceCard.boostFlash ?? 0) - 1 } : reviewed
+    if (boostedNow) void consumeLexicardBoosts([sourceCard.id], 'flash')
     const nextCards = cards.map((card) =>
       card.id === updated.id ? updated : card,
     )

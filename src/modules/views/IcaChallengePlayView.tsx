@@ -34,7 +34,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { langName, t, tn } from '@/i18n'
+import { langName, t, tn, uiLocale } from '@/i18n'
 import { AddIcaSuggestionModal } from '../components/AddIcaSuggestionModal'
 import {
   FeedbackCard,
@@ -56,6 +56,7 @@ import {
 import {
   isSpeechRecognitionSupported,
   listenOnce,
+  sayAnswerThenContinue,
   speakAsync,
   stopSpeaking,
   unlockChallengeAudio,
@@ -181,6 +182,13 @@ const LIGHTNING_END_GRACE_MS = 1800
 
 function normalizeComparable(value: string): string {
   return value.normalize('NFKC').trim().toLowerCase()
+}
+
+/** «3,2 s» or «12 s»: how much faster the winner was. */
+function formatGap(ms: number): string {
+  const seconds = ms / 1000
+  const value = seconds < 10 ? Math.max(0.1, Math.round(seconds * 10) / 10) : Math.round(seconds)
+  return `${value.toLocaleString(uiLocale(), { maximumFractionDigits: 1 })} s`
 }
 
 function firstName(name: string): string {
@@ -364,6 +372,9 @@ export function IcaChallengePlayView({
     setPhase('question')
     if (next.data.kind === 'listen') {
       void speakAsync(next.data.audioText, next.language.target)
+    } else {
+      // A voice still saying the previous answer stops here.
+      stopSpeaking()
     }
   }, [])
 
@@ -476,11 +487,8 @@ export function IcaChallengePlayView({
         setPhase('feedback')
         playAnswer(step.result.isCorrect)
         // Al fallar (en todos los modos menos Parejas), una voz dice cómo se dice de verdad la palabra.
+        // The next question only comes once the voice has finished (Luis, 8 Oct).
         const sayAnswer = !step.result.isCorrect && answeredQuestion.data.kind !== 'pairs' && Boolean(step.result.reveal.target)
-        if (sayAnswer) {
-          const word = step.result.reveal.target
-          later(() => void speakAsync(word, answeredQuestion.language.target), 450)
-        }
 
         if (step.pairs) {
           // Parejas: el siguiente tablero se pide al acabar de enseñar el resultado,
@@ -504,7 +512,13 @@ export function IcaChallengePlayView({
           )
           return
         }
-        later(() => applyStep(step), step.result.isCorrect ? FEEDBACK_MS_CORRECT : sayAnswer ? FEEDBACK_MS_WRONG_SPOKEN : FEEDBACK_MS_WRONG)
+        if (sayAnswer) {
+          sayAnswerThenContinue(step.result.reveal.target, answeredQuestion.language.target, later, () => applyStep(step), {
+            minMs: FEEDBACK_MS_WRONG_SPOKEN,
+          })
+        } else {
+          later(() => applyStep(step), step.result.isCorrect ? FEEDBACK_MS_CORRECT : FEEDBACK_MS_WRONG)
+        }
       } catch (error) {
         const message = error instanceof Error ? translateChallengeMessage(error.message) : t('No se pudo enviar tu respuesta.')
         toast.error(message)
@@ -1014,6 +1028,18 @@ export function IcaChallengePlayView({
       !completed && challenge.status === 'in_progress'
         ? t('Ahora falta {name}. Te avisaremos con el resultado.', { name: firstName(names.rival) })
         : null
+    // Same correct answers but a winner: it was decided by time (Parejas). Say by how much (Luis, 8 Oct).
+    const myMs = review?.me.ms
+    const rivalMs = review?.rival.ms
+    const timeGapText =
+      completed && !draw && myScore === rivalScore && typeof myMs === 'number' && typeof rivalMs === 'number' && myMs !== rivalMs
+        ? won
+          ? t('Mismos aciertos, pero acabaste {time} antes. ¡Ganas por tiempo!', { time: formatGap(Math.abs(rivalMs - myMs)) })
+          : t('Mismos aciertos, pero {name} acabó {time} antes. Gana por tiempo.', {
+              name: firstName(names.rival),
+              time: formatGap(Math.abs(rivalMs - myMs)),
+            })
+        : null
     const rivalWordsToAdd = reviewItems.filter((item) => canAdd(item) === 'add').length
     // Palabras del baúl del rival (cuando cada uno jugó con las suyas), solo las de tu idioma.
     const rivalWordItems: IcaChallengeReviewItem[] = (review?.rivalWords ?? [])
@@ -1062,6 +1088,15 @@ export function IcaChallengePlayView({
           )}
           <p className='font-display tracking-tight text-3xl font-extrabold'>{title}</p>
           {subtitle && <p className='mt-1 text-sm font-semibold text-muted-foreground'>{subtitle}</p>}
+          {timeGapText && (
+            <p
+              className='mx-auto mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-bold'
+              style={{ background: 'var(--muted)', color: 'var(--foreground)' }}
+            >
+              <TimerIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' />
+              {timeGapText}
+            </p>
+          )}
           {won ? (
             <span
               ref={winCoinPillRef}

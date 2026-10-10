@@ -11,6 +11,7 @@ import {
   SquareIcon,
   TimerIcon,
   Trash2Icon,
+  XIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -21,6 +22,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { ActivationGuide } from '../components/ActivationGuide'
+import { ActivationHowToDialog } from '../components/ActivationHowToDialog'
 import { ExplorePhraseTokenModal } from '../components/ExplorePhraseTokenModal'
 import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
 import { InteractivePhraseText } from '../components/InteractivePhraseText'
@@ -30,6 +33,8 @@ import { FirstUseTip, useFirstUseTip } from '../components/FirstUseTip'
 import { useDashboardContext } from '../context/DashboardContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchPhraseHistoryEntry } from '../services/phraseHistory'
+import { buildActivationPairs, inSentence, type ActivationPair } from '../services/activationGuide'
+import { loadPhraseChunksForActivation } from '../services/challengeChunks'
 import {
   MASTER_NOTE_COMPLETE_DURATION_MS,
   addMasterNoteChunk,
@@ -138,7 +143,14 @@ export function MasterNoteActivatePhraseView({
   // Límite diario de activaciones (2, o 4 con Activación ampliada hoy). Regrabar no cuenta.
   const dailyLimits = useDailyLimits()
   // First-use bubble over the mic (Luis, 6 Oct): the last step of the I·C·A walk-through.
-  const [recordTipPending, closeRecordTip] = useFirstUseTip('activate-record')
+  const [recordTipStored, closeRecordTip] = useFirstUseTip('activate-record')
+  // First activation (Luis, 9 Oct): first «listen to it», then the mic, then «next part» while recording.
+  const [listenTipPending, closeListenTip] = useFirstUseTip('activate-listen')
+  const recordTipPending = recordTipStored
+  // «Así se activa una frase» (Luis, 9 Oct): the first tap on Activar frase explains the order
+  // before recording; the «?» in the guide opens it again while recording.
+  const [howtoPending, closeHowto] = useFirstUseTip('activate-howto')
+  const [howtoMode, setHowtoMode] = useState<'start' | 'help' | null>(null)
   const activationLimitReached =
     !rerecordMode && dailyLimits.isAtLimit('activations')
   const rerecordChunkId = useMemo(() => {
@@ -166,6 +178,15 @@ export function MasterNoteActivatePhraseView({
   const [extractWordsModalOpen, setExtractWordsModalOpen] = useState(false)
   const [exploreModalOpen, setExploreModalOpen] = useState(false)
   const [exploreToken, setExploreToken] = useState('')
+  // Activación guiada: trozos de la frase (nota desafiante) y la parte en la que vas al grabar.
+  const [phraseChunks, setPhraseChunks] = useState<unknown>(null)
+  const [guidePairs, setGuidePairs] = useState<ActivationPair[] | null>(null)
+  const [guideStep, setGuideStep] = useState(0)
+  const guideRef = useRef<HTMLDivElement | null>(null)
+  // When the big mic is below the fold (long phrase on a phone), a floating button starts the
+  // recording, so «Activar frase» is always on the first screen (Luis, 9 Oct).
+  const micAnchorRef = useRef<HTMLSpanElement | null>(null)
+  const [micInView, setMicInView] = useState(true)
   const pendingLeaveRef = useRef<PendingLeaveAction>(null)
   const allowNavigationRef = useRef(false)
   const pageSectionRef = useRef<HTMLElement | null>(null)
@@ -419,6 +440,90 @@ export function MasterNoteActivatePhraseView({
     }
   }, [noteId, phraseId, rerecordChunkId, rerecordMode, targetLang])
 
+  // Los trozos llegan aparte y sin bloquear: mientras no estén, la guía usa su plan B.
+  const loadedPhraseId = phrase?.id ?? null
+  useEffect(() => {
+    setPhraseChunks(null)
+    if (!loadedPhraseId) return
+    let alive = true
+    void loadPhraseChunksForActivation(loadedPhraseId).then((chunks) => {
+      if (alive) setPhraseChunks(chunks)
+    })
+    return () => {
+      alive = false
+    }
+  }, [loadedPhraseId])
+
+  const plannedPairs = useMemo<ActivationPair[] | null>(() => {
+    const target = phrase?.generated_phrase?.trim()
+    const native = phrase?.translation?.trim()
+    if (!target || !native) return null
+    return buildActivationPairs({ target, native }, phraseChunks).pairs
+  }, [phrase?.generated_phrase, phrase?.translation, phraseChunks])
+
+  const guideActive = recording && Boolean(guidePairs?.length)
+  const guideTotal = guidePairs?.length ?? 0
+  const nextGuideStep = (): void => {
+    setGuideStep((step) => Math.min(step + 1, Math.max(0, guideTotal - 1)))
+  }
+  const prevGuideStep = (): void => {
+    setGuideStep((step) => Math.max(0, step - 1))
+  }
+
+  // Tocar en cualquier sitio (o la flecha derecha) pasa a la siguiente parte.
+  useEffect(() => {
+    if (!guideActive || recordingPaused || leaveDialogOpen || howtoMode) return
+    const ignore = (target: EventTarget | null): boolean =>
+      target instanceof Element &&
+      Boolean(target.closest('button, a, input, textarea, select, audio, [role="dialog"], [role="note"]'))
+    const onClick = (event: MouseEvent): void => {
+      if (event.defaultPrevented || event.button !== 0 || ignore(event.target)) return
+      nextGuideStep()
+    }
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      if (event.key === 'ArrowRight' || ((event.key === ' ' || event.key === 'Enter') && !ignore(event.target))) {
+        event.preventDefault()
+        nextGuideStep()
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        prevGuideStep()
+      }
+    }
+    document.addEventListener('click', onClick)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('click', onClick)
+      document.removeEventListener('keydown', onKey)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guideActive, recordingPaused, leaveDialogOpen, guideTotal, howtoMode])
+
+  // En el móvil, al empezar a grabar la guía sube arriba para ver las dos frases y el micro.
+  useEffect(() => {
+    if (!guideActive) return
+    if (window.matchMedia('(min-width: 1024px)').matches) return
+    const frame = window.requestAnimationFrame(() => {
+      guideRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [guideActive])
+
+  useEffect(() => {
+    const anchor = micAnchorRef.current
+    if (!anchor || recording || typeof IntersectionObserver === 'undefined') {
+      setMicInView(true)
+      return
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => setMicInView(entry.isIntersecting && entry.intersectionRatio >= 0.6),
+      // The phone's bottom bar covers the last ~90 px.
+      { rootMargin: '0px 0px -90px 0px', threshold: [0, 0.3, 0.6, 0.9, 1] },
+    )
+    observer.observe(anchor)
+    return () => observer.disconnect()
+  }, [loading, recording, recordingDraft, phrase?.id])
+
   const rerecordDurationMs = rerecordChunk?.duration_ms || 0
   const effectiveNoteDurationMs = Math.max(
     0,
@@ -550,6 +655,9 @@ export function MasterNoteActivatePhraseView({
       recordingTotalPausedMsRef.current = 0
       mediaRecorderRef.current = recorder
       mediaStreamRef.current = stream
+      // La guía se fija al empezar: no cambia a mitad de la grabación aunque lleguen los trozos.
+      setGuidePairs(plannedPairs)
+      setGuideStep(0)
       setRecording(true)
       setRecordingPaused(false)
       setRecordingElapsedMs(0)
@@ -623,6 +731,22 @@ export function MasterNoteActivatePhraseView({
       setRecordingPaused(false)
       setRecordingElapsedMs(0)
     }
+  }
+
+  const requestStartRecording = (): void => {
+    if (recordTipPending) closeRecordTip()
+    if (howtoPending && plannedPairs) {
+      setHowtoMode('start')
+      return
+    }
+    void startRecording()
+  }
+
+  const confirmHowto = (): void => {
+    const mode = howtoMode
+    closeHowto()
+    setHowtoMode(null)
+    if (mode === 'start') void startRecording()
   }
 
   const handleSaveChunk = async (): Promise<void> => {
@@ -801,7 +925,9 @@ export function MasterNoteActivatePhraseView({
     : recordingDraft
       ? t('Si no te convence, toca el micro y grábala otra vez.')
       : canRecord
-        ? t('Toca el micro y di la frase en voz alta.')
+        ? plannedPairs && plannedPairs.length > 1
+          ? t('Toca el micro. Te guiamos parte por parte.')
+          : t('Toca el micro y di la frase en voz alta.')
         : null
 
   return (
@@ -810,36 +936,9 @@ export function MasterNoteActivatePhraseView({
         <PageTitle
           icon={<PhaseLetter letter='A' size={46} />}
           subtitle={t('Nota: {note}', { note: formatMasterNoteLabel(note.name) })}
-          right={
-            !rerecordMode ? (
-              <Pill tone='a' className='text-xs tabular-nums'>
-                <MicIcon
-                  className='size-3.5'
-                  strokeWidth={2.8}
-                  aria-hidden='true'
-                />
-                {t('{done}/{max} hoy', { done: activationsDone, max: activationsMax })}
-              </Pill>
-            ) : null
-          }
         >
           {rerecordMode ? t('Regrabar frase') : t('Activar frase')}
         </PageTitle>
-
-        {!rerecordMode ? (
-          <div className='-mt-2'>
-            <GameProgress
-              value={activationsMax > 0 ? activationsDone / activationsMax : 0}
-              color='var(--ica-a)'
-              height={10}
-              label={t('Activaciones de hoy')}
-            />
-            <p className='m-0 mt-1.5 text-xs font-semibold text-muted-foreground tabular-nums'>
-              {t('Hoy llevas {done} de {max} activaciones', { done: activationsDone, max: activationsMax })}
-              {dailyLimits.boosted.activations ? ` ${t('(ampliado hoy)')}` : ''}
-            </p>
-          </div>
-        ) : null}
 
         {error ? <ErrorNote>{error}</ErrorNote> : null}
 
@@ -847,7 +946,46 @@ export function MasterNoteActivatePhraseView({
         <div className='grid gap-6 lg:grid-cols-2 lg:items-start'>
           {/* En móvil esta columna se deshace: frase, grabador y al final "Extraer" */}
           <div className='contents lg:flex lg:flex-col lg:gap-4'>
-            {/* La frase, grande y con palabras pulsables */}
+            {/* La frase como se dice: tu idioma y después el que aprendes, parte por parte.
+                Antes de grabar ya se ve así (Luis, 9 Oct); al grabar, la parte en curso avanza con un toque. */}
+            {(guideActive && guidePairs) || plannedPairs ? (
+              <ActivationGuide
+                ref={guideRef}
+                mode={guideActive ? 'live' : 'preview'}
+                pairs={
+                  guideActive && guidePairs
+                    ? guidePairs
+                    : [{ target: phrase.generated_phrase || '', native: phrase.translation || '' }]
+                }
+                step={guideActive ? guideStep : 0}
+                nativeLang={nativeLang}
+                targetLang={targetLang}
+                paused={recordingPaused}
+                onNext={nextGuideStep}
+                onPrev={prevGuideStep}
+                onHelp={() => setHowtoMode('help')}
+                onTokenClick={handleOpenExploreModal}
+                footer={
+                  <>
+                    {phrase.generated_phrase ? (
+                      <RomanizationHint text={phrase.generated_phrase} language={targetLang} />
+                    ) : null}
+                    {phrase.generated_phrase ? (
+                      <div onClickCapture={() => (listenTipPending ? closeListenTip() : undefined)}>
+                        <SpeakButton text={phrase.generated_phrase} langName={targetLang} color='#3B82F6' className='mt-3' />
+                      </div>
+                    ) : null}
+                    {listenTipPending && phrase.generated_phrase ? (
+                      <ListenHint
+                        text={t('Escúchala antes: así sabrás cómo se dice bien en {lang}.', { lang: inSentence(langName(targetLang)) })}
+                        onClose={closeListenTip}
+                      />
+                    ) : null}
+                  </>
+                }
+              />
+            ) : (
+            /* La frase, grande y con palabras pulsables */
             <Panel className='p-5'>
               <SectionLabel>{t('Di esta frase en {lang}', { lang: langName(targetLang) })}</SectionLabel>
               {phrase.generated_phrase ? (
@@ -894,7 +1032,8 @@ export function MasterNoteActivatePhraseView({
                 </p>
               ) : null}
             </Panel>
-            {phrase.generated_phrase && (
+            )}
+            {phrase.generated_phrase && !recording && (
               <Button
                 type='button'
                 size='lg'
@@ -962,10 +1101,10 @@ export function MasterNoteActivatePhraseView({
                     )}
                   </SquareIconButton>
                 ) : null}
-                <span className='relative'>
-                {recordTipPending && !recording && canRecord && !recordingDraft ? (
+                <span className='relative' ref={micAnchorRef}>
+                {recordTipPending && !recording && canRecord && !recordingDraft && micInView ? (
                   <FirstUseTip align='center' onClose={closeRecordTip}>
-                    {t('Toca el micro y lee tu frase en voz alta.')}
+                    {t('Cuando estés listo, toca aquí para empezar a grabar. Te guiaremos parte por parte.')}
                   </FirstUseTip>
                 ) : null}
                 <RoundActionButton
@@ -973,10 +1112,7 @@ export function MasterNoteActivatePhraseView({
                   onClick={
                     recording
                       ? stopRecording
-                      : () => {
-                          if (recordTipPending) closeRecordTip()
-                          void startRecording()
-                        }
+                      : requestStartRecording
                   }
                   disabled={!recording && !canRecord}
                   ariaLabel={
@@ -1123,6 +1259,42 @@ export function MasterNoteActivatePhraseView({
         </div>
       </GamePage>
 
+      {/* Barra fija en el móvil cuando el micro grande no se ve (frase larga) */}
+      {!recording && canRecord && !recordingDraft && !micInView ? (
+        <>
+          <div className='h-32 lg:hidden' aria-hidden='true' />
+          <div className='fixed inset-x-0 bottom-[calc(86px+env(safe-area-inset-bottom))] z-30 border-t-2 border-border bg-card px-4 pt-3 pb-3 md:bottom-0 md:pb-[max(env(safe-area-inset-bottom),0.75rem)] lg:hidden dark:bg-background'>
+            <div className='mx-auto w-full max-w-sm'>
+              {recordTipPending ? (
+                <p role='note' className='m-0 mb-2 flex items-start gap-2 text-[13px] leading-snug font-bold' style={{ color: 'var(--ica-i-ink)' }}>
+                  <span className='min-w-0 flex-1'>
+                    {t('Cuando estés listo, toca aquí para empezar a grabar. Te guiaremos parte por parte.')}
+                  </span>
+                  <button
+                    type='button'
+                    onClick={closeRecordTip}
+                    aria-label={t('Entendido')}
+                    className='-mt-0.5 -mr-1 flex size-6 shrink-0 items-center justify-center rounded-full opacity-70'
+                  >
+                    <XIcon className='size-4' strokeWidth={3} aria-hidden='true' />
+                  </button>
+                </p>
+              ) : null}
+              <Button
+                type='button'
+                size='xl'
+                variant='a'
+                className='w-full'
+                onClick={requestStartRecording}
+              >
+                <MicIcon className='size-5' strokeWidth={2.6} />
+                {rerecordMode ? t('Regrabar frase') : t('Activar frase')}
+              </Button>
+            </div>
+          </div>
+        </>
+      ) : null}
+
       <ExtractWordsToVaultModal
         open={extractWordsModalOpen}
         onOpenChange={setExtractWordsModalOpen}
@@ -1147,6 +1319,19 @@ export function MasterNoteActivatePhraseView({
         cards={cards}
         setCards={setCards}
         onWordAdded={onWordAdded}
+      />
+
+      <ActivationHowToDialog
+        open={howtoMode !== null}
+        onOpenChange={(open) => {
+          if (!open) setHowtoMode(null)
+        }}
+        pair={((guideActive && guidePairs) || plannedPairs)?.[0] ?? null}
+        multiplePairs={(((guideActive && guidePairs) || plannedPairs)?.length ?? 0) > 1}
+        nativeLang={nativeLang}
+        targetLang={targetLang}
+        startsRecording={howtoMode === 'start'}
+        onConfirm={confirmHowto}
       />
 
       <Dialog
@@ -1206,6 +1391,27 @@ function MinDurationHint({ text, className }: { text: string; className?: string
     >
       <TimerIcon className='size-4 shrink-0' strokeWidth={2.8} aria-hidden='true' />
       {text}
+    </p>
+  )
+}
+
+/** First-use hint under Escuchar: small and in the flow, so it covers nothing (Luis, 9 Oct). */
+function ListenHint({ text, onClose }: { text: string; onClose: () => void }) {
+  return (
+    <p
+      role='note'
+      className='m-0 mt-2 flex items-start gap-2 rounded-xl px-3 py-2 text-[13px] leading-snug font-bold'
+      style={{ background: 'var(--ica-i-soft)', color: 'var(--ica-i-ink)' }}
+    >
+      <span className='min-w-0 flex-1'>{text}</span>
+      <button
+        type='button'
+        onClick={onClose}
+        aria-label={t('Entendido')}
+        className='-mt-0.5 -mr-1 flex size-6 shrink-0 items-center justify-center rounded-full opacity-70'
+      >
+        <XIcon className='size-4' strokeWidth={3} aria-hidden='true' />
+      </button>
     </p>
   )
 }

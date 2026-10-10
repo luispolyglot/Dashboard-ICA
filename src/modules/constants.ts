@@ -47,6 +47,8 @@ export const CREATION_WORDS_GOAL = 5
 
 /** Máximo de letras del nombre (para que la insignia destacada siempre quepa al lado). */
 export const DISPLAY_NAME_MAX_LENGTH = 20
+/** Up to this length the name fits whole in the ranking (longer ones end in «…»). */
+export const NAME_RECOMMENDED_LENGTH = 13
 
 export const REVIEW_MODE_OPTIONS: Array<{
   key: ReviewMode

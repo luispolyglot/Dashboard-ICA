@@ -5,7 +5,7 @@ import {
   ensureCoachingAdmin,
   parseCoachScopes,
 } from '../_shared/coaching-auth.ts'
-import { countPendingMasterNotesForSession } from './pending-review.ts'
+import { countPendingMasterNotesForSession, countPendingTaskAudioBySession } from './pending-review.ts'
 import { canManageSession } from './access-control.ts'
 import {
   buildWeekActivationState,
@@ -4635,6 +4635,27 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Homework audios without the coach's feedback yet (Luis, 9 Oct). Never blocks the list.
+    let pendingTaskAudio = new Map<string, { count: number; periods: number[] }>()
+    if (sessionIds.length > 0) {
+      const { data: audioData, error: audioError } = await admin.adminClient
+        .from('coaching_v2_task_audio')
+        .select('session_id, period_number, feedback_at')
+        .in('session_id', sessionIds)
+        .is('feedback_at', null)
+      if (audioError) {
+        console.warn('list-users: pending task audios not loaded', audioError.message)
+      } else {
+        pendingTaskAudio = countPendingTaskAudioBySession(
+          (audioData || []).map((audio) => ({
+            sessionId: String((audio as { session_id?: unknown }).session_id || ''),
+            periodNumber: Number((audio as { period_number?: unknown }).period_number),
+            feedbackAt: safeString((audio as { feedback_at?: unknown }).feedback_at),
+          })),
+        )
+      }
+    }
+
     const rows = await Promise.all(
       visibleRows.map(async (row) => {
         const weeklyObjectives = programData.weeklyObjectivesBySession.get(row.id) || {}
@@ -4701,6 +4722,8 @@ Deno.serve(async (req) => {
               : null,
           hasPendingMasterNotesReview: pendingReviewCount > 0,
           pendingMasterNotesReviewCount: pendingReviewCount,
+          pendingTaskAudioCount: pendingTaskAudio.get(row.id)?.count || 0,
+          pendingTaskAudioPeriods: pendingTaskAudio.get(row.id)?.periods || [],
         }
       }),
     )
@@ -5972,8 +5995,29 @@ Deno.serve(async (req) => {
       return jsonResponse(500, { error: activationsData.error })
     }
 
+    // Weeks with homework audios still waiting for the coach's feedback (Luis, 9 Oct).
+    let pendingTaskAudio = new Map<string, { count: number; periods: number[] }>()
+    if (sessionIds.length > 0) {
+      const { data: audioData, error: audioError } = await admin.adminClient
+        .from('coaching_v2_task_audio')
+        .select('session_id, period_number, feedback_at')
+        .in('session_id', sessionIds)
+        .is('feedback_at', null)
+      if (!audioError) {
+        pendingTaskAudio = countPendingTaskAudioBySession(
+          (audioData || []).map((audio) => ({
+            sessionId: String((audio as { session_id?: unknown }).session_id || ''),
+            periodNumber: Number((audio as { period_number?: unknown }).period_number),
+            feedbackAt: safeString((audio as { feedback_at?: unknown }).feedback_at),
+          })),
+        )
+      }
+    }
+
     const rows = await Promise.all(
       visibleRows.map(async (row) => ({
+        pendingTaskAudioCount: pendingTaskAudio.get(row.id)?.count || 0,
+        pendingTaskAudioPeriods: pendingTaskAudio.get(row.id)?.periods || [],
         weekTimeline: buildWeekTimeline(
           activationsData.activationsBySession.get(row.id) || [],
         ),

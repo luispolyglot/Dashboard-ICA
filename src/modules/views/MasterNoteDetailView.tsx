@@ -6,6 +6,7 @@ import {
   ChevronDownIcon,
   DownloadIcon,
   MicIcon,
+  PencilIcon,
   PlayIcon,
   SearchIcon,
   SquareIcon,
@@ -33,6 +34,7 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { MasterNoteProgressBar } from '../components/MasterNoteProgressBar'
 import { IcaDeletionWarningDialog } from '../components/IcaDeletionWarningDialog'
+import { RenameMasterNoteDialog } from '../components/RenameMasterNoteDialog'
 import {
   ErrorNote,
   MENU_CONTENT_CLASS,
@@ -82,6 +84,7 @@ import type {
 } from '../types'
 import { formatDate } from '../utils'
 import { t, tn } from '@/i18n'
+import { FirstUseTip, useFirstUseTip } from '../components/FirstUseTip'
 import { TargetGlyph, TrophyIcon } from '../game/icons'
 import {
   EmptyState,
@@ -154,6 +157,8 @@ export function MasterNoteDetailView({
   todayVoiceActivationsCount,
 }: MasterNoteDetailViewProps) {
   const navigate = useNavigate()
+  // Same first-use bubble as in Notas maestras: shown once, wherever you meet it first.
+  const [recordTipPending, closeRecordTip] = useFirstUseTip('notes-record')
   const [searchParams, setSearchParams] = useSearchParams()
   const [note, setNote] = useState<MasterNote | null>(null)
   const [chunks, setChunks] = useState<MasterNoteChunk[]>([])
@@ -169,6 +174,7 @@ export function MasterNoteDetailView({
   const [downloading, setDownloading] = useState(false)
   const [removingChunkId, setRemovingChunkId] = useState<string | null>(null)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [renameOpen, setRenameOpen] = useState(false)
   const [chunkDeleteCandidate, setChunkDeleteCandidate] =
     useState<MasterNoteChunk | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -635,6 +641,11 @@ export function MasterNoteDetailView({
             <DropdownMenuSeparator />
           </>
         )}
+        <DropdownMenuItem className={MENU_ITEM_CLASS} onSelect={() => setRenameOpen(true)}>
+          <PencilIcon strokeWidth={2.4} />
+          {t('Cambiar nombre')}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem
           variant='destructive'
           className={MENU_ITEM_CLASS}
@@ -765,12 +776,19 @@ export function MasterNoteDetailView({
           )}
           {nextPhrase ? (
             canActivateMorePhrases ? (
-              <Button asChild size='xl' variant='a' className='mt-4 w-full'>
-                <Link to={activateHref(nextPhrase.id)}>
-                  <MicIcon className='size-5' strokeWidth={2.6} />
-                  {t('Grabar esta frase')}
-                </Link>
-              </Button>
+              <div className='relative mt-4'>
+                {recordTipPending ? (
+                  <FirstUseTip onClose={closeRecordTip}>
+                    {t('Toca aquí para grabar tu frase en voz alta. Cada frase grabada suma tiempo a tu nota maestra hasta llegar a 3:00.')}
+                  </FirstUseTip>
+                ) : null}
+                <Button asChild size='xl' variant='a' className='w-full'>
+                  <Link to={activateHref(nextPhrase.id)} onClick={() => (recordTipPending ? closeRecordTip() : undefined)}>
+                    <MicIcon className='size-5' strokeWidth={2.6} />
+                    {t('Grabar esta frase')}
+                  </Link>
+                </Button>
+              </div>
             ) : (
               <Button type='button' size='xl' variant='outline' className='mt-4 w-full' disabled>
                 {t('Límite de hoy alcanzado')}
@@ -1137,6 +1155,12 @@ export function MasterNoteDetailView({
           {challengeSection}
         </div>
       )}
+
+      <RenameMasterNoteDialog
+        note={renameOpen ? note : null}
+        onClose={() => setRenameOpen(false)}
+        onRenamed={(updated) => setNote((prev) => (prev ? { ...prev, name: updated.name } : prev))}
+      />
 
       <IcaDeletionWarningDialog
         open={confirmDeleteOpen}

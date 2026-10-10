@@ -97,17 +97,29 @@ export function FlagInitial({
         <LanguageFlag language={flag} size={size * 1.5} />
       </span>
       <span className='absolute inset-0 bg-black/20' />
-      {/* Dark outline around the white letter so it reads on any flag (also on white stripes). */}
-      <span
-        className='relative'
-        style={{
-          WebkitTextStroke: `${Math.max(2, Math.round(size * 0.07))}px rgba(0,0,0,.7)`,
-          paintOrder: 'stroke fill',
-          textShadow: '0 1px 2px rgba(0,0,0,.5)',
-        }}
-      >
-        {initial}
-      </span>
+      {/* Dark outline around the white letter so it reads on any flag (also on white stripes).
+          Drawn in SVG with ROUND corners: the CSS text outline made spikes on letters like «L»
+          (Luis, 9 Oct). */}
+      <svg viewBox='0 0 100 100' width={size} height={size} className='absolute inset-0' aria-hidden='true'>
+        <text
+          x='50'
+          y='50'
+          dy='0.35em'
+          textAnchor='middle'
+          fontSize='42'
+          fontWeight='800'
+          fontFamily='inherit'
+          fill='#fff'
+          stroke='rgba(0,0,0,.62)'
+          strokeWidth={size >= 56 ? 7 : 11}
+          strokeLinejoin='round'
+          strokeLinecap='round'
+          paintOrder='stroke'
+          style={{ filter: 'drop-shadow(0 1px 1px rgba(0,0,0,.35))' }}
+        >
+          {initial}
+        </text>
+      </svg>
       <span
         className='pointer-events-none absolute inset-0 rounded-full'
         style={{ boxShadow: `inset 0 0 0 ${size >= 56 ? 4 : 2}px ${ring ?? 'var(--border)'}` }}

@@ -36,6 +36,8 @@ export type EngineCard = {
   native: string
   examplePhrase: string | null
   exampleTranslation: string | null
+  /** Potenciada (Luis, 8 Oct): goes into the game before the others. */
+  boosted?: boolean
 }
 
 /** Lo que ve el alumno. Nunca lleva la solución. */
@@ -106,7 +108,8 @@ type ModeDefaults = {
 /** Modos que ya se pueden jugar. La clave es el id de desafio_tipos. */
 export const MODE_DEFAULTS: Record<string, ModeDefaults> = {
   'ica-own-words': { kind: 'choice', format: 'turns', secondsPerQuestion: 5, sessionSeconds: null },
-  'ica-writing': { kind: 'write', format: 'turns', secondsPerQuestion: 7, sessionSeconds: null },
+  // 10 s per word (Luis, 8 Oct: 7 s was too short to type, above all on the phone).
+  'ica-writing': { kind: 'write', format: 'turns', secondsPerQuestion: 10, sessionSeconds: null },
   'ica-lightning': { kind: 'write', format: 'lightning', secondsPerQuestion: 0, sessionSeconds: 60 },
   'ica-speak': { kind: 'speak', format: 'turns', secondsPerQuestion: 10, sessionSeconds: null },
   'ica-listen': { kind: 'listen', format: 'turns', secondsPerQuestion: 8, sessionSeconds: null },
@@ -186,6 +189,9 @@ export function normalizeTyped(value: string): string {
     .normalize('NFC')
     .replace(APOSTROPHES, "'")
     .toLowerCase()
+    // Capitals never count (Luis, 8 Oct): the Turkish «İ» lowercases to «i» + a dot sign.
+    .replace(/i\u0307/g, 'i')
+    .normalize('NFC')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(EDGE_PUNCTUATION, '')
@@ -486,11 +492,14 @@ function makeOptionPriority(kind: QuestionKind, pools: EngineCard[][]): ((card: 
   }
 }
 
-/** Ordena sin perder el azar: dentro de cada prioridad se mantiene el orden barajado. */
+/**
+ * Ordena sin perder el azar: dentro de cada prioridad se mantiene el orden barajado.
+ * Las palabras potenciadas (Luis, 8 Oct) van siempre delante.
+ */
 function sortByPriority(cards: EngineCard[], priority: ((card: EngineCard) => number) | null): EngineCard[] {
-  if (!priority) return cards
+  if (!priority) return [...cards.filter((card) => card.boosted), ...cards.filter((card) => !card.boosted)]
   return cards
-    .map((card, index) => ({ card, index, rank: priority(card) }))
+    .map((card, index) => ({ card, index, rank: (card.boosted ? -1000 : 0) + priority(card) }))
     .sort((a, b) => a.rank - b.rank || a.index - b.index)
     .map((item) => item.card)
 }

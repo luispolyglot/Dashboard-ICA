@@ -6,6 +6,7 @@ import { fetchAllPages } from './lexicardsPagination'
 import { recordBootstrapDiagnostic } from '../utils/bootstrapDiagnostics'
 import { signalIcaCoinsStateChanged } from '../game/fichas'
 import type { AppConfig, DailyProgressMap, Lexicard } from '../types'
+import { fetchLexicardBoosts } from './lexicardBoost'
 
 const MAX_SAFE_WORD_DELETES_PER_SAVE = 5
 const CONFIG_SNAPSHOT_STORAGE_KEY = 'dashboard-ICA-config-snapshot'
@@ -83,7 +84,17 @@ function toMillisFromIso(value: string | null): number | null {
   return value ? new Date(value).getTime() : null
 }
 
+/** The Baúl ICA plus the boost counters of the boosted words (Potenciar, Luis 8 Oct). */
 async function loadWords(userId: string): Promise<Lexicard[]> {
+  const [cards, boosts] = await Promise.all([loadWordsBase(userId), fetchLexicardBoosts(userId)])
+  if (boosts.size === 0) return cards
+  return cards.map((card) => {
+    const boost = boosts.get(card.id)
+    return boost ? { ...card, ...boost } : card
+  })
+}
+
+async function loadWordsBase(userId: string): Promise<Lexicard[]> {
   if (!supabase) return []
   const client = supabase
 

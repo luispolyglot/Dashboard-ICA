@@ -69,19 +69,22 @@ export const Medal = memo(function Medal({ category, tier, ribbon, label, earned
 })
 
 /**
- * A medal the student cannot earn (Coaching ICA badges for students without a coaching, Luis 7 Oct):
- * switched off like any medal not yet earned, with a padlock on top.
+ * A medal the student cannot earn (Coaching ICA badges for students without a coaching, Luis 7 Oct).
+ * The medal itself stays visible (a bit faded and with less color), with a small padlock in the
+ * corner (Luis, 9 Oct: the big padlock in the middle hid the badge, which is what matters).
  */
 export function LockedMedal({ className, label, ...medal }: Omit<MedalProps, 'earned'>) {
   return (
     <div className={`relative ${className ?? ''}`} role='img' aria-label={t('{label} (solo para alumnos del Coaching ICA)', { label })}>
-      <div aria-hidden='true'>
-        <Medal {...medal} label={label} earned={false} className='w-full' />
+      <div aria-hidden='true' style={{ filter: 'grayscale(0.55) brightness(0.82)', opacity: 0.78 }}>
+        <Medal {...medal} label={label} earned className='w-full' />
       </div>
-      <span className='pointer-events-none absolute inset-0 flex items-center justify-center' aria-hidden='true'>
-        <span className='flex aspect-square w-[36%] max-w-11 items-center justify-center rounded-full border-2 border-border bg-background shadow-sm'>
-          <LockIcon className='size-[52%] text-muted-foreground' strokeWidth={2.6} />
-        </span>
+      <span
+        className='pointer-events-none absolute top-[6%] right-[8%] flex aspect-square w-[30%] max-w-9 items-center justify-center rounded-full border-2 shadow-md'
+        style={{ background: 'var(--ica-gold)', borderColor: 'var(--ica-gold-edge)', color: '#4a3200' }}
+        aria-hidden='true'
+      >
+        <LockIcon className='size-[54%]' strokeWidth={2.8} />
       </span>
     </div>
   )

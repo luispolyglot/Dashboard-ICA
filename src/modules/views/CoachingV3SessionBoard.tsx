@@ -3,6 +3,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -90,6 +91,7 @@ import { gameSfx } from "../game/sfx";
 import { CoachingWeekRingsStrip } from "../components/coaching/CoachingWeekRings";
 import { CoachTaskAudioFeedback, StudentTaskAudio } from "../components/coaching/CoachingTaskAudio";
 import type { CoachingTaskAudioAnswer } from "../services/coaching";
+import { PendingReviewDot } from "../components/PendingReviewDot";
 
 type CoachingV3SessionBoardProps = {
   sessionId: string;
@@ -100,6 +102,8 @@ type CoachingV3SessionBoardProps = {
   fetchAsStudent?: boolean;
   onSelectedPeriodChange?: (period: number) => void;
   coachExtraContent?: ReactNode;
+  /** Coach: weeks with homework audios still waiting for feedback (from the server). */
+  pendingAudioPeriods?: number[];
 };
 
 const PHASE_LABELS = [
@@ -236,11 +240,26 @@ export function CoachingV3SessionBoard({
   fetchAsStudent,
   onSelectedPeriodChange,
   coachExtraContent,
+  pendingAudioPeriods,
 }: CoachingV3SessionBoardProps) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [board, setBoard] = useState<CoachingV2SessionBoard | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState(1);
+  // Coach: weeks with homework audios still waiting for feedback (Luis, 9 Oct). The week on
+  // screen is read from the board itself, so it updates as soon as the coach answers.
+  const audioWaitingPeriods = useMemo(() => {
+    if (mode !== "coach" || !board) return [] as number[];
+    const periods = new Set(pendingAudioPeriods || []);
+    const waitingHere = board.classes.some(
+      (classRow) =>
+        classRow.periodNumber === selectedPeriod &&
+        (classRow.audioAnswers || []).some((answer) => !answer.feedbackAt),
+    );
+    if (waitingHere) periods.add(selectedPeriod);
+    else periods.delete(selectedPeriod);
+    return [...periods].sort((a, b) => a - b);
+  }, [mode, board, pendingAudioPeriods, selectedPeriod]);
   const [openFocusComment, setOpenFocusComment] = useState<string | null>(null);
   const [savingReport, setSavingReport] = useState(false);
   const [reportDraftImageFile, setReportDraftImageFile] = useState<File | null>(
@@ -1345,6 +1364,32 @@ export function CoachingV3SessionBoard({
               </span>
             )}
           </div>
+
+          {audioWaitingPeriods.length > 0 ? (
+            <div
+              className="relative mt-5 flex flex-wrap items-center gap-2.5 rounded-2xl px-4 py-3"
+              style={{ background: "color-mix(in oklab, var(--ica-gold) 18%, transparent)", border: "2px solid var(--ica-gold)" }}
+            >
+              <PendingReviewDot useIconSpeaker title={t("Audios de tareas esperando tu feedback")} />
+              <span className="text-sm font-black" style={{ color: "var(--ica-gold)" }}>
+                {t("Audios de tareas esperando tu feedback")}
+              </span>
+              <span className="flex flex-wrap gap-1.5">
+                {audioWaitingPeriods.map((period) => (
+                  <button
+                    key={period}
+                    type="button"
+                    onClick={() => void loadBoard(period)}
+                    disabled={period === selectedPeriod}
+                    className="animate-pulse rounded-full px-2.5 py-0.5 text-xs font-black disabled:animate-none"
+                    style={{ background: "var(--ica-gold)", color: "#4a3200" }}
+                  >
+                    {period === selectedPeriod ? t("Semana {n} (aquí)", { n: period }) : t("Semana {n}", { n: period })}
+                  </button>
+                ))}
+              </span>
+            </div>
+          ) : null}
 
           {/* Recorrido: una casilla por semana */}
           <div className="relative mt-6">
@@ -2721,7 +2766,7 @@ export function CoachingV3SessionBoard({
                                     </span>
                                   ) : null}
                                   {audioAnswer && !audioAnswer.feedbackAt ? (
-                                    <span className="rounded-full px-1.5 py-px text-[10px] font-black" style={{ background: "var(--v3-gold)", color: "#3a2a00" }}>
+                                    <span className="animate-pulse rounded-full px-1.5 py-px text-[10px] font-black" style={{ background: "var(--v3-gold)", color: "#3a2a00" }}>
                                       {t("Falta tu feedback")}
                                     </span>
                                   ) : null}

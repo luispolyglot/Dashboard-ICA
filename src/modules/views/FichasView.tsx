@@ -45,6 +45,7 @@ import { langName, t } from '@/i18n'
 import { FLAG_COST, useMyFlags } from '../game/languageFlag'
 import { LanguageFlag } from '../components/LanguagePicker'
 import { FlagInitial } from '../game/ranking'
+import { FlagCelebration } from '../game/FlagCelebration'
 
 const LIMIT_ROWS: Array<{ key: DailyLimitKey; letter: 'I' | 'C' | 'A'; color: string; soft: string }> = [
   { key: 'words', letter: 'I', color: 'var(--ica-i)', soft: 'var(--ica-i-soft)' },
@@ -203,6 +204,7 @@ export function FichasView() {
   const { total, realBalance, entries, unusedPasses: slots, challengeWinsThisWeek, refresh } = useFichas(user?.id)
   const { limits, used, boosted } = useDailyLimits()
   const [confirming, setConfirming] = useState<DailyLimitKey | 'challenge' | 'flag' | null>(null)
+  const [flagWon, setFlagWon] = useState<string | null>(null)
   const [purchaseBusy, setPurchaseBusy] = useState(false)
   const [openRow, setOpenRow] = useState<'ica' | 'flash' | 'ranking' | null>(null)
   const { completedDays, creationDays, savedCreationDays, creationSavesUsedThisMonth, creationSavesLimit, dailyProgress, config } =
@@ -303,12 +305,10 @@ export function FichasView() {
     setConfirming(null)
     setPurchaseBusy(true)
     try {
-      await flags.buy()
+      const bought = await flags.buy()
       await refresh()
-      gameSfx.celebrate()
-      toast.success(t('¡La bandera de {lang} ya es tuya!', { lang: langName(targetLang) }), {
-        description: t('Sale de fondo en tu inicial, en tu perfil y en el ranking.'),
-      })
+      // A big moment, not a small toast (Luis, 9 Oct): the flag spins in with your name.
+      setFlagWon(bought.lang || targetLang)
     } catch (error) {
       toast.error(error instanceof Error && error.message.includes('INSUFFICIENT_TOKENS')
         ? t('No tienes suficientes ICA Coins.')
@@ -328,6 +328,9 @@ export function FichasView() {
 
   return (
     <section className='mx-auto flex w-full max-w-xl flex-1 flex-col gap-6 px-4 pt-2 pb-28 lg:py-8'>
+      {flagWon ? (
+        <FlagCelebration lang={flagWon} name={myName.trim() || myInitial} initial={myInitial} onClose={() => setFlagWon(null)} />
+      ) : null}
       <h1 className='m-0 font-display tracking-tight text-2xl leading-tight font-extrabold lg:text-3xl'>{t('ICA Coins')}</h1>
 
       {/* Saldo */}

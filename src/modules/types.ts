@@ -58,6 +58,10 @@ export interface Lexicard {
   firstActivatedAt?: number | null
   lastActivatedAt?: number | null
   createdAt: number
+  /** POTENCIAR (Luis, 8 Oct): games left in which this word comes first (flashcards, daily challenge, Desafíos). */
+  boostFlash?: number
+  boostDaily?: number
+  boostDuel?: number
 }
 
 export interface LeaderboardEntry {
@@ -613,8 +617,9 @@ export interface IcaChallengeReview {
   items: IcaChallengeReviewItem[]
   /** Palabras del baúl del rival (solo con el desafío terminado y cada uno con sus palabras). */
   rivalWords?: IcaChallengeRivalWord[]
-  me: { correct: number; answered: number }
-  rival: { correct: number; answered: number; done: boolean }
+  /** ms: total time played (it breaks a tie in Parejas). Missing in older versions of the server. */
+  me: { correct: number; answered: number; ms?: number }
+  rival: { correct: number; answered: number; done: boolean; ms?: number }
   wordSource: IcaChallengeWordSource
 }
 
