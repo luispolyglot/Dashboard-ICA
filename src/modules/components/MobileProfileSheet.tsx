@@ -1,5 +1,5 @@
 import { CoachingInviteCard, useCoachingInviteSmall } from './CoachingInvite'
-import { t, tn, langName } from '@/i18n'
+import { t, langName } from '@/i18n'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
