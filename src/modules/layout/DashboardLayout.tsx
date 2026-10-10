@@ -13,6 +13,7 @@ import { useIcaTestsOverview } from '../hooks/useIcaTestsOverview'
 import { LangEditModal } from '../components/LangEditModal'
 import { MobileBottomNav } from '../components/MobileBottomNav'
 import { MonthlyRecapHost } from '../game/monthlyRecap'
+import { MonthlyReviewAvailableModal } from '../components/MonthlyReviewAvailableModal'
 import { IcaWrappedHost } from '../game/wrapped/IcaWrapped'
 import { CREATION_WORDS_GOAL, GOAL, getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
@@ -421,6 +422,7 @@ export function DashboardLayout() {
         )}
 
         <IcaTestsAvailableModal config={config} cards={cards} />
+        <MonthlyReviewAvailableModal targetLang={config?.targetLang} nativeLang={config?.nativeLang} />
         <PregunticaMonthlyTokensModal />
 
         {/* En columna: así cada pantalla crece con su contenido y el scroll llega hasta el final.
