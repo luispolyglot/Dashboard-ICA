@@ -56,7 +56,6 @@ import { useDailyLimits } from '../game/limits'
 import {
   EmptyState,
   GamePage,
-  GameProgress,
   IconTile,
   PageTitle,
   Panel,
@@ -897,8 +896,6 @@ export function MasterNoteActivatePhraseView({
   }
 
   const a = tone('a')
-  const activationsMax = dailyLimits.limits.activations
-  const activationsDone = Math.min(dailyLimits.used.activations, activationsMax)
   const isLive = recording && !recordingPaused
   const saveLabel = completingNote
     ? t('Completando nota...')

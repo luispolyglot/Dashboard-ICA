@@ -596,7 +596,6 @@ export function MasterNotesView({
   const dailyLimits = useDailyLimits()
   const activationsMax = dailyLimits.limits.activations
   const activationsDone = Math.min(dailyLimits.used.activations, activationsMax)
-  const activationsLeft = Math.max(0, activationsMax - dailyLimits.used.activations)
   const atDailyLimit = dailyLimits.isAtLimit('activations')
   const dayText =
     activationsDone === 0
