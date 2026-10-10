@@ -841,9 +841,44 @@ export const normalizeAnswer = (text: string): string =>
     .replace(/\s+/g, ' ')
     .trim()
 
-// Si el reconocimiento escribe una cifra ("2"), se acepta en lugar de la palabra.
-const tokenMatches = (heard: string | undefined, expected: string): boolean =>
-  heard !== undefined && (heard === expected || /^\d+$/.test(heard))
+// Letras distintas que se perdonan en una palabra (Luis, 10 oct): el reconocimiento de voz del
+// móvil a veces escribe una letra mal aunque el alumno lo haya dicho bien. Las palabras cortas
+// tienen que salir exactas (en «is» / «it» una letra cambia la palabra).
+export function allowedLetterSlips(word: string): number {
+  const length = Array.from(word).length
+  if (length >= 8) return 2
+  if (length >= 4) return 1
+  return 0
+}
+
+/** Cuántas letras hay que añadir, quitar o cambiar para pasar de una palabra a la otra. */
+function letterDistance(a: string, b: string, limit: number): number {
+  const x = Array.from(a)
+  const y = Array.from(b)
+  if (Math.abs(x.length - y.length) > limit) return limit + 1
+  let previous = Array.from({ length: y.length + 1 }, (_, index) => index)
+  for (let i = 1; i <= x.length; i += 1) {
+    const current = [i]
+    let rowBest = i
+    for (let j = 1; j <= y.length; j += 1) {
+      const cost = x[i - 1] === y[j - 1] ? 0 : 1
+      current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost)
+      rowBest = Math.min(rowBest, current[j])
+    }
+    if (rowBest > limit) return limit + 1
+    previous = current
+  }
+  return previous[y.length]
+}
+
+// Una palabra cuenta como dicha si sale igual, con una o dos letras distintas (según su largo), o si
+// el reconocimiento escribe una cifra ("2") en lugar de la palabra.
+export const tokenMatches = (heard: string | undefined, expected: string): boolean => {
+  if (heard === undefined) return false
+  if (heard === expected || /^\d+$/.test(heard)) return true
+  const slips = allowedLetterSlips(expected)
+  return slips > 0 && letterDistance(heard, expected, slips) <= slips
+}
 
 export type WordMark = { word: string; ok: boolean }
 

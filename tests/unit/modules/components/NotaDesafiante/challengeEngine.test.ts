@@ -181,3 +181,36 @@ describe('listenOnce', () => {
     expect(outcome.status).toBe('cancelled')
   })
 })
+
+describe('checkAnswer: letras que perdona', () => {
+  it('acepta una letra distinta en palabras de 4 a 7 letras', () => {
+    expect(checkAnswer('Ja jestem tutaj', ['ja jestam tutaj']).correct).toBe(true)
+    expect(checkAnswer('I want water', ['I wont water']).correct).toBe(true)
+  })
+
+  it('acepta dos letras distintas en palabras de 8 o más', () => {
+    expect(checkAnswer('przepraszam bardzo', ['przeprasam bardzo']).correct).toBe(true)
+    expect(checkAnswer('wonderful day', ['wanderfull day']).correct).toBe(true)
+  })
+
+  it('no acepta más letras de las permitidas', () => {
+    expect(checkAnswer('I want water', ['I want wotter']).correct).toBe(false)
+    expect(checkAnswer('wonderful day', ['wanderfill day']).correct).toBe(false)
+  })
+
+  it('las palabras cortas tienen que salir exactas', () => {
+    expect(checkAnswer('it is red', ['it it red']).correct).toBe(false)
+    expect(checkAnswer('el gato', ['al gato']).correct).toBe(false)
+  })
+
+  it('sigue fallando si falta una palabra o es otra', () => {
+    expect(checkAnswer('I want water', ['I want']).correct).toBe(false)
+    expect(checkAnswer('I want water', ['I need coffee']).correct).toBe(false)
+  })
+
+  it('marca como bien la palabra con una letra distinta', () => {
+    const result = checkAnswer('I need help today', ['I need halp tomorrow'])
+    expect(result.correct).toBe(false)
+    expect(result.marks.map((mark) => mark.ok)).toEqual([true, true, true, false])
+  })
+})
