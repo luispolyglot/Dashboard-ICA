@@ -64,6 +64,7 @@ function entryLabel(entry: IcaCoinEntry): string {
   if (entry.type === 'redeem_unlock') return t('PreguntICA extra')
   if (entry.type === 'manual_adjustment') return t('Ajuste de saldo')
   if (entry.type === 'flag_purchase') return t('Bandera del idioma')
+  if (entry.type === 'monthly_review') return t('Repaso del mes')
   return t('ICA Coins')
 }
 

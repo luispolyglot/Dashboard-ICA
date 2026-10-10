@@ -68,6 +68,7 @@ import { useActivatedWords } from '../game/useActivatedWords'
 import { TrackerDetailView } from '../views/TrackerDetailView'
 import { TrackersView } from '../views/TrackersView'
 import { IcaTestsView } from '../views/IcaTestsView'
+import { MonthlyReviewView } from '../views/MonthlyReviewView'
 import { IcaTestMonthView } from '../views/IcaTestMonthView'
 import { InstagramTrackPostsView } from '../views/InstagramTrackPostsView'
 import { PregunticaView } from '../views/PregunticaView'
@@ -778,6 +779,17 @@ export function IcaTestsPage() {
         nativeLang={config.nativeLang}
         cards={cards}
       />
+    </PageLayout>
+  )
+}
+
+export function MonthlyReviewPage() {
+  const { config } = useDashboardContext()
+  if (!config) return null
+
+  return (
+    <PageLayout flush withBackButton={false}>
+      <MonthlyReviewView targetLang={config.targetLang} nativeLang={config.nativeLang} />
     </PageLayout>
   )
 }

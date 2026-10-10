@@ -25,6 +25,7 @@ import {
   IcaTestMonthRedoPage,
   InstagramTrackPostsPage,
   IcaTestsPage,
+  MonthlyReviewPage,
   LeaderboardPage,
   ManageWhitelistPage,
   ManageCoachingPage,
@@ -138,6 +139,7 @@ export function App() {
             <Route path='my-analytics' element={<MyAnalyticsPage />} />
             <Route path='calendar-icademy' element={<CalendarIcademyPage />} />
             <Route path='tests-ica' element={<IcaTestsPage />} />
+            <Route path='repaso-del-mes' element={<MonthlyReviewPage />} />
             <Route path='instagram-track-posts' element={<InstagramTrackPostsPage />} />
             <Route path='tests-ica/:monthCode' element={<IcaTestMonthPage />} />
             <Route
