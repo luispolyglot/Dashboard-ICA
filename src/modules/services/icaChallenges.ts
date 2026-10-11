@@ -390,6 +390,27 @@ const CHALLENGE_MESSAGE_PATTERNS: Array<{ pattern: RegExp; key: string; vars: st
   },
 ]
 
+/**
+ * Challenges someone is already committed to when they accept a new invitation (Luis, 11 Oct):
+ * games in progress and invitations they sent. Invitations they received and have not answered
+ * do not count. With 3, the next one needs a «desafío extra»; with 4, none more.
+ * Same rule as accept_ica_challenge_with_pass (migration 20261011140000).
+ */
+export function committedChallengeCount(
+  challenges: Array<Pick<IcaChallengeRecord, 'id' | 'status' | 'challengerUserId' | 'challengedUserId'>>,
+  userId: string | null,
+  exceptChallengeId?: string,
+): number {
+  if (!userId) return 0
+  return challenges.filter((challenge) => {
+    if (challenge.id === exceptChallengeId) return false
+    if (challenge.status === 'in_progress') {
+      return challenge.challengerUserId === userId || challenge.challengedUserId === userId
+    }
+    return challenge.status === 'created' && challenge.challengerUserId === userId
+  }).length
+}
+
 export function translateChallengeMessage(message: string): string {
   if (getUiLang() === 'es' || !message) return message
   const direct = t(message)
@@ -795,7 +816,7 @@ export async function createIcaChallenge(input: {
   nativeLang?: string
   durationSeconds?: number
   config: IcaOwnWordsChallengeConfig
-  /** 4.º desafío activo con un «desafío extra» (EXTRA_CHALLENGE_COST ICA Coins). El servidor aún no lo acepta (ver MODO_JUEGO_NOTAS.md). */
+  /** 4.º desafío activo con un «desafío extra» (EXTRA_CHALLENGE_COST ICA Coins). */
   extraSlot?: boolean
 }): Promise<void> {
   const cleanConfig = sanitizeOwnWordsConfig(input.config)
@@ -824,9 +845,11 @@ export async function createIcaChallenge(input: {
 export async function respondIcaChallengeInvitation(
   challengeId: string,
   accept: boolean,
+  /** Accept as a 4th challenge with a «desafío extra» (Luis, 11 Oct). */
+  extraSlot = false,
 ): Promise<void> {
   await invokeChallenges<FunctionResponse>(
-    { action: 'respond-invitation', challengeId, accept },
+    { action: 'respond-invitation', challengeId, accept, ...(accept && extraSlot ? { useExtraSlot: true } : {}) },
     'No se pudo actualizar el desafío.',
   )
 }

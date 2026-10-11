@@ -68,7 +68,8 @@ type UseIcaChallengesOverviewResult = {
     /** 4.º desafío con un «desafío extra» (EXTRA_CHALLENGE_COST ICA Coins, ver game/rules.ts). */
     extraSlot?: boolean
   }) => Promise<void>
-  respondInvitation: (challengeId: string, accept: boolean) => Promise<void>
+  /** `extraSlot`: accept it as a 4th challenge with a «desafío extra» (Luis, 11 Oct). */
+  respondInvitation: (challengeId: string, accept: boolean, extraSlot?: boolean) => Promise<void>
   cancelInvitation: (challengeId: string) => Promise<void>
   refreshAvailableUsers: (scope: IcaChallengeScope) => Promise<void>
   refresh: () => Promise<void>
@@ -344,7 +345,7 @@ export function useIcaChallengesOverview({
     [nativeLang, refresh, targetLang],
   )
 
-  const respondInvitation = useCallback(async (challengeId: string, accept: boolean) => {
+  const respondInvitation = useCallback(async (challengeId: string, accept: boolean, extraSlot = false) => {
     setIsResponding(true)
     // Se ve al momento: el reto sale de «Pendientes» sin esperar al servidor.
     setChallenges((previous) =>
@@ -359,7 +360,7 @@ export function useIcaChallengesOverview({
       ),
     )
     try {
-      await respondIcaChallengeInvitation(challengeId, accept)
+      await respondIcaChallengeInvitation(challengeId, accept, extraSlot)
       await refresh()
     } catch (respondError) {
       // Si falla (p. ej. el reto ya caducó), se vuelve a lo que diga el servidor.

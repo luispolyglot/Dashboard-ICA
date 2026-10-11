@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { useIcaChallengesOverview } from '../hooks/useIcaChallengesOverview'
 import {
+  committedChallengeCount,
   getChallengeWordSource,
   getIcaChallengeConfigLabel,
   hasCompletedMyPart,
@@ -420,6 +421,8 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
   const { total: coinBalance, unusedPasses: extraPasses, refresh: refreshCoins } = useFichas(authUser?.id)
   const [useExtraForNext, setUseExtraForNext] = useState(false)
   const [extraOfferUserId, setExtraOfferUserId] = useState<string | null>(null)
+  // The same «desafío extra» to accept a 4th challenge (Luis, 11 Oct): the invitation waiting for it.
+  const [acceptOfferId, setAcceptOfferId] = useState<string | null>(null)
   const [buyingExtraPass, setBuyingExtraPass] = useState(false)
 
   const isEnrolled = Boolean(enrollment?.isActive)
@@ -639,9 +642,25 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
     }
   }
 
-  const handleRespondInvitation = async (challengeId: string, accept: boolean) => {
+  const handleRespondInvitation = async (challengeId: string, accept: boolean, extraSlot = false) => {
+    if (accept && !extraSlot) {
+      const committed = committedChallengeCount(challenges, currentUserId, challengeId)
+      if (committed >= 4) {
+        toast.error(t('Ya tienes 4 desafíos en curso. Termina uno para aceptar este.'))
+        return
+      }
+      if (committed === 3) {
+        if (extraPasses > 0) {
+          void handleRespondInvitation(challengeId, true, true)
+        } else {
+          setAcceptOfferId(challengeId)
+        }
+        return
+      }
+    }
     try {
-      await respondInvitation(challengeId, accept)
+      await respondInvitation(challengeId, accept, extraSlot)
+      if (extraSlot) await refreshCoins()
       toast.success(accept ? t('Desafío aceptado. ¡Te toca empezar!') : t('Desafío rechazado.'))
       // Accepting starts the game right away (Luis, 6 Oct), instead of going to «Activos» first.
       if (accept) navigate(getIcaChallengePlayRoute(challengeId))
@@ -1400,7 +1419,14 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
         </DialogContent>
       </Dialog>
 
-      <Dialog open={extraOfferUserId !== null} onOpenChange={(open) => (open ? null : setExtraOfferUserId(null))}>
+      <Dialog
+        open={extraOfferUserId !== null || acceptOfferId !== null}
+        onOpenChange={(open) => {
+          if (open) return
+          setExtraOfferUserId(null)
+          setAcceptOfferId(null)
+        }}
+      >
         <DialogContent className='max-w-md'>
           <DialogHeader>
             <DialogTitle className='flex items-center gap-2'>
@@ -1408,14 +1434,26 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
               {t('Desafío extra')}
             </DialogTitle>
             <DialogDescription>
-              {t('Ya tienes 3 desafíos en curso. Por {coins} puedes retar a una 4.ª persona.', {
-                coins: coinsText(EXTRA_CHALLENGE_COST),
-              })}{' '}
+              {acceptOfferId !== null
+                ? t('Ya tienes 3 desafíos en curso. Por {coins} puedes aceptar este como tu 4.º desafío.', {
+                    coins: coinsText(EXTRA_CHALLENGE_COST),
+                  })
+                : t('Ya tienes 3 desafíos en curso. Por {coins} puedes retar a una 4.ª persona.', {
+                    coins: coinsText(EXTRA_CHALLENGE_COST),
+                  })}{' '}
               {t('Tienes {n} ICA Coins.', { n: coinBalance ?? 0 })}
             </DialogDescription>
           </DialogHeader>
           <div className='grid grid-cols-2 gap-2'>
-            <Button type='button' variant='outline' className='h-11 rounded-2xl border-2 font-bold' onClick={() => setExtraOfferUserId(null)}>
+            <Button
+              type='button'
+              variant='outline'
+              className='h-11 rounded-2xl border-2 font-bold'
+              onClick={() => {
+                setExtraOfferUserId(null)
+                setAcceptOfferId(null)
+              }}
+            >
               {t('Ahora no')}
             </Button>
             <Button
@@ -1425,7 +1463,8 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
               onClick={async () => {
                 if (buyingExtraPass) return
                 const userId = extraOfferUserId
-                if (!userId) return
+                const challengeToAccept = acceptOfferId
+                if (!userId && !challengeToAccept) return
                 setBuyingExtraPass(true)
                 try {
                   if (!(await buyChallengeSlot(authUser?.id, coinBalance ?? 0))) throw new Error('PURCHASE_FAILED')
@@ -1437,7 +1476,9 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
                   setBuyingExtraPass(false)
                 }
                 setExtraOfferUserId(null)
-                startChallengeFlow(userId, true)
+                setAcceptOfferId(null)
+                if (challengeToAccept) void handleRespondInvitation(challengeToAccept, true, true)
+                else if (userId) startChallengeFlow(userId, true)
               }}
             >
               <FichaIcon size={18} />

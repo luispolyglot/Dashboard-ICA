@@ -22,7 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { ActivationGuide } from '../components/ActivationGuide'
+import { ActivationGuide, PausedRecordingActions } from '../components/ActivationGuide'
 import { ActivationHowToDialog } from '../components/ActivationHowToDialog'
 import { ExplorePhraseTokenModal } from '../components/ExplorePhraseTokenModal'
 import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
@@ -209,6 +209,9 @@ export function MasterNoteActivatePhraseView({
   const recordedChunksRef = useRef<Blob[]>([])
   const recordingStartedAtRef = useRef<number | null>(null)
   const recordingPausedAtRef = useRef<number | null>(null)
+  // «Empezar de nuevo» (Luis, 11 Oct): the take being recorded is thrown away and a new one starts.
+  const discardOnStopRef = useRef(false)
+  const [restartPending, setRestartPending] = useState(false)
   const recordingTotalPausedMsRef = useRef(0)
   const recordingIntervalRef = useRef<number | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -340,6 +343,14 @@ export function MasterNoteActivatePhraseView({
     recorder.pause()
     recordingPausedAtRef.current = Date.now()
     setRecordingPaused(true)
+  }
+
+  const restartRecording = (): void => {
+    const recorder = mediaRecorderRef.current
+    if (!recorder || recorder.state === 'inactive') return
+    discardOnStopRef.current = true
+    setRestartPending(true)
+    recorder.stop()
   }
 
   const resumeRecording = (): void => {
@@ -677,7 +688,9 @@ export function MasterNoteActivatePhraseView({
       recorder.onstop = () => {
         const startedAt = recordingStartedAtRef.current
         const mimeType = recorder.mimeType || preferredMimeType
-        if (startedAt) {
+        const discard = discardOnStopRef.current
+        discardOnStopRef.current = false
+        if (startedAt && !discard) {
           const durationMs = getRecordingElapsedMs(Date.now())
           const blob = new Blob(recordedChunksRef.current, { type: mimeType })
           if (blob.size > 0) {
@@ -731,6 +744,14 @@ export function MasterNoteActivatePhraseView({
       setRecordingElapsedMs(0)
     }
   }
+
+  // After «Empezar de nuevo», once the old take has stopped, a new one starts right away.
+  useEffect(() => {
+    if (!restartPending || recording) return
+    setRestartPending(false)
+    void startRecording()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restartPending, recording])
 
   const requestStartRecording = (): void => {
     if (recordTipPending) closeRecordTip()
@@ -958,6 +979,8 @@ export function MasterNoteActivatePhraseView({
                 nativeLang={nativeLang}
                 targetLang={targetLang}
                 paused={recordingPaused}
+                onResume={resumeRecording}
+                onRestart={restartRecording}
                 onNext={nextGuideStep}
                 onPrev={prevGuideStep}
                 onHelp={() => setHowtoMode('help')}
@@ -1156,7 +1179,9 @@ export function MasterNoteActivatePhraseView({
                   className='mt-3'
                 />
               ) : null}
-              {micText ? (
+              {recording && recordingPaused ? (
+                <PausedRecordingActions onResume={resumeRecording} onRestart={restartRecording} showLabel={false} className='mt-3 max-w-xs' />
+              ) : micText ? (
                 <p className='m-0 mt-1.5 max-w-xs text-sm font-semibold text-muted-foreground'>
                   {micText}
                 </p>

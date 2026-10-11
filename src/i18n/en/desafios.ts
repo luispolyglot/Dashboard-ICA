@@ -363,5 +363,13 @@ const en: Record<string, string> = {
   "Entre los dos necesitan al menos {n} palabras ICA{req} para este modo.": "Together you need at least {n} ICA words{req} for this mode.",
   "Ambos necesitan al menos {n} palabras ICA{req} válidas para este modo.": "You both need at least {n} valid ICA words{req} for this mode.",
   "No se pudo validar el modo o los idiomas del desafío.": "Couldn't check the challenge mode or languages.",
+  // Desafío extra al aceptar (Luis, 11 Oct)
+  "Ya tienes 4 desafíos en curso. Termina uno para aceptar este.": "You already have 4 challenges in progress. Finish one to accept this one.",
+  "Ya tienes 3 desafíos en curso. Por {coins} puedes aceptar este como tu 4.º desafío.": "You already have 3 challenges in progress. For {coins} you can accept this one as your 4th challenge.",
+  "Ya tienes 3 desafíos en curso. Usa un desafío extra para aceptar este.": "You already have 3 challenges in progress. Use an extra challenge to accept this one.",
+  "Necesitas un desafío extra para tu 4.º desafío.": "You need an extra challenge for your 4th challenge.",
+  "Ese icademer ya tiene 4 desafíos abiertos.": "That icademer already has 4 open challenges.",
+  "Este usuario ya tiene 4 desafíos abiertos.": "This user already has 4 open challenges.",
+  "Ya tiene 4 desafíos abiertos.": "Already has 4 open challenges.",
 }
 export default en

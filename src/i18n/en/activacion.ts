@@ -362,5 +362,7 @@ const en: Record<string, string> = {
   "Toca «Siguiente parte» y haz lo mismo con la siguiente parte coloreada, sin parar de grabar.": "Tap «Next part» and do the same with the next coloured part, without stopping the recording.",
   "Entendido, empezar a grabar": "Got it, start recording",
   "Cómo se activa una frase": "How to activate a phrase",
+  // Pausa al activar (Luis, 11 Oct)
+  "Empezar de nuevo": "Start over",
 }
 export default en
