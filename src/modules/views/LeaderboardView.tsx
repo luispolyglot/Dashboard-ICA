@@ -1,18 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import {
-  AwardIcon,
-  BadgePercentIcon,
-  CameraIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ClipboardCheckIcon,
-  GiftIcon,
-  GraduationCapIcon,
-  HeadphonesIcon,
-  InfoIcon,
-  MicIcon,
-  type LucideIcon,
-} from "lucide-react";
+import { AwardIcon, BadgePercentIcon, CameraIcon, ChevronLeftIcon, ChevronRightIcon, ClipboardCheckIcon, EyeIcon, GiftIcon, GraduationCapIcon, HeadphonesIcon, InfoIcon, MicIcon, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -409,6 +396,13 @@ function TiebreakDialog({
           </DialogDescription>
           <p className="m-0 text-xs font-semibold text-muted-foreground">
             {t('Solo cuenta la primera partida de cada día: repetirla no suma.')}
+          </p>
+          <p
+            className="m-0 flex w-full items-start gap-2 rounded-2xl px-3.5 py-2.5 text-left text-sm font-bold"
+            style={{ background: "var(--ica-i-soft)", color: "var(--ica-i-ink)" }}
+          >
+            <EyeIcon className="mt-0.5 size-4 shrink-0" strokeWidth={2.6} aria-hidden="true" />
+            <span>{t('Solo podrás ver cuántos aciertos lleva otra persona si tiene tus mismos puntos.')}</span>
           </p>
           {myCorrect !== null ? (
             <p

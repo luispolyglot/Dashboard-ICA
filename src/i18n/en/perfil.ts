@@ -41,6 +41,8 @@ const en: Record<string, string> = {
   "Nombre y contraseña": "Name and password",
   "Administración": "Admin",
   "Analíticas admin": "Admin analytics",
+  "Gastos de IA": "AI costs",
+  "Lo que cuestan Claude, la voz y las transcripciones, día a día.": "What Claude, the voice and the transcriptions cost, day by day.",
   "Whitelist": "Whitelist",
   "Fichas PreguntICA": "PreguntICA tokens",
   "Calendario ICADEMY": "ICADEMY calendar",

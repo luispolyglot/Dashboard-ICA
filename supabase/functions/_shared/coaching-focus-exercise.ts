@@ -357,6 +357,8 @@ export function createAnthropicToolCaller(input: {
   extraHeaders?: Record<string, string>
   /** Solo para pruebas locales detrás de un proxy. */
   fetchImpl?: typeof fetch
+  /** Gastos de IA: receives the tokens of every answer (never stops the exercise). */
+  onUsage?: (model: string, usage: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number }) => unknown
 }): ToolCaller {
   const baseUrl = input.baseUrl || 'https://api.anthropic.com'
   const doFetch = input.fetchImpl || fetch
@@ -391,6 +393,14 @@ export function createAnthropicToolCaller(input: {
       const data = (await response.json()) as {
         stop_reason?: string
         content?: Array<{ type: string; name?: string; input?: unknown; text?: string }>
+        usage?: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number }
+      }
+      if (input.onUsage && data.usage) {
+        try {
+          await input.onUsage(input.model, data.usage)
+        } catch {
+          // Saving the cost never stops the exercise.
+        }
       }
       if (data.stop_reason === 'max_tokens') {
         throw new Error('La respuesta de la IA se cortó (max_tokens).')

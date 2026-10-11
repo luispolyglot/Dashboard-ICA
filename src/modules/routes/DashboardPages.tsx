@@ -19,6 +19,7 @@ import { useDashboardContext } from '../context/DashboardContext'
 import { PageLayout } from '../layout/PageLayout'
 import { AddView } from '../views/AddView'
 import { AdminAnalyticsView } from '../views/AdminAnalyticsView'
+import { AdminCostsView } from '../views/AdminCostsView'
 import {
   CoachingPersonalizedSessionView,
   CoachingPersonalizedView,
@@ -880,6 +881,14 @@ export function AnalyticsPage() {
   return (
     <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
       <AdminAnalyticsView />
+    </PageLayout>
+  )
+}
+
+export function AdminCostsPage() {
+  return (
+    <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
+      <AdminCostsView />
     </PageLayout>
   )
 }

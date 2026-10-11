@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { CORS_HEADERS, jsonResponse } from '../_shared/http.ts'
 import { getModelRequestConfig, isClaudeSonnet55 } from '../_shared/anthropic-model.ts'
+import { trackAnthropicUsage, trackTranscriptionUsage, type AnthropicUsage, type UsageTag } from '../_shared/ai-usage.ts'
 import {
   DEFAULT_LEVEL_FAMILY,
   LANG_TO_FAMILY,
@@ -113,10 +114,13 @@ type AnthropicTextBlock = {
 
 type AnthropicResponse = {
   content?: AnthropicTextBlock[]
+  usage?: AnthropicUsage
 }
 
 type OpenAiTranscriptionResponse = {
   text?: string
+  /** Seconds of audio (only with response_format verbose_json). */
+  duration?: number
 }
 
 type SuggestionWord = {
@@ -506,7 +510,7 @@ async function createClients(req: Request): Promise<
   return { ok: true, userId: user.id, authClient, adminClient }
 }
 
-async function callWhisper(audioBlob: Blob, mimeType: string | null): Promise<OpenAiTranscriptionResponse> {
+async function callWhisper(audioBlob: Blob, mimeType: string | null, usage?: UsageTag): Promise<OpenAiTranscriptionResponse> {
   const apiKey = Deno.env.get('OPENAI_WHISPER_API_KEY')
   const model = Deno.env.get('OPENAI_WHISPER_MODEL') || 'whisper-1'
   const baseUrl = Deno.env.get('OPENAI_BASE_URL') || 'https://api.openai.com'
@@ -517,7 +521,8 @@ async function callWhisper(audioBlob: Blob, mimeType: string | null): Promise<Op
 
   const form = new FormData()
   form.append('model', model)
-  form.append('response_format', 'json')
+  // whisper-1 also says how long the audio is (Gastos de IA); the newer models only accept json.
+  form.append('response_format', model.startsWith('whisper') ? 'verbose_json' : 'json')
 
   const normalizedMime = (mimeType || '').toLowerCase()
   const ext = normalizedMime.includes('flac')
@@ -552,10 +557,12 @@ async function callWhisper(audioBlob: Blob, mimeType: string | null): Promise<Op
     throw new Error(`Whisper error ${response.status}: ${body}`)
   }
 
-  return (await response.json()) as OpenAiTranscriptionResponse
+  const transcription = (await response.json()) as OpenAiTranscriptionResponse
+  await trackTranscriptionUsage(usage, model, Number(transcription.duration) || 0)
+  return transcription
 }
 
-async function callAnthropic(system: string, userPrompt: string): Promise<string | null> {
+async function callAnthropic(system: string, userPrompt: string, usage?: UsageTag): Promise<string | null> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
   const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6'
   const baseUrl = Deno.env.get('ANTHROPIC_BASE_URL') || 'https://api.anthropic.com'
@@ -586,6 +593,7 @@ async function callAnthropic(system: string, userPrompt: string): Promise<string
   }
 
   const data = (await response.json()) as AnthropicResponse
+  await trackAnthropicUsage(usage, model, data.usage)
   return readTextBlocks(data)
 }
 
@@ -844,7 +852,7 @@ async function pickQuestionForAttempt(
   return row
 }
 
-async function translateQuestion(questionEs: string, targetLang: string): Promise<string | null> {
+async function translateQuestion(questionEs: string, targetLang: string, userId?: string): Promise<string | null> {
   const raw = await callAnthropic(
     [
       'Eres un motor de traduccion para una app educativa.',
@@ -858,6 +866,7 @@ async function translateQuestion(questionEs: string, targetLang: string): Promis
       '- Si detectas errores ortograficos, corrige primero y traduce despues.',
     ].join('\n'),
     questionEs,
+    { userId, feature: 'preguntica_question' },
   )
 
   return parseTranslationCandidate(raw)
@@ -892,7 +901,7 @@ async function prepareAttempt(
     && (selectedQuestion.needs_translation || !cachedTarget || normalizeComparableText(cachedTarget) === normalizeComparableText(questionEs))
 
   if (shouldTranslate) {
-    const translated = await translateQuestion(questionEs, targetLang)
+    const translated = await translateQuestion(questionEs, targetLang, userId)
     if (!translated) {
       throw new Error('QUESTION_TRANSLATION_REQUIRED')
     }
@@ -982,7 +991,7 @@ async function processAttemptAudio(
     throw new Error(downloadError?.message || 'Could not download attempt audio')
   }
 
-  const whisper = await callWhisper(audioBlob, audio.mime_type)
+  const whisper = await callWhisper(audioBlob, audio.mime_type, { userId, feature: 'preguntica_transcription' })
   const transcript = (whisper.text || '').trim()
   const charCount = transcript.length
   const targetLang = (payload.targetLang || attempt.target_lang || 'English').trim()
@@ -1057,6 +1066,7 @@ async function processAttemptAudio(
       nativeLang,
       level,
     }),
+    { userId, feature: 'preguntica_analysis' },
   )
 
   const parsed = parseFeedback(rawAnalysis)
@@ -1192,6 +1202,7 @@ async function refreshSuggestions(
       'Learner response:',
       transcript,
     ].join('\n'),
+    { userId, feature: 'preguntica_suggestions' },
   )
 
   const suggestions = filterSuggestedWords(parseSuggestions(raw), transcript, blockedWords)
