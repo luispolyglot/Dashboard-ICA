@@ -385,5 +385,9 @@ const en: Record<string, string> = {
   'La voz de la app no está disponible ahora mismo.': 'The app voice is not available right now.',
   'Orden': 'Order',
   'Como en la lista': 'As in the list',
+  'Este es tu Baúl ICA: aquí se guardan todas tus palabras ICA. Dentro puedes escucharlas seguidas, como una lista de reproducción.':
+    'This is your ICA Vault: all your ICA words are kept here. Inside you can listen to them in a row, like a playlist.',
+  'Nuevo: escucha tus palabras seguidas, como una lista de reproducción. Sigue sonando con el móvil bloqueado.':
+    'New: listen to your words in a row, like a playlist. It keeps playing with your phone locked.',
 }
 export default en

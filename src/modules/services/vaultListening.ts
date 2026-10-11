@@ -4,8 +4,8 @@
 import { supabase } from '@/lib/supabase'
 import type { Lexicard } from '../types'
 
-/** How many words in a row the student can choose. */
-export const VAULT_LISTEN_COUNTS = [10, 20, 30, 40, 50, 75, 100] as const
+/** How many words in a row the student can choose (Luis, 11 Oct: at most 50, more is too much). */
+export const VAULT_LISTEN_COUNTS = [10, 20, 30, 40, 50] as const
 export type VaultListenCount = (typeof VAULT_LISTEN_COUNTS)[number]
 
 /** Pause after each word (your language, then the one you learn), to repeat it out loud. */

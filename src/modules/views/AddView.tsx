@@ -79,6 +79,8 @@ type AddViewProps = {
 
 // Cuántas palabras recientes se ven antes de «Ver más».
 const RECENT_PREVIEW = 5
+/** Visits to Inmersión on this device (the Baúl ICA bubble shows from the second one). */
+const ADD_VISITS_KEY = 'icademy:add-visits'
 
 // Estilo de los campos grandes de la fase I (borde azul al escribir).
 const FIELD_CLASS =
@@ -150,6 +152,25 @@ export function AddView({
   const [translateTipPending, closeTranslateTip] = useFirstUseTip('add-translate')
   const [frequencyTipPending, closeFrequencyTip] = useFirstUseTip('add-frequency')
   const [goCreateTipPending, closeGoCreateTip] = useFirstUseTip('add-go-create')
+  // Baúl ICA (Luis, 11 Oct): from the second visit to Inmersión, a bubble shows where all the words
+  // are kept (on the first visit there are already enough bubbles).
+  const [vaultTipStored, closeVaultTip] = useFirstUseTip('add-vault')
+  const [isRepeatVisit] = useState(() => {
+    try {
+      return Number(window.localStorage.getItem(ADD_VISITS_KEY) || '0') >= 1
+    } catch {
+      return false
+    }
+  })
+  useEffect(() => {
+    try {
+      const visits = Number(window.localStorage.getItem(ADD_VISITS_KEY) || '0')
+      window.localStorage.setItem(ADD_VISITS_KEY, String(visits + 1))
+    } catch {
+      // Without storage the bubble simply does not show.
+    }
+  }, [])
+  const vaultTipPending = vaultTipStored && isRepeatVisit
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
   // Potenciar (Luis, 8 Oct): the word was already in the Baúl ICA and the student boosted it.
@@ -590,18 +611,25 @@ export function AddView({
     <div className='order-5 flex flex-col gap-6'>
       <div>
         <SectionLabel>{t('Tu baúl ICA')}</SectionLabel>
-        <RowGroup>
-          <ListRow
-            to={DASHBOARD_ROUTES.myIcaWords}
-            icon={
-              <IconTile tone='i' size={44}>
-                <ArchiveIcon className='size-5.5' strokeWidth={2.4} aria-hidden='true' />
-              </IconTile>
-            }
-            title={t('Mis palabras ICA')}
-            text={tn(cards.length, '{n} palabra guardada', '{n} palabras guardadas')}
-          />
-        </RowGroup>
+        <div className='relative'>
+          {vaultTipPending ? (
+            <FirstUseTip onClose={closeVaultTip}>
+              {t('Este es tu Baúl ICA: aquí se guardan todas tus palabras ICA. Dentro puedes escucharlas seguidas, como una lista de reproducción.')}
+            </FirstUseTip>
+          ) : null}
+          <RowGroup>
+            <ListRow
+              to={DASHBOARD_ROUTES.myIcaWords}
+              icon={
+                <IconTile tone='i' size={44}>
+                  <ArchiveIcon className='size-5.5' strokeWidth={2.4} aria-hidden='true' />
+                </IconTile>
+              }
+              title={t('Mis palabras ICA')}
+              text={tn(cards.length, '{n} palabra guardada', '{n} palabras guardadas')}
+            />
+          </RowGroup>
+        </div>
       </div>
 
       {recent.length > 0 ? (

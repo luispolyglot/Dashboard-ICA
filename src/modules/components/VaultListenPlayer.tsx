@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { langName, t } from '@/i18n'
 import { HeadphonesGlyph } from '../game/icons'
+import { FirstUseTip, useFirstUseTip } from './FirstUseTip'
 import { inSentence } from '../services/activationGuide'
 import {
   VAULT_LISTEN_COUNTS,
@@ -43,6 +44,8 @@ export function VaultListenPlayer({ cards, targetLang, nativeLang }: Props) {
   const [onlyUnheard, setOnlyUnheard] = useState(false)
   const [order, setOrder] = useState<VaultListenOrder>('list')
   const [savedHeardIds, setSavedHeardIds] = useState<Set<string>>(() => new Set())
+  // First visit to the Baúl after this arrives (Luis, 11 Oct): a bubble presents it.
+  const [tipPending, closeTip] = useFirstUseTip('vault-listen')
 
   const status = listening?.status ?? 'idle'
   const active = status === 'preparing' || status === 'playing' || status === 'paused'
@@ -73,10 +76,18 @@ export function VaultListenPlayer({ cards, targetLang, nativeLang }: Props) {
   const expanded = open || active || status === 'done' || status === 'error'
 
   return (
-    <div className='ica-panel flex flex-col gap-3 p-3'>
+    <div className='ica-panel relative flex flex-col gap-3 p-3'>
+      {tipPending && !active ? (
+        <FirstUseTip onClose={closeTip} side='bottom'>
+          {t('Nuevo: escucha tus palabras seguidas, como una lista de reproducción. Sigue sonando con el móvil bloqueado.')}
+        </FirstUseTip>
+      ) : null}
       <button
         type='button'
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          if (tipPending) closeTip()
+          setOpen((value) => !value)
+        }}
         aria-expanded={expanded}
         className='flex w-full items-center gap-3 text-left'
       >
