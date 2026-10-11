@@ -43,6 +43,7 @@ import {
 import { RomanizationHint } from '../components/RomanizationHint'
 import { PronunciationHint } from '../pronunciation/PronunciationHint'
 import { SpeakButton } from '../components/SpeakButton'
+import { getSpeechAudioUrl } from '../services/tts'
 import { FirstUseTip, useFirstUseTip } from '../components/FirstUseTip'
 import { TRUNK_WOOD, TrunkIcon } from '../game/icons'
 import { TranslationSuggestion } from '../components/TranslationSuggestion'
@@ -398,6 +399,8 @@ export function AddView({
 
     try {
       await insertWord(newCard)
+      // Prepare its voice now, so tapping it in «Últimas añadidas» plays at once.
+      void getSpeechAudioUrl(trimmedTarget, config.targetLang)
       setCards((prev) => [...prev, newCard])
       setSavesThisVisit((count) => count + 1)
 
@@ -718,21 +721,11 @@ export function AddView({
                 maxLength={SHARE_TARGET_MAX_CHARS}
                 placeholder={t('Escribe en {lang}...', { lang: langName(config.targetLang) })}
                 aria-invalid={showDuplicateWarning || undefined}
-                className={cn(FIELD_CLASS, trimmedTarget && 'pr-14')}
+                className={FIELD_CLASS}
               />
-              {/* Listen inside the field: no extra row. The voice is only made on tap (Luis, 6 Oct). */}
-              {trimmedTarget && (
-                <SpeakButton
-                  text={trimmedTarget}
-                  langName={config.targetLang}
-                  color='#3B82F6'
-                  variant='icon'
-                  prefetch={false}
-                  label={t('Escuchar en {lang}', { lang: langName(config.targetLang) })}
-                  className='absolute top-1/2 right-1.5 -translate-y-1/2 active:-translate-y-1/2'
-                  disabled={saving}
-                />
-              )}
+              {/* No «Escuchar» while typing (Luis, 11 Oct): every half-typed word would cost a new
+                  voice. The word is listened to in «Últimas añadidas», where its voice is prepared
+                  as soon as it is saved. */}
             </div>
             {showDuplicateWarning && (
               <div
