@@ -348,7 +348,7 @@ async function generateWithAnyModel(
   voice: string,
   text: string,
   lang: string,
-): Promise<{ generated: Generated; model: string }> {
+): Promise<{ generated: Generated; model: string; via: GeminiRoute['via'] }> {
   let lastError: unknown = null
   let skippedForToday = false
   for (const route of routes) {
@@ -360,7 +360,7 @@ async function generateWithAnyModel(
         continue
       }
       try {
-        return { generated: await generateWithGemini(route, name, voice, text, lang), model: name }
+        return { generated: await generateWithGemini(route, name, voice, text, lang), model: name, via: route.via }
       } catch (error) {
         lastError = error
         if (error instanceof GeminiDayLimitError) {
@@ -542,6 +542,7 @@ Deno.serve(async (req) => {
     try {
       let generated: Generated
       let madeBy = usageModel(engine)
+      let via = 'cloud'
       if (engine === 'cloud') {
         generated = { ...(await generateWithCloud(cloudKey, cloudVoice, text, lang)), chars: text.length }
       } else {
@@ -549,6 +550,7 @@ Deno.serve(async (req) => {
         const made = await generateWithAnyModel(geminiRoutes, [model, ...backupModels], voice, text, lang)
         generated = made.generated
         madeBy = made.model
+        via = made.via
       }
       const upload = await admin.storage.from(BUCKET).upload(path, generated.audio, {
         contentType: 'audio/wav',
@@ -556,6 +558,8 @@ Deno.serve(async (req) => {
       })
       if (upload.error) console.warn('premium-tts: audio not cached', upload.error.message)
       await track(admin, userId, madeBy, generated)
+      // One line per new audio, to see in the logs which route made it (enterprise, studio or cloud).
+      console.log('premium-tts new audio', madeBy, via)
       return audioResponse(generated.audio)
     } catch (error) {
       lastError = error
