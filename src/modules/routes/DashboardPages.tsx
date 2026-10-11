@@ -20,6 +20,7 @@ import { PageLayout } from '../layout/PageLayout'
 import { AddView } from '../views/AddView'
 import { AdminAnalyticsView } from '../views/AdminAnalyticsView'
 import { AdminCostsView } from '../views/AdminCostsView'
+import { AdminWinnerFeedbackView } from '../views/AdminWinnerFeedbackView'
 import {
   CoachingPersonalizedSessionView,
   CoachingPersonalizedView,
@@ -889,6 +890,14 @@ export function AdminCostsPage() {
   return (
     <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
       <AdminCostsView />
+    </PageLayout>
+  )
+}
+
+export function AdminWinnerFeedbackPage() {
+  return (
+    <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
+      <AdminWinnerFeedbackView />
     </PageLayout>
   )
 }

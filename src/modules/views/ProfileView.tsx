@@ -805,6 +805,12 @@ export function ProfileView({
                       text={t("Lo que cuestan Claude, la voz y las transcripciones, día a día.")}
                       onClick={() => navigate(DASHBOARD_ROUTES.aiCosts)}
                     />
+                    <AdminRow
+                      icon={TrophyLucideIcon}
+                      title={t("Feedback a ganadores")}
+                      text={t("Escucha la última nota maestra de un ganador y guarda tu feedback.")}
+                      onClick={() => navigate(DASHBOARD_ROUTES.winnerFeedback)}
+                    />
                   </>
                 )}
                 {canManageCalendarIcademy && (
