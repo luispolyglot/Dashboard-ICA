@@ -1,4 +1,5 @@
 import { playBadgeFanfare, type BadgeTier } from './badgeSounds'
+import { setAudioSessionType as setSharedAudioSessionType } from '../services/audioSession'
 
 // Sonidos cortos del modo juego, generados en el navegador (sin archivos de audio).
 // El alumno puede apagarlos; la preferencia se guarda solo en este dispositivo.
@@ -16,12 +17,9 @@ const EFFECTS_IDLE_MS = 5000
 let effectsIdleTimer: number | null = null
 
 function setAudioSessionType(type: AudioSessionType): void {
-  try {
-    const session = (navigator as Navigator & { audioSession?: { type: AudioSessionType } }).audioSession
-    if (session && session.type !== type) session.type = type
-  } catch {
-    // Navegador sin Audio Session API (Android, ordenador): no hace falta.
-  }
+  // Mientras suena «Escuchar mis palabras», la sesión se queda en «playback» (sigue sonando con el
+  // móvil bloqueado): los efectos no la cambian.
+  setSharedAudioSessionType(type)
 }
 
 /** El contexto de los efectos, despierto y en modo «se mezcla con tu música». */

@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { langName, t, tn, uiLocale } from "@/i18n";
 import { IcaDeletionWarningDialog } from "../components/IcaDeletionWarningDialog";
 import { RomanizationHint } from "../components/RomanizationHint";
+import { VaultListenPlayer } from "../components/VaultListenPlayer";
 import { IMPORTANCE_LEVELS, getImportance } from "../constants";
 import {
   EmptyState,
@@ -629,6 +630,15 @@ export function ManageView({
           )}
         </div>
       </div>
+
+      {/* Escuchar mi Baúl ICA (Luis, 11 Oct): the words of this filter, one after another. */}
+      {sorted.length > 0 ? (
+        <VaultListenPlayer
+          cards={sorted}
+          targetLang={config.targetLang}
+          nativeLang={config.nativeLang}
+        />
+      ) : null}
 
       <div>
         {sorted.length === 0 ? (
