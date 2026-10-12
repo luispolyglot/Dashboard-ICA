@@ -11,7 +11,7 @@ const PREGUNTICA_REFRESH_MS = 60_000
 
 /**
  * Something waiting in Juegos besides the Desafíos ICA (they have their own number): a nota
- * desafiante to play (a master note finished this week) or a PreguntICA ready. The «Juegos»
+ * desafiante to play (80 % listened this week, «Jugar» not pressed yet) or a PreguntICA ready. The «Juegos»
  * button of the menu gets a dot (Luis, 8 Oct).
  */
 export function useGamesWaiting(targetLang?: string, nativeLang?: string): boolean {

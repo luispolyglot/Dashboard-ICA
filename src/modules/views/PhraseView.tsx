@@ -1321,8 +1321,6 @@ export function PhraseView({
                 </Button>
               ) : null}
             </div>
-            {loading ? <CreatingPhraseProgress className='mt-4' /> : null}
-
             <p className='m-0 mt-4 font-display text-2xl leading-snug font-extrabold tracking-tight break-words'>
               {highlightUsedWords(result.phrase, result.words_used)}
             </p>

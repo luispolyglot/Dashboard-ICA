@@ -24,7 +24,8 @@ import {
 } from '../game/rules'
 import { useActivatedWords } from '../game/useActivatedWords'
 import { useClosedMasterNotes } from '../game/useClosedMasterNotes'
-import { t, tn } from '@/i18n'
+import { formatMasterNoteLabel } from '../services/masterNotes'
+import { t } from '@/i18n'
 
 type GamesIcaViewProps = {
   flashcardsReady: boolean
@@ -213,17 +214,22 @@ export function GamesIcaView({
             tour='game-challenge-note'
             color='var(--ica-gold-edge)'
             locked={closedNotes !== null && !challengeReady}
-            onClick={() => navigate(DASHBOARD_ROUTES.notaDesafiante)}
+            // One new challenge waiting: straight to that note, with its «Empezar» button.
+            onClick={() =>
+              navigate(
+                pendingChallengeNotes.length === 1
+                  ? `${DASHBOARD_ROUTES.notaDesafiante}/${pendingChallengeNotes[0].id}`
+                  : DASHBOARD_ROUTES.notaDesafiante,
+              )
+            }
             badge={
               pendingChallengeNotes.length > 0 ? <ChallengeNotePill count={pendingChallengeNotes.length} /> : undefined
             }
             status={
-              pendingChallengeNotes.length > 0
-                ? tn(
-                    pendingChallengeNotes.length,
-                    '¡Tienes una nota desafiante esperando!',
-                    '¡Tienes {n} notas desafiantes esperando!',
-                  )
+              pendingChallengeNotes.length === 1
+                ? t('¡{name} lista para jugar!', { name: formatMasterNoteLabel(pendingChallengeNotes[0].name) })
+                : pendingChallengeNotes.length > 1
+                ? t('¡Tienes {n} notas desafiantes para jugar!', { n: pendingChallengeNotes.length })
                 : closedNotes === null
                 ? t('Elige una nota maestra terminada')
                 : challengeReady

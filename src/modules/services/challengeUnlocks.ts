@@ -455,6 +455,56 @@ export function useOnChallengeUnlocked(callback: (noteId: string) => void): void
 // Partidas terminadas (para el punto diario del ranking: escuchar + nota desafiante)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Aviso (la diana) — Luis, 12 Oct
+// ---------------------------------------------------------------------------
+
+/** Monday of this week on this device: the key for this week's unlocks and notices. */
+export function getChallengeWeekStamp(): string {
+  return getLocalDayStamp()
+}
+
+/** Notes unlocked this week according to this device (the server may know more). */
+export function getCachedUnlockedNoteIds(userId: string | null | undefined): string[] {
+  return Object.keys(readCache(userId).unlocked)
+}
+
+/** Fired when the student presses «Jugar» on an unlocked note (the notice goes away). */
+export const CHALLENGE_NOTE_SEEN_EVENT = 'ica:challenge-note-seen'
+
+const SEEN_PREFIX = 'ica-challenge-note-seen-v1:'
+
+function readSeen(userId: string | null | undefined): Record<string, true> {
+  const parsed = readJson<Record<string, true>>(`${SEEN_PREFIX}${userKey(userId)}`)
+  return parsed && typeof parsed === 'object' ? parsed : {}
+}
+
+/** True once «Jugar» was pressed on this note this week. */
+export function isChallengeNoteSeen(userId: string | null | undefined, noteId: string): boolean {
+  return Boolean(readSeen(userId)[`${getLocalDayStamp()}|${noteId}`])
+}
+
+/**
+ * The student pressed «Jugar» on this note: its notice (the diana in Juegos ICA, the dot on
+ * «Juegos») goes away for this week, even if they leave without finishing. Next week, if they
+ * unlock it again, it comes back once.
+ */
+export function markChallengeNoteSeen(userId: string | null | undefined, noteId: string): void {
+  if (!noteId) return
+  const week = getLocalDayStamp()
+  const key = `${week}|${noteId}`
+  const seen = readSeen(userId)
+  if (seen[key]) return
+  // Only this week's keys are kept.
+  const next: Record<string, true> = {}
+  for (const existing of Object.keys(seen)) {
+    if (existing.startsWith(`${week}|`)) next[existing] = true
+  }
+  next[key] = true
+  writeJson(`${SEEN_PREFIX}${userKey(userId)}`, next)
+  window.dispatchEvent(new Event(CHALLENGE_NOTE_SEEN_EVENT))
+}
+
 /** Fired after a nota desafiante is saved (Juegos ICA updates its reminder). */
 export const CHALLENGE_PLAY_RECORDED_EVENT = 'ica:challenge-play-recorded'
 

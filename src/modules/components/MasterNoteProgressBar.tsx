@@ -103,7 +103,7 @@ export function MasterNoteProgressBar({
           : willComplete
             ? safePending > 0
               ? recording
-                ? t('Al guardar, completarás la nota. La grabación se para sola a las 4:00.')
+                ? t('La grabación durará como máximo 4 minutos.')
                 : t('Al guardar esta grabación, completarás la nota.')
               : t('Nota lista para completarse.')
             : t('Te faltan {time} para completar la nota (máximo 4:00).', { time: formatDuration(remainingMs) })}
