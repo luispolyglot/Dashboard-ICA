@@ -17,100 +17,83 @@ import {
   ZapIcon,
   type LucideIcon,
 } from 'lucide-react'
+import type { ReactElement } from 'react'
+import { langName, t } from '@/i18n'
+import { BookGlyph, HeadphonesGlyph, HourglassGlyph, PairsGlyph, PencilGlyph, SpeechGlyph } from '../../game/icons'
 import type { IcaChallengeScope, IcaChallengeTypeRecord } from '../../types'
 
 export type ChallengeModeTileId = 'lectura' | 'escritura' | 'escucha' | 'habla' | 'parejas' | 'proximamente'
-
-type Tone = {
-  tile: string
-  icon: string
-  ring: string
-}
 
 export type ChallengeModeTile = {
   id: ChallengeModeTileId
   label: string
   hint: string
+  /** Icono pequeño (chips de la lista de retos). */
   icon: LucideIcon
+  /** Dibujo grande, en el estilo de Juegos ICA. */
+  glyph: (props: { size?: number }) => ReactElement
+  /** Color del modo (fondo suave del dibujo). */
+  color: string
   /** Tipos de desafio_tipos que abre este bloque (Escritura abre dos). */
   typeIds: string[]
-  tone: Tone
 }
 
 /** Orden de Luis: Lectura, Escritura, Escucha y Habla; después Parejas y lo que está por llegar. */
 export const CHALLENGE_MODE_TILES: ChallengeModeTile[] = [
   {
     id: 'lectura',
+    glyph: BookGlyph,
+    color: '#3B82F6',
     label: 'Lectura',
     hint: 'Elige entre 4 opciones',
     icon: BookOpenIcon,
     typeIds: ['ica-own-words'],
-    tone: {
-      tile: 'border-sky-300 dark:border-sky-400/50 bg-gradient-to-br from-sky-500/25 via-sky-500/5 to-transparent hover:border-sky-300 hover:shadow-sky-500/20',
-      icon: 'bg-sky-500/20 text-sky-600 dark:text-sky-300',
-      ring: 'ring-sky-400',
-    },
   },
   {
     id: 'escritura',
+    glyph: PencilGlyph,
+    color: '#8B5CF6',
     label: 'Escritura',
     hint: 'Por palabra o cuenta atrás',
     icon: PencilLineIcon,
     typeIds: ['ica-writing', 'ica-lightning'],
-    tone: {
-      tile: 'border-violet-300 dark:border-violet-400/50 bg-gradient-to-br from-violet-500/25 via-violet-500/5 to-transparent hover:border-violet-300 hover:shadow-violet-500/20',
-      icon: 'bg-violet-500/20 text-violet-600 dark:text-violet-300',
-      ring: 'ring-violet-400',
-    },
   },
   {
     id: 'escucha',
+    glyph: HeadphonesGlyph,
+    color: '#10B981',
     label: 'Escucha',
     hint: 'Oye y elige qué significa',
     icon: HeadphonesIcon,
     typeIds: ['ica-listen'],
-    tone: {
-      tile: 'border-emerald-300 dark:border-emerald-400/50 bg-gradient-to-br from-emerald-500/25 via-emerald-500/5 to-transparent hover:border-emerald-300 hover:shadow-emerald-500/20',
-      icon: 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-300',
-      ring: 'ring-emerald-400',
-    },
   },
   {
     id: 'habla',
+    glyph: SpeechGlyph,
+    color: '#FB7185',
     label: 'Habla',
     hint: 'Dila en voz alta',
     icon: MicIcon,
     typeIds: ['ica-speak'],
-    tone: {
-      tile: 'border-rose-300 dark:border-rose-400/50 bg-gradient-to-br from-rose-500/25 via-rose-500/5 to-transparent hover:border-rose-300 hover:shadow-rose-500/20',
-      icon: 'bg-rose-500/20 text-rose-600 dark:text-rose-300',
-      ring: 'ring-rose-400',
-    },
   },
   {
     id: 'parejas',
+    glyph: PairsGlyph,
+    color: '#F59E0B',
     label: 'Parejas',
     hint: 'Une cada palabra con su significado',
     icon: Link2Icon,
     typeIds: ['ica-pairs'],
-    tone: {
-      tile: 'border-amber-300 dark:border-amber-400/50 bg-gradient-to-br from-amber-500/25 via-amber-500/5 to-transparent hover:border-amber-300 hover:shadow-amber-500/20',
-      icon: 'bg-amber-500/20 text-amber-600 dark:text-amber-300',
-      ring: 'ring-amber-400',
-    },
   },
   {
     id: 'proximamente',
+    glyph: HourglassGlyph,
+    color: '#94A3B8',
     label: 'Próximamente',
     hint: 'Completa la frase y más',
     icon: LockIcon,
     // «Completa la frase» (ica-cloze) está apagado en desafio_tipos hasta que se rehaga.
     typeIds: [],
-    tone: {
-      tile: 'border-dashed border-border bg-muted/10',
-      icon: 'bg-muted text-muted-foreground',
-      ring: 'ring-border',
-    },
   },
 ]
 
@@ -133,6 +116,24 @@ export function availableTypesForTile(
     .filter((type): type is IcaChallengeTypeRecord => isTypeAvailable(type, scope))
 }
 
+/** Dibujo del modo en su cuadrado de color suave (como las tarjetas de Juegos ICA). */
+export function ModeGlyphBadge({ tile, size = 'md' }: { tile: ChallengeModeTile; size?: 'md' | 'sm' }) {
+  const Glyph = tile.glyph
+  return (
+    <span
+      className={`flex shrink-0 items-center justify-center rounded-2xl ${size === 'md' ? 'size-12' : 'size-11'}`}
+      style={{ background: `color-mix(in oklab, ${tile.color} 16%, transparent)` }}
+      aria-hidden='true'
+    >
+      <Glyph size={size === 'md' ? 30 : 28} />
+    </span>
+  )
+}
+
+/**
+ * Modos para retar, con el mismo diseño que las tarjetas de Juegos ICA: tarjeta con borde,
+ * dibujo a color arriba, nombre y una línea de ayuda. Lo que no está disponible lleva candado.
+ */
 export function ModeTileGrid({
   types,
   scope,
@@ -142,50 +143,36 @@ export function ModeTileGrid({
   scope: IcaChallengeScope
   onPick: (tile: ChallengeModeTile) => void
 }) {
-  const playable = CHALLENGE_MODE_TILES.filter((tile) => tile.id !== 'proximamente')
-  const comingSoon = CHALLENGE_MODE_TILES.find((tile) => tile.id === 'proximamente')
   return (
     <div>
-      <p className='mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground'>Modo</p>
+      <p className='mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground'>{t('Modo')}</p>
       <div className='grid grid-cols-2 gap-3'>
-        {playable.map((tile) => {
-          const available = availableTypesForTile(tile, types, scope).length > 0
-          const Icon = available ? tile.icon : LockIcon
+        {CHALLENGE_MODE_TILES.map((tile) => {
+          const comingSoon = tile.id === 'proximamente'
+          const available = !comingSoon && availableTypesForTile(tile, types, scope).length > 0
           return (
             <button
               key={tile.id}
               type='button'
               disabled={!available}
               onClick={() => available && onPick(tile)}
-              className={`group relative flex min-h-[9.5rem] flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border p-3 text-center transition-all duration-200 ${
-                available
-                  ? `${tile.tone.tile} hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.97]`
-                  : 'cursor-not-allowed border-dashed border-border bg-muted/10 opacity-70'
+              className={`relative flex min-h-[136px] flex-col items-start gap-1.5 rounded-3xl border-2 border-border bg-card p-4 text-left transition-colors ${
+                available ? 'hover:bg-muted/50 active:bg-muted' : `cursor-not-allowed opacity-60 ${comingSoon ? 'border-dashed' : ''}`
               }`}
             >
-              <span
-                className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-transform duration-200 group-hover:scale-110 ${
-                  available ? tile.tone.icon : 'bg-muted text-muted-foreground'
-                }`}
-              >
-                <Icon className='h-6 w-6' />
-              </span>
-              <span className='font-serif text-lg font-semibold leading-tight'>{tile.label}</span>
-              <span className='text-[11px] leading-snug text-muted-foreground'>
-                {available ? tile.hint : 'No disponible ahora'}
+              <ModeGlyphBadge tile={tile} />
+              {!available ? (
+                <span className='absolute top-3 right-3 flex size-7 items-center justify-center rounded-full bg-muted text-muted-foreground'>
+                  <LockIcon className='size-3.5' aria-hidden='true' />
+                </span>
+              ) : null}
+              <span className='mt-1 font-display text-lg leading-tight font-extrabold'>{t(tile.label)}</span>
+              <span className='text-xs leading-snug font-semibold text-muted-foreground'>
+                {available || comingSoon ? t(tile.hint) : t('No disponible ahora')}
               </span>
             </button>
           )
         })}
-        {comingSoon && (
-          <div className='flex min-h-[9.5rem] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-muted/10 p-3 text-center opacity-80'>
-            <span className='flex h-12 w-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground'>
-              <LockIcon className='h-6 w-6' />
-            </span>
-            <span className='font-serif text-lg font-semibold leading-tight'>{comingSoon.label}</span>
-            <span className='text-[11px] leading-snug text-muted-foreground'>{comingSoon.hint}</span>
-          </div>
-        )}
       </div>
     </div>
   )
@@ -201,15 +188,11 @@ export function ScopeToggle({
   targetLang: string
 }) {
   const options: Array<{ id: IcaChallengeScope; label: string; hint: string; icon: LucideIcon }> = [
-    { id: 'global', label: 'Global', hint: 'Cada uno sus palabras', icon: GlobeIcon },
-    { id: 'language', label: 'Por idioma', hint: 'Mezcla de baúles ICA', icon: LanguagesIcon },
+    { id: 'global', label: t('Global'), hint: t('Cada uno sus palabras'), icon: GlobeIcon },
+    { id: 'language', label: t('Por idioma'), hint: t('Mezcla de baúles ICA'), icon: LanguagesIcon },
   ]
   return (
-    <div
-      className='grid grid-cols-2 gap-1 rounded-xl border bg-muted/30 p-1'
-      role='radiogroup'
-      aria-label={`Tipo de desafío (${targetLang})`}
-    >
+    <div className='flex gap-1.5' role='radiogroup' aria-label={t('Tipo de desafío ({lang})', { lang: langName(targetLang) })}>
       {options.map((option) => {
         const active = value === option.id
         const Icon = option.icon
@@ -219,18 +202,14 @@ export function ScopeToggle({
             type='button'
             role='radio'
             aria-checked={active}
+            aria-label={t(option.hint)}
             onClick={() => onChange(option.id)}
-            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-left transition ${
-              active ? 'bg-background shadow-sm ring-1 ring-primary/40' : 'text-muted-foreground hover:bg-background/50'
+            className={`flex h-9 items-center gap-1.5 rounded-full border-2 px-3 text-xs font-extrabold transition-colors ${
+              active ? 'border-primary/50 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:bg-muted'
             }`}
           >
-            <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-primary' : ''}`} />
-            <span className='min-w-0'>
-              <span className={`block text-sm font-semibold leading-tight ${active ? 'text-foreground' : ''}`}>
-                {option.label}
-              </span>
-              <span className='block text-[11px] leading-tight text-muted-foreground'>{option.hint}</span>
-            </span>
+            <Icon className='size-4 shrink-0' strokeWidth={2.4} />
+            {t(option.label)}
           </button>
         )
       })}
@@ -256,15 +235,16 @@ export function WritingVariantPicker({
   const options = [
     {
       typeId: 'ica-writing',
-      label: 'Por palabra',
-      hint: `10 palabras por turnos · ${secondsPerWord} s cada una`,
+      label: t('Por palabra'),
+      // Sin «10 palabras por turnos»: todos los desafíos son de 10 palabras.
+      hint: t('Una palabra cada vez · {n} s', { n: secondsPerWord }),
       icon: TimerIcon,
       available: wordTypeAvailable,
     },
     {
       typeId: 'ica-lightning',
-      label: 'Cuenta atrás',
-      hint: `${countdownSeconds} segundos · una sola ronda · gana quien más acierte`,
+      label: t('Cuenta atrás'),
+      hint: t('Todas las que puedas en {n} s', { n: countdownSeconds }),
       icon: ZapIcon,
       available: countdownTypeAvailable,
     },
@@ -293,8 +273,8 @@ export function WritingVariantPicker({
               </span>
             )}
             <Icon className='h-5 w-5 text-violet-600 dark:text-violet-300' />
-            <span className='font-semibold'>{option.label}</span>
-            <span className='text-xs leading-snug text-muted-foreground'>{option.hint}</span>
+            <span className='font-semibold'>{t(option.label)}</span>
+            <span className='text-xs leading-snug text-muted-foreground'>{t(option.hint)}</span>
           </button>
         )
       })}

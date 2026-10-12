@@ -1,5 +1,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { PRONUNCIATION_MAX_WORDS, buildPronunciationPrompt, parsePronunciationReply, pronunciationMaxTokens } from '../_shared/pronunciation-prompt.ts'
+import { readCachedRespellings, storeRespellings, type PronunciationCacheClient } from '../_shared/pronunciation-cache.ts'
 import { ensureCoachingAdmin, scopeAllows } from '../_shared/coaching-auth.ts'
+import { getModelRequestConfig, isClaudeSonnet55, makeStrictTool } from '../_shared/anthropic-model.ts'
+import { trackAnthropicUsage, type AnthropicUsage, type UsageTag } from '../_shared/ai-usage.ts'
 import {
   createAnthropicToolCaller,
   generateCoachingFocusExercise,
@@ -66,18 +70,20 @@ type AnthropicContentBlock = AnthropicTextBlock | AnthropicToolUseBlock
 
 type AnthropicResponse = {
   content?: AnthropicContentBlock[]
+  usage?: AnthropicUsage
 }
 
 type AnthropicToolDefinition = {
   name: string
   description: string
   input_schema: Record<string, unknown>
+  strict?: boolean
 }
 
 // Modelo rápido y barato (Haiku) para las tareas cortas de todos los días:
 // traducir lo que escribes en Inmersión, corregir la ortografía, ejemplos de las palabras,
-// explicar una palabra de una frase y revisar la frase escrita a mano.
-// Crear frases (activation_phrase), dividir frases y el coaching siguen con el modelo general (Sonnet).
+// explicar una palabra de una frase y corregir la frase de Creación.
+// La nota desafiante y el coaching siguen con el modelo general (Sonnet).
 const FAST_MODEL = Deno.env.get('ANTHROPIC_FAST_MODEL') || 'claude-haiku-4-5-20251001'
 
 type CallAnthropicOptions = {
@@ -189,7 +195,16 @@ type ManualPhraseReviewResult = {
   issues: string[]
 }
 
+// Pronunciación figurada (beaucoup → bocú) de hasta 20 palabras a la vez.
+type PronunciationPayload = {
+  action: 'pronunciation'
+  words: string[]
+  targetLang: string
+  nativeLang: string
+}
+
 type RequestPayload =
+  | PronunciationPayload
   | TranslatePayload
   | ActivationPhrasePayload
   | SpellcheckPayload
@@ -577,7 +592,8 @@ async function handleSplitPhrase(payload: SplitPhrasePayload, userId: string): P
         targetLang: row.target_lang || '',
         nativeLang: row.native_lang || '',
       },
-      callAnthropic as AnthropicCall,
+      ((system, prompt, options) =>
+        callAnthropic(system, prompt, options, { userId, feature: 'split_phrase' })) as AnthropicCall,
     )
     result = {
       chunks: split.chunks,
@@ -607,15 +623,20 @@ async function callAnthropic(
   system: string,
   userPrompt: string,
   options?: CallAnthropicOptions,
+  usage?: UsageTag,
 ): Promise<{ text: string | null; toolInput: Record<string, unknown> | null }> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
   const model = options?.model || Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6'
   const baseUrl = Deno.env.get('ANTHROPIC_BASE_URL') || 'https://api.anthropic.com'
+  const isSonnet55 = isClaudeSonnet55(model)
 
   if (!apiKey) {
     throw new Error('Missing ANTHROPIC_API_KEY secret')
   }
 
+  const tool = options?.tool
+    ? isSonnet55 ? makeStrictTool(options.tool) : options.tool
+    : undefined
   const response = await fetch(`${baseUrl}/v1/messages`, {
     method: 'POST',
     headers: {
@@ -625,20 +646,25 @@ async function callAnthropic(
     },
     body: JSON.stringify({
       model,
-      max_tokens: options?.maxTokens ?? 1000,
-      temperature: options?.temperature ?? 0.2,
+      ...getModelRequestConfig(model, options?.maxTokens ?? 1000),
+      ...(isSonnet55 ? {} : { temperature: options?.temperature ?? 0.2 }),
       system,
       messages: [{ role: 'user', content: userPrompt }],
-      tools: options?.tool ? [options.tool] : undefined,
-      tool_choice: options?.tool ? { type: 'tool', name: options.tool.name } : undefined,
+      tools: tool ? [tool] : undefined,
+      tool_choice: tool
+        ? isSonnet55 ? { type: 'auto' } : { type: 'tool', name: tool.name }
+        : undefined,
     }),
   })
 
   if (!response.ok) {
-    throw new Error(`Anthropic error ${response.status}`)
+    const body = await response.text().catch(() => '')
+    throw new Error(`Anthropic error ${response.status}: ${body.slice(0, 500)}`)
   }
 
   const data = (await response.json()) as AnthropicResponse
+  // Gastos de IA: tokens and estimated price of this answer.
+  await trackAnthropicUsage(usage, model, data.usage)
   return {
     text: readTextBlocks(data),
     toolInput: options?.tool ? readToolInput(data, options.tool.name) : null,
@@ -796,6 +822,9 @@ Deno.serve(async (req) => {
     return jsonResponse(400, { error: 'Invalid JSON body' })
   }
 
+  // Gastos de IA: who and what each Claude call of this request is for.
+  const usageTag: UsageTag = { userId: auth.userId, feature: String(payload.action || 'unknown') }
+
   try {
     if (payload.action === 'translate') {
       const translated = await callAnthropic(
@@ -811,9 +840,16 @@ Deno.serve(async (req) => {
           '',
           'PROCESO, en este orden:',
           '1. Interpreta el texto como fromLang.',
-          '2. Corrige ortografia y diacriticos que falten (e a c n o u a e l z s...).',
-          '   Si al quitar los diacriticos coincide con una forma valida del idioma,',
-          '   asume que el alumno los olvido y restauralos.',
+          '2. Corrige la ortografia del original (input_corrected):',
+          '   - Diacriticos que faltan o sobran (e a c n o u ss a e l z s o). Es lo mas frecuente.',
+          '     Si al quitar los diacriticos coincide con una forma valida del idioma,',
+          '     asume que el alumno los olvido y restauralos. Ante la duda, corrige.',
+          '   - Letras cambiadas, dobles, omitidas o transpuestas.',
+          '   - Espaciado y apostrofos (l\'ami, dell\'acqua).',
+          '   - No reformules ni cambies el tiempo verbal. No corrijas nombres propios,',
+          '     marcas ni siglas. No toques mayusculas salvo las obligatorias',
+          '     (sustantivos en aleman).',
+          '   - input_corrected es el texto completo corregido, en fromLang, nunca traducido.',
           '3. Traduce el texto YA CORREGIDO a toLang.',
           '',
           'REGLA ABSOLUTA:',
@@ -841,6 +877,8 @@ Deno.serve(async (req) => {
           '-> detected_lang: "pl" | input_corrected: "pan" | had_correction: false | translation: "señor" | alternatives: ["usted"] | status: "ambiguous"',
           'Input: "pan" | fromLang=es | toLang=pl',
           '-> detected_lang: "es" | input_corrected: "pan" | had_correction: false | translation: "chleb" | alternatives: [] | status: "ok"',
+          'Input: "Entshuldigung" | fromLang=de | toLang=es',
+          '-> detected_lang: "de" | input_corrected: "Entschuldigung" | had_correction: true | translation: "perdón" | alternatives: ["disculpa"] | status: "corrected"',
         ].join('\n'),
         payload.text,
         {
@@ -877,6 +915,7 @@ Deno.serve(async (req) => {
             },
           },
         },
+        usageTag,
       )
 
       const parsed = parseTranslationCandidate(translated.toolInput, translated.text)
@@ -884,8 +923,17 @@ Deno.serve(async (req) => {
         ? null
         : (parsed.translation || parsed.translationFallback)
 
+      // The same call gives the spelling suggestion for what the student typed, so Inmersión no
+      // longer needs a second (spellcheck) call per word (Luis, 6 Oct).
+      const correctedInput = sanitizeSpellingSuggestion(parsed.inputCorrected || '')
+      const spellingSuggestion =
+        parsed.hadCorrection && correctedInput && correctedInput !== payload.text.trim()
+          ? correctedInput
+          : null
+
       return jsonResponse(200, {
         translation: finalTranslation,
+        spellingSuggestion,
         detectedLang: parsed.detectedLang,
         inputCorrected: parsed.inputCorrected,
         hadCorrection: parsed.hadCorrection,
@@ -934,7 +982,7 @@ Deno.serve(async (req) => {
           levelDescription: getLevelDescription(payload.level),
           previousPhrase,
         },
-        callAnthropic as AnthropicCall,
+        ((system, prompt, options) => callAnthropic(system, prompt, options, usageTag)) as AnthropicCall,
       )
 
       return jsonResponse(200, { result: activationResult })
@@ -942,6 +990,28 @@ Deno.serve(async (req) => {
 
     if (payload.action === 'split_phrase') {
       return await handleSplitPhrase(payload, auth.userId)
+    }
+
+    if (payload.action === 'pronunciation') {
+      const words = Array.isArray(payload.words)
+        ? Array.from(new Set(payload.words.filter((word) => typeof word === 'string').map((word) => word.trim()).filter((word) => word && word.length <= 80))).slice(0, PRONUNCIATION_MAX_WORDS)
+        : []
+      if (words.length === 0 || !payload.targetLang || !payload.nativeLang) {
+        return jsonResponse(400, { error: 'words, targetLang and nativeLang are required' })
+      }
+      // Shared cache first: each word is asked to the AI only once for everyone.
+      const cacheClient = createAdminClient() as unknown as PronunciationCacheClient | null
+      const cached = await readCachedRespellings(cacheClient, words, payload.targetLang, payload.nativeLang)
+      const missing = words.filter((word) => !cached[word])
+      if (missing.length === 0) return jsonResponse(200, { result: cached })
+
+      const { system, prompt } = buildPronunciationPrompt(missing, payload.targetLang, payload.nativeLang)
+      // General model (not the fast one): the fast one got many wrong (Luis, 4 Oct). Cheap anyway,
+      // because each word is generated once and then read from the table.
+      const raw = await callAnthropic(system, prompt, { maxTokens: pronunciationMaxTokens(missing.length), temperature: 0 }, usageTag)
+      const fresh = parsePronunciationReply(raw.text || '', missing)
+      await storeRespellings(cacheClient, fresh, payload.targetLang, payload.nativeLang, Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6')
+      return jsonResponse(200, { result: { ...cached, ...fresh } })
     }
 
     if (payload.action === 'word_example') {
@@ -969,6 +1039,7 @@ Deno.serve(async (req) => {
         'You generate high-quality learner examples. Reply ONLY in JSON. No markdown, no backticks.',
         prompt,
         { model: FAST_MODEL, maxTokens: 180, temperature: 0.1 },
+        usageTag,
       )
 
       return jsonResponse(200, {
@@ -1039,6 +1110,7 @@ Deno.serve(async (req) => {
             },
           },
         },
+        usageTag,
       )
 
       const parsed = parseSpellcheckCandidate(result.toolInput, result.text)
@@ -1074,6 +1146,7 @@ Deno.serve(async (req) => {
         'You are a precise language tutor. Keep responses short and useful. Reply ONLY JSON.',
         prompt,
         { model: FAST_MODEL, maxTokens: 260, temperature: 0.1 },
+        usageTag,
       )
 
       return jsonResponse(200, {
@@ -1136,8 +1209,8 @@ Deno.serve(async (req) => {
               type: 'object',
               properties: {
                 status: { type: 'string' },
-                suggestion: { type: 'string' },
-                nativeSuggestion: { type: 'string' },
+                suggestion: { type: ['string', 'null'] },
+                nativeSuggestion: { type: ['string', 'null'] },
                 comment: { type: 'string' },
                 targetFeedback: {
                   type: 'array',
@@ -1156,6 +1229,7 @@ Deno.serve(async (req) => {
             },
           },
         },
+        usageTag,
       )
 
       const parsedFromTool = result.toolInput
@@ -1264,6 +1338,7 @@ Deno.serve(async (req) => {
             Deno.env.get('ANTHROPIC_MODEL') ||
             'claude-sonnet-4-6',
           baseUrl: Deno.env.get('ANTHROPIC_BASE_URL') || undefined,
+          onUsage: (model, usage) => trackAnthropicUsage(usageTag, model, usage),
         }),
         {
           targetLang,

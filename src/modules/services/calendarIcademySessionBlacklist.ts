@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { supabase } from '@/lib/supabase'
 import type { CalendarIcademySessionBlacklistItem } from '../types'
 
@@ -46,7 +47,7 @@ function mapItem(
 async function getCurrentUserId(): Promise<string> {
   if (!supabase) {
     throw new CalendarIcademySessionBlacklistRequestError(
-      'Supabase no esta configurado.',
+      t('Supabase no esta configurado.'),
     )
   }
 
@@ -57,7 +58,7 @@ async function getCurrentUserId(): Promise<string> {
 
   if (error || !user) {
     throw new CalendarIcademySessionBlacklistRequestError(
-      'Necesitas iniciar sesión para gestionar sesiones silenciadas.',
+      t('Necesitas iniciar sesión para gestionar sesiones silenciadas.'),
       401,
     )
   }
@@ -78,7 +79,7 @@ export async function fetchCalendarIcademySessionBlacklist(): Promise<
 
   if (error) {
     throw new CalendarIcademySessionBlacklistRequestError(
-      'No se pudo cargar la lista de sesiones silenciadas.',
+      t('No se pudo cargar la lista de sesiones silenciadas.'),
       getErrorStatus(error),
     )
   }
@@ -109,7 +110,7 @@ export async function silenceCalendarIcademySession(input: {
 
   if (error) {
     throw new CalendarIcademySessionBlacklistRequestError(
-      'No se pudo silenciar esta sesión.',
+      t('No se pudo silenciar esta sesión.'),
       getErrorStatus(error),
     )
   }
@@ -130,7 +131,7 @@ export async function unsilenceCalendarIcademySession(
 
   if (error) {
     throw new CalendarIcademySessionBlacklistRequestError(
-      'No se pudo quitar el silencio de esta sesión.',
+      t('No se pudo quitar el silencio de esta sesión.'),
       getErrorStatus(error),
     )
   }

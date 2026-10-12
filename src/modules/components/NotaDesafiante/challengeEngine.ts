@@ -9,7 +9,9 @@
  * y modo bolsillo.
  */
 import { LANG_CODES } from '../../constants'
-import { speakNatural, stopTTS } from '../../services/tts'
+import { speakNatural, stopTTS, unlockSpeechAudio } from '../../services/tts'
+import { beginMicUse } from '../../services/audioSession'
+import { t } from '@/i18n'
 
 export const getLangCode = (langName: string): string => LANG_CODES[langName] || 'en-US'
 
@@ -116,9 +118,47 @@ function speakWithSynthesis(text: string, langName: string, rate = 1): Promise<v
   })
 }
 
+/**
+ * Says a text and resolves when it ends. The premium voice (Gemini) on every device, iPhone
+ * included (Luis, 9 Oct: on iPhone the games still used the robotic device voice). If the premium
+ * voice cannot play, speakNatural falls back to the device voice by itself.
+ */
 export function speakAsync(text: string, langName: string, rate = 1): Promise<void> {
-  if (isIOSDevice()) return speakWithSynthesis(text, langName, rate)
+  if (!text.trim()) return Promise.resolve()
   return new Promise((resolve) => speakNatural(text, langName, () => resolve(), rate))
+}
+
+/** Only the device voice (kept for the cases where the premium voice is not wanted). */
+export function speakDeviceVoiceAsync(text: string, langName: string, rate = 1): Promise<void> {
+  return speakWithSynthesis(text, langName, rate)
+}
+
+/**
+ * After a miss: a voice says the right answer and only then does the game move on (Luis, 8 Oct:
+ * the voice arrived when the next word was already on screen). `next` runs once, never before
+ * `minMs`, a short breath after the voice ends, and at the latest at `maxMs` (if the voice hangs,
+ * the next question cuts it). `schedule` is the screen's own timer, so leaving the screen cancels it.
+ */
+export function sayAnswerThenContinue(
+  text: string,
+  langName: string,
+  schedule: (fn: () => void, ms: number) => void,
+  next: () => void,
+  { delayMs = 450, minMs = 3400, afterVoiceMs = 700, maxMs = 8000 } = {},
+): void {
+  const startedAt = Date.now()
+  let done = false
+  const go = () => {
+    if (done) return
+    done = true
+    next()
+  }
+  schedule(() => {
+    void speakAsync(text, langName).then(() => {
+      if (!done) schedule(go, Math.max(afterVoiceMs, minMs - (Date.now() - startedAt)))
+    })
+  }, delayMs)
+  schedule(go, maxMs)
 }
 
 export function stopSpeaking(): void {
@@ -140,6 +180,8 @@ async function resumeAudioContext(ctx: AudioContext): Promise<void> {
  * aquí se "desbloquean" los dos con un sonido mudo, y después ya suenan solos.
  */
 export function unlockChallengeAudio(): void {
+  // The premium voice (Gemini) too: on iPhone it can only play later if it was unlocked in a tap.
+  unlockSpeechAudio()
   try {
     audioContext = audioContext || new AudioContext()
     void audioContext.resume().catch(() => {})
@@ -312,12 +354,12 @@ type SessionOutcome = ListenOutcome | { status: 'not-started' }
 
 function permissionMessage(): string {
   if (isIOSDevice()) {
-    return 'No hay permiso para el micrófono. En el iPhone: Ajustes › Apps › Safari › Micrófono › Permitir, y Ajustes › Privacidad y seguridad › Reconocimiento de voz › activa Safari. Después cierra la app y vuelve a abrirla.'
+    return t('No hay permiso para el micrófono. En el iPhone: Ajustes › Apps › Safari › Micrófono › Permitir, y Ajustes › Privacidad y seguridad › Reconocimiento de voz › activa Safari. Después cierra la app y vuelve a abrirla.')
   }
   if (isAndroidDevice()) {
-    return 'No hay permiso para el micrófono. Toca el candado (o los tres puntos › Ajustes del sitio) y activa el micrófono para icademy.app.'
+    return t('No hay permiso para el micrófono. Toca el candado (o los tres puntos › Ajustes del sitio) y activa el micrófono para icademy.app.')
   }
-  return 'No hay permiso para usar el micrófono. Permítelo en el candado de la barra de direcciones.'
+  return t('No hay permiso para usar el micrófono. Permítelo en el candado de la barra de direcciones.')
 }
 
 const MIC_NOT_OPENING_MESSAGE =
@@ -328,11 +370,16 @@ const MIC_NOT_OPENING_MESSAGE =
 let recognitionIdle: Promise<void> = Promise.resolve()
 
 function markRecognitionBusy(): () => void {
-  let release: () => void = () => {}
+  let resolveIdle: () => void = () => {}
   recognitionIdle = new Promise<void>((resolve) => {
-    release = resolve
+    resolveIdle = resolve
   })
-  return release
+  // iPhone: the sound session stays ready for the microphone while it listens (services/audioSession).
+  const releaseMic = beginMicUse()
+  return () => {
+    releaseMic()
+    resolveIdle()
+  }
 }
 
 async function waitRecognitionIdle(maxMs = 1500): Promise<void> {
@@ -419,6 +466,16 @@ export function composeRecognitionText(segments: Segment[], interim: string): st
 
 let microphoneReady = false
 
+/** ¿Ya se abrió el micro antes (en esta visita a la app)? Entonces no hace falta calentarlo. */
+export function isMicrophoneWarm(): boolean {
+  return microphoneReady
+}
+
+/** Espera a que el reconocimiento de voz esté cerrado del todo. */
+export async function waitMicrophoneReleased(maxMs = 1500): Promise<void> {
+  await waitRecognitionIdle(maxMs)
+}
+
 /**
  * Abre el reconocimiento de voz un momento, antes del primer trozo, para que los
  * permisos (micrófono y reconocimiento de voz) salgan al empezar y no en mitad del juego.
@@ -432,8 +489,8 @@ export function warmUpMicrophone(
     return Promise.resolve({
       ok: false,
       message: isIOSDevice()
-        ? 'Tu iPhone no deja usar el reconocimiento de voz aquí. Abre icademy.app en Safari.'
-        : 'Tu navegador no tiene reconocimiento de voz. Abre la app en Google Chrome.',
+        ? t('Tu iPhone no deja usar el reconocimiento de voz aquí. Abre icademy.app en Safari.')
+        : t('Tu navegador no tiene reconocimiento de voz. Abre la app en Google Chrome.'),
     })
   }
   if (microphoneReady) return Promise.resolve({ ok: true })
@@ -474,9 +531,9 @@ export function warmUpMicrophone(
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
           finish({ ok: false, message: permissionMessage() })
         } else if (event.error === 'audio-capture') {
-          finish({ ok: false, message: 'No se encuentra ningún micrófono.' })
+          finish({ ok: false, message: t('No se encuentra ningún micrófono.') })
         } else if (event.error === 'network') {
-          finish({ ok: false, message: 'El reconocimiento de voz necesita conexión a internet.' })
+          finish({ ok: false, message: t('El reconocimiento de voz necesita conexión a internet.') })
         }
         // 'no-speech' / 'aborted': el micro funciona; se decide en onend.
       }
@@ -669,12 +726,12 @@ function listenSession(
       if (event.error === 'network') {
         errorOutcome = {
           status: 'error',
-          message: 'El reconocimiento de voz necesita conexión a internet.',
+          message: t('El reconocimiento de voz necesita conexión a internet.'),
         }
         return
       }
       if (event.error === 'audio-capture') {
-        errorOutcome = { status: 'error', message: 'No se encuentra ningún micrófono.' }
+        errorOutcome = { status: 'error', message: t('No se encuentra ningún micrófono.') }
       }
     }
 
@@ -782,7 +839,7 @@ export function listenOnce(
     return {
       promise: Promise.resolve({
         status: 'error',
-        message: 'Tu navegador no tiene reconocimiento de voz. Abre la app en Google Chrome.',
+        message: t('Tu navegador no tiene reconocimiento de voz. Abre la app en Google Chrome.'),
       }),
       cancel: () => {},
     }
@@ -807,7 +864,7 @@ export function listenOnce(
       // El micro no se abrió: se intenta una vez más con uno nuevo.
       await wait(400)
     }
-    return { status: 'error', message: MIC_NOT_OPENING_MESSAGE }
+    return { status: 'error', message: t(MIC_NOT_OPENING_MESSAGE) }
   }
 
   let resolveCancelled: (outcome: ListenOutcome) => void = () => {}

@@ -98,6 +98,27 @@ export async function loadChallengeData(
   return map
 }
 
+/**
+ * Activación guiada: los trozos de una frase para guiar la grabación. Si la frase aún no se ha
+ * dividido y la nota desafiante está encendida, se le pide al servidor (lo mismo que haría el
+ * desafío de la nota). Nunca lanza: sin trozos, la activación usa su plan B.
+ */
+export async function loadPhraseChunksForActivation(phraseId: string): Promise<PhraseChunk[] | null> {
+  try {
+    const stored = (await loadChallengeData([phraseId]))[phraseId]
+    if (stored?.chunks?.length) return stored.chunks
+    if (stored?.ready == null) await useFeatureFlagsStore.getState().loadFlags()
+    if (stored?.ready == null && isChallengeEnabledNow()) {
+      const prepared = await requestPhraseChallenge(phraseId)
+      return prepared?.chunks?.length ? prepared.chunks : null
+    }
+    return null
+  } catch (error) {
+    console.error('[activación guiada] trozos', error)
+    return null
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Al crear una frase (PhraseView)
 // ---------------------------------------------------------------------------

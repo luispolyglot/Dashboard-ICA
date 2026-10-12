@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
+import { sendIcaChallengeJobNotices } from '../_shared/ica-challenge-job-notices.ts'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -27,6 +28,26 @@ type PreferencesRow = {
   habit_loss_last_stage: number
   ica_streak_last_reminded_day: string | null
   flashcards_streak_last_reminded_day: string | null
+  streak_risk_enabled: boolean
+  streak_risk_last_day: string | null
+}
+
+// Usuarios con el móvil/navegador suscrito pero sin fila de preferencias: todos los avisos
+// vienen activados por defecto (Luis, 7 oct), igual que los valores por defecto de la tabla.
+function defaultPreferences(userId: string): PreferencesRow {
+  return {
+    user_id: userId,
+    ica_streak_enabled: true,
+    ica_streak_hour: 20,
+    flashcards_streak_enabled: true,
+    flashcards_streak_hour: 20,
+    habit_loss_enabled: true,
+    habit_loss_last_stage: 0,
+    ica_streak_last_reminded_day: null,
+    flashcards_streak_last_reminded_day: null,
+    streak_risk_enabled: true,
+    streak_risk_last_day: null,
+  }
 }
 
 type ProfileRow = {
@@ -39,6 +60,7 @@ type DailyMetricsGoalRow = {
   day: string
   creation_goal_completed: boolean
   review_goal_completed: boolean
+  creation_streak_saved_at: string | null
 }
 
 type DailyMetricsActivityRow = {
@@ -47,21 +69,39 @@ type DailyMetricsActivityRow = {
 }
 
 type ReminderEvent = {
-  kind: 'ica_streak' | 'flashcards_streak' | 'habit_loss'
+  kind: 'ica_streak' | 'flashcards_streak' | 'habit_loss' | 'streak_risk'
   payload: {
     title: string
     body: string
     url: string
     tag: string
+    icon?: string
   }
   stage?: 1 | 2 | 3
   localDay?: string
 }
 
 const HABIT_MESSAGES: Record<1 | 2 | 3, string> = {
-  1: 'Hey, no falles hoy también a tu racha ICA para no perder el hábito',
-  2: 'Todavía estas a tiempo de recuperar tu ritmo ICA. Sólo necesitas unos minutos para sumar ese 1%.',
-  3: 'Veo que las notificaciones no están funcionando contigo. No te defraudes. Ya no te molestaré más',
+  1: 'Ayer no hiciste tu ciclo ICA. Hazlo hoy y no pierdas el hábito.',
+  2: 'Todavía estás a tiempo de recuperar tu ritmo. Solo necesitas unos minutos para sumar ese 1 %.',
+  3: 'Dejo de mandarte estos avisos. Cuando quieras volver, tu ciclo ICA te espera.',
+}
+
+// The last notice says goodbye, so it gets its own title (Luis, 6 Oct).
+const HABIT_TITLES: Record<1 | 2 | 3, string> = {
+  1: 'Recupera tu hábito ICA',
+  2: 'Recupera tu hábito ICA',
+  3: 'Te esperamos en ICA',
+}
+
+// RACHA EN PELIGRO: se avisa cuando quedan estas horas para medianoche (a las 19:00 locales).
+const STREAK_RISK_HOURS = 5
+const STREAK_RISK_LOCAL_HOUR = 24 - STREAK_RISK_HOURS
+
+function shiftDay(isoDay: string, days: number): string {
+  const date = new Date(`${isoDay}T12:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
 }
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -161,6 +201,9 @@ Deno.serve(async (req) => {
   webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey)
+
+  // Challenge notices queued by the expiration job (expired, turn lost). Never blocks the reminders.
+  await sendIcaChallengeJobNotices({ adminClient, webpush })
   const now = new Date()
 
   const [subscriptionsResult, preferencesResult] = await Promise.all([
@@ -171,9 +214,8 @@ Deno.serve(async (req) => {
     adminClient
       .from('user_push_notification_preferences')
       .select(
-        'user_id, ica_streak_enabled, ica_streak_hour, flashcards_streak_enabled, flashcards_streak_hour, habit_loss_enabled, habit_loss_last_stage, ica_streak_last_reminded_day, flashcards_streak_last_reminded_day',
-      )
-      .or('ica_streak_enabled.eq.true,flashcards_streak_enabled.eq.true,habit_loss_enabled.eq.true'),
+        'user_id, ica_streak_enabled, ica_streak_hour, flashcards_streak_enabled, flashcards_streak_hour, habit_loss_enabled, habit_loss_last_stage, ica_streak_last_reminded_day, flashcards_streak_last_reminded_day, streak_risk_enabled, streak_risk_last_day',
+      ),
   ])
 
   if (subscriptionsResult.error || preferencesResult.error) {
@@ -186,7 +228,19 @@ Deno.serve(async (req) => {
   }
 
   const subscriptions = (subscriptionsResult.data || []) as PushSubscriptionRow[]
-  const preferences = (preferencesResult.data || []) as PreferencesRow[]
+  const storedPreferences = (preferencesResult.data || []) as PreferencesRow[]
+  const usersWithRow = new Set(storedPreferences.map((item) => item.user_id))
+  const subscribedUsers = Array.from(new Set(subscriptions.map((item) => item.user_id)))
+  const preferences = [
+    ...storedPreferences.filter(
+      (item) =>
+        item.ica_streak_enabled ||
+        item.flashcards_streak_enabled ||
+        item.habit_loss_enabled ||
+        item.streak_risk_enabled,
+    ),
+    ...subscribedUsers.filter((userId) => !usersWithRow.has(userId)).map(defaultPreferences),
+  ]
 
   if (subscriptions.length === 0 || preferences.length === 0) {
     return jsonResponse(200, {
@@ -243,12 +297,15 @@ Deno.serve(async (req) => {
     goalDayByUser.set(preference.user_id, day)
   }
 
-  const dayValues = Array.from(new Set(goalDayByUser.values()))
+  // Hoy y ayer (para saber si hay racha que perder).
+  const dayValues = Array.from(
+    new Set(Array.from(goalDayByUser.values()).flatMap((day) => [day, shiftDay(day, -1)])),
+  )
   const goalsByUserDay = new Map<string, DailyMetricsGoalRow>()
   if (dayValues.length > 0) {
     const metricsResult = await adminClient
       .from('daily_metrics')
-      .select('user_id, day, creation_goal_completed, review_goal_completed')
+      .select('user_id, day, creation_goal_completed, review_goal_completed, creation_streak_saved_at')
       .in('user_id', userIds)
       .in('day', dayValues)
 
@@ -293,8 +350,8 @@ Deno.serve(async (req) => {
           kind: 'ica_streak',
           localDay: local.day,
           payload: {
-            title: 'Racha ICA pendiente',
-            body: 'Todavia no completaste hoy tu racha ICA. Te toma solo unos minutos.',
+            title: 'Tu ciclo ICA de hoy',
+            body: 'Todavía no lo has hecho. Solo cinco minutos y ya lo tienes.',
             url: '/streaks',
             tag: `ica-streak-${local.day}`,
           },
@@ -322,6 +379,37 @@ Deno.serve(async (req) => {
       }
     }
 
+    // RACHA EN PELIGRO: ayer hizo el ciclo (o lo salvó con CongeladICA), hoy aún no,
+    // y son las 19:00 en su zona. Sustituye al recordatorio normal si coincide la hora.
+    const yesterdayGoals = goalsByUserDay.get(`${preference.user_id}:${shiftDay(local.day, -1)}`)
+    const streakAlive = Boolean(
+      yesterdayGoals?.creation_goal_completed || yesterdayGoals?.creation_streak_saved_at,
+    )
+    if (
+      preference.streak_risk_enabled &&
+      local.hour === STREAK_RISK_LOCAL_HOUR &&
+      preference.streak_risk_last_day !== local.day &&
+      streakAlive &&
+      !todayGoals?.creation_goal_completed
+    ) {
+      const plainIcaReminder = userEvents.findIndex((event) => event.kind === 'ica_streak')
+      if (plainIcaReminder >= 0) {
+        userEvents.splice(plainIcaReminder, 1)
+        updatePayload.ica_streak_last_reminded_day = local.day
+      }
+      userEvents.push({
+        kind: 'streak_risk',
+        localDay: local.day,
+        payload: {
+          title: `Te quedan ${STREAK_RISK_HOURS} horas`,
+          body: 'Salva tu racha ICA antes de que sea muy tarde.',
+          url: '/',
+          tag: `ica-streak-risk-${local.day}`,
+          icon: '/push-clock-192.png',
+        },
+      })
+    }
+
     if (preference.habit_loss_enabled) {
       const lastActivity = lastActivityByUser.get(preference.user_id)
       const previousStage = Math.max(0, Number(preference.habit_loss_last_stage || 0))
@@ -347,7 +435,7 @@ Deno.serve(async (req) => {
               kind: 'habit_loss',
               stage: dueStage,
               payload: {
-                title: 'Recupera tu hábito ICA',
+                title: HABIT_TITLES[dueStage],
                 body: HABIT_MESSAGES[dueStage],
                 url: '/streaks',
                 tag: `habit-loss-stage-${dueStage}`,
@@ -358,7 +446,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (Object.keys(updatePayload).length > 0) {
+    if (Object.keys(updatePayload).length > 0 && usersWithRow.has(preference.user_id)) {
       const { error: updateError } = await adminClient
         .from('user_push_notification_preferences')
         .update(updatePayload)
@@ -419,6 +507,10 @@ Deno.serve(async (req) => {
         updatePayload.flashcards_streak_last_reminded_day = event.localDay
       }
 
+      if (event.kind === 'streak_risk' && event.localDay) {
+        updatePayload.streak_risk_last_day = event.localDay
+      }
+
       if (event.kind === 'habit_loss' && event.stage) {
         updatePayload.habit_loss_last_stage = event.stage
         updatePayload.habit_loss_last_notified_at = now.toISOString()
@@ -429,10 +521,15 @@ Deno.serve(async (req) => {
     }
 
     if (Object.keys(updatePayload).length > 0) {
-      const { error: updateError } = await adminClient
-        .from('user_push_notification_preferences')
-        .update(updatePayload)
-        .eq('user_id', preference.user_id)
+      // Sin fila de preferencias: se crea (con los valores por defecto) para guardar el día del aviso.
+      const { error: updateError } = usersWithRow.has(preference.user_id)
+        ? await adminClient
+            .from('user_push_notification_preferences')
+            .update(updatePayload)
+            .eq('user_id', preference.user_id)
+        : await adminClient
+            .from('user_push_notification_preferences')
+            .upsert({ user_id: preference.user_id, ...updatePayload }, { onConflict: 'user_id' })
 
       if (!updateError) {
         updatesApplied += 1

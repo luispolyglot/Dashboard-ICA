@@ -1,8 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import {
+  CheckIcon,
+  Loader2Icon,
+  MicIcon,
+  PauseIcon,
+  PlayIcon,
+  SparklesIcon,
+  SquareIcon,
+  TimerIcon,
+  Trash2Icon,
+  XIcon,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -11,29 +22,57 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { ActivationGuide, PausedRecordingActions } from '../components/ActivationGuide'
+import { ActivationHowToDialog } from '../components/ActivationHowToDialog'
 import { ExplorePhraseTokenModal } from '../components/ExplorePhraseTokenModal'
 import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
 import { InteractivePhraseText } from '../components/InteractivePhraseText'
 import { RomanizationHint } from '../components/RomanizationHint'
 import { SpeakButton } from '../components/SpeakButton'
+import { FirstUseTip, useFirstUseTip } from '../components/FirstUseTip'
 import { useDashboardContext } from '../context/DashboardContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchPhraseHistoryEntry } from '../services/phraseHistory'
+import { buildActivationPairs, inSentence, type ActivationPair } from '../services/activationGuide'
+import { loadPhraseChunksForActivation } from '../services/challengeChunks'
 import {
   MASTER_NOTE_COMPLETE_DURATION_MS,
+  MASTER_NOTE_MAX_DURATION_MS,
   addMasterNoteChunk,
   closeMasterNote,
   fetchMasterNoteById,
   fetchMasterNoteChunks,
+  formatMasterNoteLabel,
   rerecordMasterNoteChunk,
 } from '../services/masterNotes'
 import { MasterNoteProgressBar } from '../components/MasterNoteProgressBar'
+import {
+  ErrorNote,
+  RoundActionButton,
+  SquareIconButton,
+  formatDuration,
+} from '../components/MasterNoteGameUi'
+import { DailyLimitNotice } from '../game/DailyLimitNotice'
+import { useDailyLimits } from '../game/limits'
+import { beginMicUse } from '../services/audioSession'
+import {
+  EmptyState,
+  GamePage,
+  IconTile,
+  PageTitle,
+  Panel,
+  PhaseLetter,
+  Pill,
+  SectionLabel,
+  tone,
+} from '../game/ui'
 import type {
   Lexicard,
   MasterNote,
   MasterNoteChunk,
   PhraseGenerationEntry,
 } from '../types'
+import { langName, t } from '@/i18n'
 
 type MasterNoteActivatePhraseViewProps = {
   noteId: string
@@ -55,6 +94,8 @@ type RecordingDraft = {
 
 const MIN_CLOSED_NOTE_DURATION_MS = MASTER_NOTE_COMPLETE_DURATION_MS
 const MIN_SAVE_DURATION_MS = 10 * 1000
+/** Below this size a take has no real sound (10 s of voice weighs well over 50 KB). */
+const MIN_RECORDING_BYTES = 2 * 1024
 
 type PendingLeaveAction =
   | {
@@ -65,13 +106,6 @@ type PendingLeaveAction =
       kind: 'back'
     }
   | null
-
-function formatDuration(durationMs: number): string {
-  const totalSeconds = Math.max(0, Math.round(durationMs / 1000))
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${minutes}:${String(seconds).padStart(2, '0')}`
-}
 
 function getPreferredMimeType(): string {
   if (typeof window === 'undefined' || typeof MediaRecorder === 'undefined') {
@@ -109,6 +143,19 @@ export function MasterNoteActivatePhraseView({
   const [searchParams] = useSearchParams()
   const { refreshCreationDaysFromSource } = useDashboardContext()
   const rerecordMode = searchParams.get('mode') === 'rerecord'
+  // Límite diario de activaciones (2, o 4 con Activación ampliada hoy). Regrabar no cuenta.
+  const dailyLimits = useDailyLimits()
+  // First-use bubble over the mic (Luis, 6 Oct): the last step of the I·C·A walk-through.
+  const [recordTipStored, closeRecordTip] = useFirstUseTip('activate-record')
+  // First activation (Luis, 9 Oct): first «listen to it», then the mic, then «next part» while recording.
+  const [listenTipPending, closeListenTip] = useFirstUseTip('activate-listen')
+  const recordTipPending = recordTipStored
+  // «Así se activa una frase» (Luis, 9 Oct): the first tap on Activar frase explains the order
+  // before recording; the «?» in the guide opens it again while recording.
+  const [howtoPending, closeHowto] = useFirstUseTip('activate-howto')
+  const [howtoMode, setHowtoMode] = useState<'start' | 'help' | null>(null)
+  const activationLimitReached =
+    !rerecordMode && dailyLimits.isAtLimit('activations')
   const rerecordChunkId = useMemo(() => {
     const raw = (searchParams.get('chunkId') || '').trim()
     if (!raw || !isUuid(raw)) return null
@@ -134,6 +181,15 @@ export function MasterNoteActivatePhraseView({
   const [extractWordsModalOpen, setExtractWordsModalOpen] = useState(false)
   const [exploreModalOpen, setExploreModalOpen] = useState(false)
   const [exploreToken, setExploreToken] = useState('')
+  // Activación guiada: trozos de la frase (nota desafiante) y la parte en la que vas al grabar.
+  const [phraseChunks, setPhraseChunks] = useState<unknown>(null)
+  const [guidePairs, setGuidePairs] = useState<ActivationPair[] | null>(null)
+  const [guideStep, setGuideStep] = useState(0)
+  const guideRef = useRef<HTMLDivElement | null>(null)
+  // When the big mic is below the fold (long phrase on a phone), a floating button starts the
+  // recording, so «Activar frase» is always on the first screen (Luis, 9 Oct).
+  const micAnchorRef = useRef<HTMLSpanElement | null>(null)
+  const [micInView, setMicInView] = useState(true)
   const pendingLeaveRef = useRef<PendingLeaveAction>(null)
   const allowNavigationRef = useRef(false)
   const pageSectionRef = useRef<HTMLElement | null>(null)
@@ -154,9 +210,16 @@ export function MasterNoteActivatePhraseView({
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
+  // iPhone: keeps the sound session ready for the microphone while recording (services/audioSession).
+  const micReleaseRef = useRef<(() => void) | null>(null)
+  // The take stops by itself when the note reaches 4:00 (Luis, 12 Oct): how long it may last (ms).
+  const recordLimitMsRef = useRef<number>(Number.POSITIVE_INFINITY)
   const recordedChunksRef = useRef<Blob[]>([])
   const recordingStartedAtRef = useRef<number | null>(null)
   const recordingPausedAtRef = useRef<number | null>(null)
+  // «Empezar de nuevo» (Luis, 11 Oct): the take being recorded is thrown away and a new one starts.
+  const discardOnStopRef = useRef(false)
+  const [restartPending, setRestartPending] = useState(false)
   const recordingTotalPausedMsRef = useRef(0)
   const recordingIntervalRef = useRef<number | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -290,6 +353,14 @@ export function MasterNoteActivatePhraseView({
     setRecordingPaused(true)
   }
 
+  const restartRecording = (): void => {
+    const recorder = mediaRecorderRef.current
+    if (!recorder || recorder.state === 'inactive') return
+    discardOnStopRef.current = true
+    setRestartPending(true)
+    recorder.stop()
+  }
+
   const resumeRecording = (): void => {
     const recorder = mediaRecorderRef.current
     if (!recorder || recorder.state !== 'paused' || !recordingPaused) return
@@ -313,7 +384,7 @@ export function MasterNoteActivatePhraseView({
           fetchMasterNoteChunks(noteId),
         ])
         if (!foundNote || !foundPhrase) {
-          setError('No se encontró la nota o frase seleccionada')
+          setError(t('No se encontró la nota o frase seleccionada'))
           return
         }
 
@@ -331,17 +402,17 @@ export function MasterNoteActivatePhraseView({
 
         if (foundNote.state !== 'open' && !rerecordMode) {
           setError(
-            'La nota maestra está cerrada y no admite nuevas activaciones',
+            t('La nota maestra está cerrada y no admite nuevas activaciones'),
           )
           setRerecordChunk(null)
           setPhraseAlreadyActivated(false)
         } else if (rerecordMode) {
           if (!rerecordChunkId || !targetRerecordChunk) {
-            setError('No se encontró el audio a regrabar en esta nota maestra')
+            setError(t('No se encontró el audio a regrabar en esta nota maestra'))
             setRerecordChunk(null)
             setPhraseAlreadyActivated(false)
           } else if (targetRerecordChunk.phrase_generation_id !== phraseId) {
-            setError('El audio seleccionado no corresponde a esta frase')
+            setError(t('El audio seleccionado no corresponde a esta frase'))
             setRerecordChunk(null)
             setPhraseAlreadyActivated(false)
           } else {
@@ -350,7 +421,7 @@ export function MasterNoteActivatePhraseView({
             setPhraseAlreadyActivated(false)
           }
         } else if (phraseChunk) {
-          setError('Esta frase ya fue activada en esta nota maestra')
+          setError(t('Esta frase ya fue activada en esta nota maestra'))
           setRerecordChunk(null)
           setPhraseAlreadyActivated(true)
         } else {
@@ -363,7 +434,7 @@ export function MasterNoteActivatePhraseView({
         setPhrase(foundPhrase)
       } catch (err) {
         console.error(err)
-        setError('No se pudo cargar la activación de frase')
+        setError(t('No se pudo cargar la activación de frase'))
       } finally {
         setLoading(false)
       }
@@ -379,6 +450,8 @@ export function MasterNoteActivatePhraseView({
         mediaRecorderRef.current.stop()
       }
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+      micReleaseRef.current?.()
+      micReleaseRef.current = null
       if (recordingIntervalRef.current !== null) {
         window.clearInterval(recordingIntervalRef.current)
       }
@@ -386,6 +459,90 @@ export function MasterNoteActivatePhraseView({
       if (recordingDraft) URL.revokeObjectURL(recordingDraft.url)
     }
   }, [noteId, phraseId, rerecordChunkId, rerecordMode, targetLang])
+
+  // Los trozos llegan aparte y sin bloquear: mientras no estén, la guía usa su plan B.
+  const loadedPhraseId = phrase?.id ?? null
+  useEffect(() => {
+    setPhraseChunks(null)
+    if (!loadedPhraseId) return
+    let alive = true
+    void loadPhraseChunksForActivation(loadedPhraseId).then((chunks) => {
+      if (alive) setPhraseChunks(chunks)
+    })
+    return () => {
+      alive = false
+    }
+  }, [loadedPhraseId])
+
+  const plannedPairs = useMemo<ActivationPair[] | null>(() => {
+    const target = phrase?.generated_phrase?.trim()
+    const native = phrase?.translation?.trim()
+    if (!target || !native) return null
+    return buildActivationPairs({ target, native }, phraseChunks).pairs
+  }, [phrase?.generated_phrase, phrase?.translation, phraseChunks])
+
+  const guideActive = recording && Boolean(guidePairs?.length)
+  const guideTotal = guidePairs?.length ?? 0
+  const nextGuideStep = (): void => {
+    setGuideStep((step) => Math.min(step + 1, Math.max(0, guideTotal - 1)))
+  }
+  const prevGuideStep = (): void => {
+    setGuideStep((step) => Math.max(0, step - 1))
+  }
+
+  // Tocar en cualquier sitio (o la flecha derecha) pasa a la siguiente parte.
+  useEffect(() => {
+    if (!guideActive || recordingPaused || leaveDialogOpen || howtoMode) return
+    const ignore = (target: EventTarget | null): boolean =>
+      target instanceof Element &&
+      Boolean(target.closest('button, a, input, textarea, select, audio, [role="dialog"], [role="note"]'))
+    const onClick = (event: MouseEvent): void => {
+      if (event.defaultPrevented || event.button !== 0 || ignore(event.target)) return
+      nextGuideStep()
+    }
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      if (event.key === 'ArrowRight' || ((event.key === ' ' || event.key === 'Enter') && !ignore(event.target))) {
+        event.preventDefault()
+        nextGuideStep()
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        prevGuideStep()
+      }
+    }
+    document.addEventListener('click', onClick)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('click', onClick)
+      document.removeEventListener('keydown', onKey)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guideActive, recordingPaused, leaveDialogOpen, guideTotal, howtoMode])
+
+  // En el móvil, al empezar a grabar la guía sube arriba para ver las dos frases y el micro.
+  useEffect(() => {
+    if (!guideActive) return
+    if (window.matchMedia('(min-width: 1024px)').matches) return
+    const frame = window.requestAnimationFrame(() => {
+      guideRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [guideActive])
+
+  useEffect(() => {
+    const anchor = micAnchorRef.current
+    if (!anchor || recording || typeof IntersectionObserver === 'undefined') {
+      setMicInView(true)
+      return
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => setMicInView(entry.isIntersecting && entry.intersectionRatio >= 0.6),
+      // The phone's bottom bar covers the last ~90 px.
+      { rootMargin: '0px 0px -90px 0px', threshold: [0, 0.3, 0.6, 0.9, 1] },
+    )
+    observer.observe(anchor)
+    return () => observer.disconnect()
+  }, [loading, recording, recordingDraft, phrase?.id])
 
   const rerecordDurationMs = rerecordChunk?.duration_ms || 0
   const effectiveNoteDurationMs = Math.max(
@@ -408,7 +565,8 @@ export function MasterNoteActivatePhraseView({
     !!note &&
     (rerecordMode || note.state === 'open') &&
     !phraseAlreadyActivated &&
-    (!rerecordMode || Boolean(rerecordChunk))
+    (!rerecordMode || Boolean(rerecordChunk)) &&
+    (!activationLimitReached || Boolean(recordingDraft))
 
   const isDraftTooShort =
     !!recordingDraft && recordingDraft.durationMs < MIN_SAVE_DURATION_MS
@@ -416,7 +574,9 @@ export function MasterNoteActivatePhraseView({
     isClosedRerecord && recordingDraft && note && rerecordChunk
       ? Math.max(
           0,
-          note.total_duration_ms - rerecordChunk.duration_ms + recordingDraft.durationMs,
+          note.total_duration_ms -
+            rerecordChunk.duration_ms +
+            recordingDraft.durationMs,
         )
       : null
   const breaksClosedMinTotal =
@@ -463,18 +623,26 @@ export function MasterNoteActivatePhraseView({
         node.getByteFrequencyData(data)
 
         ctx.clearRect(0, 0, width, height)
-        ctx.fillStyle = '#1f2937'
-        ctx.fillRect(0, 0, width, height)
 
-        const barCount = data.length
-        const barWidth = width / barCount
+        // Barras redondeadas del color de la A (el lienzo lleva `color: var(--ica-a)`), centradas.
+        const barColor = window.getComputedStyle(canvas).color || '#ef4444'
+        const barCount = Math.min(48, data.length)
+        const gap = 3 * dpr
+        const barWidth = Math.max(2, (width - gap * (barCount - 1)) / barCount)
+        ctx.fillStyle = barColor
         for (let i = 0; i < barCount; i += 1) {
           const value = data[i] / 255
-          const barHeight = Math.max(2, value * height)
-          const x = i * barWidth
-          const y = height - barHeight
-          ctx.fillStyle = '#60a5fa'
-          ctx.fillRect(x, y, Math.max(1, barWidth - 1), barHeight)
+          const barHeight = Math.max(4 * dpr, value * height)
+          const x = i * (barWidth + gap)
+          const y = (height - barHeight) / 2
+          const radius = Math.min(barWidth / 2, barHeight / 2)
+          ctx.beginPath()
+          if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(x, y, barWidth, barHeight, radius)
+          } else {
+            ctx.rect(x, y, barWidth, barHeight)
+          }
+          ctx.fill()
         }
       }
 
@@ -490,11 +658,24 @@ export function MasterNoteActivatePhraseView({
       !navigator.mediaDevices?.getUserMedia ||
       typeof MediaRecorder === 'undefined'
     ) {
-      setError('No se puede usar micrófono en este dispositivo')
+      setError(t('No se puede usar micrófono en este dispositivo'))
       return
     }
 
+    // 4:00 at most per note. A re-recording may keep a note that is already longer, never raise it.
+    const allowedTotalMs = rerecordMode
+      ? Math.max(MASTER_NOTE_MAX_DURATION_MS, note?.total_duration_ms || 0)
+      : MASTER_NOTE_MAX_DURATION_MS
+    const recordLimitMs = allowedTotalMs - effectiveNoteDurationMs - 500
+    if (recordLimitMs < MIN_SAVE_DURATION_MS) {
+      setError(t('Esta nota maestra ya está en el máximo de 4:00.'))
+      return
+    }
+    recordLimitMsRef.current = recordLimitMs
+
     try {
+      micReleaseRef.current?.()
+      micReleaseRef.current = beginMicUse()
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const preferredMimeType = getPreferredMimeType()
       const recorder = MediaRecorder.isTypeSupported(preferredMimeType)
@@ -507,6 +688,9 @@ export function MasterNoteActivatePhraseView({
       recordingTotalPausedMsRef.current = 0
       mediaRecorderRef.current = recorder
       mediaStreamRef.current = stream
+      // La guía se fija al empezar: no cambia a mitad de la grabación aunque lleguen los trozos.
+      setGuidePairs(plannedPairs)
+      setGuideStep(0)
       setRecording(true)
       setRecordingPaused(false)
       setRecordingElapsedMs(0)
@@ -517,7 +701,10 @@ export function MasterNoteActivatePhraseView({
         window.clearInterval(recordingIntervalRef.current)
       }
       recordingIntervalRef.current = window.setInterval(() => {
-        setRecordingElapsedMs(getRecordingElapsedMs(Date.now()))
+        const elapsed = getRecordingElapsedMs(Date.now())
+        setRecordingElapsedMs(elapsed)
+        // At 4:00 the take ends by itself and stays as a draft to listen to and save.
+        if (elapsed >= recordLimitMsRef.current) stopRecording()
       }, 200)
 
       recorder.ondataavailable = (event: BlobEvent) => {
@@ -527,10 +714,16 @@ export function MasterNoteActivatePhraseView({
       recorder.onstop = () => {
         const startedAt = recordingStartedAtRef.current
         const mimeType = recorder.mimeType || preferredMimeType
-        if (startedAt) {
+        const discard = discardOnStopRef.current
+        discardOnStopRef.current = false
+        if (startedAt && !discard) {
           const durationMs = getRecordingElapsedMs(Date.now())
           const blob = new Blob(recordedChunksRef.current, { type: mimeType })
-          if (blob.size > 0) {
+          // A take with no sound (the microphone gave nothing) is not offered for saving: it
+          // would add time to the note and break its playback (Luis, 12 Oct).
+          if (blob.size < MIN_RECORDING_BYTES && durationMs >= 3000) {
+            setError(t('No se ha grabado ningún sonido. Revisa el micrófono y vuelve a grabar.'))
+          } else if (blob.size > 0) {
             const url = URL.createObjectURL(blob)
             setRecordingDraft((prev) => {
               if (prev) URL.revokeObjectURL(prev.url)
@@ -546,6 +739,8 @@ export function MasterNoteActivatePhraseView({
         }
 
         mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+        micReleaseRef.current?.()
+        micReleaseRef.current = null
         mediaStreamRef.current = null
         mediaRecorderRef.current = null
         recordingStartedAtRef.current = null
@@ -565,8 +760,10 @@ export function MasterNoteActivatePhraseView({
       recorder.start()
     } catch (err) {
       console.error(err)
-      setError('No se pudo iniciar la grabación')
+      setError(t('No se pudo iniciar la grabación'))
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+      micReleaseRef.current?.()
+      micReleaseRef.current = null
       mediaStreamRef.current = null
       mediaRecorderRef.current = null
       recordingPausedAtRef.current = null
@@ -582,10 +779,34 @@ export function MasterNoteActivatePhraseView({
     }
   }
 
+  // After «Empezar de nuevo», once the old take has stopped, a new one starts right away.
+  useEffect(() => {
+    if (!restartPending || recording) return
+    setRestartPending(false)
+    void startRecording()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restartPending, recording])
+
+  const requestStartRecording = (): void => {
+    if (recordTipPending) closeRecordTip()
+    if (howtoPending && plannedPairs) {
+      setHowtoMode('start')
+      return
+    }
+    void startRecording()
+  }
+
+  const confirmHowto = (): void => {
+    const mode = howtoMode
+    closeHowto()
+    setHowtoMode(null)
+    if (mode === 'start') void startRecording()
+  }
+
   const handleSaveChunk = async (): Promise<void> => {
     if (!recordingDraft || !note || !phrase || saving) return
     if (breaksClosedMinTotal) {
-      setError('Una nota cerrada no puede quedar por debajo de 3:00')
+      setError(t('Una nota cerrada no puede quedar por debajo de 3:00'))
       return
     }
 
@@ -623,7 +844,10 @@ export function MasterNoteActivatePhraseView({
 
       // La nota se completa sola al guardar la grabación que la lleva a 3:00 o más.
       // Nunca cortamos a mitad de grabación: si estaba en 2:50 y graba 0:30, queda en 3:20.
-      if (note.state === 'open' && nextTotalMs >= MASTER_NOTE_COMPLETE_DURATION_MS) {
+      if (
+        note.state === 'open' &&
+        nextTotalMs >= MASTER_NOTE_COMPLETE_DURATION_MS
+      ) {
         setCompletingNote(true)
         try {
           const closeResult = await closeMasterNote(note.id)
@@ -644,17 +868,17 @@ export function MasterNoteActivatePhraseView({
       navigate(rerecordMode ? `${noteUrl}?rerecordUpdated=1` : noteUrl)
     } catch (err) {
       console.error(err)
-      const message =
-        err instanceof Error &&
-        (err.message.includes('CLOSED_NOTE_MIN_TOTAL_3_00') ||
-          err.message.includes('CLOSED_NOTE_MIN_TOTAL_3_30'))
-          ? 'Una nota cerrada no puede quedar por debajo de 3:00'
+      const rawMessage = String((err as { message?: unknown } | null)?.message ?? '')
+      const message = rawMessage.includes('MASTER_NOTE_MAX_4_00')
+        ? t('Una nota maestra no puede pasar de 4:00. Graba una parte más corta.')
+        : rawMessage.includes('CLOSED_NOTE_MIN_TOTAL_3_00') || rawMessage.includes('CLOSED_NOTE_MIN_TOTAL_3_30')
+          ? t('Una nota cerrada no puede quedar por debajo de 3:00')
           : null
       setError(
         message ||
           (rerecordMode
-            ? 'No se pudo guardar la regrabación en la nota maestra'
-            : 'No se pudo guardar el audio en la nota maestra'),
+            ? t('No se pudo guardar la regrabación en la nota maestra')
+            : t('No se pudo guardar el audio en la nota maestra')),
       )
     } finally {
       setSaving(false)
@@ -691,235 +915,441 @@ export function MasterNoteActivatePhraseView({
     return (
       <section
         ref={pageSectionRef}
-        className='mx-auto w-full max-w-3xl flex-1 px-5 pt-8 pb-24 lg:pb-8'
+        className='mx-auto flex w-full max-w-xl flex-1 flex-col gap-6 px-4 pt-2 pb-8 lg:py-8'
       >
-        <p className='text-sm text-muted-foreground'>Cargando activación...</p>
+        <p className='sr-only'>{t('Cargando activación...')}</p>
+        <div className='flex items-center gap-3' aria-hidden='true'>
+          <div className='size-12 animate-pulse rounded-2xl bg-muted' />
+          <div className='h-8 w-48 animate-pulse rounded-xl bg-muted' />
+        </div>
+        <div
+          className='h-52 animate-pulse rounded-3xl bg-muted'
+          aria-hidden='true'
+        />
+        <div
+          className='h-72 animate-pulse rounded-3xl bg-muted'
+          aria-hidden='true'
+        />
       </section>
     )
   }
 
   if (!note || !phrase) {
     return (
-      <section className='mx-auto w-full max-w-3xl flex-1 px-5 pt-8 pb-24 lg:pb-8'>
-        <p className='text-sm text-red-400'>No se pudo abrir la activación.</p>
-      </section>
+      <GamePage>
+        <EmptyState
+          icon={
+            <IconTile tone='bad' size={64}>
+              <MicIcon className='size-8' strokeWidth={2.4} />
+            </IconTile>
+          }
+          title={t('No se pudo abrir la activación.')}
+          text={error || undefined}
+        />
+      </GamePage>
     )
   }
 
+  const a = tone('a')
+  const isLive = recording && !recordingPaused
+  const saveLabel = completingNote
+    ? t('Completando nota...')
+    : saving
+      ? t('Guardando...')
+      : draftCompletesNote
+        ? t('Guardar y completar nota')
+        : rerecordMode
+          ? t('Guardar regrabación')
+          : t('Guardar audio')
+
+  // Texto bajo el micro según el momento de la grabación.
+  const micTitle = recording
+    ? recordingPaused
+      ? t('Grabación pausada')
+      : t('Grabando…')
+    : recordingDraft
+      ? t('Escucha tu grabación')
+      : rerecordMode
+        ? t('Regrabar frase')
+        : t('Activar frase')
+  const micText = recording
+    ? t('Toca el cuadrado para terminar.')
+    : recordingDraft
+      ? t('Si no te convence, toca el micro y grábala otra vez.')
+      : canRecord
+        ? plannedPairs && plannedPairs.length > 1
+          ? t('Toca el micro. Te guiamos parte por parte.')
+          : t('Toca el micro y di la frase en voz alta.')
+        : null
+
   return (
     <>
-      <section className='mx-auto w-full max-w-3xl flex-1 px-5 pt-8 pb-24 lg:pb-8'>
-        <h2 className='mb-1 font-serif text-2xl lg:text-3xl font-bold'>
-          {rerecordMode ? '🎙️ Regrabar frase' : '🗣️ Activar frase'}
-        </h2>
-        <p className={`${isOpenNote ? 'mb-4' : 'mb-2'} text-sm text-muted-foreground`}>
-          Nota: {note.name}
-        </p>
-        {rerecordMode && rerecordChunk && (
-          <p className='mb-2 text-xs text-muted-foreground'>
-            Audio actual: {formatDuration(rerecordChunk.duration_ms)}
-          </p>
-        )}
-        {!isOpenNote && (
-          <p className='mb-4 text-sm text-muted-foreground'>
-            Acumulado: {formatDuration(note.total_duration_ms)}
-          </p>
-        )}
-        {isClosedRerecord && (
-          <p className='mb-2 text-xs text-muted-foreground'>
-            Regla: al regrabar, el total debe mantenerse en al menos 3:00.
-          </p>
-        )}
-        {error && <p className='mb-3 text-sm text-red-400'>{error}</p>}
+      <GamePage wide>
+        <PageTitle
+          icon={<PhaseLetter letter='A' size={46} />}
+          subtitle={t('Nota: {note}', { note: formatMasterNoteLabel(note.name) })}
+        >
+          {rerecordMode ? t('Regrabar frase') : t('Activar frase')}
+        </PageTitle>
 
-        <Card className='rounded-2xl'>
-          <CardContent>
-            {phrase.generated_phrase ? (
-              <InteractivePhraseText
-                text={phrase.generated_phrase}
-                language={targetLang}
+        {error ? <ErrorNote>{error}</ErrorNote> : null}
+
+        {/* En ordenador: la frase a la izquierda y el grabador a la derecha */}
+        <div className='grid gap-6 lg:grid-cols-2 lg:items-start'>
+          {/* En móvil esta columna se deshace: frase, grabador y al final "Extraer" */}
+          <div className='contents lg:flex lg:flex-col lg:gap-4'>
+            {/* La frase como se dice: tu idioma y después el que aprendes, parte por parte.
+                Antes de grabar ya se ve así (Luis, 9 Oct); al grabar, la parte en curso avanza con un toque. */}
+            {(guideActive && guidePairs) || plannedPairs ? (
+              <ActivationGuide
+                ref={guideRef}
+                mode={guideActive ? 'live' : 'preview'}
+                pairs={
+                  guideActive && guidePairs
+                    ? guidePairs
+                    : [{ target: phrase.generated_phrase || '', native: phrase.translation || '' }]
+                }
+                step={guideActive ? guideStep : 0}
+                nativeLang={nativeLang}
+                targetLang={targetLang}
+                paused={recordingPaused}
+                onResume={resumeRecording}
+                onRestart={restartRecording}
+                onNext={nextGuideStep}
+                onPrev={prevGuideStep}
+                onHelp={() => setHowtoMode('help')}
                 onTokenClick={handleOpenExploreModal}
-                className='font-serif text-2xl font-bold'
+                footer={
+                  <>
+                    {phrase.generated_phrase ? (
+                      <RomanizationHint text={phrase.generated_phrase} language={targetLang} />
+                    ) : null}
+                    {phrase.generated_phrase ? (
+                      <div onClickCapture={() => (listenTipPending ? closeListenTip() : undefined)}>
+                        <SpeakButton text={phrase.generated_phrase} langName={targetLang} color='#3B82F6' className='mt-3' />
+                      </div>
+                    ) : null}
+                    {listenTipPending && phrase.generated_phrase ? (
+                      <ListenHint
+                        text={t('Escúchala antes: así sabrás cómo se dice bien en {lang}.', { lang: inSentence(langName(targetLang)) })}
+                        onClose={closeListenTip}
+                      />
+                    ) : null}
+                  </>
+                }
               />
             ) : (
-              <p className='font-serif text-2xl font-bold'>Sin frase</p>
-            )}
-            {phrase.generated_phrase && (
-              <RomanizationHint
-                text={phrase.generated_phrase}
-                language={targetLang}
-              />
-            )}
-            <p className='mt-2 text-lg text-muted-foreground'>
-              {phrase.translation || 'Sin traducción'}
-            </p>
-            {phrase.source_words && phrase.source_words.length > 0 && (
-              <div className='mt-3 flex flex-wrap gap-2'>
-                {phrase.source_words.map((word) => (
-                  <span
-                    key={word}
-                    className='rounded-md bg-primary/30 px-2.5 py-0.5 text-xs font-semibold text-white'
-                  >
-                    {word}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {phrase.generated_phrase && (
-              <div className='mt-3'>
+            /* La frase, grande y con palabras pulsables */
+            <Panel className='p-5'>
+              <SectionLabel>{t('Di esta frase en {lang}', { lang: langName(targetLang) })}</SectionLabel>
+              {phrase.generated_phrase ? (
+                <InteractivePhraseText
+                  text={phrase.generated_phrase}
+                  language={targetLang}
+                  onTokenClick={handleOpenExploreModal}
+                  className='m-0 font-display text-[1.7rem] leading-snug font-black tracking-tight lg:text-3xl'
+                />
+              ) : (
+                <p className='m-0 font-display text-[1.7rem] leading-snug font-black tracking-tight'>
+                  {t('Sin frase')}
+                </p>
+              )}
+              {phrase.generated_phrase && (
+                <RomanizationHint
+                  text={phrase.generated_phrase}
+                  language={targetLang}
+                />
+              )}
+              <p className='m-0 mt-2 text-lg leading-snug font-semibold text-muted-foreground'>
+                {phrase.translation || t('Sin traducción')}
+              </p>
+              {phrase.source_words && phrase.source_words.length > 0 && (
+                <div className='mt-3 flex flex-wrap gap-1.5'>
+                  {phrase.source_words.map((word) => (
+                    <Pill key={word} tone='i'>
+                      {word}
+                    </Pill>
+                  ))}
+                </div>
+              )}
+              {phrase.generated_phrase && (
                 <SpeakButton
                   text={phrase.generated_phrase}
                   langName={targetLang}
                   color='#3B82F6'
                   disabled={recording && !recordingPaused}
                 />
-              </div>
+              )}
+              {phrase.generated_phrase ? (
+                <p className='m-0 mt-3 text-xs font-semibold text-muted-foreground'>
+                  {t('Toca una palabra para explorarla.')}
+                </p>
+              ) : null}
+            </Panel>
             )}
-
-            <div className='mt-4 rounded-xl border border-border/70 bg-muted/30 p-3'>
-              <p className='mb-2 text-xs font-semibold tracking-wide text-muted-foreground'>
-                GRABADOR
-              </p>
-
-              {isOpenNote && (
-                <MasterNoteProgressBar
-                  className='mb-3 bg-background'
-                  noteName={note.name}
-                  savedMs={effectiveNoteDurationMs}
-                  pendingMs={pendingRecordingMs}
-                  recording={recording && !recordingPaused}
-                />
-              )}
-
-              {recording && (
-                <div className='mb-2 space-y-1'>
-                  <p className='text-sm'>
-                    {recordingPaused ? 'Grabación pausada' : 'Grabando'}:{' '}
-                    {formatDuration(recordingElapsedMs)}
-                  </p>
-                  {rerecordMode && (
-                    <p className='text-xs text-muted-foreground'>
-                      Duración actual de esta toma: {formatDuration(recordingElapsedMs)}
-                    </p>
-                  )}
-                  <canvas
-                    ref={waveCanvasRef}
-                    width={600}
-                    height={72}
-                    className='h-18 w-full rounded-md border border-border/60 bg-slate-900'
-                  />
-                </div>
-              )}
-
-              {recording ? (
-                <div className='flex flex-wrap gap-2'>
-                  {recordingPaused ? (
-                    <Button
-                      type='button'
-                      onClick={resumeRecording}
-                      size='sm'
-                      variant='outline'
-                    >
-                      ▶️ Reanudar grabación
-                    </Button>
-                  ) : (
-                    <Button
-                      type='button'
-                      onClick={pauseRecording}
-                      size='sm'
-                      variant='outline'
-                    >
-                      ⏸️ Pausar grabación
-                    </Button>
-                  )}
-                  <Button type='button' onClick={stopRecording} size='sm'>
-                    ⏹️ Detener grabación
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  type='button'
-                  onClick={() => void startRecording()}
-                  size='sm'
-                  disabled={!canRecord}
-                >
-                  {rerecordMode ? 'Regrabar frase' : 'Activar frase'}
-                </Button>
-              )}
-
-              {recordingDraft && (
-                <div className='mt-3 rounded-lg border border-border/60 bg-background p-2'>
-                  <p className='mb-1 text-xs text-muted-foreground'>
-                    Borrador: {formatDuration(recordingDraft.durationMs)} ·{' '}
-                    {Math.round(recordingDraft.sizeBytes / 1024)} KB
-                  </p>
-                  <p className='mb-2 text-xs text-muted-foreground'>
-                    Para guardar, el audio debe durar al menos 0:10.
-                  </p>
-                  <audio controls src={recordingDraft.url} className='w-full' />
-                  <div className='mt-2 flex flex-wrap gap-2'>
-                    <Button
-                      type='button'
-                      onClick={() => void handleSaveChunk()}
-                      size='sm'
-                      variant='outline'
-                      disabled={saving || isDraftTooShort || breaksClosedMinTotal}
-                    >
-                      {completingNote
-                        ? 'Completando nota...'
-                        : saving
-                          ? 'Guardando...'
-                          : draftCompletesNote
-                            ? '🎉 Guardar y completar nota'
-                            : rerecordMode
-                              ? 'Guardar regrabación'
-                              : 'Guardar audio'}
-                    </Button>
-                    {!saving && (
-                      <Button
-                        type='button'
-                        onClick={clearDraft}
-                        size='sm'
-                        variant='ghost'
-                      >
-                        Descartar
-                      </Button>
-                    )}
-                  </div>
-                  {isDraftTooShort && (
-                    <p className='mt-2 text-xs font-semibold text-red-400'>
-                      Mínimo 10s para guardar.
-                    </p>
-                  )}
-                  {breaksClosedMinTotal && (
-                    <p className='mt-2 text-xs font-semibold text-red-400'>
-                      Esta regrabación dejaría la nota cerrada debajo de 3:00.
-                    </p>
-                  )}
-                  {closedRerecordPreviewTotalMs !== null && (
-                    <p className='mt-2 text-xs text-muted-foreground'>
-                      Total estimado tras guardar:{' '}
-                      {formatDuration(closedRerecordPreviewTotalMs)}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {phrase.generated_phrase && (
+            {phrase.generated_phrase && !recording && (
               <Button
                 type='button'
-                onClick={() => setExtractWordsModalOpen(true)}
+                size='lg'
                 variant='outline'
-                className='mt-4 w-full'
+                className='order-last w-full lg:order-none'
+                onClick={() => setExtractWordsModalOpen(true)}
               >
-                📦 Extraer nuevas palabras
+                <SparklesIcon className='size-4.5' strokeWidth={2.4} />
+                {t('Extraer nuevas palabras')}
               </Button>
             )}
-          </CardContent>
-        </Card>
-      </section>
+          </div>
+
+          {/* Grabador: progreso de la nota y el micro grande */}
+          <Panel tone='a' className='p-5 lg:sticky lg:top-4'>
+            {isOpenNote ? (
+              <MasterNoteProgressBar
+                noteName={note.name}
+                savedMs={effectiveNoteDurationMs}
+                pendingMs={pendingRecordingMs}
+                recording={isLive}
+                showName={false}
+              />
+            ) : (
+              <div className='flex flex-wrap items-center gap-1.5'>
+                <Pill tone='gold'>{t('Nota cerrada')}</Pill>
+                <span className='text-sm font-bold text-muted-foreground tabular-nums'>
+                  {t('Acumulado: {time}', { time: formatDuration(note.total_duration_ms) })}
+                </span>
+              </div>
+            )}
+            {rerecordMode && rerecordChunk ? (
+              <p className='m-0 mt-2 text-xs font-bold text-muted-foreground tabular-nums'>
+                {t('Audio actual: {time}', { time: formatDuration(rerecordChunk.duration_ms) })}
+              </p>
+            ) : null}
+            {isClosedRerecord ? (
+              <p className='m-0 mt-1 text-xs font-semibold text-muted-foreground'>
+                {t('Regla: al regrabar, el total debe mantenerse en al menos 3:00.')}
+              </p>
+            ) : null}
+
+            <div className='mt-7 flex flex-col items-center text-center'>
+              <div className='flex items-center justify-center gap-5'>
+                {recording ? (
+                  <SquareIconButton
+                    onClick={recordingPaused ? resumeRecording : pauseRecording}
+                    ariaLabel={
+                      recordingPaused
+                        ? t('Reanudar grabación')
+                        : t('Pausar grabación')
+                    }
+                    className='size-13'
+                  >
+                    {recordingPaused ? (
+                      <PlayIcon
+                        className='ml-0.5 size-5 fill-current'
+                        strokeWidth={2.4}
+                      />
+                    ) : (
+                      <PauseIcon
+                        className='size-5 fill-current'
+                        strokeWidth={2.4}
+                      />
+                    )}
+                  </SquareIconButton>
+                ) : null}
+                <span className='relative' ref={micAnchorRef}>
+                {recordTipPending && !recording && canRecord && !recordingDraft && micInView ? (
+                  <FirstUseTip align='center' onClose={closeRecordTip}>
+                    {t('Cuando estés listo, toca aquí para empezar a grabar. Te guiaremos parte por parte.')}
+                  </FirstUseTip>
+                ) : null}
+                <RoundActionButton
+                  size={112}
+                  onClick={
+                    recording
+                      ? stopRecording
+                      : requestStartRecording
+                  }
+                  disabled={!recording && !canRecord}
+                  ariaLabel={
+                    recording
+                      ? t('Detener grabación')
+                      : rerecordMode
+                        ? t('Regrabar frase')
+                        : t('Activar frase')
+                  }
+                  live={isLive}
+                >
+                  {recording ? (
+                    <SquareIcon
+                      className='size-10 fill-current'
+                      strokeWidth={2.4}
+                    />
+                  ) : (
+                    <MicIcon className='size-13' strokeWidth={2.4} />
+                  )}
+                </RoundActionButton>
+                </span>
+                {recording ? (
+                  <span className='size-13 shrink-0' aria-hidden='true' />
+                ) : null}
+              </div>
+
+              <p className='m-0 mt-6 text-xl font-black tracking-tight'>
+                {micTitle}
+              </p>
+              {recording ? (
+                <p
+                  className='m-0 mt-1 text-4xl leading-none font-black tabular-nums'
+                  style={{ color: a.ink }}
+                >
+                  {formatDuration(recordingElapsedMs)}
+                </p>
+              ) : null}
+              {/* Mientras no llegue a 10 s: aviso en dorado (destaca sobre el rojo de la grabación) */}
+              {recording && recordingElapsedMs < MIN_SAVE_DURATION_MS ? (
+                <MinDurationHint
+                  text={t('Mínimo 10 s para guardar · faltan {n} s', {
+                    n: Math.max(1, Math.ceil((MIN_SAVE_DURATION_MS - recordingElapsedMs) / 1000)),
+                  })}
+                  className='mt-3'
+                />
+              ) : null}
+              {recording && recordingPaused ? (
+                <PausedRecordingActions onResume={resumeRecording} onRestart={restartRecording} showLabel={false} className='mt-3 max-w-xs' />
+              ) : micText ? (
+                <p className='m-0 mt-1.5 max-w-xs text-sm font-semibold text-muted-foreground'>
+                  {micText}
+                </p>
+              ) : null}
+              {recording && rerecordMode ? (
+                <p className='m-0 mt-1 text-xs font-bold text-muted-foreground tabular-nums'>
+                  {t('Duración actual de esta toma: {time}', { time: formatDuration(recordingElapsedMs) })}
+                </p>
+              ) : null}
+            </div>
+
+            {recording && (
+              <canvas
+                ref={waveCanvasRef}
+                width={600}
+                height={72}
+                className='mt-5 h-16 w-full'
+                style={{
+                  color: 'var(--ica-a)',
+                  opacity: recordingPaused ? 0.35 : 1,
+                }}
+                aria-hidden='true'
+              />
+            )}
+
+            {activationLimitReached && !recording && !recordingDraft && (
+              <DailyLimitNotice
+                kind='activations'
+                state={dailyLimits}
+                className='mt-5'
+              />
+            )}
+
+            {/* Borrador: escucharlo y guardarlo */}
+            {recordingDraft && !recording && (
+              <div className='mt-6 rounded-2xl border-2 border-border bg-card p-4 dark:bg-background/40'>
+                <div className='flex items-center justify-between gap-3'>
+                  <p className='ica-label m-0'>{t('Tu grabación')}</p>
+                  <span className='text-xs font-extrabold text-muted-foreground tabular-nums'>
+                    {formatDuration(recordingDraft.durationMs)}
+                  </span>
+                </div>
+                <audio
+                  controls
+                  src={recordingDraft.url}
+                  className='mt-3 h-11 w-full dark:[color-scheme:dark]'
+                />
+                <p className='m-0 mt-2 text-xs font-semibold text-muted-foreground'>
+                  {t('Para guardar, el audio debe durar al menos 0:10.')}
+                </p>
+                {isDraftTooShort && (
+                  <MinDurationHint text={t('Mínimo 10 s para guardar. Graba otra vez un poco más largo.')} className='mt-3' />
+                )}
+                {breaksClosedMinTotal && (
+                  <ErrorNote className='mt-3'>
+                    {t('Esta regrabación dejaría la nota cerrada debajo de 3:00.')}
+                  </ErrorNote>
+                )}
+                {closedRerecordPreviewTotalMs !== null && (
+                  <p className='m-0 mt-2 text-xs font-bold text-muted-foreground tabular-nums'>
+                    {t('Total estimado tras guardar: {time}', { time: formatDuration(closedRerecordPreviewTotalMs) })}
+                  </p>
+                )}
+                <Button
+                  type='button'
+                  size='xl'
+                  variant={draftCompletesNote ? 'success' : 'a'}
+                  className='mt-4 w-full'
+                  onClick={() => void handleSaveChunk()}
+                  disabled={saving || isDraftTooShort || breaksClosedMinTotal}
+                >
+                  {saving ? (
+                    <Loader2Icon
+                      className='size-5 animate-spin'
+                      strokeWidth={2.6}
+                    />
+                  ) : (
+                    <CheckIcon className='size-5' strokeWidth={3} />
+                  )}
+                  {saveLabel}
+                </Button>
+                {!saving && (
+                  <Button
+                    type='button'
+                    size='lg'
+                    variant='ghost'
+                    className='mt-2 w-full text-muted-foreground'
+                    onClick={clearDraft}
+                  >
+                    <Trash2Icon className='size-4.5' strokeWidth={2.4} />
+                    {t('Descartar')}
+                  </Button>
+                )}
+              </div>
+            )}
+          </Panel>
+        </div>
+      </GamePage>
+
+      {/* Barra fija en el móvil cuando el micro grande no se ve (frase larga) */}
+      {!recording && canRecord && !recordingDraft && !micInView ? (
+        <>
+          <div className='h-32 lg:hidden' aria-hidden='true' />
+          <div className='fixed inset-x-0 bottom-[calc(86px+env(safe-area-inset-bottom))] z-30 border-t-2 border-border bg-card px-4 pt-3 pb-3 md:bottom-0 md:pb-[max(env(safe-area-inset-bottom),0.75rem)] lg:hidden dark:bg-background'>
+            <div className='mx-auto w-full max-w-sm'>
+              {recordTipPending ? (
+                <p role='note' className='m-0 mb-2 flex items-start gap-2 text-[13px] leading-snug font-bold' style={{ color: 'var(--ica-i-ink)' }}>
+                  <span className='min-w-0 flex-1'>
+                    {t('Cuando estés listo, toca aquí para empezar a grabar. Te guiaremos parte por parte.')}
+                  </span>
+                  <button
+                    type='button'
+                    onClick={closeRecordTip}
+                    aria-label={t('Entendido')}
+                    className='-mt-0.5 -mr-1 flex size-6 shrink-0 items-center justify-center rounded-full opacity-70'
+                  >
+                    <XIcon className='size-4' strokeWidth={3} aria-hidden='true' />
+                  </button>
+                </p>
+              ) : null}
+              <Button
+                type='button'
+                size='xl'
+                variant='a'
+                className='w-full'
+                onClick={requestStartRecording}
+              >
+                <MicIcon className='size-5' strokeWidth={2.6} />
+                {rerecordMode ? t('Regrabar frase') : t('Activar frase')}
+              </Button>
+            </div>
+          </div>
+        </>
+      ) : null}
 
       <ExtractWordsToVaultModal
         open={extractWordsModalOpen}
@@ -947,37 +1377,97 @@ export function MasterNoteActivatePhraseView({
         onWordAdded={onWordAdded}
       />
 
+      <ActivationHowToDialog
+        open={howtoMode !== null}
+        onOpenChange={(open) => {
+          if (!open) setHowtoMode(null)
+        }}
+        pair={((guideActive && guidePairs) || plannedPairs)?.[0] ?? null}
+        multiplePairs={(((guideActive && guidePairs) || plannedPairs)?.length ?? 0) > 1}
+        nativeLang={nativeLang}
+        targetLang={targetLang}
+        startsRecording={howtoMode === 'start'}
+        onConfirm={confirmHowto}
+      />
+
       <Dialog
         open={leaveDialogOpen}
         onOpenChange={(open) => {
           if (!open) handleKeepRecording()
         }}
       >
-        <DialogContent data-recording-leave-dialog>
-          <DialogHeader>
-            <DialogTitle>Salir durante grabación</DialogTitle>
-            <DialogDescription>
-              Hay una grabación en curso. Si sales ahora, se perderá.
+        <DialogContent
+          data-recording-leave-dialog
+          className='text-center sm:max-w-sm'
+        >
+          <DialogHeader className='items-center text-center sm:text-center'>
+            <IconTile tone='a' solid size={64} className='mb-1'>
+              <MicIcon className='size-8' strokeWidth={2.4} />
+            </IconTile>
+            <DialogTitle className='pr-0 font-display text-2xl font-black tracking-tight'>
+              {t('Salir durante grabación')}
+            </DialogTitle>
+            <DialogDescription className='text-base font-semibold text-balance'>
+              {t('Hay una grabación en curso. Si sales ahora, se perderá.')}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className='flex-col gap-3 sm:flex-col'>
             <Button
               type='button'
-              variant='outline'
+              size='xl'
+              variant='a'
+              className='w-full'
               onClick={handleKeepRecording}
             >
-              Seguir grabando
+              {t('Seguir grabando')}
             </Button>
             <Button
               type='button'
+              size='lg'
               variant='destructive'
+              className='w-full'
               onClick={handleLeaveAnyway}
             >
-              Salir igual
+              {t('Salir igual')}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+/** Aviso de duración mínima: dorado, con reloj, para que destaque sobre el rojo de la grabación. */
+function MinDurationHint({ text, className }: { text: string; className?: string }) {
+  return (
+    <p
+      role='status'
+      className={`m-0 inline-flex items-center gap-2 rounded-full border-2 px-3.5 py-1.5 text-sm font-extrabold ${className ?? ''}`}
+      style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)', borderColor: 'var(--ica-gold)' }}
+    >
+      <TimerIcon className='size-4 shrink-0' strokeWidth={2.8} aria-hidden='true' />
+      {text}
+    </p>
+  )
+}
+
+/** First-use hint under Escuchar: small and in the flow, so it covers nothing (Luis, 9 Oct). */
+function ListenHint({ text, onClose }: { text: string; onClose: () => void }) {
+  return (
+    <p
+      role='note'
+      className='m-0 mt-2 flex items-start gap-2 rounded-xl px-3 py-2 text-[13px] leading-snug font-bold'
+      style={{ background: 'var(--ica-i-soft)', color: 'var(--ica-i-ink)' }}
+    >
+      <span className='min-w-0 flex-1'>{text}</span>
+      <button
+        type='button'
+        onClick={onClose}
+        aria-label={t('Entendido')}
+        className='-mt-0.5 -mr-1 flex size-6 shrink-0 items-center justify-center rounded-full opacity-70'
+      >
+        <XIcon className='size-4' strokeWidth={3} aria-hidden='true' />
+      </button>
+    </p>
   )
 }

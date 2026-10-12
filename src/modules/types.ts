@@ -58,6 +58,10 @@ export interface Lexicard {
   firstActivatedAt?: number | null
   lastActivatedAt?: number | null
   createdAt: number
+  /** POTENCIAR (Luis, 8 Oct): games left in which this word comes first (flashcards, daily challenge, Desafíos). */
+  boostFlash?: number
+  boostDaily?: number
+  boostDuel?: number
 }
 
 export interface LeaderboardEntry {
@@ -73,9 +77,16 @@ export interface LeaderboardEntry {
   creation_percent?: number
   ica_test_points?: number | null
   listening_points?: number | null
+  listening_day_cap?: number | null
   preguntica_points?: number | null
   instagram_points?: number | null
   total_points?: number
+  /** Insignia destacada del alumno ("categoria:rango"), cuando el servidor la devuelva. */
+  featured_badge?: string | null
+  /** Bandera que enseña el alumno (nombre del idioma, p. ej. "Polaco"), si ha comprado alguna. */
+  display_flag?: string | null
+  /** Tiebreak: correct answers in the first daily-game attempt of each day (days 1-28). */
+  daily_game_correct?: number | null
 }
 
 export interface PhraseGenerationEntry {
@@ -317,6 +328,8 @@ export interface PushReminderPreferences {
   flashcardsStreakHour: number
   habitLossEnabled: boolean
   habitLossLastStage: number
+  /** «Te quedan 5 horas»: racha ICA en peligro (viene activada). */
+  streakRiskEnabled: boolean
   createdAt: string | null
   updatedAt: string | null
 }
@@ -327,12 +340,15 @@ export interface PushReminderPreferencesInput {
   flashcardsStreakEnabled: boolean
   flashcardsStreakHour: number
   habitLossEnabled: boolean
+  streakRiskEnabled: boolean
 }
 
 export interface CoachingNotificationPreference {
   userId: string
   masterNoteClosedEnabled: boolean
   activeSessionEnabled: boolean
+  /** Coaches: push when a student sends an audio task (Luis, 6 Oct). */
+  studentAudioEnabled: boolean
   classScheduleReminderMinutes: 10 | 30 | 60
   createdAt: string | null
   updatedAt: string | null
@@ -341,6 +357,7 @@ export interface CoachingNotificationPreference {
 export interface CoachingNotificationPreferenceInput {
   masterNoteClosedEnabled: boolean
   activeSessionEnabled: boolean
+  studentAudioEnabled?: boolean
   classScheduleReminderMinutes: 10 | 30 | 60
 }
 
@@ -588,10 +605,21 @@ export interface IcaChallengeReviewItem {
   targetLang: string | null
 }
 
+export interface IcaChallengeRivalWord {
+  target: string
+  native: string
+  phrase: string | null
+  phraseTranslation: string | null
+  targetLang: string | null
+}
+
 export interface IcaChallengeReview {
   items: IcaChallengeReviewItem[]
-  me: { correct: number; answered: number }
-  rival: { correct: number; answered: number; done: boolean }
+  /** Palabras del baúl del rival (solo con el desafío terminado y cada uno con sus palabras). */
+  rivalWords?: IcaChallengeRivalWord[]
+  /** ms: total time played (it breaks a tie in Parejas). Missing in older versions of the server. */
+  me: { correct: number; answered: number; ms?: number }
+  rival: { correct: number; answered: number; done: boolean; ms?: number }
   wordSource: IcaChallengeWordSource
 }
 

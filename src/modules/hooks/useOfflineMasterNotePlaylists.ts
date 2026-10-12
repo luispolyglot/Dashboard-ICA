@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { useSoftLoading } from './useSoftLoading'
 import {
   listOfflineMasterNotePlaylistItems,
   listOfflineMasterNotePlaylists,
@@ -6,6 +7,7 @@ import {
   type OfflineMasterNotePlaylistItem,
 } from '../services/masterNotesOfflineStore'
 import { buildPlaylistItemsByPlaylistId } from '../services/masterNotePlaylistItems'
+import { t } from '@/i18n'
 
 type UseOfflineMasterNotePlaylistsParams = {
   targetLang?: string
@@ -18,7 +20,9 @@ export function useOfflineMasterNotePlaylists({
 }: UseOfflineMasterNotePlaylistsParams = {}) {
   const [playlists, setPlaylists] = useState<OfflineMasterNotePlaylist[]>([])
   const [items, setItems] = useState<OfflineMasterNotePlaylistItem[]>([])
-  const [loading, setLoading] = useState(false)
+  // Solo se enseña «cargando» la primera vez; al crear, renombrar o borrar
+  // listas se actualizan sin que desaparezcan de la pantalla.
+  const [loading, setLoading] = useSoftLoading(false, `${targetLang}|${nativeLang}`)
   const [error, setError] = useState<string | null>(null)
 
   const itemsByPlaylistId = useMemo(() => {
@@ -45,7 +49,7 @@ export function useOfflineMasterNotePlaylists({
       setItems(itemRows.filter((item) => playlistIds.has(item.playlistId)))
       setError(null)
     } catch {
-      setError('No se pudieron cargar las listas offline')
+      setError(t('No se pudieron cargar las listas offline'))
     } finally {
       setLoading(false)
     }

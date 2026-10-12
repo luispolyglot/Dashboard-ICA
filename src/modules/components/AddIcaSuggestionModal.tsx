@@ -7,6 +7,8 @@ import { insertWord } from '../services/storage'
 import type { PregunticaWordSuggestion } from '../services/preguntica'
 import type { AppConfig, ImportanceKey, Lexicard } from '../types'
 import { generateId } from '../utils'
+import { DailyLimitNotice } from '../game/DailyLimitNotice'
+import { useDailyLimits } from '../game/limits'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -18,21 +20,17 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { cn } from '@/lib/utils'
+import { t, langName } from '@/i18n'
+import { PhaseLetter, tone, type Tone } from '../game/ui'
 
-const IMPORTANCE_TONE: Record<ImportanceKey, string> = {
-  vital: 'border-blue-500 text-blue-400 bg-blue-500/10',
-  frequent: 'border-emerald-500 text-emerald-400 bg-emerald-500/10',
-  occasional: 'border-amber-500 text-amber-400 bg-amber-500/10',
-  rare: 'border-orange-500 text-orange-400 bg-orange-500/10',
-  irrelevant: 'border-red-500 text-red-400 bg-red-500/10',
-}
-
-const IMPORTANCE_DOT: Record<ImportanceKey, string> = {
-  vital: 'bg-blue-400',
-  frequent: 'bg-emerald-400',
-  occasional: 'bg-amber-400',
-  rare: 'bg-orange-400',
-  irrelevant: 'bg-red-400',
+// Color de cada frecuencia (tonos del modo juego).
+const IMPORTANCE_TONE: Record<ImportanceKey, Tone> = {
+  vital: 'i',
+  frequent: 'ok',
+  occasional: 'gold',
+  rare: 'fire',
+  irrelevant: 'bad',
 }
 
 type AddIcaSuggestionModalProps = {
@@ -61,8 +59,8 @@ export function AddIcaSuggestionModal({
   setCards,
   onWordAdded,
   onAdded,
-  title = 'Añadir sugerencia al Baúl ICA',
-  description = 'Ajusta los campos si lo necesitas y guarda la palabra sugerida.',
+  title = t('Añadir sugerencia al Baúl ICA'),
+  description = t('Ajusta los campos si lo necesitas y guarda la palabra sugerida.'),
 }: AddIcaSuggestionModalProps) {
   const [target, setTarget] = useState('')
   const [native, setNative] = useState('')
@@ -90,7 +88,12 @@ export function AddIcaSuggestionModal({
   )
   const showDuplicateWarning = Boolean(duplicateWord) && !saving && trimmedTarget.length > 0
 
-  const canSave = trimmedTarget && trimmedNative && importance && !saving && !duplicateWord
+  // Límite diario de palabras (también cuenta para las sugerencias de PreguntICA).
+  const dailyLimits = useDailyLimits()
+  const wordLimitReached = dailyLimits.isAtLimit('words')
+
+  const canSave =
+    trimmedTarget && trimmedNative && importance && !saving && !duplicateWord && !wordLimitReached
 
   async function handleSave() {
     if (!canSave || !importance) return
@@ -128,10 +131,10 @@ export function AddIcaSuggestionModal({
       })
 
       onAdded?.(trimmedTarget)
-      toast.success(`"${trimmedTarget}" añadida al Baúl ICA`)
+      toast.success(t('"{word}" añadida al Baúl ICA', { word: trimmedTarget }))
       onOpenChange(false)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'No se pudo añadir la palabra')
+      toast.error(error instanceof Error ? error.message : t('No se pudo añadir la palabra'))
     } finally {
       setSaving(false)
     }
@@ -141,55 +144,83 @@ export function AddIcaSuggestionModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <div className='flex items-center gap-3'>
+            <PhaseLetter letter='I' size={40} />
+            <DialogTitle>{title}</DialogTitle>
+          </div>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
         <div className='space-y-4'>
           <div className='space-y-1.5'>
-            <Label>{config.targetLang} - idioma objetivo</Label>
+            <Label className='font-extrabold'>{t('{lang} - idioma objetivo', { lang: langName(config.targetLang) })}</Label>
             <Input
               value={target}
               onChange={(event) => setTarget(event.target.value)}
               disabled={saving}
-              placeholder={`Escribe en ${config.targetLang}...`}
+              placeholder={t('Escribe en {lang}...', { lang: langName(config.targetLang) })}
+              className='h-12 text-base font-bold'
             />
           </div>
 
           <div className='space-y-1.5'>
-            <Label>{config.nativeLang} - idioma materno</Label>
+            <Label className='font-extrabold'>{t('{lang} - idioma materno', { lang: langName(config.nativeLang) })}</Label>
             <Input
               value={native}
               onChange={(event) => setNative(event.target.value)}
               disabled={saving}
-              placeholder={`Escribe en ${config.nativeLang}...`}
+              placeholder={t('Escribe en {lang}...', { lang: langName(config.nativeLang) })}
+              className='h-12 text-base font-bold'
             />
           </div>
 
           <div className='space-y-2'>
-            <Label>Frecuencia de uso</Label>
-            <div className='flex flex-wrap gap-2'>
+            <Label className='font-extrabold'>{t('Frecuencia de uso')}</Label>
+            <div role='radiogroup' aria-label={t('Frecuencia de uso')} className='flex flex-wrap gap-2'>
               {IMPORTANCE_LEVELS.map((level) => {
                 const selected = importance === level.key
+                const colors = tone(IMPORTANCE_TONE[level.key])
                 return (
-                  <Button
+                  <button
                     key={level.key}
                     type='button'
+                    role='radio'
+                    aria-checked={selected}
                     onClick={() => !saving && setImportance(level.key)}
                     disabled={saving}
-                    variant={selected ? 'default' : 'outline'}
-                    className={`min-w-22.5 h-auto flex-1 py-2.5 ${selected ? IMPORTANCE_TONE[level.key] : ''}`}
+                    className={cn(
+                      'flex h-11 min-w-22.5 flex-1 items-center justify-center gap-2 rounded-2xl border-2 px-3 text-xs font-extrabold transition-transform active:translate-y-[3px] disabled:opacity-50',
+                      !selected && 'bg-card text-muted-foreground dark:bg-transparent',
+                    )}
+                    style={
+                      selected
+                        ? { background: colors.soft, borderColor: colors.solid, color: colors.ink, boxShadow: `0 3px 0 ${colors.solid}` }
+                        : { borderColor: 'var(--border)', boxShadow: '0 3px 0 var(--border)' }
+                    }
                   >
-                    <span className={`mr-1 h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[level.key]}`} />
-                    <div className='text-xs font-semibold'>{level.label}</div>
-                  </Button>
+                    <span className='size-2.5 shrink-0 rounded-full' style={{ background: colors.solid }} aria-hidden='true' />
+                    {t(level.label)}
+                  </button>
                 )
               })}
             </div>
           </div>
 
           {showDuplicateWarning && (
-            <p className='text-xs text-red-500'>Esta palabra ya existe en tu Baúl ICA.</p>
+            <p
+              className='m-0 rounded-2xl px-3 py-2 text-xs font-bold'
+              style={{ background: 'var(--ica-bad-soft)', color: 'var(--ica-bad-ink)' }}
+            >
+              {t('Esta palabra ya existe en tu Baúl ICA.')}
+            </p>
+          )}
+
+          {wordLimitReached && (
+            <DailyLimitNotice
+              kind='words'
+              state={dailyLimits}
+              onNavigate={() => onOpenChange(false)}
+            />
           )}
         </div>
 
@@ -197,13 +228,14 @@ export function AddIcaSuggestionModal({
           <Button
             type='button'
             variant='outline'
+            size='lg'
             disabled={saving}
             onClick={() => onOpenChange(false)}
           >
-            Cancelar
+            {t('Cancelar')}
           </Button>
-          <Button type='button' disabled={!canSave} onClick={handleSave}>
-            {saving ? 'Guardando...' : 'Guardar palabra'}
+          <Button type='button' variant='i' size='lg' disabled={!canSave} onClick={handleSave}>
+            {saving ? t('Guardando...') : t('Guardar palabra')}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,22 +1,51 @@
 import { useEffect, useRef, useState } from 'react'
+import {
+  ArchiveIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  LoaderCircleIcon,
+  LockIcon,
+  SpellCheckIcon,
+  TriangleAlertIcon,
+  ZapIcon,
+} from 'lucide-react'
+import { toast } from 'sonner'
 import type { Dispatch, SetStateAction } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   CREATION_WORDS_GOAL,
-  IMPORTANCE_LEVELS,
   getImportance,
   getTodayProgress,
 } from '../constants'
 import {
-  fetchSpellingSuggestion,
   fetchTranslation,
+  fetchTranslationWithSpelling,
 } from '../services/anthropic'
 import { recordWordAddedEvent } from '../services/gamification'
 import { kickLexicardExampleWorker } from '../services/lexicardExampleJobs'
 import { insertWord } from '../services/storage'
-import { generateId } from '../utils'
+import { BOOST_GAMES, boostLexicard, isBoosted } from '../services/lexicardBoost'
+import { generateId, todayKey } from '../utils'
+import { DailyLimitNotice } from '../game/DailyLimitNotice'
+import { useDailyLimits } from '../game/limits'
+import {
+  GamePage,
+  GameProgress,
+  IconTile,
+  ListRow,
+  PageTitle,
+  PhaseLetter,
+  Pill,
+  RowGroup,
+  SectionLabel,
+} from '../game/ui'
 import { RomanizationHint } from '../components/RomanizationHint'
+import { PronunciationHint } from '../pronunciation/PronunciationHint'
 import { SpeakButton } from '../components/SpeakButton'
+import { getSpeechAudioUrl } from '../services/tts'
+import { FirstUseTip, useFirstUseTip } from '../components/FirstUseTip'
+import { TRUNK_WOOD, TrunkIcon } from '../game/icons'
 import { TranslationSuggestion } from '../components/TranslationSuggestion'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import {
@@ -26,11 +55,12 @@ import {
   SHARE_TARGET_SOURCE,
   SHARE_TARGET_SOURCE_QUERY_PARAM,
 } from '../shareTarget'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { cn } from '@/lib/utils'
+import { langName, t, tn } from '@/i18n'
+import { ImportancePicker, ImportanceTile } from './IcaWordParts'
 import type {
   AppConfig,
   DailyProgressEntry,
@@ -47,24 +77,55 @@ type AddViewProps = {
   onWordAdded: () => Promise<DailyProgressEntry>
 }
 
-const IMPORTANCE_TONE: Record<ImportanceKey, string> = {
-  vital: 'border-blue-500 text-blue-400 bg-blue-500/10',
-  frequent: 'border-emerald-500 text-emerald-400 bg-emerald-500/10',
-  occasional: 'border-amber-500 text-amber-400 bg-amber-500/10',
-  rare: 'border-orange-500 text-orange-400 bg-orange-500/10',
-  irrelevant: 'border-red-500 text-red-400 bg-red-500/10',
-}
+// Cuántas palabras recientes se ven antes de «Ver más».
+const RECENT_PREVIEW = 5
+/** Visits to Inmersión on this device (the Baúl ICA bubble shows from the second one). */
+const ADD_VISITS_KEY = 'icademy:add-visits'
 
-const IMPORTANCE_DOT: Record<ImportanceKey, string> = {
-  vital: 'bg-blue-400',
-  frequent: 'bg-emerald-400',
-  occasional: 'bg-amber-400',
-  rare: 'bg-orange-400',
-  irrelevant: 'bg-red-400',
+// Estilo de los campos grandes de la fase I (borde azul al escribir).
+const FIELD_CLASS =
+  'h-12 rounded-2xl px-4 text-base font-bold md:text-base lg:h-14 lg:text-lg placeholder:font-semibold placeholder:text-muted-foreground/75 focus-visible:border-[var(--ica-i)] focus-visible:ring-[color-mix(in_oklab,var(--ica-i)_22%,transparent)]'
+
+/** Día (AAAA-MM-DD) de una fecha en milisegundos, en hora local. */
+function dayKeyOf(ms: number | null | undefined): string {
+  if (!ms) return ''
+  const d = new Date(ms)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 function normalizeComparableText(value: string): string {
   return value.normalize('NFKC').trim().toLowerCase()
+}
+
+/**
+ * «tu baúl ICA» as a link to the trunk, in wood colour with the trunk drawn next to it (or on
+ * top of it): people did not find their trunk by scrolling (Luis, 6 Oct).
+ */
+function TrunkLink({ layout = 'beside' }: { layout?: 'beside' | 'above' }) {
+  const color = { color: TRUNK_WOOD.ink, textDecorationColor: `color-mix(in oklab, ${TRUNK_WOOD.base} 45%, transparent)` }
+  if (layout === 'above') {
+    return (
+      <Link
+        to={DASHBOARD_ROUTES.myIcaWords}
+        className='inline-flex flex-col items-center align-bottom font-extrabold transition-opacity hover:opacity-80'
+        style={color}
+      >
+        <TrunkIcon size={26} />
+        <span className='underline decoration-2 underline-offset-2'>{t('tu baúl ICA')}</span>
+      </Link>
+    )
+  }
+  // Inline (not flex) so the words sit on the same line as «Añade palabras nuevas a» (Luis, 6 Oct).
+  return (
+    <Link
+      to={DASHBOARD_ROUTES.myIcaWords}
+      className='font-extrabold whitespace-nowrap underline decoration-2 underline-offset-2 transition-opacity hover:opacity-80'
+      style={color}
+    >
+      <TrunkIcon size={18} className='mr-1 inline-block align-[-0.22em]' />
+      {t('tu baúl ICA')}
+    </Link>
+  )
 }
 
 export function AddView({
@@ -87,8 +148,34 @@ export function AddView({
   const [target, setTarget] = useState('')
   const [native, setNative] = useState('')
   const [importance, setImportance] = useState<ImportanceKey | null>(null)
+  // First-use bubbles instead of fixed help lines (Luis, 6 Oct).
+  const [translateTipPending, closeTranslateTip] = useFirstUseTip('add-translate')
+  const [frequencyTipPending, closeFrequencyTip] = useFirstUseTip('add-frequency')
+  const [goCreateTipPending, closeGoCreateTip] = useFirstUseTip('add-go-create')
+  // Baúl ICA (Luis, 11 Oct): from the second visit to Inmersión, a bubble shows where all the words
+  // are kept (on the first visit there are already enough bubbles).
+  const [vaultTipStored, closeVaultTip] = useFirstUseTip('add-vault')
+  const [isRepeatVisit] = useState(() => {
+    try {
+      return Number(window.localStorage.getItem(ADD_VISITS_KEY) || '0') >= 1
+    } catch {
+      return false
+    }
+  })
+  useEffect(() => {
+    try {
+      const visits = Number(window.localStorage.getItem(ADD_VISITS_KEY) || '0')
+      window.localStorage.setItem(ADD_VISITS_KEY, String(visits + 1))
+    } catch {
+      // Without storage the bubble simply does not show.
+    }
+  }, [])
+  const vaultTipPending = vaultTipStored && isRepeatVisit
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
+  // Potenciar (Luis, 8 Oct): the word was already in the Baúl ICA and the student boosted it.
+  const [boosting, setBoosting] = useState(false)
+  const [boostedWord, setBoostedWord] = useState<string | null>(null)
   const [suggestionNative, setSuggestionNative] = useState<string | null>(null)
   const [suggestionTarget, setSuggestionTarget] = useState<string | null>(null)
   const [loadingNative, setLoadingNative] = useState(false)
@@ -103,15 +190,33 @@ export function AddView({
   const [activeRecentSpeakerId, setActiveRecentSpeakerId] = useState<
     string | null
   >(null)
+  const [showAllRecent, setShowAllRecent] = useState(false)
   const targetDebounceRef = useRef<number | null>(null)
   const nativeDebounceRef = useRef<number | null>(null)
-  const spellingDebounceRef = useRef<number | null>(null)
   const targetRequestRef = useRef(0)
   const nativeRequestRef = useRef(0)
-  const spellingRequestRef = useRef(0)
 
   const recent = cards.slice(-25).reverse()
   const todayProgress = getTodayProgress(dailyProgress)
+
+  // Límite diario de palabras (10, o 20 con Inmersión ampliada hoy).
+  // Además del dato del servidor, contamos lo guardado en esta pantalla por si el
+  // servidor tarda un momento en actualizarse.
+  const dailyLimits = useDailyLimits()
+  const mountRef = useRef({ day: todayKey(), words: todayProgress.wordsAdded })
+  const [savesThisVisit, setSavesThisVisit] = useState(0)
+  const wordsUsedToday = Math.max(
+    dailyLimits.used.words,
+    mountRef.current.day === todayKey()
+      ? mountRef.current.words + savesThisVisit
+      : 0,
+  )
+  const wordLimit = dailyLimits.limits.words
+  const wordLimitReached = wordsUsedToday >= wordLimit
+  const wordLimitsState = {
+    ...dailyLimits,
+    used: { ...dailyLimits.used, words: wordsUsedToday },
+  }
   const canCreatePhrase = todayProgress.wordsAdded >= CREATION_WORDS_GOAL
   const wordsLeftForPhrase = Math.max(
     0,
@@ -128,6 +233,38 @@ export function AddView({
   )
   const isDuplicate = Boolean(trimmedTarget && duplicateWord)
   const showDuplicateWarning = isDuplicate && !saving && !saved
+  const duplicateAlreadyBoosted = Boolean(
+    duplicateWord && (isBoosted(duplicateWord, 'flash') || isBoosted(duplicateWord, 'daily') || isBoosted(duplicateWord, 'duel')),
+  )
+
+  /**
+   * POTENCIAR: instead of saving the same word again, it becomes Vital and comes first in the next
+   * 2 flashcards rounds, 2 daily challenges and 2 Desafíos. It does not count as a new word.
+   */
+  const handleBoost = async (): Promise<void> => {
+    if (!duplicateWord || boosting) return
+    setBoosting(true)
+    try {
+      await boostLexicard(duplicateWord.id)
+      setCards((prev) =>
+        prev.map((card) =>
+          card.id === duplicateWord.id
+            ? { ...card, importance: 'vital', boostFlash: BOOST_GAMES, boostDaily: BOOST_GAMES, boostDuel: BOOST_GAMES }
+            : card,
+        ),
+      )
+      setBoostedWord(duplicateWord.target)
+      setTarget('')
+      setNative('')
+      setImportance(null)
+      window.setTimeout(() => setBoostedWord(null), 5000)
+    } catch (error) {
+      console.error(error)
+      toast.error(t('No se pudo potenciar la palabra. Inténtalo de nuevo.'))
+    } finally {
+      setBoosting(false)
+    }
+  }
 
   const clampTarget = (value: string): string =>
     Array.from(value).slice(0, SHARE_TARGET_MAX_CHARS).join('')
@@ -138,13 +275,9 @@ export function AddView({
     setSuggestionNative(null)
     setSpellingSuggestion(null)
     targetRequestRef.current += 1
-    spellingRequestRef.current += 1
 
     if (targetDebounceRef.current !== null) {
       window.clearTimeout(targetDebounceRef.current)
-    }
-    if (spellingDebounceRef.current !== null) {
-      window.clearTimeout(spellingDebounceRef.current)
     }
 
     if (nextValue.trim().length < 2) {
@@ -153,44 +286,30 @@ export function AddView({
       return
     }
 
+    // One AI call gives both the translation and the spelling suggestion (Luis, 6 Oct). The
+    // suggestion is still only shown for single words of 4 letters or more, as before.
+    const spellingCandidate = nextValue.trim()
+    const wantsSpelling = !spellingCandidate.includes(' ') && spellingCandidate.length >= 4
     const requestId = targetRequestRef.current
     targetDebounceRef.current = window.setTimeout(async () => {
       setLoadingNative(true)
-      const result = await fetchTranslation(
-        nextValue.trim(),
+      setCheckingSpelling(wantsSpelling)
+      const result = await fetchTranslationWithSpelling(
+        spellingCandidate,
         config.targetLang,
         config.nativeLang,
       )
       if (requestId !== targetRequestRef.current) return
-      setSuggestionNative(result)
+      setSuggestionNative(result.translation)
       setLoadingNative(false)
-    }, 900)
-
-    const spellingCandidate = nextValue.trim()
-    const looksLikeSingleWord = !spellingCandidate.includes(' ')
-    if (!looksLikeSingleWord || spellingCandidate.length < 4) {
-      setCheckingSpelling(false)
-      return
-    }
-
-    const spellRequestId = spellingRequestRef.current
-    spellingDebounceRef.current = window.setTimeout(async () => {
-      setCheckingSpelling(true)
-      const suggestion = await fetchSpellingSuggestion(
-        spellingCandidate,
-        config.targetLang,
-      )
-      if (spellRequestId !== spellingRequestRef.current) return
-
-      const normalizedInput = spellingCandidate.toLowerCase()
-      const normalizedSuggestion = suggestion?.toLowerCase() || ''
+      const suggestion = wantsSpelling ? result.spellingSuggestion : null
       setSpellingSuggestion(
-        normalizedSuggestion && normalizedSuggestion !== normalizedInput
+        suggestion && suggestion.toLowerCase() !== spellingCandidate.toLowerCase()
           ? suggestion
           : null,
       )
       setCheckingSpelling(false)
-    }, 650)
+    }, 900)
   }
 
   const handleNativeChange = (value: string): void => {
@@ -245,7 +364,12 @@ export function AddView({
   }, [])
 
   const canSave =
-    target.trim() && native.trim() && importance && !saving && !isDuplicate
+    target.trim() &&
+    native.trim() &&
+    importance &&
+    !saving &&
+    !isDuplicate &&
+    !wordLimitReached
 
   const handleSave = async (): Promise<void> => {
     if (!canSave || !importance) return
@@ -255,17 +379,12 @@ export function AddView({
       window.clearTimeout(targetDebounceRef.current)
       targetDebounceRef.current = null
     }
-    if (spellingDebounceRef.current !== null) {
-      window.clearTimeout(spellingDebounceRef.current)
-      spellingDebounceRef.current = null
-    }
     if (nativeDebounceRef.current !== null) {
       window.clearTimeout(nativeDebounceRef.current)
       nativeDebounceRef.current = null
     }
     targetRequestRef.current += 1
     nativeRequestRef.current += 1
-    spellingRequestRef.current += 1
     setLoadingNative(false)
     setLoadingTarget(false)
     setCheckingSpelling(false)
@@ -301,7 +420,10 @@ export function AddView({
 
     try {
       await insertWord(newCard)
+      // Prepare its voice now, so tapping it in «Últimas añadidas» plays at once.
+      void getSpeechAudioUrl(trimmedTarget, config.targetLang)
       setCards((prev) => [...prev, newCard])
+      setSavesThisVisit((count) => count + 1)
 
       void onWordAdded().catch((error) => {
         console.error(error)
@@ -314,6 +436,7 @@ export function AddView({
       setTarget('')
       setNative('')
       setImportance(null)
+      if (translateTipPending) closeTranslateTip()
       setSaved(true)
       window.setTimeout(() => setSaved(false), 2000)
     } catch (error) {
@@ -323,158 +446,410 @@ export function AddView({
     }
   }
 
-  const recentList =
-    recent.length > 0 ? (
-      <div className='flex flex-col gap-2'>
-        <Button asChild variant='outline' size='sm' className='hidden lg:flex'>
-          <Link to={DASHBOARD_ROUTES.myIcaWords}>📦 Mi baúl ICA</Link>
-        </Button>
-        <h3 className='mt-2 text-[11px] uppercase tracking-wider text-muted-foreground'>
-          Últimas añadidas
-        </h3>
-        <div className='space-y-2 lg:overflow-y-auto lg:max-h-72 lg:pr-2'>
-          {recent.map((card) => {
-            const importanceMeta = getImportance(card.importance)
-            return (
-              <Card key={card.id} size='sm'>
-                <CardContent className='flex items-start gap-2.5'>
-                  <span
-                    className={`mt-1.5 h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[importanceMeta.key]}`}
-                  />
-                  <div className='w-full flex items-start justify-between gap-2'>
-                    <div className='flex flex-wrap items-center gap-2.5'>
-                      <span className='text-sm font-medium'>{card.target}</span>
-                      <span className='text-muted-foreground'>→</span>
-                      <span className='text-sm text-muted-foreground'>
-                        {card.native}
-                      </span>
-                    </div>
-                    <SpeakButton
-                      text={card.target}
-                      langName={card.targetLang || config.targetLang}
-                      color={importanceMeta.color}
-                      variant='icon'
-                      label={`Escuchar ${card.target}`}
-                      isPlaying={activeRecentSpeakerId === card.id}
-                      onPlayingChange={(isPlaying) => {
-                        setActiveRecentSpeakerId(isPlaying ? card.id : null)
-                      }}
-                      disabled={
-                        activeRecentSpeakerId !== null &&
-                        activeRecentSpeakerId !== card.id
-                      }
-                    />
-                  </div>
-                  <RomanizationHint
-                    text={card.target}
-                    language={card.targetLang || ''}
-                  />
-                </CardContent>
-              </Card>
-            )
-          })}
+  // --- Lo que se ve ---
+  const shownWords = Math.min(wordsUsedToday, wordLimit)
+  const goalMarkPct = Math.min(
+    100,
+    (CREATION_WORDS_GOAL / Math.max(1, wordLimit)) * 100,
+  )
+  const cycleWordsDone = Math.min(todayProgress.wordsAdded, CREATION_WORDS_GOAL)
+  const todayStr = todayKey()
+  const visibleRecent = showAllRecent ? recent : recent.slice(0, RECENT_PREVIEW)
+  const hiddenRecentCount = recent.length - visibleRecent.length
+
+  // Contador del día: palabras de hoy / máximo, con la marca del mínimo del ciclo (la C).
+  const dayCounter = (
+    <div
+      className='order-2 rounded-2xl px-4 pt-2.5 pb-3 lg:rounded-3xl lg:px-5 lg:pt-4 lg:pb-5'
+      style={{ background: 'var(--ica-i-soft)' }}
+    >
+      {/* Thin on the phone (Luis, 6 Oct): number and label on one line, the pill on the right. */}
+      <div className='flex items-center justify-between gap-3'>
+        <p className='m-0 flex min-w-0 items-baseline gap-1.5 leading-none'>
+          <span
+            key={shownWords}
+            className='ica-pop text-[26px] font-black tabular-nums lg:text-5xl'
+            style={{ color: 'var(--ica-i-ink)' }}
+          >
+            {shownWords}
+          </span>
+          <span className='text-base font-black text-muted-foreground tabular-nums lg:text-2xl'>
+            / {wordLimit}
+          </span>
+          <span className='ml-1 truncate text-[11px] font-extrabold tracking-[0.08em] uppercase lg:text-xs' style={{ color: 'var(--ica-i-ink)' }}>
+            {t('Palabras de hoy')}
+          </span>
+        </p>
+        {wordLimitReached ? (
+          <Pill tone='gold' className='shrink-0 bg-card!'>
+            {t('MÁXIMO DEL DÍA')}
+          </Pill>
+        ) : canCreatePhrase ? (
+          <Pill tone='ok' solid className='shrink-0'>
+            <CheckIcon className='size-3.5' strokeWidth={3.2} aria-hidden='true' />
+            {t('MÍNIMO HECHO')}
+          </Pill>
+        ) : (
+          <Pill tone='i' className='shrink-0 bg-card!'>
+            {t('FALTAN {n}', { n: wordsLeftForPhrase })}
+          </Pill>
+        )}
+      </div>
+
+      <div className='relative mt-2.5 lg:mt-5'>
+        <GameProgress
+          value={shownWords / Math.max(1, wordLimit)}
+          color='var(--ica-i)'
+          height={12}
+          label={t('Palabras de hoy')}
+        />
+        {/* Marca del mínimo del ciclo: a partir de aquí se abre la C */}
+        <span
+          className='absolute top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center'
+          style={{ left: `${goalMarkPct}%` }}
+          aria-hidden='true'
+        >
+          <span className={canCreatePhrase ? '' : 'opacity-60 grayscale-[0.4]'}>
+            <PhaseLetter letter='C' size={22} />
+          </span>
+        </span>
+      </div>
+
+      <div className='mt-2.5 hidden flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs font-bold text-muted-foreground tabular-nums lg:flex'>
+        <span>{t('Mínimo {n} para tu ciclo', { n: CREATION_WORDS_GOAL })}</span>
+        <span>
+          {dailyLimits.boosted.words
+            ? t('Máximo {n} (ampliado hoy)', { n: wordLimit })
+            : t('Máximo {n}', { n: wordLimit })}
+        </span>
+      </div>
+    </div>
+  )
+
+  // Bloque morado hacia la C: se abre con el mínimo de palabras del día.
+  const phraseBlock = (
+    <button
+      type='button'
+      disabled={!canCreatePhrase}
+      onClick={() => {
+        if (goCreateTipPending) closeGoCreateTip()
+        navigate(DASHBOARD_ROUTES.activationPhrase)
+      }}
+      className={cn(
+        'ica-press flex w-full items-center gap-4 rounded-3xl border-2 p-4 text-left',
+        canCreatePhrase ? '' : 'cursor-not-allowed',
+      )}
+      style={{
+        background: 'var(--ica-c-soft)',
+        borderColor: canCreatePhrase
+          ? 'color-mix(in oklab, var(--ica-c) 45%, transparent)'
+          : 'color-mix(in oklab, var(--ica-c) 22%, transparent)',
+        boxShadow: `0 4px 0 color-mix(in oklab, var(--ica-c) ${canCreatePhrase ? 45 : 20}%, transparent)`,
+      }}
+    >
+      <span className='relative shrink-0'>
+        <span className={canCreatePhrase ? 'block' : 'block opacity-55'}>
+          <PhaseLetter letter='C' size={56} />
+        </span>
+        {!canCreatePhrase ? (
+          <span className='absolute -top-1.5 -right-1.5 flex size-6 items-center justify-center rounded-full border-2 border-border bg-card text-muted-foreground'>
+            <LockIcon className='size-3' strokeWidth={2.8} aria-hidden='true' />
+          </span>
+        ) : null}
+      </span>
+      <span className='min-w-0 flex-1'>
+        <span className='block text-xs font-extrabold tracking-[0.08em] uppercase' style={{ color: 'var(--ica-c-ink)' }}>
+          {t('Creación')}
+        </span>
+        <span className='block text-lg leading-tight font-extrabold text-foreground'>
+          {t('Crear nueva frase')}
+        </span>
+        {canCreatePhrase ? (
+          <span className='mt-0.5 block text-xs font-semibold text-muted-foreground'>
+            {t('Ya tienes tus {n} palabras: úsalas en tu frase.', { n: CREATION_WORDS_GOAL })}
+          </span>
+        ) : (
+          <>
+            <span className='mt-0.5 block text-xs font-semibold text-muted-foreground'>
+              {tn(
+                wordsLeftForPhrase,
+                'Añade {n} palabra más hoy para crear tu frase',
+                'Añade {n} palabras más hoy para crear tu frase',
+              )}
+            </span>
+            <span className='mt-2 flex gap-1.5' aria-hidden='true'>
+              {Array.from({ length: CREATION_WORDS_GOAL }, (_, index) => (
+                <span
+                  key={index}
+                  className='h-2 flex-1 rounded-full'
+                  style={{
+                    background:
+                      index < cycleWordsDone
+                        ? 'var(--ica-c)'
+                        : 'color-mix(in oklab, var(--ica-c) 18%, var(--card))',
+                  }}
+                />
+              ))}
+            </span>
+          </>
+        )}
+      </span>
+      {canCreatePhrase ? (
+        <span
+          className='flex size-11 shrink-0 items-center justify-center rounded-2xl text-white'
+          style={{ background: 'var(--ica-c)', boxShadow: '0 3px 0 var(--ica-c-edge)' }}
+          aria-hidden='true'
+        >
+          <ChevronRightIcon className='size-6' strokeWidth={3} />
+        </span>
+      ) : null}
+    </button>
+  )
+
+  // Tu baúl y las últimas palabras añadidas (filas como las de ICA Coins).
+  const recentSection = (
+    <div className='order-5 flex flex-col gap-6'>
+      <div>
+        <SectionLabel>{t('Tu baúl ICA')}</SectionLabel>
+        <div className='relative'>
+          {vaultTipPending ? (
+            <FirstUseTip onClose={closeVaultTip}>
+              {t('Este es tu Baúl ICA: aquí se guardan todas tus palabras ICA. Dentro puedes escucharlas seguidas, como una lista de reproducción.')}
+            </FirstUseTip>
+          ) : null}
+          <RowGroup>
+            <ListRow
+              to={DASHBOARD_ROUTES.myIcaWords}
+              icon={
+                <IconTile tone='i' size={44}>
+                  <ArchiveIcon className='size-5.5' strokeWidth={2.4} aria-hidden='true' />
+                </IconTile>
+              }
+              title={t('Mis palabras ICA')}
+              text={tn(cards.length, '{n} palabra guardada', '{n} palabras guardadas')}
+            />
+          </RowGroup>
         </div>
       </div>
-    ) : null
+
+      {recent.length > 0 ? (
+        <div>
+          <SectionLabel>{t('Últimas añadidas')}</SectionLabel>
+          <RowGroup>
+            {visibleRecent.map((card) => {
+              const importanceMeta = getImportance(card.importance)
+              const addedToday = dayKeyOf(card.createdAt) === todayStr
+              return (
+                <div key={card.id} className='flex items-center gap-3 py-3'>
+                  <ImportanceTile level={importanceMeta.key} size={40} />
+                  <div className='min-w-0 flex-1'>
+                    <p className='m-0 flex flex-wrap items-center gap-x-2 gap-y-0.5 leading-tight font-extrabold break-words'>
+                      <span className='min-w-0 break-words'>{card.target}</span>
+                      {addedToday ? <Pill tone='i'>{t('HOY')}</Pill> : null}
+                    </p>
+                    <p className='m-0 mt-0.5 text-xs font-semibold break-words text-muted-foreground'>
+                      {card.native}
+                    </p>
+                    <RomanizationHint
+                      text={card.target}
+                      language={card.targetLang || ''}
+                      className='m-0 mt-0.5 text-[11px] font-semibold text-muted-foreground'
+                    />
+                    <PronunciationHint
+                      word={card.target}
+                      targetLang={card.targetLang || config.targetLang}
+                      nativeLang={card.nativeLang || config.nativeLang}
+                      className='m-0 mt-0.5 block text-xs'
+                    />
+                  </div>
+                  <SpeakButton
+                    text={card.target}
+                    langName={card.targetLang || config.targetLang}
+                    color={importanceMeta.color}
+                    variant='icon'
+                    label={t('Escuchar {word}', { word: card.target })}
+                    isPlaying={activeRecentSpeakerId === card.id}
+                    onPlayingChange={(isPlaying) => {
+                      setActiveRecentSpeakerId(isPlaying ? card.id : null)
+                    }}
+                    disabled={
+                      activeRecentSpeakerId !== null &&
+                      activeRecentSpeakerId !== card.id
+                    }
+                  />
+                </div>
+              )
+            })}
+          </RowGroup>
+          {recent.length > RECENT_PREVIEW ? (
+            <Button
+              type='button'
+              variant='ghost'
+              className='mt-2 w-full text-muted-foreground'
+              onClick={() => setShowAllRecent((open) => !open)}
+              aria-expanded={showAllRecent}
+            >
+              {showAllRecent ? t('Ver menos') : t('Ver {n} más', { n: hiddenRecentCount })}
+              <ChevronDownIcon
+                className={cn('size-4 transition-transform', showAllRecent && 'rotate-180')}
+                strokeWidth={2.6}
+                aria-hidden='true'
+              />
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
 
   return (
-    <section className='mx-auto w-full max-w-6xl flex flex-1 justify-center items-center p-4 pb-24'>
-      <div className='flex w-full gap-6'>
-        <div className='hidden lg:block w-1/4' />
-        <div className='w-full lg:w-1/2'>
-          <div className='mb-1 flex flex-wrap items-center justify-between gap-2'>
-            <h2 className='font-serif text-2xl lg:text-3xl font-bold'>
-              ✍️ Añadir nueva palabra ICA
-            </h2>
-            <Badge variant='secondary' className='gap-1.5'>
-              <span className='text-sm font-bold'>
-                {todayProgress.wordsAdded}/{CREATION_WORDS_GOAL}
-              </span>
-              <span className='text-[11px]'>hoy</span>
-              {todayProgress.wordsAdded >= CREATION_WORDS_GOAL && (
-                <span className='text-xs'>✓</span>
-              )}
-            </Badge>
-            <Button asChild variant='outline' size='sm' className='lg:hidden'>
-              <Link to={DASHBOARD_ROUTES.myIcaWords}>📦 Mi baúl ICA</Link>
-            </Button>
-          </div>
+    <GamePage wide className='lg:flex-row lg:items-start lg:gap-10'>
+      {/* Columna principal: título y formulario (en el móvil se reparte con la del día) */}
+      <div className='contents lg:flex lg:min-w-0 lg:flex-1 lg:flex-col lg:gap-6'>
+        <PageTitle
+          className='order-1'
+          icon={<PhaseLetter letter='I' size={48} />}
+          subtitle={
+            <>
+              {t('Añade palabras nuevas a')}{' '}
+              <TrunkLink />
+            </>
+          }
+        >
+          {t('Inmersión')}
+        </PageTitle>
 
-          <p className='mb-7 text-sm text-muted-foreground'>
-            Escribe en cualquier campo y la IA te sugiere la traducción.
-          </p>
-
-          <div className='mb-5'>
-            <Label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
-              {config.targetLang}{' '}
-              <span className='normal-case tracking-normal text-muted-foreground'>
-                — idioma objetivo
+        {/* Formulario */}
+        <div className='order-3 flex flex-col gap-4 lg:gap-6'>
+          {/* Idioma que aprendes */}
+          <div>
+            <div className='relative mb-1.5 flex items-baseline justify-between gap-2 lg:mb-2'>
+              {translateTipPending ? (
+                <FirstUseTip onClose={closeTranslateTip}>{t('Escribe en un campo y la IA traduce el otro.')}</FirstUseTip>
+              ) : null}
+              <Label htmlFor='ica-add-target' className='text-base font-extrabold'>
+                {langName(config.targetLang)}
+                <span className='text-sm font-semibold text-muted-foreground'>
+                  {t('idioma objetivo')}
+                </span>
+              </Label>
+              <span
+                className='text-[11px] font-bold text-muted-foreground tabular-nums'
+                aria-label={t('Máximo {n} caracteres', { n: SHARE_TARGET_MAX_CHARS })}
+              >
+                {targetCharsCount}/{SHARE_TARGET_MAX_CHARS}
               </span>
-            </Label>
-            <Input
-              value={target}
-              onChange={(e) => handleTargetChange(e.target.value)}
-              disabled={saving}
-              maxLength={SHARE_TARGET_MAX_CHARS}
-              placeholder={`Escribe en ${config.targetLang}...`}
-              className='h-11'
-            />
-            <p className='mt-1 text-[11px] text-muted-foreground'>
-              Máximo {SHARE_TARGET_MAX_CHARS} caracteres ({targetCharsCount}/
-              {SHARE_TARGET_MAX_CHARS})
-            </p>
+            </div>
+            <div className='relative'>
+              <Input
+                id='ica-add-target'
+                value={target}
+                onChange={(e) => handleTargetChange(e.target.value)}
+                disabled={saving}
+                maxLength={SHARE_TARGET_MAX_CHARS}
+                placeholder={t('Escribe en {lang}...', { lang: langName(config.targetLang) })}
+                aria-invalid={showDuplicateWarning || undefined}
+                className={FIELD_CLASS}
+              />
+              {/* No «Escuchar» while typing (Luis, 11 Oct): every half-typed word would cost a new
+                  voice. The word is listened to in «Últimas añadidas», where its voice is prepared
+                  as soon as it is saved. */}
+            </div>
+            {showDuplicateWarning && (
+              <div
+                className='mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl px-3 py-2 text-sm font-bold'
+                style={{ background: 'var(--ica-bad-soft)', color: 'var(--ica-bad-ink)' }}
+                role='alert'
+              >
+                <span className='flex min-w-0 flex-1 items-center gap-2'>
+                  <TriangleAlertIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' />
+                  <span>
+                    {t('Esta palabra ya existe en tu baúl ICA.')}{' '}
+                    {duplicateAlreadyBoosted ? t('Ya está potenciada.') : t('¿Quieres potenciarla?')}
+                  </span>
+                </span>
+                {duplicateAlreadyBoosted ? null : (
+                  <Button type='button' size='sm' variant='i' className='shrink-0' disabled={boosting} onClick={() => void handleBoost()}>
+                    {boosting ? (
+                      <LoaderCircleIcon className='animate-spin' strokeWidth={2.6} aria-hidden='true' />
+                    ) : (
+                      <ZapIcon strokeWidth={2.6} aria-hidden='true' />
+                    )}
+                    {t('Potenciar')}
+                  </Button>
+                )}
+              </div>
+            )}
+            {boostedWord && !trimmedTarget && (
+              <p
+                className='m-0 mt-2 flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-bold'
+                style={{ background: 'var(--ica-ok-soft)', color: 'var(--ica-ok-ink)' }}
+                role='status'
+              >
+                <ZapIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' />
+                <span>
+                  <b className='font-black'>{boostedWord}</b>{' '}
+                  {t('potenciada. Saldrá con preferencia en tus próximas flashcards, reto del día y Desafíos ICA.')}
+                </span>
+              </p>
+            )}
             {sharedPrefillStatus === 'prefilled' && (
-              <p className='mt-1 text-xs text-emerald-600 dark:text-emerald-300'>
-                Texto compartido detectado y traducción automática en curso.
+              <p
+                className='m-0 mt-2 rounded-2xl px-3 py-2 text-xs font-bold'
+                style={{ background: 'var(--ica-ok-soft)', color: 'var(--ica-ok-ink)' }}
+              >
+                {t('Texto compartido detectado y traducción automática en curso.')}
               </p>
             )}
             {sharedPrefillStatus === 'missing' && (
-              <p className='mt-1 text-xs text-amber-600 dark:text-amber-300'>
-                No llegó texto válido desde compartir. Escríbelo manualmente.
+              <p
+                className='m-0 mt-2 rounded-2xl px-3 py-2 text-xs font-bold'
+                style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
+              >
+                {t('No llegó texto válido desde compartir. Escríbelo manualmente.')}
               </p>
             )}
-            <RomanizationHint text={target} language={config.targetLang} />
-            {trimmedTarget && (
-              <SpeakButton
-                text={trimmedTarget}
-                langName={config.targetLang}
-                color='#3B82F6'
-                label={`Escuchar en ${config.targetLang}`}
-                className='mt-2'
-                disabled={saving}
-              />
-            )}
+            <RomanizationHint text={target} language={config.targetLang} className='m-0 mt-2 text-xs font-semibold text-muted-foreground' />
             {(checkingSpelling || spellingSuggestion) && (
-              <div className='mt-1.5 flex items-center gap-2 text-xs'>
+              <div className='mt-2'>
                 {checkingSpelling && (
-                  <span className='text-muted-foreground'>
-                    Revisando ortografía...
+                  <span className='inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground'>
+                    <LoaderCircleIcon className='size-3.5 animate-spin' strokeWidth={2.6} aria-hidden='true' />
+                    {t('Revisando ortografía...')}
                   </span>
                 )}
                 {!checkingSpelling && spellingSuggestion && (
-                  <>
-                    <span className='text-muted-foreground'>
-                      *quizás querías escribir "{spellingSuggestion}"*
+                  <div
+                    className='flex items-center gap-2.5 rounded-2xl border-2 px-3 py-2'
+                    style={{
+                      background: 'var(--ica-gold-soft)',
+                      borderColor: 'color-mix(in oklab, var(--ica-gold) 45%, transparent)',
+                    }}
+                  >
+                    <SpellCheckIcon className='size-5 shrink-0' strokeWidth={2.4} style={{ color: 'var(--ica-gold-ink)' }} aria-hidden='true' />
+                    <span className='min-w-0 flex-1 text-sm font-semibold break-words' style={{ color: 'var(--ica-gold-ink)' }}>
+                      {t('¿Quizás querías escribir')} <b className='font-extrabold'>«{spellingSuggestion}»</b>?
                     </span>
                     <Button
                       type='button'
-                      size='xs'
-                      variant='secondary'
+                      size='sm'
+                      variant='gold'
+                      className='h-9 px-4'
                       onClick={() => {
                         handleTargetChange(spellingSuggestion)
                         setSpellingSuggestion(null)
                       }}
                     >
-                      Usar
+                      {t('Usar')}
                     </Button>
-                  </>
+                  </div>
                 )}
               </div>
             )}
             <TranslationSuggestion
               suggestion={suggestionNative}
               loading={loadingNative}
-              label={`En ${config.nativeLang}`}
+              label={t('En {lang}', { lang: langName(config.nativeLang) })}
               onAccept={() => {
                 if (suggestionNative) {
                   setNative(suggestionNative)
@@ -484,24 +859,28 @@ export function AddView({
             />
           </div>
 
-          <div className='mb-6'>
-            <Label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
-              {config.nativeLang}{' '}
-              <span className='normal-case tracking-normal text-muted-foreground'>
-                — idioma materno
-              </span>
-            </Label>
+          {/* Tu idioma */}
+          <div>
+            <div className='mb-1.5 flex items-baseline justify-between gap-2 lg:mb-2'>
+              <Label htmlFor='ica-add-native' className='text-base font-extrabold'>
+                {langName(config.nativeLang)}
+                <span className='text-sm font-semibold text-muted-foreground'>
+                  {t('idioma materno')}
+                </span>
+              </Label>
+            </div>
             <Input
+              id='ica-add-native'
               value={native}
               onChange={(e) => handleNativeChange(e.target.value)}
               disabled={saving}
-              placeholder={`Escribe en ${config.nativeLang}...`}
-              className='h-11'
+              placeholder={t('Escribe en {lang}...', { lang: langName(config.nativeLang) })}
+              className={FIELD_CLASS}
             />
             <TranslationSuggestion
               suggestion={suggestionTarget}
               loading={loadingTarget}
-              label={`En ${config.targetLang}`}
+              label={t('En {lang}', { lang: langName(config.targetLang) })}
               onAccept={() => {
                 if (suggestionTarget) {
                   setTarget(suggestionTarget)
@@ -511,93 +890,73 @@ export function AddView({
             />
           </div>
 
-          <div className='mb-7'>
-            <Label className='mb-2 block text-[11px] uppercase tracking-wider text-muted-foreground'>
-              Frecuencia de uso
-            </Label>
-            <div className='flex flex-wrap gap-2'>
-              {IMPORTANCE_LEVELS.map((level) => {
-                const selected = importance === level.key
-                return (
-                  <Button
-                    key={level.key}
-                    type='button'
-                    onClick={() => !saving && setImportance(level.key)}
-                    disabled={saving}
-                    variant={selected ? 'default' : 'outline'}
-                    className={`min-w-22.5 h-auto flex-1 py-2.5 ${selected ? IMPORTANCE_TONE[level.key] : ''}`}
-                  >
-                    <span
-                      className={`mr-1 h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[level.key]}`}
-                    />
-                    <div className='text-xs font-semibold'>{level.label}</div>
-                  </Button>
-                )
-              })}
-            </div>
+          {/* Frecuencia */}
+          <div className='relative'>
+            {frequencyTipPending && !translateTipPending && trimmedTarget && !importance ? (
+              <FirstUseTip onClose={closeFrequencyTip}>{t('Elige cuánto vas a usar esta palabra.')}</FirstUseTip>
+            ) : null}
+            <p className='m-0 mb-1.5 text-base font-extrabold lg:mb-2'>
+              {t('Frecuencia de uso')}
+            </p>
+            <ImportancePicker
+              value={importance}
+              onChange={(key: ImportanceKey) => {
+                if (saving) return
+                setImportance(key)
+                if (frequencyTipPending) closeFrequencyTip()
+              }}
+              disabled={saving}
+              showHint={false}
+            />
           </div>
 
-          <Button
-            type='button'
-            onClick={handleSave}
-            disabled={!canSave}
-            className='h-11 w-full text-base font-semibold'
-          >
-            {saving
-              ? 'Guardando...'
-              : saved
-                ? '✓ ¡Guardada!'
-                : 'Guardar palabra'}
-          </Button>
-
-          <Button
-            disabled={!canCreatePhrase}
-            type='button'
-            onClick={() => navigate(DASHBOARD_ROUTES.activationPhrase)}
-            variant='outline'
-            className='mt-3 h-11 w-full text-base font-semibold lg:hidden'
-          >
-            🧩 Crear nueva frase
-          </Button>
-          <div className='lg:hidden'>
-            {!canCreatePhrase && (
-              <p className='mt-1.5 text-center text-xs text-muted-foreground'>
-                🔒 Añade {wordsLeftForPhrase}{' '}
-                {wordsLeftForPhrase === 1 ? 'palabra' : 'palabras'} más hoy para
-                crear tu frase
-              </p>
+          <div className='flex flex-col gap-3'>
+            {/* Only for someone who comes back with the day done, not right after the last word. */}
+            {wordLimitReached && !saved && savesThisVisit === 0 && (
+              <DailyLimitNotice kind='words' state={wordLimitsState} />
             )}
+
+            <Button
+              type='button'
+              onClick={handleSave}
+              disabled={!canSave}
+              size='xl'
+              variant={saved ? 'success' : 'i'}
+              className={cn('w-full text-base lg:text-lg', saved && 'disabled:opacity-100')}
+            >
+              {saving ? (
+                <>
+                  <LoaderCircleIcon className='size-5 animate-spin' strokeWidth={2.6} aria-hidden='true' />
+                  {t('Guardando...')}
+                </>
+              ) : saved ? (
+                <>
+                  <CheckIcon className='size-5' strokeWidth={3.2} aria-hidden='true' />
+                  {t('¡Guardada!')}
+                </>
+              ) : wordLimitReached ? (
+                t('Máximo del día alcanzado')
+              ) : (
+                t('Guardar palabra')
+              )}
+            </Button>
           </div>
-
-          {showDuplicateWarning && (
-            <p className='mt-2 text-xs text-red-600 dark:text-red-300'>
-              Esta palabra ya existe en tu baúl ICA.
-            </p>
-          )}
-
-          {recentList && <div className='mt-8 lg:hidden'>{recentList}</div>}
-        </div>
-
-        <div className='hidden w-1/4 lg:block pt-5'>
-          {recentList}
-          <Button
-            disabled={!canCreatePhrase}
-            type='button'
-            onClick={() => navigate(DASHBOARD_ROUTES.activationPhrase)}
-            variant='outline'
-            className='mt-3 w-full'
-          >
-            🧩 Crear nueva frase
-          </Button>
-          {!canCreatePhrase && (
-            <p className='mt-1.5 text-center text-xs text-muted-foreground'>
-              🔒 Añade {wordsLeftForPhrase}{' '}
-              {wordsLeftForPhrase === 1 ? 'palabra' : 'palabras'} más hoy para
-              crear tu frase
-            </p>
-          )}
         </div>
       </div>
-    </section>
+
+      {/* Columna del día (a la derecha en ordenador; en el móvil se reparte) */}
+      <div className='contents lg:flex lg:w-84 lg:shrink-0 lg:flex-col lg:gap-6'>
+        {dayCounter}
+        <div className='relative order-4'>
+          {canCreatePhrase && goCreateTipPending && !translateTipPending ? (
+            <FirstUseTip onClose={closeGoCreateTip}>
+              {t('¡Ya tienes tus {n} palabras! Toca aquí para crear tu frase.', { n: CREATION_WORDS_GOAL })}
+            </FirstUseTip>
+          ) : null}
+          {phraseBlock}
+        </div>
+        {recentSection}
+      </div>
+    </GamePage>
   )
 }

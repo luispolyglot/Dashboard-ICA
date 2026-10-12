@@ -1,31 +1,41 @@
-import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
+import { t } from '@/i18n'
 import { GOAL } from '../constants'
+import { CardsIcon, FlameIcon } from '../game/icons'
 
 type GlobalReviewGoalBadgeProps = {
   correctToday: number
+  className?: string
 }
 
+/** Pastilla con la meta diaria de flashcards (10 acertadas suman un día de racha). */
 export function GlobalReviewGoalBadge({
   correctToday,
+  className,
 }: GlobalReviewGoalBadgeProps) {
   const safeCorrect = Math.max(0, correctToday)
   const done = safeCorrect >= GOAL
+  // La racha de flashcards va en azul (la llama azul), igual que en Rachas.
+  const color = 'var(--ica-i)'
 
   return (
-    <Badge
-      variant='secondary'
-      className={`gap-1.5 rounded-full px-3 py-1 text-[11px] ${
-        done
-          ? 'border border-amber-500/40 bg-amber-500/15 text-amber-500 dark:text-amber-200'
-          : 'border border-blue-500/40 bg-blue-500/10 text-blue-500 dark:text-blue-200'
-      }`}
+    <span
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1.5 rounded-full border-2 py-1 pr-3 pl-1.5 text-xs font-extrabold whitespace-nowrap tabular-nums',
+        className,
+      )}
+      style={{
+        background: `color-mix(in oklab, ${color} 14%, var(--card))`,
+        borderColor: `color-mix(in oklab, ${color} 40%, transparent)`,
+        color: 'var(--ica-i-ink)',
+      }}
     >
-      <span aria-hidden='true'>{done ? '⚡' : '📈'}</span>
+      {done ? <FlameIcon size={18} tone='flash' /> : <CardsIcon size={18} />}
       <span>
         {done
-          ? 'Racha diaria completada'
-          : `Racha diaria ${safeCorrect}/${GOAL}`}
+          ? t('Racha diaria completada')
+          : t('Racha diaria {done}/{goal}', { done: safeCorrect, goal: GOAL })}
       </span>
-    </Badge>
+    </span>
   )
 }

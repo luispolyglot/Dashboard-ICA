@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { MicIcon, PlusIcon, TriangleAlertIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -9,6 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { t } from '@/i18n'
+import { IconTile, PhaseLetter } from '../game/ui'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { createMasterNote, fetchMasterNotes } from '../services/masterNotes'
 import type { MasterNote } from '../types'
@@ -78,7 +81,7 @@ export function ActivatePhraseInMasterNoteModal({
       .catch((error) => {
         console.error(error)
         if (!active) return
-        setMasterNotesError('No se pudieron cargar las notas maestras abiertas')
+        setMasterNotesError(t('No se pudieron cargar las notas maestras abiertas'))
         setOpenMasterNotes([])
         setShowChooser(true)
       })
@@ -111,7 +114,7 @@ export function ActivatePhraseInMasterNoteModal({
       )
     } catch (error) {
       console.error(error)
-      setMasterNotesError('No se pudo crear la nota maestra')
+      setMasterNotesError(t('No se pudo crear la nota maestra'))
       setAutoRouting(false)
       setShowChooser(true)
     } finally {
@@ -130,48 +133,68 @@ export function ActivatePhraseInMasterNoteModal({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Activar frase en Nota Maestra</DialogTitle>
+          <div className='flex items-center gap-3'>
+            <PhaseLetter letter='A' size={44} />
+            <DialogTitle>{t('Activar frase en Nota Maestra')}</DialogTitle>
+          </div>
           <DialogDescription>
-            Una Nota Maestra es tu audio de práctica: vas grabando frases y se
-            completa sola al llegar a 3 minutos. Elige en cuál grabar esta frase
-            o empieza una nueva.
+            {t('Una Nota Maestra es tu audio de práctica: vas grabando frases y se completa sola al llegar a 3 minutos. Elige en cuál grabar esta frase o empieza una nueva.')}
           </DialogDescription>
         </DialogHeader>
 
         {(loadingMasterNotes || autoRouting) && (
-          <p className='text-sm text-muted-foreground'>
-            Preparando tu grabación...
-          </p>
+          <div className='flex items-center gap-3 rounded-2xl px-4 py-3' style={{ background: 'var(--ica-a-soft)' }}>
+            <span
+              className='inline-block size-5 shrink-0 animate-spin rounded-full border-[3px] border-t-transparent'
+              style={{ borderColor: 'var(--ica-a)', borderTopColor: 'transparent' }}
+              aria-hidden='true'
+            />
+            <p className='m-0 text-sm font-bold' style={{ color: 'var(--ica-a-ink)' }}>
+              {t('Preparando tu grabación...')}
+            </p>
+          </div>
         )}
 
         {!loadingMasterNotes && masterNotesError && (
-          <p className='text-sm text-red-400'>{masterNotesError}</p>
+          <div
+            role='alert'
+            className='flex items-center gap-3 rounded-2xl px-4 py-3'
+            style={{ background: 'var(--ica-bad-soft)', color: 'var(--ica-bad-ink)' }}
+          >
+            <TriangleAlertIcon className='size-5 shrink-0' strokeWidth={2.6} aria-hidden='true' />
+            <p className='m-0 text-sm font-bold'>{masterNotesError}</p>
+          </div>
         )}
 
         {!loadingMasterNotes && !autoRouting && !masterNotesError && openMasterNotes.length === 0 && (
-          <p className='text-sm text-muted-foreground'>
-            No tienes notas maestras abiertas.
+          <p className='m-0 text-sm font-semibold text-muted-foreground'>
+            {t('No tienes notas maestras abiertas.')}
           </p>
         )}
 
         {!loadingMasterNotes && !autoRouting && openMasterNotes.length > 0 && (
-          <div className='max-h-60 space-y-2 overflow-y-auto pr-1'>
+          <div className='max-h-72 divide-y-2 divide-border overflow-y-auto rounded-2xl border-2 border-border px-3'>
             {openMasterNotes.map((note) => {
               const isActivatingThis = activatingInNoteId === note.id
               return (
                 <div
                   key={note.id}
-                  className='rounded-lg border border-border/70 bg-muted/20 p-3 flex items-center justify-between'
+                  className='flex items-center gap-3 py-3'
                 >
-                  <p className='text-sm font-semibold'>{note.name}</p>
+                  <IconTile tone='a' size={44}>
+                    <MicIcon className='size-5.5' strokeWidth={2.6} aria-hidden='true' />
+                  </IconTile>
+                  <p className='m-0 min-w-0 flex-1 truncate font-extrabold'>{note.name}</p>
                   <Button
                     type='button'
                     size='sm'
-                    className='mt-2'
+                    variant='a'
                     disabled={Boolean(activatingInNoteId) || creatingAndActivating}
                     onClick={() => handleActivateInExistingNote(note.id)}
+                    aria-label={t('Activar en esta nota: {name}', { name: note.name })}
+                    className='shrink-0'
                   >
-                    {isActivatingThis ? 'Abriendo...' : 'Activar en esta nota'}
+                    {isActivatingThis ? t('Abriendo...') : t('Activar')}
                   </Button>
                 </div>
               )
@@ -186,17 +209,18 @@ export function ActivatePhraseInMasterNoteModal({
             onClick={() => onOpenChange(false)}
             disabled={creatingAndActivating || Boolean(activatingInNoteId)}
           >
-            Cancelar
+            {t('Cancelar')}
           </Button>
           <Button
             type='button'
-            variant='secondary'
+            variant='outline'
             onClick={() => void handleActivateInNewNote()}
             disabled={creatingAndActivating || Boolean(activatingInNoteId) || !phraseId}
           >
+            {!creatingAndActivating ? <PlusIcon strokeWidth={3} aria-hidden='true' /> : null}
             {creatingAndActivating
-              ? 'Creando nota maestra...'
-              : 'Activar en nota maestra nueva'}
+              ? t('Creando nota maestra...')
+              : t('Activar en nota maestra nueva')}
           </Button>
         </DialogFooter>
       </DialogContent>

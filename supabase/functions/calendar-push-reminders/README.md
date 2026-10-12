@@ -43,6 +43,8 @@ La function envia payload con:
 - Solo clases con preferencia activa (`users_calendar_icademy.notifications_enabled = true`)
 - Respeta `minutes_before`
 - Ventana de tolerancia: hasta 10 minutos despues del inicio
-- Respeta quiet hours si el usuario configuro `quiet_hours_start`/`quiet_hours_end`
+- Respeta quiet hours si el usuario configuro `quiet_hours_start`/`quiet_hours_end`, en la hora de su propia zona (`profiles.timezone`; si no tiene, Madrid)
 - Evita duplicados por `subscription_id + calendar_entry_id`
-- Calcula el horario de la clase en la zona horaria de `profiles.timezone` del usuario
+- La hora de la clase se lee en hora de Madrid (asi se guardan las clases)
+- En cada pasada tambien envia los avisos de Desafios ICA que dejo en cola el job de caducidad (`ica_challenge_push_outbox`)
+- Tambien envia el aviso de clase cambiada de dia u hora que deja en cola el trigger de `calendar_icademy` (`calendar_change_push_outbox`): a quien tiene el recordatorio de esa clase y al profesor con sus avisos activos. Respeta quiet hours (lo deja para la siguiente pasada) y no avisa si la clase ya empezo

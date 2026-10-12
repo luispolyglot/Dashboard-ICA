@@ -24,6 +24,7 @@ function makeQuery(result: QueryResult) {
   const query = {
     select: vi.fn(),
     eq: vi.fn(),
+    ilike: vi.fn(),
     order: vi.fn(),
     range: vi.fn(),
     in: vi.fn(),
@@ -31,6 +32,7 @@ function makeQuery(result: QueryResult) {
 
   query.select.mockReturnValue(query)
   query.eq.mockReturnValue(query)
+  query.ilike.mockReturnValue(query)
   query.order.mockReturnValue(query)
   query.in.mockResolvedValue(result)
   query.range.mockResolvedValue(result)

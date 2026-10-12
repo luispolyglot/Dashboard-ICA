@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { supabase } from '@/lib/supabase'
 import { getCalendarIcademyCatalogEntry } from '../constants/calendarIcademyCatalog'
 import type {
@@ -59,7 +60,7 @@ function mapPreference(row: CalendarIcademyPreferenceRow): CalendarIcademyPrefer
 
 async function getCurrentUserId(): Promise<string> {
   if (!supabase) {
-    throw new CalendarIcademyPreferenceRequestError('Supabase no esta configurado.')
+    throw new CalendarIcademyPreferenceRequestError(t('Supabase no esta configurado.'))
   }
 
   const {
@@ -69,7 +70,7 @@ async function getCurrentUserId(): Promise<string> {
 
   if (error || !user) {
     throw new CalendarIcademyPreferenceRequestError(
-      'Necesitas iniciar sesión para gestionar notificaciones.',
+      t('Necesitas iniciar sesión para gestionar notificaciones.'),
       401,
     )
   }
@@ -85,7 +86,7 @@ function normalizePreferenceInput(
   const catalogEntry = getCalendarIcademyCatalogEntry(classKey)
   if (!catalogEntry) {
     throw new CalendarIcademyPreferenceRequestError(
-      'La clase seleccionada no pertenece al catalogo oficial de ICADEMY.',
+      t('La clase seleccionada no pertenece al catalogo oficial de ICADEMY.'),
       400,
     )
   }
@@ -119,7 +120,7 @@ export async function fetchCalendarIcademyPreferences(): Promise<
 
   if (error) {
     throw new CalendarIcademyPreferenceRequestError(
-      'No se pudieron cargar tus preferencias del calendario.',
+      t('No se pudieron cargar tus preferencias del calendario.'),
       getErrorStatus(error),
     )
   }
@@ -142,11 +143,11 @@ export async function upsertCalendarIcademyPreference(
   if (error) {
     if (typeof error.message === 'string' && error.message.includes('CALENDAR_REMINDERS_LIMIT_REACHED')) {
       throw new CalendarIcademyPreferenceRequestError(
-        'Puedes tener maximo 2 recordatorios activos + Destripando Niveles opcional.',
+        t('Puedes tener maximo 2 recordatorios activos + Destripando Niveles opcional.'),
       )
     }
     throw new CalendarIcademyPreferenceRequestError(
-      'No se pudo guardar la preferencia del calendario.',
+      t('No se pudo guardar la preferencia del calendario.'),
       getErrorStatus(error),
     )
   }
@@ -171,7 +172,7 @@ export async function markCalendarIcademyNotificationShown(input: {
 
   if (error) {
     throw new CalendarIcademyPreferenceRequestError(
-      'No se pudo registrar el aviso de notificacion.',
+      t('No se pudo registrar el aviso de notificación.'),
       getErrorStatus(error),
     )
   }

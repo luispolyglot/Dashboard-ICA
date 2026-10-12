@@ -1,3 +1,4 @@
+import { uiLocale } from '@/i18n'
 import { IMPORTANCE_ORDER } from './constants'
 import type { Lexicard, ReviewMode } from './types'
 
@@ -40,7 +41,7 @@ export function formatDate(
   if (!value) return fallback
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return fallback
-  return date.toLocaleDateString('es-ES')
+  return date.toLocaleDateString(uiLocale())
 }
 
 function isCardFailed(card: Lexicard): boolean {
@@ -59,6 +60,11 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000
 const REVIEW_MIN_DECK_FOR_NEW_COOLDOWN = 20
 const REVIEW_NEW_CARD_COOLDOWN_DAYS = 2
 const REVIEW_MAX_NEW_CARDS_PER_ROUND = 2
+// A word answered «No la sabía» rests 10 minutes before it can come up in a new round (Luis,
+// 12 Oct: leaving and coming back showed it first again, right away).
+export const REVIEW_FAILED_REST_MS = 10 * 60 * 1000
+// Cuánto pesa la frecuencia frente al estado de la tarjeta al elegir qué sale.
+const REVIEW_IMPORTANCE_WEIGHT = 1.5
 
 function getSuccessfulCadenceSessions(streak: number): number {
   if (streak <= 1) return 1
@@ -175,6 +181,13 @@ export function sortChronological(cards: Lexicard[]): Lexicard[] {
   return [...cards].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
 }
 
+/** A word failed less than 10 minutes ago: it waits, unless there is nothing else to play. */
+function isCardResting(card: Lexicard, now: number): boolean {
+  if (!isCardFailed(card)) return false
+  const lastReviewed = card.lastReviewed || 0
+  return lastReviewed > 0 && now - lastReviewed < REVIEW_FAILED_REST_MS
+}
+
 function getNewCardAgeDays(card: Lexicard, now: number): number {
   if (!card.createdAt) return 0
   return Math.max(0, Math.floor((now - card.createdAt) / MS_PER_DAY))
@@ -233,12 +246,26 @@ function sortRoundByReviewPriority(
   return [...cards].sort((a, b) => {
     const aBucket = getReviewBucket(a, totalDeckSize, currentSession, now)
     const bBucket = getReviewBucket(b, totalDeckSize, currentSession, now)
+    const aImportance = IMPORTANCE_ORDER[a.importance] ?? 4
+    const bImportance = IMPORTANCE_ORDER[b.importance] ?? 4
+
+    // Las palabras dominadas y las recién añadidas (en reposo) van siempre al final.
+    const aLate = aBucket === 'graduated' || aBucket === 'newCooling'
+    const bLate = bBucket === 'graduated' || bBucket === 'newCooling'
+    if (aLate !== bLate) return aLate ? 1 : -1
+
+    // La frecuencia pesa mucho: una palabra Vital pendiente de repaso va antes
+    // que una Rara fallada. Así, en el modo aleatorio, la mayoría son Vitales y Frecuentes.
+    const aScore =
+      getReviewBucketPriority(aBucket) + aImportance * REVIEW_IMPORTANCE_WEIGHT
+    const bScore =
+      getReviewBucketPriority(bBucket) + bImportance * REVIEW_IMPORTANCE_WEIGHT
+    if (aScore !== bScore) return aScore - bScore
+
     const bucketDiff =
       getReviewBucketPriority(aBucket) - getReviewBucketPriority(bBucket)
     if (bucketDiff !== 0) return bucketDiff
 
-    const aImportance = IMPORTANCE_ORDER[a.importance] ?? 4
-    const bImportance = IMPORTANCE_ORDER[b.importance] ?? 4
     if (aImportance !== bImportance) return aImportance - bImportance
 
     if (aBucket === 'newEligible' || aBucket === 'newCooling') {
@@ -264,6 +291,13 @@ export function buildReviewRound(
   roundSize: number,
   currentSession = 0,
   totalDeckSize = cards.length,
+  options: {
+    /**
+     * «Solo por aprender»: el alumno pide justo las palabras pendientes (casi todas nuevas), así
+     * que no se aplica el tope de nuevas por ronda ni la espera de 2 días. Antes solo salían 2.
+     */
+    ignoreNewCardLimits?: boolean
+  } = {},
 ): Lexicard[] {
   if (cards.length === 0 || roundSize <= 0) return []
 
@@ -287,8 +321,9 @@ export function buildReviewRound(
   const selected: Lexicard[] = []
   const deferredByNewLimit: Lexicard[] = []
   const deferredByCooldown: Lexicard[] = []
+  const deferredByRest: Lexicard[] = []
   const enforceNewExposureControls =
-    totalDeckSize >= REVIEW_MIN_DECK_FOR_NEW_COOLDOWN
+    !options.ignoreNewCardLimits && totalDeckSize >= REVIEW_MIN_DECK_FOR_NEW_COOLDOWN
   const maxNewPerRound = Math.max(
     1,
     enforceNewExposureControls
@@ -297,8 +332,19 @@ export function buildReviewRound(
   )
   let includedNewCards = 0
 
+  // Boosted words (Potenciar, Luis 8 Oct) come first, without the limits for new words.
   for (const card of sortedPool) {
     if (selected.length >= roundSize) break
+    if ((card.boostFlash ?? 0) > 0 && !isCardResting(card, now)) selected.push(card)
+  }
+
+  for (const card of sortedPool) {
+    if (selected.length >= roundSize) break
+    if (isCardResting(card, now)) {
+      deferredByRest.push(card)
+      continue
+    }
+    if ((card.boostFlash ?? 0) > 0) continue
 
     const isNew = isCardNew(card)
     if (!isNew) {
@@ -306,7 +352,7 @@ export function buildReviewRound(
       continue
     }
 
-    if (isCardInNewCooldown(card, totalDeckSize, now)) {
+    if (enforceNewExposureControls && isCardInNewCooldown(card, totalDeckSize, now)) {
       deferredByCooldown.push(card)
       continue
     }
@@ -332,6 +378,14 @@ export function buildReviewRound(
   const shouldUseCooldownCards = selected.length === 0
   if (shouldUseCooldownCards) {
     for (const card of deferredByCooldown) {
+      if (selected.length >= roundSize) break
+      selected.push(card)
+    }
+  }
+
+  // Only when there is nothing else at all, the words failed a moment ago come back.
+  if (selected.length === 0) {
+    for (const card of deferredByRest) {
       if (selected.length >= roundSize) break
       selected.push(card)
     }

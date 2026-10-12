@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase'
+import { t } from '@/i18n'
+import { quickFetch } from './quickCache'
 
 export type CoachingScope = {
   targetLang: string
@@ -109,6 +111,20 @@ export type CoachingManagedUser = {
   activeLevel: string | null
   hasPendingMasterNotesReview?: boolean
   pendingMasterNotesReviewCount?: number
+  /** Homework audios the student sent that still have no feedback from the coach. */
+  pendingTaskAudioCount?: number
+  /** Weeks (periods) where those audios are. */
+  pendingTaskAudioPeriods?: number[]
+}
+
+/**
+ * What a coach still has to review for one student (Luis, 9 Oct): closed master notes without
+ * feedback and homework audios without feedback.
+ */
+export function pendingReviewOf(row: CoachingManagedUser): { notes: number; audios: number; total: number } {
+  const notes = Math.max(0, row.pendingMasterNotesReviewCount || 0) || (row.hasPendingMasterNotesReview ? 1 : 0)
+  const audios = Math.max(0, row.pendingTaskAudioCount || 0)
+  return { notes, audios, total: notes + audios }
 }
 
 export type CoachingPendingReviewSummary = {
@@ -216,6 +232,9 @@ export type CoachingUserMembership = {
   weekActivation?: WeekActivationState
   weekTimeline?: WeekTimelineItem[]
   updatedAt: string
+  /** Weeks with homework audios still waiting for the coach's feedback (coach view only). */
+  pendingTaskAudioPeriods?: number[]
+  pendingTaskAudioCount?: number
 }
 
 export type CoachingAdminRow = {
@@ -264,8 +283,23 @@ export type CoachingV2ClassSlot = {
   studentGuidelineResponse1?: string | null
   studentGuidelineResponse2?: string | null
   studentGuidelineResponse3?: string | null
+  /** Which of the 3 tasks are answered with an audio (Luis, 6 Oct). */
+  taskAudio?: [boolean, boolean, boolean]
+  /** Audio answers of this class with the coach's feedback (signed links, valid 1 hour). */
+  audioAnswers?: CoachingTaskAudioAnswer[]
   createdAt: string
   updatedAt: string
+}
+
+export type CoachingTaskAudioAnswer = {
+  taskIndex: 1 | 2 | 3
+  studentAudioUrl: string | null
+  studentAudioSeconds: number | null
+  studentSentAt: string
+  feedbackText: string | null
+  feedbackAudioUrl: string | null
+  feedbackAudioSeconds: number | null
+  feedbackAt: string | null
 }
 
 export type CoachingV2PeriodReport = {
@@ -385,30 +419,38 @@ async function invokeCoachingFunction<T>(
   fallbackMessage: string,
 ): Promise<T> {
   if (!supabase) {
-    throw new CoachingRequestError('Supabase no está configurado.')
+    throw new CoachingRequestError(t('Supabase no está configurado.'))
   }
 
   const { data, error } = await supabase.functions.invoke<T>(name, { body })
   if (error) {
     const status = getErrorStatus(error)
     if (status === 403) {
-      throw new CoachingRequestError('No tienes permisos para esta acción.', 403)
+      throw new CoachingRequestError(t('No tienes permisos para esta acción.'), 403)
     }
-    throw new CoachingRequestError(fallbackMessage, status)
+    throw new CoachingRequestError(t(fallbackMessage), status)
   }
 
   if (typeof data === 'undefined') {
-    throw new CoachingRequestError('Respuesta vacía del servidor.')
+    throw new CoachingRequestError(t('Respuesta vacía del servidor.'))
   }
 
   return data as T
 }
 
 export async function fetchCoachingAccess(): Promise<CoachingAccessPayload | null> {
-  return invokeCoachingFunction<CoachingAccessPayload | null>(
-    'coaching-access',
-    {},
-    'No se pudo validar el acceso de coaching.',
+  // Muchas pantallas lo piden a la vez: se comparte la petición y se recuerda 30 s.
+  const session = supabase ? (await supabase.auth.getSession()).data.session : null
+  const userId = session?.user.id ?? 'anon'
+  return quickFetch(
+    `coaching-access:${userId}`,
+    () =>
+      invokeCoachingFunction<CoachingAccessPayload | null>(
+        'coaching-access',
+        {},
+        'No se pudo validar el acceso de coaching.',
+      ),
+    { maxAgeMs: 30_000 },
   )
 }
 
@@ -456,15 +498,9 @@ export async function fetchCoachingPendingReviewSummary(): Promise<CoachingPendi
   }
 
   const rows = await fetchCoachingManagedUsers()
-  const pendingSessions = rows.filter((row) => {
-    const count = row.pendingMasterNotesReviewCount || 0
-    return row.hasPendingMasterNotesReview || count > 0
-  }).length
-
-  const pendingNotes = rows.reduce((total, row) => {
-    const count = row.pendingMasterNotesReviewCount || 0
-    return total + (count > 0 ? count : 0)
-  }, 0)
+  const pendingSessions = rows.filter((row) => pendingReviewOf(row).total > 0).length
+  // Everything to review: master notes and homework audios.
+  const pendingNotes = rows.reduce((total, row) => total + pendingReviewOf(row).total, 0)
 
   return {
     hasPendingReviews: pendingSessions > 0,
@@ -493,16 +529,12 @@ export async function fetchCoachingNavSummary(): Promise<CoachingNavSummary> {
   }
 
   const rows = await fetchCoachingManagedUsers()
-  const pendingRows = rows.filter(
-    (row) =>
-      row.hasPendingMasterNotesReview || (row.pendingMasterNotesReviewCount || 0) > 0,
-  )
+  const pendingRows = rows.filter((row) => pendingReviewOf(row).total > 0)
   const activeStudents = rows
     .filter((row) => row.status === 'active')
     .sort(
       (a, b) =>
-        Number(Boolean(b.hasPendingMasterNotesReview)) -
-          Number(Boolean(a.hasPendingMasterNotesReview)) ||
+        Number(pendingReviewOf(b).total > 0) - Number(pendingReviewOf(a).total > 0) ||
         a.userDisplayName.localeCompare(b.userDisplayName, 'es'),
     )
 
@@ -511,10 +543,7 @@ export async function fetchCoachingNavSummary(): Promise<CoachingNavSummary> {
     activeStudents,
     hasPendingReviews: pendingRows.length > 0,
     pendingSessions: pendingRows.length,
-    pendingNotes: rows.reduce(
-      (total, row) => total + Math.max(0, row.pendingMasterNotesReviewCount || 0),
-      0,
-    ),
+    pendingNotes: rows.reduce((total, row) => total + pendingReviewOf(row).total, 0),
   }
 }
 
@@ -750,7 +779,7 @@ export async function uploadCoachingClassReportImage(input: {
   weekKey: string
 }): Promise<string> {
   if (!supabase) {
-    throw new CoachingRequestError('Supabase no está configurado.')
+    throw new CoachingRequestError(t('Supabase no está configurado.'))
   }
 
   const extension = input.file.name.includes('.')
@@ -766,7 +795,7 @@ export async function uploadCoachingClassReportImage(input: {
     .upload(path, input.file, { upsert: false })
 
   if (error) {
-    throw new CoachingRequestError('No se pudo subir la imagen de reporte.')
+    throw new CoachingRequestError(t('No se pudo subir la imagen de reporte.'))
   }
 
   return path
@@ -1002,10 +1031,15 @@ export async function upsertCoachingV2ClassCoachGuidelines(input: {
   coachGuideline1: string | null
   coachGuideline2: string | null
   coachGuideline3: string | null
+  /** Which tasks are answered with an audio; omitted = unchanged. */
+  taskAudio?: [boolean, boolean, boolean]
 }): Promise<CoachingV2ClassSlot | null> {
   const data = await invokeCoachingFunction<{ ok?: boolean; class?: CoachingV2ClassSlot | null }>(
     'coaching-center',
     {
+      ...(input.taskAudio
+        ? { taskAudio1: input.taskAudio[0], taskAudio2: input.taskAudio[1], taskAudio3: input.taskAudio[2] }
+        : {}),
       action: 'v2-upsert-class-coach-guidelines',
       sessionId: input.sessionId,
       periodNumber: input.periodNumber,

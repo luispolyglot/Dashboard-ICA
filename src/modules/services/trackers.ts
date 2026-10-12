@@ -1,3 +1,4 @@
+import { t, uiLocale } from '@/i18n'
 import { supabase } from '@/lib/supabase'
 import type { ImprovementTracker, ImprovementTrackerInput } from '../types'
 
@@ -48,41 +49,43 @@ export function isTrackerMonthWithinRange(year: number, month: number, now = new
 export function getTrackerMonthLabel(value: string): string {
   const date = new Date(`${value}T00:00:00Z`)
   if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleDateString('es-ES', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+  const label = date.toLocaleDateString(uiLocale(), { month: 'long', year: 'numeric', timeZone: 'UTC' })
+  // «Septiembre de 2026» (solo la primera letra en mayúscula)
+  return label.charAt(0).toUpperCase() + label.slice(1)
 }
 
 export function getTrackerInsertErrorMessage(error: unknown): string {
-  if (!(error instanceof Error)) return 'No se pudo guardar el tracker.'
+  if (!(error instanceof Error)) return t('No se pudo guardar el tracker.')
   if (error.message.includes('TRACKER_MONTH_TOO_OLD')) {
-    return 'Solo se admiten trackers desde septiembre de 2025.'
+    return t('Solo se admiten trackers desde septiembre de 2025.')
   }
   if (error.message.includes('TRACKER_MONTH_IN_FUTURE')) {
-    return 'No puedes crear trackers en meses futuros.'
+    return t('No puedes crear trackers en meses futuros.')
   }
   if (error.message.includes('TRACKER_MONTH_MUST_BE_MONTH_START')) {
-    return 'El mes seleccionado no es válido.'
+    return t('El mes seleccionado no es válido.')
   }
   if (error.message.includes('duplicate key') || error.message.includes('improvement_trackers_unique_month')) {
-    return 'Ya existe un tracker para ese mes.'
+    return t('Ya existe un tracker para ese mes.')
   }
-  return error.message || 'No se pudo guardar el tracker.'
+  return error.message || t('No se pudo guardar el tracker.')
 }
 
 export function getTrackerUpdateErrorMessage(error: unknown): string {
-  if (!(error instanceof Error)) return 'No se pudo actualizar el tracker.'
+  if (!(error instanceof Error)) return t('No se pudo actualizar el tracker.')
   if (error.message.includes('TRACKER_MONTH_TOO_OLD')) {
-    return 'Solo se admiten trackers desde septiembre de 2025.'
+    return t('Solo se admiten trackers desde septiembre de 2025.')
   }
   if (error.message.includes('TRACKER_MONTH_IN_FUTURE')) {
-    return 'No puedes mover trackers a meses futuros.'
+    return t('No puedes mover trackers a meses futuros.')
   }
   if (error.message.includes('TRACKER_MONTH_MUST_BE_MONTH_START')) {
-    return 'El mes seleccionado no es válido.'
+    return t('El mes seleccionado no es válido.')
   }
   if (error.message.includes('duplicate key') || error.message.includes('improvement_trackers_unique_month')) {
-    return 'Ya existe un tracker para ese mes.'
+    return t('Ya existe un tracker para ese mes.')
   }
-  return error.message || 'No se pudo actualizar el tracker.'
+  return error.message || t('No se pudo actualizar el tracker.')
 }
 
 export async function listImprovementTrackers(
@@ -112,12 +115,12 @@ export async function createImprovementTracker(
   input: ImprovementTrackerInput,
 ): Promise<ImprovementTracker> {
   if (!supabase) {
-    throw new Error('Falta configurar Supabase')
+    throw new Error(t('Falta configurar Supabase'))
   }
 
   const userId = await getCurrentUserId()
   if (!userId) {
-    throw new Error('Necesitas iniciar sesión para guardar trackers.')
+    throw new Error(t('Necesitas iniciar sesión para guardar trackers.'))
   }
 
   const payload = {
@@ -174,12 +177,12 @@ export async function updateImprovementTracker(
   input: ImprovementTrackerInput,
 ): Promise<ImprovementTracker> {
   if (!supabase) {
-    throw new Error('Falta configurar Supabase')
+    throw new Error(t('Falta configurar Supabase'))
   }
 
   const userId = await getCurrentUserId()
   if (!userId) {
-    throw new Error('Necesitas iniciar sesión para actualizar trackers.')
+    throw new Error(t('Necesitas iniciar sesión para actualizar trackers.'))
   }
 
   const payload = {
@@ -212,12 +215,12 @@ export async function deleteImprovementTracker(
   nativeLang: string,
 ): Promise<void> {
   if (!supabase) {
-    throw new Error('Falta configurar Supabase')
+    throw new Error(t('Falta configurar Supabase'))
   }
 
   const userId = await getCurrentUserId()
   if (!userId) {
-    throw new Error('Necesitas iniciar sesión para eliminar trackers.')
+    throw new Error(t('Necesitas iniciar sesión para eliminar trackers.'))
   }
 
   const { error } = await supabase

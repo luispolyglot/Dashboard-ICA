@@ -7,6 +7,8 @@ import { DashboardProvider } from './modules/context/DashboardContext'
 import { DashboardLayout } from './modules/layout/DashboardLayout'
 import {
   AnalyticsPage,
+  AdminCostsPage,
+  AdminWinnerFeedbackPage,
   ActivationPhrasePage,
   CalendarIcademyManagePage,
   CalendarIcademyPage,
@@ -25,6 +27,7 @@ import {
   IcaTestMonthRedoPage,
   InstagramTrackPostsPage,
   IcaTestsPage,
+  MonthlyReviewPage,
   LeaderboardPage,
   ManageWhitelistPage,
   ManageCoachingPage,
@@ -43,11 +46,18 @@ import {
   OfflineSafePage,
   NewIcaWordsPage,
   PhraseHistoryPage,
+  ProfileAccountPage,
   ProfilePage,
   PregunticaPage,
   PregunticaHistoryPage,
   ShareTargetPage,
   StreaksPage,
+  FichasPage,
+  IcademerChatPage,
+  DailyGamePage,
+  NotaDesafianteListPage,
+  NotaDesafiantePlayerPage,
+  InsigniasPage,
   TrackerDetailPage,
   TrackersPage,
 } from './modules/routes/DashboardPages'
@@ -105,6 +115,9 @@ export function App() {
             <Route path='games-ica' element={<GamesIcaPage />} />
             <Route path='desafios-ica' element={<IcaChallengesPage />} />
             <Route path='desafios-ica/:challengeId' element={<IcaChallengePlayPage />} />
+            <Route path='reto-del-dia' element={<DailyGamePage />} />
+            <Route path='nota-desafiante' element={<NotaDesafianteListPage />} />
+            <Route path='nota-desafiante/:noteId' element={<NotaDesafiantePlayerPage />} />
             <Route path='flashcards' element={<FlashcardsPage />} />
             <Route path='flashcards/play/:mode' element={<FlashcardsPlayPage />} />
             <Route path='preguntica' element={<PregunticaPage />} />
@@ -119,11 +132,16 @@ export function App() {
             />
             <Route path='leaderboard' element={<LeaderboardPage />} />
             <Route path='streaks' element={<StreaksPage />} />
+            <Route path='fichas' element={<FichasPage />} />
+            <Route path='chat-icademers' element={<IcademerChatPage />} />
+            <Route path='insignias' element={<InsigniasPage />} />
             <Route path='profile' element={<ProfilePage />} />
+            <Route path='profile/account' element={<ProfileAccountPage />} />
             <Route path='manage-notifications' element={<ManageNotificationsPage />} />
             <Route path='my-analytics' element={<MyAnalyticsPage />} />
             <Route path='calendar-icademy' element={<CalendarIcademyPage />} />
             <Route path='tests-ica' element={<IcaTestsPage />} />
+            <Route path='repaso-del-mes' element={<MonthlyReviewPage />} />
             <Route path='instagram-track-posts' element={<InstagramTrackPostsPage />} />
             <Route path='tests-ica/:monthCode' element={<IcaTestMonthPage />} />
             <Route
@@ -157,6 +175,8 @@ export function App() {
               <Route path='manage-coaching/coacher/:coachUserId' element={<ManageCoacherSessionsPage />} />
             </Route>
             <Route element={<SuperAdminRoute />}>
+              <Route path='gastos-ia' element={<AdminCostsPage />} />
+              <Route path='feedback-ganadores' element={<AdminWinnerFeedbackPage />} />
               <Route
                 path='calendar-icademy/manage'
                 element={<CalendarIcademyManagePage />}

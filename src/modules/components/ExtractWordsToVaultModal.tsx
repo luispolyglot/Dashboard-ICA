@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import { CheckIcon } from 'lucide-react'
+import { CheckIcon, PackagePlusIcon, PlusIcon, TriangleAlertIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { IMPORTANCE_LEVELS } from '../constants'
+import { langName, t } from '@/i18n'
 import { useWordExtractionCandidates } from '../hooks/useWordExtractionCandidates'
 import { fetchTranslation } from '../services/anthropic'
 import { insertWord } from '../services/storage'
@@ -23,7 +23,11 @@ import type {
   Lexicard,
 } from '../types'
 import { generateId } from '../utils'
+import { DailyLimitNotice } from '../game/DailyLimitNotice'
+import { useDailyLimits } from '../game/limits'
+import { IconTile } from '../game/ui'
 import { normalizeComparableText } from '../wordExtraction'
+import { VaultImportanceTiles } from './VaultImportanceTiles'
 
 type ExtractWordsToVaultModalProps = {
   open: boolean
@@ -37,22 +41,6 @@ type ExtractWordsToVaultModalProps = {
   setCards: Dispatch<SetStateAction<Lexicard[]>>
   onWordAdded?: () => Promise<unknown>
   updateCardsLocally?: boolean
-}
-
-const IMPORTANCE_TONE: Record<ImportanceKey, string> = {
-  vital: 'border-blue-500 text-blue-400 bg-blue-500/10',
-  frequent: 'border-emerald-500 text-emerald-400 bg-emerald-500/10',
-  occasional: 'border-amber-500 text-amber-400 bg-amber-500/10',
-  rare: 'border-orange-500 text-orange-400 bg-orange-500/10',
-  irrelevant: 'border-red-500 text-red-400 bg-red-500/10',
-}
-
-const IMPORTANCE_DOT: Record<ImportanceKey, string> = {
-  vital: 'bg-blue-400',
-  frequent: 'bg-emerald-400',
-  occasional: 'bg-amber-400',
-  rare: 'bg-orange-400',
-  irrelevant: 'bg-red-400',
 }
 
 function hasDuplicateWord(
@@ -149,7 +137,7 @@ export function ExtractWordsToVaultModal({
           if (requestId !== translationRequestRef.current) return
 
           if (!result) {
-            setTranslationError('No se pudo traducir automáticamente.')
+            setTranslationError(t('No se pudo traducir automáticamente.'))
             return
           }
 
@@ -157,7 +145,7 @@ export function ExtractWordsToVaultModal({
         })
         .catch(() => {
           if (requestId !== translationRequestRef.current) return
-          setTranslationError('No se pudo traducir automáticamente.')
+          setTranslationError(t('No se pudo traducir automáticamente.'))
         })
         .finally(() => {
           if (requestId !== translationRequestRef.current) return
@@ -170,12 +158,17 @@ export function ExtractWordsToVaultModal({
     }
   }, [nativeLang, open, previewAlreadyExists, selectedWord, targetLang])
 
+  // Límite diario de palabras (cuenta igual que añadir desde "Añadir palabra").
+  const dailyLimits = useDailyLimits()
+  const wordLimitReached = dailyLimits.isAtLimit('words') && !saved
+
   const canSave =
     Boolean(selectedWord) &&
     Boolean(nativeMeaning.trim()) &&
     Boolean(importance) &&
     !saving &&
-    !previewAlreadyExists
+    !previewAlreadyExists &&
+    !wordLimitReached
 
   const handleToggleToken = (value: string): void => {
     setSelectedTokens((prev) => {
@@ -195,7 +188,7 @@ export function ExtractWordsToVaultModal({
     if (!trimmedTarget || !trimmedNative) return
 
     if (isAlreadyInVault(trimmedTarget)) {
-      const message = 'Esta palabra ya existe en tu baúl ICA.'
+      const message = t('Esta palabra ya existe en tu baúl ICA.')
       setSaveError(message)
       toast.error(message)
       return
@@ -238,7 +231,7 @@ export function ExtractWordsToVaultModal({
           console.error(error)
         })
       }
-      toast.success('Palabra agregada correctamente al baúl ICA.')
+      toast.success(t('Palabra agregada correctamente al baúl ICA.'))
       setSaved(true)
       window.setTimeout(() => {
         onOpenChange(false)
@@ -247,7 +240,7 @@ export function ExtractWordsToVaultModal({
       if (updateCardsLocally) {
         setCards((prev) => prev.filter((card) => card.id !== newCard.id))
       }
-      const message = 'No se pudo guardar la palabra en tu baúl ICA.'
+      const message = t('No se pudo guardar la palabra en tu baúl ICA.')
       setSaveError(message)
       toast.error(message)
     } finally {
@@ -265,61 +258,39 @@ export function ExtractWordsToVaultModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-h-[85vh] overflow-y-auto sm:max-w-xl'>
         <DialogHeader>
-          <DialogTitle>Extraer nuevas palabras</DialogTitle>
+          <div className='flex items-center gap-3'>
+            <IconTile tone='i' size={44}>
+              <PackagePlusIcon className='size-6' strokeWidth={2.4} aria-hidden='true' />
+            </IconTile>
+            <DialogTitle>{t('Extraer nuevas palabras')}</DialogTitle>
+          </div>
           <DialogDescription>
-            Elige una palabra en {targetLang}, revisa su traducción y guarda su
-            frecuencia en tu baúl ICA.
+            {t('Elige una palabra en {lang}, revisa su traducción y guarda su frecuencia en tu baúl ICA.', {
+              lang: langName(targetLang),
+            })}
           </DialogDescription>
         </DialogHeader>
 
-        <div className='space-y-4'>
+        <div className='space-y-5'>
           <div>
-            <Label className='text-xs uppercase tracking-wider text-muted-foreground'>
-              Frase objetivo
-            </Label>
-            <p className='mt-1 rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-sm'>
-              {text || 'Sin frase disponible'}
+            <Label className='ica-label block'>{t('Frase objetivo')}</Label>
+            <p className='m-0 mt-1.5 rounded-2xl bg-muted px-4 py-3 text-base leading-snug font-extrabold'>
+              {text || t('Sin frase disponible')}
             </p>
             {lowConfidence && (
-              <p className='mt-2 text-xs text-amber-600 dark:text-amber-300'>
-                Segmentación aproximada para este idioma. Revisa la selección
-                antes de guardar.
+              <p
+                className='m-0 mt-2 flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold'
+                style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
+              >
+                <TriangleAlertIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' />
+                {t('Segmentación aproximada para este idioma. Revisa la selección antes de guardar.')}
               </p>
             )}
           </div>
 
           <div>
-            <Label className='text-xs uppercase tracking-wider text-muted-foreground'>
-              Palabras detectadas
-            </Label>
-            <div className='mt-2 flex max-h-40 flex-wrap gap-2 overflow-y-auto rounded-md border border-border/60 bg-muted/10 p-2'>
-              {candidates.length > 0 ? (
-                candidates.map((candidate) => {
-                  const alreadyAdded = selectedTokens.includes(candidate.value)
-                  return (
-                    <Button
-                      key={candidate.value}
-                      type='button'
-                      variant={alreadyAdded ? 'default' : 'outline'}
-                      size='sm'
-                      onClick={() => handleToggleToken(candidate.value)}
-                      className='gap-1.5'
-                    >
-                      <span>{candidate.value}</span>
-                      {alreadyAdded && (
-                        <CheckIcon className='size-3' />
-                      )}
-                    </Button>
-                  )
-                })
-              ) : (
-                <p className='text-xs text-muted-foreground'>
-                  No encontramos palabras para extraer.
-                </p>
-              )}
-            </div>
-
-            <div className='mt-2 flex items-center gap-2'>
+            <div className='flex items-center justify-between gap-2'>
+              <Label className='ica-label'>{t('Palabras detectadas')}</Label>
               <Button
                 type='button'
                 variant='ghost'
@@ -330,83 +301,117 @@ export function ExtractWordsToVaultModal({
                 }}
                 disabled={selectedTokens.length === 0 || saving}
               >
-                Limpiar selección
+                {t('Limpiar selección')}
               </Button>
             </div>
+            <div className='mt-1.5 flex max-h-52 flex-wrap gap-2 overflow-y-auto p-0.5 pb-2.5'>
+              {candidates.length > 0 ? (
+                candidates.map((candidate) => {
+                  const alreadyAdded = selectedTokens.includes(candidate.value)
+                  return (
+                    <button
+                      key={candidate.value}
+                      type='button'
+                      aria-pressed={alreadyAdded}
+                      onClick={() => handleToggleToken(candidate.value)}
+                      className='ica-press inline-flex min-h-11 items-center gap-1.5 rounded-2xl border-2 bg-card px-3.5 text-[15px] font-extrabold dark:bg-transparent'
+                      style={
+                        alreadyAdded
+                          ? {
+                              background: 'var(--ica-i)',
+                              borderColor: 'var(--ica-i-edge)',
+                              color: '#fff',
+                              boxShadow: '0 3px 0 var(--ica-i-edge)',
+                            }
+                          : { borderColor: 'var(--border)', boxShadow: '0 3px 0 var(--border)' }
+                      }
+                    >
+                      <span>{candidate.value}</span>
+                      {alreadyAdded && (
+                        <CheckIcon className='size-4' strokeWidth={3.2} aria-hidden='true' />
+                      )}
+                    </button>
+                  )
+                })
+              ) : (
+                <p className='m-0 text-sm font-semibold text-muted-foreground'>
+                  {t('No encontramos palabras para extraer.')}
+                </p>
+              )}
+            </div>
 
-            <div className='mt-2'>
-              <Label className='text-xs uppercase tracking-wider text-muted-foreground'>
-                Preview nueva palabra/frase
-              </Label>
-              <p className='mt-1 min-h-9 rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-sm'>
-                {selectedWord || 'Sin selección'}
+            <div className='mt-3'>
+              <Label className='ica-label block'>{t('Preview nueva palabra/frase')}</Label>
+              <p
+                className='m-0 mt-1.5 flex min-h-12 items-center rounded-2xl border-2 border-dashed px-4 py-2 text-lg leading-tight font-extrabold'
+                style={
+                  selectedWord
+                    ? { borderColor: 'var(--ica-i)', background: 'var(--ica-i-soft)', color: 'var(--ica-i-ink)' }
+                    : { borderColor: 'var(--border)' }
+                }
+              >
+                {selectedWord || (
+                  <span className='text-sm font-semibold text-muted-foreground'>{t('Sin selección')}</span>
+                )}
               </p>
             </div>
 
             {previewAlreadyExists && !saving && !saved && (
-              <p className='mt-2 text-xs text-amber-600 dark:text-amber-300'>
-                Esta palabra/frase ya existe en tu Baúl ICA. Si quieres usarla,
-                combínala en una frase diferente.
+              <p
+                className='m-0 mt-2 rounded-xl px-3 py-2 text-xs font-bold'
+                style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
+              >
+                {t('Esta palabra/frase ya existe en tu Baúl ICA. Si quieres usarla, combínala en una frase diferente.')}
               </p>
             )}
           </div>
 
           <div>
-            <Label className='mb-1 block text-xs text-muted-foreground'>
-              Traducción ({nativeLang})
+            <Label className='mb-1.5 block text-xs font-bold text-muted-foreground'>
+              {t('Traducción ({lang})', { lang: langName(nativeLang) })}
             </Label>
             <Input
               value={nativeMeaning}
               onChange={(event) => setNativeMeaning(event.target.value)}
               placeholder={
                 selectedWord
-                  ? 'Escribe la traducción...'
-                  : 'Selecciona una palabra primero'
+                  ? t('Escribe la traducción...')
+                  : t('Selecciona una palabra primero')
               }
               disabled={!selectedWord || saving}
             />
             {loadingTranslation && (
-              <p className='mt-1 text-xs text-muted-foreground'>
-                Traduciendo selección...
+              <p className='m-0 mt-1.5 text-xs font-semibold text-muted-foreground'>
+                {t('Traduciendo selección...')}
               </p>
             )}
             {!loadingTranslation && translationError && (
-              <p className='mt-1 text-xs text-amber-600 dark:text-amber-300'>
+              <p className='m-0 mt-1.5 text-xs font-bold' style={{ color: 'var(--ica-gold-ink)' }}>
                 {translationError}
               </p>
             )}
           </div>
 
           <div>
-            <Label className='mb-2 block text-xs uppercase tracking-wider text-muted-foreground'>
-              Frecuencia de uso
-            </Label>
-            <div className='grid grid-cols-2 gap-2 sm:grid-cols-5'>
-              {IMPORTANCE_LEVELS.map((item) => {
-                const selected = importance === item.key
-                return (
-                  <Button
-                    key={item.key}
-                    type='button'
-                    variant={selected ? 'default' : 'outline'}
-                    onClick={() => setImportance(item.key)}
-                    disabled={saving}
-                    className={`h-auto py-2 text-xs ${selected ? IMPORTANCE_TONE[item.key] : ''}`}
-                  >
-                    <span
-                      className={`mr-1 h-1.5 w-1.5 rounded-full ${IMPORTANCE_DOT[item.key]}`}
-                    />
-                    {item.label}
-                  </Button>
-                )
-              })}
-            </div>
+            <Label className='ica-label mb-2 block'>{t('Frecuencia de uso')}</Label>
+            <VaultImportanceTiles value={importance} onChange={setImportance} disabled={saving} />
           </div>
 
           {saveError && (
-            <p className='text-xs text-red-600 dark:text-red-300'>
+            <p
+              className='m-0 rounded-xl px-3 py-2 text-xs font-bold'
+              style={{ background: 'var(--ica-bad-soft)', color: 'var(--ica-bad-ink)' }}
+            >
               {saveError}
             </p>
+          )}
+
+          {wordLimitReached && (
+            <DailyLimitNotice
+              kind='words'
+              state={dailyLimits}
+              onNavigate={() => onOpenChange(false)}
+            />
           )}
         </div>
 
@@ -417,10 +422,20 @@ export function ExtractWordsToVaultModal({
             onClick={handleCancel}
             disabled={saving}
           >
-            Cancelar
+            {t('Cancelar')}
           </Button>
-          <Button type='button' onClick={() => void handleSave()} disabled={!canSave}>
-            {saving ? 'Guardando...' : saved ? '✓ Guardada' : 'Añadir al baúl ICA'}
+          <Button
+            type='button'
+            variant={saved ? 'success' : 'i'}
+            onClick={() => void handleSave()}
+            disabled={!canSave}
+          >
+            {saved ? (
+              <CheckIcon strokeWidth={3} aria-hidden='true' />
+            ) : !saving ? (
+              <PlusIcon strokeWidth={3} aria-hidden='true' />
+            ) : null}
+            {saving ? t('Guardando...') : saved ? t('Guardada') : t('Añadir al baúl ICA')}
           </Button>
         </DialogFooter>
       </DialogContent>

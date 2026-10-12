@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getCalendarIcademyCatalogEntry } from '../constants/calendarIcademyCatalog'
 import type { CalendarIcademyEntry } from '../types'
@@ -231,8 +232,8 @@ export function useCalendarIcademyExport({
   const allEntriesSelected =
     sessionOptions.length > 0 && selectedEntryIds.length === sessionOptions.length
   const exportButtonLabel = allEntriesSelected
-    ? 'Exportar todas'
-    : 'Exportar seleccionadas'
+    ? t('Exportar todas')
+    : t('Exportar seleccionadas')
   const canExport = selectedEntries.length > 0
   const exportTimeZone =
     exportTimeZoneMode === 'local' && canUseLocalTime && localTimezone
@@ -336,17 +337,17 @@ export function useCalendarIcademyExport({
           const catalogEntry = getCalendarIcademyCatalogEntry(entry.classKey)
           const className = catalogEntry?.className || entry.className
           const teacher = entry.teacher || 'ICADEMY'
-          const groupName = entry.groupName ? `Grupo: ${entry.groupName}` : null
-          const note = entry.note ? `Nota: ${entry.note}` : null
+          const groupName = entry.groupName ? t('Grupo: {name}', { name: entry.groupName }) : null
+          const note = entry.note ? t('Nota: {note}', { note: entry.note }) : null
           const descriptionLines = [
-            `Profesor: ${teacher}`,
+            t('Profesor: {teacher}', { teacher }),
             groupName,
             note,
           ].filter((line): line is string => Boolean(line))
 
           return {
             uid: `${entry.id}@icademy-dashboard`,
-            summary: `ICADEMY · ${className}`,
+            summary: `ICADEMY · ${t(className)}`,
             description: descriptionLines.join('\n'),
             startsAt,
             endsAt,

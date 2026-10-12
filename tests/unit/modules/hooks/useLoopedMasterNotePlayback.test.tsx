@@ -24,7 +24,7 @@ describe('useLoopedMasterNotePlayback', () => {
     expect(result.current.looping).toBe(true)
     expect(result.current.loopIndex).toBe(0)
     expect(playTransitionCue).toHaveBeenCalledTimes(1)
-    expect(playTransitionCue).toHaveBeenCalledWith('start')
+    expect(playTransitionCue).toHaveBeenCalledWith('start', 0)
     expect(playNoteById).toHaveBeenCalledWith('note-a')
   })
 

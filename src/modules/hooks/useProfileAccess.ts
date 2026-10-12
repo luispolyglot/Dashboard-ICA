@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { useAuth } from '@/auth/AuthContext'
+import { peekQuick, storeQuick } from '../services/quickCache'
 import { fetchAdminRole } from '../services/adminAnalytics'
 import {
   fetchCoachingAccess,
@@ -11,6 +13,8 @@ export type ProfileAccess = {
   canSeeAdminAnalytics: boolean
   isSuperAdmin: boolean
   canSeeCoachingPersonalized: boolean
+  /** In a coaching right now (finished or cancelled ones do not count). */
+  hasActiveCoaching: boolean
   canManageCoaching: boolean
   pendingCoachingSessions: number
   pendingCoachingNotes: number
@@ -21,6 +25,7 @@ const EMPTY_ACCESS: ProfileAccess = {
   canSeeAdminAnalytics: false,
   isSuperAdmin: false,
   canSeeCoachingPersonalized: false,
+  hasActiveCoaching: false,
   canManageCoaching: false,
   pendingCoachingSessions: 0,
   pendingCoachingNotes: 0,
@@ -34,7 +39,10 @@ export function useProfileAccess(
   targetLang: string | undefined,
   enabled: boolean,
 ): ProfileAccess {
-  const [access, setAccess] = useState<ProfileAccess>(EMPTY_ACCESS)
+  const { user } = useAuth()
+  const cacheKey = user?.id ? `profile-access:${user.id}:${targetLang || ''}` : null
+  // Lo último que se supo sale al momento (secciones de coaching y admin sin esperar).
+  const [access, setAccess] = useState<ProfileAccess>(() => (cacheKey ? peekQuick<ProfileAccess>(cacheKey) : undefined) ?? EMPTY_ACCESS)
 
   useEffect(() => {
     if (!enabled) return
@@ -54,16 +62,20 @@ export function useProfileAccess(
         ])
       if (!active) return
 
-      setAccess({
+      const next: ProfileAccess = {
         loaded: true,
         canSeeAdminAnalytics: role === 'admin' || role === 'super_admin',
         isSuperAdmin: role === 'super_admin',
         canSeeCoachingPersonalized:
           Array.isArray(coachingMemberships) && coachingMemberships.length > 0,
+        hasActiveCoaching:
+          Array.isArray(coachingMemberships) && coachingMemberships.some((row) => row.status === 'active'),
         canManageCoaching: Boolean(coachingAccess?.isCoachingAdmin),
         pendingCoachingSessions: pendingSummary.pendingSessions,
         pendingCoachingNotes: pendingSummary.pendingNotes,
-      })
+      }
+      setAccess(next)
+      if (cacheKey) storeQuick(cacheKey, next)
     }
 
     void run()
@@ -71,7 +83,7 @@ export function useProfileAccess(
     return () => {
       active = false
     }
-  }, [enabled, targetLang])
+  }, [cacheKey, enabled, targetLang])
 
   return access
 }

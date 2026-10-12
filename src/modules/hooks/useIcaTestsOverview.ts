@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { t } from '@/i18n'
+import { useSoftLoading } from './useSoftLoading'
 import type { IcaTestRecord, Lexicard } from '../types'
 import {
   buildIcaTestWordPool,
@@ -51,7 +53,7 @@ export function useIcaTestsOverview({
   cards,
 }: UseIcaTestsOverviewParams): UseIcaTestsOverviewResult {
   const [tests, setTests] = useState<IcaTestRecord[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useSoftLoading(true, `${targetLang}|${nativeLang}`)
   const [error, setError] = useState<string | null>(null)
 
   const now = useMemo(() => new Date(), [])
@@ -78,7 +80,7 @@ export function useIcaTestsOverview({
       const data = await listIcaTests(targetLang, nativeLang)
       setTests(data)
     } catch {
-      setError('No pudimos cargar los Tests ICA.')
+      setError(t('No pudimos cargar los Tests ICA.'))
     } finally {
       setIsLoading(false)
     }

@@ -1,3 +1,5 @@
+import { t, uiLocale } from '@/i18n'
+
 type ClassResourceFields = {
   loomUrl: string | null
   report: string | null
@@ -81,8 +83,8 @@ export function toIsoFromDateAndTime(
 
 export function formatScheduledClassDateTime(value: string): string {
   const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return 'Fecha no disponible'
-  return parsed.toLocaleString('es-AR', {
+  if (Number.isNaN(parsed.getTime())) return t('Fecha no disponible')
+  return parsed.toLocaleString(uiLocale() === 'es-ES' ? 'es-AR' : uiLocale(), {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',

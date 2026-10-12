@@ -4,7 +4,9 @@ import { notifyCreationMetricsChanged } from './creationMetricsSync'
 import { kickLexicardExampleWorker } from './lexicardExampleJobs'
 import { fetchAllPages } from './lexicardsPagination'
 import { recordBootstrapDiagnostic } from '../utils/bootstrapDiagnostics'
+import { signalIcaCoinsStateChanged } from '../game/fichas'
 import type { AppConfig, DailyProgressMap, Lexicard } from '../types'
+import { fetchLexicardBoosts } from './lexicardBoost'
 
 const MAX_SAFE_WORD_DELETES_PER_SAVE = 5
 const CONFIG_SNAPSHOT_STORAGE_KEY = 'dashboard-ICA-config-snapshot'
@@ -82,7 +84,17 @@ function toMillisFromIso(value: string | null): number | null {
   return value ? new Date(value).getTime() : null
 }
 
+/** The Baúl ICA plus the boost counters of the boosted words (Potenciar, Luis 8 Oct). */
 async function loadWords(userId: string): Promise<Lexicard[]> {
+  const [cards, boosts] = await Promise.all([loadWordsBase(userId), fetchLexicardBoosts(userId)])
+  if (boosts.size === 0) return cards
+  return cards.map((card) => {
+    const boost = boosts.get(card.id)
+    return boost ? { ...card, ...boost } : card
+  })
+}
+
+async function loadWordsBase(userId: string): Promise<Lexicard[]> {
   if (!supabase) return []
   const client = supabase
 
@@ -258,6 +270,7 @@ async function replaceWordsSnapshot(userId: string, cards: Lexicard[]): Promise<
     try {
       const { error } = await supabase.from('lexicards').upsert(payload)
       if (error) throw error
+      signalIcaCoinsStateChanged()
     } catch {
       const legacyPayload = cards.map((card) => ({
         id: card.id,
@@ -273,6 +286,7 @@ async function replaceWordsSnapshot(userId: string, cards: Lexicard[]): Promise<
       }))
       const { error } = await supabase.from('lexicards').upsert(legacyPayload)
       if (error) throw error
+      signalIcaCoinsStateChanged()
     }
   }
 
@@ -373,10 +387,12 @@ async function insertWordRecord(userId: string, card: Lexicard): Promise<void> {
     const { error } = await supabase.from('lexicards').insert(toLexicardRow(userId, card))
     if (error) throw error
     notifyCreationMetricsChanged()
+    signalIcaCoinsStateChanged()
   } catch {
     const { error } = await supabase.from('lexicards').insert(toLegacyLexicardRow(userId, card))
     if (error) throw error
     notifyCreationMetricsChanged()
+    signalIcaCoinsStateChanged()
   }
 }
 

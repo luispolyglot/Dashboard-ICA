@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import type { MouseEvent } from 'react'
+import type { CSSProperties, MouseEvent } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { speakNatural, stopTTS } from '../services/tts'
-import { SquareIcon, Volume1Icon } from 'lucide-react'
+import { langName as displayLangName, t } from '@/i18n'
+import { toast } from 'sonner'
+import { prefetchSpeech, speakNatural, stopTTS, type SpeakResult } from '../services/tts'
+import { SquareIcon, Volume2Icon } from 'lucide-react'
 
 type SpeakButtonProps = {
   text: string
@@ -15,9 +17,22 @@ type SpeakButtonProps = {
   variant?: 'default' | 'icon' | 'cta'
   isPlaying?: boolean
   onPlayingChange?: (isPlaying: boolean) => void
+  /**
+   * Prepare the premium audio as soon as the button shows. Off where the text changes while
+   * typing (Inmersión): there each prefix would be generated and paid for (Luis, 6 Oct).
+   */
+  prefetch?: boolean
 }
 
 const SPEAK_RATE_STORAGE_KEY = 'speak-button-rate'
+
+const SPEAK_TONES = {
+  i: { solid: 'var(--ica-i)', soft: 'var(--ica-i-soft)', ink: 'var(--ica-i-ink)' },
+  ok: { solid: 'var(--ica-ok)', soft: 'var(--ica-ok-soft)', ink: 'var(--ica-ok-ink)' },
+  gold: { solid: 'var(--ica-gold)', soft: 'var(--ica-gold-soft)', ink: 'var(--ica-gold-ink)' },
+  fire: { solid: 'var(--ica-fire)', soft: 'var(--ica-fire-soft)', ink: 'var(--ica-fire-ink)' },
+  bad: { solid: 'var(--ica-bad-strong)', soft: 'var(--ica-bad-soft)', ink: 'var(--ica-bad-ink)' },
+}
 
 function getInitialRate(): 0.75 | 1 {
   if (typeof window === 'undefined') return 1
@@ -36,6 +51,7 @@ export function SpeakButton({
   variant = 'default',
   isPlaying,
   onPlayingChange,
+  prefetch = true,
 }: SpeakButtonProps) {
   const [internalPlaying, setInternalPlaying] = useState(false)
   const [rate, setRate] = useState<0.75 | 1>(getInitialRate)
@@ -53,16 +69,39 @@ export function SpeakButton({
     window.localStorage.setItem(SPEAK_RATE_STORAGE_KEY, String(rate))
   }, [rate])
 
-  const tone =
+  // The voice is prepared as soon as the button appears (a new word, a new phrase…), so the
+  // first tap does not wait for it.
+  useEffect(() => {
+    if (!prefetch) return
+    void prefetchSpeech(text, langName)
+  }, [text, langName, prefetch])
+
+  // Color del modo juego según el color de la frecuencia (azul por defecto).
+  const colors =
     color === '#EF4444'
-      ? 'border-red-500/40 bg-red-500/10 text-red-400'
+      ? SPEAK_TONES.bad
       : color === '#F97316'
-        ? 'border-orange-500/40 bg-orange-500/10 text-orange-400'
+        ? SPEAK_TONES.fire
         : color === '#EAB308'
-          ? 'border-amber-500/40 bg-amber-500/10 text-amber-400'
+          ? SPEAK_TONES.gold
           : color === '#22C55E'
-            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
-            : 'border-blue-500/40 bg-blue-500/10 text-blue-400'
+            ? SPEAK_TONES.ok
+            : SPEAK_TONES.i
+  const toneStyle: CSSProperties = {
+    background: colors.soft,
+    color: colors.ink,
+    borderColor: `color-mix(in oklab, ${colors.solid} 36%, transparent)`,
+    boxShadow: `0 3px 0 color-mix(in oklab, ${colors.solid} 36%, transparent)`,
+  }
+
+  // When nothing could be played (Google voice and device voice both failed), say so instead of
+  // silently going back to «Escuchar».
+  const handleEnd = (result: SpeakResult) => {
+    setPlaying(false)
+    if (!result.ok) {
+      toast.error(t('No se pudo reproducir el audio. Toca otra vez.'), { id: 'speak-button-failed' })
+    }
+  }
 
   const go = (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
@@ -72,7 +111,7 @@ export function SpeakButton({
       return
     }
     setPlaying(true)
-    speakNatural(text, langName, () => setPlaying(false), rate)
+    speakNatural(text, langName, handleEnd, rate)
   }
 
   const handleRate = (e: MouseEvent<HTMLButtonElement>, nextRate: 0.75 | 1) => {
@@ -83,28 +122,53 @@ export function SpeakButton({
 
     stopTTS()
     setPlaying(true)
-    speakNatural(text, langName, () => setPlaying(false), nextRate)
+    speakNatural(text, langName, handleEnd, nextRate)
   }
 
   if (variant === 'icon') {
     return (
-      <Button
+      <button
         type='button'
         onClick={go}
-        variant='outline'
-        size='icon'
         disabled={disabled}
-        aria-label={label || `Escuchar ${langName}`}
-        className={cn(tone, playing ? 'brightness-125' : '', className)}
+        aria-label={label || t('Escuchar {lang}', { lang: displayLangName(langName) })}
+        className={cn(
+          'flex size-10 shrink-0 items-center justify-center rounded-xl border-2 transition-[transform,box-shadow,filter] active:translate-y-[3px] active:shadow-none disabled:pointer-events-none disabled:opacity-50',
+          playing ? 'brightness-110' : '',
+          className,
+        )}
+        style={toneStyle}
       >
         {playing ? (
-          <SquareIcon className='size-4' />
+          <SquareIcon className='size-4' strokeWidth={2.6} fill='currentColor' />
         ) : (
-          <Volume1Icon className='size-4' />
+          <Volume2Icon className='size-5' strokeWidth={2.4} />
         )}
-      </Button>
+      </button>
     )
   }
+
+  // Selector de velocidad (x1 / x0.75) en dos mitades, como las pestañas del modo juego.
+  const rateToggle = (
+    <div className='inline-flex h-10 overflow-hidden rounded-xl border-2 border-border bg-card dark:bg-transparent' role='group' aria-label={t('Velocidad')}>
+      {([1, 0.75] as const).map((option) => (
+        <button
+          key={option}
+          type='button'
+          onClick={(e) => handleRate(e, option)}
+          disabled={playing || disabled}
+          aria-pressed={rate === option}
+          className={cn(
+            'min-w-11 px-2.5 text-xs font-extrabold tabular-nums transition-colors disabled:opacity-60',
+            option === 0.75 && 'border-l-2 border-border',
+            rate === option ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60',
+          )}
+        >
+          x{option}
+        </button>
+      ))}
+    </div>
+  )
 
   if (variant === 'cta') {
     return (
@@ -114,81 +178,40 @@ export function SpeakButton({
           onClick={go}
           variant='default'
           disabled={disabled}
-          className={cn('font-semibold', playing ? 'brightness-110' : '')}
+          className={cn('font-extrabold', playing ? 'brightness-110' : '')}
         >
-          {playing ? 'Reproduciendo...' : label || `Escuchar ${langName}`}
+          {playing ? t('Reproduciendo...') : label || t('Escuchar {lang}', { lang: displayLangName(langName) })}
           {playing ? (
-            <SquareIcon className='ml-1 size-4' />
+            <SquareIcon className='ml-1 size-4' fill='currentColor' />
           ) : (
-            <Volume1Icon className='ml-1 size-4' />
+            <Volume2Icon className='ml-1 size-4' strokeWidth={2.4} />
           )}
         </Button>
-
-        <div className='inline-flex overflow-hidden rounded-md border border-border'>
-          <Button
-            type='button'
-            size='sm'
-            variant='ghost'
-            onClick={(e) => handleRate(e, 1)}
-            disabled={playing || disabled}
-            className={cn('rounded-none px-3 text-xs', rate === 1 ? 'bg-muted text-foreground' : 'text-muted-foreground')}
-          >
-            x1
-          </Button>
-          <Button
-            type='button'
-            size='sm'
-            variant='ghost'
-            onClick={(e) => handleRate(e, 0.75)}
-            disabled={playing || disabled}
-            className={cn('rounded-none border-l border-border px-3 text-xs', rate === 0.75 ? 'bg-muted text-foreground' : 'text-muted-foreground')}
-          >
-            x0.75
-          </Button>
-        </div>
+        {rateToggle}
       </div>
     )
   }
 
   return (
     <div className={cn('mt-4 flex flex-wrap items-center gap-2', className)}>
-      <span className='text-xs text-muted-foreground'>
-        {label || `Escuchar ${langName}`}
-      </span>
-
-      <Button
-        type='button'
-        size='sm'
-        variant={rate === 1 ? 'default' : 'outline'}
-        onClick={(e) => handleRate(e, 1)}
-        disabled={playing || disabled}
-      >
-        x1
-      </Button>
-      <Button
-        type='button'
-        size='sm'
-        variant={rate === 0.75 ? 'default' : 'outline'}
-        onClick={(e) => handleRate(e, 0.75)}
-        disabled={playing || disabled}
-      >
-        x0.75
-      </Button>
-
-      <Button
+      <button
         type='button'
         onClick={go}
-        variant='outline'
         disabled={disabled}
-        className={`${tone} ${playing ? 'brightness-125' : ''}`}
-      >
-        {playing ? 'Reproduciendo...' : 'Escuchar'}
-        {playing ? (
-          <SquareIcon className='size-4 ml-1' />
-        ) : (
-          <Volume1Icon className='size-4 ml-1' />
+        className={cn(
+          'inline-flex h-10 items-center gap-2 rounded-xl border-2 px-3.5 text-sm font-extrabold transition-[transform,box-shadow,filter] active:translate-y-[3px] active:shadow-none disabled:pointer-events-none disabled:opacity-50',
+          playing ? 'brightness-110' : '',
         )}
-      </Button>
+        style={toneStyle}
+      >
+        {playing ? (
+          <SquareIcon className='size-4' strokeWidth={2.6} fill='currentColor' />
+        ) : (
+          <Volume2Icon className='size-5' strokeWidth={2.4} />
+        )}
+        {playing ? t('Reproduciendo...') : label || t('Escuchar')}
+      </button>
+      {rateToggle}
     </div>
   )
 }

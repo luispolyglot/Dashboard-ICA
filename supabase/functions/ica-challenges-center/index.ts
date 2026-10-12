@@ -2,7 +2,9 @@ import webpush from 'npm:web-push@3.6.7'
 import { CORS_HEADERS, jsonResponse } from '../_shared/http.ts'
 import { ensureAuthenticated } from '../_shared/coaching-auth.ts'
 import { listAvailableUsers } from './directory.ts'
+import { getPublicProfile } from './profile.ts'
 import { cancelInvitation, createChallenge, respondInvitation } from './invitations.ts'
+import { listChallengeReactions, sendChallengeReaction } from './reactions.ts'
 import type { AdminClient, ChallengeScope, ChallengeStatus, LanguagePair } from './types.ts'
 import {
   boardIndices,
@@ -366,6 +368,10 @@ async function fetchCards(
 
   if (scoped.error) throw new Error(scoped.error.message)
   let rows = (scoped.data || []) as Array<Record<string, unknown>>
+  const boostedRows = await fetchBoostedCards(adminClient, userId, pair)
+  const boosted = new Set(boostedRows.map((row) => toText(row.id)))
+  const loaded = new Set(rows.map((row) => toText(row.id)))
+  rows = [...rows, ...boostedRows.filter((row) => !loaded.has(toText(row.id)))]
 
   if (rows.length === 0) {
     // Palabras antiguas sin idioma guardado (igual que hace la app al cargar el baúl).
@@ -390,6 +396,52 @@ async function fetchCards(
       exampleTranslation: toText(row.example_translation) || null,
     }))
     .filter((card) => card.id && card.target && card.native)
+    .map((card) => (boosted.has(card.id) ? { ...card, boosted: true } : card))
+}
+
+/**
+ * Potenciadas (Luis, 8 Oct): the player's words with Desafíos left in their boost. Asked apart, so
+ * a database without the boost columns yet plays exactly as before. They are also added to the
+ * pool when the MAX_CARDS_PER_PLAYER limit left them out.
+ */
+async function fetchBoostedCards(
+  adminClient: AdminClient,
+  userId: string,
+  pair: LanguagePair,
+): Promise<Array<Record<string, unknown>>> {
+  try {
+    const { data, error } = await adminClient
+      .from('lexicards')
+      .select('id, target, native, example_phrase, example_translation')
+      .eq('user_id', userId)
+      .eq('target_lang', pair.targetLang)
+      .eq('native_lang', pair.nativeLang)
+      .gt('boost_duel', 0)
+      .limit(50)
+    if (error) return []
+    return (data || []) as Array<Record<string, unknown>>
+  } catch {
+    return []
+  }
+}
+
+/** One Desafío played with these boosted words of each owner. Never blocks the game. */
+async function consumeDuelBoosts(adminClient: AdminClient, questions: Array<{ answer: { cardId: string; ownerUserId: string } }>, pools: EngineCard[][]) {
+  const boostedIds = new Set(pools.flat().filter((card) => card.boosted).map((card) => card.id))
+  const byOwner = new Map<string, Set<string>>()
+  for (const { answer } of questions) {
+    if (!boostedIds.has(answer.cardId)) continue
+    const ids = byOwner.get(answer.ownerUserId) || new Set<string>()
+    ids.add(answer.cardId)
+    byOwner.set(answer.ownerUserId, ids)
+  }
+  await Promise.all(
+    [...byOwner].map(([owner, ids]) =>
+      adminClient
+        .rpc('consume_lexicard_boosts', { p_ids: [...ids], p_game: 'duel', p_user_id: owner })
+        .then(() => undefined, () => undefined),
+    ),
+  )
 }
 
 /** Idiomas con los que juega cada alumno: los del desafío (por idioma) o los suyos (global). */
@@ -763,6 +815,8 @@ async function ensureQuestions(ctx: GameContext): Promise<QuestionRow[]> {
   const { error } = await ctx.adminClient.from('desafio_preguntas').insert(rows)
   // Si justo las ha creado el rival (mezcla de baúles), se usan las suyas.
   if (error && (error as { code?: string }).code !== '23505') throw new GameError(500, error.message)
+  // Boosted words that came up: one Desafío less to go (only for the questions really saved here).
+  if (!error) await consumeDuelBoosts(ctx.adminClient, generated.questions, pools)
 
   return readRows()
 }
@@ -846,12 +900,28 @@ async function finalizeChallenge(ctx: GameContext) {
   // Solo avisa quien cierra de verdad el desafío (evita avisos dobles).
   if (((data || []) as unknown[]).length === 0) return
 
+  // The win trigger (award_ica_challenge_win) already credited the coin in the same update.
+  // «Recoge tu recompensa» only when it really added something (weekly cap, full wallet).
+  let winnerGotCoins = false
+  if (winnerUserId) {
+    const { data: winEntry } = await ctx.adminClient
+      .from('preguntica_token_ledger')
+      .select('tokens_delta')
+      .eq('user_id', winnerUserId)
+      .eq('entry_type', 'challenge_win')
+      .eq('reference_key', ctx.challenge.id)
+      .maybeSingle()
+    winnerGotCoins = Number(winEntry?.tokens_delta || 0) > 0
+  }
+
   for (const userId of [ctx.challenge.challenger_user_id, ctx.challenge.challenged_user_id]) {
     const body =
       winnerUserId === null
         ? 'Empate en el desafío ICA. ¡Revisa las palabras!'
         : winnerUserId === userId
-          ? '¡Has ganado el desafío ICA! Mira tus resultados.'
+          ? winnerGotCoins
+            ? '¡Has ganado el desafío ICA! Recoge tu recompensa.'
+            : '¡Has ganado el desafío ICA! Mira tus resultados.'
           : 'Tu rival ha ganado esta vez. Mira tus palabras en Desafíos ICA.'
     await sendPushToUser({
       adminClient: ctx.adminClient,
@@ -1461,10 +1531,38 @@ async function reviewGame(ctx: GameContext) {
     })
     .filter((item): item is NonNullable<typeof item> => item !== null)
 
+  // Con el desafío terminado, las palabras del baúl del rival (para poder añadirlas al tuyo).
+  let rivalWords: Array<Record<string, unknown>> = []
+  if (finished && ctx.settings.wordSource !== 'mixed') {
+    const { data: rivalRows } = await ctx.adminClient
+      .from('desafio_preguntas')
+      .select('respuesta')
+      .eq('desafio_id', ctx.challenge.id)
+      .eq('usuario_id', ctx.rivalId)
+    const seen = new Set<string>()
+    rivalWords = ((rivalRows || []) as Array<Record<string, unknown>>)
+      .map((row) => (isRecord(row.respuesta) ? row.respuesta : {}) as Partial<StoredAnswer>)
+      .filter((answer) => {
+        const key = toText(answer.target).trim().toLowerCase()
+        if (!key || seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .map((answer) => ({
+        target: toText(answer.target),
+        native: toText(answer.native),
+        phrase: toText(answer.phrase) || null,
+        phraseTranslation: toText(answer.phraseTranslation) || null,
+        targetLang: toText(answer.language) || null,
+      }))
+  }
+
   return {
     items,
-    me: { correct: scoreOf(ctx.myPlays), answered: ctx.myPlays.length },
-    rival: { correct: scoreOf(ctx.rivalPlays), answered: ctx.rivalPlays.length, done: isRivalDone(ctx) },
+    rivalWords,
+    // Total time played: in Parejas it breaks a tie, so the result says how much faster (Luis, 8 Oct).
+    me: { correct: scoreOf(ctx.myPlays), answered: ctx.myPlays.length, ms: totalMsOf(ctx.myPlays) },
+    rival: { correct: scoreOf(ctx.rivalPlays), answered: ctx.rivalPlays.length, done: isRivalDone(ctx), ms: totalMsOf(ctx.rivalPlays) },
     wordSource: ctx.settings.wordSource,
   }
 }
@@ -1524,6 +1622,23 @@ Deno.serve(async (req) => {
     })
   }
 
+  if (action === 'public-profile') {
+    return getPublicProfile({
+      adminClient: auth.adminClient,
+      userId: auth.userId,
+      profileUserId: toText(payload.profileUserId),
+      maxActiveChallenges: MAX_ACTIVE_CHALLENGES,
+      countActiveChallenges,
+      hasActivePairChallenge,
+      fetchSettingsByUser,
+      fetchLevelsForPair,
+      resolvePlayerPair,
+      countWordsForPair,
+      notEnoughWordsToJoinMessage,
+      toText,
+    })
+  }
+
   const invitationDependencies = {
     turnWindowSeconds: TURN_WINDOW_SECONDS,
     invitationWindowSeconds: INVITATION_WINDOW_SECONDS,
@@ -1563,6 +1678,14 @@ Deno.serve(async (req) => {
 
   if (action === 'cancel-invitation') {
     return cancelInvitation(baseInput, invitationDependencies)
+  }
+
+  if (action === 'list-reactions') {
+    return listChallengeReactions(baseInput)
+  }
+
+  if (action === 'send-reaction') {
+    return sendChallengeReaction(baseInput)
   }
 
   if (action === 'play-state') {

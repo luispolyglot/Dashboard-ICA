@@ -78,3 +78,30 @@ export function countPendingMasterNotesForSession(
     )
   }).length
 }
+
+export type PendingTaskAudioRow = {
+  sessionId: string
+  periodNumber: number
+  feedbackAt: string | null
+}
+
+/**
+ * Homework audios still waiting for the coach's feedback (Luis, 9 Oct: the coach must see at a
+ * glance that a student sent the audio of a task). Per session: how many and in which weeks.
+ */
+export function countPendingTaskAudioBySession(
+  rows: PendingTaskAudioRow[],
+): Map<string, { count: number; periods: number[] }> {
+  const bySession = new Map<string, { count: number; periods: number[] }>()
+  for (const row of rows) {
+    if (!row.sessionId || normalizeText(row.feedbackAt)) continue
+    const current = bySession.get(row.sessionId) || { count: 0, periods: [] }
+    current.count += 1
+    if (Number.isFinite(row.periodNumber) && !current.periods.includes(row.periodNumber)) {
+      current.periods.push(row.periodNumber)
+    }
+    bySession.set(row.sessionId, current)
+  }
+  for (const value of bySession.values()) value.periods.sort((a, b) => a - b)
+  return bySession
+}

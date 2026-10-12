@@ -1,12 +1,11 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { AlertTriangleIcon } from 'lucide-react'
+import { LockIcon, MailIcon } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { AuthShell } from './components/AuthShell'
+import { AuthField, AuthNotice, AuthShell } from './components/AuthShell'
+import { t } from '@/i18n'
 
 export function LoginPage() {
   const { signIn, hasSupabaseConfig } = useAuth()
@@ -32,7 +31,7 @@ export function LoginPage() {
       await signIn(email.trim(), password)
       navigate(redirectTo, { replace: true })
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'No se pudo iniciar sesión'
+      const message = err instanceof Error ? err.message : t('No se pudo iniciar sesión')
       setError(message)
     } finally {
       setBusy(false)
@@ -40,56 +39,58 @@ export function LoginPage() {
   }
 
   return (
-    <AuthShell title='Bienvenido de nuevo' subtitle='Inicia sesión para continuar tu progreso en Icademy.'>
-      {!hasSupabaseConfig && (
-        <div className='mb-4 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive'>
-          <AlertTriangleIcon className='size-4' />
-          Faltan variables de entorno de Supabase.
+    <AuthShell
+      title={t('¡Hola de nuevo!')}
+      subtitle={t('Entra para seguir con tu racha y tus palabras ICA.')}
+      showMethod
+      footer={
+        <div className='flex flex-col items-center gap-2'>
+          <p className='m-0 text-sm font-bold text-muted-foreground'>{t('¿Es tu primera vez en ICADEMY?')}</p>
+          <Button asChild variant='outline' size='lg' className='w-full rounded-2xl'>
+            <Link to='/register'>{t('Crear mi cuenta')}</Link>
+          </Button>
         </div>
-      )}
+      }
+    >
+      <form className='flex flex-col gap-4' onSubmit={handleSubmit}>
+        {!hasSupabaseConfig && <AuthNotice tone='warning'>{t('Faltan variables de entorno de Supabase.')}</AuthNotice>}
 
-      <form className='space-y-4' onSubmit={handleSubmit}>
-        <div className='space-y-1.5'>
-          <Label htmlFor='login-email'>Email</Label>
-          <Input
-            id='login-email'
-            type='email'
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
-        </div>
+        <AuthField
+          id='login-email'
+          label={t('Email')}
+          icon={MailIcon}
+          type='email'
+          autoComplete='email'
+          inputMode='email'
+          placeholder={t('tu@email.com')}
+          required
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+        />
 
-        <div className='space-y-1.5'>
-          <Label htmlFor='login-password'>Contraseña</Label>
-          <Input
-            id='login-password'
-            type='password'
-            required
-            minLength={6}
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
-          <div className='pt-1 text-right'>
-            <Link to='/forgot-password' className='text-sm font-medium text-primary'>
-              Olvidé mi contraseña
+        <AuthField
+          id='login-password'
+          label={t('Contraseña')}
+          icon={LockIcon}
+          type='password'
+          autoComplete='current-password'
+          required
+          minLength={6}
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          hint={
+            <Link to='/forgot-password' className='text-xs font-extrabold text-[var(--ica-i)]'>
+              {t('¿La olvidaste?')}
             </Link>
-          </div>
-        </div>
+          }
+        />
 
-        {error && <p className='text-sm text-destructive'>{error}</p>}
+        {error && <AuthNotice tone='error'>{error}</AuthNotice>}
 
-        <Button type='submit' disabled={busy || !hasSupabaseConfig} className='w-full'>
-          {busy ? 'Entrando...' : 'Entrar'}
+        <Button type='submit' size='xl' disabled={busy || !hasSupabaseConfig} className='mt-1 w-full'>
+          {busy ? t('Entrando...') : t('Entrar')}
         </Button>
       </form>
-
-      <p className='mt-4 text-sm text-muted-foreground'>
-        ¿No tienes cuenta?{' '}
-        <Link to='/register' className='font-semibold text-primary'>
-          Regístrate
-        </Link>
-      </p>
     </AuthShell>
   )
 }

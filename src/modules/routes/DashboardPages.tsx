@@ -1,16 +1,26 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { LockIcon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { GamePage, PhaseLetter } from '../game/ui'
+import { NotaDesafianteListView, NotaDesafiantePlayerView } from '../views/NotaDesafianteView'
 import {
   Navigate,
   useNavigate,
+  useOutletContext,
   useParams,
   useSearchParams,
 } from 'react-router-dom'
+import useBreakpoints from '../hooks/useBreakpoints'
+import { MobileProfileScreen } from '../components/MobileProfileSheet'
+import { t, tn } from '@/i18n'
 import { LevelBadge } from '../components/LevelBadge'
 import { getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
 import { PageLayout } from '../layout/PageLayout'
 import { AddView } from '../views/AddView'
 import { AdminAnalyticsView } from '../views/AdminAnalyticsView'
+import { AdminCostsView } from '../views/AdminCostsView'
+import { AdminWinnerFeedbackView } from '../views/AdminWinnerFeedbackView'
 import {
   CoachingPersonalizedSessionView,
   CoachingPersonalizedView,
@@ -24,6 +34,7 @@ import { HomeView } from '../views/HomeView'
 import { GamesIcaView } from '../views/GamesIcaView'
 import { IcaChallengesView } from '../views/IcaChallengesView'
 import { IcaChallengePlayView } from '../views/IcaChallengePlayView'
+import { DailyGameView } from '../views/DailyGameView'
 import {
   registerIcaChallengesLocalContext,
 } from '../services/icaChallengesLocalBridge'
@@ -50,9 +61,16 @@ import { PhraseHistoryView } from '../views/PhraseHistoryView'
 import { PhraseView } from '../views/PhraseView'
 import { ReviewView } from '../views/ReviewView'
 import { StreaksView } from '../views/StreaksView'
+import { FichasView } from '../views/FichasView'
+import { IcademerChatView } from '../views/IcademerChatView'
+import { InsigniasView } from '../views/InsigniasView'
+import { FlashcardsLocked } from '../game/FlashcardsLocked'
+import { useDailyLimits } from '../game/limits'
+import { useActivatedWords } from '../game/useActivatedWords'
 import { TrackerDetailView } from '../views/TrackerDetailView'
 import { TrackersView } from '../views/TrackersView'
 import { IcaTestsView } from '../views/IcaTestsView'
+import { MonthlyReviewView } from '../views/MonthlyReviewView'
 import { IcaTestMonthView } from '../views/IcaTestMonthView'
 import { InstagramTrackPostsView } from '../views/InstagramTrackPostsView'
 import { PregunticaView } from '../views/PregunticaView'
@@ -103,7 +121,7 @@ export function NewIcaWordsPage() {
   if (!config) return null
 
   return (
-    <PageLayout>
+    <PageLayout flush>
       <AddView
         cards={cards}
         setCards={setCards}
@@ -140,7 +158,7 @@ export function MyIcaWordsPage() {
   const studyLevel = getEffectiveStudyLevel(config.targetLang, metaTrackerProfile)
 
   return (
-    <PageLayout>
+    <PageLayout flush>
       <ManageView
         cards={cards}
         setCards={setCards}
@@ -175,8 +193,18 @@ export function FlashcardsPage() {
     saveReviewConfirmAnswer(confirmBeforeAnswer)
   }, [confirmBeforeAnswer])
 
+  // Las flashcards se abren con 20 palabras activadas.
+  const { activatedWords, flashcardsUnlocked } = useActivatedWords()
+  if (!flashcardsUnlocked) {
+    return (
+      <PageLayout flush backTo={DASHBOARD_ROUTES.gamesIca}>
+        <FlashcardsLocked activatedWords={activatedWords} />
+      </PageLayout>
+    )
+  }
+
   return (
-    <PageLayout>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.gamesIca}>
       <FlashcardsModeView
         cards={cards}
         reviewCorrectToday={todayProgress.reviewCorrect}
@@ -204,10 +232,11 @@ export function FlashcardsPage() {
 export function GamesIcaPage() {
   const { cards, config } = useDashboardContext()
   const [pregunticaLabel, setPregunticaLabel] = useState(
-    'Cargando estado semanal...',
+    () => t('Cargando estado semanal...'),
   )
   const [pregunticaProgress, setPregunticaProgress] = useState('0/20')
   const [pregunticaUnlocked, setPregunticaUnlocked] = useState(false)
+  const [pregunticaClosed, setPregunticaClosed] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -224,6 +253,8 @@ export function GamesIcaPage() {
         if (!active || !status) return
 
         setPregunticaUnlocked(status.isUnlocked)
+        // Days 29-31: no PreguntICA until day 1 (Luis, 9 Oct).
+        setPregunticaClosed(status.isClosed)
         const displayActivationCount = status.completedAt
           ? status.requiredActivationWords
           : status.activationWordsCount
@@ -231,7 +262,7 @@ export function GamesIcaPage() {
           `${displayActivationCount}/${status.requiredActivationWords}`,
         )
         if (status.isUnlocked) {
-          setPregunticaLabel('Lista para responder')
+          setPregunticaLabel(t('Lista para responder'))
           return
         }
 
@@ -239,10 +270,12 @@ export function GamesIcaPage() {
           0,
           status.requiredActivationWords - status.activationWordsCount,
         )
-        setPregunticaLabel(`Te faltan ${missing} palabras para desbloquearla`)
+        setPregunticaLabel(
+          tn(missing, 'Te falta {n} palabra para desbloquearla', 'Te faltan {n} palabras para desbloquearla'),
+        )
       } catch {
         if (!active) return
-        setPregunticaLabel('No se pudo cargar el estado')
+        setPregunticaLabel(t('No se pudo cargar el estado'))
       }
     }
 
@@ -254,13 +287,14 @@ export function GamesIcaPage() {
   }, [config])
 
   return (
-    <PageLayout>
+    <PageLayout flush withBackButton={false}>
       <GamesIcaView
         flashcardsReady={cards.length > 0}
         flashcardsCount={cards.length}
         pregunticaUnlocked={pregunticaUnlocked}
         pregunticaLabel={pregunticaLabel}
         pregunticaProgress={pregunticaProgress}
+        pregunticaClosed={pregunticaClosed}
       />
     </PageLayout>
   )
@@ -275,11 +309,69 @@ export function IcaChallengesPage() {
   }
 
   return (
-    <PageLayout>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.gamesIca}>
       <IcaChallengesView
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
       />
+    </PageLayout>
+  )
+}
+
+export function DailyGamePage() {
+  const { config, cards } = useDashboardContext()
+  if (!config) return null
+  return (
+    <PageLayout flush withBackButton={false}>
+      <DailyGameView config={config} cards={cards} />
+    </PageLayout>
+  )
+}
+
+export function NotaDesafianteListPage() {
+  return (
+    <PageLayout flush backTo={DASHBOARD_ROUTES.gamesIca}>
+      <NotaDesafianteListView />
+    </PageLayout>
+  )
+}
+
+export function NotaDesafiantePlayerPage() {
+  return (
+    <PageLayout flush backTo={DASHBOARD_ROUTES.notaDesafiante}>
+      <NotaDesafiantePlayerView />
+    </PageLayout>
+  )
+}
+
+/**
+ * Activación (notas maestras) solo se abre cuando ya has creado tu frase de hoy (la C).
+ * Si no, se ve un aviso y no se puede entrar.
+ */
+function ActivationGate({ children }: { children: ReactNode }) {
+  const { dailyProgress } = useDashboardContext()
+  const navigate = useNavigate()
+  if (getTodayProgress(dailyProgress).phraseGenerated) return <>{children}</>
+  return (
+    <PageLayout flush>
+      <GamePage className='items-center justify-center text-center'>
+        <span className='relative mt-6'>
+          <PhaseLetter letter='A' size={96} className='opacity-40 grayscale' />
+          <span className='absolute -right-2 -bottom-2 flex size-10 items-center justify-center rounded-full border-4 border-background bg-muted-foreground text-white'>
+            <LockIcon className='size-4' strokeWidth={3} aria-hidden='true' />
+          </span>
+        </span>
+        <h1 className='m-0 font-display text-2xl leading-tight font-extrabold tracking-tight'>{t('Activación bloqueada')}</h1>
+        <p className='m-0 max-w-sm text-sm font-semibold text-muted-foreground'>
+          {t('Se abre cuando creas tu frase de hoy. Primero la C, después la A.')}
+        </p>
+        <Button type='button' size='xl' variant='c' className='w-full max-w-sm' onClick={() => navigate(DASHBOARD_ROUTES.activationPhrase)}>
+          {t('Ir a Creación')}
+        </Button>
+        <Button type='button' variant='ghost' onClick={() => navigate(DASHBOARD_ROUTES.home)}>
+          {t('Volver al inicio')}
+        </Button>
+      </GamePage>
     </PageLayout>
   )
 }
@@ -293,7 +385,7 @@ export function IcaChallengePlayPage() {
   }
 
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.challengesIca}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.challengesIca}>
       <IcaChallengePlayView
         challengeId={challengeId}
         config={config}
@@ -311,7 +403,7 @@ export function PregunticaPage() {
   const studyLevel = getEffectiveStudyLevel(config.targetLang, metaTrackerProfile)
 
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.gamesIca}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.gamesIca}>
       <PregunticaView
         config={config}
         studyLevel={studyLevel}
@@ -328,7 +420,7 @@ export function PregunticaHistoryPage() {
   if (!config) return null
 
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.preguntica}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.preguntica}>
       <PregunticaHistoryView
         config={config}
         cards={cards}
@@ -382,8 +474,12 @@ export function FlashcardsPlayPage() {
   }, [mode])
 
   const todayProgress = getTodayProgress(dailyProgress)
+  const { flashcardsUnlocked } = useActivatedWords()
 
   if (!config) return null
+  if (!flashcardsUnlocked) {
+    return <Navigate to={DASHBOARD_ROUTES.flashcards} replace />
+  }
   if (mode !== safeMode) {
     return (
       <Navigate
@@ -401,7 +497,7 @@ export function FlashcardsPlayPage() {
   }
 
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.flashcards}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.flashcards}>
       <ReviewView
         cards={cards}
         setCards={setCards}
@@ -431,11 +527,13 @@ export function ActivationPhrasePage() {
     handlePhraseGenerated,
     metaTrackerProfile,
     setMetaTrackerActivationWordsTotal,
+    dailyProgress,
   } = useDashboardContext()
+  const dailyLimits = useDailyLimits()
   if (!config) return null
 
   return (
-    <PageLayout>
+    <PageLayout flush>
       <PhraseView
         cards={cards}
         config={config}
@@ -443,6 +541,8 @@ export function ActivationPhrasePage() {
         metaTrackerProfile={metaTrackerProfile}
         onActivationWordsTotalChange={setMetaTrackerActivationWordsTotal}
         LevelBadge={LevelBadge}
+        dailyLimits={dailyLimits}
+        creationDoneToday={getTodayProgress(dailyProgress).phraseGenerated}
       />
     </PageLayout>
   )
@@ -453,7 +553,7 @@ export function PhraseHistoryPage() {
   if (!config) return null
 
   return (
-    <PageLayout>
+    <PageLayout flush>
       <PhraseHistoryView
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
@@ -471,13 +571,15 @@ export function MasterNotesPage() {
   const todayProgress = getTodayProgress(dailyProgress)
 
   return (
-    <PageLayout>
-      <MasterNotesView
-        targetLang={config.targetLang}
-        nativeLang={config.nativeLang}
-        todayVoiceActivationsCount={todayProgress.voiceActivationsCount}
-      />
-    </PageLayout>
+    <ActivationGate>
+      <PageLayout flush>
+        <MasterNotesView
+          targetLang={config.targetLang}
+          nativeLang={config.nativeLang}
+          todayVoiceActivationsCount={todayProgress.voiceActivationsCount}
+        />
+      </PageLayout>
+    </ActivationGate>
   )
 }
 
@@ -496,13 +598,15 @@ export function MasterNoteDetailPage() {
   const todayProgress = getTodayProgress(dailyProgress)
 
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.masterNotes}>
-      <MasterNoteDetailView
-        noteId={noteId}
-        targetLang={config.targetLang}
-        todayVoiceActivationsCount={todayProgress.voiceActivationsCount}
-      />
-    </PageLayout>
+    <ActivationGate>
+      <PageLayout flush backTo={DASHBOARD_ROUTES.masterNotes}>
+        <MasterNoteDetailView
+          noteId={noteId}
+          targetLang={config.targetLang}
+          todayVoiceActivationsCount={todayProgress.voiceActivationsCount}
+        />
+      </PageLayout>
+    </ActivationGate>
   )
 }
 
@@ -512,23 +616,25 @@ export function MasterNoteActivatePhrasePage() {
   if (!config || !noteId || !phraseId) return null
 
   return (
-    <PageLayout backTo={`${DASHBOARD_ROUTES.masterNotes}/note/${noteId}`}>
-      <MasterNoteActivatePhraseView
-        noteId={noteId}
-        phraseId={phraseId}
-        targetLang={config.targetLang}
-        nativeLang={config.nativeLang}
-        cards={cards}
-        setCards={setCards}
-        onWordAdded={handleWordAdded}
-      />
-    </PageLayout>
+    <ActivationGate>
+      <PageLayout flush backTo={`${DASHBOARD_ROUTES.masterNotes}/note/${noteId}`}>
+        <MasterNoteActivatePhraseView
+          noteId={noteId}
+          phraseId={phraseId}
+          targetLang={config.targetLang}
+          nativeLang={config.nativeLang}
+          cards={cards}
+          setCards={setCards}
+          onWordAdded={handleWordAdded}
+        />
+      </PageLayout>
+    </ActivationGate>
   )
 }
 
 export function LeaderboardPage() {
   return (
-    <PageLayout>
+    <PageLayout flush withBackButton={false}>
       <LeaderboardView />
     </PageLayout>
   )
@@ -544,7 +650,7 @@ export function StreaksPage() {
   } = useDashboardContext()
 
   return (
-    <PageLayout>
+    <PageLayout flush>
       <StreaksView
         completedDays={completedDays}
         creationDays={creationDays}
@@ -556,11 +662,65 @@ export function StreaksPage() {
   )
 }
 
+export function FichasPage() {
+  return (
+    <PageLayout flush>
+      <FichasView />
+    </PageLayout>
+  )
+}
+
+export function IcademerChatPage() {
+  return (
+    <PageLayout flush>
+      <IcademerChatView />
+    </PageLayout>
+  )
+}
+
+export function InsigniasPage() {
+  return (
+    <PageLayout flush>
+      <InsigniasView />
+    </PageLayout>
+  )
+}
+
+type ProfileOutletContext = { profileAlerts?: { icaTest: boolean; coaching: boolean } } | undefined
+
+/** Perfil: en el móvil, la pantalla completa de la pestaña «Perfil»; en ordenador, el perfil con tu cuenta. */
 export function ProfilePage() {
   const { config, cards, setShowLangModal } = useDashboardContext()
+  const { isMd } = useBreakpoints()
+  const outlet = useOutletContext<ProfileOutletContext>()
+
+  if (!isMd) {
+    return (
+      <PageLayout flush withBackButton={false}>
+        <MobileProfileScreen
+          hasIcaTestAlert={Boolean(outlet?.profileAlerts?.icaTest)}
+          hasCoachingAlert={Boolean(outlet?.profileAlerts?.coaching)}
+        />
+      </PageLayout>
+    )
+  }
 
   return (
-    <PageLayout>
+    <PageLayout flush withBackButton={false}>
+      <ProfileView
+        config={config}
+        cards={cards}
+        onEditLanguages={() => setShowLangModal(true)}
+      />
+    </PageLayout>
+  )
+}
+
+/** Ajustes de cuenta (nombre, idiomas, contraseña, preferencias…). En el móvil se abre desde el perfil. */
+export function ProfileAccountPage() {
+  const { config, cards, setShowLangModal } = useDashboardContext()
+  return (
+    <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
       <ProfileView
         config={config}
         cards={cards}
@@ -572,7 +732,7 @@ export function ProfilePage() {
 
 export function ManageNotificationsPage() {
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
       <ManageNotificationsView />
     </PageLayout>
   )
@@ -580,7 +740,7 @@ export function ManageNotificationsPage() {
 
 export function MyAnalyticsPage() {
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
       <MyAnalyticsView />
     </PageLayout>
   )
@@ -588,7 +748,7 @@ export function MyAnalyticsPage() {
 
 export function CalendarIcademyPage() {
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
       <CalendarIcademyView />
     </PageLayout>
   )
@@ -604,7 +764,7 @@ export function CalendarIcademyManagePage() {
 
 export function CalendarIcademyTeachersPage() {
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
       <ManageIcademyTeachersView />
     </PageLayout>
   )
@@ -615,7 +775,7 @@ export function IcaTestsPage() {
   if (!config) return null
 
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
       <IcaTestsView
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
@@ -625,12 +785,23 @@ export function IcaTestsPage() {
   )
 }
 
+export function MonthlyReviewPage() {
+  const { config } = useDashboardContext()
+  if (!config) return null
+
+  return (
+    <PageLayout flush withBackButton={false}>
+      <MonthlyReviewView targetLang={config.targetLang} nativeLang={config.nativeLang} />
+    </PageLayout>
+  )
+}
+
 export function InstagramTrackPostsPage() {
   const { config } = useDashboardContext()
   if (!config) return null
 
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
       <InstagramTrackPostsView
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
@@ -645,7 +816,7 @@ export function IcaTestMonthPage() {
   if (!config || !monthCode) return null
 
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.testsIca}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.testsIca}>
       <IcaTestMonthView
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
@@ -663,7 +834,7 @@ export function IcaTestMonthRedoPage() {
   if (!config || !monthCode) return null
 
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.testsIca}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.testsIca}>
       <IcaTestMonthView
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
@@ -680,7 +851,7 @@ export function TrackersPage() {
   if (!config) return null
 
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
       <TrackersView
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
@@ -694,7 +865,7 @@ export function NewTrackerPage() {
   if (!config) return null
 
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.trackers}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.trackers}>
       <NewTrackerView
         targetLang={config.targetLang}
         nativeLang={config.nativeLang}
@@ -709,7 +880,7 @@ export function TrackerDetailPage() {
   if (!config || !trackerId) return null
 
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.trackers}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.trackers}>
       <TrackerDetailView
         trackerId={trackerId}
         targetLang={config.targetLang}
@@ -721,15 +892,31 @@ export function TrackerDetailPage() {
 
 export function AnalyticsPage() {
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
       <AdminAnalyticsView />
+    </PageLayout>
+  )
+}
+
+export function AdminCostsPage() {
+  return (
+    <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
+      <AdminCostsView />
+    </PageLayout>
+  )
+}
+
+export function AdminWinnerFeedbackPage() {
+  return (
+    <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
+      <AdminWinnerFeedbackView />
     </PageLayout>
   )
 }
 
 export function ManageWhitelistPage() {
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
       <ManageWhitelistView />
     </PageLayout>
   )
@@ -737,7 +924,7 @@ export function ManageWhitelistPage() {
 
 export function ManagePregunticaQuestionsPage() {
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
       <ManagePregunticaQuestionsView />
     </PageLayout>
   )
@@ -745,7 +932,7 @@ export function ManagePregunticaQuestionsPage() {
 
 export function ManagePregunticaTokensPage() {
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
       <ManagePregunticaTokensView />
     </PageLayout>
   )
@@ -753,7 +940,7 @@ export function ManagePregunticaTokensPage() {
 
 export function HistoricLeaderboardPage() {
   return (
-    <PageLayout backTo={DASHBOARD_ROUTES.profile}>
+    <PageLayout flush backTo={DASHBOARD_ROUTES.profile}>
       <HistoricLeaderboardView />
     </PageLayout>
   )

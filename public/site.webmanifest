@@ -1,7 +1,7 @@
 {
-  "name": "Dashboard ICA",
+  "name": "ICA",
   "short_name": "ICA",
-  "description": "Dashboard de ICA para gestionar tu estudio diario",
+  "description": "ICA: tu ciclo diario de Inmersión, Creación y Activación",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

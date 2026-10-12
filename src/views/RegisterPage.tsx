@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { AlertTriangleIcon } from 'lucide-react'
+import { LockIcon, MailCheckIcon, MailIcon, UserIcon } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { normalizeEmail } from '../auth/whitelist'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { AuthShell } from './components/AuthShell'
+import { AuthField, AuthNotice, AuthShell } from './components/AuthShell'
+import { DISPLAY_NAME_MAX_LENGTH } from '../modules/constants'
+import { t } from '@/i18n'
 
 export function RegisterPage() {
   const { signUp, hasSupabaseConfig } = useAuth()
@@ -26,11 +26,11 @@ export function RegisterPage() {
     setSuccess(null)
 
     if (password !== confirmPassword) {
-      setError('Las contraseñas no coinciden')
+      setError(t('Las contraseñas no coinciden'))
       return
     }
     if (!nickname.trim()) {
-      setError('Ingresa un nickname para tu perfil')
+      setError(t('Ingresa un nickname para tu perfil'))
       return
     }
 
@@ -41,91 +41,101 @@ export function RegisterPage() {
     } finally {
       setBusy(false)
       setSuccess(
-        'Si eres miembro de la comunidad Icademy en Skool, recibirás un email para confirmar tu acceso. Revisa también la carpeta de spam.',
+        t(
+          'Si eres miembro de la comunidad Icademy en Skool, recibirás un email para confirmar tu acceso. Revisa también la carpeta de spam.',
+        ),
       )
-      window.setTimeout(() => navigate('/login', { replace: true }), 7000)
+      window.setTimeout(() => navigate('/login', { replace: true }), 12000)
     }
   }
 
   return (
     <AuthShell
-      title='Crea tu cuenta'
-      subtitle='Únete a Icademy y empieza a construir tu racha.'
+      title={t('Crea tu cuenta')}
+      subtitle={t('Usa el mismo email con el que entraste en la comunidad ICADEMY.')}
+      footer={
+        <p className='m-0 text-sm font-bold text-muted-foreground'>
+          {t('¿Ya tienes cuenta?')}{' '}
+          <Link to='/login' className='font-extrabold text-[var(--ica-i)]'>
+            {t('Iniciar sesión')}
+          </Link>
+        </p>
+      }
     >
-      {!hasSupabaseConfig && (
-        <div className='mb-4 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive'>
-          <AlertTriangleIcon className='size-4' />
-          Faltan variables de entorno de Supabase.
+      {success ? (
+        <div className='flex flex-col items-center gap-3 py-2 text-center'>
+          <span className='ica-pop flex size-16 items-center justify-center rounded-3xl bg-[var(--ica-ok-soft)] text-[var(--ica-ok)]'>
+            <MailCheckIcon className='size-8' strokeWidth={2.4} aria-hidden='true' />
+          </span>
+          <p className='m-0 text-lg font-black'>{t('¡Revisa tu email!')}</p>
+          <p className='m-0 text-sm font-semibold text-muted-foreground'>{success}</p>
+          <Button asChild size='lg' className='mt-2 w-full rounded-2xl'>
+            <Link to='/login' replace>
+              {t('Ir a entrar')}
+            </Link>
+          </Button>
         </div>
-      )}
+      ) : (
+        <form className='flex flex-col gap-4' onSubmit={handleSubmit}>
+          {!hasSupabaseConfig && <AuthNotice tone='warning'>{t('Faltan variables de entorno de Supabase.')}</AuthNotice>}
 
-      <form className='space-y-4' onSubmit={handleSubmit}>
-        <div className='space-y-1.5'>
-          <Label htmlFor='register-email'>Email de tu comunidad Icademy</Label>
-          <Input
+          <AuthField
             id='register-email'
+            label={t('Email de tu comunidad ICADEMY')}
+            icon={MailIcon}
             type='email'
+            autoComplete='email'
+            inputMode='email'
+            placeholder={t('tu@email.com')}
             required
             value={email}
             onChange={(event) => setEmail(event.target.value)}
           />
-        </div>
 
-        <div className='space-y-1.5'>
-          <Label htmlFor='register-nickname'>Nombre</Label>
-          <Input
+          <AuthField
             id='register-nickname'
-            type='text'
+            label={t('Tu nombre')}
+            icon={UserIcon}
+            autoComplete='nickname'
             required
-            maxLength={40}
+            maxLength={DISPLAY_NAME_MAX_LENGTH}
             value={nickname}
             onChange={(event) => setNickname(event.target.value)}
-            placeholder='Ej: Tu nombre o un apodo'
+            placeholder={t('Ej: Tu nombre o un apodo')}
           />
-        </div>
 
-        <div className='space-y-1.5'>
-          <Label htmlFor='register-password'>Contraseña</Label>
-          <Input
+          <AuthField
             id='register-password'
+            label={t('Contraseña')}
+            icon={LockIcon}
             type='password'
+            autoComplete='new-password'
+            placeholder={t('Mínimo 6 caracteres')}
             required
             minLength={6}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
-        </div>
 
-        <div className='space-y-1.5'>
-          <Label htmlFor='register-password-confirm'>Confirmar contraseña</Label>
-          <Input
+          <AuthField
             id='register-password-confirm'
+            label={t('Repite la contraseña')}
+            icon={LockIcon}
             type='password'
+            autoComplete='new-password'
             required
             minLength={6}
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
           />
-        </div>
 
-        {error && <p className='text-sm text-destructive'>{error}</p>}
-        {success && <p className='text-sm text-emerald-500'>{success}</p>}
+          {error && <AuthNotice tone='error'>{error}</AuthNotice>}
 
-        <Button
-          type='submit'
-          disabled={busy || !hasSupabaseConfig}
-          className='w-full'
-        >
-          {busy ? 'Enviando...' : 'Crear cuenta'}
-        </Button>
-      </form>
-
-      <p className='mt-4 text-sm text-muted-foreground'>
-        ¿Ya tienes cuenta?{' '}
-        <Link to='/login' className='font-semibold text-primary'>
-          Iniciar sesión
-        </Link>
-      </p>
+          <Button type='submit' size='xl' disabled={busy || !hasSupabaseConfig} className='mt-1 w-full'>
+            {busy ? t('Enviando...') : t('Crear cuenta')}
+          </Button>
+        </form>
+      )}
     </AuthShell>
   )
 }

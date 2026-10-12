@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { supabase } from '@/lib/supabase'
 
 export class CalendarIcademyBulkRequestError extends Error {
@@ -28,7 +29,7 @@ export async function uploadCalendarIcademyBulkJson(input: {
   schedule: unknown
 }): Promise<CalendarIcademyBulkResult> {
   if (!supabase) {
-    throw new CalendarIcademyBulkRequestError('Supabase no esta configurado.')
+    throw new CalendarIcademyBulkRequestError(t('Supabase no esta configurado.'))
   }
 
   const { data, error } = await supabase.functions.invoke<CalendarIcademyBulkResult>(
@@ -40,14 +41,14 @@ export async function uploadCalendarIcademyBulkJson(input: {
 
   if (error) {
     throw new CalendarIcademyBulkRequestError(
-      'No se pudo ejecutar la carga masiva del calendario.',
+      t('No se pudo ejecutar la carga masiva del calendario.'),
       getErrorStatus(error),
     )
   }
 
   if (!data || typeof data.insertedRows !== 'number') {
     throw new CalendarIcademyBulkRequestError(
-      'Respuesta invalida de carga masiva.',
+      t('Respuesta invalida de carga masiva.'),
     )
   }
 

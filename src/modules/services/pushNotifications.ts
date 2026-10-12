@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 import { supabase } from '@/lib/supabase'
 import type { PushSubscriptionDevice } from '../types'
 
@@ -37,7 +38,7 @@ function getVapidPublicKey(): string {
   const key = import.meta.env.VITE_VAPID_PUBLIC_KEY
   if (!key || typeof key !== 'string') {
     throw new PushNotificationsError(
-      'Falta VITE_VAPID_PUBLIC_KEY para habilitar notificaciones push.',
+      t('Falta VITE_VAPID_PUBLIC_KEY para habilitar notificaciones push.'),
     )
   }
   return key
@@ -45,19 +46,19 @@ function getVapidPublicKey(): string {
 
 function assertBrowserSupport(): void {
   if (typeof window === 'undefined') {
-    throw new PushNotificationsError('Push notifications solo estan disponibles en navegador.')
+    throw new PushNotificationsError(t('Push notifications solo estan disponibles en navegador.'))
   }
 
   if (!('serviceWorker' in navigator)) {
-    throw new PushNotificationsError('Este navegador no soporta Service Worker.')
+    throw new PushNotificationsError(t('Este navegador no soporta Service Worker.'))
   }
 
   if (!('PushManager' in window)) {
-    throw new PushNotificationsError('Este navegador no soporta Push API.')
+    throw new PushNotificationsError(t('Este navegador no soporta Push API.'))
   }
 
   if (!('Notification' in window)) {
-    throw new PushNotificationsError('Este navegador no soporta Notification API.')
+    throw new PushNotificationsError(t('Este navegador no soporta Notification API.'))
   }
 }
 
@@ -75,7 +76,7 @@ function mapDevice(row: PushSubscriptionRow): PushSubscriptionDevice {
 
 async function savePushSubscription(subscription: PushSubscription): Promise<void> {
   if (!supabase) {
-    throw new PushNotificationsError('Supabase no esta configurado.')
+    throw new PushNotificationsError(t('Supabase no esta configurado.'))
   }
 
   const payload = subscription.toJSON()
@@ -84,7 +85,7 @@ async function savePushSubscription(subscription: PushSubscription): Promise<voi
   const auth = payload.keys?.auth || ''
 
   if (!endpoint || !p256dh || !auth) {
-    throw new PushNotificationsError('La suscripcion push no es valida.')
+    throw new PushNotificationsError(t('La suscripcion push no es valida.'))
   }
 
   const { error } = await supabase.from('user_push_subscriptions').upsert(
@@ -100,7 +101,7 @@ async function savePushSubscription(subscription: PushSubscription): Promise<voi
   )
 
   if (error) {
-    throw new PushNotificationsError('No se pudo guardar la suscripcion push.')
+    throw new PushNotificationsError(t('No se pudo guardar la suscripcion push.'))
   }
 }
 
@@ -129,7 +130,7 @@ export async function enablePushOnCurrentDevice(): Promise<NotificationPermissio
 
   const registration = await registerPushServiceWorker()
   if (!registration) {
-    throw new PushNotificationsError('No se pudo registrar el Service Worker.')
+    throw new PushNotificationsError(t('No se pudo registrar el Service Worker.'))
   }
 
   let permission = Notification.permission
@@ -138,7 +139,7 @@ export async function enablePushOnCurrentDevice(): Promise<NotificationPermissio
   }
 
   if (permission !== 'granted') {
-    throw new PushNotificationsError('Debes permitir notificaciones para activarlas.')
+    throw new PushNotificationsError(t('Debes permitir notificaciones para activarlas.'))
   }
 
   let subscription = await registration.pushManager.getSubscription()
@@ -160,7 +161,7 @@ export async function enablePushOnCurrentDevice(): Promise<NotificationPermissio
 export async function disablePushOnCurrentDevice(): Promise<void> {
   assertBrowserSupport()
   if (!supabase) {
-    throw new PushNotificationsError('Supabase no esta configurado.')
+    throw new PushNotificationsError(t('Supabase no esta configurado.'))
   }
 
   const registration = await registerPushServiceWorker()
@@ -178,13 +179,13 @@ export async function disablePushOnCurrentDevice(): Promise<void> {
     .eq('endpoint', endpoint)
 
   if (error) {
-    throw new PushNotificationsError('No se pudo desactivar la suscripcion push.')
+    throw new PushNotificationsError(t('No se pudo desactivar la suscripcion push.'))
   }
 }
 
 export async function listMyPushDevices(): Promise<PushSubscriptionDevice[]> {
   if (!supabase) {
-    throw new PushNotificationsError('Supabase no esta configurado.')
+    throw new PushNotificationsError(t('Supabase no esta configurado.'))
   }
 
   const { data, error } = await supabase
@@ -193,7 +194,7 @@ export async function listMyPushDevices(): Promise<PushSubscriptionDevice[]> {
     .order('updated_at', { ascending: false })
 
   if (error) {
-    throw new PushNotificationsError('No se pudieron cargar los dispositivos push.')
+    throw new PushNotificationsError(t('No se pudieron cargar los dispositivos push.'))
   }
 
   return (data || []).map((row) => mapDevice(row as PushSubscriptionRow))

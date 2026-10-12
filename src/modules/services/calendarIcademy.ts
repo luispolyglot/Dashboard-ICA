@@ -1,5 +1,9 @@
+import { t } from '@/i18n'
 import { supabase } from '@/lib/supabase'
-import { getCalendarIcademyCatalogEntry } from '../constants/calendarIcademyCatalog'
+import {
+  getCalendarIcademyCatalogEntry,
+  isCalendarIcademyClassRetired,
+} from '../constants/calendarIcademyCatalog'
 import type {
   CalendarIcademyEntry,
   CalendarIcademyEntryInput,
@@ -85,14 +89,14 @@ function toCalendarIcademyPayload(input: CalendarIcademyEntryInput) {
 
   if (!catalogEntry) {
     throw new CalendarIcademyRequestError(
-      'La clase seleccionada no pertenece al catalogo oficial de ICADEMY.',
+      t('La clase seleccionada no pertenece al catalogo oficial de ICADEMY.'),
       400,
     )
   }
 
   if (!teacherId) {
     throw new CalendarIcademyRequestError(
-      'Debes seleccionar un profesor valido.',
+      t('Debes seleccionar un profesor valido.'),
       400,
     )
   }
@@ -112,9 +116,15 @@ function toCalendarIcademyPayload(input: CalendarIcademyEntryInput) {
 const CALENDAR_SELECT_FIELDS =
   'id, class_key, class_name, language_code, session_date, session_time, teacher_id, teacher, group_name, note, created_at, updated_at, teacher_ref:icademy_teachers!calendar_icademy_teacher_id_fkey(display_name)'
 
-export async function fetchCalendarIcademyEntries(): Promise<CalendarIcademyEntry[]> {
+/**
+ * Sesiones del Calendario ICADEMY. Por defecto quita las de clases que ya no se imparten
+ * (ver `retired` en el catálogo); el admin pide `includeRetired` para seguir viéndolas.
+ */
+export async function fetchCalendarIcademyEntries(
+  options: { includeRetired?: boolean } = {},
+): Promise<CalendarIcademyEntry[]> {
   if (!supabase) {
-    throw new CalendarIcademyRequestError('Supabase no esta configurado.')
+    throw new CalendarIcademyRequestError(t('Supabase no esta configurado.'))
   }
 
   const { data, error } = await supabase
@@ -126,19 +136,22 @@ export async function fetchCalendarIcademyEntries(): Promise<CalendarIcademyEntr
 
   if (error) {
     throw new CalendarIcademyRequestError(
-      'No se pudo cargar el calendario de clases.',
+      t('No se pudo cargar el calendario de clases.'),
       getErrorStatus(error),
     )
   }
 
-  return (data || []).map((row) => toCalendarIcademyEntry(row as CalendarIcademyRow))
+  const entries = (data || []).map((row) => toCalendarIcademyEntry(row as CalendarIcademyRow))
+  return options.includeRetired
+    ? entries
+    : entries.filter((entry) => !isCalendarIcademyClassRetired(entry.classKey))
 }
 
 export async function createCalendarIcademyEntry(
   input: CalendarIcademyEntryInput,
 ): Promise<CalendarIcademyEntry> {
   if (!supabase) {
-    throw new CalendarIcademyRequestError('Supabase no esta configurado.')
+    throw new CalendarIcademyRequestError(t('Supabase no esta configurado.'))
   }
 
   const { data, error } = await supabase
@@ -151,12 +164,12 @@ export async function createCalendarIcademyEntry(
     const status = getErrorStatus(error)
     if (status === 403) {
       throw new CalendarIcademyRequestError(
-        'No tienes permisos para crear clases en este calendario.',
+        t('No tienes permisos para crear clases en este calendario.'),
         403,
       )
     }
     throw new CalendarIcademyRequestError(
-      'No se pudo crear la clase del calendario.',
+      t('No se pudo crear la clase del calendario.'),
       status,
     )
   }
@@ -169,7 +182,7 @@ export async function updateCalendarIcademyEntry(
   input: CalendarIcademyEntryInput,
 ): Promise<CalendarIcademyEntry> {
   if (!supabase) {
-    throw new CalendarIcademyRequestError('Supabase no esta configurado.')
+    throw new CalendarIcademyRequestError(t('Supabase no esta configurado.'))
   }
 
   const { data, error } = await supabase
@@ -183,12 +196,12 @@ export async function updateCalendarIcademyEntry(
     const status = getErrorStatus(error)
     if (status === 403) {
       throw new CalendarIcademyRequestError(
-        'No tienes permisos para editar clases en este calendario.',
+        t('No tienes permisos para editar clases en este calendario.'),
         403,
       )
     }
     throw new CalendarIcademyRequestError(
-      'No se pudo actualizar la clase del calendario.',
+      t('No se pudo actualizar la clase del calendario.'),
       status,
     )
   }
@@ -198,7 +211,7 @@ export async function updateCalendarIcademyEntry(
 
 export async function deleteCalendarIcademyEntry(entryId: string): Promise<void> {
   if (!supabase) {
-    throw new CalendarIcademyRequestError('Supabase no esta configurado.')
+    throw new CalendarIcademyRequestError(t('Supabase no esta configurado.'))
   }
 
   const { error } = await supabase
@@ -210,12 +223,12 @@ export async function deleteCalendarIcademyEntry(entryId: string): Promise<void>
     const status = getErrorStatus(error)
     if (status === 403) {
       throw new CalendarIcademyRequestError(
-        'No tienes permisos para eliminar clases en este calendario.',
+        t('No tienes permisos para eliminar clases en este calendario.'),
         403,
       )
     }
     throw new CalendarIcademyRequestError(
-      'No se pudo eliminar la clase del calendario.',
+      t('No se pudo eliminar la clase del calendario.'),
       status,
     )
   }

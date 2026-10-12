@@ -3,6 +3,7 @@ import { addChallengeListening } from '../services/challengeUnlocks'
 import { isChallengeEnabledNow } from '../services/challengeChunks'
 import { useAuth } from '@/auth/AuthContext'
 import type { MasterNote } from '../types'
+import { t } from '@/i18n'
 import {
   createSignedMasterNoteAudioUrl,
   fetchMasterNoteChunks,
@@ -14,13 +15,16 @@ import {
 import {
   enqueueMasterNoteListeningDelta,
   flushPendingMasterNoteListeningDeltas,
-  getUtcDayStamp,
 } from '../services/masterNoteListeningMetrics'
+import { getLocalListeningDayStamp } from '../services/listeningCalendar'
+import { holdWhilePlaying } from '../services/audioSession'
 
 type PlaybackTrack = {
   url: string
   durationSec: number
 }
+
+const LISTENING_FLUSH_EVERY_MS = 30_000
 
 type UnifiedChunkCacheEntry = {
   url: string
@@ -117,12 +121,15 @@ async function mergeAudioBlobsToWav(blobs: Blob[]): Promise<{ blob: Blob; durati
   const context = new AudioContextCtor()
 
   try {
-    const decodedBuffers = await Promise.all(
+    // A recording that cannot be decoded (for example, an empty file saved when the iPhone
+    // microphone did not open) is skipped, so the rest of the note still plays (Luis, 12 Oct).
+    const settled = await Promise.allSettled(
       blobs.map(async (blob) => {
         const arrayBuffer = await blob.arrayBuffer()
         return context.decodeAudioData(arrayBuffer)
       }),
     )
+    const decodedBuffers = settled.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []))
 
     if (decodedBuffers.length === 0) {
       return null
@@ -167,6 +174,8 @@ function clamp(value: number, min: number, max: number): number {
 export function useMasterNotePlayback() {
   const { user } = useAuth()
   const [playingNoteId, setPlayingNoteId] = useState<string | null>(null)
+  // Name of the note that is playing (the mini player shows it on other screens).
+  const [playingNoteName, setPlayingNoteName] = useState<string | null>(null)
   const [isPaused, setIsPaused] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [positionSec, setPositionSec] = useState(0)
@@ -182,6 +191,8 @@ export function useMasterNotePlayback() {
     nativeLang: string
   } | null>(null)
   const listeningLastTickAtRef = useRef<number | null>(null)
+  const listeningLastAudioTimeRef = useRef<number | null>(null)
+  const listeningLastFlushAtRef = useRef(0)
   const listeningBufferedSecondsRef = useRef(0)
   const listeningFlushIntervalRef = useRef<number | null>(null)
   // Nota desafiante: cuánto audio de ESTA nota ha sonado de verdad (para desbloquearla al 80 %)
@@ -242,6 +253,8 @@ export function useMasterNotePlayback() {
     }
 
     const created = new Audio()
+    // iPhone: keeps sounding with the phone locked or outside the app (see services/audioSession).
+    holdWhilePlaying(created)
     audioRef.current = created
     return created
   }
@@ -284,7 +297,7 @@ export function useMasterNotePlayback() {
       setIsPaused(false)
     } catch (err) {
       pushDebugEvent('No se pudo reanudar audio', err)
-      setError('No se pudo reanudar la reproducción')
+      setError(t('No se pudo reanudar la reproducción'))
     }
   }
 
@@ -370,33 +383,44 @@ export function useMasterNotePlayback() {
       return
     }
 
+    const occurredAt = new Date().toISOString()
     enqueueMasterNoteListeningDelta({
       userId: currentUserId,
-      day: getUtcDayStamp(),
+      day: getLocalListeningDayStamp(new Date(occurredAt)),
       targetLang: meta.targetLang,
       nativeLang: meta.nativeLang,
       deltaSeconds: wholeSeconds,
+      occurredAt,
     })
 
-    if (forceFlush || wholeSeconds >= 15) {
+    const now = Date.now()
+    if (forceFlush || now - listeningLastFlushAtRef.current >= LISTENING_FLUSH_EVERY_MS) {
+      listeningLastFlushAtRef.current = now
       void flushListeningAsync().catch(() => {})
     }
   }
 
   const checkpointListening = (forceFlush = false): void => {
-    if (!audioRef.current || audioRef.current.paused) {
-      commitListeningDelta(forceFlush)
-      listeningLastTickAtRef.current = null
-      return
-    }
-
-    const now = Date.now()
-    const last = listeningLastTickAtRef.current
-    listeningLastTickAtRef.current = now
-
-    if (last !== null) {
-      const deltaSec = clamp((now - last) / 1000, 0, 15)
-      listeningBufferedSecondsRef.current += deltaSec
+    const audio = audioRef.current
+    if (audio) {
+      const now = Date.now()
+      const audioNow = audio.currentTime || 0
+      const lastAt = listeningLastTickAtRef.current
+      const lastAudio = listeningLastAudioTimeRef.current
+      if (lastAt !== null && lastAudio !== null) {
+        const played = audioNow - lastAudio
+        const wall = (now - lastAt) / 1000
+        if (played > 0 && played <= wall + 2) {
+          listeningBufferedSecondsRef.current += played
+        }
+      }
+      if (audio.paused) {
+        listeningLastTickAtRef.current = null
+        listeningLastAudioTimeRef.current = null
+      } else {
+        listeningLastTickAtRef.current = now
+        listeningLastAudioTimeRef.current = audioNow
+      }
     }
 
     commitListeningDelta(forceFlush)
@@ -408,6 +432,7 @@ export function useMasterNotePlayback() {
       listeningFlushIntervalRef.current = null
     }
     listeningLastTickAtRef.current = null
+    listeningLastAudioTimeRef.current = null
   }
 
   const startListeningTicker = (): void => {
@@ -415,6 +440,7 @@ export function useMasterNotePlayback() {
     if (listeningFlushIntervalRef.current !== null) return
 
     listeningLastTickAtRef.current = Date.now()
+    listeningLastAudioTimeRef.current = audioRef.current.currentTime || 0
     listeningFlushIntervalRef.current = window.setInterval(() => {
       checkpointListening(false)
     }, 10_000)
@@ -510,7 +536,7 @@ export function useMasterNotePlayback() {
       pushDebugEvent(
         `HTMLAudioElement lanzó error durante reproducción${mediaErrorCode ? ` (code ${mediaErrorCode})` : ''}`,
       )
-      setError('No se pudo reproducir la nota maestra')
+      setError(t('No se pudo reproducir la nota maestra'))
       setPlayingNoteId(null)
       setIsPaused(false)
     }
@@ -553,7 +579,7 @@ export function useMasterNotePlayback() {
     } catch (err) {
       if (token !== tokenRef.current) return
       pushDebugEvent('audio.play() rechazado', err)
-      setError('No se pudo reproducir la nota maestra')
+      setError(t('No se pudo reproducir la nota maestra'))
       setPlayingNoteId(null)
       setIsPaused(false)
     }
@@ -782,13 +808,13 @@ export function useMasterNotePlayback() {
     } catch (err) {
       if (token !== tokenRef.current) return
       pushDebugEvent('Fallo al resolver pista de reproducción', err)
-      setError('No se pudo reproducir la nota maestra')
+      setError(t('No se pudo reproducir la nota maestra'))
       return
     }
 
     if (!track) {
       pushDebugEvent('No se encontró track reproducible para la nota')
-      setError('No hay audios para reproducir en esta nota maestra')
+      setError(t('No hay audios para reproducir en esta nota maestra'))
       return
     }
 
@@ -797,6 +823,7 @@ export function useMasterNotePlayback() {
     setDurationSec(track.durationSec)
     setPositionSec(0)
     setPlayingNoteId(note.id)
+    setPlayingNoteName(note.name || null)
     // Nota desafiante: solo cuenta la escucha de notas maestras cerradas.
     challengeNoteRef.current =
       note.state === 'closed' ? { id: note.id, durationMs: note.total_duration_ms } : null
@@ -815,6 +842,7 @@ export function useMasterNotePlayback() {
     error,
     clearError: () => setError(null),
     playingNoteId,
+    playingNoteName,
     canPlay,
     play,
     playTransitionCue,

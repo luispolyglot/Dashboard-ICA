@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { trackAnthropicUsage, type AnthropicUsage } from '../_shared/ai-usage.ts'
 import {
   DEFAULT_LEVEL_FAMILY,
   LANG_TO_FAMILY,
@@ -324,7 +325,10 @@ async function callAnthropicForWordExample(
 
   const data = (await response.json()) as {
     content?: Array<{ type: string; text?: string }>
+    usage?: AnthropicUsage
   }
+  // Gastos de IA: the flashcard examples are made in the background, not for one student request.
+  await trackAnthropicUsage({ feature: 'flashcard_example' }, model, data.usage)
 
   const text = data.content
     ?.map((block) => (block.type === 'text' ? block.text || '' : ''))

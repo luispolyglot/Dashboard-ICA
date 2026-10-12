@@ -4,18 +4,22 @@ import { runInBatches } from '@/lib/utils'
 import { notifyCreationMetricsChanged } from './creationMetricsSync'
 import { syncClosedMasterNotesOfflineSnapshot } from './masterNotesOfflineStore'
 import type { MasterNote, MasterNoteChunk } from '../types'
+import { t } from '@/i18n'
 
 const MASTER_NOTES_BUCKET = 'master-notes'
 
 /** Una Nota Maestra se completa (se cierra sola) al guardar la grabación que la lleva a 3:00 o más. */
 export const MASTER_NOTE_COMPLETE_DURATION_MS = 3 * 60 * 1000
+// No master note may go past 4:00 (Luis, 12 Oct): the recording stops by itself, and the server
+// refuses more (migration 20261012130000, error MASTER_NOTE_MAX_4_00).
+export const MASTER_NOTE_MAX_DURATION_MS = 4 * 60 * 1000
 
 /** "Nota Maestra: 2" -> "Nota Maestra 2" (para textos de la interfaz). */
 export function formatMasterNoteLabel(name: string | null | undefined): string {
   const clean = (name || '').trim()
   const match = clean.match(/^nota maestra:\s*(\d+)$/i)
-  if (match) return `Nota Maestra ${match[1]}`
-  return clean || 'Nota Maestra'
+  if (match) return t('Nota Maestra {n}', { n: match[1] })
+  return clean || t('Nota Maestra')
 }
 
 function getNextMasterNoteNumber(names: string[]): number {
@@ -27,6 +31,55 @@ function getNextMasterNoteNumber(names: string[]): number {
   }, 0)
 
   return maxNumber + 1
+}
+
+/** Número de una nota maestra a partir de su nombre ("Nota Maestra: 4" -> 4), o null si no sigue ese formato. */
+export function getMasterNoteNumber(name: string | null | undefined): number | null {
+  const match = (name || '').match(/^\s*nota maestra:\s*(\d+)\s*$/i)
+  return match ? Number(match[1]) : null
+}
+
+export const MASTER_NOTE_NUMBER_TAKEN = 'MASTER_NOTE_NUMBER_TAKEN'
+export const MASTER_NOTE_MAX_NUMBER = 999
+
+/**
+ * Cambia el número de una nota maestra (Luis, 7 Oct). El nombre siempre queda como
+ * "Nota Maestra: N", que es lo que exige la base de datos y lo que lee la siguiente nota
+ * que se crea (número más alto + 1). No deja repetir un número que ya usa otra nota del mismo idioma.
+ */
+export async function renameMasterNote(noteId: string, number: number): Promise<MasterNote> {
+  if (!supabase) throw new Error('Falta configurar Supabase')
+  if (!Number.isInteger(number) || number < 1 || number > MASTER_NOTE_MAX_NUMBER) {
+    throw new Error('Número de nota maestra no válido')
+  }
+
+  const { data: current, error: currentError } = await supabase
+    .from('master_notes')
+    .select('target_lang, native_lang')
+    .eq('id', noteId)
+    .single()
+  if (currentError || !current) throw currentError || new Error('No se encontró la nota maestra')
+
+  const { data: sameLanguage, error: sameLanguageError } = await supabase
+    .from('master_notes')
+    .select('id, name')
+    .eq('target_lang', current.target_lang)
+    .eq('native_lang', current.native_lang)
+  if (sameLanguageError) throw sameLanguageError
+
+  const taken = (sameLanguage || []).some((row) => row.id !== noteId && getMasterNoteNumber(row.name) === number)
+  if (taken) throw new Error(MASTER_NOTE_NUMBER_TAKEN)
+
+  const { data, error } = await supabase
+    .from('master_notes')
+    .update({ name: `Nota Maestra: ${number}` })
+    .eq('id', noteId)
+    .select(
+      'id, name, state, close_type, closed_level, total_duration_ms, final_audio_path, target_lang, native_lang, created_at, updated_at, closed_at',
+    )
+    .single()
+  if (error || !data) throw error || new Error('No se pudo cambiar el nombre de la nota maestra')
+  return data as MasterNote
 }
 
 function getFileExtension(mimeType: string): string {
@@ -445,7 +498,11 @@ export async function addMasterNoteChunk({
   const phraseNativeLang = typeof phraseRow.native_lang === 'string' ? phraseRow.native_lang.trim() : ''
 
   if (noteTargetLang && noteNativeLang && phraseTargetLang && phraseNativeLang) {
-    if (noteTargetLang !== phraseTargetLang || noteNativeLang !== phraseNativeLang) {
+    // Case-insensitive: some phrases were saved as "polaco" while the note says "Polaco".
+    if (
+      noteTargetLang.toLowerCase() !== phraseTargetLang.toLowerCase() ||
+      noteNativeLang.toLowerCase() !== phraseNativeLang.toLowerCase()
+    ) {
       throw new Error('La frase pertenece a otro idioma y no puede activarse en esta nota')
     }
   }
@@ -604,7 +661,7 @@ export async function fetchNextMasterNoteLabel(
   targetLang: string,
   nativeLang: string,
 ): Promise<string> {
-  if (!supabase) return 'una nueva Nota Maestra'
+  if (!supabase) return t('una nueva Nota Maestra')
 
   const { data, error } = await supabase
     .from('master_notes')
@@ -620,7 +677,7 @@ export async function fetchNextMasterNoteLabel(
   if (openNote) return formatMasterNoteLabel(openNote.name)
 
   const nextNumber = getNextMasterNoteNumber(rows.map((row) => row.name || ''))
-  return `Nota Maestra ${nextNumber}`
+  return t('Nota Maestra {n}', { n: nextNumber })
 }
 
 export async function createSignedMasterNoteAudioUrl(
@@ -777,8 +834,16 @@ export async function fetchMasterNoteAudioPayload(
       }
 
       const arrayBuffer = await chunkBlob.arrayBuffer()
-      const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0))
-      audioBuffers.push(decoded)
+      try {
+        const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0))
+        audioBuffers.push(decoded)
+      } catch {
+        // An empty or broken recording is skipped; the rest of the note is still downloaded.
+      }
+    }
+
+    if (audioBuffers.length === 0) {
+      throw new Error('No se pudo leer el audio de esta nota')
     }
 
     return {

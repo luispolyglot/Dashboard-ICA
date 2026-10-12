@@ -6,6 +6,7 @@ const { mockSupabase, evaluateAndUnlockAchievementsMock, registerWordActivations
       getSession: vi.fn(),
     },
     from: vi.fn(),
+    rpc: vi.fn(),
   },
   evaluateAndUnlockAchievementsMock: vi.fn(),
   registerWordActivationsMock: vi.fn(),
@@ -42,6 +43,7 @@ describe('gamification service', () => {
 
     mockSupabase.auth.getSession.mockReset()
     mockSupabase.from.mockReset()
+    mockSupabase.rpc.mockReset()
     evaluateAndUnlockAchievementsMock.mockReset()
     registerWordActivationsMock.mockReset()
 
@@ -76,16 +78,13 @@ describe('gamification service', () => {
   })
 
   it('retries activation registration in phrase flow and returns ids', async () => {
-    const phraseSingle = vi.fn().mockResolvedValue({ data: { id: 'phrase-1' }, error: null })
-    const phraseSelect = vi.fn().mockReturnValue({ single: phraseSingle })
-    const phraseInsert = vi.fn().mockReturnValue({ select: phraseSelect })
     const xpInsert = vi.fn().mockResolvedValue({ error: null })
 
     mockSupabase.from.mockImplementation((table: string) => {
-      if (table === 'phrase_generations') return { insert: phraseInsert }
       if (table === 'xp_events') return { insert: xpInsert }
       throw new Error(`Unexpected table: ${table}`)
     })
+    mockSupabase.rpc.mockResolvedValue({ data: 'phrase-1', error: null })
 
     registerWordActivationsMock
       .mockResolvedValueOnce(null)
@@ -118,17 +117,13 @@ describe('gamification service', () => {
   })
 
   it('keeps phrase id available when gamification writes fail', async () => {
-    const phraseSingle = vi.fn().mockResolvedValue({ data: { id: 'phrase-2' }, error: null })
-    const phraseSelect = vi.fn().mockReturnValue({ single: phraseSingle })
-    const phraseInsert = vi.fn().mockReturnValue({ select: phraseSelect })
     const xpInsert = vi.fn().mockResolvedValue({ error: { message: 'forbidden' } })
 
     mockSupabase.from.mockImplementation((table: string) => {
-      if (table === 'phrase_generations') return { insert: phraseInsert }
       if (table === 'xp_events') return { insert: xpInsert }
-      if (table === 'goal_completions') return { upsert: vi.fn() }
       throw new Error(`Unexpected table: ${table}`)
     })
+    mockSupabase.rpc.mockResolvedValue({ data: 'phrase-2', error: null })
 
     registerWordActivationsMock.mockResolvedValue(3)
 

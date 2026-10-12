@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import importantInfoMasterclassImage from '@/images/important-info-masterclass.png'
+import { t } from '@/i18n'
 
 const IMPORTANT_INFO_VERSION = 'masterclass_monday_v1'
 const DISMISS_STORAGE_KEY = `important_info_calendar_notifications_modal_dismissed_${IMPORTANT_INFO_VERSION}`
@@ -20,7 +21,6 @@ function getInitialOpenState(): boolean {
 
 export function ImportantInfoModal() {
   const [open, setOpen] = useState(getInitialOpenState)
-
   const dismiss = (): void => {
     window.localStorage.setItem(DISMISS_STORAGE_KEY, '1')
     setOpen(false)
@@ -41,24 +41,31 @@ export function ImportantInfoModal() {
       >
         <div className='relative p-5 pb-4'>
           <DialogHeader>
-            <DialogTitle>Hey, recuerda la masterclass que voy a hacer el lunes.</DialogTitle>
+            <DialogTitle>{t('Hey, recuerda la masterclass que voy a hacer el lunes.')}</DialogTitle>
             <DialogDescription className='sr-only'>
-              Apúntate a la masterclass o confirma que ya estás apuntado.
+              {t('Apúntate a la masterclass o confirma que ya estás apuntado.')}
             </DialogDescription>
           </DialogHeader>
 
           <img
             src={importantInfoMasterclassImage}
-            alt='Anuncio de la masterclass online de fluidez con Luis'
+            alt={t('Anuncio de la masterclass online de fluidez con Luis')}
             className='mt-4 h-auto w-full rounded-lg border border-border/70'
           />
 
           <div className='mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2'>
-            <Button type='button' variant='outline' onClick={dismiss}>
-              Ya estoy apuntado
+            <Button
+              type='button'
+              variant='outline'
+              onClick={dismiss}
+            >
+              {t('Ya estoy apuntado')}
             </Button>
-            <Button type='button' onClick={handleSignup}>
-              Apuntarme
+            <Button
+              type='button'
+              onClick={handleSignup}
+            >
+              {t('Apuntarme')}
             </Button>
           </div>
         </div>

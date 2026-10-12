@@ -121,13 +121,14 @@ jobs:
             exit 1
           fi
 
-      - name: Link Supabase project
+      - name: Apply database migrations over IPv4 session pooler
         if: steps.changes.outputs.migrations == 'true'
-        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
-
-      - name: Apply database migrations
-        if: steps.changes.outputs.migrations == 'true'
-        run: supabase db push --include-all --yes
+        shell: bash
+        run: |
+          set -euo pipefail
+          encoded_password="$(python3 -c 'import os; from urllib.parse import quote; print(quote(os.environ["SUPABASE_DB_PASSWORD"], safe=""))')"
+          db_url="postgresql://postgres.${SUPABASE_PROJECT_REF}:${encoded_password}@aws-1-eu-central-1.pooler.supabase.com:5432/postgres"
+          supabase db push --db-url "$db_url" --include-all --yes
 
       - name: Deploy changed Edge Functions
         if: steps.changes.outputs.functions != '[]'

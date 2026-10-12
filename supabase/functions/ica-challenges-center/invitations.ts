@@ -1,4 +1,5 @@
 import { jsonResponse } from '../_shared/http.ts'
+import { buildChallengeJobPush, firstNameOf } from '../_shared/ica-challenge-job-notices.ts'
 import type { AdminClient, ChallengeScope, LanguagePair } from './types.ts'
 import {
   buildModeSettings,
@@ -15,6 +16,33 @@ import {
   type ModeSettings,
   type QuestionKind,
 } from './engine.ts'
+
+type LimitErrorCode =
+  | 'ICA_CHALLENGE_ACTIVE_LIMIT_REACHED'
+  | 'ICA_CHALLENGE_OPPONENT_ACTIVE_LIMIT_REACHED'
+  | 'ICA_CHALLENGE_PASS_REQUIRED'
+  | 'ICA_CHALLENGE_ACTIVE_PAIR_EXISTS'
+
+const LIMIT_ERROR_MESSAGES: Record<LimitErrorCode, string> = {
+  ICA_CHALLENGE_ACTIVE_LIMIT_REACHED: 'Ya tienes 3 desafíos activos. Termina uno para retar de nuevo.',
+  ICA_CHALLENGE_OPPONENT_ACTIVE_LIMIT_REACHED: 'Ese icademer ya tiene 4 desafíos abiertos.',
+  ICA_CHALLENGE_PASS_REQUIRED: 'Necesitas un desafío extra para tu 4.º desafío.',
+  ICA_CHALLENGE_ACTIVE_PAIR_EXISTS: 'Ya tienen un desafío activo entre ustedes.',
+}
+
+const ACCEPT_LIMIT_MESSAGES: Partial<Record<LimitErrorCode, string>> = {
+  ICA_CHALLENGE_ACTIVE_LIMIT_REACHED: 'Ya tienes 4 desafíos en curso. Termina uno para aceptar este.',
+  ICA_CHALLENGE_PASS_REQUIRED: 'Ya tienes 3 desafíos en curso. Usa un desafío extra para aceptar este.',
+}
+
+/** The limit codes the SQL functions raise, so the student sees a sentence and not a code. */
+function limitErrorCode(message: string | undefined): LimitErrorCode | null {
+  if (!message) return null
+  for (const code of Object.keys(LIMIT_ERROR_MESSAGES) as LimitErrorCode[]) {
+    if (message.includes(code)) return code
+  }
+  return null
+}
 
 type ChallengeTypeRow = {
   id: string
@@ -125,17 +153,19 @@ export async function createChallenge(
   }
 
   const myActiveCount = await deps.countActiveChallenges(adminClient, userId)
-  if (myActiveCount >= deps.maxActiveChallenges) {
+  const useExtraSlot = body.useExtraSlot === true
+  if (myActiveCount >= deps.maxActiveChallenges && !(myActiveCount === deps.maxActiveChallenges && useExtraSlot)) {
     return jsonResponse(400, {
       code: 'ICA_CHALLENGE_ACTIVE_LIMIT_REACHED',
       error: 'Ya tienes 3 desafíos activos. Termina uno para retar de nuevo.',
     })
   }
+  // The rival may already have 3: their 4th is accepted with a «desafío extra» (Luis, 11 Oct).
   const rivalActiveCount = await deps.countActiveChallenges(adminClient, challengedUserId)
-  if (rivalActiveCount >= deps.maxActiveChallenges) {
+  if (rivalActiveCount >= deps.maxActiveChallenges + 1) {
     return jsonResponse(400, {
       code: 'ICA_CHALLENGE_OPPONENT_ACTIVE_LIMIT_REACHED',
-      error: 'Ese icademer ya tiene 3 desafíos activos.',
+      error: 'Ese icademer ya tiene 4 desafíos abiertos.',
     })
   }
   if (await deps.hasActivePairChallenge(adminClient, userId, challengedUserId)) {
@@ -264,51 +294,57 @@ export async function createChallenge(
 
   const expiresAt = new Date(Date.now() + durationSeconds * 1000).toISOString()
   const acceptUntil = deps.addSecondsToNow(deps.invitationWindowSeconds)
-  const { data: challenge, error: challengeError } = await adminClient
-    .from('ica_challenges')
-    .insert({
-      challenge_slug: challengeTypeId,
-      status: 'created',
-      result_type: 'pending',
-      scope,
-      target_lang: scope === 'language' ? targetLang : null,
-      native_lang: scope === 'language' ? nativeLang : null,
-      challenger_user_id: userId,
-      challenged_user_id: challengedUserId,
-      duration_seconds: durationSeconds,
-      expires_at: expiresAt,
-      accept_until: acceptUntil,
-      game_metadata: settingsToMetadata(settings, levelsMetadata ? { levels: levelsMetadata } : {}),
-      phases_json: [
+  // Capacidad, consumo del pase y creación de ambas filas se confirman en una transacción SQL.
+  // Las comprobaciones previas de modo/palabras son informativas; esta RPC repite los límites
+  // bajo locks para cerrar carreras entre dos solicitudes.
+  const { data: challengeIdValue, error: challengeError } = await adminClient.rpc(
+    'create_ica_challenge_with_pass',
+    {
+      p_user_id: userId,
+      p_challenged_user_id: challengedUserId,
+      p_challenge_slug: challengeTypeId,
+      p_scope: scope,
+      p_target_lang: targetLang,
+      p_native_lang: nativeLang,
+      p_duration_seconds: durationSeconds,
+      p_expires_at: expiresAt,
+      p_accept_until: acceptUntil,
+      p_game_metadata: settingsToMetadata(settings, levelsMetadata ? { levels: levelsMetadata } : {}),
+      p_phases_json: [
         { key: 'invitation', status: 'pending' },
         { key: 'duel', status: 'locked' },
       ],
-    })
-    .select('id')
-    .single()
+      p_use_extra_slot: useExtraSlot,
+    },
+  )
 
-  if (challengeError || !challenge) {
-    return jsonResponse(400, { error: challengeError?.message || 'No se pudo crear el desafío.' })
+  if (challengeError || !challengeIdValue) {
+    const code = limitErrorCode(challengeError?.message)
+    if (code) return jsonResponse(400, { code, error: LIMIT_ERROR_MESSAGES[code] })
+    const message = challengeError?.message || 'No se pudo crear el desafío.'
+    return jsonResponse(400, { error: message })
   }
 
-  const challengeId = deps.toText((challenge as Record<string, unknown>).id)
-  const { error: competitorsError } = await adminClient.from('ica_challenge_competitors').insert([
-    {
-      challenge_id: challengeId,
-      user_id: userId,
-      competitor_order: 1,
-      invitation_status: 'accepted',
-      accepted_at: new Date().toISOString(),
-    },
-    { challenge_id: challengeId, user_id: challengedUserId, competitor_order: 2, invitation_status: 'pending' },
-  ])
-  if (competitorsError) return jsonResponse(400, { error: competitorsError.message })
+  const challengeId = deps.toText(challengeIdValue)
+
+  // The invite names who sent it: «Sofía te retó a ...» (Luis, 6 Oct).
+  const { data: challengerProfile } = await adminClient
+    .from('profiles')
+    .select('display_name, username')
+    .eq('id', userId)
+    .maybeSingle()
+  const challengerName = firstNameOf(
+    deps.toText(challengerProfile?.display_name),
+    deps.toText(challengerProfile?.username),
+  )
 
   await deps.sendPushToUser({
     adminClient,
     userId: challengedUserId,
     title: 'Nuevo desafío ICA',
-    body: `Te retaron a «${challengeType.nombre}». Respóndelo para empezar.`,
+    body: challengerName
+      ? `${challengerName} te retó a «${challengeType.nombre}». Respóndelo para empezar.`
+      : `Te retaron a «${challengeType.nombre}». Respóndelo para empezar.`,
     tag: `ica-challenge-created-${challengeId}`,
     url: '/desafios-ica',
   })
@@ -339,7 +375,7 @@ export async function respondInvitation(
   const nowTs = Date.now()
   const acceptUntilTs = existing.accept_until ? Date.parse(existing.accept_until) : NaN
   if (Number.isFinite(acceptUntilTs) && acceptUntilTs <= nowTs) {
-    await adminClient
+    const { data: expiredRows } = await adminClient
       .from('ica_challenges')
       .update({
         status: 'not_accepted',
@@ -350,6 +386,31 @@ export async function respondInvitation(
         turn_expires_at: null,
       })
       .eq('id', challengeId)
+      .eq('status', 'created')
+      .select('id')
+    if (((expiredRows || []) as unknown[]).length === 0) {
+      return jsonResponse(400, { error: 'El reto ya caducó.' })
+    }
+    // Same notice the expiration job would have sent to the challenger.
+    const { data: lateProfile } = await adminClient
+      .from('profiles')
+      .select('display_name, username')
+      .eq('id', userId)
+      .maybeSingle()
+    const notice = buildChallengeJobPush(
+      {
+        id: 0,
+        challenge_id: challengeId,
+        user_id: deps.toText(existing.challenger_user_id),
+        rival_user_id: userId,
+        kind: 'invite_expired',
+        outcome: null,
+        timed_out: false,
+      },
+      firstNameOf(deps.toText(lateProfile?.display_name), deps.toText(lateProfile?.username)),
+      false,
+    )
+    if (notice) await deps.sendPushToUser({ adminClient, ...notice })
     return jsonResponse(400, { error: 'El reto ya caducó.' })
   }
 
@@ -426,6 +487,35 @@ export async function respondInvitation(
 
   const nowIso = new Date().toISOString()
   const firstTurnExpiresAt = deps.addSecondsToNow(deps.turnWindowSeconds)
+
+  if (accept) {
+    // Limit, «desafío extra» and both rows in one SQL transaction (Luis, 11 Oct): with 3
+    // challenges already under way, the 4th one is accepted with a pass (15 ICA Coins).
+    const { error: acceptError } = await adminClient.rpc('accept_ica_challenge_with_pass', {
+      p_user_id: userId,
+      p_challenge_id: challengeId,
+      p_turn_expires_at: firstTurnExpiresAt,
+      p_use_extra_slot: body.useExtraSlot === true,
+    })
+    if (acceptError) {
+      const code = limitErrorCode(acceptError.message)
+      if (code) return jsonResponse(400, { code, error: ACCEPT_LIMIT_MESSAGES[code] ?? LIMIT_ERROR_MESSAGES[code] })
+      if (acceptError.message.includes('ICA_CHALLENGE_ALREADY_ANSWERED')) {
+        return jsonResponse(400, { error: 'El desafío ya fue respondido.' })
+      }
+      return jsonResponse(500, { error: acceptError.message })
+    }
+    await deps.sendPushToUser({
+      adminClient,
+      userId: deps.toText(existing.challenger_user_id),
+      title: 'Desafío aceptado',
+      body: 'Tu rival aceptó el desafío. Empieza su primer turno.',
+      tag: `ica-challenge-response-${challengeId}`,
+      url: '/desafios-ica',
+    })
+    return jsonResponse(200, { ok: true, challengeId, status: 'in_progress' })
+  }
+
   const { error: competitorError } = await adminClient
     .from('ica_challenge_competitors')
     .update({

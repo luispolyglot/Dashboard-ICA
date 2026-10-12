@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countPendingMasterNotesForSession } from '../../../../../supabase/functions/coaching-center/pending-review'
+import { countPendingMasterNotesForSession, countPendingTaskAudioBySession } from '../../../../../supabase/functions/coaching-center/pending-review'
 
 describe('countPendingMasterNotesForSession', () => {
   it('counts only closed notes without feedback inside coaching window', () => {
@@ -161,5 +161,21 @@ describe('countPendingMasterNotesForSession', () => {
     )
 
     expect(count).toBe(1)
+  })
+})
+
+describe('countPendingTaskAudioBySession', () => {
+  it('counts the homework audios still waiting for feedback, per session and week', () => {
+    const result = countPendingTaskAudioBySession([
+      { sessionId: 's1', periodNumber: 3, feedbackAt: null },
+      { sessionId: 's1', periodNumber: 2, feedbackAt: null },
+      { sessionId: 's1', periodNumber: 3, feedbackAt: null },
+      { sessionId: 's1', periodNumber: 1, feedbackAt: '2026-10-01T10:00:00Z' },
+      { sessionId: 's2', periodNumber: 1, feedbackAt: '  ' },
+      { sessionId: '', periodNumber: 1, feedbackAt: null },
+    ])
+    expect(result.get('s1')).toEqual({ count: 3, periods: [2, 3] })
+    expect(result.get('s2')).toEqual({ count: 1, periods: [1] })
+    expect(result.has('')).toBe(false)
   })
 })
