@@ -123,21 +123,23 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           </span>
         ) : null}
       </span>
-      <span className='grid grid-cols-4 gap-2'>
+      {/* Luis, 12 Oct: on the computer the card is as tall as its row, so the four games grow and
+          fill it (before they stayed small at the top and half the card was empty). */}
+      <span className='grid grid-cols-4 gap-2 lg:flex-1 lg:content-center lg:gap-3'>
         {[
-          { icon: <CardsIcon size={26} />, label: 'Flashcards', color: 'var(--primary)' },
-          { icon: <SwordsIcon size={28} />, label: t('Desafíos'), color: 'var(--ica-a)' },
-          { icon: <MicGlyph size={26} />, label: 'PreguntICA', color: 'var(--ica-c)' },
-          { icon: <TargetGlyph size={26} />, label: 'Nota desaf.', color: 'var(--ica-gold-edge)' },
+          { icon: <CardsIcon size={isLg ? 40 : 26} />, label: 'Flashcards', color: 'var(--primary)' },
+          { icon: <SwordsIcon size={isLg ? 42 : 28} />, label: t('Desafíos'), color: 'var(--ica-a)' },
+          { icon: <MicGlyph size={isLg ? 40 : 26} />, label: 'PreguntICA', color: 'var(--ica-c)' },
+          { icon: <TargetGlyph size={isLg ? 40 : 26} />, label: isLg ? 'Nota desafiante' : 'Nota desaf.', color: 'var(--ica-gold-edge)' },
         ].map((item) => (
-          <span key={item.label} className='flex flex-col items-center gap-1'>
+          <span key={item.label} className='flex flex-col items-center gap-1 lg:gap-2'>
             <span
-              className='flex size-12 items-center justify-center rounded-2xl'
+              className='flex size-12 items-center justify-center rounded-2xl lg:aspect-square lg:size-auto lg:w-full lg:max-w-[84px] lg:rounded-3xl'
               style={{ background: `color-mix(in oklab, ${item.color} 16%, transparent)` }}
             >
               {item.icon}
             </span>
-            <span className='text-[11px] font-bold text-muted-foreground'>{t(item.label)}</span>
+            <span className='text-center text-[11px] font-bold text-muted-foreground lg:text-sm lg:leading-tight'>{t(item.label)}</span>
           </span>
         ))}
       </span>

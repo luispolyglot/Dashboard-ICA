@@ -451,19 +451,23 @@ export function AddView({
       style={{ background: 'var(--ica-i-soft)' }}
     >
       {/* Thin on the phone (Luis, 6 Oct): number and label on one line, the pill on the right. */}
-      <div className='flex items-center justify-between gap-3'>
-        <p className='m-0 flex min-w-0 items-baseline gap-1.5 leading-none'>
-          <span
-            key={shownWords}
-            className='ica-pop text-[26px] font-black tabular-nums lg:text-5xl'
-            style={{ color: 'var(--ica-i-ink)' }}
-          >
-            {shownWords}
+      {/* Luis, 12 Oct: on the computer the label was cut («PALABRAS DE H…») and «/ 10» fell to a
+          second line. Now the label goes on top and «6 / 10» never breaks. */}
+      <div className='flex items-center justify-between gap-3 lg:items-start'>
+        <p className='m-0 flex min-w-0 items-baseline gap-2.5 leading-none lg:flex-col-reverse lg:items-start lg:gap-2'>
+          <span className='flex shrink-0 items-baseline gap-1.5 whitespace-nowrap'>
+            <span
+              key={shownWords}
+              className='ica-pop text-[26px] font-black tabular-nums lg:text-5xl'
+              style={{ color: 'var(--ica-i-ink)' }}
+            >
+              {shownWords}
+            </span>
+            <span className='text-base font-black text-muted-foreground tabular-nums lg:text-2xl'>
+              / {wordLimit}
+            </span>
           </span>
-          <span className='text-base font-black text-muted-foreground tabular-nums lg:text-2xl'>
-            / {wordLimit}
-          </span>
-          <span className='ml-1 truncate text-[11px] font-extrabold tracking-[0.08em] uppercase lg:text-xs' style={{ color: 'var(--ica-i-ink)' }}>
+          <span className='min-w-0 truncate text-[11px] font-extrabold tracking-[0.08em] uppercase lg:overflow-visible lg:text-xs lg:whitespace-normal' style={{ color: 'var(--ica-i-ink)' }}>
             {t('Palabras de hoy')}
           </span>
         </p>

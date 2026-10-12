@@ -1141,7 +1141,9 @@ export function IcaChallengePlayView({
           </div>
         </div>
 
-        {completed ? (
+        {/* Luis, 12 Oct: as soon as your rounds are over (also while the rival still plays), you can
+            look at the words and send «¡Bien jugado!», «¡Revancha!»… */}
+        {completed || challenge.status === 'in_progress' ? (
           <ReactionPanel
             challengeId={challenge.id}
             rivalName={firstName(names.rival)}

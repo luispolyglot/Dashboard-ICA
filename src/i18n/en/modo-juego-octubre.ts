@@ -357,5 +357,9 @@ const en: Record<string, string> = {
   "Hoy ya no quedan más potenciaciones.": "No boosts left for today.",
   "Queda {n} potenciación hoy.": "{n} boost left today.",
   "Quedan {n} potenciaciones hoy.": "{n} boosts left today.",
+  // --- Mejoras tras el lanzamiento (Luis, 12 Oct) ---
+  "Respondida": "Answered",
+  "Ya la has hecho esta semana · extra: {PREGUNTICA_EXTRA_COST} ICA Coins": "Done this week · extra: {PREGUNTICA_EXTRA_COST} ICA Coins",
+  "Desde la {n}.ª, una detrás de otra.": "From number {n}, one after another.",
 }
 export default en

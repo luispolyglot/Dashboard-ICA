@@ -402,7 +402,7 @@ Deno.serve(async (req) => {
         localDay: local.day,
         payload: {
           title: `Te quedan ${STREAK_RISK_HOURS} horas`,
-          body: 'Salva tu racha ICA antes de que sea muy tarde.',
+          body: 'Salva tu racha ICA antes de que sea demasiado tarde.',
           url: '/',
           tag: `ica-streak-risk-${local.day}`,
           icon: '/push-clock-192.png',
