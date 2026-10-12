@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { beginMicUse } from '../services/audioSession'
 
 // Records one audio from the microphone (coaching audio tasks, Luis 6 Oct). It only asks for the
 // microphone when the person taps «Grabar», can pause and resume like Activación, and stops by
@@ -29,6 +30,8 @@ export function useAudioRecorder(maxSeconds = 180) {
   const pausedAtRef = useRef<number | null>(null)
   const timerRef = useRef<number | null>(null)
   const urlRef = useRef<string | null>(null)
+  // iPhone: keeps the sound session ready for the microphone while recording (services/audioSession).
+  const micReleaseRef = useRef<(() => void) | null>(null)
 
   // Seconds recorded so far, without the paused stretches.
   const recordedSeconds = useCallback(() => {
@@ -39,6 +42,8 @@ export function useAudioRecorder(maxSeconds = 180) {
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop())
+    micReleaseRef.current?.()
+    micReleaseRef.current = null
     streamRef.current = null
     setStream(null)
     if (timerRef.current !== null) {
@@ -84,6 +89,8 @@ export function useAudioRecorder(maxSeconds = 180) {
       return
     }
     try {
+      micReleaseRef.current?.()
+      micReleaseRef.current = beginMicUse()
       const micStream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = micStream
       setStream(micStream)

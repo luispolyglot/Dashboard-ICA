@@ -1,6 +1,6 @@
 import { LANG_CODES } from '../constants'
 import { supabase } from '@/lib/supabase'
-import { mediaSessionHeld } from './audioSession'
+import { mediaSessionHeld, micInUse } from './audioSession'
 
 /** How a call to speakNatural/speakLocal ended. `stopped` means stopTTS() (or a new call) cut it short. */
 export type SpeakResult = { ok: boolean; stopped?: boolean }
@@ -532,7 +532,7 @@ function unlockPremiumAudio(): void {
   let changedSession = false
   try {
     session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession
-    if (session && session.type === 'auto' && !mediaSessionHeld()) {
+    if (session && session.type === 'auto' && !mediaSessionHeld() && !micInUse()) {
       session.type = 'ambient'
       changedSession = true
     }
@@ -626,6 +626,7 @@ async function playWithWebAudio(id: number, url: string, rate: number): Promise<
     let previous: string | null = null
     try {
       session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession
+      if (session && micInUse()) session = undefined
       if (session) {
         previous = session.type
         session.type = 'playback'

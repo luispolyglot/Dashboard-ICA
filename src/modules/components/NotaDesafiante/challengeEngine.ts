@@ -10,6 +10,7 @@
  */
 import { LANG_CODES } from '../../constants'
 import { speakNatural, stopTTS, unlockSpeechAudio } from '../../services/tts'
+import { beginMicUse } from '../../services/audioSession'
 import { t } from '@/i18n'
 
 export const getLangCode = (langName: string): string => LANG_CODES[langName] || 'en-US'
@@ -369,11 +370,16 @@ const MIC_NOT_OPENING_MESSAGE =
 let recognitionIdle: Promise<void> = Promise.resolve()
 
 function markRecognitionBusy(): () => void {
-  let release: () => void = () => {}
+  let resolveIdle: () => void = () => {}
   recognitionIdle = new Promise<void>((resolve) => {
-    release = resolve
+    resolveIdle = resolve
   })
-  return release
+  // iPhone: the sound session stays ready for the microphone while it listens (services/audioSession).
+  const releaseMic = beginMicUse()
+  return () => {
+    releaseMic()
+    resolveIdle()
+  }
 }
 
 async function waitRecognitionIdle(maxMs = 1500): Promise<void> {
