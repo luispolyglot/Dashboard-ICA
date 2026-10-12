@@ -1322,6 +1322,12 @@ begin
   from public.lexicard_reviews lr
   where lr.user_id = new.user_id and lr.reviewed_at >= day_start and lr.reviewed_at < day_end;
   new.correct_reviews := coalesce(true_reviews, 0);
+  -- Never lower a day that was already counted (Luis, 12 Oct, launch): reviews of words deleted
+  -- later, or made under another time zone, must not break past flashcards days and streaks.
+  -- Students cannot raise it either: the stored value or the real reviews, whichever is higher.
+  if tg_op = 'UPDATE' then
+    new.correct_reviews := greatest(coalesce(old.correct_reviews, 0), new.correct_reviews);
+  end if;
   new.review_goal_completed := new.correct_reviews >= 10;
 
   new.voice_requirement_met := case
