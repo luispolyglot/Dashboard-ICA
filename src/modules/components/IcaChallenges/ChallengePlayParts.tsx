@@ -675,11 +675,14 @@ export function ReviewList({
   rivalFirstName,
   canAdd,
   onAdd,
+  renderMine,
 }: {
   items: IcaChallengeReviewItem[]
   rivalFirstName: string
   canAdd: (item: IcaChallengeReviewItem) => 'add' | 'owned' | 'hidden'
   onAdd: (item: IcaChallengeReviewItem) => void
+  /** Extra action for the words of your own Baúl (the ⚡ Potenciar button). */
+  renderMine?: (item: IcaChallengeReviewItem) => ReactNode
 }) {
   return (
     <ul className='divide-y-2 rounded-2xl border-2'>
@@ -728,6 +731,7 @@ export function ReviewList({
             {addState === 'owned' && (
               <span className='shrink-0 text-[11px] text-muted-foreground'>{t('En tu baúl')}</span>
             )}
+            {!item.fromRival && renderMine ? renderMine(item) : null}
           </li>
         )
       })}

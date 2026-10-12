@@ -36,6 +36,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { langName, t, tn, uiLocale } from '@/i18n'
 import { AddIcaSuggestionModal } from '../components/AddIcaSuggestionModal'
+import { BoostButton } from '../components/BoostButton'
+import { useLexicardBoost } from '../hooks/useLexicardBoost'
 import {
   FeedbackCard,
   OptionsGrid,
@@ -667,6 +669,10 @@ export function IcaChallengePlayView({
     return set
   }, [cards, config.nativeLang, config.targetLang])
 
+  // Potenciar (Luis, 12 Oct): your own words of the challenge can be boosted from the results.
+  // Max 3 a day, together with Inmersión and PreguntICA (the server counts).
+  const wordBoost = useLexicardBoost({ cards, setCards, config, source: 'challenge' })
+
   const reviewItems = useMemo(() => {
     if (!review) return []
     // En el Modo Relámpago una palabra puede salir dos veces: se enseña una.
@@ -1161,6 +1167,13 @@ export function IcaChallengePlayView({
               rivalFirstName={firstName(names.rival)}
               canAdd={canAdd}
               onAdd={(item) => setWordToAdd(item)}
+              renderMine={(item) => (
+                <BoostButton
+                  state={wordBoost.stateOf(item.target)}
+                  busy={wordBoost.busyId === wordBoost.findCard(item.target)?.id}
+                  onBoost={() => void wordBoost.boost(item.target)}
+                />
+              )}
             />
           </div>
         )}
