@@ -3,6 +3,7 @@ import { Pill } from '../game/ui'
 import { t } from '@/i18n'
 import {
   MASTER_NOTE_COMPLETE_DURATION_MS,
+  MASTER_NOTE_MAX_DURATION_MS,
   formatMasterNoteLabel,
 } from '../services/masterNotes'
 
@@ -95,12 +96,17 @@ export function MasterNoteProgressBar({
         ) : null}
       </div>
 
+      {/* 3:00 completes the note; 4:00 is the most a note can hold (Luis, 12 Oct). */}
       <p className='m-0 text-xs font-semibold text-muted-foreground'>
-        {willComplete
-          ? safePending > 0
-            ? t('Al guardar esta grabación, completarás la nota.')
-            : t('Nota lista para completarse.')
-          : t('Te faltan {time} para completar la nota.', { time: formatDuration(remainingMs) })}
+        {total >= MASTER_NOTE_MAX_DURATION_MS - 1000
+          ? t('Has llegado al máximo de 4:00. Guarda la grabación para completar la nota.')
+          : willComplete
+            ? safePending > 0
+              ? recording
+                ? t('Al guardar, completarás la nota. La grabación se para sola a las 4:00.')
+                : t('Al guardar esta grabación, completarás la nota.')
+              : t('Nota lista para completarse.')
+            : t('Te faltan {time} para completar la nota (máximo 4:00).', { time: formatDuration(remainingMs) })}
       </p>
     </div>
   )

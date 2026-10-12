@@ -10,6 +10,9 @@ const MASTER_NOTES_BUCKET = 'master-notes'
 
 /** Una Nota Maestra se completa (se cierra sola) al guardar la grabación que la lleva a 3:00 o más. */
 export const MASTER_NOTE_COMPLETE_DURATION_MS = 3 * 60 * 1000
+// No master note may go past 4:00 (Luis, 12 Oct): the recording stops by itself, and the server
+// refuses more (migration 20261012130000, error MASTER_NOTE_MAX_4_00).
+export const MASTER_NOTE_MAX_DURATION_MS = 4 * 60 * 1000
 
 /** "Nota Maestra: 2" -> "Nota Maestra 2" (para textos de la interfaz). */
 export function formatMasterNoteLabel(name: string | null | undefined): string {
