@@ -53,6 +53,7 @@ import {
 } from '../components/MasterNoteGameUi'
 import { DailyLimitNotice } from '../game/DailyLimitNotice'
 import { useDailyLimits } from '../game/limits'
+import { beginMicUse } from '../services/audioSession'
 import {
   EmptyState,
   GamePage,
@@ -206,6 +207,8 @@ export function MasterNoteActivatePhraseView({
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
+  // iPhone: keeps the sound session ready for the microphone while recording (services/audioSession).
+  const micReleaseRef = useRef<(() => void) | null>(null)
   const recordedChunksRef = useRef<Blob[]>([])
   const recordingStartedAtRef = useRef<number | null>(null)
   const recordingPausedAtRef = useRef<number | null>(null)
@@ -442,6 +445,8 @@ export function MasterNoteActivatePhraseView({
         mediaRecorderRef.current.stop()
       }
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+      micReleaseRef.current?.()
+      micReleaseRef.current = null
       if (recordingIntervalRef.current !== null) {
         window.clearInterval(recordingIntervalRef.current)
       }
@@ -653,6 +658,8 @@ export function MasterNoteActivatePhraseView({
     }
 
     try {
+      micReleaseRef.current?.()
+      micReleaseRef.current = beginMicUse()
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const preferredMimeType = getPreferredMimeType()
       const recorder = MediaRecorder.isTypeSupported(preferredMimeType)
@@ -709,6 +716,8 @@ export function MasterNoteActivatePhraseView({
         }
 
         mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+        micReleaseRef.current?.()
+        micReleaseRef.current = null
         mediaStreamRef.current = null
         mediaRecorderRef.current = null
         recordingStartedAtRef.current = null
@@ -730,6 +739,8 @@ export function MasterNoteActivatePhraseView({
       console.error(err)
       setError(t('No se pudo iniciar la grabación'))
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+      micReleaseRef.current?.()
+      micReleaseRef.current = null
       mediaStreamRef.current = null
       mediaRecorderRef.current = null
       recordingPausedAtRef.current = null

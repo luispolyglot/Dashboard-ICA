@@ -52,6 +52,7 @@ import { PREGUNTICA_EXTRA_COST } from '../game/rules'
 import { coinsText, useFichas } from '../game/fichas'
 import { useAuth } from '@/auth/AuthContext'
 import { FichaIcon, MicGlyph } from '../game/icons'
+import { beginMicUse } from '../services/audioSession'
 import { GamePage, GameProgress, HeroBlock, IconTile, PageTitle, Pill, SectionLabel, tone } from '../game/ui'
 import {
   CoachBubble,
@@ -252,6 +253,8 @@ export function PregunticaView({
 
   const recorderRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
+  // iPhone: keeps the sound session ready for the microphone while recording (services/audioSession).
+  const micReleaseRef = useRef<(() => void) | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const startedAtRef = useRef<number | null>(null)
   const pendingLeaveRef = useRef<PendingLeaveAction>(null)
@@ -444,6 +447,8 @@ export function PregunticaView({
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop())
       }
+      micReleaseRef.current?.()
+      micReleaseRef.current = null
     }
   }, [])
 
@@ -587,6 +592,8 @@ export function PregunticaView({
   }
 
   function stopMicStream() {
+    micReleaseRef.current?.()
+    micReleaseRef.current = null
     if (!mediaStreamRef.current) return
     mediaStreamRef.current.getTracks().forEach((track) => track.stop())
     mediaStreamRef.current = null
@@ -601,6 +608,8 @@ export function PregunticaView({
     }
 
     try {
+      micReleaseRef.current?.()
+      micReleaseRef.current = beginMicUse()
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       mediaStreamRef.current = stream
 

@@ -9,7 +9,8 @@ type AudioSessionType = 'auto' | 'ambient' | 'playback' | 'transient' | 'transie
 type AudioSessionLike = { type: AudioSessionType }
 
 const HOLD_KEY = '__icaMediaSessionHolds'
-const store = globalThis as typeof globalThis & { [HOLD_KEY]?: number }
+const MIC_KEY = '__icaMicrophoneUses'
+const store = globalThis as typeof globalThis & { [HOLD_KEY]?: number; [MIC_KEY]?: number }
 
 function session(): AudioSessionLike | undefined {
   try {
@@ -24,9 +25,45 @@ export function mediaSessionHeld(): boolean {
   return (store[HOLD_KEY] ?? 0) > 0
 }
 
-/** Changes the session type, unless a long audio holds it. */
+/** Whether the microphone is in use (recording or voice recognition). */
+export function micInUse(): boolean {
+  return (store[MIC_KEY] ?? 0) > 0
+}
+
+/**
+ * MICROPHONE ON IPHONE (Luis, 12 Oct, launch): with the session on «ambient» (set by every tap of
+ * the game effects) or «playback», Safari refuses to open the microphone: «No se pudo iniciar la
+ * grabación» when activating a phrase. While the microphone is in use the session stays on «auto»
+ * (what production always had) and nobody may change it. Call it before opening the microphone and
+ * call the returned function (once is enough) when it closes.
+ */
+export function beginMicUse(): () => void {
+  store[MIC_KEY] = (store[MIC_KEY] ?? 0) + 1
+  const current = session()
+  try {
+    if (current && current.type !== 'auto') current.type = 'auto'
+  } catch {
+    // Not allowed here: nothing to do.
+  }
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    store[MIC_KEY] = Math.max(0, (store[MIC_KEY] ?? 1) - 1)
+    if (!micInUse() && mediaSessionHeld()) {
+      const now = session()
+      try {
+        if (now) now.type = 'playback'
+      } catch {
+        // Not allowed here: nothing to do.
+      }
+    }
+  }
+}
+
+/** Changes the session type, unless a long audio or the microphone holds it. */
 export function setAudioSessionType(type: AudioSessionType): void {
-  if (mediaSessionHeld()) return
+  if (mediaSessionHeld() || micInUse()) return
   const current = session()
   try {
     if (current && current.type !== type) current.type = type
@@ -40,7 +77,7 @@ export function holdMediaSession(): () => void {
   store[HOLD_KEY] = (store[HOLD_KEY] ?? 0) + 1
   const current = session()
   try {
-    if (current) current.type = 'playback'
+    if (current && !micInUse()) current.type = 'playback'
   } catch {
     // Not allowed here: nothing to do.
   }
