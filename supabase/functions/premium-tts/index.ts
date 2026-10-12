@@ -158,6 +158,10 @@ type Generated = { audio: Bytes; seconds: number; inputTokens: number; outputTok
 // (RetryInfo, at most MAX_WAIT_SECONDS) and tries again; if it is still busy the app gets 503 with
 // `retryAfter`, so it tries later instead of switching to the old voices.
 const GEMINI_TRIES = 3
+// Each call to Google waits at most 20 s, and one model gives up after 30 s in total (then the
+// next model or route, or «busy»), so a run never outlives the app's own wait by much.
+const GOOGLE_CALL_TIMEOUT_MS = 20_000
+const GEMINI_DEADLINE_MS = 30_000
 const MAX_WAIT_SECONDS = 12
 
 class GeminiBusyError extends Error {
@@ -290,14 +294,23 @@ async function generateWithGemini(
           (short ? ' Say only these exact words, once, and then stop. Do not add any other word or sound.' : ''),
       }
     }
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': route.key },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [part] }],
-        generationConfig: { responseModalities: ['AUDIO'], speechConfig: voiceConfig(format) },
-      }),
-    })
+    // A call that hangs counts as «busy» (Luis, 12 Oct, launch): without a timeout, a saturated
+    // Google kept this run going long after the app had given up and asked again.
+    let response: Response
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': route.key },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [part] }],
+          generationConfig: { responseModalities: ['AUDIO'], speechConfig: voiceConfig(format) },
+        }),
+        signal: AbortSignal.timeout(GOOGLE_CALL_TIMEOUT_MS),
+      })
+    } catch (error) {
+      console.warn('premium-tts gemini call failed', route.via, model, String(error).slice(0, 120))
+      return { response: new Response('{}', { status: 503 }), data: {} }
+    }
     const data = await response.json().catch(() => ({}))
     if (route.via === 'enterprise' && response.ok) enterpriseVoiceFormat = format
     if (route.via === 'enterprise' && !response.ok) {
@@ -306,6 +319,7 @@ async function generateWithGemini(
     return { response, data }
   }
 
+  const startedAt = Date.now()
   let { response, data } = await call(true)
   for (let attempt = 1; ; attempt += 1) {
     // If this model does not accept the style field, try once with the plain text.
@@ -319,7 +333,9 @@ async function generateWithGemini(
       throw new GeminiDayLimitError(`Gemini TTS daily limit (${model})`, secondsUntilQuotaReset())
     }
     const retryAfter = Math.min(MAX_WAIT_SECONDS, geminiRetrySeconds(data) ?? (response.status === 500 ? 1 : 4 * attempt))
-    if (attempt >= GEMINI_TRIES) throw new GeminiBusyError(`Gemini TTS ${response.status}`, retryAfter)
+    if (attempt >= GEMINI_TRIES || Date.now() - startedAt + retryAfter * 1000 > GEMINI_DEADLINE_MS) {
+      throw new GeminiBusyError(`Gemini TTS ${response.status}`, retryAfter)
+    }
     await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000))
     ;({ response, data } = await call(true))
   }
@@ -407,6 +423,7 @@ async function generateWithCloud(apiKey: string, voice: string, text: string, la
         voice: { languageCode: locale, name: `${locale}-Chirp3-HD-${voice}` },
         audioConfig: { audioEncoding: 'LINEAR16', sampleRateHertz: 24000 },
       }),
+      signal: AbortSignal.timeout(GOOGLE_CALL_TIMEOUT_MS),
     })
     const data = await response.json().catch(() => ({}))
     if ((response.status === 429 || response.status === 503) && attempt < 3) {
