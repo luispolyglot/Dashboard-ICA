@@ -74,6 +74,8 @@ function withDefaultClassGuideline(value: string | null, index: 0 | 1 | 2): stri
 
 type CoachingCenterPayload = {
   action?: string
+  /** Feedback a ganadores: search text (Luis, 11 Oct). */
+  query?: string
   answers?: unknown
   // Audio tasks (Luis, 6 Oct)
   taskIndex?: number
@@ -5919,6 +5921,159 @@ Deno.serve(async (req) => {
       weekTimeline,
       weekProgress,
     })
+  }
+
+  // FEEDBACK A GANADORES (Luis, 11 Oct): the 21-day challenge winners who stay monthly get feedback
+  // on their last master note (a Loom video sent by WhatsApp). Super admins search any student, listen
+  // to their latest master notes and keep the Loom link and notes on the note itself (same columns as
+  // the coaching feedback; students outside coaching never see them, and no notification is sent).
+  if (action === 'winner-feedback-search') {
+    if (admin.adminRole !== 'super_admin') {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    const query = (safeString(payload.query) || '').slice(0, 60)
+    if (query.length < 2) return jsonResponse(200, { rows: [] })
+    const pattern = `%${query.replace(/[\\%_]/g, (char) => `\\${char}`)}%`
+    const [byName, byUsername] = await Promise.all([
+      admin.adminClient.from('profiles').select('id, display_name, username').ilike('display_name', pattern).limit(20),
+      admin.adminClient.from('profiles').select('id, display_name, username').ilike('username', pattern).limit(20),
+    ])
+    const error = byName.error || byUsername.error
+    if (error) return jsonResponse(500, { error: error.message })
+    const people = new Map<string, { id: string; display_name: string | null; username: string | null }>()
+    for (const row of [...(byName.data || []), ...(byUsername.data || [])]) {
+      people.set(String(row.id), row as { id: string; display_name: string | null; username: string | null })
+    }
+    const ids = Array.from(people.keys()).slice(0, 20)
+    const lastNoteByUser = new Map<string, string>()
+    if (ids.length > 0) {
+      const { data: notes, error: notesError } = await admin.adminClient
+        .from('master_notes')
+        .select('user_id, created_at')
+        .in('user_id', ids)
+        .order('created_at', { ascending: false })
+        .limit(500)
+      if (notesError) return jsonResponse(500, { error: notesError.message })
+      for (const note of notes || []) {
+        const userId = String(note.user_id)
+        if (!lastNoteByUser.has(userId)) lastNoteByUser.set(userId, String(note.created_at))
+      }
+    }
+    return jsonResponse(200, {
+      rows: ids.map((id) => ({
+        userId: id,
+        displayName: people.get(id)?.display_name || null,
+        username: people.get(id)?.username || null,
+        lastMasterNoteAt: lastNoteByUser.get(id) || null,
+      })),
+    })
+  }
+
+  if (action === 'winner-feedback-notes') {
+    if (admin.adminRole !== 'super_admin') {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    const userId = safeString(payload.userId)
+    if (!userId) return jsonResponse(400, { error: 'userId is required' })
+
+    const { data: notes, error: notesError } = await admin.adminClient
+      .from('master_notes')
+      .select('id, name, state, target_lang, total_duration_ms, created_at, closed_at, final_audio_path, coaching_feedback_loom_url, coaching_feedback_notes')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(3)
+    if (notesError) return jsonResponse(500, { error: notesError.message })
+
+    const noteIds = (notes || []).map((note) => String(note.id))
+    const chunksByNoteId = new Map<string, MasterNoteChunkRow[]>()
+    const phraseById = new Map<string, PhraseGenerationRow>()
+    if (noteIds.length > 0) {
+      const { data: chunks, error: chunksError } = await admin.adminClient
+        .from('master_note_chunks')
+        .select('id, master_note_id, phrase_generation_id, storage_path, sort_order, duration_ms')
+        .eq('user_id', userId)
+        .in('master_note_id', noteIds)
+        .order('sort_order', { ascending: true })
+      if (chunksError) return jsonResponse(500, { error: chunksError.message })
+      for (const chunk of (chunks || []) as MasterNoteChunkRow[]) {
+        const list = chunksByNoteId.get(chunk.master_note_id) || []
+        list.push(chunk)
+        chunksByNoteId.set(chunk.master_note_id, list)
+      }
+      const phraseIds = Array.from(new Set(
+        ((chunks || []) as MasterNoteChunkRow[]).map((chunk) => safeString(chunk.phrase_generation_id)).filter(Boolean),
+      )) as string[]
+      if (phraseIds.length > 0) {
+        const { data: phrases, error: phrasesError } = await admin.adminClient
+          .from('phrase_generations')
+          .select('id, generated_phrase, translation')
+          .in('id', phraseIds)
+        if (phrasesError) return jsonResponse(500, { error: phrasesError.message })
+        for (const phrase of (phrases || []) as PhraseGenerationRow[]) phraseById.set(phrase.id, phrase)
+      }
+    }
+
+    const sign = async (path: string | null): Promise<string | null> => {
+      if (!path) return null
+      const { data, error } = await admin.adminClient.storage.from('master-notes').createSignedUrl(path, 60 * 60)
+      return error || !data?.signedUrl ? null : data.signedUrl
+    }
+
+    const rows = await Promise.all((notes || []).map(async (note) => {
+      const parts = await Promise.all((chunksByNoteId.get(String(note.id)) || []).map(async (chunk) => {
+        const phrase = phraseById.get(safeString(chunk.phrase_generation_id) || '')
+        return {
+          id: chunk.id,
+          phrase: phrase?.generated_phrase || null,
+          translation: phrase?.translation || null,
+          durationMs: chunk.duration_ms,
+          audioUrl: await sign(chunk.storage_path),
+        }
+      }))
+      return {
+        id: note.id,
+        name: note.name,
+        state: note.state,
+        targetLang: note.target_lang,
+        totalDurationMs: note.total_duration_ms,
+        createdAt: note.created_at,
+        closedAt: note.closed_at,
+        audioUrl: await sign(typeof note.final_audio_path === 'string' ? note.final_audio_path : null),
+        parts,
+        feedbackLoomUrl: normalizeUrl(safeString(note.coaching_feedback_loom_url)),
+        feedbackNotes: safeString(note.coaching_feedback_notes),
+      }
+    }))
+    return jsonResponse(200, { notes: rows })
+  }
+
+  if (action === 'winner-feedback-save') {
+    if (admin.adminRole !== 'super_admin') {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    const userId = safeString(payload.userId)
+    const masterNoteId = safeString(payload.masterNoteId)
+    if (!userId || !masterNoteId) {
+      return jsonResponse(400, { error: 'userId and masterNoteId are required' })
+    }
+    const { data: noteRow, error: noteError } = await admin.adminClient
+      .from('master_notes')
+      .select('id, user_id')
+      .eq('id', masterNoteId)
+      .maybeSingle<{ id: string; user_id: string }>()
+    if (noteError) return jsonResponse(500, { error: noteError.message })
+    if (!noteRow || noteRow.user_id !== userId) {
+      return jsonResponse(404, { error: 'Master note not found' })
+    }
+    const { error: updateError } = await admin.adminClient
+      .from('master_notes')
+      .update({
+        coaching_feedback_loom_url: normalizeUrl(safeString(payload.feedbackLoomUrl)),
+        coaching_feedback_notes: safeString(payload.feedbackNotes),
+      })
+      .eq('id', masterNoteId)
+    if (updateError) return jsonResponse(500, { error: updateError.message })
+    return jsonResponse(200, { ok: true })
   }
 
   if (action === 'get-user-memberships') {

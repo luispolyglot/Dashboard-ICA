@@ -43,6 +43,7 @@ import {
 import { RomanizationHint } from '../components/RomanizationHint'
 import { PronunciationHint } from '../pronunciation/PronunciationHint'
 import { SpeakButton } from '../components/SpeakButton'
+import { getSpeechAudioUrl } from '../services/tts'
 import { FirstUseTip, useFirstUseTip } from '../components/FirstUseTip'
 import { TRUNK_WOOD, TrunkIcon } from '../game/icons'
 import { TranslationSuggestion } from '../components/TranslationSuggestion'
@@ -78,6 +79,8 @@ type AddViewProps = {
 
 // Cuántas palabras recientes se ven antes de «Ver más».
 const RECENT_PREVIEW = 5
+/** Visits to Inmersión on this device (the Baúl ICA bubble shows from the second one). */
+const ADD_VISITS_KEY = 'icademy:add-visits'
 
 // Estilo de los campos grandes de la fase I (borde azul al escribir).
 const FIELD_CLASS =
@@ -149,6 +152,25 @@ export function AddView({
   const [translateTipPending, closeTranslateTip] = useFirstUseTip('add-translate')
   const [frequencyTipPending, closeFrequencyTip] = useFirstUseTip('add-frequency')
   const [goCreateTipPending, closeGoCreateTip] = useFirstUseTip('add-go-create')
+  // Baúl ICA (Luis, 11 Oct): from the second visit to Inmersión, a bubble shows where all the words
+  // are kept (on the first visit there are already enough bubbles).
+  const [vaultTipStored, closeVaultTip] = useFirstUseTip('add-vault')
+  const [isRepeatVisit] = useState(() => {
+    try {
+      return Number(window.localStorage.getItem(ADD_VISITS_KEY) || '0') >= 1
+    } catch {
+      return false
+    }
+  })
+  useEffect(() => {
+    try {
+      const visits = Number(window.localStorage.getItem(ADD_VISITS_KEY) || '0')
+      window.localStorage.setItem(ADD_VISITS_KEY, String(visits + 1))
+    } catch {
+      // Without storage the bubble simply does not show.
+    }
+  }, [])
+  const vaultTipPending = vaultTipStored && isRepeatVisit
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
   // Potenciar (Luis, 8 Oct): the word was already in the Baúl ICA and the student boosted it.
@@ -398,6 +420,8 @@ export function AddView({
 
     try {
       await insertWord(newCard)
+      // Prepare its voice now, so tapping it in «Últimas añadidas» plays at once.
+      void getSpeechAudioUrl(trimmedTarget, config.targetLang)
       setCards((prev) => [...prev, newCard])
       setSavesThisVisit((count) => count + 1)
 
@@ -587,18 +611,25 @@ export function AddView({
     <div className='order-5 flex flex-col gap-6'>
       <div>
         <SectionLabel>{t('Tu baúl ICA')}</SectionLabel>
-        <RowGroup>
-          <ListRow
-            to={DASHBOARD_ROUTES.myIcaWords}
-            icon={
-              <IconTile tone='i' size={44}>
-                <ArchiveIcon className='size-5.5' strokeWidth={2.4} aria-hidden='true' />
-              </IconTile>
-            }
-            title={t('Mis palabras ICA')}
-            text={tn(cards.length, '{n} palabra guardada', '{n} palabras guardadas')}
-          />
-        </RowGroup>
+        <div className='relative'>
+          {vaultTipPending ? (
+            <FirstUseTip onClose={closeVaultTip}>
+              {t('Este es tu Baúl ICA: aquí se guardan todas tus palabras ICA. Dentro puedes escucharlas seguidas, como una lista de reproducción.')}
+            </FirstUseTip>
+          ) : null}
+          <RowGroup>
+            <ListRow
+              to={DASHBOARD_ROUTES.myIcaWords}
+              icon={
+                <IconTile tone='i' size={44}>
+                  <ArchiveIcon className='size-5.5' strokeWidth={2.4} aria-hidden='true' />
+                </IconTile>
+              }
+              title={t('Mis palabras ICA')}
+              text={tn(cards.length, '{n} palabra guardada', '{n} palabras guardadas')}
+            />
+          </RowGroup>
+        </div>
       </div>
 
       {recent.length > 0 ? (
@@ -718,21 +749,11 @@ export function AddView({
                 maxLength={SHARE_TARGET_MAX_CHARS}
                 placeholder={t('Escribe en {lang}...', { lang: langName(config.targetLang) })}
                 aria-invalid={showDuplicateWarning || undefined}
-                className={cn(FIELD_CLASS, trimmedTarget && 'pr-14')}
+                className={FIELD_CLASS}
               />
-              {/* Listen inside the field: no extra row. The voice is only made on tap (Luis, 6 Oct). */}
-              {trimmedTarget && (
-                <SpeakButton
-                  text={trimmedTarget}
-                  langName={config.targetLang}
-                  color='#3B82F6'
-                  variant='icon'
-                  prefetch={false}
-                  label={t('Escuchar en {lang}', { lang: langName(config.targetLang) })}
-                  className='absolute top-1/2 right-1.5 -translate-y-1/2 active:-translate-y-1/2'
-                  disabled={saving}
-                />
-              )}
+              {/* No «Escuchar» while typing (Luis, 11 Oct): every half-typed word would cost a new
+                  voice. The word is listened to in «Últimas añadidas», where its voice is prepared
+                  as soon as it is saved. */}
             </div>
             {showDuplicateWarning && (
               <div

@@ -156,9 +156,10 @@ async function loadPublicProfile(input: ProfileInput): Promise<Response> {
         } else if (myActive >= input.maxActiveChallenges) {
           blockedCode = 'ICA_CHALLENGE_ACTIVE_LIMIT_REACHED'
           blockedReason = 'Ya tienes 3 desafíos activos. Termina uno para retar de nuevo.'
-        } else if (rivalActive >= input.maxActiveChallenges) {
+        } else if (rivalActive >= input.maxActiveChallenges + 1) {
+          // With 3 they can still accept a 4th one with a «desafío extra» (Luis, 11 Oct).
           blockedCode = 'ICA_CHALLENGE_OPPONENT_ACTIVE_LIMIT_REACHED'
-          blockedReason = 'Ya tiene 3 desafíos activos.'
+          blockedReason = 'Ya tiene 4 desafíos abiertos.'
         }
       }
     }

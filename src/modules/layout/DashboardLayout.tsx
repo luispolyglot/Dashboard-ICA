@@ -45,6 +45,7 @@ import { prefetchAchievementStats } from '../game/achievements'
 import { fetchMonthlyStreakLeaderboard } from '../services/leaderboard'
 import { StreakDayCelebrationHost } from '../game/StreakDayCelebration'
 import { MasterNoteMiniPlayer, MasterNotePlaybackProvider } from '../components/MasterNotePlaybackProvider'
+import { VaultListeningMiniPlayer, VaultListeningProvider } from '../components/VaultListeningProvider'
 import { StreakRewardsWatcher } from '../game/StreakExtras'
 
 /* Último resumen de coaching de la barra superior, guardado en este navegador:
@@ -399,6 +400,7 @@ export function DashboardLayout() {
 
   return (
     <MasterNotePlaybackProvider>
+    <VaultListeningProvider>
     <div className='flex h-[calc(100dvh-0rem)] grow'>
       <div className='bg-background flex h-[calc(100dvh-0rem)] min-w-0 flex-1 flex-col'>
         <Header
@@ -429,6 +431,8 @@ export function DashboardLayout() {
             Abajo deja sitio a la barra del móvil (y a la zona segura del iPhone). */}
         {/* A master note that is playing keeps playing on every screen, with this player on top. */}
         <MasterNoteMiniPlayer />
+        {/* Escuchar mi Baúl ICA (Luis, 11 Oct): the same on every screen while the words play. */}
+        <VaultListeningMiniPlayer />
         <main className='flex flex-1 flex-col overflow-y-auto pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:pb-0'>
           <Outlet context={{ profileAlerts: { icaTest: canHighlightCurrentMonth, coaching: hasPendingCoachingReview } }} />
         </main>
@@ -456,6 +460,7 @@ export function DashboardLayout() {
         />
       </div>
     </div>
+    </VaultListeningProvider>
     </MasterNotePlaybackProvider>
   )
 }

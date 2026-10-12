@@ -203,7 +203,8 @@ export async function listAvailableUsers(input: DirectoryInput): Promise<Respons
     const userActiveCount = Number(directoryMetrics?.active_challenges_count || 0)
     let blockedReason: string | null = null
     if (activeCount >= input.maxActiveChallenges) blockedReason = 'Tu máximo de desafíos activos es 3.'
-    else if (userActiveCount >= input.maxActiveChallenges) blockedReason = 'Este usuario ya tiene 3 desafíos activos.'
+    // With 3 they can still accept a 4th one with a «desafío extra» (Luis, 11 Oct).
+    else if (userActiveCount >= input.maxActiveChallenges + 1) blockedReason = 'Este usuario ya tiene 4 desafíos abiertos.'
     else if (Boolean(directoryMetrics?.has_active_pair)) blockedReason = 'Ya tienen un desafío activo entre ustedes.'
 
     const setting = settingsByUser.get(candidateId)

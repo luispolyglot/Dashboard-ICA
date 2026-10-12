@@ -1,4 +1,5 @@
 import { playBadgeFanfare, type BadgeTier } from './badgeSounds'
+import { setAudioSessionType as setSharedAudioSessionType } from '../services/audioSession'
 
 // Sonidos cortos del modo juego, generados en el navegador (sin archivos de audio).
 // El alumno puede apagarlos; la preferencia se guarda solo en este dispositivo.
@@ -16,12 +17,9 @@ const EFFECTS_IDLE_MS = 5000
 let effectsIdleTimer: number | null = null
 
 function setAudioSessionType(type: AudioSessionType): void {
-  try {
-    const session = (navigator as Navigator & { audioSession?: { type: AudioSessionType } }).audioSession
-    if (session && session.type !== type) session.type = type
-  } catch {
-    // Navegador sin Audio Session API (Android, ordenador): no hace falta.
-  }
+  // Mientras suena «Escuchar mis palabras», la sesión se queda en «playback» (sigue sonando con el
+  // móvil bloqueado): los efectos no la cambian.
+  setSharedAudioSessionType(type)
 }
 
 /** El contexto de los efectos, despierto y en modo «se mezcla con tu música». */
@@ -73,12 +71,15 @@ if (typeof window !== 'undefined') {
 // - chestOpen: «E01», the lid opens and coins fall: latch, creak and coins from Kenney's RPG Audio
 //   plus three single coins from StarNinjas' «12 Coin Sound Effects» (all CC0).
 // - coinLand: «G01», one coin landing in the counter (StarNinjas, CC0).
+// - purchase: «T6» (Luis, 11 Oct), every purchase in the shop and the flag: G01 three times, a bit
+//   higher and lower, 90 and 190 ms apart (StarNinjas, CC0).
 // Each file is fetched and decoded once, then kept in memory.
 const SAMPLE_URLS = {
   chestUnlock: '/sounds/cofre-abierto.mp3',
   chestWaiting: '/sounds/cofre-esperando.mp3',
   chestOpen: '/sounds/cofre-se-abre.mp3',
   coinLand: '/sounds/moneda-llega.mp3',
+  purchase: '/sounds/compra.mp3',
 } as const
 type SampleName = keyof typeof SAMPLE_URLS
 const sampleBuffers = new Map<SampleName, AudioBuffer>()
@@ -216,13 +217,6 @@ function noiseBurst(ctx: AudioContext, at: number, duration: number, frequency: 
   source.stop(start + duration + 0.02)
 }
 
-/** Campanilla de caja registradora: parciales metálicos, cada uno se apaga a su ritmo. */
-function registerBell(ctx: AudioContext, at: number, frequency: number, duration: number, volume: number): void {
-  for (const [ratio, level, decay] of [[1, 1, 1], [2, 0.5, 0.6], [2.76, 0.35, 0.4], [5.4, 0.2, 0.2]] as const) {
-    shortTone(ctx, at, frequency * ratio, duration * decay, 'sine', volume * level)
-  }
-}
-
 /** Golpe sordo que baja de tono (el «toc» del paso bloqueado). */
 function thump(ctx: AudioContext, at: number, from: number, to: number, duration: number, volume: number): void {
   const oscillator = ctx.createOscillator()
@@ -326,61 +320,24 @@ export const gameSfx = {
     playSample('coinLand', 0.6, 0.94 + Math.random() * 0.12)
   },
   /**
-   * Comprar algo grande (la bandera), Luis 9 Oct: la caja registradora (P1 de las 10 opciones),
-   * más larga y épica. El cajón golpea, suena la campanilla, una segunda y una tercera más
-   * altas, y las monedas brillan al final (unos 2 segundos). Es el único sonido de la compra.
+   * Buying the flag (Luis, 11 Oct): the same sound as every purchase in the shop (T6), three real
+   * coins arriving like in the counter. The old synthesized cash register is gone.
    */
   purchase() {
-    const ctx = getAudioContext()
-    if (!ctx) return
-    vibrate([20, 40, 30, 60, 40])
-    // «Ka»: el cajón de la caja registradora.
-    noiseBurst(ctx, 0, 0.07, 1400, 'bandpass', 0.35)
-    thump(ctx, 0, 180, 70, 0.09, 0.28)
-    noiseBurst(ctx, 0.08, 0.05, 2600, 'bandpass', 0.2)
-    thump(ctx, 0.1, 120, 50, 0.16, 0.18)
-    // «Ching»: tres campanillas cada vez más altas, con cola larga.
-    registerBell(ctx, 0.13, 2093, 1.9, 0.14)
-    registerBell(ctx, 0.24, 2637, 1.5, 0.09)
-    registerBell(ctx, 0.36, 3136, 1.6, 0.07)
-    // Brillo de monedas al final.
-    for (let index = 0; index < 8; index += 1) {
-      const at = 0.5 + index * 0.09 + Math.random() * 0.02
-      shortTone(ctx, at, 3200 + Math.random() * 1800, 0.22, 'sine', 0.035 * (1 - index * 0.08))
-    }
+    vibrate([15, 40, 15])
+    playSample('purchase', 0.9)
   },
   /** La bandera aterriza: sin sonido (Luis, 9 Oct: solo suena la caja registradora). */
   acquired() {
     // Intentionally silent.
   },
   /**
-   * Pagar con ICA Coins en la tienda (Luis, 4 oct): unas monedas que caen y tintinean,
-   * cada una un poco más baja y más flojita, con un «chas» de metal al principio.
+   * Paying with ICA Coins in the shop (Luis, 11 Oct, option T6): three real coins arriving, a bit
+   * higher and lower each (moneda-llega.mp3, CC0 StarNinjas). Replaces the synthesized clinks.
    */
   spend() {
-    const ctx = getAudioContext()
-    if (!ctx) return
     vibrate([15, 40, 15])
-    noiseBurst(ctx, 0, 0.05, 6500, 'highpass', 0.05)
-    const clinks = [0, 0.07, 0.13, 0.2, 0.3]
-    clinks.forEach((at, index) => {
-      const start = ctx.currentTime + at + Math.random() * 0.015
-      const base = 2400 - index * 140 + Math.random() * 80
-      const volume = 0.09 * (1 - index * 0.14)
-      // Dos parciales sin relación armónica: suena a metal, no a nota de piano.
-      for (const [ratio, level, decay] of [[1, 1, 0.16], [2.76, 0.45, 0.08]] as const) {
-        const osc = ctx.createOscillator()
-        osc.type = 'sine'
-        osc.frequency.value = base * ratio
-        const gain = ctx.createGain()
-        gain.gain.setValueAtTime(0.0001, start)
-        gain.gain.exponentialRampToValueAtTime(volume * level, start + 0.003)
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + decay)
-        osc.connect(gain).connect(ctx.destination)
-        osc.start(start)
-        osc.stop(start + decay + 0.02)
-      }
-    })
+    playSample('purchase', 0.9)
   },
   /**
    * Confeti de una insignia nueva, por detrás del sonido de la insignia (Luis, 7 Oct: que se oiga).

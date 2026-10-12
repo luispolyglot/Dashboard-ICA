@@ -7,6 +7,8 @@ import { DashboardProvider } from './modules/context/DashboardContext'
 import { DashboardLayout } from './modules/layout/DashboardLayout'
 import {
   AnalyticsPage,
+  AdminCostsPage,
+  AdminWinnerFeedbackPage,
   ActivationPhrasePage,
   CalendarIcademyManagePage,
   CalendarIcademyPage,
@@ -173,6 +175,8 @@ export function App() {
               <Route path='manage-coaching/coacher/:coachUserId' element={<ManageCoacherSessionsPage />} />
             </Route>
             <Route element={<SuperAdminRoute />}>
+              <Route path='gastos-ia' element={<AdminCostsPage />} />
+              <Route path='feedback-ganadores' element={<AdminWinnerFeedbackPage />} />
               <Route
                 path='calendar-icademy/manage'
                 element={<CalendarIcademyManagePage />}

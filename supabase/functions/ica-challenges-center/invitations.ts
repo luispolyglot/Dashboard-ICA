@@ -17,6 +17,33 @@ import {
   type QuestionKind,
 } from './engine.ts'
 
+type LimitErrorCode =
+  | 'ICA_CHALLENGE_ACTIVE_LIMIT_REACHED'
+  | 'ICA_CHALLENGE_OPPONENT_ACTIVE_LIMIT_REACHED'
+  | 'ICA_CHALLENGE_PASS_REQUIRED'
+  | 'ICA_CHALLENGE_ACTIVE_PAIR_EXISTS'
+
+const LIMIT_ERROR_MESSAGES: Record<LimitErrorCode, string> = {
+  ICA_CHALLENGE_ACTIVE_LIMIT_REACHED: 'Ya tienes 3 desafíos activos. Termina uno para retar de nuevo.',
+  ICA_CHALLENGE_OPPONENT_ACTIVE_LIMIT_REACHED: 'Ese icademer ya tiene 4 desafíos abiertos.',
+  ICA_CHALLENGE_PASS_REQUIRED: 'Necesitas un desafío extra para tu 4.º desafío.',
+  ICA_CHALLENGE_ACTIVE_PAIR_EXISTS: 'Ya tienen un desafío activo entre ustedes.',
+}
+
+const ACCEPT_LIMIT_MESSAGES: Partial<Record<LimitErrorCode, string>> = {
+  ICA_CHALLENGE_ACTIVE_LIMIT_REACHED: 'Ya tienes 4 desafíos en curso. Termina uno para aceptar este.',
+  ICA_CHALLENGE_PASS_REQUIRED: 'Ya tienes 3 desafíos en curso. Usa un desafío extra para aceptar este.',
+}
+
+/** The limit codes the SQL functions raise, so the student sees a sentence and not a code. */
+function limitErrorCode(message: string | undefined): LimitErrorCode | null {
+  if (!message) return null
+  for (const code of Object.keys(LIMIT_ERROR_MESSAGES) as LimitErrorCode[]) {
+    if (message.includes(code)) return code
+  }
+  return null
+}
+
 type ChallengeTypeRow = {
   id: string
   nombre: string
@@ -133,11 +160,12 @@ export async function createChallenge(
       error: 'Ya tienes 3 desafíos activos. Termina uno para retar de nuevo.',
     })
   }
+  // The rival may already have 3: their 4th is accepted with a «desafío extra» (Luis, 11 Oct).
   const rivalActiveCount = await deps.countActiveChallenges(adminClient, challengedUserId)
-  if (rivalActiveCount >= deps.maxActiveChallenges) {
+  if (rivalActiveCount >= deps.maxActiveChallenges + 1) {
     return jsonResponse(400, {
       code: 'ICA_CHALLENGE_OPPONENT_ACTIVE_LIMIT_REACHED',
-      error: 'Ese icademer ya tiene 3 desafíos activos.',
+      error: 'Ese icademer ya tiene 4 desafíos abiertos.',
     })
   }
   if (await deps.hasActivePairChallenge(adminClient, userId, challengedUserId)) {
@@ -291,6 +319,8 @@ export async function createChallenge(
   )
 
   if (challengeError || !challengeIdValue) {
+    const code = limitErrorCode(challengeError?.message)
+    if (code) return jsonResponse(400, { code, error: LIMIT_ERROR_MESSAGES[code] })
     const message = challengeError?.message || 'No se pudo crear el desafío.'
     return jsonResponse(400, { error: message })
   }
@@ -457,6 +487,35 @@ export async function respondInvitation(
 
   const nowIso = new Date().toISOString()
   const firstTurnExpiresAt = deps.addSecondsToNow(deps.turnWindowSeconds)
+
+  if (accept) {
+    // Limit, «desafío extra» and both rows in one SQL transaction (Luis, 11 Oct): with 3
+    // challenges already under way, the 4th one is accepted with a pass (15 ICA Coins).
+    const { error: acceptError } = await adminClient.rpc('accept_ica_challenge_with_pass', {
+      p_user_id: userId,
+      p_challenge_id: challengeId,
+      p_turn_expires_at: firstTurnExpiresAt,
+      p_use_extra_slot: body.useExtraSlot === true,
+    })
+    if (acceptError) {
+      const code = limitErrorCode(acceptError.message)
+      if (code) return jsonResponse(400, { code, error: ACCEPT_LIMIT_MESSAGES[code] ?? LIMIT_ERROR_MESSAGES[code] })
+      if (acceptError.message.includes('ICA_CHALLENGE_ALREADY_ANSWERED')) {
+        return jsonResponse(400, { error: 'El desafío ya fue respondido.' })
+      }
+      return jsonResponse(500, { error: acceptError.message })
+    }
+    await deps.sendPushToUser({
+      adminClient,
+      userId: deps.toText(existing.challenger_user_id),
+      title: 'Desafío aceptado',
+      body: 'Tu rival aceptó el desafío. Empieza su primer turno.',
+      tag: `ica-challenge-response-${challengeId}`,
+      url: '/desafios-ica',
+    })
+    return jsonResponse(200, { ok: true, challengeId, status: 'in_progress' })
+  }
+
   const { error: competitorError } = await adminClient
     .from('ica_challenge_competitors')
     .update({

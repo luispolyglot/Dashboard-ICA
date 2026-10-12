@@ -24,6 +24,7 @@ import {
   UsersIcon,
   Volume2Icon,
   VolumeXIcon,
+  WalletIcon,
 } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { cn } from '@/lib/utils'
@@ -487,6 +488,8 @@ export function MobileProfileScreen({
                         <AdminRow to={DASHBOARD_ROUTES.manageWhitelist} icon={ListChecksIcon} label={t('Whitelist')} onNavigate={close} />
                         <AdminRow to={DASHBOARD_ROUTES.managePregunticaQuestions} icon={ClipboardCheckIcon} label={t('PreguntICA')} onNavigate={close} />
                         <AdminRow to={DASHBOARD_ROUTES.managePregunticaTokens} icon={CoinsIcon} label={t('ICA Coins de usuarios')} onNavigate={close} />
+                        <AdminRow to={DASHBOARD_ROUTES.aiCosts} icon={WalletIcon} label={t('Gastos de IA')} onNavigate={close} />
+                        <AdminRow to={DASHBOARD_ROUTES.winnerFeedback} icon={TrophyIcon} label={t('Feedback a ganadores')} onNavigate={close} />
                         <AdminRow to={DASHBOARD_ROUTES.calendarIcademyManage} icon={CalendarDaysIcon} label={t('Calendario ICADEMY')} onNavigate={close} />
                         <AdminRow to={DASHBOARD_ROUTES.calendarIcademyTeachers} icon={UsersIcon} label={t('Profesores ICADEMY')} onNavigate={close} />
                         <AdminRow to={DASHBOARD_ROUTES.historicLeaderboard} icon={TrophyIcon} label={t('Histórico leaderboard')} onNavigate={close} />

@@ -1,5 +1,5 @@
 import { forwardRef, type ReactNode } from 'react'
-import { ChevronLeftIcon, ChevronRightIcon, CircleHelpIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, CircleHelpIcon, PlayIcon, RotateCcwIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Panel } from '../game/ui'
 import { LanguageFlag } from './LanguagePicker'
@@ -22,6 +22,9 @@ type ActivationGuideProps = {
   nativeLang: string
   targetLang: string
   paused?: boolean
+  /** While paused: go on recording, or throw the take away and start again (Luis, 11 Oct). */
+  onResume?: () => void
+  onRestart?: () => void
   onNext?: () => void
   onPrev?: () => void
   /** Live: opens «Así se activa una frase» again. */
@@ -41,7 +44,7 @@ function chunkState(index: number, step: number): ChunkState {
 }
 
 export const ActivationGuide = forwardRef<HTMLDivElement, ActivationGuideProps>(function ActivationGuide(
-  { mode, pairs, step, nativeLang, targetLang, paused = false, onNext, onPrev, onHelp, onTokenClick, footer },
+  { mode, pairs, step, nativeLang, targetLang, paused = false, onResume, onRestart, onNext, onPrev, onHelp, onTokenClick, footer },
   ref,
 ) {
   const live = mode === 'live'
@@ -149,7 +152,9 @@ export const ActivationGuide = forwardRef<HTMLDivElement, ActivationGuideProps>(
           className='mt-2 font-black'
         />
 
-        {isLast ? (
+        {paused && onResume ? (
+          <PausedRecordingActions onResume={onResume} onRestart={onRestart} className='mt-3' />
+        ) : isLast ? (
           <p className='m-0 mt-3 text-center text-sm font-extrabold text-muted-foreground'>
             {single
               ? t('Al terminar, toca el cuadrado.')
@@ -174,6 +179,43 @@ export const ActivationGuide = forwardRef<HTMLDivElement, ActivationGuideProps>(
     </div>
   )
 })
+
+/**
+ * PAUSED RECORDING (Luis, 11 Oct): after «Pausar», say clearly how to go on: a big «Reanudar»
+ * and, below, «Empezar de nuevo» to throw this take away and record it again from the start.
+ */
+export function PausedRecordingActions({
+  onResume,
+  onRestart,
+  showLabel = true,
+  className,
+}: {
+  onResume: () => void
+  onRestart?: () => void
+  /** The mic area already says «Grabación pausada» above. */
+  showLabel?: boolean
+  className?: string
+}) {
+  return (
+    <div className={['flex w-full flex-col items-center gap-1.5', className].filter(Boolean).join(' ')}>
+      {showLabel ? (
+        <p className='m-0 text-center text-xs font-extrabold tracking-[0.08em] text-muted-foreground uppercase'>
+          {t('Grabación pausada')}
+        </p>
+      ) : null}
+      <Button type='button' size='lg' variant='a' className='w-full lg:h-14' onClick={onResume}>
+        <PlayIcon className='size-5 fill-current' strokeWidth={2.4} aria-hidden='true' />
+        {t('Reanudar grabación')}
+      </Button>
+      {onRestart ? (
+        <Button type='button' variant='ghost' className='w-full font-extrabold text-muted-foreground' onClick={onRestart}>
+          <RotateCcwIcon className='size-4' strokeWidth={2.6} aria-hidden='true' />
+          {t('Empezar de nuevo')}
+        </Button>
+      ) : null}
+    </div>
+  )
+}
 
 function PhraseLine({
   order,

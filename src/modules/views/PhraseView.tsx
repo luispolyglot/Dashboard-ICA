@@ -346,6 +346,10 @@ export function PhraseView({
   const [resultPhraseId, setResultPhraseId] = useState<string | null>(null)
   const pendingActivationPhrase = usePendingActivationPhrase(config.targetLang, resultPhraseId)
   const [activateModalOpen, setActivateModalOpen] = useState(false)
+  // Like Activación (Luis, 11 Oct): once the phrase is created, if «Activar frase» is below the
+  // fold on a phone, the same button waits fixed at the bottom of the screen.
+  const activateAnchorRef = useRef<HTMLDivElement | null>(null)
+  const [activateInView, setActivateInView] = useState(true)
   const [extraGenerationsCount, setExtraGenerationsCount] = useState(0)
   const [levelUpCelebration, setLevelUpCelebration] =
     useState<MetaTrackerLevelUpCelebration | null>(null)
@@ -662,6 +666,21 @@ export function PhraseView({
     setResultCopied(false)
     setExtraGenerationsCount(0)
   }
+
+  useEffect(() => {
+    const anchor = activateAnchorRef.current
+    if (!anchor || !resultPhraseId || typeof IntersectionObserver === 'undefined') {
+      setActivateInView(true)
+      return
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => setActivateInView(entry.isIntersecting && entry.intersectionRatio >= 0.6),
+      // The phone's bottom bar covers the last ~90 px.
+      { rootMargin: '0px 0px -90px 0px', threshold: [0, 0.3, 0.6, 0.9, 1] },
+    )
+    observer.observe(anchor)
+    return () => observer.disconnect()
+  }, [resultPhraseId])
 
   const openActivateModal = (): void => {
     if (!resultPhraseId) return
@@ -1360,7 +1379,7 @@ export function PhraseView({
               <p className='ica-label m-0 mb-2' style={{ color: 'var(--ica-a-ink)' }}>
                 {t('Siguiente paso · Activación')}
               </p>
-              <div className='relative'>
+              <div ref={activateAnchorRef} className='relative'>
               {activateTipPending ? (
                 <FirstUseTip onClose={closeActivateTip}>
                   {t('Ahora graba tu frase en voz alta: toca aquí para ir a Activación.')}
@@ -1384,6 +1403,32 @@ export function PhraseView({
           )}
         </div>
       )}
+
+      {resultPhraseId && !activateInView && !activateModalOpen ? (
+        <>
+          <div className='h-32 lg:hidden' aria-hidden='true' />
+          <div className='fixed inset-x-0 bottom-[calc(86px+env(safe-area-inset-bottom))] z-30 border-t-2 border-border bg-card px-4 pt-3 pb-3 md:bottom-0 md:pb-[max(env(safe-area-inset-bottom),0.75rem)] lg:hidden dark:bg-background'>
+            <div className='mx-auto w-full max-w-sm'>
+              <p className='ica-label m-0 mb-2' style={{ color: 'var(--ica-a-ink)' }}>
+                {t('Siguiente paso · Activación')}
+              </p>
+              <Button
+                type='button'
+                size='xl'
+                variant='a'
+                className='w-full'
+                onClick={() => {
+                  if (activateTipPending) closeActivateTip()
+                  openActivateModal()
+                }}
+              >
+                <MicIcon className='size-5' strokeWidth={2.6} aria-hidden='true' />
+                {t('Activar frase')}
+              </Button>
+            </div>
+          </div>
+        </>
+      ) : null}
 
       <ActivatePhraseInMasterNoteModal
         open={activateModalOpen}

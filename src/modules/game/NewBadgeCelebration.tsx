@@ -49,15 +49,21 @@ export function NewBadgeCelebration() {
   const [queue, setQueue] = useState<Celebration[]>([])
   const confettiDone = useRef<string | null>(null)
 
+  // Only categories whose data actually loaded (Luis, 12 Oct): a query that failed must not be saved
+  // as «0 earned», or the next good load would celebrate badges the student already had.
   const earnedNow = useMemo(() => {
     const out: Seen = {}
-    for (const def of ACHIEVEMENT_CATALOG) out[def.key] = byCategory[def.key].earned
+    for (const def of ACHIEVEMENT_CATALOG) {
+      if (byCategory[def.key].current !== null) out[def.key] = byCategory[def.key].earned
+    }
     return out
   }, [byCategory])
 
   useEffect(() => {
     if (!user?.id || loading || dashboard.loading) return
     const seen = readSeen(user.id)
+    // First time on this device (or a category never recorded): the badges the student already has
+    // are saved without celebrating, so someone with a long history does not get a dozen in a row.
     if (!seen) {
       writeSeen(user.id, earnedNow)
       return
@@ -65,10 +71,12 @@ export function NewBadgeCelebration() {
     const fresh: Celebration[] = []
     const next: Seen = { ...seen }
     for (const def of ACHIEVEMENT_CATALOG) {
-      const now = earnedNow[def.key] ?? 0
-      const before = seen[def.key] ?? 0
-      if (now > before) fresh.push({ def, index: now - 1 })
-      next[def.key] = Math.max(now, before)
+      const now = earnedNow[def.key]
+      if (now === undefined) continue
+      const before = seen[def.key]
+      // Several tiers at once (e.g. 0 → diamond): only the highest one is celebrated.
+      if (before !== undefined && now > before) fresh.push({ def, index: now - 1 })
+      next[def.key] = Math.max(now, before ?? 0)
     }
     writeSeen(user.id, next)
     if (fresh.length > 0) setQueue((current) => [...current, ...fresh])

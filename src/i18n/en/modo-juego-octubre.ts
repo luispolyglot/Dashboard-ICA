@@ -289,6 +289,7 @@ const en: Record<string, string> = {
   "Desde noviembre, si dos o más icademers tienen los mismos puntos, gana quien más aciertos tenga en el reto del día, del día 1 al 28.": "From November, if two or more icademers have the same points, whoever has more correct answers in the daily challenge from day 1 to 28 wins.",
   "¿Empate?": "Tie?",
   "Solo cuenta la primera partida de cada día: repetirla no suma.": "Only the first game of each day counts: replaying it doesn't add up.",
+  "Solo podrás ver cuántos aciertos lleva otra persona si tiene tus mismos puntos.": "You can only see how many right answers someone else has if they have the same points as you.",
   "Llevas {n} acierto este mes": "You have {n} correct answer this month",
   "Llevas {n} aciertos este mes": "You have {n} correct answers this month",
   "Empate a puntos:": "Tied on points:",

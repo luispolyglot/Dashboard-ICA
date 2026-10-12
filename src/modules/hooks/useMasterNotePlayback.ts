@@ -17,6 +17,7 @@ import {
   flushPendingMasterNoteListeningDeltas,
 } from '../services/masterNoteListeningMetrics'
 import { getLocalListeningDayStamp } from '../services/listeningCalendar'
+import { holdWhilePlaying } from '../services/audioSession'
 
 type PlaybackTrack = {
   url: string
@@ -249,6 +250,8 @@ export function useMasterNotePlayback() {
     }
 
     const created = new Audio()
+    // iPhone: keeps sounding with the phone locked or outside the app (see services/audioSession).
+    holdWhilePlaying(created)
     audioRef.current = created
     return created
   }
