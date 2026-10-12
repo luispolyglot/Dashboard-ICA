@@ -95,6 +95,7 @@ function mapRpcErrorToStatus(message: string): number {
     message.includes('MASTER_NOTE_NOT_EDITABLE') ||
     message.includes('CLOSED_NOTE_MIN_TOTAL_3_00') ||
     message.includes('CLOSED_NOTE_MIN_TOTAL_3_30') ||
+    message.includes('MASTER_NOTE_MAX_4_00') ||
     message.includes('CHUNK_PHRASE_MISMATCH')
   ) {
     return 409

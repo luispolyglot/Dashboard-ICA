@@ -37,6 +37,7 @@ import { buildActivationPairs, inSentence, type ActivationPair } from '../servic
 import { loadPhraseChunksForActivation } from '../services/challengeChunks'
 import {
   MASTER_NOTE_COMPLETE_DURATION_MS,
+  MASTER_NOTE_MAX_DURATION_MS,
   addMasterNoteChunk,
   closeMasterNote,
   fetchMasterNoteById,
@@ -209,6 +210,8 @@ export function MasterNoteActivatePhraseView({
   const mediaStreamRef = useRef<MediaStream | null>(null)
   // iPhone: keeps the sound session ready for the microphone while recording (services/audioSession).
   const micReleaseRef = useRef<(() => void) | null>(null)
+  // The take stops by itself when the note reaches 4:00 (Luis, 12 Oct): how long it may last (ms).
+  const recordLimitMsRef = useRef<number>(Number.POSITIVE_INFINITY)
   const recordedChunksRef = useRef<Blob[]>([])
   const recordingStartedAtRef = useRef<number | null>(null)
   const recordingPausedAtRef = useRef<number | null>(null)
@@ -657,6 +660,17 @@ export function MasterNoteActivatePhraseView({
       return
     }
 
+    // 4:00 at most per note. A re-recording may keep a note that is already longer, never raise it.
+    const allowedTotalMs = rerecordMode
+      ? Math.max(MASTER_NOTE_MAX_DURATION_MS, note?.total_duration_ms || 0)
+      : MASTER_NOTE_MAX_DURATION_MS
+    const recordLimitMs = allowedTotalMs - effectiveNoteDurationMs - 500
+    if (recordLimitMs < MIN_SAVE_DURATION_MS) {
+      setError(t('Esta nota maestra ya está en el máximo de 4:00.'))
+      return
+    }
+    recordLimitMsRef.current = recordLimitMs
+
     try {
       micReleaseRef.current?.()
       micReleaseRef.current = beginMicUse()
@@ -685,7 +699,10 @@ export function MasterNoteActivatePhraseView({
         window.clearInterval(recordingIntervalRef.current)
       }
       recordingIntervalRef.current = window.setInterval(() => {
-        setRecordingElapsedMs(getRecordingElapsedMs(Date.now()))
+        const elapsed = getRecordingElapsedMs(Date.now())
+        setRecordingElapsedMs(elapsed)
+        // At 4:00 the take ends by itself and stays as a draft to listen to and save.
+        if (elapsed >= recordLimitMsRef.current) stopRecording()
       }, 200)
 
       recorder.ondataavailable = (event: BlobEvent) => {
@@ -845,10 +862,10 @@ export function MasterNoteActivatePhraseView({
       navigate(rerecordMode ? `${noteUrl}?rerecordUpdated=1` : noteUrl)
     } catch (err) {
       console.error(err)
-      const message =
-        err instanceof Error &&
-        (err.message.includes('CLOSED_NOTE_MIN_TOTAL_3_00') ||
-          err.message.includes('CLOSED_NOTE_MIN_TOTAL_3_30'))
+      const rawMessage = String((err as { message?: unknown } | null)?.message ?? '')
+      const message = rawMessage.includes('MASTER_NOTE_MAX_4_00')
+        ? t('Una nota maestra no puede pasar de 4:00. Graba una parte más corta.')
+        : rawMessage.includes('CLOSED_NOTE_MIN_TOTAL_3_00') || rawMessage.includes('CLOSED_NOTE_MIN_TOTAL_3_30')
           ? t('Una nota cerrada no puede quedar por debajo de 3:00')
           : null
       setError(
