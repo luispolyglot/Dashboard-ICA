@@ -377,8 +377,12 @@ export function NotaDesafiantePlayerView() {
     }
   }, [noteId, targetLang])
 
-  // Al salir de la pantalla, la nota deja de sonar.
-  useEffect(() => () => stop(), [stop])
+  // Al salir de la pantalla, la nota deja de sonar. `stop` is a new function on every render, so it
+  // is read from a ref: with [stop] as dependency the cleanup ran on every render and stopped the
+  // note right after it started (Luis, 12 Oct: no master note could be listened to).
+  const stopRef = useRef(stop)
+  stopRef.current = stop
+  useEffect(() => () => stopRef.current(), [])
 
   const { progress, unlocked } = useChallengeUnlock(user?.id, note?.id, note?.total_duration_ms || 0, challengeEnabled)
   const isPlaying = Boolean(note) && playingNoteId === note?.id
