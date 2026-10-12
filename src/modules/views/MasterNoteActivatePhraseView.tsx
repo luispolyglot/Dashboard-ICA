@@ -94,6 +94,8 @@ type RecordingDraft = {
 
 const MIN_CLOSED_NOTE_DURATION_MS = MASTER_NOTE_COMPLETE_DURATION_MS
 const MIN_SAVE_DURATION_MS = 10 * 1000
+/** Below this size a take has no real sound (10 s of voice weighs well over 50 KB). */
+const MIN_RECORDING_BYTES = 2 * 1024
 
 type PendingLeaveAction =
   | {
@@ -717,7 +719,11 @@ export function MasterNoteActivatePhraseView({
         if (startedAt && !discard) {
           const durationMs = getRecordingElapsedMs(Date.now())
           const blob = new Blob(recordedChunksRef.current, { type: mimeType })
-          if (blob.size > 0) {
+          // A take with no sound (the microphone gave nothing) is not offered for saving: it
+          // would add time to the note and break its playback (Luis, 12 Oct).
+          if (blob.size < MIN_RECORDING_BYTES && durationMs >= 3000) {
+            setError(t('No se ha grabado ningún sonido. Revisa el micrófono y vuelve a grabar.'))
+          } else if (blob.size > 0) {
             const url = URL.createObjectURL(blob)
             setRecordingDraft((prev) => {
               if (prev) URL.revokeObjectURL(prev.url)

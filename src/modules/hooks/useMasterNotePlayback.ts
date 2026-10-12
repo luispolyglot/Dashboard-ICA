@@ -121,12 +121,15 @@ async function mergeAudioBlobsToWav(blobs: Blob[]): Promise<{ blob: Blob; durati
   const context = new AudioContextCtor()
 
   try {
-    const decodedBuffers = await Promise.all(
+    // A recording that cannot be decoded (for example, an empty file saved when the iPhone
+    // microphone did not open) is skipped, so the rest of the note still plays (Luis, 12 Oct).
+    const settled = await Promise.allSettled(
       blobs.map(async (blob) => {
         const arrayBuffer = await blob.arrayBuffer()
         return context.decodeAudioData(arrayBuffer)
       }),
     )
+    const decodedBuffers = settled.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []))
 
     if (decodedBuffers.length === 0) {
       return null

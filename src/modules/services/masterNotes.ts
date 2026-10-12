@@ -834,8 +834,16 @@ export async function fetchMasterNoteAudioPayload(
       }
 
       const arrayBuffer = await chunkBlob.arrayBuffer()
-      const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0))
-      audioBuffers.push(decoded)
+      try {
+        const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0))
+        audioBuffers.push(decoded)
+      } catch {
+        // An empty or broken recording is skipped; the rest of the note is still downloaded.
+      }
+    }
+
+    if (audioBuffers.length === 0) {
+      throw new Error('No se pudo leer el audio de esta nota')
     }
 
     return {

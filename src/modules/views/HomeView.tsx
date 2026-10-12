@@ -45,7 +45,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   const cycleDone = isIcaCycleDone(todayProgress)
   const { done: gameDone } = useDailyGame(user?.id)
   const challengeAlerts = useIcaChallengeAlerts()
-  // Nota desafiante waiting (finished notes of the last week without their challenge played).
+  // Nota desafiante waiting: unlocked this week (80 % listened) and «Jugar» not pressed yet.
   const challengeNoteEnabled = useChallengeEnabled()
   const { notes: closedNoteList } = useClosedMasterNotes(config.targetLang, config.nativeLang)
   const pendingChallengeNotes = usePendingChallengeNotes(

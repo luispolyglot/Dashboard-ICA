@@ -18,7 +18,8 @@ import { MasterNotePlaylistPlayerDock } from '../components/MasterNotePlaylistPl
 import { speakNatural } from '../services/tts'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { useChallengeEnabled, type ChallengePhraseInput } from '../services/challengeChunks'
-import { CHALLENGE_UNLOCK_RATIO, useChallengeUnlock } from '../services/challengeUnlocks'
+import { CHALLENGE_UNLOCK_RATIO, markChallengeNoteSeen, useChallengeUnlock } from '../services/challengeUnlocks'
+import { usePendingChallengeNotes } from '../game/usePendingChallengeNotes'
 import { fetchMasterNoteById, fetchMasterNoteChunks, fetchMasterNotes, formatMasterNoteLabel } from '../services/masterNotes'
 import { fetchPhraseHistoryByIds } from '../services/phraseHistory'
 import type { MasterNote } from '../types'
@@ -60,12 +61,14 @@ function ListenRing({ progress, unlocked, size = 56 }: { progress: number; unloc
   )
 }
 
-function NoteCard({ note, nowPlaying }: { note: ClosedMasterNote; nowPlaying: boolean }) {
+function NoteCard({ note, nowPlaying, isNew }: { note: ClosedMasterNote; nowPlaying: boolean; isNew: boolean }) {
   const { user } = useAuth()
   const { progress, unlocked } = useChallengeUnlock(user?.id, note.id, note.totalDurationMs)
   return (
     <Link
       to={`${DASHBOARD_ROUTES.notaDesafiante}/${note.id}`}
+      // Pressing «Jugar» removes the notice (the diana) for this week, even if they leave.
+      onClick={unlocked ? () => markChallengeNoteSeen(user?.id, note.id) : undefined}
       className={cn('flex items-center gap-3 py-3 transition-opacity active:opacity-70', nowPlaying && 'rounded-2xl')}
     >
       <ListenRing progress={progress} unlocked={unlocked} />
@@ -84,16 +87,24 @@ function NoteCard({ note, nowPlaying }: { note: ClosedMasterNote; nowPlaying: bo
         </span>
         <span className='block text-xs font-semibold text-muted-foreground'>
           {unlocked
-            ? t('Abierta hasta el domingo')
+            ? isNew
+              ? t('¡Desafío nuevo! Abierto hasta el domingo')
+              : t('Abierta hasta el domingo')
             : t('Escuchado esta semana: {n} % de {max} %', { n: Math.round(progress * UNLOCK_PERCENT), max: UNLOCK_PERCENT })}
         </span>
       </span>
       {unlocked ? (
         <span
-          className='shrink-0 rounded-full px-3 py-1.5 text-xs font-extrabold text-[#4a3200]'
+          className='relative shrink-0 rounded-full px-3 py-1.5 text-xs font-extrabold text-[#4a3200]'
           style={{ background: tone('gold').solid, boxShadow: `0 3px 0 ${tone('gold').edge}` }}
         >
           {t('Jugar')}
+          {isNew ? (
+            <span
+              className='absolute -top-1 -right-1 size-3 rounded-full border-2 border-card bg-destructive'
+              aria-hidden='true'
+            />
+          ) : null}
         </span>
       ) : (
         <ChevronRightIcon className='size-5 shrink-0 text-muted-foreground' aria-hidden='true' />
@@ -148,6 +159,9 @@ export function NotaDesafianteListView() {
     .sort((x, y) => (x.closedAt || '').localeCompare(y.closedAt || ''))
   const ready = count !== null && count >= CHALLENGE_NOTE_MIN_CLOSED_NOTES
   const nativeLang = config?.nativeLang || 'Español'
+  // Notes with a new challenge (the diana in Juegos ICA): marked here with a red dot.
+  const pendingNotes = usePendingChallengeNotes(notes, ready)
+  const pendingIds = useMemo(() => new Set(pendingNotes.map((note) => note.id)), [pendingNotes])
 
   // Escuchar todas seguidas: de la primera a la última, con una voz que las presenta.
   const { play, stop, pause, resume, seekBack10, seekForward10, isPaused, playingNoteId, positionSec, durationSec } =
@@ -283,7 +297,12 @@ export function NotaDesafianteListView() {
             <SectionLabel>{t('Tus notas maestras terminadas')}</SectionLabel>
             <div className='ica-group divide-y-2 divide-border'>
               {playable.map((note) => (
-                <NoteCard key={note.id} note={note} nowPlaying={currentSequenceId === note.id} />
+                <NoteCard
+                  key={note.id}
+                  note={note}
+                  nowPlaying={currentSequenceId === note.id}
+                  isNew={pendingIds.has(note.id)}
+                />
               ))}
             </div>
             <p className='m-0 mt-3 text-center text-xs font-semibold text-muted-foreground'>
@@ -474,6 +493,8 @@ export function NotaDesafiantePlayerView() {
         disabled={!unlocked || phrases.length === 0}
         onClick={() => {
           stop()
+          // Pressing «Jugar» removes the notice (the diana) for this week, even if they leave.
+          markChallengeNoteSeen(user?.id, note.id)
           setChallengeOpen(true)
         }}
       >
