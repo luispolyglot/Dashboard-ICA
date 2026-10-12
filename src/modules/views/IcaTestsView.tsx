@@ -3,10 +3,12 @@ import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { t, tn, langName, uiLocale, getUiLang } from '@/i18n'
 import { TrophyIcon } from '../game/icons'
+import { MonthlyReviewCard, MonthlyReviewHistory } from '../components/MonthlyReviewCard'
 import { EmptyState, GamePage, GameProgress, PageTitle, Pill, SectionLabel, StatTile } from '../game/ui'
 import { IcaTestGlyph, ScoreBadge } from '../components/IcaTestParts'
 import { LanguageFlag } from '../components/LanguagePicker'
 import { useIcaTestsOverview } from '../hooks/useIcaTestsOverview'
+import { useMonthlyReviewStatus } from '../hooks/useMonthlyReviewStatus'
 import { DASHBOARD_ROUTES, getIcaTestMonthRoute } from '../routes/paths'
 import {
   getIcaTestWindowStartDay,
@@ -46,6 +48,9 @@ export function IcaTestsView({
   cards,
 }: IcaTestsViewProps) {
   const windowStartDay = getIcaTestWindowStartDay()
+  const review = useMonthlyReviewStatus({ targetLang, nativeLang })
+  const reviewStatus = review.status
+  const pastReviews = review.history.filter((item) => !(reviewStatus && item.month === reviewStatus.monthStart))
   const {
     tests,
     isLoading,
@@ -221,6 +226,8 @@ export function IcaTestsView({
             </div>
           </div>
 
+          <MonthlyReviewCard status={reviewStatus} />
+
           {/* Tus números */}
           {completedTests.length > 0 ? (
             <div className='grid grid-cols-3 gap-2'>
@@ -247,6 +254,8 @@ export function IcaTestsView({
               />
             </div>
           ) : null}
+
+          <MonthlyReviewHistory items={pastReviews} />
 
           {isLoading && (
             <div className='flex flex-col gap-2' aria-label={t('Cargando histórico de tests...')}>

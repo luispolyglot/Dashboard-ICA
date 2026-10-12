@@ -22,6 +22,7 @@ export type IcaCoinEntry = {
     | 'challenge_slot'
     | 'challenge_win'
     | 'flag_purchase'
+    | 'monthly_review'
   delta: number
   day: string
   createdAt: number
@@ -69,6 +70,7 @@ function parseEntry(value: unknown): IcaCoinEntry | null {
   const allowed = new Set([
     'monthly_earn', 'redeem_unlock', 'manual_adjustment', 'cycle_chest', 'streak_milestone',
     'flash_milestone', 'phase_boost', 'challenge_slot', 'challenge_win', 'flag_purchase',
+    'monthly_review',
   ])
   if (!allowed.has(row.type)) return null
   return {
