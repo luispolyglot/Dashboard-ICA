@@ -27,7 +27,10 @@ export function useActivatedWords(): {
     const activatedWords = countActivatedWords(cards, metaTrackerTotal)
     return {
       activatedWords,
-      flashcardsUnlocked: activatedWords >= FLASHCARDS_MIN_ACTIVATED_WORDS,
+      // Students who already played flashcards keep them (Luis, 12 Oct, launch): the 20 activated
+      // words only apply to those who never reviewed a word. Same rule as record_review_event.
+      flashcardsUnlocked:
+        activatedWords >= FLASHCARDS_MIN_ACTIVATED_WORDS || (cards || []).some((card) => card.lastReviewed != null),
       missingForFlashcards: Math.max(0, FLASHCARDS_MIN_ACTIVATED_WORDS - activatedWords),
     }
   }, [cards, metaTrackerTotal])

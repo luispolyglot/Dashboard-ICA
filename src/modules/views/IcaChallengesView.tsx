@@ -665,6 +665,17 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
       // Accepting starts the game right away (Luis, 6 Oct), instead of going to «Activos» first.
       if (accept) navigate(getIcaChallengePlayRoute(challengeId))
     } catch (respondError) {
+      // The list here only has the most recent challenges, so the server may count a 4th one that
+      // the app did not see: then offer the extra challenge instead of leaving a dead end.
+      const code = (respondError as { code?: unknown } | null)?.code
+      if (accept && !extraSlot && code === 'ICA_CHALLENGE_PASS_REQUIRED') {
+        if (extraPasses > 0) {
+          void handleRespondInvitation(challengeId, true, true)
+        } else {
+          setAcceptOfferId(challengeId)
+        }
+        return
+      }
       toast.error(
         respondError instanceof Error
           ? translateChallengeMessage(respondError.message)

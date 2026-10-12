@@ -1322,6 +1322,12 @@ begin
   from public.lexicard_reviews lr
   where lr.user_id = new.user_id and lr.reviewed_at >= day_start and lr.reviewed_at < day_end;
   new.correct_reviews := coalesce(true_reviews, 0);
+  -- Never lower a day that was already counted (Luis, 12 Oct, launch): reviews of words deleted
+  -- later, or made under another time zone, must not break past flashcards days and streaks.
+  -- Students cannot raise it either: the stored value or the real reviews, whichever is higher.
+  if tg_op = 'UPDATE' then
+    new.correct_reviews := greatest(coalesce(old.correct_reviews, 0), new.correct_reviews);
+  end if;
   new.review_goal_completed := new.correct_reviews >= 10;
 
   new.voice_requirement_met := case
@@ -1336,19 +1342,29 @@ begin
 end;
 $$;
 
+-- Only the days that have no row yet (the trigger is slow: ~13 ms per row, and the whole file
+-- holds its locks until the end).
 insert into public.daily_metrics (user_id, day, correct_reviews)
-select
-  lr.user_id,
-  (lr.reviewed_at at time zone coalesce(tzn.name, 'UTC'))::date,
-  count(*) filter (where lr.knew)::integer
-from public.lexicard_reviews lr
-left join public.profiles p on p.id = lr.user_id
-left join pg_timezone_names tzn on tzn.name = nullif(trim(p.timezone), '')
-group by lr.user_id, (lr.reviewed_at at time zone coalesce(tzn.name, 'UTC'))::date
+select g.user_id, g.day, g.correct_reviews
+from (
+  select
+    lr.user_id,
+    (lr.reviewed_at at time zone coalesce(tzn.name, 'UTC'))::date as day,
+    count(*) filter (where lr.knew)::integer as correct_reviews
+  from public.lexicard_reviews lr
+  left join public.profiles p on p.id = lr.user_id
+  left join pg_timezone_names tzn on tzn.name = nullif(trim(p.timezone), '')
+  group by lr.user_id, (lr.reviewed_at at time zone coalesce(tzn.name, 'UTC'))::date
+) g
+where not exists (
+  select 1 from public.daily_metrics dm0 where dm0.user_id = g.user_id and dm0.day = g.day
+)
 on conflict (user_id, day) do nothing;
 
+-- Past days are kept as they are (Luis, 12 Oct, launch): only the last days are recalculated.
 update public.daily_metrics dm
-set correct_reviews = dm.correct_reviews;
+set correct_reviews = dm.correct_reviews
+where dm.day >= current_date - 2;
 
 -- Keep profile timezone changes usable for travelers while preventing repeated flips from
 -- resetting quotas. Four changes per rolling 24 hours allow two-zone trips with a margin.

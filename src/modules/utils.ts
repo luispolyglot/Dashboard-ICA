@@ -60,6 +60,9 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000
 const REVIEW_MIN_DECK_FOR_NEW_COOLDOWN = 20
 const REVIEW_NEW_CARD_COOLDOWN_DAYS = 2
 const REVIEW_MAX_NEW_CARDS_PER_ROUND = 2
+// A word answered «No la sabía» rests 10 minutes before it can come up in a new round (Luis,
+// 12 Oct: leaving and coming back showed it first again, right away).
+export const REVIEW_FAILED_REST_MS = 10 * 60 * 1000
 // Cuánto pesa la frecuencia frente al estado de la tarjeta al elegir qué sale.
 const REVIEW_IMPORTANCE_WEIGHT = 1.5
 
@@ -176,6 +179,13 @@ export function sortByPriority(cards: Lexicard[], currentSession: number): Lexic
 
 export function sortChronological(cards: Lexicard[]): Lexicard[] {
   return [...cards].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+}
+
+/** A word failed less than 10 minutes ago: it waits, unless there is nothing else to play. */
+function isCardResting(card: Lexicard, now: number): boolean {
+  if (!isCardFailed(card)) return false
+  const lastReviewed = card.lastReviewed || 0
+  return lastReviewed > 0 && now - lastReviewed < REVIEW_FAILED_REST_MS
 }
 
 function getNewCardAgeDays(card: Lexicard, now: number): number {
@@ -311,6 +321,7 @@ export function buildReviewRound(
   const selected: Lexicard[] = []
   const deferredByNewLimit: Lexicard[] = []
   const deferredByCooldown: Lexicard[] = []
+  const deferredByRest: Lexicard[] = []
   const enforceNewExposureControls =
     !options.ignoreNewCardLimits && totalDeckSize >= REVIEW_MIN_DECK_FOR_NEW_COOLDOWN
   const maxNewPerRound = Math.max(
@@ -324,11 +335,15 @@ export function buildReviewRound(
   // Boosted words (Potenciar, Luis 8 Oct) come first, without the limits for new words.
   for (const card of sortedPool) {
     if (selected.length >= roundSize) break
-    if ((card.boostFlash ?? 0) > 0) selected.push(card)
+    if ((card.boostFlash ?? 0) > 0 && !isCardResting(card, now)) selected.push(card)
   }
 
   for (const card of sortedPool) {
     if (selected.length >= roundSize) break
+    if (isCardResting(card, now)) {
+      deferredByRest.push(card)
+      continue
+    }
     if ((card.boostFlash ?? 0) > 0) continue
 
     const isNew = isCardNew(card)
@@ -363,6 +378,14 @@ export function buildReviewRound(
   const shouldUseCooldownCards = selected.length === 0
   if (shouldUseCooldownCards) {
     for (const card of deferredByCooldown) {
+      if (selected.length >= roundSize) break
+      selected.push(card)
+    }
+  }
+
+  // Only when there is nothing else at all, the words failed a moment ago come back.
+  if (selected.length === 0) {
+    for (const card of deferredByRest) {
       if (selected.length >= roundSize) break
       selected.push(card)
     }

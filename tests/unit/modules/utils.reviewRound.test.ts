@@ -61,4 +61,24 @@ describe('buildReviewRound: palabras potenciadas (Luis, 8 Oct)', () => {
     const round = buildReviewRound(cards, 'mixed', 10, 0, cards.length)
     expect(round[0].id).toBe('boosted')
   })
+
+  it('una palabra fallada hace menos de 10 minutos no sale en la ronda siguiente', () => {
+    const justFailed = card('niezaleznie-od', 'vital', { streak: 0, lastReviewed: Date.now() - 60 * 1000 })
+    const others = Array.from({ length: 12 }, (_, i) => card(`rare-${i}`, 'rare', { streak: 2 }))
+    const round = buildReviewRound([justFailed, ...others], 'mixed', 10, 5, 13)
+    expect(round.map((c) => c.id)).not.toContain('niezaleznie-od')
+  })
+
+  it('pasados 10 minutos, la palabra fallada vuelve la primera', () => {
+    const failed = card('niezaleznie-od', 'vital', { streak: 0, lastReviewed: Date.now() - 11 * 60 * 1000 })
+    const others = Array.from({ length: 12 }, (_, i) => card(`rare-${i}`, 'rare', { streak: 2 }))
+    const round = buildReviewRound([failed, ...others], 'mixed', 10, 5, 13)
+    expect(round[0].id).toBe('niezaleznie-od')
+  })
+
+  it('si no hay ninguna otra palabra, la recién fallada sí sale', () => {
+    const justFailed = card('sola', 'vital', { streak: 0, lastReviewed: Date.now() - 60 * 1000 })
+    const round = buildReviewRound([justFailed], 'mixed', 10, 5, 1)
+    expect(round.map((c) => c.id)).toEqual(['sola'])
+  })
 })
