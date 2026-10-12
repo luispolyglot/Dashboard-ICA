@@ -203,84 +203,88 @@ function isCardInNewCooldown(
   return getNewCardAgeDays(card, now) < REVIEW_NEW_CARD_COOLDOWN_DAYS
 }
 
-type ReviewBucket =
-  | 'failed'
-  | 'dueReview'
-  | 'learning'
-  | 'newEligible'
-  | 'newCooling'
-  | 'graduated'
+// FLASHCARDS POR FECHAS (Luis, 12 Oct, como Anki): every word has a moment when it is due.
+// - Failed: 10 minutes after the answer.
+// - Known (1 or more right in a row): `interval` days after the last answer (1, 3, then x2.5…).
+//   Words with 10 right in a row are no longer retired: they keep coming back, months apart.
+// - New: right away (with the limits for new words of each round).
+// A round takes the due words first; if they are not enough, it is filled with the words that are
+// due soonest. A word failed less than 10 minutes ago only comes back when there is nothing else.
+type ReviewBucket = 'failed' | 'dueReview' | 'newEligible' | 'notDue' | 'newCooling' | 'resting'
 
-function getReviewBucket(
-  card: Lexicard,
-  totalDeckSize: number,
-  currentSession: number,
-  now: number,
-): ReviewBucket {
+const REVIEW_MAX_INTERVAL_DAYS = 365
+const REVIEW_MAX_EASE = 2.5
+
+/** When the word is due again (ms). New words: now. */
+export function getCardDueAt(card: Lexicard, now = Date.now()): number {
+  if (isCardNew(card)) return now
+  const lastReviewed = card.lastReviewed || 0
+  if (!lastReviewed) return now
+  if (isCardFailed(card)) return lastReviewed + REVIEW_FAILED_REST_MS
+  const days = Math.min(REVIEW_MAX_INTERVAL_DAYS, Math.max(1, card.interval || 1))
+  return lastReviewed + days * MS_PER_DAY
+}
+
+function getReviewBucket(card: Lexicard, totalDeckSize: number, now: number): ReviewBucket {
+  if (isCardResting(card, now)) return 'resting'
   if (isCardFailed(card)) return 'failed'
   if (isCardNew(card)) {
-    return isCardInNewCooldown(card, totalDeckSize, now)
-      ? 'newCooling'
-      : 'newEligible'
+    return isCardInNewCooldown(card, totalDeckSize, now) ? 'newCooling' : 'newEligible'
   }
-  if (isCardGraduated(card)) return 'graduated'
-  if (isSuccessfulCardDue(card, currentSession)) return 'dueReview'
-  return 'learning'
+  return getCardDueAt(card, now) <= now ? 'dueReview' : 'notDue'
 }
 
 function getReviewBucketPriority(bucket: ReviewBucket): number {
   if (bucket === 'failed') return 0
   if (bucket === 'dueReview') return 1
-  if (bucket === 'learning') return 2
   if (bucket === 'newEligible') return 3
-  if (bucket === 'newCooling') return 4
-  return 5
+  if (bucket === 'notDue') return 4
+  if (bucket === 'newCooling') return 5
+  return 6
 }
 
-function sortRoundByReviewPriority(
-  cards: Lexicard[],
-  totalDeckSize: number,
-  currentSession: number,
-  now: number,
-): Lexicard[] {
+function isDueBucket(bucket: ReviewBucket): boolean {
+  return bucket === 'failed' || bucket === 'dueReview' || bucket === 'newEligible'
+}
+
+function sortRoundByReviewPriority(cards: Lexicard[], totalDeckSize: number, now: number): Lexicard[] {
+  const info = new Map(
+    cards.map((card) => [
+      card.id,
+      {
+        bucket: getReviewBucket(card, totalDeckSize, now),
+        importance: IMPORTANCE_ORDER[card.importance] ?? 4,
+        dueAt: getCardDueAt(card, now),
+      },
+    ]),
+  )
   return [...cards].sort((a, b) => {
-    const aBucket = getReviewBucket(a, totalDeckSize, currentSession, now)
-    const bBucket = getReviewBucket(b, totalDeckSize, currentSession, now)
-    const aImportance = IMPORTANCE_ORDER[a.importance] ?? 4
-    const bImportance = IMPORTANCE_ORDER[b.importance] ?? 4
+    const x = info.get(a.id)!
+    const y = info.get(b.id)!
 
-    // Las palabras dominadas y las recién añadidas (en reposo) van siempre al final.
-    const aLate = aBucket === 'graduated' || aBucket === 'newCooling'
-    const bLate = bBucket === 'graduated' || bBucket === 'newCooling'
-    if (aLate !== bLate) return aLate ? 1 : -1
+    // Due words first; the rest only fill the round.
+    const xDue = isDueBucket(x.bucket)
+    const yDue = isDueBucket(y.bucket)
+    if (xDue !== yDue) return xDue ? -1 : 1
 
-    // La frecuencia pesa mucho: una palabra Vital pendiente de repaso va antes
-    // que una Rara fallada. Así, en el modo aleatorio, la mayoría son Vitales y Frecuentes.
-    const aScore =
-      getReviewBucketPriority(aBucket) + aImportance * REVIEW_IMPORTANCE_WEIGHT
-    const bScore =
-      getReviewBucketPriority(bBucket) + bImportance * REVIEW_IMPORTANCE_WEIGHT
-    if (aScore !== bScore) return aScore - bScore
-
-    const bucketDiff =
-      getReviewBucketPriority(aBucket) - getReviewBucketPriority(bBucket)
-    if (bucketDiff !== 0) return bucketDiff
-
-    if (aImportance !== bImportance) return aImportance - bImportance
-
-    if (aBucket === 'newEligible' || aBucket === 'newCooling') {
-      const ageDiff = getNewCardAgeDays(b, now) - getNewCardAgeDays(a, now)
-      if (ageDiff !== 0) return ageDiff
-    }
-
-    if (aBucket === 'failed' || aBucket === 'dueReview' || aBucket === 'learning') {
-      const reviewDiff = (a.lastReviewed || 0) - (b.lastReviewed || 0)
-      if (reviewDiff !== 0) return reviewDiff
+    if (xDue) {
+      // Frequency weighs a lot: a due Vital word goes before a failed Rare one.
+      const xScore = getReviewBucketPriority(x.bucket) + x.importance * REVIEW_IMPORTANCE_WEIGHT
+      const yScore = getReviewBucketPriority(y.bucket) + y.importance * REVIEW_IMPORTANCE_WEIGHT
+      if (xScore !== yScore) return xScore - yScore
+      if (x.importance !== y.importance) return x.importance - y.importance
+      // The longest overdue first.
+      if (x.dueAt !== y.dueAt) return x.dueAt - y.dueAt
+    } else {
+      const bucketDiff = getReviewBucketPriority(x.bucket) - getReviewBucketPriority(y.bucket)
+      if (bucketDiff !== 0) return bucketDiff
+      // Filling the round: the words that are due soonest.
+      if (x.dueAt !== y.dueAt) return x.dueAt - y.dueAt
+      if (x.importance !== y.importance) return x.importance - y.importance
     }
 
     const streakDiff = (a.streak || 0) - (b.streak || 0)
     if (streakDiff !== 0) return streakDiff
-
     return (a.createdAt || 0) - (b.createdAt || 0)
   })
 }
@@ -312,12 +316,9 @@ export function buildReviewRound(
   if (modePool.length === 0) return []
 
   const now = Date.now()
-  const sortedPool = sortRoundByReviewPriority(
-    modePool,
-    totalDeckSize,
-    currentSession,
-    now,
-  )
+  // `currentSession` no longer decides anything: words come back by date (kept for the callers).
+  void currentSession
+  const sortedPool = sortRoundByReviewPriority(modePool, totalDeckSize, now)
   const selected: Lexicard[] = []
   const deferredByNewLimit: Lexicard[] = []
   const deferredByCooldown: Lexicard[] = []
@@ -399,17 +400,29 @@ export function updateCardAfterReview(
   knew: boolean,
   currentSession: number,
 ): Lexicard {
-  const ef = card.easeFactor || 2.5
+  const now = Date.now()
+  // ×2.5 at most (Luis, 12 Oct): the ease used to keep rising (2.6, 2.7…) with every right answer.
+  const ef = Math.min(REVIEW_MAX_EASE, card.easeFactor || REVIEW_MAX_EASE)
   const interval = card.interval || 1
   const streak = card.streak || 0
   if (knew) {
-    const ni = streak === 0 ? 1 : streak === 1 ? 3 : Math.round(interval * ef)
+    // A known word that came out early, only to fill the round: right again, but its next date
+    // does not jump ahead (otherwise a word added today could reach 64 days in one afternoon).
+    if (streak > 0 && getCardDueAt(card, now) > now) {
+      return {
+        ...card,
+        streak: streak + 1,
+        lastReviewed: now,
+        lastSeenSession: currentSession,
+      }
+    }
+    const ni = Math.min(REVIEW_MAX_INTERVAL_DAYS, streak === 0 ? 1 : streak === 1 ? 3 : Math.round(interval * ef))
     return {
       ...card,
       interval: ni,
-      easeFactor: Math.max(1.3, ef + 0.1),
+      easeFactor: Math.min(REVIEW_MAX_EASE, Math.max(1.3, ef + 0.1)),
       streak: streak + 1,
-      lastReviewed: Date.now(),
+      lastReviewed: now,
       lastSeenSession: currentSession,
     }
   }
@@ -418,7 +431,7 @@ export function updateCardAfterReview(
     interval: 1,
     easeFactor: Math.max(1.3, ef - 0.2),
     streak: 0,
-    lastReviewed: Date.now(),
+    lastReviewed: now,
     lastSeenSession: currentSession,
   }
 }

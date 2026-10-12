@@ -10,7 +10,6 @@ import {
   TriangleAlertIcon,
   ZapIcon,
 } from 'lucide-react'
-import { toast } from 'sonner'
 import type { Dispatch, SetStateAction } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -25,7 +24,8 @@ import {
 import { recordWordAddedEvent } from '../services/gamification'
 import { kickLexicardExampleWorker } from '../services/lexicardExampleJobs'
 import { insertWord } from '../services/storage'
-import { BOOST_GAMES, boostLexicard, isBoosted } from '../services/lexicardBoost'
+import { BoostButton } from '../components/BoostButton'
+import { useLexicardBoost } from '../hooks/useLexicardBoost'
 import { generateId, todayKey } from '../utils'
 import { DailyLimitNotice } from '../game/DailyLimitNotice'
 import { useDailyLimits } from '../game/limits'
@@ -174,7 +174,6 @@ export function AddView({
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
   // Potenciar (Luis, 8 Oct): the word was already in the Baúl ICA and the student boosted it.
-  const [boosting, setBoosting] = useState(false)
   const [boostedWord, setBoostedWord] = useState<string | null>(null)
   const [suggestionNative, setSuggestionNative] = useState<string | null>(null)
   const [suggestionTarget, setSuggestionTarget] = useState<string | null>(null)
@@ -233,37 +232,25 @@ export function AddView({
   )
   const isDuplicate = Boolean(trimmedTarget && duplicateWord)
   const showDuplicateWarning = isDuplicate && !saving && !saved
-  const duplicateAlreadyBoosted = Boolean(
-    duplicateWord && (isBoosted(duplicateWord, 'flash') || isBoosted(duplicateWord, 'daily') || isBoosted(duplicateWord, 'duel')),
-  )
+  // Max 3 a day, counted by the server for Inmersión, Desafíos ICA and PreguntICA together.
+  const wordBoost = useLexicardBoost({ cards, setCards, config, source: 'immersion', successToast: false })
+  const duplicateBoostState = wordBoost.stateOfCard(duplicateWord)
+  const duplicateAlreadyBoosted = duplicateBoostState === 'boosted'
 
   /**
    * POTENCIAR: instead of saving the same word again, it becomes Vital and comes first in the next
    * 2 flashcards rounds, 2 daily challenges and 2 Desafíos. It does not count as a new word.
    */
   const handleBoost = async (): Promise<void> => {
-    if (!duplicateWord || boosting) return
-    setBoosting(true)
-    try {
-      await boostLexicard(duplicateWord.id)
-      setCards((prev) =>
-        prev.map((card) =>
-          card.id === duplicateWord.id
-            ? { ...card, importance: 'vital', boostFlash: BOOST_GAMES, boostDaily: BOOST_GAMES, boostDuel: BOOST_GAMES }
-            : card,
-        ),
-      )
-      setBoostedWord(duplicateWord.target)
-      setTarget('')
-      setNative('')
-      setImportance(null)
-      window.setTimeout(() => setBoostedWord(null), 5000)
-    } catch (error) {
-      console.error(error)
-      toast.error(t('No se pudo potenciar la palabra. Inténtalo de nuevo.'))
-    } finally {
-      setBoosting(false)
-    }
+    if (!duplicateWord) return
+    const word = duplicateWord.target
+    const done = await wordBoost.boostCard(duplicateWord)
+    if (!done) return
+    setBoostedWord(word)
+    setTarget('')
+    setNative('')
+    setImportance(null)
+    window.setTimeout(() => setBoostedWord(null), 5000)
   }
 
   const clampTarget = (value: string): string =>
@@ -769,27 +756,32 @@ export function AddView({
                   </span>
                 </span>
                 {duplicateAlreadyBoosted ? null : (
-                  <Button type='button' size='sm' variant='i' className='shrink-0' disabled={boosting} onClick={() => void handleBoost()}>
-                    {boosting ? (
-                      <LoaderCircleIcon className='animate-spin' strokeWidth={2.6} aria-hidden='true' />
-                    ) : (
-                      <ZapIcon strokeWidth={2.6} aria-hidden='true' />
-                    )}
-                    {t('Potenciar')}
-                  </Button>
+                  <BoostButton
+                    state={duplicateBoostState}
+                    busy={wordBoost.busyId === duplicateWord?.id}
+                    onBoost={() => void handleBoost()}
+                  />
                 )}
               </div>
             )}
             {boostedWord && !trimmedTarget && (
               <p
                 className='m-0 mt-2 flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-bold'
-                style={{ background: 'var(--ica-ok-soft)', color: 'var(--ica-ok-ink)' }}
+                style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
                 role='status'
               >
                 <ZapIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' />
                 <span>
                   <b className='font-black'>{boostedWord}</b>{' '}
                   {t('potenciada. Saldrá con preferencia en tus próximas flashcards, reto del día y Desafíos ICA.')}
+                  {wordBoost.remaining !== null && (
+                    <>
+                      {' '}
+                      {wordBoost.remaining === 0
+                        ? t('Hoy ya no quedan más potenciaciones.')
+                        : tn(wordBoost.remaining, 'Queda {n} potenciación hoy.', 'Quedan {n} potenciaciones hoy.')}
+                    </>
+                  )}
                 </span>
               </p>
             )}

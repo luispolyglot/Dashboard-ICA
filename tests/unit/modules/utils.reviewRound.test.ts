@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildReviewRound } from '../../../src/modules/utils'
+import { buildReviewRound, updateCardAfterReview } from '../../../src/modules/utils'
 import type { ImportanceKey, Lexicard } from '../../../src/modules/types'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -80,5 +80,75 @@ describe('buildReviewRound: palabras potenciadas (Luis, 8 Oct)', () => {
     const justFailed = card('sola', 'vital', { streak: 0, lastReviewed: Date.now() - 60 * 1000 })
     const round = buildReviewRound([justFailed], 'mixed', 10, 5, 1)
     expect(round.map((c) => c.id)).toEqual(['sola'])
+  })
+
+  describe('por fechas', () => {
+    const now = Date.now()
+    const due = (id: string, extra: Partial<Lexicard> = {}) =>
+      card(id, 'frequent', { streak: 2, interval: 3, lastReviewed: now - 4 * DAY, ...extra })
+    const notDue = (id: string, extra: Partial<Lexicard> = {}) =>
+      card(id, 'frequent', { streak: 2, interval: 3, lastReviewed: now - DAY, ...extra })
+
+    it('una palabra acertada hace un momento no vuelve si hay otras que tocan', () => {
+      const justKnown = card('recien', 'vital', { streak: 1, interval: 1, lastReviewed: now - 60 * 1000 })
+      const others = Array.from({ length: 12 }, (_, i) => due(`due-${i}`))
+      const round = buildReviewRound([justKnown, ...others], 'mixed', 10, 3, 13)
+      expect(round.map((c) => c.id)).not.toContain('recien')
+    })
+
+    it('las que tocan van antes que las que aún no tocan', () => {
+      const cards = [notDue('pronto'), ...Array.from({ length: 3 }, (_, i) => due(`due-${i}`))]
+      const round = buildReviewRound(cards, 'mixed', 10, 0, 4)
+      expect(round.map((c) => c.id)).toEqual(['due-0', 'due-1', 'due-2', 'pronto'])
+    })
+
+    it('si no hay bastantes, rellena con las que tocan antes', () => {
+      const later = notDue('dentro-de-2-dias', { lastReviewed: now - DAY })
+      const sooner = notDue('manana', { lastReviewed: now - 2 * DAY + 60 * 1000 })
+      const round = buildReviewRound([later, sooner, due('hoy')], 'mixed', 10, 0, 3)
+      expect(round.map((c) => c.id)).toEqual(['hoy', 'manana', 'dentro-de-2-dias'])
+    })
+
+    it('una palabra dominada no se retira: vuelve cuando le toca', () => {
+      const mastered = card('dominada', 'vital', { streak: 10, interval: 60, lastReviewed: now - 61 * DAY })
+      const round = buildReviewRound([mastered, notDue('otra')], 'mixed', 10, 0, 2)
+      expect(round[0].id).toBe('dominada')
+    })
+  })
+})
+
+describe('updateCardAfterReview: fechas (Luis, 12 Oct)', () => {
+  it('acertando cuando toca: 1, 3, 8, 20, 50… días (×2,5 como mucho)', () => {
+    let c = card('dom', 'vital', { lastReviewed: null })
+    const intervals: number[] = []
+    for (let i = 0; i < 6; i++) {
+      // Each answer happens when the word is due.
+      if (c.lastReviewed !== null) c = { ...c, lastReviewed: Date.now() - c.interval * DAY - 1000 }
+      c = updateCardAfterReview(c, true, 0)
+      intervals.push(c.interval)
+    }
+    expect(intervals).toEqual([1, 3, 8, 20, 50, 125])
+    expect(c.easeFactor).toBe(2.5)
+  })
+
+  it('si sale antes de tiempo para rellenar la ronda, acertarla no adelanta su fecha', () => {
+    const early = card('dom', 'vital', { streak: 1, interval: 1, lastReviewed: Date.now() - 60 * 1000 })
+    const after = updateCardAfterReview(early, true, 0)
+    expect(after.interval).toBe(1)
+    expect(after.streak).toBe(2)
+    expect(after.easeFactor).toBe(early.easeFactor)
+  })
+
+  it('el intervalo nunca pasa de 365 días', () => {
+    const due = card('dom', 'vital', { streak: 8, interval: 300, easeFactor: 2.7, lastReviewed: Date.now() - 301 * DAY })
+    expect(updateCardAfterReview(due, true, 0).interval).toBe(365)
+  })
+
+  it('fallarla la devuelve a 1 día y baja la facilidad', () => {
+    const due = card('dom', 'vital', { streak: 4, interval: 20, lastReviewed: Date.now() - 21 * DAY })
+    const after = updateCardAfterReview(due, false, 0)
+    expect(after.interval).toBe(1)
+    expect(after.streak).toBe(0)
+    expect(after.easeFactor).toBeCloseTo(2.3)
   })
 })

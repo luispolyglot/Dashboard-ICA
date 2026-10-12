@@ -349,5 +349,13 @@ const en: Record<string, string> = {
   "Mismos aciertos, pero acabaste {time} antes. ¡Ganas por tiempo!": "Same correct answers, but you finished {time} sooner. You win on time!",
   "Mismos aciertos, pero {name} acabó {time} antes. Gana por tiempo.": "Same correct answers, but {name} finished {time} sooner. {name} wins on time.",
   "Pon tu teclado en {lang}: las tildes y letras especiales cuentan; las mayúsculas, no.": "Set your keyboard to {lang}: accents and special letters count, capital letters don't.",
+  // --- Potenciar: máximo 3 al día (Luis, 12 Oct) ---
+  "Potenciada": "Boosted",
+  "Hoy ya se usaron las {n} potenciaciones. Mañana habrá {n} más.": "All {n} boosts for today are used. There will be {n} more tomorrow.",
+  "Hoy ya se usaron las 3 potenciaciones.": "All 3 boosts for today are used.",
+  "\"{word}\" potenciada. Saldrá con preferencia en tus próximos juegos.": "\"{word}\" boosted. It will come first in your next games.",
+  "Hoy ya no quedan más potenciaciones.": "No boosts left for today.",
+  "Queda {n} potenciación hoy.": "{n} boost left today.",
+  "Quedan {n} potenciaciones hoy.": "{n} boosts left today.",
 }
 export default en
