@@ -416,5 +416,6 @@ const en: Record<string, string> = {
   "30 ICA Coins": "30 ICA Coins",
   "20 ICA Coins": "20 ICA Coins",
   "10 ICA Coins": "10 ICA Coins",
+  "Premio del top 3 del ranking": "Ranking top 3 prize",
 }
 export default en

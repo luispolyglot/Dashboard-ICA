@@ -62,6 +62,7 @@ function entryLabel(entry: IcaCoinEntry): string {
   if (entry.type === 'challenge_slot') return entry.used ? t('Desafío extra (usado)') : t('Desafío extra')
   if (entry.type === 'phase_boost' && entry.phase) return t('Ampliar {phase}', { phase: t(LIMIT_PHASE[entry.phase].name) })
   if (entry.type === 'monthly_earn') return t('Recompensa del ranking mensual')
+  if (entry.type === 'ranking_prize') return t('Premio del top 3 del ranking')
   if (entry.type === 'redeem_unlock') return t('PreguntICA extra')
   if (entry.type === 'manual_adjustment') return t('Ajuste de saldo')
   if (entry.type === 'flag_purchase') return t('Bandera del idioma')
