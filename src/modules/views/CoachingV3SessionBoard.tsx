@@ -528,7 +528,13 @@ export function CoachingV3SessionBoard({
   // The coach can open the next week before activating it to prepare it (focuses, classes,
   // tasks, report); the student does not see it until it is activated (Luis, 6 Oct).
   const preparablePeriod = mode === "coach" ? board?.periodState.nextPeriodEligible || null : null;
-  const canOpenPeriod = (period: number) => activatedPeriods.has(period) || period === preparablePeriod;
+  // The coach can open any week to prepare it or check its classes, also the ones after the next
+  // (Luis, 14 Oct: a class W06_1 is already scheduled while week 4 is active). Opening a week does
+  // not activate it: the student only sees activated weeks.
+  const canOpenPeriod = (period: number) =>
+    activatedPeriods.has(period) ||
+    period === preparablePeriod ||
+    (mode === "coach" && period >= 1 && period <= durationPeriods);
   const isPreparingSelectedPeriod = mode === "coach" && !selectedPeriodActivation;
   // One ring per week: the 6 tasks fill it (Luis, 6 Oct).
   const weekRings = buildWeekRings({
