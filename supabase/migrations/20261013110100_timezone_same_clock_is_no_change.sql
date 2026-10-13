@@ -38,7 +38,8 @@ begin
   -- Same clock as the zone already saved (Madrid and Vienna, Warsaw or Zurich): nothing changes
   -- for the student's days, so it is not a change. Checked now and in six months, so two zones
   -- that only match outside summer time still count as different (Luis, 13 Oct).
-  if exists (select 1 from pg_timezone_names tzn where tzn.name = previous_timezone) then
+  -- ica_valid_timezone, not pg_timezone_names: that view reads every zone from disk (~220 ms).
+  if public.ica_valid_timezone(previous_timezone) is not null then
     if (now() at time zone resolved_timezone) = (now() at time zone previous_timezone)
        and ((now() + interval '182 days') at time zone resolved_timezone)
          = ((now() + interval '182 days') at time zone previous_timezone) then
