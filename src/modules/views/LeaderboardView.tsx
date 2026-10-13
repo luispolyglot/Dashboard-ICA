@@ -100,6 +100,8 @@ const LEADERBOARD_PRIZES: Record<LeaderboardPrizeRank, LeaderboardPrize> = {
   1: {
     borderClassName: "border-2 border-amber-400/80",
     rewards: [
+      // ICA Coins for the top 3 (Luis, 13 Oct): 30, 20 and 10.
+      { icon: <FichaIcon size={30} />, text: "30 ICA Coins" },
       { icon: <PrizeIcon icon={GraduationCapIcon} color="var(--ica-i)" />, text: "Clase 1 a 1 de 1 hora con Luis" },
       { icon: <PrizeIcon icon={GiftIcon} color="var(--ica-ok)" />, text: "1 mes gratis en ICADEMY" },
       { icon: <PrizeIcon icon={AwardIcon} color="var(--ica-gold-edge)" />, text: "Insignia oficial de ICAwards" },
@@ -109,6 +111,7 @@ const LEADERBOARD_PRIZES: Record<LeaderboardPrizeRank, LeaderboardPrize> = {
   2: {
     borderClassName: "border-2 border-slate-300/90",
     rewards: [
+      { icon: <FichaIcon size={30} />, text: "20 ICA Coins" },
       { icon: <PrizeIcon icon={GraduationCapIcon} color="var(--ica-i)" />, text: "Clase 1 a 1 de 30 minutos con Luis" },
       { icon: <PrizeIcon icon={BadgePercentIcon} color="var(--ica-ok)" />, text: "50% de reembolso en membresía mensual" },
       { icon: <TargetGlyph size={30} />, text: "1 ticket coaching privado con Luis" },
@@ -116,7 +119,7 @@ const LEADERBOARD_PRIZES: Record<LeaderboardPrizeRank, LeaderboardPrize> = {
   },
   3: {
     borderClassName: "border-2 border-amber-700/70",
-    rewards: [{ icon: <FichaIcon size={30} />, text: "3 ICA Coins para canjear" }],
+    rewards: [{ icon: <FichaIcon size={30} />, text: "10 ICA Coins" }],
   },
 };
 

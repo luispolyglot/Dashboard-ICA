@@ -412,5 +412,9 @@ const en: Record<string, string> = {
   "Aquí gastas tus ICA Coins. Toca una ventaja dos veces para comprarla: la primera te pide confirmar.": "Here you spend your ICA Coins. Tap a perk twice to buy it: the first tap asks you to confirm.",
   "En tu hora. {name} propuso las {time} de {city}.": "In your time. {name} suggested {time} {city} time.",
   "Se ha enviado solo la hora, sin el día: el día y «Me apunto» llegan en unos minutos.": "Only the time was sent, without the day: the day and \"I'm in\" arrive in a few minutes.",
+  // --- Premios del ranking en ICA Coins (Luis, 13 Oct) ---
+  "30 ICA Coins": "30 ICA Coins",
+  "20 ICA Coins": "20 ICA Coins",
+  "10 ICA Coins": "10 ICA Coins",
 }
 export default en
