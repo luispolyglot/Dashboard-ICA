@@ -19,6 +19,7 @@ import { RankingSnippetCard } from '../game/RankingSnippetCard'
 import { isIcaCycleDone } from '../game/streak'
 import { StreakRiskBanner } from '../game/StreakRiskBanner'
 import { ChatInvite } from '../game/ChatInvite'
+import { FirstChestGuide } from '../game/WelcomeTour'
 import type { DailyProgressMap } from '../types'
 import type { AppConfig } from '../types'
 import { t, tn, uiLocale } from '@/i18n'
@@ -244,6 +245,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           )}
         </div>
         <ChatInvite />
+        <FirstChestGuide />
       </section>
     )
   }
@@ -278,6 +280,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
         </aside>
       </div>
       <ChatInvite />
+        <FirstChestGuide />
     </section>
   )
 }

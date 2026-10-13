@@ -48,6 +48,8 @@ const ERRORS: Record<string, string> = {
   CHAT_NOT_YOUR_LANGUAGE: 'Este chat es para quien aprende este idioma.',
   CHAT_DAY_INVALID: 'Elige un día de hoy en adelante.',
   CHAT_PROPOSAL_NOT_FOUND: 'Esa propuesta ya no está.',
+  // The server is older than this message (its migration arrives a few minutes later).
+  icademer_chat_messages_kind_check: 'Este mensaje aún no está disponible. Prueba en unos minutos.',
 }
 
 function chatError(error: { message?: string } | null): Error {
@@ -123,15 +125,28 @@ export async function sendIcademerChatMessage(input: {
   timeZone?: string
   /** «Proponer día y hora»: AAAA-MM-DD. */
   dayValue?: string
-}): Promise<void> {
+}): Promise<{ sentAsTimeOnly: boolean }> {
   const withTime = input.kind === 'hora' || input.kind === 'propuesta'
-  const { data, error } = await client().rpc('send_icademer_chat_message', {
+  let sentAsTimeOnly = false
+  let { data, error } = await client().rpc('send_icademer_chat_message', {
     p_target_lang: chatLangKey(input.targetLang),
     p_kind: input.kind,
     p_time_value: withTime ? input.timeValue ?? null : null,
     p_time_zone: withTime ? input.timeZone ?? null : null,
     ...(input.kind === 'propuesta' ? { p_day_value: input.dayValue ?? null } : {}),
   })
+  // The server does not know «Proponer día y hora» yet (its migration is not applied: the minutes
+  // between the new app and the database, or a development database). Instead of «No se pudo
+  // conectar», the old «¿A las…?» goes out with the same time (Luis, 13 Oct).
+  if (error && input.kind === 'propuesta' && proposalNotSupported(error)) {
+    sentAsTimeOnly = true
+    ;({ data, error } = await client().rpc('send_icademer_chat_message', {
+      p_target_lang: chatLangKey(input.targetLang),
+      p_kind: 'hora',
+      p_time_value: input.timeValue ?? null,
+      p_time_zone: input.timeZone ?? null,
+    }))
+  }
   if (error) throw chatError(error)
   // Avisa a los demás (función icademer-chat-push). Si falla, el mensaje ya está enviado.
   if (data) {
@@ -139,6 +154,13 @@ export async function sendIcademerChatMessage(input: {
       .functions.invoke('icademer-chat-push', { body: { messageId: String(data) } })
       .catch(() => undefined)
   }
+  return { sentAsTimeOnly }
+}
+
+/** The server's chat functions are older than «Proponer día y hora». */
+function proposalNotSupported(error: { message?: string; code?: string } | null): boolean {
+  const text = `${error?.code || ''} ${error?.message || ''}`
+  return /PGRST202|Could not find the function|p_day_value|icademer_chat_messages_kind_check|icademer_chat_messages_time_check/i.test(text)
 }
 
 /** «Me apunto» (true) or «Ya no voy» (false) to a proposal. */

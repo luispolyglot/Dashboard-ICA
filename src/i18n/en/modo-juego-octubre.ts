@@ -399,5 +399,16 @@ const en: Record<string, string> = {
   "Cuando termines {n} notas maestras, se abre la Nota desafiante en Juegos ICA: allí podrás escucharlas cuando quieras y desafiarte a ti mismo con ellas.": "When you finish {n} master notes, the Challenge note opens in ICA Games: there you can listen to them whenever you want and challenge yourself with them.",
   // --- Escucha: la voz se prepara antes (Luis, 13 Oct) ---
   "Preparando la voz…": "Getting the voice ready…",
+  "Se ha enviado solo la hora: el día y «Me apunto» llegan en unos minutos.": "Only the time was sent: the day and \"I'm in\" arrive in a few minutes.",
+  "Este mensaje aún no está disponible. Prueba en unos minutos.": "This message isn't available yet. Try again in a few minutes.",
+  "¿Qué es?": "What is it?",
+  "Has propuesto un día para unirse al Club de DinámICA": "You suggested a day to meet at the Club de DinámICA",
+  "{name} ha propuesto un día para unirse al Club de DinámICA": "{name} suggested a day to meet at the Club de DinámICA",
+  // --- Guía del primer cofre (Luis, 13 Oct) ---
+  "¡Tus primeras ICA Coins!": "Your first ICA Coins!",
+  "Cada día que completas tu ciclo ICA, el cofre te da ICA Coins. Aquí arriba ves cuántas tienes. Con ellas compras ventajas en la tienda: ampliar tu día, un intento extra de PreguntICA, un desafío extra… e incluso la bandera de tu idioma, para que se vea en tu perfil y en el ranking.": "Every day you complete your ICA cycle, the chest gives you ICA Coins. Up here you see how many you have. With them you buy perks in the shop: extend your day, an extra PreguntICA try, an extra challenge… and even the flag of your language, shown on your profile and in the ranking.",
+  "Ver la tienda": "See the shop",
+  "La tienda de ICA Coins": "The ICA Coins shop",
+  "Aquí gastas tus ICA Coins. Toca una ventaja dos veces para comprarla: la primera te pide confirmar.": "Here you spend your ICA Coins. Tap a perk twice to buy it: the first tap asks you to confirm.",
 }
 export default en

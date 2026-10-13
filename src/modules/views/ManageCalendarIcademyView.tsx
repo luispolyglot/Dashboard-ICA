@@ -379,7 +379,7 @@ export function ManageCalendarIcademyView() {
       `Ejemplo de salida esperada:\n` +
       `{\n` +
       `  \"2026-06-01\": [\n` +
-      `    {\"time\": \"19h\", \"name\": \"Francés\", \"teacher_id\": \"UUID_PROFE_FR\", \"classId\": \"fr_conv\", \"lang\": \"fr\"},\n` +
+      `    {\"time\": \"19h\", \"name\": \"Francés\", \"teacher_id\": \"UUID_PROFE_FR\", \"classId\": \"fr_basico\", \"lang\": \"fr\"},\n` +
       `    {\"time\": \"20h\", \"name\": \"EN basico\", \"teacher_id\": \"UUID_PROFE_EN\", \"classId\": \"en_basico\", \"lang\": \"en\"}\n` +
       `  ],\n` +
       `  \"2026-06-02\": [\n` +

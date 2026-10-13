@@ -24,6 +24,10 @@ export type ChatMessageKind =
 /** Club de DinámICA: where «Entrar al Club de DinámICA» takes you (Luis, 13 Oct). */
 export const CLUB_DINAMICA_URL = 'https://clubdedinamica.icademy.app/'
 
+/** «¿Qué es el Club de DinámICA?»: Luis's video that explains it (Skool). */
+export const CLUB_DINAMICA_VIDEO_URL =
+  'https://www.skool.com/icademy/classroom/0e6161d0?md=aa39078e57e446cca8d9d198a3582a38'
+
 /**
  * Los mensajes que se pueden mandar, en el orden de los botones. Los textos pasan por t().
  * «Proponer día y hora» (Luis, 13 Oct) sustituye a «¿A las…?»: es una propuesta para el Club de

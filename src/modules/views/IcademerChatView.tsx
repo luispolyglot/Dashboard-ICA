@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { toast } from 'sonner'
-import { BellIcon, CalendarDaysIcon, CheckIcon, ChevronDownIcon, ClockIcon, ExternalLinkIcon, GlobeIcon, LogOutIcon, SendIcon, UsersIcon } from 'lucide-react'
+import { BellIcon, CalendarDaysIcon, CheckIcon, CircleHelpIcon, ChevronDownIcon, ClockIcon, ExternalLinkIcon, GlobeIcon, LogOutIcon, SendIcon, UsersIcon } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ import {
   CHAT_MESSAGE_TEXT,
   CHAT_PROPOSAL_DAYS,
   CLUB_DINAMICA_URL,
+  CLUB_DINAMICA_VIDEO_URL,
   chatLanguageLabel,
   deviceTimeZone,
   localDayKey,
@@ -106,9 +107,21 @@ export function ProposalCard({
 
   return (
     <div className='w-[min(100%,22rem)] overflow-hidden rounded-3xl border-2 border-border bg-card text-card-foreground'>
-      <div className='flex items-center gap-2 px-4 pt-3 text-sm font-extrabold' style={{ color: 'var(--ica-reto, #a259f0)' }}>
-        <CalendarDaysIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' />
-        {t('Club de DinámICA')}
+      <div className='flex items-center gap-2 px-4 pt-3'>
+        <span className='flex min-w-0 flex-1 items-center gap-2 text-sm font-extrabold' style={{ color: 'var(--ica-reto, #a259f0)' }}>
+          <CalendarDaysIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' />
+          {t('Club de DinámICA')}
+        </span>
+        {/* For whoever does not know the club yet: Luis's video (13 Oct). */}
+        <a
+          href={CLUB_DINAMICA_VIDEO_URL}
+          target='_blank'
+          rel='noopener noreferrer'
+          className='flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-xs font-extrabold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground'
+        >
+          <CircleHelpIcon className='size-4' strokeWidth={2.6} aria-hidden='true' />
+          {t('¿Qué es?')}
+        </a>
       </div>
       <div className='px-4 pt-1.5 pb-3'>
         <p className='m-0 font-display text-xl leading-tight font-extrabold tracking-tight'>
@@ -421,13 +434,14 @@ export function IcademerChatView() {
     }
     setSending(true)
     try {
-      await sendIcademerChatMessage({
+      const result = await sendIcademerChatMessage({
         targetLang,
         kind,
         timeValue: kind === 'propuesta' ? `${hour}:${minute}` : undefined,
         timeZone: kind === 'propuesta' ? viewerZone : undefined,
         dayValue: kind === 'propuesta' ? dayValue : undefined,
       })
+      if (result.sentAsTimeOnly) toast.message(t('Se ha enviado solo la hora: el día y «Me apunto» llegan en unos minutos.'))
       setPickingTime(false)
       await loadChat()
     } catch (sendError) {
@@ -535,11 +549,19 @@ export function IcademerChatView() {
                   key={message.id}
                   className={cn('flex flex-col', message.isMe ? 'items-end' : 'items-start', sameSender ? '-mt-1' : 'mt-1')}
                 >
-                  {!message.isMe && (!sameSender || message.kind === 'propuesta') ? (
+                  {message.kind === 'propuesta' ? (
+                    // «Luis G. ha propuesto un día para unirse al Club de DinámICA» (Luis, 13 Oct).
+                    <span
+                      className={cn('mb-0.5 text-xs font-extrabold', message.isMe ? 'mr-1 text-muted-foreground' : 'ml-1')}
+                      style={message.isMe ? undefined : { color: toneFor(message.senderKey) }}
+                    >
+                      {message.isMe
+                        ? t('Has propuesto un día para unirse al Club de DinámICA')
+                        : t('{name} ha propuesto un día para unirse al Club de DinámICA', { name: message.senderName })}
+                    </span>
+                  ) : !message.isMe && !sameSender ? (
                     <span className='mb-0.5 ml-1 text-xs font-extrabold' style={{ color: toneFor(message.senderKey) }}>
-                      {message.kind === 'propuesta'
-                        ? t('{name} propone quedar', { name: message.senderName })
-                        : message.senderName}
+                      {message.senderName}
                     </span>
                   ) : null}
                   {message.kind === 'propuesta' ? (

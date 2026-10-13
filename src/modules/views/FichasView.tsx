@@ -380,7 +380,7 @@ export function FichasView() {
       </div>
 
       {/* En qué se gastan */}
-      <div>
+      <div data-tour='shop'>
         <p className='mb-2 flex items-center gap-2 text-base font-black'>
           <span
             className='flex size-8 items-center justify-center rounded-xl'

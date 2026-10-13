@@ -10,6 +10,8 @@ import { getPushPermissionState } from '../services/pushNotifications'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { CHALLENGE_NOTE_MIN_CLOSED_NOTES, FLASHCARDS_MIN_ACTIVATED_WORDS } from './rules'
 import { FLAG_COST } from './languageFlag'
+import { useFichas } from './fichas'
+import { CYCLE_CELEBRATION_CLOSED_EVENT } from './CycleCelebration'
 
 /**
  * WELCOME TOUR (Luis, 7 Oct): like the guide in Clash of Clans, a friendly character walks a new
@@ -27,6 +29,9 @@ const CHALLENGE_NOTE_KEY = 'ica-guide-challenge-note-v1'
 const PROFILE_KEY = 'ica-guide-profile-v1'
 const SHOP_FLAG_KEY = 'ica-guide-shop-flag-v1'
 const NOTE_CLOSED_KEY = 'ica-guide-master-note-closed-v1'
+const FIRST_CHEST_KEY = 'ica-guide-first-chest-v1'
+/** Fired when a guide ends (another notice that waits for it can come now). */
+const GUIDE_FINISHED_EVENT = 'ica:guide-finished'
 /** Only one guide on screen at a time. */
 let activeGuide: string | null = null
 const NEW_ACCOUNT_DAYS = 14
@@ -325,6 +330,83 @@ export function MasterNoteClosedGuide({ start, closedNotes }: { start: boolean; 
 }
 
 /**
+ * Runs `fn` when no guide is on screen: right away, or when the guide ends (for example the chat
+ * invitation waits for the first chest's guide, so they do not appear on top of each other).
+ */
+export function afterGuides(fn: () => void): void {
+  if (!activeGuide) {
+    fn()
+    return
+  }
+  const onFinished = () => {
+    if (activeGuide) return
+    window.removeEventListener(GUIDE_FINISHED_EVENT, onFinished)
+    window.setTimeout(fn, 600)
+  }
+  window.addEventListener(GUIDE_FINISHED_EVENT, onFinished)
+}
+
+/**
+ * The first chest (Luis, 13 Oct): when its celebration closes, the guide explains the ICA Coins
+ * (what they are, where they are counted and what they buy, the flag included) and offers to show
+ * the shop. Only for the first chest of the account (one «cofre del ciclo» in its history), once
+ * per account and device. `?tour=cofre` shows it again.
+ */
+export function FirstChestGuide() {
+  const { user } = useAuth()
+  const location = useLocation()
+  const forced = wantsTourFromUrl(location.search, 'cofre')
+  const { entries } = useFichas(user?.id)
+  const [start, setStart] = useState(false)
+  const chestCount = entries.filter((entry) => entry.type === 'cycle_chest').length
+  const firstChestRef = useRef(false)
+  firstChestRef.current = chestCount <= 1
+  const route = location.pathname
+
+  useEffect(() => {
+    const onClosed = () => {
+      // The coins fly to the counter first; then the guide.
+      if (firstChestRef.current) window.setTimeout(() => setStart(true), 900)
+    }
+    window.addEventListener(CYCLE_CELEBRATION_CLOSED_EVENT, onClosed)
+    return () => window.removeEventListener(CYCLE_CELEBRATION_CLOSED_EVENT, onClosed)
+  }, [])
+
+  const steps = useMemo<TourStep[]>(
+    () => [
+      {
+        id: 'first-chest-coins',
+        route,
+        targets: ['[data-tour="wallet"]'],
+        waitMs: 2500,
+        title: t('¡Tus primeras ICA Coins!'),
+        body: t('Cada día que completas tu ciclo ICA, el cofre te da ICA Coins. Aquí arriba ves cuántas tienes. Con ellas compras ventajas en la tienda: ampliar tu día, un intento extra de PreguntICA, un desafío extra… e incluso la bandera de tu idioma, para que se vea en tu perfil y en el ranking.'),
+        ask: { yes: t('Ver la tienda'), no: t('Ahora no') },
+      },
+      {
+        id: 'first-chest-shop',
+        route: DASHBOARD_ROUTES.fichas,
+        targets: ['[data-tour="shop"]'],
+        waitMs: 2500,
+        onlyIf: { step: 'first-chest-coins', answer: true },
+        title: t('La tienda de ICA Coins'),
+        body: t('Aquí gastas tus ICA Coins. Toca una ventaja dos veces para comprarla: la primera te pide confirmar.'),
+      },
+    ],
+    [route],
+  )
+  return (
+    <GuideTour
+      guideKey={FIRST_CHEST_KEY}
+      steps={steps}
+      shouldStart={start || forced}
+      force={forced}
+      lastLabel={t('Entendido')}
+    />
+  )
+}
+
+/**
  * Profile guide (Luis, 7 Oct): the first time an icademer opens Profile, the same guide shows one
  * bubble after another: badges, notifications, the icademers chat and the class calendar. If the
  * person goes to ICADEMY classes it takes them to the calendar to turn on a class reminder.
@@ -449,6 +531,7 @@ function GuideTour({
     (goHome: boolean) => {
       if (user?.id) writeSeen(guideKey, user.id)
       if (activeGuide === guideKey) activeGuide = null
+      window.dispatchEvent(new Event(GUIDE_FINISHED_EVENT))
       setIndex(null)
       setBox(null)
       targetsRef.current = null
