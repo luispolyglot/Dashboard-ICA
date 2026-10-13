@@ -39,6 +39,7 @@ import {
   isSpeechRecognitionSupported,
   listenOnce,
   playBeep,
+  isAndroidDevice,
   playFailTone,
   speakAsync,
   stopSpeaking,
@@ -66,6 +67,9 @@ type Props = {
 }
 
 type Phase = 'preparing' | 'error' | 'intro' | 'mic' | 'running' | 'paused' | 'finished'
+/** Time to start answering after the beep (Luis, 13 Oct: one second more, 5 → 6 s). */
+const ANSWER_START_MS = 6000
+
 type Step = 'prompt' | 'listening' | 'feedback'
 
 // Con al menos estas palabras bien (sin acertar el trozo entero) se dice «Casi».
@@ -288,11 +292,14 @@ export function NotaDesafianteOverlay({
         setInterim('')
         await speakAsync(round.native, nativeLang)
         if (cancelled()) return
-        await playBeep()
+        // Our beep only where the phone makes no sound of its own when the mic opens: on Android
+        // Chrome already beeps, and with ours it was beep after beep (icademers, 13 Oct).
+        if (!isAndroidDevice()) await playBeep()
         if (cancelled()) return
 
         setStep('listening')
-        const listening = listenOnce(targetLang, { onInterim: setInterim })
+        // One second more to start answering: 6 s instead of 5 (icademers, 13 Oct).
+        const listening = listenOnce(targetLang, { onInterim: setInterim, noSpeechMs: ANSWER_START_MS })
         cancelListenRef.current = listening.cancel
         const outcome = await listening.promise
         cancelListenRef.current = null
@@ -306,7 +313,7 @@ export function NotaDesafianteOverlay({
         }
 
         if (outcome.status === 'silence') {
-          // Si no empieza a hablar en 5 s, se repite el trozo una vez.
+          // Si no empieza a hablar en ANSWER_START_MS, se repite el trozo una vez.
           if (!repeatedAfterSilence) {
             repeatedAfterSilence = true
             continue
