@@ -292,9 +292,10 @@ export function NotaDesafianteOverlay({
         setInterim('')
         await speakAsync(round.native, nativeLang)
         if (cancelled()) return
-        // Our beep only where the phone makes no sound of its own when the mic opens: on Android
-        // Chrome already beeps, and with ours it was beep after beep (icademers, 13 Oct).
-        if (!isAndroidDevice()) await playBeep()
+        // Our beep only where the device makes no sound of its own when the mic opens (the
+        // computer). iPhone and Android already beep, and with ours it sounded twice in a row
+        // (icademers and Luis, 13 Oct).
+        if (!isAndroidDevice() && !isIOSDevice()) await playBeep()
         if (cancelled()) return
 
         setStep('listening')
