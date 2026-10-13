@@ -29,6 +29,7 @@ import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal
 import { InteractivePhraseText } from '../components/InteractivePhraseText'
 import { RomanizationHint } from '../components/RomanizationHint'
 import { SpeakButton } from '../components/SpeakButton'
+import { speakNatural } from '../services/tts'
 import { FirstUseTip, useFirstUseTip } from '../components/FirstUseTip'
 import { useDashboardContext } from '../context/DashboardContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
@@ -891,6 +892,17 @@ export function MasterNoteActivatePhraseView({
     setExploreModalOpen(true)
   }
 
+  // Luis, 12 Oct: while listening to your recording, a tapped word is only pronounced (no AI
+  // explanation). Before recording, tapping still opens «Explorar palabra».
+  const handleTokenTap = (token: string): void => {
+    if (recordingDraft && !recording) {
+      const word = token.trim()
+      if (word) speakNatural(word, targetLang)
+      return
+    }
+    handleOpenExploreModal(token)
+  }
+
   const handleKeepRecording = (): void => {
     pendingLeaveRef.current = null
     setLeaveDialogOpen(false)
@@ -1018,7 +1030,7 @@ export function MasterNoteActivatePhraseView({
                 onNext={nextGuideStep}
                 onPrev={prevGuideStep}
                 onHelp={() => setHowtoMode('help')}
-                onTokenClick={handleOpenExploreModal}
+                onTokenClick={handleTokenTap}
                 footer={
                   <>
                     {phrase.generated_phrase ? (
@@ -1046,7 +1058,7 @@ export function MasterNoteActivatePhraseView({
                 <InteractivePhraseText
                   text={phrase.generated_phrase}
                   language={targetLang}
-                  onTokenClick={handleOpenExploreModal}
+                  onTokenClick={handleTokenTap}
                   className='m-0 font-display text-[1.7rem] leading-snug font-black tracking-tight lg:text-3xl'
                 />
               ) : (

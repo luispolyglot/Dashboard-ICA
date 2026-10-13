@@ -4,11 +4,14 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/auth/AuthContext'
-import { t } from '@/i18n'
+import { langName, t } from '@/i18n'
 import { turnOnRemindersOnThisDevice } from '../services/notificationOnboarding'
 import { getPushPermissionState } from '../services/pushNotifications'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { CHALLENGE_NOTE_MIN_CLOSED_NOTES, FLASHCARDS_MIN_ACTIVATED_WORDS } from './rules'
+import { FLAG_COST } from './languageFlag'
+import { useFichas } from './fichas'
+import { CYCLE_CELEBRATION_CLOSED_EVENT } from './CycleCelebration'
 
 /**
  * WELCOME TOUR (Luis, 7 Oct): like the guide in Clash of Clans, a friendly character walks a new
@@ -24,6 +27,33 @@ import { CHALLENGE_NOTE_MIN_CLOSED_NOTES, FLASHCARDS_MIN_ACTIVATED_WORDS } from 
 const WELCOME_KEY = 'ica-welcome-tour-v1'
 const CHALLENGE_NOTE_KEY = 'ica-guide-challenge-note-v1'
 const PROFILE_KEY = 'ica-guide-profile-v1'
+const SHOP_FLAG_KEY = 'ica-guide-shop-flag-v1'
+const NOTE_CLOSED_KEY = 'ica-guide-master-note-closed-v1'
+const FIRST_CHEST_KEY = 'ica-guide-first-chest-v1'
+/** Fired when a guide ends (another notice that waits for it can come now). */
+const GUIDE_FINISHED_EVENT = 'ica:guide-finished'
+/**
+ * Guides about to start (they wait a moment before showing). afterGuides waits for them too, so
+ * a notice that comes at the same time does not open on top (the chat invitation and the first
+ * chest's guide both start when the chest closes).
+ */
+let pendingGuides = 0
+const PENDING_GUIDE_MAX_MS = 6000
+
+/** Holds the slot for a guide about to start. Returns the release (safe to call twice). */
+function reserveGuideSlot(): () => void {
+  pendingGuides += 1
+  let released = false
+  const release = () => {
+    if (released) return
+    released = true
+    pendingGuides = Math.max(0, pendingGuides - 1)
+    window.dispatchEvent(new Event(GUIDE_FINISHED_EVENT))
+  }
+  // If the guide never starts (another one is on screen, its element is missing…), let go anyway.
+  window.setTimeout(release, PENDING_GUIDE_MAX_MS)
+  return release
+}
 /** Only one guide on screen at a time. */
 let activeGuide: string | null = null
 const NEW_ACCOUNT_DAYS = 14
@@ -235,6 +265,203 @@ export function ChallengeNoteUnlockGuide({ unlocked }: { unlocked: boolean }) {
 }
 
 /**
+ * Shop: the language flag (Luis, 13 Oct). On launch day nobody bought one, so the first time an
+ * icademer without a flag opens the shop, the guide lights up the flag and says what it is.
+ * Once per account and device; `?tour=bandera` shows it again.
+ */
+export function ShopFlagGuide({ lang }: { lang: string | null }) {
+  const location = useLocation()
+  const forced = wantsTourFromUrl(location.search, 'bandera')
+  const steps = useMemo<TourStep[]>(
+    () =>
+      lang
+        ? [
+            {
+              id: 'shop-flag',
+              route: DASHBOARD_ROUTES.fichas,
+              targets: ['[data-tour="shop-flag"]'],
+              title: t('La bandera de {lang}', { lang: langName(lang) }),
+              body: t('Por {n} ICA Coins, la bandera del idioma que aprendes sale de fondo en tu inicial: en tu perfil y en el ranking, para que todos la vean. Es tuya para siempre, aunque cambies de idioma.', { n: FLAG_COST }),
+            },
+          ]
+        : [],
+    [lang],
+  )
+  return (
+    <GuideTour
+      guideKey={SHOP_FLAG_KEY}
+      steps={steps}
+      shouldStart={Boolean(lang) && location.pathname === DASHBOARD_ROUTES.fichas}
+      force={forced}
+      lastLabel={t('Entendido')}
+    />
+  )
+}
+
+/**
+ * A master note was just completed (Luis, 13 Oct): the guide reminds that finished notes can be
+ * listened to any time in Juegos ICA › Nota desafiante, and challenged. Once per account and
+ * device, the next time a note is completed (for new icademers, their first one). With fewer than
+ * CHALLENGE_NOTE_MIN_CLOSED_NOTES finished notes the game is still closed, so it says when it opens.
+ * It lives in the layout (MasterNoteClosedGuideHost), so «Ir a verlo» can go to Juegos ICA without
+ * the guide disappearing; the note's page asks for it with requestMasterNoteClosedGuide.
+ * `?tour=nota` shows it again.
+ */
+const NOTE_CLOSED_REQUEST_EVENT = 'ica:master-note-closed-guide'
+
+export function requestMasterNoteClosedGuide(closedNotes: number): void {
+  window.dispatchEvent(new CustomEvent<{ closedNotes: number }>(NOTE_CLOSED_REQUEST_EVENT, { detail: { closedNotes } }))
+}
+
+export function MasterNoteClosedGuideHost() {
+  const location = useLocation()
+  const forced = wantsTourFromUrl(location.search, 'nota')
+  const [request, setRequest] = useState<{ closedNotes: number; route: string } | null>(null)
+  const pathnameRef = useRef(location.pathname)
+  pathnameRef.current = location.pathname
+
+  useEffect(() => {
+    const onRequest = (event: Event) => {
+      const closedNotes = (event as CustomEvent<{ closedNotes: number }>).detail?.closedNotes ?? 0
+      setRequest({ closedNotes, route: pathnameRef.current })
+    }
+    window.addEventListener(NOTE_CLOSED_REQUEST_EVENT, onRequest)
+    return () => window.removeEventListener(NOTE_CLOSED_REQUEST_EVENT, onRequest)
+  }, [])
+
+  const route = request?.route ?? location.pathname
+  const open = (request?.closedNotes ?? CHALLENGE_NOTE_MIN_CLOSED_NOTES) >= CHALLENGE_NOTE_MIN_CLOSED_NOTES
+  const steps = useMemo<TourStep[]>(
+    () =>
+      open
+        ? [
+            {
+              id: 'note-closed',
+              route,
+              title: t('Escucha tus notas maestras cuando quieras'),
+              body: t('Tus notas maestras terminadas están siempre en Juegos ICA, en Nota desafiante. Escúchalas y desafíate a ti mismo: dilas de memoria en el idioma que aprendes.'),
+              ask: { yes: t('Ir a verlo'), no: t('Ahora no') },
+            },
+            {
+              id: 'note-closed-game',
+              route: DASHBOARD_ROUTES.gamesIca,
+              targets: ['[data-tour="game-challenge-note"]'],
+              waitMs: 2500,
+              onlyIf: { step: 'note-closed', answer: true },
+              title: t('Aquí está la Nota desafiante'),
+              body: t('Entra, elige una nota maestra y escúchala. Al llegar al {n} %, se abre su desafío.', { n: 80 }),
+            },
+          ]
+        : [
+            {
+              id: 'note-closed',
+              route,
+              title: t('Tus notas maestras, siempre a mano'),
+              body: t('Cuando termines {n} notas maestras, se abre la Nota desafiante en Juegos ICA: allí podrás escucharlas cuando quieras y desafiarte a ti mismo con ellas.', { n: CHALLENGE_NOTE_MIN_CLOSED_NOTES }),
+            },
+          ],
+    [open, route],
+  )
+  return (
+    <GuideTour
+      guideKey={NOTE_CLOSED_KEY}
+      steps={steps}
+      shouldStart={request !== null || forced}
+      force={forced}
+      lastLabel={t('Entendido')}
+    />
+  )
+}
+
+/**
+ * Runs `fn` when no guide is on screen: right away, or when the guide ends (for example the chat
+ * invitation waits for the first chest's guide, so they do not appear on top of each other).
+ */
+export function afterGuides(fn: () => void): void {
+  if (!activeGuide && pendingGuides === 0) {
+    fn()
+    return
+  }
+  const onFinished = () => {
+    if (activeGuide || pendingGuides > 0) return
+    window.removeEventListener(GUIDE_FINISHED_EVENT, onFinished)
+    window.setTimeout(fn, 600)
+  }
+  window.addEventListener(GUIDE_FINISHED_EVENT, onFinished)
+}
+
+/**
+ * The first chest (Luis, 13 Oct): when its celebration closes, the guide explains the ICA Coins
+ * (what they are, where they are counted and what they buy, the flag included) and offers to show
+ * the shop. Only for the first chest of the account (one «cofre del ciclo» in its history), once
+ * per account and device. `?tour=cofre` shows it again.
+ */
+export function FirstChestGuide() {
+  const { user } = useAuth()
+  const location = useLocation()
+  const forced = wantsTourFromUrl(location.search, 'cofre')
+  const { entries } = useFichas(user?.id)
+  const [startRoute, setStartRoute] = useState<string | null>(null)
+  const chestCount = entries.filter((entry) => entry.type === 'cycle_chest').length
+  const firstChestRef = useRef(false)
+  firstChestRef.current = chestCount <= 1
+  const pathnameRef = useRef(location.pathname)
+  pathnameRef.current = location.pathname
+  const releaseRef = useRef<(() => void) | null>(null)
+  const route = startRoute ?? location.pathname
+
+  useEffect(() => {
+    const onClosed = () => {
+      if (!firstChestRef.current || !user?.id || readSeen(FIRST_CHEST_KEY, user.id)) return
+      // Hold the slot now, so the chat invitation waits for this guide.
+      releaseRef.current?.()
+      releaseRef.current = reserveGuideSlot()
+      // The coins fly to the counter first; then the guide.
+      window.setTimeout(() => setStartRoute(pathnameRef.current), 900)
+    }
+    window.addEventListener(CYCLE_CELEBRATION_CLOSED_EVENT, onClosed)
+    return () => window.removeEventListener(CYCLE_CELEBRATION_CLOSED_EVENT, onClosed)
+  }, [user?.id])
+
+  const steps = useMemo<TourStep[]>(
+    () => [
+      {
+        id: 'first-chest-coins',
+        route,
+        targets: ['[data-tour="wallet"]'],
+        waitMs: 2500,
+        title: t('¡Tus primeras ICA Coins!'),
+        body: t('Cada día que completas tu ciclo ICA, el cofre te da ICA Coins. Aquí arriba ves cuántas tienes. Con ellas compras ventajas en la tienda: ampliar tu día, un intento extra de PreguntICA, un desafío extra… e incluso la bandera de tu idioma, para que se vea en tu perfil y en el ranking.'),
+        ask: { yes: t('Ver la tienda'), no: t('Ahora no') },
+      },
+      {
+        id: 'first-chest-shop',
+        route: DASHBOARD_ROUTES.fichas,
+        targets: ['[data-tour="shop"]'],
+        waitMs: 2500,
+        onlyIf: { step: 'first-chest-coins', answer: true },
+        title: t('La tienda de ICA Coins'),
+        body: t('Aquí gastas tus ICA Coins. Toca una ventaja dos veces para comprarla: la primera te pide confirmar.'),
+      },
+    ],
+    [route],
+  )
+  return (
+    <GuideTour
+      guideKey={FIRST_CHEST_KEY}
+      steps={steps}
+      shouldStart={startRoute !== null || forced}
+      onStart={() => {
+        releaseRef.current?.()
+        releaseRef.current = null
+      }}
+      force={forced}
+      lastLabel={t('Entendido')}
+    />
+  )
+}
+
+/**
  * Profile guide (Luis, 7 Oct): the first time an icademer opens Profile, the same guide shows one
  * bubble after another: badges, notifications, the icademers chat and the class calendar. If the
  * person goes to ICADEMY classes it takes them to the calendar to turn on a class reminder.
@@ -310,6 +537,7 @@ function GuideTour({
   homeOnSkip = false,
   lastLabel,
   onLastStep,
+  onStart,
 }: {
   /** Where it is remembered as seen (per account and device). */
   guideKey: string
@@ -321,6 +549,8 @@ function GuideTour({
   homeOnSkip?: boolean
   lastLabel: string
   onLastStep?: () => void
+  /** When the guide appears on screen. */
+  onStart?: () => void
 }) {
   const { user } = useAuth()
   const location = useLocation()
@@ -332,6 +562,8 @@ function GuideTour({
   const [actionState, setActionState] = useState<'idle' | 'running' | 'done'>('idle')
   const targetsRef = useRef<HTMLElement[] | null>(null)
   const nextRef = useRef<HTMLButtonElement | null>(null)
+  const onStartRef = useRef(onStart)
+  onStartRef.current = onStart
 
   useEffect(() => {
     if (!user?.id || index !== null || !shouldStart) return
@@ -340,9 +572,21 @@ function GuideTour({
       if (activeGuide && activeGuide !== guideKey) return
       activeGuide = guideKey
       setIndex(0)
+      onStartRef.current?.()
     }, START_DELAY_MS)
     return () => window.clearTimeout(timer)
   }, [force, guideKey, index, shouldStart, user?.id])
+
+  // A guide that leaves the screen mid-way (its page closed) lets the others show again.
+  useEffect(
+    () => () => {
+      if (activeGuide === guideKey) {
+        activeGuide = null
+        window.dispatchEvent(new Event(GUIDE_FINISHED_EVENT))
+      }
+    },
+    [guideKey],
+  )
 
   // A step that depends on an answer stays in until the answer says otherwise (so the count is right).
   const visibleSteps = useMemo(
@@ -359,6 +603,7 @@ function GuideTour({
     (goHome: boolean) => {
       if (user?.id) writeSeen(guideKey, user.id)
       if (activeGuide === guideKey) activeGuide = null
+      window.dispatchEvent(new Event(GUIDE_FINISHED_EVENT))
       setIndex(null)
       setBox(null)
       targetsRef.current = null

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AwardIcon, BadgePercentIcon, CameraIcon, ChevronLeftIcon, ChevronRightIcon, ClipboardCheckIcon, EyeIcon, GiftIcon, GraduationCapIcon, HeadphonesIcon, InfoIcon, MicIcon, type LucideIcon } from "lucide-react";
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
+import { AwardIcon, BadgePercentIcon, XIcon, CameraIcon, ChevronLeftIcon, ChevronRightIcon, ClipboardCheckIcon, EyeIcon, GiftIcon, GraduationCapIcon, HeadphonesIcon, InfoIcon, MicIcon, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,12 +24,20 @@ import { LISTENING_METRICS_CHANGED_EVENT } from "../services/creationMetricsSync
 import { getIcaTestWindowStartDay } from "../services/icaTests";
 import { parseFeaturedBadge, useFeaturedBadge } from "../game/featuredBadge";
 import { useMyFlags } from "../game/languageFlag";
-import { MedalDefs } from "../game/Medal";
+import { Medal, MedalDefs } from "../game/Medal";
+import { ACHIEVEMENT_CATALOG, useAchievements } from "../game/achievements";
+import { DASHBOARD_ROUTES } from "../routes/paths";
 import { FichaIcon, FlameIcon, TargetGlyph, TrophyIcon } from "../game/icons";
 import { LeaderboardRow, MyRankCard, Podium, RankingFadeOut, rankingFadeOpacity } from "../game/ranking";
 import { IcademerProfileDialog, type IcademerSummary } from "../game/IcademerProfile";
 import { IconTile, RowGroup, tone, type Tone } from "../game/ui";
 import { t, tn, uiLocale } from '@/i18n'
+import { useDashboardContext } from "../context/DashboardContext";
+
+// «Retar a …» from the ranking (Luis, 13 Oct): only its window, loaded when it is needed.
+const IcaChallengesView = lazy(() =>
+  import("./IcaChallengesView").then((module) => ({ default: module.IcaChallengesView })),
+);
 
 const HISTORY_START_MONTH = "2026-05-01";
 const FOCUS_TOP_LIMIT = 30;
@@ -91,6 +100,8 @@ const LEADERBOARD_PRIZES: Record<LeaderboardPrizeRank, LeaderboardPrize> = {
   1: {
     borderClassName: "border-2 border-amber-400/80",
     rewards: [
+      // ICA Coins for the top 3 (Luis, 13 Oct): 30, 20 and 10.
+      { icon: <FichaIcon size={30} />, text: "30 ICA Coins" },
       { icon: <PrizeIcon icon={GraduationCapIcon} color="var(--ica-i)" />, text: "Clase 1 a 1 de 1 hora con Luis" },
       { icon: <PrizeIcon icon={GiftIcon} color="var(--ica-ok)" />, text: "1 mes gratis en ICADEMY" },
       { icon: <PrizeIcon icon={AwardIcon} color="var(--ica-gold-edge)" />, text: "Insignia oficial de ICAwards" },
@@ -100,6 +111,7 @@ const LEADERBOARD_PRIZES: Record<LeaderboardPrizeRank, LeaderboardPrize> = {
   2: {
     borderClassName: "border-2 border-slate-300/90",
     rewards: [
+      { icon: <FichaIcon size={30} />, text: "20 ICA Coins" },
       { icon: <PrizeIcon icon={GraduationCapIcon} color="var(--ica-i)" />, text: "Clase 1 a 1 de 30 minutos con Luis" },
       { icon: <PrizeIcon icon={BadgePercentIcon} color="var(--ica-ok)" />, text: "50% de reembolso en membresía mensual" },
       { icon: <TargetGlyph size={30} />, text: "1 ticket coaching privado con Luis" },
@@ -107,7 +119,7 @@ const LEADERBOARD_PRIZES: Record<LeaderboardPrizeRank, LeaderboardPrize> = {
   },
   3: {
     borderClassName: "border-2 border-amber-700/70",
-    rewards: [{ icon: <FichaIcon size={30} />, text: "3 ICA Coins para canjear" }],
+    rewards: [{ icon: <FichaIcon size={30} />, text: "10 ICA Coins" }],
   },
 };
 
@@ -562,6 +574,88 @@ function ScoreBreakdownContent({
   );
 }
 
+const FEATURED_PROMPT_KEY = "ica-featured-badge-prompt-closed";
+
+function readPromptClosed(userId: string): boolean {
+  try {
+    return window.localStorage.getItem(`${FEATURED_PROMPT_KEY}:${userId}`) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * «Destaca una insignia» (Luis, 13 Oct): on launch day only 6 icademers chose one. While you have
+ * badges but none next to your name, the ranking says so; a tap takes you to Insignias with your
+ * best one open. It goes away when you choose one, or for good with the X.
+ */
+function FeaturedBadgePrompt({ userId }: { userId: string }) {
+  const navigate = useNavigate();
+  const { badge, loaded } = useFeaturedBadge(userId);
+  const { byCategory, totalEarned, loading, coachingLocked } = useAchievements();
+  const [closed, setClosed] = useState(() => readPromptClosed(userId));
+  if (closed || !loaded || badge || loading || totalEarned === 0) return null;
+
+  // Your best badge, so you see what would go next to your name.
+  let best: { def: (typeof ACHIEVEMENT_CATALOG)[number]; level: (typeof ACHIEVEMENT_CATALOG)[number]["levels"][number] } | null = null;
+  let bestEarned = 0;
+  for (const def of ACHIEVEMENT_CATALOG) {
+    if (coachingLocked && def.key === "coaching") continue;
+    const earned = Math.min(byCategory[def.key].earned, def.levels.length);
+    if (earned > bestEarned) {
+      bestEarned = earned;
+      best = { def, level: def.levels[earned - 1] };
+    }
+  }
+
+  const close = () => {
+    setClosed(true);
+    try {
+      window.localStorage.setItem(`${FEATURED_PROMPT_KEY}:${userId}`, "1");
+    } catch {
+      // Without storage it only stays closed until the next visit.
+    }
+  };
+
+  return (
+    <div
+      className="mt-3 flex items-center gap-2 rounded-3xl border-2 py-2 pr-2 pl-3"
+      style={{ borderColor: "var(--ica-gold-edge)" }}
+    >
+      <button
+        type="button"
+        onClick={() => navigate(`${DASHBOARD_ROUTES.insignias}?destacar=1`)}
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+      >
+        {best ? (
+          <Medal
+            category={best.def.key}
+            tier={best.level.tier}
+            ribbon={best.level.ribbon}
+            label={t(best.def.title)}
+            earned
+            className="w-11 shrink-0"
+          />
+        ) : null}
+        <span className="min-w-0">
+          <span className="block text-sm font-extrabold">{t("Destaca una insignia")}</span>
+          <span className="block text-xs font-semibold text-muted-foreground">
+            {t("Te falta tu insignia destacada: sale junto a tu nombre en el ranking.")}
+          </span>
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={close}
+        className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+        aria-label={t("Cerrar")}
+      >
+        <XIcon className="size-4" strokeWidth={2.8} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
 /** La llama de la app con la forma de un icono de lucide (para la lista de puntos). */
 function FlameGlyph({ className }: { className?: string }) {
   return <FlameIcon size={20} className={className} />;
@@ -571,6 +665,8 @@ export function LeaderboardView() {
   const { user } = useAuth();
   const { badge: myBadge } = useFeaturedBadge(user?.id);
   const { shown: myFlag } = useMyFlags(user?.id);
+  const { config } = useDashboardContext();
+  const [challengeRivalId, setChallengeRivalId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const currentMonthStart = useMemo(() => toLocalMonthStart(new Date()), []);
   const monthOptions = useMemo(
@@ -871,6 +967,7 @@ const [tiebreakOpen, setTiebreakOpen] = useState(false);
           {t('¿Empate?')}
         </button>
       </div>
+      {isCurrentMonth && user?.id ? <FeaturedBadgePrompt userId={user.id} /> : null}
       <TiebreakDialog
         open={tiebreakOpen}
         onOpenChange={setTiebreakOpen}
@@ -941,7 +1038,21 @@ const [tiebreakOpen, setTiebreakOpen] = useState(false);
 
       {/* Perfil de un icademer (al tocar su inicial o su nombre) */}
       {profileSummary ? (
-        <IcademerProfileDialog summary={profileSummary} onClose={() => setProfileSummary(null)} />
+        <IcademerProfileDialog
+          summary={profileSummary}
+          onClose={() => setProfileSummary(null)}
+          onChallenge={config ? (userId) => setChallengeRivalId(userId) : undefined}
+        />
+      ) : null}
+      {challengeRivalId && config ? (
+        <Suspense fallback={null}>
+          <IcaChallengesView
+            targetLang={config.targetLang}
+            nativeLang={config.nativeLang}
+            embeddedRivalId={challengeRivalId}
+            onEmbeddedDone={() => setChallengeRivalId(null)}
+          />
+        </Suspense>
       ) : null}
 
       {/* Detalle de puntos (tuyo o de otra persona) */}

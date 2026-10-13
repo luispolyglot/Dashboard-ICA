@@ -9,6 +9,7 @@ import {
   CheckIcon,
   CornerDownLeftIcon,
   KeyboardIcon,
+  Loader2Icon,
   MicIcon,
   PlusIcon,
   RotateCcwIcon,
@@ -131,11 +132,17 @@ export function QuestionPrompt({
   nativeLang,
   targetLang,
   onReplayAudio,
+  preparingAudio = false,
+  revealedWord = null,
 }: {
   data: IcaChallengePublicQuestion
   nativeLang: string
   targetLang: string
   onReplayAudio?: () => void
+  /** Escucha: the voice is still being prepared (the options and the clock wait for it). */
+  preparingAudio?: boolean
+  /** Escucha, after answering: the word that was heard, written (Luis, 13 Oct). */
+  revealedWord?: string | null
 }) {
   if (data.kind === 'listen') {
     return (
@@ -143,13 +150,22 @@ export function QuestionPrompt({
         <button
           type='button'
           onClick={onReplayAudio}
-          className='mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-primary text-primary-foreground transition active:translate-y-1'
+          disabled={preparingAudio}
+          className='mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-primary text-primary-foreground transition active:translate-y-1 disabled:opacity-70'
           style={{ boxShadow: '0 5px 0 color-mix(in oklab, var(--primary) 70%, black)' }}
           aria-label={t('Escuchar otra vez')}
         >
-          <Volume2Icon className='h-9 w-9' />
+          {preparingAudio ? <Loader2Icon className='h-9 w-9 animate-spin' /> : <Volume2Icon className='h-9 w-9' />}
         </button>
-        <p className='mt-3 text-xs text-muted-foreground'>{t('Toca para escuchar otra vez')}</p>
+        {revealedWord ? (
+          <p className='ica-pop mt-3 font-display text-2xl font-extrabold tracking-tight' lang={LANG_CODES[targetLang] || undefined}>
+            {revealedWord}
+          </p>
+        ) : (
+          <p className='mt-3 text-xs text-muted-foreground'>
+            {preparingAudio ? t('Preparando la voz…') : t('Toca para escuchar otra vez')}
+          </p>
+        )}
       </PromptCard>
     )
   }
@@ -675,11 +691,14 @@ export function ReviewList({
   rivalFirstName,
   canAdd,
   onAdd,
+  renderMine,
 }: {
   items: IcaChallengeReviewItem[]
   rivalFirstName: string
   canAdd: (item: IcaChallengeReviewItem) => 'add' | 'owned' | 'hidden'
   onAdd: (item: IcaChallengeReviewItem) => void
+  /** Extra action for the words of your own Baúl (the ⚡ Potenciar button). */
+  renderMine?: (item: IcaChallengeReviewItem) => ReactNode
 }) {
   return (
     <ul className='divide-y-2 rounded-2xl border-2'>
@@ -728,6 +747,7 @@ export function ReviewList({
             {addState === 'owned' && (
               <span className='shrink-0 text-[11px] text-muted-foreground'>{t('En tu baúl')}</span>
             )}
+            {!item.fromRival && renderMine ? renderMine(item) : null}
           </li>
         )
       })}

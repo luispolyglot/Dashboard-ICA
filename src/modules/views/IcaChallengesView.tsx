@@ -72,6 +72,13 @@ import type {
 type IcaChallengesViewProps = {
   targetLang: string
   nativeLang: string
+  /**
+   * From another screen (the ranking, Luis 13 Oct): only the «Retar a …» window for this icademer
+   * is shown, on top of that screen, without going to Desafíos ICA. `onEmbeddedDone` runs when
+   * it closes (sent, cancelled or not possible).
+   */
+  embeddedRivalId?: string
+  onEmbeddedDone?: () => void
 }
 
 type TabKey = 'active' | 'pending' | 'history'
@@ -361,7 +368,8 @@ function renderAvatar(name: string, avatarUrl: string | null, seed: string) {
   )
 }
 
-export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewProps) {
+export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onEmbeddedDone }: IcaChallengesViewProps) {
+  const embedded = Boolean(embeddedRivalId)
   const navigate = useNavigate()
   const {
     enrollment,
@@ -406,6 +414,10 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
   // Global = cada uno con sus palabras · Por idioma = mezcla de baúles (mismo idioma y nivel parecido)
   const [challengeScope, setChallengeScope] = useState<IcaChallengeScope>('global')
   const [scopeTouched, setScopeTouched] = useState(false)
+  // Set at once (a state change would arrive one render late): «Retar a …» from the ranking chose
+  // the scope, and the automatic «Por idioma» below must not change it (Luis, 13 Oct: it switched
+  // to «Por idioma» with someone of another language and the server said «no está inscrito»).
+  const scopeTouchedRef = useRef(false)
 
   const [isChallengeModalOpen, setIsChallengeModalOpen] = useState(false)
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
@@ -516,7 +528,7 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
 
   // Si hay gente de tu idioma y nivel, se empieza en «Por idioma» (la primera vez).
   useEffect(() => {
-    if (scopeTouched) return
+    if (scopeTouched || scopeTouchedRef.current) return
     if (availableUsers.some((user) => user.samePair && user.mixedAllowed)) setChallengeScope('language')
   }, [availableUsers, scopeTouched])
 
@@ -582,27 +594,31 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
 
   // ?retar=<id>: llega desde el perfil de un icademer en el ranking. Se abre el reto con esa
   // persona (o se explica por qué ahora no se puede) y se quita el parámetro.
-  const retarParam = searchParams.get('retar')
+  const retarParam = embeddedRivalId ?? searchParams.get('retar')
   const retarHandledRef = useRef<string | null>(null)
   // useLayoutEffect: la ventana «Retar a …» se abre antes de pintar la página (sin parpadeo).
   useLayoutEffect(() => {
     if (!retarParam || isLoading || retarHandledRef.current === retarParam) return
     retarHandledRef.current = retarParam
-    setSearchParams(
-      (previous) => {
-        const next = new URLSearchParams(previous)
-        next.delete('retar')
-        return next
-      },
-      { replace: true },
-    )
+    if (!embedded) {
+      setSearchParams(
+        (previous) => {
+          const next = new URLSearchParams(previous)
+          next.delete('retar')
+          return next
+        },
+        { replace: true },
+      )
+    }
     const rival = availableUsers.find((item) => item.userId === retarParam)
     if (!isEnrolled) {
       toast.error(t('Activa Desafíos ICA para poder retar.'))
+      onEmbeddedDone?.()
       return
     }
     if (!rival) {
       toast.error(t('Ahora mismo no se puede desafiar a este icademer.'))
+      onEmbeddedDone?.()
       return
     }
     const onlyMyLimit =
@@ -612,9 +628,11 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
       (rival.blockedReason === 'Tu máximo de desafíos activos es 3.' || !rival.blockedReason)
     if (!rival.canChallenge && !onlyMyLimit) {
       toast.error(translateChallengeMessage(rival.blockedReason || t('Ahora mismo no se puede desafiar a este icademer.')))
+      onEmbeddedDone?.()
       return
     }
     // Con alguien de tu idioma y nivel se juega «Por idioma»; si no, «Global».
+    scopeTouchedRef.current = true
     setScopeTouched(true)
     setChallengeScope(rival.samePair && rival.mixedAllowed ? 'language' : 'global')
     if (onlyMyLimit) {
@@ -715,7 +733,8 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
       setSelectedTypeId(null)
       setSelectedTileId(null)
       toast.success(t('Reto enviado. Avisamos al competidor por notificación.'))
-      setTab('pending')
+      if (embedded) onEmbeddedDone?.()
+      else setTab('pending')
     } catch (createError) {
       // El servidor ya manda el motivo en castellano ("Nivel demasiado distinto", etc.).
       const message = createError instanceof Error ? translateChallengeMessage(createError.message) : t('No se pudo crear el desafío.')
@@ -761,6 +780,290 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
       </Badge>
     )
   }
+
+  // The windows (retar, desafío extra, cancelar). From the ranking only they are shown.
+  const dialogs = (
+    <>
+      <Dialog
+        open={isChallengeModalOpen}
+        onOpenChange={(open) => {
+          setIsChallengeModalOpen(open)
+          if (!open) {
+            setModalStep('type')
+            if (embedded) onEmbeddedDone?.()
+          }
+        }}
+      >
+        <DialogContent className='max-h-[88vh] max-w-[calc(100%-2rem)] overflow-y-auto sm:max-w-2xl'>
+          <DialogHeader>
+            <DialogTitle>
+              {selectedUser ? t('Retar a {name}', { name: selectedUser.displayName }) : t('Elegir desafío')}
+            </DialogTitle>
+            <DialogDescription className='flex flex-wrap items-center gap-1.5'>
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                  challengeScope === 'language'
+                    ? 'bg-primary/15 text-primary'
+                    : 'bg-muted text-foreground'
+                }`}
+              >
+                {challengeScope === 'language' ? t('Por idioma · mezcla de baúles ICA') : t('Global · cada uno con sus palabras')}
+              </span>
+              {challengeScope === 'language' && selectedUser?.level && (
+                <span className='text-xs'>
+                  {t('Tú')}: {myLevel || '—'} · {selectedUser.displayName.split(' ')[0]}: {selectedUser.level}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {modalStep === 'type' && (
+            <ModeTileGrid
+              types={challengeTypes}
+              scope={challengeScope}
+              onPick={(tile) => {
+                const available = availableTypesForTile(tile, challengeTypes, challengeScope)
+                if (available.length === 0) return
+                setSelectedTileId(tile.id)
+                setSelectedTypeId(available[0].id)
+                setModalStep('rules')
+              }}
+            />
+          )}
+
+          {modalStep === 'rules' && selectedType && (() => {
+            const tile =
+              CHALLENGE_MODE_TILES.find((item) => item.id === selectedTileId) ?? tileForTypeId(selectedType.id)
+            const TileIcon = tile?.icon ?? SparklesIcon
+            const isLightning = selectedType.format === 'lightning'
+            const isPairs = selectedType.kind === 'pairs'
+            const writingTypes = tile ? availableTypesForTile(tile, challengeTypes, challengeScope) : []
+            const wordType = challengeTypes.find((type) => type.id === 'ica-writing')
+            const countdownType = challengeTypes.find((type) => type.id === 'ica-lightning')
+            return (
+              <div className='space-y-4'>
+                <div className='flex items-center gap-3 rounded-3xl border-2 border-border bg-card p-3'>
+                  {tile ? (
+                    <ModeGlyphBadge tile={tile} size='sm' />
+                  ) : (
+                    <span className='flex size-11 shrink-0 items-center justify-center rounded-2xl bg-muted'>
+                      <TileIcon className='h-5 w-5' />
+                    </span>
+                  )}
+                  <div className='min-w-0'>
+                    <p className='font-display text-lg font-extrabold leading-tight'>{t(tile?.label ?? selectedType.name)}</p>
+                    <p className='text-sm text-muted-foreground'>{getModePitch(selectedType, nativeLang, targetLang)}</p>
+                  </div>
+                </div>
+
+                {tile?.id === 'escritura' && (
+                  <WritingVariantPicker
+                    value={selectedType.id}
+                    onChange={(typeId) => setSelectedTypeId(typeId)}
+                    wordTypeAvailable={writingTypes.some((type) => type.id === 'ica-writing')}
+                    countdownTypeAvailable={writingTypes.some((type) => type.id === 'ica-lightning')}
+                    secondsPerWord={(wordType && getChallengeTypeSeconds(wordType)) || 7}
+                    countdownSeconds={countdownType ? getChallengeTypeSessionSeconds(countdownType) : 60}
+                  />
+                )}
+
+                {/* Rondas: las dos únicas opciones */}
+                {!isLightning ? (
+                  <div className='space-y-1.5'>
+                    <p className='m-0 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground'>{t('Rondas')}</p>
+                    <div className='grid grid-cols-2 gap-2' role='radiogroup' aria-label={t('Rondas')}>
+                      {([1, 2] as const).map((value) => {
+                        const active = rounds === value
+                        return (
+                          <button
+                            key={value}
+                            type='button'
+                            role='radio'
+                            aria-checked={active}
+                            onClick={() => setRounds(value)}
+                            className={`flex flex-col items-center rounded-2xl border-2 px-2 py-2.5 text-center transition-colors ${
+                              active ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted/50'
+                            }`}
+                          >
+                            <span className='font-display text-base leading-tight font-extrabold'>
+                              {value === 1 ? t('1 ronda') : t('2 rondas')}
+                            </span>
+                            <span className='text-xs font-semibold text-muted-foreground'>
+                              {value === 1 ? t('de 10 palabras') : t('de 5 palabras')}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Lo que no se elige: los segundos y el día para jugar */}
+                <div className='grid grid-cols-2 gap-2'>
+                  <FixedRule
+                    icon={<TimerIcon className='size-5' strokeWidth={2.4} />}
+                    value={t('{n} s', {
+                      n: isLightning
+                        ? getChallengeTypeSessionSeconds(selectedType)
+                        : selectedType.id === 'ica-own-words'
+                          ? READING_SECONDS
+                          : (getChallengeTypeSeconds(selectedType) ?? '—'),
+                    })}
+                    label={isLightning ? t('en total') : isPairs ? t('por tablero') : t('por palabra')}
+                  />
+                  <FixedRule
+                    icon={<CalendarDaysIcon className='size-5' strokeWidth={2.4} />}
+                    value={tn(CHALLENGE_DAYS, '{n} día', '{n} días')}
+                    label={t('para jugar')}
+                  />
+                </div>
+
+                {selectedType.kind === 'write' && (
+                  // Importante para no perder puntos: va destacado.
+                  <p className='m-0 flex items-start gap-2 rounded-2xl border-2 border-rose-300 bg-rose-50 px-3 py-2.5 text-sm font-semibold text-rose-800 dark:border-rose-400/40 dark:bg-rose-500/10 dark:text-rose-200'>
+                    <KeyboardIcon className='mt-0.5 size-4 shrink-0' />
+                    <span>
+                      {t('Las tildes y letras especiales cuentan. Añade el teclado de {lang} en tu móvil para escribirlas rápido.', {
+                        lang: inLang(targetLang),
+                      })}
+                    </span>
+                  </p>
+                )}
+                {selectedType.kind === 'cloze' && (
+                  <p className='flex items-start gap-2 text-xs text-muted-foreground'>
+                    <TextCursorInputIcon className='mt-0.5 h-3.5 w-3.5 shrink-0' />
+                    {t('Sale una frase de ejemplo con un hueco y eliges la palabra que falta entre 4 opciones.')}
+                  </p>
+                )}
+
+                <div className='grid grid-cols-[auto_1fr] gap-2'>
+                  {/* Vuelve a los modos sin cerrar la ventana (sigues retando a la misma persona). */}
+                  <Button type='button' variant='outline' className='gap-1.5' onClick={() => setModalStep('type')}>
+                    <ArrowLeftRightIcon className='size-4' aria-hidden='true' />
+                    {t('Cambiar de modo')}
+                  </Button>
+                  <Button
+                    type='button'
+                    disabled={!selectedUser || isCreatingChallenge || !selectedType.isPlayable}
+                    onClick={() => void handleCreateChallenge()}
+                  >
+                    {isCreatingChallenge && <Loader2Icon className='mr-2 h-4 w-4 animate-spin' />}
+                    {t('Enviar reto')}
+                  </Button>
+                </div>
+              </div>
+            )
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={extraOfferUserId !== null || acceptOfferId !== null}
+        onOpenChange={(open) => {
+          if (open) return
+          setExtraOfferUserId(null)
+          setAcceptOfferId(null)
+          if (embedded) onEmbeddedDone?.()
+        }}
+      >
+        <DialogContent className='max-w-md'>
+          <DialogHeader>
+            <DialogTitle className='flex items-center gap-2'>
+              <SwordsIcon size={26} />
+              {t('Desafío extra')}
+            </DialogTitle>
+            <DialogDescription>
+              {acceptOfferId !== null
+                ? t('Ya tienes 3 desafíos en curso. Por {coins} puedes aceptar este como tu 4.º desafío.', {
+                    coins: coinsText(EXTRA_CHALLENGE_COST),
+                  })
+                : t('Ya tienes 3 desafíos en curso. Por {coins} puedes retar a una 4.ª persona.', {
+                    coins: coinsText(EXTRA_CHALLENGE_COST),
+                  })}{' '}
+              {t('Tienes {n} ICA Coins.', { n: coinBalance ?? 0 })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className='grid grid-cols-2 gap-2'>
+            <Button
+              type='button'
+              variant='outline'
+              className='h-11 rounded-2xl border-2 font-bold'
+              onClick={() => {
+                setExtraOfferUserId(null)
+                setAcceptOfferId(null)
+                if (embedded) onEmbeddedDone?.()
+              }}
+            >
+              {t('Ahora no')}
+            </Button>
+            <Button
+              type='button'
+              className='h-11 gap-1.5 rounded-2xl font-extrabold'
+              disabled={buyingExtraPass || (coinBalance ?? 0) < EXTRA_CHALLENGE_COST}
+              onClick={async () => {
+                if (buyingExtraPass) return
+                const userId = extraOfferUserId
+                const challengeToAccept = acceptOfferId
+                if (!userId && !challengeToAccept) return
+                setBuyingExtraPass(true)
+                try {
+                  if (!(await buyChallengeSlot(authUser?.id, coinBalance ?? 0))) throw new Error('PURCHASE_FAILED')
+                  await refreshCoins()
+                } catch {
+                  toast.error(t('Necesitas {coins}.', { coins: coinsText(EXTRA_CHALLENGE_COST) }))
+                  return
+                } finally {
+                  setBuyingExtraPass(false)
+                }
+                setExtraOfferUserId(null)
+                setAcceptOfferId(null)
+                if (challengeToAccept) void handleRespondInvitation(challengeToAccept, true, true)
+                else if (userId) startChallengeFlow(userId, true)
+              }}
+            >
+              <FichaIcon size={18} />
+              {t('Usar {n}', { n: EXTRA_CHALLENGE_COST })}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isCancelModalOpen}
+        onOpenChange={(open) => {
+          setIsCancelModalOpen(open)
+          if (!open) setPendingChallengeToCancel(null)
+        }}
+      >
+        <DialogContent className='max-w-md'>
+          <DialogHeader>
+            <DialogTitle>{t('¿Cancelar este reto?')}</DialogTitle>
+            <DialogDescription>
+              {t('Se quitará de pendientes y tu rival ya no podrá aceptarlo.')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className='flex gap-2'>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => {
+                setIsCancelModalOpen(false)
+                setPendingChallengeToCancel(null)
+              }}
+            >
+              {t('Volver')}
+            </Button>
+            <Button type='button' disabled={isCancelling} onClick={() => void confirmCancelInvitation()}>
+              {t('Sí, cancelar')}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+    </>
+  )
+
+  if (embedded) return dialogs
 
   return (
     isLoading ? (
@@ -1258,278 +1561,7 @@ export function IcaChallengesView({ targetLang, nativeLang }: IcaChallengesViewP
           ) : null}
       </div>
 
-      <Dialog
-        open={isChallengeModalOpen}
-        onOpenChange={(open) => {
-          setIsChallengeModalOpen(open)
-          if (!open) {
-            setModalStep('type')
-          }
-        }}
-      >
-        <DialogContent className='max-h-[88vh] max-w-[calc(100%-2rem)] overflow-y-auto sm:max-w-2xl'>
-          <DialogHeader>
-            <DialogTitle>
-              {selectedUser ? t('Retar a {name}', { name: selectedUser.displayName }) : t('Elegir desafío')}
-            </DialogTitle>
-            <DialogDescription className='flex flex-wrap items-center gap-1.5'>
-              <span
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                  challengeScope === 'language'
-                    ? 'bg-primary/15 text-primary'
-                    : 'bg-muted text-foreground'
-                }`}
-              >
-                {challengeScope === 'language' ? t('Por idioma · mezcla de baúles ICA') : t('Global · cada uno con sus palabras')}
-              </span>
-              {challengeScope === 'language' && selectedUser?.level && (
-                <span className='text-xs'>
-                  {t('Tú')}: {myLevel || '—'} · {selectedUser.displayName.split(' ')[0]}: {selectedUser.level}
-                </span>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-
-          {modalStep === 'type' && (
-            <ModeTileGrid
-              types={challengeTypes}
-              scope={challengeScope}
-              onPick={(tile) => {
-                const available = availableTypesForTile(tile, challengeTypes, challengeScope)
-                if (available.length === 0) return
-                setSelectedTileId(tile.id)
-                setSelectedTypeId(available[0].id)
-                setModalStep('rules')
-              }}
-            />
-          )}
-
-          {modalStep === 'rules' && selectedType && (() => {
-            const tile =
-              CHALLENGE_MODE_TILES.find((item) => item.id === selectedTileId) ?? tileForTypeId(selectedType.id)
-            const TileIcon = tile?.icon ?? SparklesIcon
-            const isLightning = selectedType.format === 'lightning'
-            const isPairs = selectedType.kind === 'pairs'
-            const writingTypes = tile ? availableTypesForTile(tile, challengeTypes, challengeScope) : []
-            const wordType = challengeTypes.find((type) => type.id === 'ica-writing')
-            const countdownType = challengeTypes.find((type) => type.id === 'ica-lightning')
-            return (
-              <div className='space-y-4'>
-                <div className='flex items-center gap-3 rounded-3xl border-2 border-border bg-card p-3'>
-                  {tile ? (
-                    <ModeGlyphBadge tile={tile} size='sm' />
-                  ) : (
-                    <span className='flex size-11 shrink-0 items-center justify-center rounded-2xl bg-muted'>
-                      <TileIcon className='h-5 w-5' />
-                    </span>
-                  )}
-                  <div className='min-w-0'>
-                    <p className='font-display text-lg font-extrabold leading-tight'>{t(tile?.label ?? selectedType.name)}</p>
-                    <p className='text-sm text-muted-foreground'>{getModePitch(selectedType, nativeLang, targetLang)}</p>
-                  </div>
-                </div>
-
-                {tile?.id === 'escritura' && (
-                  <WritingVariantPicker
-                    value={selectedType.id}
-                    onChange={(typeId) => setSelectedTypeId(typeId)}
-                    wordTypeAvailable={writingTypes.some((type) => type.id === 'ica-writing')}
-                    countdownTypeAvailable={writingTypes.some((type) => type.id === 'ica-lightning')}
-                    secondsPerWord={(wordType && getChallengeTypeSeconds(wordType)) || 7}
-                    countdownSeconds={countdownType ? getChallengeTypeSessionSeconds(countdownType) : 60}
-                  />
-                )}
-
-                {/* Rondas: las dos únicas opciones */}
-                {!isLightning ? (
-                  <div className='space-y-1.5'>
-                    <p className='m-0 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground'>{t('Rondas')}</p>
-                    <div className='grid grid-cols-2 gap-2' role='radiogroup' aria-label={t('Rondas')}>
-                      {([1, 2] as const).map((value) => {
-                        const active = rounds === value
-                        return (
-                          <button
-                            key={value}
-                            type='button'
-                            role='radio'
-                            aria-checked={active}
-                            onClick={() => setRounds(value)}
-                            className={`flex flex-col items-center rounded-2xl border-2 px-2 py-2.5 text-center transition-colors ${
-                              active ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted/50'
-                            }`}
-                          >
-                            <span className='font-display text-base leading-tight font-extrabold'>
-                              {value === 1 ? t('1 ronda') : t('2 rondas')}
-                            </span>
-                            <span className='text-xs font-semibold text-muted-foreground'>
-                              {value === 1 ? t('de 10 palabras') : t('de 5 palabras')}
-                            </span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-
-                {/* Lo que no se elige: los segundos y el día para jugar */}
-                <div className='grid grid-cols-2 gap-2'>
-                  <FixedRule
-                    icon={<TimerIcon className='size-5' strokeWidth={2.4} />}
-                    value={t('{n} s', {
-                      n: isLightning
-                        ? getChallengeTypeSessionSeconds(selectedType)
-                        : selectedType.id === 'ica-own-words'
-                          ? READING_SECONDS
-                          : (getChallengeTypeSeconds(selectedType) ?? '—'),
-                    })}
-                    label={isLightning ? t('en total') : isPairs ? t('por tablero') : t('por palabra')}
-                  />
-                  <FixedRule
-                    icon={<CalendarDaysIcon className='size-5' strokeWidth={2.4} />}
-                    value={tn(CHALLENGE_DAYS, '{n} día', '{n} días')}
-                    label={t('para jugar')}
-                  />
-                </div>
-
-                {selectedType.kind === 'write' && (
-                  // Importante para no perder puntos: va destacado.
-                  <p className='m-0 flex items-start gap-2 rounded-2xl border-2 border-rose-300 bg-rose-50 px-3 py-2.5 text-sm font-semibold text-rose-800 dark:border-rose-400/40 dark:bg-rose-500/10 dark:text-rose-200'>
-                    <KeyboardIcon className='mt-0.5 size-4 shrink-0' />
-                    <span>
-                      {t('Las tildes y letras especiales cuentan. Añade el teclado de {lang} en tu móvil para escribirlas rápido.', {
-                        lang: inLang(targetLang),
-                      })}
-                    </span>
-                  </p>
-                )}
-                {selectedType.kind === 'cloze' && (
-                  <p className='flex items-start gap-2 text-xs text-muted-foreground'>
-                    <TextCursorInputIcon className='mt-0.5 h-3.5 w-3.5 shrink-0' />
-                    {t('Sale una frase de ejemplo con un hueco y eliges la palabra que falta entre 4 opciones.')}
-                  </p>
-                )}
-
-                <div className='grid grid-cols-[auto_1fr] gap-2'>
-                  {/* Vuelve a los modos sin cerrar la ventana (sigues retando a la misma persona). */}
-                  <Button type='button' variant='outline' className='gap-1.5' onClick={() => setModalStep('type')}>
-                    <ArrowLeftRightIcon className='size-4' aria-hidden='true' />
-                    {t('Cambiar de modo')}
-                  </Button>
-                  <Button
-                    type='button'
-                    disabled={!selectedUser || isCreatingChallenge || !selectedType.isPlayable}
-                    onClick={() => void handleCreateChallenge()}
-                  >
-                    {isCreatingChallenge && <Loader2Icon className='mr-2 h-4 w-4 animate-spin' />}
-                    {t('Enviar reto')}
-                  </Button>
-                </div>
-              </div>
-            )
-          })()}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={extraOfferUserId !== null || acceptOfferId !== null}
-        onOpenChange={(open) => {
-          if (open) return
-          setExtraOfferUserId(null)
-          setAcceptOfferId(null)
-        }}
-      >
-        <DialogContent className='max-w-md'>
-          <DialogHeader>
-            <DialogTitle className='flex items-center gap-2'>
-              <SwordsIcon size={26} />
-              {t('Desafío extra')}
-            </DialogTitle>
-            <DialogDescription>
-              {acceptOfferId !== null
-                ? t('Ya tienes 3 desafíos en curso. Por {coins} puedes aceptar este como tu 4.º desafío.', {
-                    coins: coinsText(EXTRA_CHALLENGE_COST),
-                  })
-                : t('Ya tienes 3 desafíos en curso. Por {coins} puedes retar a una 4.ª persona.', {
-                    coins: coinsText(EXTRA_CHALLENGE_COST),
-                  })}{' '}
-              {t('Tienes {n} ICA Coins.', { n: coinBalance ?? 0 })}
-            </DialogDescription>
-          </DialogHeader>
-          <div className='grid grid-cols-2 gap-2'>
-            <Button
-              type='button'
-              variant='outline'
-              className='h-11 rounded-2xl border-2 font-bold'
-              onClick={() => {
-                setExtraOfferUserId(null)
-                setAcceptOfferId(null)
-              }}
-            >
-              {t('Ahora no')}
-            </Button>
-            <Button
-              type='button'
-              className='h-11 gap-1.5 rounded-2xl font-extrabold'
-              disabled={buyingExtraPass || (coinBalance ?? 0) < EXTRA_CHALLENGE_COST}
-              onClick={async () => {
-                if (buyingExtraPass) return
-                const userId = extraOfferUserId
-                const challengeToAccept = acceptOfferId
-                if (!userId && !challengeToAccept) return
-                setBuyingExtraPass(true)
-                try {
-                  if (!(await buyChallengeSlot(authUser?.id, coinBalance ?? 0))) throw new Error('PURCHASE_FAILED')
-                  await refreshCoins()
-                } catch {
-                  toast.error(t('Necesitas {coins}.', { coins: coinsText(EXTRA_CHALLENGE_COST) }))
-                  return
-                } finally {
-                  setBuyingExtraPass(false)
-                }
-                setExtraOfferUserId(null)
-                setAcceptOfferId(null)
-                if (challengeToAccept) void handleRespondInvitation(challengeToAccept, true, true)
-                else if (userId) startChallengeFlow(userId, true)
-              }}
-            >
-              <FichaIcon size={18} />
-              {t('Usar {n}', { n: EXTRA_CHALLENGE_COST })}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={isCancelModalOpen}
-        onOpenChange={(open) => {
-          setIsCancelModalOpen(open)
-          if (!open) setPendingChallengeToCancel(null)
-        }}
-      >
-        <DialogContent className='max-w-md'>
-          <DialogHeader>
-            <DialogTitle>{t('¿Cancelar este reto?')}</DialogTitle>
-            <DialogDescription>
-              {t('Se quitará de pendientes y tu rival ya no podrá aceptarlo.')}
-            </DialogDescription>
-          </DialogHeader>
-          <div className='flex gap-2'>
-            <Button
-              type='button'
-              variant='outline'
-              onClick={() => {
-                setIsCancelModalOpen(false)
-                setPendingChallengeToCancel(null)
-              }}
-            >
-              {t('Volver')}
-            </Button>
-            <Button type='button' disabled={isCancelling} onClick={() => void confirmCancelInvitation()}>
-              {t('Sí, cancelar')}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {dialogs}
 
       {error && <p className='mt-3 text-sm text-destructive'>{error}</p>}
     </section>

@@ -7,7 +7,8 @@ import webpush from 'npm:web-push@3.6.7'
 //    (push_sent_at: cada mensaje avisa una sola vez);
 //  - avisa a los miembros del chat con las notificaciones activadas que no lo han leído y a los
 //    que no se avisó en los últimos 10 minutos (si hay mucha conversación, un solo aviso);
-//  - la hora de «¿A las…?» llega en la hora local de cada uno (profiles.timezone).
+//  - la hora de «¿A las…?» y el día y la hora de «Proponer día y hora» llegan en la hora local de
+//    cada uno (profiles.timezone).
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -27,6 +28,8 @@ const MESSAGE_TEXT: Record<string, string> = {
   nos_vemos: '¡Nos vemos allí!',
   no_puedo: 'Hoy no puedo',
   animo: '¡Ánimo con la racha ICA!',
+  manana: 'Mañana',
+  propuesta: 'Propone quedar en el Club de DinámICA el {day} a las {time}. ¿Te apuntas?',
 }
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -68,6 +71,33 @@ function convertTime(time: string, fromZone: string | null, toZone: string | nul
   const [hours, minutes] = time.split(':').map(Number)
   const local = (((hours * 60 + minutes - offsetMinutes(fromZone, at) + offsetMinutes(toZone, at)) % 1440) + 1440) % 1440
   return `${String(Math.floor(local / 60)).padStart(2, '0')}:${String(local % 60).padStart(2, '0')}`
+}
+
+/**
+ * «Proponer día y hora» (Luis, 13 Oct): the day and time of the sender's zone in the
+ * recipient's zone, as «jueves 16 de octubre» and «19:30».
+ */
+function convertProposal(
+  day: string,
+  time: string,
+  fromZone: string | null,
+  toZone: string | null,
+): { day: string; time: string } {
+  // Without the sender's zone nothing can be converted: the day and time as they were written.
+  if (!fromZone) {
+    const [y, m, d] = day.split('-').map(Number)
+    const asWritten = new Intl.DateTimeFormat('es-ES', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' })
+      .format(new Date(Date.UTC(y, m - 1, d, 12)))
+    return { day: asWritten, time }
+  }
+  const [year, month, date] = day.split('-').map(Number)
+  const [hours, minutes] = time.split(':').map(Number)
+  const guess = new Date(Date.UTC(year, month - 1, date, hours, minutes))
+  const at = fromZone ? new Date(guess.getTime() - offsetMinutes(fromZone, guess) * 60000) : guess
+  const zone = toZone || fromZone || 'UTC'
+  const dayText = new Intl.DateTimeFormat('es-ES', { timeZone: zone, weekday: 'long', day: 'numeric', month: 'long' }).format(at)
+  const timeText = new Intl.DateTimeFormat('es-ES', { timeZone: zone, hour: '2-digit', minute: '2-digit', hour12: false }).format(at)
+  return { day: dayText, time: timeText }
 }
 
 function shortName(displayName: string | null | undefined): string {
@@ -116,7 +146,7 @@ Deno.serve(async (req) => {
     .eq('user_id', user.id)
     .is('push_sent_at', null)
     .gte('created_at', new Date(now.getTime() - RECENT_MS).toISOString())
-    .select('id, target_lang, user_id, kind, time_value, time_zone, created_at')
+    .select('id, target_lang, user_id, kind, time_value, time_zone, day_value, created_at')
     .maybeSingle()
   if (messageError) return jsonResponse(500, { error: messageError.message })
   if (!message) return jsonResponse(200, { ok: true, sent: 0, reason: 'Nothing to notify' })
@@ -160,8 +190,18 @@ Deno.serve(async (req) => {
 
   for (const subscription of subscriptionsResult.data || []) {
     const recipientId = subscription.user_id as string
-    const text =
-      message.kind === 'hora' && message.time_value
+    const proposal =
+      message.kind === 'propuesta' && message.time_value && message.day_value
+        ? convertProposal(
+            String(message.day_value),
+            String(message.time_value),
+            validZone(message.time_zone),
+            zoneByUser.get(recipientId) ?? null,
+          )
+        : null
+    const text = proposal
+      ? template.replace('{day}', proposal.day).replace('{time}', proposal.time)
+      : message.kind === 'hora' && message.time_value
         ? template.replace(
             '{time}',
             convertTime(String(message.time_value), validZone(message.time_zone), zoneByUser.get(recipientId) ?? null, createdAt),

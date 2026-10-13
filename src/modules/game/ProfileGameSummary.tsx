@@ -76,11 +76,19 @@ export function LevelAvatar({ size = 64 }: { size?: number }) {
           className='absolute left-1/2 -translate-x-1/2 rounded-full border-2 border-background px-2 text-[11px] leading-5 font-extrabold text-white'
           style={{ bottom: 0, background: levelColor }}
         >
-          {snapshot.currentLevelKey}
+          {shortLevelLabel(snapshot.currentLevelKey)}
         </span>
       ) : null}
     </span>
   )
+}
+
+/**
+ * The level under the initial: «Pre-A1» did not fit and looked bad there (Luis, 13 Oct), so it
+ * shows as «A0», the usual short name for the level before A1. Everywhere else it stays «Pre-A1».
+ */
+export function shortLevelLabel(level: string): string {
+  return level === 'Pre-A1' ? 'A0' : level
 }
 
 /**

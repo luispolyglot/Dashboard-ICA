@@ -36,7 +36,7 @@ vi.mock('@/modules/components/LangEditModal', () => ({ LangEditModal: () => null
 vi.mock('@/modules/components/MobileBottomNav', () => ({ MobileBottomNav: () => null }))
 vi.mock('@/modules/components/DesktopSidebar', () => ({ DesktopSidebar: () => null }))
 vi.mock('@/modules/game/monthlyRecap', () => ({ MonthlyRecapHost: () => null }))
-vi.mock('@/modules/game/CycleCelebration', () => ({ CycleCelebration: () => null }))
+vi.mock('@/modules/game/CycleCelebration', () => ({ CycleCelebration: () => null, CYCLE_CELEBRATION_CLOSED_EVENT: 'ica:cycle-celebration-closed' }))
 vi.mock('@/modules/game/StreakExtras', () => ({ StreakRewardsWatcher: () => null }))
 vi.mock('@/modules/views/LanguageSetup', () => ({ LanguageSetup: () => null }))
 vi.mock('@/components/ui/fullscreen-loading', () => ({ FullscreenLoading: () => null }))

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Dispatch, ReactNode, SetStateAction } from 'react'
+import type { ComponentProps, Dispatch, ReactNode, SetStateAction } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Accordion as AccordionPrimitive } from 'radix-ui'
@@ -13,6 +13,7 @@ import {
   type PregunticaHistoryWeek,
 } from '../services/preguntica'
 import { AddIcaSuggestionModal } from '../components/AddIcaSuggestionModal'
+import { useLexicardBoost } from '../hooks/useLexicardBoost'
 import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { FichaIcon, MicGlyph, TrophyIcon } from '../game/icons'
@@ -277,6 +278,7 @@ function AttemptContent({
   questionTranslation,
   onSuggestionClick,
   isSuggestionAdded,
+  boost,
   onExtractWordClick,
   isExtractWordAdded,
 }: {
@@ -285,6 +287,7 @@ function AttemptContent({
   questionTranslation: string | null
   onSuggestionClick: (suggestion: PregunticaWordSuggestion) => void
   isSuggestionAdded: (word: string) => boolean
+  boost: ComponentProps<typeof SuggestionChips>['boost']
   onExtractWordClick: (text: string) => void
   isExtractWordAdded: (word: string) => boolean
 }) {
@@ -422,7 +425,7 @@ function AttemptContent({
                 <p className='m-0 mb-1.5 text-xs font-bold text-muted-foreground'>
                   {t('Actualización {n}', { n: batch.refreshIndex })} · {formatDate(batch.createdAt)}
                 </p>
-                <SuggestionChips suggestions={batch.words} isAdded={isSuggestionAdded} onPick={onSuggestionClick} />
+                <SuggestionChips suggestions={batch.words} isAdded={isSuggestionAdded} onPick={onSuggestionClick} boost={boost} />
               </div>
             ))}
           </div>
@@ -438,6 +441,8 @@ export function PregunticaHistoryView({
   setCards,
   onWordAdded,
 }: PregunticaHistoryViewProps) {
+  // Potenciar (Luis, 12 Oct): suggested words that are already in the Baúl ICA can be boosted.
+  const wordBoost = useLexicardBoost({ cards, setCards, config, source: 'preguntica' })
   const [weeks, setWeeks] = useState<PregunticaHistoryWeek[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -624,6 +629,7 @@ export function PregunticaHistoryView({
                               questionTranslation={card.questionTranslation}
                               onSuggestionClick={handleOpenSuggestionModal}
                               isSuggestionAdded={isSuggestionAdded}
+                              boost={{ stateOf: wordBoost.stateOf, isBusy: wordBoost.isBusy, onBoost: (word) => void wordBoost.boost(word) }}
                               onExtractWordClick={handleOpenExtractWordsModal}
                               isExtractWordAdded={isExtractWordAdded}
                             />

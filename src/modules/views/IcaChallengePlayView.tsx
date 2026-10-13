@@ -36,6 +36,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { langName, t, tn, uiLocale } from '@/i18n'
 import { AddIcaSuggestionModal } from '../components/AddIcaSuggestionModal'
+import { BoostButton } from '../components/BoostButton'
+import { useLexicardBoost } from '../hooks/useLexicardBoost'
 import {
   FeedbackCard,
   OptionsGrid,
@@ -63,6 +65,7 @@ import {
   warmUpMicrophone,
 } from '../components/NotaDesafiante/challengeEngine'
 import { DASHBOARD_ROUTES } from '../routes/paths'
+import { prefetchSpeech } from '../services/tts'
 import { refreshIcaChallengeAlerts } from '../hooks/useIcaChallengeAlerts'
 import { FichaIcon, TrophyIcon } from '../game/icons'
 import { holdCoinsDisplay, loadIcaCoinsState, releaseCoinsDisplay, toWholeFichas } from '../game/fichas'
@@ -92,6 +95,15 @@ import type {
   IcaChallengeStep,
   Lexicard,
 } from '../types'
+
+/** Escucha: the longest the voice is waited for before the options and the clock start. */
+const AUDIO_PREPARE_MAX_MS = 3000
+/**
+ * The server starts a question's clock when it sends it and accepts answers up to its limit plus
+ * 4.3 s (feedback + network margin, engine.ts). The feedback of the previous word and the wait for
+ * the voice both come out of that margin, so together they stay under this (with room to spare).
+ */
+const SERVER_SLACK_MS = 3500
 
 type IcaChallengePlayViewProps = {
   challengeId: string
@@ -239,6 +251,12 @@ export function IcaChallengePlayView({
   const [question, setQuestion] = useState<IcaChallengeServedQuestion | null>(null)
   const [questionEndsAt, setQuestionEndsAt] = useState<number | null>(null)
   const [questionShownAt, setQuestionShownAt] = useState(0)
+  // Escucha (Luis, 13 Oct): the voice took 2–3 of the 7 seconds to start. Now the audio is
+  // prepared first and the options, the clock and the voice start together.
+  const [preparingAudio, setPreparingAudio] = useState(false)
+  const audioTokenRef = useRef(0)
+  // When the server sent the question now on its way (its clock started then).
+  const questionArrivedAtRef = useRef(0)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [progress, setProgress] = useState<IcaChallengeProgress | null>(null)
   const [sessionEndsAt, setSessionEndsAt] = useState<number | null>(null)
@@ -362,17 +380,48 @@ export function IcaChallengePlayView({
   }, [challengeId, loadReview])
 
   const showQuestion = useCallback((next: IcaChallengeServedQuestion) => {
-    const now = Date.now()
+    const startClock = () => {
+      const now = Date.now()
+      setQuestionShownAt(now)
+      setQuestionEndsAt(next.limitMs === null ? null : now + next.limitMs)
+    }
     pairMatchesRef.current = []
     setQuestion(next)
     setFeedback(null)
     setMicMessage(null)
-    setQuestionShownAt(now)
-    setQuestionEndsAt(next.limitMs === null ? null : now + next.limitMs)
     setPhase('question')
+    const token = (audioTokenRef.current += 1)
     if (next.data.kind === 'listen') {
-      void speakAsync(next.data.audioText, next.language.target)
+      stopSpeaking()
+      const audioText = next.data.audioText
+      const lang = next.language.target
+      const go = () => {
+        if (!mountedRef.current || audioTokenRef.current !== token) return
+        setPreparingAudio(false)
+        startClock()
+        void speakAsync(audioText, lang)
+      }
+      // The clock does not run while the voice is prepared, but never wait more than
+      // AUDIO_PREPARE_MAX_MS, and never past the server's margin (SERVER_SLACK_MS).
+      const arrivedAt = questionArrivedAtRef.current || Date.now()
+      const waitBudget = Math.min(AUDIO_PREPARE_MAX_MS, Math.max(0, SERVER_SLACK_MS - (Date.now() - arrivedAt)))
+      questionArrivedAtRef.current = 0
+      if (next.limitMs === null || waitBudget === 0) {
+        // Modo Relámpago (one clock for the whole game) or no margin left: no waiting.
+        setPreparingAudio(false)
+        startClock()
+        void speakAsync(audioText, lang)
+        return
+      }
+      setPreparingAudio(true)
+      setQuestionEndsAt(null)
+      void Promise.race([
+        prefetchSpeech(audioText, lang),
+        new Promise((resolve) => window.setTimeout(resolve, waitBudget)),
+      ]).then(go)
     } else {
+      setPreparingAudio(false)
+      startClock()
       // A voice still saying the previous answer stops here.
       stopSpeaking()
     }
@@ -423,6 +472,7 @@ export function IcaChallengePlayView({
       }
       const step = await requestIcaChallengeQuestion(challengeId)
       if (!mountedRef.current) return
+      questionArrivedAtRef.current = Date.now()
       applyStep(step)
     } catch (error) {
       toast.error(error instanceof Error ? translateChallengeMessage(error.message) : t('No pudimos empezar.'))
@@ -447,6 +497,12 @@ export function IcaChallengePlayView({
           timedOut: options?.timedOut,
         })
         if (!mountedRef.current) return
+        // The next question's clock already runs on the server: its voice starts loading now,
+        // while this answer's feedback is shown.
+        questionArrivedAtRef.current = Date.now()
+        if (step.question?.data.kind === 'listen') {
+          void prefetchSpeech(step.question.data.audioText, step.question.language.target)
+        }
 
         if (isLightning) {
           if (step.result) {
@@ -666,6 +722,10 @@ export function IcaChallengePlayView({
     }
     return set
   }, [cards, config.nativeLang, config.targetLang])
+
+  // Potenciar (Luis, 12 Oct): your own words of the challenge can be boosted from the results.
+  // Max 3 a day, together with Inmersión and PreguntICA (the server counts).
+  const wordBoost = useLexicardBoost({ cards, setCards, config, source: 'challenge' })
 
   const reviewItems = useMemo(() => {
     if (!review) return []
@@ -1135,7 +1195,9 @@ export function IcaChallengePlayView({
           </div>
         </div>
 
-        {completed ? (
+        {/* Luis, 12 Oct: as soon as your rounds are over (also while the rival still plays), you can
+            look at the words and send «¡Bien jugado!», «¡Revancha!»… */}
+        {completed || challenge.status === 'in_progress' ? (
           <ReactionPanel
             challengeId={challenge.id}
             rivalName={firstName(names.rival)}
@@ -1161,6 +1223,13 @@ export function IcaChallengePlayView({
               rivalFirstName={firstName(names.rival)}
               canAdd={canAdd}
               onAdd={(item) => setWordToAdd(item)}
+              renderMine={(item) => (
+                <BoostButton
+                  state={wordBoost.stateOf(item.target)}
+                  busy={wordBoost.busyId === wordBoost.findCard(item.target)?.id}
+                  onBoost={() => void wordBoost.boost(item.target)}
+                />
+              )}
             />
           </div>
         )}
@@ -1247,8 +1316,10 @@ export function IcaChallengePlayView({
           data={data}
           nativeLang={nativeLang}
           targetLang={targetLang}
+          preparingAudio={data.kind === 'listen' && preparingAudio}
+          revealedWord={data.kind === 'listen' && phase === 'feedback' ? feedback?.reveal.target ?? null : null}
           onReplayAudio={() => {
-            if (data.kind === 'listen') void speakAsync(data.audioText, targetLang)
+            if (data.kind === 'listen' && !preparingAudio) void speakAsync(data.audioText, targetLang)
           }}
         />
 
@@ -1285,7 +1356,7 @@ export function IcaChallengePlayView({
           />
         )}
 
-        {isOptionKind && (
+        {isOptionKind && !(data.kind === 'listen' && preparingAudio) && (
           <>
             <OptionsGrid
               options={data.options}

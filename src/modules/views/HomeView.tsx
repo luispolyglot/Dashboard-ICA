@@ -4,7 +4,7 @@ import useBreakpoints from '@/modules/hooks/useBreakpoints'
 import { useAuth } from '@/auth/AuthContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { ChallengeAlertPill, ChallengeNotePill } from '../components/IcaChallenges/ChallengeAlertBadge'
-import { describeIcaChallengeAlerts, useIcaChallengeAlerts } from '../hooks/useIcaChallengeAlerts'
+import { challengesRouteForAlerts, describeIcaChallengeAlerts, useIcaChallengeAlerts } from '../hooks/useIcaChallengeAlerts'
 import {
   CoachingHomeCard,
   expectsHomeCoaching,
@@ -101,14 +101,40 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
     />
   )
 
+  // Each game, and where its icon goes (on the computer every icon opens its game; Luis, 13 Oct).
+  const gameItems = [
+    { key: 'flashcards', icon: <CardsIcon size={isLg ? 36 : 26} />, label: 'Flashcards', color: 'var(--primary)', to: DASHBOARD_ROUTES.flashcards },
+    { key: 'challenges', icon: <SwordsIcon size={isLg ? 38 : 28} />, label: t('Desafíos'), color: 'var(--ica-a)', to: challengesRouteForAlerts(challengeAlerts) },
+    { key: 'preguntica', icon: <MicGlyph size={isLg ? 36 : 26} />, label: 'PreguntICA', color: 'var(--ica-c)', to: DASHBOARD_ROUTES.preguntica },
+    {
+      key: 'nota',
+      icon: <TargetGlyph size={isLg ? 36 : 26} />,
+      label: isLg ? 'Nota desafiante' : 'Nota desaf.',
+      color: 'var(--ica-gold-edge)',
+      // One new challenge waiting: straight to that note (as in Juegos ICA).
+      to:
+        pendingChallengeNotes.length === 1
+          ? `${DASHBOARD_ROUTES.notaDesafiante}/${pendingChallengeNotes[0].id}`
+          : DASHBOARD_ROUTES.notaDesafiante,
+    },
+  ]
+  const gamesClickable = isLg && cardCount > 0
+
+  // The card goes to Juegos ICA. On the computer its four icons are buttons of their own on top of it.
   const gamesCard = (
-    <button
-      type='button'
-      onClick={() => navigate(DASHBOARD_ROUTES.gamesIca)}
-      disabled={cardCount === 0}
-      className='relative flex w-full flex-col gap-3 rounded-3xl border-2 border-border p-4 text-left transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-70'
+    <div
+      className={`relative flex w-full flex-col gap-3 rounded-3xl border-2 border-border p-4 text-left transition-colors ${
+        cardCount === 0 ? 'opacity-70' : 'hover:bg-muted/50'
+      }`}
     >
-      <span className='flex items-center justify-between gap-2'>
+      <button
+        type='button'
+        onClick={() => navigate(DASHBOARD_ROUTES.gamesIca)}
+        disabled={cardCount === 0}
+        aria-label={t('Juegos ICA')}
+        className='absolute inset-0 rounded-3xl disabled:cursor-not-allowed'
+      />
+      <span className='pointer-events-none relative flex items-center justify-between gap-2'>
         <span className='text-xs font-extrabold tracking-[0.08em] text-muted-foreground uppercase'>{t('Juegos ICA')}</span>
         {challengeAlertText ? (
           <ChallengeAlertPill text={challengeAlertText} />
@@ -123,28 +149,41 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           </span>
         ) : null}
       </span>
-      <span className='grid grid-cols-4 gap-2'>
-        {[
-          { icon: <CardsIcon size={26} />, label: 'Flashcards', color: 'var(--primary)' },
-          { icon: <SwordsIcon size={28} />, label: t('Desafíos'), color: 'var(--ica-a)' },
-          { icon: <MicGlyph size={26} />, label: 'PreguntICA', color: 'var(--ica-c)' },
-          { icon: <TargetGlyph size={26} />, label: 'Nota desaf.', color: 'var(--ica-gold-edge)' },
-        ].map((item) => (
-          <span key={item.label} className='flex flex-col items-center gap-1'>
-            <span
-              className='flex size-12 items-center justify-center rounded-2xl'
-              style={{ background: `color-mix(in oklab, ${item.color} 16%, transparent)` }}
+      {/* Luis, 12 Oct: on the computer the card is as tall as its row, so the four games grow and
+          fill it. 13 Oct: a bit smaller (about 10 %), and each one opens its game. */}
+      <span className={`relative grid grid-cols-4 gap-2 lg:flex-1 lg:content-center lg:gap-3 ${gamesClickable ? '' : 'pointer-events-none'}`}>
+        {gameItems.map((item) => {
+          const content = (
+            <>
+              <span
+                className='flex size-12 items-center justify-center rounded-2xl transition-transform group-hover:scale-105 lg:aspect-square lg:size-auto lg:w-full lg:max-w-[76px] lg:rounded-3xl'
+                style={{ background: `color-mix(in oklab, ${item.color} 16%, transparent)` }}
+              >
+                {item.icon}
+              </span>
+              <span className='text-center text-[11px] font-bold text-muted-foreground lg:text-sm lg:leading-tight'>{t(item.label)}</span>
+            </>
+          )
+          return gamesClickable ? (
+            <button
+              key={item.key}
+              type='button'
+              onClick={() => navigate(item.to)}
+              className='group flex flex-col items-center gap-2 rounded-2xl p-1 transition-colors hover:bg-background/80'
             >
-              {item.icon}
+              {content}
+            </button>
+          ) : (
+            <span key={item.key} className='flex flex-col items-center gap-1 lg:gap-2'>
+              {content}
             </span>
-            <span className='text-[11px] font-bold text-muted-foreground'>{t(item.label)}</span>
-          </span>
-        ))}
+          )
+        })}
       </span>
-      <span className='text-xs font-semibold text-muted-foreground'>
+      <span className='pointer-events-none relative text-xs font-semibold text-muted-foreground'>
         {cardCount === 0 ? t('Añade palabras para empezar') : t('Refuerza tu memoria y reta a otros icademers.')}
       </span>
-    </button>
+    </div>
   )
 
   // ORDENADOR: arriba el saludo, luego el camino del día en horizontal y, debajo, las tarjetas.
