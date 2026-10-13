@@ -26,6 +26,7 @@ const WELCOME_KEY = 'ica-welcome-tour-v1'
 const CHALLENGE_NOTE_KEY = 'ica-guide-challenge-note-v1'
 const PROFILE_KEY = 'ica-guide-profile-v1'
 const SHOP_FLAG_KEY = 'ica-guide-shop-flag-v1'
+const NOTE_CLOSED_KEY = 'ica-guide-master-note-closed-v1'
 /** Only one guide on screen at a time. */
 let activeGuide: string | null = null
 const NEW_ACCOUNT_DAYS = 14
@@ -264,6 +265,59 @@ export function ShopFlagGuide({ lang }: { lang: string | null }) {
       guideKey={SHOP_FLAG_KEY}
       steps={steps}
       shouldStart={Boolean(lang) && location.pathname === DASHBOARD_ROUTES.fichas}
+      force={forced}
+      lastLabel={t('Entendido')}
+    />
+  )
+}
+
+/**
+ * A master note was just completed (Luis, 13 Oct): the guide reminds that finished notes can be
+ * listened to any time in Juegos ICA › Nota desafiante, and challenged. Once per account and
+ * device, the next time a note is completed (for new icademers, their first one). With fewer than
+ * CHALLENGE_NOTE_MIN_CLOSED_NOTES finished notes the game is still closed, so it says when it opens.
+ * `?tour=nota` shows it again on a note's page.
+ */
+export function MasterNoteClosedGuide({ start, closedNotes }: { start: boolean; closedNotes: number }) {
+  const location = useLocation()
+  const forced = wantsTourFromUrl(location.search, 'nota')
+  const route = location.pathname
+  const open = closedNotes >= CHALLENGE_NOTE_MIN_CLOSED_NOTES
+  const steps = useMemo<TourStep[]>(
+    () =>
+      open
+        ? [
+            {
+              id: 'note-closed',
+              route,
+              title: t('Escucha tus notas maestras cuando quieras'),
+              body: t('Tus notas maestras terminadas están siempre en Juegos ICA, en Nota desafiante. Escúchalas y desafíate a ti mismo: dilas de memoria en el idioma que aprendes.'),
+              ask: { yes: t('Ir a verlo'), no: t('Ahora no') },
+            },
+            {
+              id: 'note-closed-game',
+              route: DASHBOARD_ROUTES.gamesIca,
+              targets: ['[data-tour="game-challenge-note"]'],
+              onlyIf: { step: 'note-closed', answer: true },
+              title: t('Aquí está la Nota desafiante'),
+              body: t('Entra, elige una nota maestra y escúchala. Al llegar al {n} %, se abre su desafío.', { n: 80 }),
+            },
+          ]
+        : [
+            {
+              id: 'note-closed',
+              route,
+              title: t('Tus notas maestras, siempre a mano'),
+              body: t('Cuando termines {n} notas maestras, se abre la Nota desafiante en Juegos ICA: allí podrás escucharlas cuando quieras y desafiarte a ti mismo con ellas.', { n: CHALLENGE_NOTE_MIN_CLOSED_NOTES }),
+            },
+          ],
+    [open, route],
+  )
+  return (
+    <GuideTour
+      guideKey={NOTE_CLOSED_KEY}
+      steps={steps}
+      shouldStart={start || forced}
       force={forced}
       lastLabel={t('Entendido')}
     />

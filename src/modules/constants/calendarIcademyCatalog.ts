@@ -18,12 +18,13 @@ export type CalendarIcademyCatalogEntry = {
 
 const CATALOG: CalendarIcademyCatalogEntry[] = [
   { classKey: 'polaco', className: 'Polaco', languageCode: 'pl', flag: '🇵🇱' },
-  // Desde octubre de 2026 solo hay una clase de francés: usa la clave de FR básico
-  // (así se mantienen sus sesiones y los avisos de quien ya la tenía) con el nombre «Francés».
-  { classKey: 'fr_basico', className: 'Francés', languageCode: 'fr', flag: '🇫🇷' },
+  // Desde octubre de 2026 solo hay una clase de francés, «Francés». Sus sesiones se guardan con la
+  // clave de FR conversacional (fr_conv), así que esa es la que se ve; FR básico ya no se imparte
+  // (Luis, 13 Oct: con fr_conv retirada, las clases de francés no salían en el calendario).
+  { classKey: 'fr_conv', className: 'Francés', languageCode: 'fr', flag: '🇫🇷' },
   {
-    classKey: 'fr_conv',
-    className: 'FR conversacional',
+    classKey: 'fr_basico',
+    className: 'FR básico',
     languageCode: 'fr',
     flag: '🇫🇷',
     retired: true,

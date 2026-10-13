@@ -69,6 +69,7 @@ import { NotaDesafianteOverlay } from '../components/NotaDesafiante/NotaDesafian
 import { NotaDesafianteCard } from '../components/NotaDesafiante/NotaDesafianteCard'
 import { CHALLENGE_NOTE_MIN_CLOSED_NOTES } from '../game/rules'
 import { useClosedMasterNotes } from '../game/useClosedMasterNotes'
+import { MasterNoteClosedGuide } from '../game/WelcomeTour'
 import {
   useChallengeUnlock,
   useOnChallengeUnlocked,
@@ -388,13 +389,26 @@ export function MasterNoteDetailView({
   // Solo las notas cerradas tienen nota desafiante (para contar la escucha y para empezarla).
   const noteClosed = note?.state === 'closed'
   // Y hace falta tener al menos 2 notas maestras terminadas en este idioma.
-  const { count: closedNotesCount } = useClosedMasterNotes(
+  const { count: closedNotesCount, notes: closedNotes } = useClosedMasterNotes(
     note?.target_lang || targetLang,
     note?.native_lang || undefined,
   )
   const enoughClosedNotes =
     closedNotesCount !== null &&
     closedNotesCount >= CHALLENGE_NOTE_MIN_CLOSED_NOTES
+  // The guide after completing a note (Luis, 13 Oct). The list of finished notes may have been
+  // loaded before this one was completed, so it is counted here too.
+  const [noteClosedGuide, setNoteClosedGuide] = useState<'waiting' | 'show' | null>(null)
+  const closedNotesWithThis =
+    (closedNotesCount ?? 0) + (note?.state === 'closed' && !closedNotes?.some((item) => item.id === note.id) ? 1 : 0)
+  useEffect(() => {
+    if (celebration) {
+      setNoteClosedGuide((previous) => previous ?? 'waiting')
+      return
+    }
+    // After «¡Genial!»; not on top of the challenge if they went straight to it.
+    if (noteClosedGuide === 'waiting') setNoteClosedGuide(challengeOpen ? null : 'show')
+  }, [celebration, challengeOpen, noteClosedGuide])
   const hasChallengePhrases =
     challengeEnabled && challengePhrases.length > 0 && enoughClosedNotes
   const challengeLockedByCount =
@@ -865,6 +879,7 @@ export function MasterNoteDetailView({
         />
       )}
 
+      <MasterNoteClosedGuide start={noteClosedGuide === 'show'} closedNotes={closedNotesWithThis} />
       <Dialog
         open={Boolean(celebration)}
         onOpenChange={(open) => {

@@ -47,6 +47,8 @@ type PendingListening = Record<string, number>
 const CACHE_PREFIX = 'ica-challenge-unlocks-v2:'
 const PENDING_PREFIX = 'ica-challenge-unlocks-pending-v2:'
 const SEND_DELAY_MS = 10_000
+// When the server counted only part of a send, the rest goes again after this long.
+const LEFTOVER_RETRY_MS = 4_000
 
 /** Clave local de caché del lunes; la RPC calcula su propio lunes con `profiles.timezone`. */
 function getLocalDayStamp(now = new Date()): string {
@@ -161,6 +163,7 @@ export function getChallengeUnlockProgress(
 // ---------------------------------------------------------------------------
 
 let sendTimer: number | null = null
+let sendDueAt = Infinity
 let sendInFlight: Promise<void> | null = null
 let lastUserId: string | null = null
 
@@ -171,6 +174,7 @@ async function sendPendingNow(userId: string): Promise<void> {
     await sendInFlight
   }
 
+  let hasLeftover = false
   sendInFlight = (async () => {
     const snapshot = readPending(userId)
     for (const [key, seconds] of Object.entries(snapshot)) {
@@ -200,16 +204,27 @@ async function sendPendingNow(userId: string): Promise<void> {
         return
       }
 
-      // Se resta lo enviado (mientras tanto pudo sumarse más).
+      const row = (Array.isArray(data) ? data[0] : data) as
+        | { listened_seconds?: number; unlocked?: boolean; just_unlocked?: boolean; accepted_seconds?: number }
+        | null
+
+      // Only what the server counted leaves the queue (Luis, 13 Oct). It counts at most the time
+      // since the last send, so a long stretch sent at once was cut and the rest was lost: the
+      // phone showed a note unlocked and the computer did not. The rest is sent again shortly.
+      // Once the note is unlocked nothing more is needed. An old server without
+      // accepted_seconds: everything sent counts as before.
+      const accepted =
+        row && typeof row.accepted_seconds === 'number' && Number.isFinite(row.accepted_seconds)
+          ? Math.max(0, Math.min(seconds, row.accepted_seconds))
+          : seconds
       const pending = readPending(userId)
-      const left = (pending[key] || 0) - seconds
-      if (left > 0.01) pending[key] = left
-      else delete pending[key]
+      const left = row?.unlocked ? 0 : (pending[key] || 0) - accepted
+      if (left > 0.01) {
+        pending[key] = left
+        hasLeftover = true
+      } else delete pending[key]
       writePending(userId, pending)
 
-      const row = (Array.isArray(data) ? data[0] : data) as
-        | { listened_seconds?: number; unlocked?: boolean; just_unlocked?: boolean }
-        | null
       if (row) {
         const wasUnlocked = Boolean(readCache(userId).unlocked[noteId])
         const changed = mergeServerState(
@@ -230,13 +245,26 @@ async function sendPendingNow(userId: string): Promise<void> {
   } finally {
     sendInFlight = null
   }
+  // Part of it was too fast for the server: try the rest again soon.
+  if (hasLeftover) scheduleSend(userId, LEFTOVER_RETRY_MS)
 }
 
+/**
+ * Sends what is pending within `delayMs`. While listening this is called every 2 s: a send
+ * already planned is kept (before, each call moved it 10 s later, so nothing was sent until the
+ * listening stopped). Only a sooner send (an unlock, delay 0) replaces it.
+ */
 function scheduleSend(userId: string, delayMs = SEND_DELAY_MS): void {
   lastUserId = userId
-  if (sendTimer !== null) window.clearTimeout(sendTimer)
+  const dueAt = Date.now() + delayMs
+  if (sendTimer !== null) {
+    if (dueAt >= sendDueAt) return
+    window.clearTimeout(sendTimer)
+  }
+  sendDueAt = dueAt
   sendTimer = window.setTimeout(() => {
     sendTimer = null
+    sendDueAt = Infinity
     void sendPendingNow(userId)
   }, delayMs)
 }
@@ -248,6 +276,7 @@ if (typeof window !== 'undefined') {
     if (sendTimer !== null) {
       window.clearTimeout(sendTimer)
       sendTimer = null
+      sendDueAt = Infinity
     }
     void sendPendingNow(lastUserId)
   }
@@ -345,15 +374,26 @@ async function runSync(userId: string, noteIds: string[]): Promise<void> {
   if (error) {
     console.error('[nota desafiante] no se pudo leer el desbloqueo', error)
   } else {
-    for (const row of data || []) {
-      mergeServerState(
-        userId,
-        day,
-        row.note_id,
-        Number(row.listened_seconds) || 0,
-        Boolean(row.unlocked_at),
-      )
+    const rows = new Map((data || []).map((row) => [row.note_id, row]))
+    const pending = readPending(userId)
+    const cache = readCache(userId)
+    for (const noteId of noteIds) {
+      const row = rows.get(noteId)
+      const listened = Number(row?.listened_seconds) || 0
+      const unlocked = Boolean(row?.unlocked_at)
+      if (cache.day === day && !(pending[`${day}|${noteId}`] > 0)) {
+        // Nothing of this note is waiting to be sent: the server is the truth, so every device
+        // shows the same (Luis, 13 Oct: the phone said unlocked and the computer did not).
+        cache.listened[noteId] = listened
+        if (unlocked) cache.unlocked[noteId] = true
+        else delete cache.unlocked[noteId]
+      } else if (row) {
+        // Still sending from this device: never go back while it arrives.
+        cache.listened[noteId] = Math.max(cache.listened[noteId] || 0, listened)
+        if (unlocked) cache.unlocked[noteId] = true
+      }
     }
+    writeCache(userId, cache)
   }
 
   for (const noteId of noteIds) {

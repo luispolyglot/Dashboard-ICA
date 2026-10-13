@@ -14,10 +14,11 @@ export type CalendarIcademyCatalogItem = {
 
 const CATALOG: CalendarIcademyCatalogItem[] = [
   { classKey: 'polaco', className: 'Polaco', languageCode: 'pl' },
-  { classKey: 'fr_basico', className: 'Francés', languageCode: 'fr' },
+  // Una sola clase de francés desde octubre de 2026: «Francés», con la clave fr_conv (Luis, 13 Oct).
+  { classKey: 'fr_conv', className: 'Francés', languageCode: 'fr' },
   {
-    classKey: 'fr_conv',
-    className: 'FR conversacional',
+    classKey: 'fr_basico',
+    className: 'FR básico',
     languageCode: 'fr',
     retired: true,
   },
