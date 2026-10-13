@@ -397,5 +397,7 @@ const en: Record<string, string> = {
   "Entra, elige una nota maestra y escúchala. Al llegar al {n} %, se abre su desafío.": "Go in, pick a master note and listen to it. At {n}%, its challenge opens.",
   "Tus notas maestras, siempre a mano": "Your master notes, always at hand",
   "Cuando termines {n} notas maestras, se abre la Nota desafiante en Juegos ICA: allí podrás escucharlas cuando quieras y desafiarte a ti mismo con ellas.": "When you finish {n} master notes, the Challenge note opens in ICA Games: there you can listen to them whenever you want and challenge yourself with them.",
+  // --- Escucha: la voz se prepara antes (Luis, 13 Oct) ---
+  "Preparando la voz…": "Getting the voice ready…",
 }
 export default en
