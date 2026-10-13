@@ -98,6 +98,12 @@ import type {
 
 /** Escucha: the longest the voice is waited for before the options and the clock start. */
 const AUDIO_PREPARE_MAX_MS = 3000
+/**
+ * The server starts a question's clock when it sends it and accepts answers up to its limit plus
+ * 4.3 s (feedback + network margin, engine.ts). The feedback of the previous word and the wait for
+ * the voice both come out of that margin, so together they stay under this (with room to spare).
+ */
+const SERVER_SLACK_MS = 3500
 
 type IcaChallengePlayViewProps = {
   challengeId: string
@@ -249,6 +255,8 @@ export function IcaChallengePlayView({
   // prepared first and the options, the clock and the voice start together.
   const [preparingAudio, setPreparingAudio] = useState(false)
   const audioTokenRef = useRef(0)
+  // When the server sent the question now on its way (its clock started then).
+  const questionArrivedAtRef = useRef(0)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [progress, setProgress] = useState<IcaChallengeProgress | null>(null)
   const [sessionEndsAt, setSessionEndsAt] = useState<number | null>(null)
@@ -394,9 +402,13 @@ export function IcaChallengePlayView({
         void speakAsync(audioText, lang)
       }
       // The clock does not run while the voice is prepared, but never wait more than
-      // AUDIO_PREPARE_MAX_MS: the server only allows a few seconds of margin.
-      if (next.limitMs === null) {
-        // Modo Relámpago: one clock for the whole game, nothing to wait for.
+      // AUDIO_PREPARE_MAX_MS, and never past the server's margin (SERVER_SLACK_MS).
+      const arrivedAt = questionArrivedAtRef.current || Date.now()
+      const waitBudget = Math.min(AUDIO_PREPARE_MAX_MS, Math.max(0, SERVER_SLACK_MS - (Date.now() - arrivedAt)))
+      questionArrivedAtRef.current = 0
+      if (next.limitMs === null || waitBudget === 0) {
+        // Modo Relámpago (one clock for the whole game) or no margin left: no waiting.
+        setPreparingAudio(false)
         startClock()
         void speakAsync(audioText, lang)
         return
@@ -405,7 +417,7 @@ export function IcaChallengePlayView({
       setQuestionEndsAt(null)
       void Promise.race([
         prefetchSpeech(audioText, lang),
-        new Promise((resolve) => window.setTimeout(resolve, AUDIO_PREPARE_MAX_MS)),
+        new Promise((resolve) => window.setTimeout(resolve, waitBudget)),
       ]).then(go)
     } else {
       setPreparingAudio(false)
@@ -460,6 +472,7 @@ export function IcaChallengePlayView({
       }
       const step = await requestIcaChallengeQuestion(challengeId)
       if (!mountedRef.current) return
+      questionArrivedAtRef.current = Date.now()
       applyStep(step)
     } catch (error) {
       toast.error(error instanceof Error ? translateChallengeMessage(error.message) : t('No pudimos empezar.'))
@@ -484,6 +497,12 @@ export function IcaChallengePlayView({
           timedOut: options?.timedOut,
         })
         if (!mountedRef.current) return
+        // The next question's clock already runs on the server: its voice starts loading now,
+        // while this answer's feedback is shown.
+        questionArrivedAtRef.current = Date.now()
+        if (step.question?.data.kind === 'listen') {
+          void prefetchSpeech(step.question.data.audioText, step.question.language.target)
+        }
 
         if (isLightning) {
           if (step.result) {

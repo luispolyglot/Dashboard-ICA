@@ -441,7 +441,13 @@ export function IcademerChatView() {
         timeZone: kind === 'propuesta' ? viewerZone : undefined,
         dayValue: kind === 'propuesta' ? dayValue : undefined,
       })
-      if (result.sentAsTimeOnly) toast.message(t('Se ha enviado solo la hora: el día y «Me apunto» llegan en unos minutos.'))
+      if (result.sentAsTimeOnly) {
+        toast.message(
+          dayOffset === 0
+            ? t('Se ha enviado solo la hora: el día y «Me apunto» llegan en unos minutos.')
+            : t('Se ha enviado solo la hora, sin el día: el día y «Me apunto» llegan en unos minutos.'),
+        )
+      }
       setPickingTime(false)
       await loadChat()
     } catch (sendError) {

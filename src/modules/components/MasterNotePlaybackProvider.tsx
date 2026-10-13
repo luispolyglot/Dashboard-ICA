@@ -77,10 +77,11 @@ export function MasterNoteMiniPlayer() {
   const playback = useOptionalSharedMasterNotePlayback()
   const location = useLocation()
   const navigate = useNavigate()
+  // Subscribed (not read once), so the bar follows «todas seguidas» as it starts and ends.
+  const sequence = useChallengeSequenceStore()
   if (!playback?.playingNoteId) return null
 
   // Played from Nota desafiante (Luis, 12 Oct): the bar takes you back there, not to Activación.
-  const sequence = useChallengeSequenceStore.getState()
   const inSequence = Boolean(sequence.request) && sequence.loopIds.includes(playback.playingNoteId)
   const origin = sequence.origin?.noteId === playback.playingNoteId ? sequence.origin : null
   const notePath = inSequence

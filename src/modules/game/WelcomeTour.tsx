@@ -32,6 +32,28 @@ const NOTE_CLOSED_KEY = 'ica-guide-master-note-closed-v1'
 const FIRST_CHEST_KEY = 'ica-guide-first-chest-v1'
 /** Fired when a guide ends (another notice that waits for it can come now). */
 const GUIDE_FINISHED_EVENT = 'ica:guide-finished'
+/**
+ * Guides about to start (they wait a moment before showing). afterGuides waits for them too, so
+ * a notice that comes at the same time does not open on top (the chat invitation and the first
+ * chest's guide both start when the chest closes).
+ */
+let pendingGuides = 0
+const PENDING_GUIDE_MAX_MS = 6000
+
+/** Holds the slot for a guide about to start. Returns the release (safe to call twice). */
+function reserveGuideSlot(): () => void {
+  pendingGuides += 1
+  let released = false
+  const release = () => {
+    if (released) return
+    released = true
+    pendingGuides = Math.max(0, pendingGuides - 1)
+    window.dispatchEvent(new Event(GUIDE_FINISHED_EVENT))
+  }
+  // If the guide never starts (another one is on screen, its element is missing…), let go anyway.
+  window.setTimeout(release, PENDING_GUIDE_MAX_MS)
+  return release
+}
 /** Only one guide on screen at a time. */
 let activeGuide: string | null = null
 const NEW_ACCOUNT_DAYS = 14
@@ -281,13 +303,34 @@ export function ShopFlagGuide({ lang }: { lang: string | null }) {
  * listened to any time in Juegos ICA › Nota desafiante, and challenged. Once per account and
  * device, the next time a note is completed (for new icademers, their first one). With fewer than
  * CHALLENGE_NOTE_MIN_CLOSED_NOTES finished notes the game is still closed, so it says when it opens.
- * `?tour=nota` shows it again on a note's page.
+ * It lives in the layout (MasterNoteClosedGuideHost), so «Ir a verlo» can go to Juegos ICA without
+ * the guide disappearing; the note's page asks for it with requestMasterNoteClosedGuide.
+ * `?tour=nota` shows it again.
  */
-export function MasterNoteClosedGuide({ start, closedNotes }: { start: boolean; closedNotes: number }) {
+const NOTE_CLOSED_REQUEST_EVENT = 'ica:master-note-closed-guide'
+
+export function requestMasterNoteClosedGuide(closedNotes: number): void {
+  window.dispatchEvent(new CustomEvent<{ closedNotes: number }>(NOTE_CLOSED_REQUEST_EVENT, { detail: { closedNotes } }))
+}
+
+export function MasterNoteClosedGuideHost() {
   const location = useLocation()
   const forced = wantsTourFromUrl(location.search, 'nota')
-  const route = location.pathname
-  const open = closedNotes >= CHALLENGE_NOTE_MIN_CLOSED_NOTES
+  const [request, setRequest] = useState<{ closedNotes: number; route: string } | null>(null)
+  const pathnameRef = useRef(location.pathname)
+  pathnameRef.current = location.pathname
+
+  useEffect(() => {
+    const onRequest = (event: Event) => {
+      const closedNotes = (event as CustomEvent<{ closedNotes: number }>).detail?.closedNotes ?? 0
+      setRequest({ closedNotes, route: pathnameRef.current })
+    }
+    window.addEventListener(NOTE_CLOSED_REQUEST_EVENT, onRequest)
+    return () => window.removeEventListener(NOTE_CLOSED_REQUEST_EVENT, onRequest)
+  }, [])
+
+  const route = request?.route ?? location.pathname
+  const open = (request?.closedNotes ?? CHALLENGE_NOTE_MIN_CLOSED_NOTES) >= CHALLENGE_NOTE_MIN_CLOSED_NOTES
   const steps = useMemo<TourStep[]>(
     () =>
       open
@@ -303,6 +346,7 @@ export function MasterNoteClosedGuide({ start, closedNotes }: { start: boolean; 
               id: 'note-closed-game',
               route: DASHBOARD_ROUTES.gamesIca,
               targets: ['[data-tour="game-challenge-note"]'],
+              waitMs: 2500,
               onlyIf: { step: 'note-closed', answer: true },
               title: t('Aquí está la Nota desafiante'),
               body: t('Entra, elige una nota maestra y escúchala. Al llegar al {n} %, se abre su desafío.', { n: 80 }),
@@ -322,7 +366,7 @@ export function MasterNoteClosedGuide({ start, closedNotes }: { start: boolean; 
     <GuideTour
       guideKey={NOTE_CLOSED_KEY}
       steps={steps}
-      shouldStart={start || forced}
+      shouldStart={request !== null || forced}
       force={forced}
       lastLabel={t('Entendido')}
     />
@@ -334,12 +378,12 @@ export function MasterNoteClosedGuide({ start, closedNotes }: { start: boolean; 
  * invitation waits for the first chest's guide, so they do not appear on top of each other).
  */
 export function afterGuides(fn: () => void): void {
-  if (!activeGuide) {
+  if (!activeGuide && pendingGuides === 0) {
     fn()
     return
   }
   const onFinished = () => {
-    if (activeGuide) return
+    if (activeGuide || pendingGuides > 0) return
     window.removeEventListener(GUIDE_FINISHED_EVENT, onFinished)
     window.setTimeout(fn, 600)
   }
@@ -357,20 +401,27 @@ export function FirstChestGuide() {
   const location = useLocation()
   const forced = wantsTourFromUrl(location.search, 'cofre')
   const { entries } = useFichas(user?.id)
-  const [start, setStart] = useState(false)
+  const [startRoute, setStartRoute] = useState<string | null>(null)
   const chestCount = entries.filter((entry) => entry.type === 'cycle_chest').length
   const firstChestRef = useRef(false)
   firstChestRef.current = chestCount <= 1
-  const route = location.pathname
+  const pathnameRef = useRef(location.pathname)
+  pathnameRef.current = location.pathname
+  const releaseRef = useRef<(() => void) | null>(null)
+  const route = startRoute ?? location.pathname
 
   useEffect(() => {
     const onClosed = () => {
+      if (!firstChestRef.current || !user?.id || readSeen(FIRST_CHEST_KEY, user.id)) return
+      // Hold the slot now, so the chat invitation waits for this guide.
+      releaseRef.current?.()
+      releaseRef.current = reserveGuideSlot()
       // The coins fly to the counter first; then the guide.
-      if (firstChestRef.current) window.setTimeout(() => setStart(true), 900)
+      window.setTimeout(() => setStartRoute(pathnameRef.current), 900)
     }
     window.addEventListener(CYCLE_CELEBRATION_CLOSED_EVENT, onClosed)
     return () => window.removeEventListener(CYCLE_CELEBRATION_CLOSED_EVENT, onClosed)
-  }, [])
+  }, [user?.id])
 
   const steps = useMemo<TourStep[]>(
     () => [
@@ -399,7 +450,11 @@ export function FirstChestGuide() {
     <GuideTour
       guideKey={FIRST_CHEST_KEY}
       steps={steps}
-      shouldStart={start || forced}
+      shouldStart={startRoute !== null || forced}
+      onStart={() => {
+        releaseRef.current?.()
+        releaseRef.current = null
+      }}
       force={forced}
       lastLabel={t('Entendido')}
     />
@@ -482,6 +537,7 @@ function GuideTour({
   homeOnSkip = false,
   lastLabel,
   onLastStep,
+  onStart,
 }: {
   /** Where it is remembered as seen (per account and device). */
   guideKey: string
@@ -493,6 +549,8 @@ function GuideTour({
   homeOnSkip?: boolean
   lastLabel: string
   onLastStep?: () => void
+  /** When the guide appears on screen. */
+  onStart?: () => void
 }) {
   const { user } = useAuth()
   const location = useLocation()
@@ -504,6 +562,8 @@ function GuideTour({
   const [actionState, setActionState] = useState<'idle' | 'running' | 'done'>('idle')
   const targetsRef = useRef<HTMLElement[] | null>(null)
   const nextRef = useRef<HTMLButtonElement | null>(null)
+  const onStartRef = useRef(onStart)
+  onStartRef.current = onStart
 
   useEffect(() => {
     if (!user?.id || index !== null || !shouldStart) return
@@ -512,9 +572,21 @@ function GuideTour({
       if (activeGuide && activeGuide !== guideKey) return
       activeGuide = guideKey
       setIndex(0)
+      onStartRef.current?.()
     }, START_DELAY_MS)
     return () => window.clearTimeout(timer)
   }, [force, guideKey, index, shouldStart, user?.id])
+
+  // A guide that leaves the screen mid-way (its page closed) lets the others show again.
+  useEffect(
+    () => () => {
+      if (activeGuide === guideKey) {
+        activeGuide = null
+        window.dispatchEvent(new Event(GUIDE_FINISHED_EVENT))
+      }
+    },
+    [guideKey],
+  )
 
   // A step that depends on an answer stays in until the answer says otherwise (so the count is right).
   const visibleSteps = useMemo(

@@ -216,7 +216,12 @@ begin
     v_user_id,
     p_kind,
     case when v_with_time then p_time_value else null end,
-    case when v_with_time then left(nullif(trim(coalesce(p_time_zone, '')), ''), 64) else null end,
+    -- A proposal keeps the zone its day was checked with (a valid one), so everyone converts it right.
+    case
+      when p_kind = 'propuesta' then v_zone
+      when v_with_time then left(nullif(trim(coalesce(p_time_zone, '')), ''), 64)
+      else null
+    end,
     case when p_kind = 'propuesta' then p_day_value else null end
   )
   returning id into v_id;

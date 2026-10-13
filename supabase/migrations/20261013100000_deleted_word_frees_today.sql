@@ -15,6 +15,11 @@ security definer
 set search_path = public
 as $$
 begin
+  -- Only a word from today can free a place today. Older ones (for example all the words of an
+  -- account being deleted) leave at once, without working out the student's day.
+  if old.created_at < now() - interval '2 days' then
+    return null;
+  end if;
   delete from public.ica_daily_limit_usage u
    where u.user_id = old.user_id
      and u.usage_kind = 'words'

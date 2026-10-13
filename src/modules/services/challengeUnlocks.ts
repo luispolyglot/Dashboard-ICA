@@ -163,6 +163,8 @@ export function getChallengeUnlockProgress(
 // ---------------------------------------------------------------------------
 
 let sendTimer: number | null = null
+// Sends finished so far: a server read that started before one of them is older than it.
+let sendsCompleted = 0
 let sendDueAt = Infinity
 let sendInFlight: Promise<void> | null = null
 let lastUserId: string | null = null
@@ -244,6 +246,7 @@ async function sendPendingNow(userId: string): Promise<void> {
     await sendInFlight
   } finally {
     sendInFlight = null
+    sendsCompleted += 1
   }
   // Part of it was too fast for the server: try the rest again soon.
   if (hasLeftover) scheduleSend(userId, LEFTOVER_RETRY_MS)
@@ -356,6 +359,7 @@ async function runSync(userId: string, noteIds: string[]): Promise<void> {
   await sendPendingNow(userId).catch(() => {})
 
   const client = supabase
+  const sendsBeforeRead = sendsCompleted
   type UnlockRow = { note_id: string; listened_seconds: number; unlocked_at: string | null }
   let data: UnlockRow[] | null = null
   let error: unknown = null
@@ -381,7 +385,9 @@ async function runSync(userId: string, noteIds: string[]): Promise<void> {
       const row = rows.get(noteId)
       const listened = Number(row?.listened_seconds) || 0
       const unlocked = Boolean(row?.unlocked_at)
-      if (cache.day === day && !(pending[`${day}|${noteId}`] > 0)) {
+      // A send finished while this was being read: the read may be older, so never go back.
+      const readIsFresh = sendsCompleted === sendsBeforeRead
+      if (cache.day === day && readIsFresh && !(pending[`${day}|${noteId}`] > 0)) {
         // Nothing of this note is waiting to be sent: the server is the truth, so every device
         // shows the same (Luis, 13 Oct: the phone said unlocked and the computer did not).
         cache.listened[noteId] = listened

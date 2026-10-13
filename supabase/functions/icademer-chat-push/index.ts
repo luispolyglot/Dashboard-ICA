@@ -83,6 +83,13 @@ function convertProposal(
   fromZone: string | null,
   toZone: string | null,
 ): { day: string; time: string } {
+  // Without the sender's zone nothing can be converted: the day and time as they were written.
+  if (!fromZone) {
+    const [y, m, d] = day.split('-').map(Number)
+    const asWritten = new Intl.DateTimeFormat('es-ES', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' })
+      .format(new Date(Date.UTC(y, m - 1, d, 12)))
+    return { day: asWritten, time }
+  }
   const [year, month, date] = day.split('-').map(Number)
   const [hours, minutes] = time.split(':').map(Number)
   const guess = new Date(Date.UTC(year, month - 1, date, hours, minutes))

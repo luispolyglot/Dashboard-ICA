@@ -38,7 +38,7 @@ import {
 import { LanguageSetup } from '../views/LanguageSetup'
 import { CycleCelebration } from '../game/CycleCelebration'
 import { NewBadgeCelebration } from '../game/NewBadgeCelebration'
-import { ProfileGuide, WelcomeTour } from '../game/WelcomeTour'
+import { FirstChestGuide, MasterNoteClosedGuideHost, ProfileGuide, WelcomeTour } from '../game/WelcomeTour'
 import { TapHaptics } from '../game/TapHaptics'
 import { ChallengesUnlockWatcher } from '../game/ChallengesUnlocked'
 import { prefetchAchievementStats } from '../game/achievements'
@@ -449,6 +449,8 @@ export function DashboardLayout() {
         <NewBadgeCelebration />
         <WelcomeTour />
         <ProfileGuide />
+        <FirstChestGuide />
+        <MasterNoteClosedGuideHost />
         <TapHaptics />
         <ChallengesUnlockWatcher />
         <StreakDayCelebrationHost />

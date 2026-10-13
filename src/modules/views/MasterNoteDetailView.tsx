@@ -69,7 +69,7 @@ import { NotaDesafianteOverlay } from '../components/NotaDesafiante/NotaDesafian
 import { NotaDesafianteCard } from '../components/NotaDesafiante/NotaDesafianteCard'
 import { CHALLENGE_NOTE_MIN_CLOSED_NOTES } from '../game/rules'
 import { useClosedMasterNotes } from '../game/useClosedMasterNotes'
-import { MasterNoteClosedGuide } from '../game/WelcomeTour'
+import { requestMasterNoteClosedGuide } from '../game/WelcomeTour'
 import {
   useChallengeUnlock,
   useOnChallengeUnlocked,
@@ -398,7 +398,7 @@ export function MasterNoteDetailView({
     closedNotesCount >= CHALLENGE_NOTE_MIN_CLOSED_NOTES
   // The guide after completing a note (Luis, 13 Oct). The list of finished notes may have been
   // loaded before this one was completed, so it is counted here too.
-  const [noteClosedGuide, setNoteClosedGuide] = useState<'waiting' | 'show' | null>(null)
+  const [noteClosedGuide, setNoteClosedGuide] = useState<'waiting' | null>(null)
   const closedNotesWithThis =
     (closedNotesCount ?? 0) + (note?.state === 'closed' && !closedNotes?.some((item) => item.id === note.id) ? 1 : 0)
   useEffect(() => {
@@ -407,8 +407,10 @@ export function MasterNoteDetailView({
       return
     }
     // After «¡Genial!»; not on top of the challenge if they went straight to it.
-    if (noteClosedGuide === 'waiting') setNoteClosedGuide(challengeOpen ? null : 'show')
-  }, [celebration, challengeOpen, noteClosedGuide])
+    if (noteClosedGuide !== 'waiting') return
+    setNoteClosedGuide(null)
+    if (!challengeOpen) requestMasterNoteClosedGuide(closedNotesWithThis)
+  }, [celebration, challengeOpen, closedNotesWithThis, noteClosedGuide])
   const hasChallengePhrases =
     challengeEnabled && challengePhrases.length > 0 && enoughClosedNotes
   const challengeLockedByCount =
@@ -879,7 +881,6 @@ export function MasterNoteDetailView({
         />
       )}
 
-      <MasterNoteClosedGuide start={noteClosedGuide === 'show'} closedNotes={closedNotesWithThis} />
       <Dialog
         open={Boolean(celebration)}
         onOpenChange={(open) => {

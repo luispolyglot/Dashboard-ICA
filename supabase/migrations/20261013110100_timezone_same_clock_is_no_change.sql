@@ -27,6 +27,9 @@ begin
   select coalesce(nullif(p.timezone, ''), 'UTC') into previous_timezone
   from public.profiles p where p.id = v_user_id;
   if not found then raise exception 'PROFILE_NOT_FOUND'; end if;
+  -- The app asks with the zone it already has most of the time: answer at once, without the slow
+  -- pg_timezone_names lookup below (~220 ms).
+  if nullif(trim(p_timezone), '') = previous_timezone then return previous_timezone; end if;
 
   select tzn.name into resolved_timezone
   from pg_timezone_names tzn
@@ -36,15 +39,17 @@ begin
   if resolved_timezone = coalesce(previous_timezone, 'UTC') then return resolved_timezone; end if;
 
   -- Same clock as the zone already saved (Madrid and Vienna, Warsaw or Zurich): nothing changes
-  -- for the student's days, so it is not a change. Checked now and in six months, so two zones
-  -- that only match outside summer time still count as different (Luis, 13 Oct).
+  -- for the student's days, so it is not a change. Checked now and every 3 months for a year, so
+  -- two zones that differ in some season (summer time) still count as different (Luis, 13 Oct).
   -- ica_valid_timezone, not pg_timezone_names: that view reads every zone from disk (~220 ms).
-  if public.ica_valid_timezone(previous_timezone) is not null then
-    if (now() at time zone resolved_timezone) = (now() at time zone previous_timezone)
-       and ((now() + interval '182 days') at time zone resolved_timezone)
-         = ((now() + interval '182 days') at time zone previous_timezone) then
-      return previous_timezone;
-    end if;
+  if public.ica_valid_timezone(previous_timezone) is not null
+     and not exists (
+       select 1
+       from generate_series(0, 3) as q(n),
+            lateral (select now() + make_interval(months => 3 * q.n) as at) moment
+       where (moment.at at time zone resolved_timezone) <> (moment.at at time zone previous_timezone)
+     ) then
+    return previous_timezone;
   end if;
 
   perform pg_advisory_xact_lock(hashtext(v_user_id::text || ':timezone-change'));
