@@ -1,3 +1,4 @@
+// Redeploy 13 Oct: the develop deploy of PR #104 stopped at a migration and skipped this function.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
 
