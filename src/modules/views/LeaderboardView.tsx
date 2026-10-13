@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { AwardIcon, BadgePercentIcon, XIcon, CameraIcon, ChevronLeftIcon, ChevronRightIcon, ClipboardCheckIcon, EyeIcon, GiftIcon, GraduationCapIcon, HeadphonesIcon, InfoIcon, MicIcon, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,12 @@ import { LeaderboardRow, MyRankCard, Podium, RankingFadeOut, rankingFadeOpacity 
 import { IcademerProfileDialog, type IcademerSummary } from "../game/IcademerProfile";
 import { IconTile, RowGroup, tone, type Tone } from "../game/ui";
 import { t, tn, uiLocale } from '@/i18n'
+import { useDashboardContext } from "../context/DashboardContext";
+
+// «Retar a …» from the ranking (Luis, 13 Oct): only its window, loaded when it is needed.
+const IcaChallengesView = lazy(() =>
+  import("./IcaChallengesView").then((module) => ({ default: module.IcaChallengesView })),
+);
 
 const HISTORY_START_MONTH = "2026-05-01";
 const FOCUS_TOP_LIMIT = 30;
@@ -656,6 +662,8 @@ export function LeaderboardView() {
   const { user } = useAuth();
   const { badge: myBadge } = useFeaturedBadge(user?.id);
   const { shown: myFlag } = useMyFlags(user?.id);
+  const { config } = useDashboardContext();
+  const [challengeRivalId, setChallengeRivalId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const currentMonthStart = useMemo(() => toLocalMonthStart(new Date()), []);
   const monthOptions = useMemo(
@@ -1027,7 +1035,21 @@ const [tiebreakOpen, setTiebreakOpen] = useState(false);
 
       {/* Perfil de un icademer (al tocar su inicial o su nombre) */}
       {profileSummary ? (
-        <IcademerProfileDialog summary={profileSummary} onClose={() => setProfileSummary(null)} />
+        <IcademerProfileDialog
+          summary={profileSummary}
+          onClose={() => setProfileSummary(null)}
+          onChallenge={config ? (userId) => setChallengeRivalId(userId) : undefined}
+        />
+      ) : null}
+      {challengeRivalId && config ? (
+        <Suspense fallback={null}>
+          <IcaChallengesView
+            targetLang={config.targetLang}
+            nativeLang={config.nativeLang}
+            embeddedRivalId={challengeRivalId}
+            onEmbeddedDone={() => setChallengeRivalId(null)}
+          />
+        </Suspense>
       ) : null}
 
       {/* Detalle de puntos (tuyo o de otra persona) */}

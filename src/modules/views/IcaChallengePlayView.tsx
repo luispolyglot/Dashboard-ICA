@@ -65,6 +65,7 @@ import {
   warmUpMicrophone,
 } from '../components/NotaDesafiante/challengeEngine'
 import { DASHBOARD_ROUTES } from '../routes/paths'
+import { prefetchSpeech } from '../services/tts'
 import { refreshIcaChallengeAlerts } from '../hooks/useIcaChallengeAlerts'
 import { FichaIcon, TrophyIcon } from '../game/icons'
 import { holdCoinsDisplay, loadIcaCoinsState, releaseCoinsDisplay, toWholeFichas } from '../game/fichas'
@@ -94,6 +95,9 @@ import type {
   IcaChallengeStep,
   Lexicard,
 } from '../types'
+
+/** Escucha: the longest the voice is waited for before the options and the clock start. */
+const AUDIO_PREPARE_MAX_MS = 3000
 
 type IcaChallengePlayViewProps = {
   challengeId: string
@@ -241,6 +245,10 @@ export function IcaChallengePlayView({
   const [question, setQuestion] = useState<IcaChallengeServedQuestion | null>(null)
   const [questionEndsAt, setQuestionEndsAt] = useState<number | null>(null)
   const [questionShownAt, setQuestionShownAt] = useState(0)
+  // Escucha (Luis, 13 Oct): the voice took 2–3 of the 7 seconds to start. Now the audio is
+  // prepared first and the options, the clock and the voice start together.
+  const [preparingAudio, setPreparingAudio] = useState(false)
+  const audioTokenRef = useRef(0)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [progress, setProgress] = useState<IcaChallengeProgress | null>(null)
   const [sessionEndsAt, setSessionEndsAt] = useState<number | null>(null)
@@ -364,17 +372,44 @@ export function IcaChallengePlayView({
   }, [challengeId, loadReview])
 
   const showQuestion = useCallback((next: IcaChallengeServedQuestion) => {
-    const now = Date.now()
+    const startClock = () => {
+      const now = Date.now()
+      setQuestionShownAt(now)
+      setQuestionEndsAt(next.limitMs === null ? null : now + next.limitMs)
+    }
     pairMatchesRef.current = []
     setQuestion(next)
     setFeedback(null)
     setMicMessage(null)
-    setQuestionShownAt(now)
-    setQuestionEndsAt(next.limitMs === null ? null : now + next.limitMs)
     setPhase('question')
+    const token = (audioTokenRef.current += 1)
     if (next.data.kind === 'listen') {
-      void speakAsync(next.data.audioText, next.language.target)
+      stopSpeaking()
+      const audioText = next.data.audioText
+      const lang = next.language.target
+      const go = () => {
+        if (!mountedRef.current || audioTokenRef.current !== token) return
+        setPreparingAudio(false)
+        startClock()
+        void speakAsync(audioText, lang)
+      }
+      // The clock does not run while the voice is prepared, but never wait more than
+      // AUDIO_PREPARE_MAX_MS: the server only allows a few seconds of margin.
+      if (next.limitMs === null) {
+        // Modo Relámpago: one clock for the whole game, nothing to wait for.
+        startClock()
+        void speakAsync(audioText, lang)
+        return
+      }
+      setPreparingAudio(true)
+      setQuestionEndsAt(null)
+      void Promise.race([
+        prefetchSpeech(audioText, lang),
+        new Promise((resolve) => window.setTimeout(resolve, AUDIO_PREPARE_MAX_MS)),
+      ]).then(go)
     } else {
+      setPreparingAudio(false)
+      startClock()
       // A voice still saying the previous answer stops here.
       stopSpeaking()
     }
@@ -1262,8 +1297,10 @@ export function IcaChallengePlayView({
           data={data}
           nativeLang={nativeLang}
           targetLang={targetLang}
+          preparingAudio={data.kind === 'listen' && preparingAudio}
+          revealedWord={data.kind === 'listen' && phase === 'feedback' ? feedback?.reveal.target ?? null : null}
           onReplayAudio={() => {
-            if (data.kind === 'listen') void speakAsync(data.audioText, targetLang)
+            if (data.kind === 'listen' && !preparingAudio) void speakAsync(data.audioText, targetLang)
           }}
         />
 
@@ -1300,7 +1337,7 @@ export function IcaChallengePlayView({
           />
         )}
 
-        {isOptionKind && (
+        {isOptionKind && !(data.kind === 'listen' && preparingAudio) && (
           <>
             <OptionsGrid
               options={data.options}

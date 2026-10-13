@@ -54,6 +54,9 @@ vi.mock('@/modules/game/achievements', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/modules/game/achievements')>()),
   useAchievements: () => achievementsMock(),
 }))
+vi.mock('@/modules/context/DashboardContext', () => ({
+  useDashboardContext: () => ({ config: { targetLang: 'Alemán', nativeLang: 'Español' } }),
+}))
 const featuredBadgeMock = vi.fn()
 vi.mock('@/modules/game/featuredBadge', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/modules/game/featuredBadge')>()),
