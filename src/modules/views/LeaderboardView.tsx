@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AwardIcon, BadgePercentIcon, CameraIcon, ChevronLeftIcon, ChevronRightIcon, ClipboardCheckIcon, EyeIcon, GiftIcon, GraduationCapIcon, HeadphonesIcon, InfoIcon, MicIcon, type LucideIcon } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { AwardIcon, BadgePercentIcon, XIcon, CameraIcon, ChevronLeftIcon, ChevronRightIcon, ClipboardCheckIcon, EyeIcon, GiftIcon, GraduationCapIcon, HeadphonesIcon, InfoIcon, MicIcon, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,7 +24,9 @@ import { LISTENING_METRICS_CHANGED_EVENT } from "../services/creationMetricsSync
 import { getIcaTestWindowStartDay } from "../services/icaTests";
 import { parseFeaturedBadge, useFeaturedBadge } from "../game/featuredBadge";
 import { useMyFlags } from "../game/languageFlag";
-import { MedalDefs } from "../game/Medal";
+import { Medal, MedalDefs } from "../game/Medal";
+import { ACHIEVEMENT_CATALOG, useAchievements } from "../game/achievements";
+import { DASHBOARD_ROUTES } from "../routes/paths";
 import { FichaIcon, FlameIcon, TargetGlyph, TrophyIcon } from "../game/icons";
 import { LeaderboardRow, MyRankCard, Podium, RankingFadeOut, rankingFadeOpacity } from "../game/ranking";
 import { IcademerProfileDialog, type IcademerSummary } from "../game/IcademerProfile";
@@ -562,6 +565,88 @@ function ScoreBreakdownContent({
   );
 }
 
+const FEATURED_PROMPT_KEY = "ica-featured-badge-prompt-closed";
+
+function readPromptClosed(userId: string): boolean {
+  try {
+    return window.localStorage.getItem(`${FEATURED_PROMPT_KEY}:${userId}`) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * «Destaca una insignia» (Luis, 13 Oct): on launch day only 6 icademers chose one. While you have
+ * badges but none next to your name, the ranking says so; a tap takes you to Insignias with your
+ * best one open. It goes away when you choose one, or for good with the X.
+ */
+function FeaturedBadgePrompt({ userId }: { userId: string }) {
+  const navigate = useNavigate();
+  const { badge, loaded } = useFeaturedBadge(userId);
+  const { byCategory, totalEarned, loading, coachingLocked } = useAchievements();
+  const [closed, setClosed] = useState(() => readPromptClosed(userId));
+  if (closed || !loaded || badge || loading || totalEarned === 0) return null;
+
+  // Your best badge, so you see what would go next to your name.
+  let best: { def: (typeof ACHIEVEMENT_CATALOG)[number]; level: (typeof ACHIEVEMENT_CATALOG)[number]["levels"][number] } | null = null;
+  let bestEarned = 0;
+  for (const def of ACHIEVEMENT_CATALOG) {
+    if (coachingLocked && def.key === "coaching") continue;
+    const earned = Math.min(byCategory[def.key].earned, def.levels.length);
+    if (earned > bestEarned) {
+      bestEarned = earned;
+      best = { def, level: def.levels[earned - 1] };
+    }
+  }
+
+  const close = () => {
+    setClosed(true);
+    try {
+      window.localStorage.setItem(`${FEATURED_PROMPT_KEY}:${userId}`, "1");
+    } catch {
+      // Without storage it only stays closed until the next visit.
+    }
+  };
+
+  return (
+    <div
+      className="mt-3 flex items-center gap-2 rounded-3xl border-2 py-2 pr-2 pl-3"
+      style={{ borderColor: "var(--ica-gold-edge)" }}
+    >
+      <button
+        type="button"
+        onClick={() => navigate(`${DASHBOARD_ROUTES.insignias}?destacar=1`)}
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+      >
+        {best ? (
+          <Medal
+            category={best.def.key}
+            tier={best.level.tier}
+            ribbon={best.level.ribbon}
+            label={t(best.def.title)}
+            earned
+            className="w-11 shrink-0"
+          />
+        ) : null}
+        <span className="min-w-0">
+          <span className="block text-sm font-extrabold">{t("Destaca una insignia")}</span>
+          <span className="block text-xs font-semibold text-muted-foreground">
+            {t("Te falta tu insignia destacada: sale junto a tu nombre en el ranking.")}
+          </span>
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={close}
+        className="flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+        aria-label={t("Cerrar")}
+      >
+        <XIcon className="size-4" strokeWidth={2.8} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
 /** La llama de la app con la forma de un icono de lucide (para la lista de puntos). */
 function FlameGlyph({ className }: { className?: string }) {
   return <FlameIcon size={20} className={className} />;
@@ -871,6 +956,7 @@ const [tiebreakOpen, setTiebreakOpen] = useState(false);
           {t('¿Empate?')}
         </button>
       </div>
+      {isCurrentMonth && user?.id ? <FeaturedBadgePrompt userId={user.id} /> : null}
       <TiebreakDialog
         open={tiebreakOpen}
         onOpenChange={setTiebreakOpen}

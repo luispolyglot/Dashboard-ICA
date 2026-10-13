@@ -43,7 +43,30 @@ vi.mock('@/components/ui/select', () => ({
   SelectItem: ({ value, children }: any) => <option value={value}>{children}</option>,
 }))
 
+// «Destaca una insignia» (13 Oct): the prompt needs the router, the badges and the featured badge.
+const navigateMock = vi.fn()
+vi.mock('react-router-dom', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-router-dom')>()),
+  useNavigate: () => navigateMock,
+}))
+const achievementsMock = vi.fn()
+vi.mock('@/modules/game/achievements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/modules/game/achievements')>()),
+  useAchievements: () => achievementsMock(),
+}))
+const featuredBadgeMock = vi.fn()
+vi.mock('@/modules/game/featuredBadge', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/modules/game/featuredBadge')>()),
+  useFeaturedBadge: () => featuredBadgeMock(),
+}))
+
 import { LeaderboardView } from '@/modules/views/LeaderboardView'
+import { ACHIEVEMENT_CATALOG } from '@/modules/game/achievements'
+
+function achievements(rachaICA: number) {
+  const byCategory = Object.fromEntries(ACHIEVEMENT_CATALOG.map((def) => [def.key, { earned: def.key === 'rachaICA' ? rachaICA : 0 }]))
+  return { byCategory, totalEarned: rachaICA, loading: false, coachingLocked: true }
+}
 
 afterEach(() => {
   cleanup()
@@ -58,6 +81,14 @@ describe('LeaderboardView ICA test column', () => {
     getIcaTestWindowStartDayMock.mockReset()
 
     useAuthMock.mockReturnValue({ user: { id: 'user-1' } })
+    navigateMock.mockReset()
+    achievementsMock.mockReturnValue(achievements(0))
+    featuredBadgeMock.mockReturnValue({ badge: null, loaded: true })
+    try {
+      window.localStorage.clear()
+    } catch {
+      /* no storage */
+    }
     getIcaTestWindowStartDayMock.mockReturnValue(25)
     fetchTotalIcademersMock.mockResolvedValue(120)
     fetchMonthlySnapshotLeaderboardMock.mockResolvedValue([])
@@ -208,5 +239,49 @@ describe('LeaderboardView ICA test column', () => {
     expect(screen.getByText('Clase 1 a 1 de 1 hora con Luis')).toBeTruthy()
     expect(screen.getByText('1 mes gratis en ICADEMY')).toBeTruthy()
     expect(screen.getByText('Insignia oficial de ICAwards')).toBeTruthy()
+  })
+})
+
+describe('LeaderboardView · Destaca una insignia (Luis, 13 Oct)', () => {
+  beforeEach(() => {
+    useAuthMock.mockReturnValue({ user: { id: 'user-1' } })
+    getIcaTestWindowStartDayMock.mockReturnValue(25)
+    fetchMonthlyStreakLeaderboardMock.mockResolvedValue([])
+    navigateMock.mockReset()
+    try {
+      window.localStorage.clear()
+    } catch {
+      /* no storage */
+    }
+  })
+
+  it('con insignias y ninguna destacada, invita a destacar una y lleva a Insignias', async () => {
+    achievementsMock.mockReturnValue(achievements(2))
+    featuredBadgeMock.mockReturnValue({ badge: null, loaded: true })
+    render(<LeaderboardView />)
+    fireEvent.click(await screen.findByText('Destaca una insignia'))
+    expect(navigateMock).toHaveBeenCalledWith('/insignias?destacar=1')
+  })
+
+  it('no sale si ya tiene una destacada, si no tiene ninguna insignia o si la cerró', async () => {
+    achievementsMock.mockReturnValue(achievements(2))
+    featuredBadgeMock.mockReturnValue({ badge: { category: 'rachaICA', tier: 'plata' }, loaded: true })
+    const first = render(<LeaderboardView />)
+    expect(screen.queryByText('Destaca una insignia')).toBeNull()
+    first.unmount()
+
+    achievementsMock.mockReturnValue(achievements(0))
+    featuredBadgeMock.mockReturnValue({ badge: null, loaded: true })
+    const second = render(<LeaderboardView />)
+    expect(screen.queryByText('Destaca una insignia')).toBeNull()
+    second.unmount()
+
+    achievementsMock.mockReturnValue(achievements(1))
+    render(<LeaderboardView />)
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }))
+    expect(screen.queryByText('Destaca una insignia')).toBeNull()
+    cleanup()
+    render(<LeaderboardView />)
+    expect(screen.queryByText('Destaca una insignia')).toBeNull()
   })
 })

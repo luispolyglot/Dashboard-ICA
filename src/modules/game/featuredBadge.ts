@@ -33,6 +33,11 @@ export function useFeaturedBadge(userId: string | null | undefined) {
   const [badge, setBadge] = useState<FeaturedBadge | null>(() =>
     userId ? peekQuick<FeaturedBadge | null>(`${CACHE_PREFIX}${userId}`) ?? null : null,
   )
+  // True once we know for sure (from the cache or the server) whether there is one, so a screen
+  // can ask «¿destacas una?» without flashing it to someone who already has one.
+  const [loaded, setLoaded] = useState(() =>
+    userId ? peekQuick<FeaturedBadge | null>(`${CACHE_PREFIX}${userId}`) !== undefined : false,
+  )
 
   const refresh = useCallback(async () => {
     if (!supabase || !userId) {
@@ -47,12 +52,15 @@ export function useFeaturedBadge(userId: string | null | undefined) {
     if (error) throw error
     const next = parseFeaturedBadge(data?.badge)
     setBadge(next)
+    setLoaded(true)
     storeQuick(`${CACHE_PREFIX}${userId}`, next)
     return next
   }, [userId])
 
   useEffect(() => {
-    setBadge(userId ? peekQuick<FeaturedBadge | null>(`${CACHE_PREFIX}${userId}`) ?? null : null)
+    const cached = userId ? peekQuick<FeaturedBadge | null>(`${CACHE_PREFIX}${userId}`) : undefined
+    setBadge(cached ?? null)
+    setLoaded(cached !== undefined)
     void refresh().catch(() => undefined)
     const onChange = () => { void refresh().catch(() => undefined) }
     window.addEventListener(CHANGED_EVENT, onChange)
@@ -78,5 +86,5 @@ export function useFeaturedBadge(userId: string | null | undefined) {
     [userId],
   )
 
-  return { badge, choose, refresh }
+  return { badge, loaded, choose, refresh }
 }

@@ -4,11 +4,12 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/auth/AuthContext'
-import { t } from '@/i18n'
+import { langName, t } from '@/i18n'
 import { turnOnRemindersOnThisDevice } from '../services/notificationOnboarding'
 import { getPushPermissionState } from '../services/pushNotifications'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { CHALLENGE_NOTE_MIN_CLOSED_NOTES, FLASHCARDS_MIN_ACTIVATED_WORDS } from './rules'
+import { FLAG_COST } from './languageFlag'
 
 /**
  * WELCOME TOUR (Luis, 7 Oct): like the guide in Clash of Clans, a friendly character walks a new
@@ -24,6 +25,7 @@ import { CHALLENGE_NOTE_MIN_CLOSED_NOTES, FLASHCARDS_MIN_ACTIVATED_WORDS } from 
 const WELCOME_KEY = 'ica-welcome-tour-v1'
 const CHALLENGE_NOTE_KEY = 'ica-guide-challenge-note-v1'
 const PROFILE_KEY = 'ica-guide-profile-v1'
+const SHOP_FLAG_KEY = 'ica-guide-shop-flag-v1'
 /** Only one guide on screen at a time. */
 let activeGuide: string | null = null
 const NEW_ACCOUNT_DAYS = 14
@@ -232,6 +234,40 @@ export function ChallengeNoteUnlockGuide({ unlocked }: { unlocked: boolean }) {
     [],
   )
   return <GuideTour guideKey={CHALLENGE_NOTE_KEY} steps={steps} shouldStart={unlocked} lastLabel={t('Entendido')} />
+}
+
+/**
+ * Shop: the language flag (Luis, 13 Oct). On launch day nobody bought one, so the first time an
+ * icademer without a flag opens the shop, the guide lights up the flag and says what it is.
+ * Once per account and device; `?tour=bandera` shows it again.
+ */
+export function ShopFlagGuide({ lang }: { lang: string | null }) {
+  const location = useLocation()
+  const forced = wantsTourFromUrl(location.search, 'bandera')
+  const steps = useMemo<TourStep[]>(
+    () =>
+      lang
+        ? [
+            {
+              id: 'shop-flag',
+              route: DASHBOARD_ROUTES.fichas,
+              targets: ['[data-tour="shop-flag"]'],
+              title: t('La bandera de {lang}', { lang: langName(lang) }),
+              body: t('Por {n} ICA Coins, la bandera del idioma que aprendes sale de fondo en tu inicial: en tu perfil y en el ranking, para que todos la vean. Es tuya para siempre, aunque cambies de idioma.', { n: FLAG_COST }),
+            },
+          ]
+        : [],
+    [lang],
+  )
+  return (
+    <GuideTour
+      guideKey={SHOP_FLAG_KEY}
+      steps={steps}
+      shouldStart={Boolean(lang) && location.pathname === DASHBOARD_ROUTES.fichas}
+      force={forced}
+      lastLabel={t('Entendido')}
+    />
+  )
 }
 
 /**

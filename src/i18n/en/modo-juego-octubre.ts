@@ -361,5 +361,11 @@ const en: Record<string, string> = {
   "Respondida": "Answered",
   "Ya la has hecho esta semana · extra: {PREGUNTICA_EXTRA_COST} ICA Coins": "Done this week · extra: {PREGUNTICA_EXTRA_COST} ICA Coins",
   "Desde la {n}.ª, una detrás de otra.": "From number {n}, one after another.",
+  // --- Bandera e insignia destacada (Luis, 13 Oct) ---
+  "La bandera de {lang}": "The {lang} flag",
+  "Por {n} ICA Coins, la bandera del idioma que aprendes sale de fondo en tu inicial: en tu perfil y en el ranking, para que todos la vean. Es tuya para siempre, aunque cambies de idioma.": "For {n} ICA Coins, the flag of the language you're learning goes behind your initial: on your profile and in the ranking, for everyone to see. It's yours forever, even if you switch languages.",
+  "Destaca una insignia": "Feature a badge",
+  "Te falta tu insignia destacada: sale junto a tu nombre en el ranking.": "You haven't featured a badge yet: it shows next to your name in the ranking.",
+  "Toca una insignia que tengas y pulsa «Mostrar junto a mi nombre». Saldrá a tu lado en el ranking.": "Tap a badge you have and press \"Show next to my name\". It will appear next to you in the ranking.",
 }
 export default en

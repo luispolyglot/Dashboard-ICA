@@ -46,6 +46,7 @@ import { FLAG_COST, useMyFlags } from '../game/languageFlag'
 import { LanguageFlag } from '../components/LanguagePicker'
 import { FlagInitial } from '../game/ranking'
 import { FlagCelebration } from '../game/FlagCelebration'
+import { ShopFlagGuide } from '../game/WelcomeTour'
 
 const LIMIT_ROWS: Array<{ key: DailyLimitKey; letter: 'I' | 'C' | 'A'; color: string; soft: string }> = [
   { key: 'words', letter: 'I', color: 'var(--ica-i)', soft: 'var(--ica-i-soft)' },
@@ -132,12 +133,15 @@ function Row({
   text,
   right,
   onClick,
+  tour,
 }: {
   icon: ReactNode
   title: string
   text: ReactNode
   right: ReactNode
   onClick?: () => void
+  /** Marks the row for a guide bubble (data-tour). */
+  tour?: string
 }) {
   const content = (
     <>
@@ -151,12 +155,12 @@ function Row({
   )
   if (onClick) {
     return (
-      <button type='button' onClick={onClick} className='flex w-full items-center gap-3 py-3 text-left'>
+      <button type='button' onClick={onClick} data-tour={tour} className='flex w-full items-center gap-3 py-3 text-left'>
         {content}
       </button>
     )
   }
-  return <div className='flex items-center gap-3 py-3'>{content}</div>
+  return <div data-tour={tour} className='flex items-center gap-3 py-3'>{content}</div>
 }
 
 /** Fila que se despliega aquí mismo para ver el detalle. */
@@ -333,6 +337,7 @@ export function FichasView() {
         <FlagCelebration lang={flagWon} name={myName.trim() || myInitial} initial={myInitial} onClose={() => setFlagWon(null)} />
       ) : null}
       <h1 className='m-0 font-display tracking-tight text-2xl leading-tight font-extrabold lg:text-3xl'>{t('ICA Coins')}</h1>
+      <ShopFlagGuide lang={flags.loaded && targetLang && flags.owned.length === 0 ? targetLang : null} />
 
       {/* Saldo */}
       <div className='-mt-2 flex items-center gap-4 rounded-3xl px-5 py-4' style={{ background: 'var(--ica-gold-soft)' }}>
@@ -442,6 +447,7 @@ export function FichasView() {
           />
           {targetLang ? (
             <Row
+              tour='shop-flag'
               icon={<FlagInitial initial={myInitial} flag={targetLang} size={48} />}
               title={t('Bandera de {lang}', { lang: langName(targetLang) })}
               text={
