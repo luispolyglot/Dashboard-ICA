@@ -8,6 +8,7 @@ import { useDashboardContext } from '../context/DashboardContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { fetchIcademerChatStatus, joinIcademerChat } from '../services/icademerChat'
 import { CYCLE_CELEBRATION_CLOSED_EVENT } from './CycleCelebration'
+import { afterGuides } from './WelcomeTour'
 import { ChatBubblesIcon } from './icons'
 import { chatLanguageLabel } from './icademerChat'
 import { isIcaCycleDone } from './streak'
@@ -38,8 +39,9 @@ export function ChatInvite() {
             markChatInviteSeen(user.id, targetLang)
             return
           }
-          // Un momento después de que se cierre la celebración y vuelen las monedas.
-          window.setTimeout(() => setOpen(true), 1400)
+          // Un momento después de que se cierre la celebración y vuelen las monedas, y después de
+          // la guía del primer cofre si sale (Luis, 13 Oct: no una encima de la otra).
+          window.setTimeout(() => afterGuides(() => setOpen(true)), 1400)
         })
         .catch(() => {
           // Sin chat en el servidor: no se invita.

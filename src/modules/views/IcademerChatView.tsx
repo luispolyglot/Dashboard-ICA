@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { toast } from 'sonner'
-import { BellIcon, ChevronDownIcon, ClockIcon, GlobeIcon, LogOutIcon, SendIcon, UsersIcon } from 'lucide-react'
+import { BellIcon, CalendarDaysIcon, CheckIcon, CircleHelpIcon, ChevronDownIcon, ClockIcon, ExternalLinkIcon, GlobeIcon, LogOutIcon, SendIcon, UsersIcon } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -11,10 +11,16 @@ import { ChatBubblesIcon } from '../game/icons'
 import {
   CHAT_MAX_IN_A_ROW,
   CHAT_MESSAGES,
+  CHAT_MESSAGE_TEXT,
+  CHAT_PROPOSAL_DAYS,
+  CLUB_DINAMICA_URL,
+  CLUB_DINAMICA_VIDEO_URL,
   chatLanguageLabel,
   deviceTimeZone,
+  localDayKey,
   mustWaitForOthers,
   nextQuarter,
+  proposalInViewerZone,
   timeInViewerZone,
   zoneCity,
   type ChatMessageKind,
@@ -28,6 +34,7 @@ import {
   leaveIcademerChat,
   sendIcademerChatMessage,
   setIcademerChatNotifications,
+  setIcademerChatRsvp,
   type IcademerChatMessage,
   type IcademerChatStatus,
 } from '../services/icademerChat'
@@ -54,9 +61,122 @@ function toneFor(key: string): string {
 }
 
 function chatText(kind: ChatMessageKind, time?: string | null): string {
-  const item = CHAT_MESSAGES.find((entry) => entry.kind === kind)
-  if (!item) return ''
-  return kind === 'hora' ? t(item.text, { time: time ?? '' }) : t(item.text)
+  const text = CHAT_MESSAGE_TEXT[kind]
+  if (!text) return ''
+  return kind === 'hora' ? t(text, { time: time ?? '' }) : t(text)
+}
+
+/** «Hoy», «Mañana» or «jueves 16 de octubre» (a day AAAA-MM-DD of the reader's calendar). */
+function dayLabel(dayKey: string, long = true): string {
+  const now = new Date()
+  if (dayKey === localDayKey(now, 0)) return t('Hoy')
+  if (dayKey === localDayKey(now, 1)) return t('Mañana')
+  const [year, month, day] = dayKey.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  if (Number.isNaN(date.getTime())) return dayKey
+  const label = date.toLocaleDateString(uiLocale(), long ? { weekday: 'long', day: 'numeric', month: 'long' } : { weekday: 'short', day: 'numeric' })
+  return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
+/** A proposal counts as past two hours after it starts (no more «Me apunto»). */
+const PROPOSAL_PAST_MS = 2 * 60 * 60 * 1000
+
+/**
+ * «Proponer día y hora» (Luis, 13 Oct): like an event in a WhatsApp group. Everyone sees the day
+ * and time in their own zone, taps «Me apunto» and sees who is going, and the button takes them
+ * to the Club de DinámICA.
+ */
+export function ProposalCard({
+  message,
+  viewerZone,
+  onRsvp,
+  busy,
+}: {
+  message: IcademerChatMessage
+  viewerZone: string
+  onRsvp: (going: boolean) => void
+  busy: boolean
+}) {
+  const local =
+    message.dayValue && message.timeValue
+      ? proposalInViewerZone(message.dayValue, message.timeValue, message.timeZone, viewerZone)
+      : null
+  const past = local ? Date.now() - local.at.getTime() > PROPOSAL_PAST_MS : false
+  const extra = Math.max(0, message.goingCount - message.goingNames.length)
+  const names = message.goingNames.join(', ') + (extra > 0 ? ` ${t('y {n} más', { n: extra })}` : '')
+
+  return (
+    <div className='w-[min(100%,22rem)] overflow-hidden rounded-3xl border-2 border-border bg-card text-card-foreground'>
+      <div className='flex items-center gap-2 px-4 pt-3'>
+        <span className='flex min-w-0 flex-1 items-center gap-2 text-sm font-extrabold' style={{ color: 'var(--ica-reto, #a259f0)' }}>
+          <CalendarDaysIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' />
+          {t('Club de DinámICA')}
+        </span>
+        {/* For whoever does not know the club yet: Luis's video (13 Oct). */}
+        <a
+          href={CLUB_DINAMICA_VIDEO_URL}
+          target='_blank'
+          rel='noopener noreferrer'
+          className='flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-xs font-extrabold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground'
+        >
+          <CircleHelpIcon className='size-4' strokeWidth={2.6} aria-hidden='true' />
+          {t('¿Qué es?')}
+        </a>
+      </div>
+      <div className='px-4 pt-1.5 pb-3'>
+        <p className='m-0 font-display text-xl leading-tight font-extrabold tracking-tight'>
+          {local ? dayLabel(local.day) : message.dayValue}
+        </p>
+        <p className='m-0 mt-0.5 flex items-center gap-1.5 text-lg font-black tabular-nums'>
+          <ClockIcon className='size-4.5 shrink-0' strokeWidth={2.6} aria-hidden='true' />
+          {local ? local.time : message.timeValue}
+        </p>
+        <p className='m-0 mt-1 text-xs font-semibold text-muted-foreground'>
+          {message.isMe
+            ? t('Hora de {city}. A cada uno le llega en la suya.', { city: zoneCity(message.timeZone) })
+            : local?.converted
+              ? t('En tu hora. {name} propuso las {time} de {city}.', {
+                  name: message.senderName.split(' ')[0],
+                  time: message.timeValue ?? '',
+                  city: zoneCity(message.timeZone),
+                })
+              : t('En tu hora.')}
+        </p>
+        <p className='m-0 mt-2.5 flex items-start gap-1.5 text-sm font-bold'>
+          <UsersIcon className='mt-0.5 size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' />
+          <span className='min-w-0'>
+            {tn(message.goingCount, t('{n} persona se ha apuntado'), t('{n} personas se han apuntado'))}
+            {names ? <span className='block text-xs font-semibold text-muted-foreground'>{names}</span> : null}
+          </span>
+        </p>
+      </div>
+      <div className='flex flex-col gap-2 border-t-2 border-border p-3'>
+        {past ? (
+          <p className='m-0 text-center text-xs font-bold text-muted-foreground'>{t('Esta propuesta ya pasó.')}</p>
+        ) : message.iAmGoing ? (
+          <Button type='button' variant='outline' className='w-full' disabled={busy} onClick={() => onRsvp(false)}>
+            <CheckIcon className='size-4' strokeWidth={3} aria-hidden='true' style={{ color: 'var(--ica-ok)' }} />
+            {t('Te has apuntado')}
+            <span className='text-xs font-semibold text-muted-foreground'>{t('· Quitarme')}</span>
+          </Button>
+        ) : (
+          <Button type='button' className='w-full' disabled={busy} onClick={() => onRsvp(true)}>
+            {t('Me apunto')}
+          </Button>
+        )}
+        <a
+          href={CLUB_DINAMICA_URL}
+          target='_blank'
+          rel='noopener noreferrer'
+          className='ica-press flex min-h-11 items-center justify-center gap-2 rounded-2xl px-3 py-2 text-sm font-extrabold text-white'
+          style={{ background: 'var(--ica-reto, #a259f0)', boxShadow: '0 3px 0 color-mix(in oklab, var(--ica-reto, #a259f0) 70%, black)' }}
+        >
+          {t('Entrar al Club de DinámICA')}
+          <ExternalLinkIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' />
+        </a>
+      </div>
+    </div>
+  )
 }
 
 function clockLabel(iso: string): string {
@@ -154,6 +274,9 @@ export function IcademerChatView() {
   const [joining, setJoining] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pickingTime, setPickingTime] = useState(false)
+  // Day of a «Proponer día y hora»: 0 today, 1 tomorrow…
+  const [dayOffset, setDayOffset] = useState(0)
+  const [rsvpBusy, setRsvpBusy] = useState<string | null>(null)
   const [hour, setHour] = useState(() => nextQuarter(new Date()).slice(0, 2))
   const [minute, setMinute] = useState(() => nextQuarter(new Date()).slice(3))
   const [composerOpen, setComposerOpen] = useState(readComposerOpen)
@@ -296,24 +419,65 @@ export function IcademerChatView() {
 
   const send = async (kind: ChatMessageKind) => {
     if (sending || waitForOthers) return
-    if (kind === 'hora' && !pickingTime) {
+    if (kind === 'propuesta' && !pickingTime) {
       setPickingTime(true)
       return
     }
+    const now = new Date()
+    const dayValue = localDayKey(now, dayOffset)
+    if (kind === 'propuesta' && dayOffset === 0) {
+      const [h, m] = [Number(hour), Number(minute)]
+      if (h * 60 + m <= now.getHours() * 60 + now.getMinutes()) {
+        toast.error(t('Esa hora ya ha pasado hoy. Elige otra hora u otro día.'))
+        return
+      }
+    }
     setSending(true)
     try {
-      await sendIcademerChatMessage({
+      const result = await sendIcademerChatMessage({
         targetLang,
         kind,
-        timeValue: kind === 'hora' ? `${hour}:${minute}` : undefined,
-        timeZone: kind === 'hora' ? viewerZone : undefined,
+        timeValue: kind === 'propuesta' ? `${hour}:${minute}` : undefined,
+        timeZone: kind === 'propuesta' ? viewerZone : undefined,
+        dayValue: kind === 'propuesta' ? dayValue : undefined,
       })
+      if (result.sentAsTimeOnly) {
+        toast.message(
+          dayOffset === 0
+            ? t('Se ha enviado solo la hora: el día y «Me apunto» llegan en unos minutos.')
+            : t('Se ha enviado solo la hora, sin el día: el día y «Me apunto» llegan en unos minutos.'),
+        )
+      }
       setPickingTime(false)
       await loadChat()
     } catch (sendError) {
       toast.error(sendError instanceof Error ? sendError.message : t('No se pudo conectar con el chat.'))
     } finally {
       setSending(false)
+    }
+  }
+
+  // «Me apunto»: shown at once; if the server says no, the chat is read again.
+  const rsvp = async (message: IcademerChatMessage, going: boolean) => {
+    if (rsvpBusy) return
+    setRsvpBusy(message.id)
+    setMessages((current) =>
+      current.map((item) =>
+        item.id === message.id
+          ? { ...item, iAmGoing: going, goingCount: Math.max(0, item.goingCount + (going ? 1 : -1)) }
+          : item,
+      ),
+    )
+    try {
+      const result = await setIcademerChatRsvp(message.id, going)
+      setMessages((current) => current.map((item) => (item.id === message.id ? { ...item, ...result } : item)))
+      if (going) toast.success(t('¡Apuntado! Nos vemos en el Club de DinámICA.'))
+      void loadChat()
+    } catch (rsvpError) {
+      toast.error(rsvpError instanceof Error ? rsvpError.message : t('No se pudo conectar con el chat.'))
+      void loadChat()
+    } finally {
+      setRsvpBusy(null)
     }
   }
 
@@ -352,7 +516,7 @@ export function IcademerChatView() {
             {t('Un chat con quien aprende {lang} como tú.', { lang: language })}
           </p>
           <ul className='m-0 flex list-none flex-col gap-2 p-0 text-sm font-semibold text-muted-foreground'>
-            <li>{t('Los mensajes son cerrados: eliges uno de la lista y, si quieres, una hora.')}</li>
+            <li>{t('Los mensajes son cerrados: eliges uno de la lista o propones un día y una hora.')}</li>
             <li>{t('Sirve para quedar en el Club de DinámICA y ponerle nombre a la gente.')}</li>
             <li>{t('Las horas se ajustan solas: cada uno las ve en su hora local.')}</li>
             <li>{t('Nadie ve quién está dentro: solo cuántos son.')}</li>
@@ -391,11 +555,29 @@ export function IcademerChatView() {
                   key={message.id}
                   className={cn('flex flex-col', message.isMe ? 'items-end' : 'items-start', sameSender ? '-mt-1' : 'mt-1')}
                 >
-                  {!message.isMe && !sameSender ? (
+                  {message.kind === 'propuesta' ? (
+                    // «Luis G. ha propuesto un día para unirse al Club de DinámICA» (Luis, 13 Oct).
+                    <span
+                      className={cn('mb-0.5 text-xs font-extrabold', message.isMe ? 'mr-1 text-muted-foreground' : 'ml-1')}
+                      style={message.isMe ? undefined : { color: toneFor(message.senderKey) }}
+                    >
+                      {message.isMe
+                        ? t('Has propuesto un día para unirse al Club de DinámICA')
+                        : t('{name} ha propuesto un día para unirse al Club de DinámICA', { name: message.senderName })}
+                    </span>
+                  ) : !message.isMe && !sameSender ? (
                     <span className='mb-0.5 ml-1 text-xs font-extrabold' style={{ color: toneFor(message.senderKey) }}>
                       {message.senderName}
                     </span>
                   ) : null}
+                  {message.kind === 'propuesta' ? (
+                    <ProposalCard
+                      message={message}
+                      viewerZone={viewerZone}
+                      busy={rsvpBusy === message.id}
+                      onRsvp={(going) => void rsvp(message, going)}
+                    />
+                  ) : (
                   <div
                     className={cn(
                       'max-w-[85%] rounded-2xl border-2 px-3.5 py-2',
@@ -431,6 +613,7 @@ export function IcademerChatView() {
                       {clockLabel(message.createdAt)}
                     </p>
                   </div>
+                  )}
                 </div>
               )
             })}
@@ -462,8 +645,32 @@ export function IcademerChatView() {
                 ) : null}
                 {pickingTime ? (
                   <div className='ica-pop mb-2 flex flex-col gap-2 rounded-2xl bg-muted/70 p-2'>
+                    <p className='m-0 flex items-center gap-1.5 text-sm font-extrabold'>
+                      <CalendarDaysIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' />
+                      {t('Proponer día y hora para el Club de DinámICA')}
+                    </p>
+                    <div className='-mx-2 flex gap-1.5 overflow-x-auto px-2 pb-1' role='group' aria-label={t('Día')}>
+                      {Array.from({ length: CHAT_PROPOSAL_DAYS }, (_, offset) => {
+                        const selected = dayOffset === offset
+                        return (
+                          <button
+                            key={offset}
+                            type='button'
+                            onClick={() => setDayOffset(offset)}
+                            aria-pressed={selected}
+                            className={cn(
+                              'h-10 shrink-0 rounded-xl border-2 px-3 text-sm font-extrabold whitespace-nowrap',
+                              selected ? 'border-transparent text-white' : 'border-border bg-card',
+                            )}
+                            style={selected ? { background: 'var(--ica-me)' } : undefined}
+                          >
+                            {dayLabel(localDayKey(new Date(), offset), false)}
+                          </button>
+                        )
+                      })}
+                    </div>
                     <div className='flex flex-wrap items-center gap-2'>
-                      <span className='text-sm font-extrabold'>{t('¿A las…?')}</span>
+                      <span className='text-sm font-extrabold'>{t('A las')}</span>
                       <Select value={hour} onValueChange={setHour}>
                         <SelectTrigger className='h-10 w-20 rounded-xl' aria-label={t('Hora')}>
                           <SelectValue />
@@ -497,15 +704,15 @@ export function IcademerChatView() {
                     </div>
                     <p className='m-0 flex items-start gap-1.5 text-xs font-semibold text-muted-foreground'>
                       <GlobeIcon className='mt-px size-3.5 shrink-0' strokeWidth={2.6} aria-hidden='true' />
-                      {t('Pon la hora de {city}, la tuya. A cada icademer le llega pasada a su hora local.', { city: viewerCity })}
+                      {t('Pon la hora de {city}, la tuya. A cada icademer le llega pasada a su hora local y puede apuntarse.', { city: viewerCity })}
                     </p>
                     <div className='flex justify-end gap-1'>
                       <Button type='button' variant='outline' size='sm' onClick={() => setPickingTime(false)}>
                         {t('Cancelar')}
                       </Button>
-                      <Button type='button' size='sm' onClick={() => void send('hora')} disabled={sending || waitForOthers}>
+                      <Button type='button' size='sm' onClick={() => void send('propuesta')} disabled={sending || waitForOthers}>
                         <SendIcon className='size-4' aria-hidden='true' />
-                        {t('Enviar')}
+                        {t('Proponer')}
                       </Button>
                     </div>
                   </div>
@@ -527,7 +734,7 @@ export function IcademerChatView() {
                       className={cn(
                         'ica-press ica-chat-option flex min-h-11 items-center gap-1.5 rounded-2xl border-2 px-3 py-2 text-left text-sm leading-tight font-extrabold disabled:opacity-50',
                         item.kind === 'club' ? 'col-span-2 border-transparent text-white' : 'border-border bg-background',
-                        item.kind === 'animo' ? 'col-span-2' : '',
+                        item.kind === 'propuesta' || item.kind === 'animo' ? 'col-span-2' : '',
                       )}
                       style={
                         item.kind === 'club'
@@ -535,8 +742,10 @@ export function IcademerChatView() {
                           : { boxShadow: '0 3px 0 var(--border)' }
                       }
                     >
-                      {item.kind === 'hora' ? <ClockIcon className='size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' /> : null}
-                      <span className='relative min-w-0 flex-1'>{item.kind === 'hora' ? t('¿A las…?') : t(item.text)}</span>
+                      {item.kind === 'propuesta' ? (
+                        <CalendarDaysIcon className='size-4 shrink-0' strokeWidth={2.6} style={{ color: 'var(--ica-reto, #a259f0)' }} aria-hidden='true' />
+                      ) : null}
+                      <span className='relative min-w-0 flex-1'>{t(item.text)}</span>
                       <SendIcon className='ica-chat-send relative size-4 shrink-0' strokeWidth={2.6} aria-hidden='true' />
                     </button>
                   ))}

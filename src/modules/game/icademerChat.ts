@@ -9,19 +9,58 @@ export function chatLanguageLabel(targetLang: string): string {
   return uiLocale().startsWith('es') ? name.toLowerCase() : name
 }
 
-export type ChatMessageKind = 'hola' | 'club' | 'me_apunto' | 'no_puedo' | 'hora' | 'genial' | 'nos_vemos' | 'animo'
+export type ChatMessageKind =
+  | 'hola'
+  | 'club'
+  | 'me_apunto'
+  | 'no_puedo'
+  | 'hora'
+  | 'genial'
+  | 'nos_vemos'
+  | 'animo'
+  | 'manana'
+  | 'propuesta'
 
-/** Los 8 mensajes, en el orden de los botones. Los textos pasan por t() al pintarlos. */
+/** Club de DinámICA: where «Entrar al Club de DinámICA» takes you (Luis, 13 Oct). */
+export const CLUB_DINAMICA_URL = 'https://clubdedinamica.icademy.app/'
+
+/** «¿Qué es el Club de DinámICA?»: Luis's video that explains it (Skool). */
+export const CLUB_DINAMICA_VIDEO_URL =
+  'https://www.skool.com/icademy/classroom/0e6161d0?md=aa39078e57e446cca8d9d198a3582a38'
+
+/**
+ * Los mensajes que se pueden mandar, en el orden de los botones. Los textos pasan por t().
+ * «Proponer día y hora» (Luis, 13 Oct) sustituye a «¿A las…?»: es una propuesta para el Club de
+ * DinámICA, como un evento de WhatsApp, con «Me apunto».
+ */
 export const CHAT_MESSAGES: ReadonlyArray<{ kind: ChatMessageKind; text: string }> = [
   { kind: 'club', text: '¿Alguien se apunta al Club de DinámICA?' },
+  { kind: 'propuesta', text: 'Proponer día y hora' },
   { kind: 'hola', text: '¡Hola!' },
   { kind: 'me_apunto', text: '¡Yo me apunto!' },
-  { kind: 'hora', text: '¿A las {time}?' },
   { kind: 'genial', text: '¡Genial!' },
   { kind: 'nos_vemos', text: '¡Nos vemos allí!' },
+  { kind: 'manana', text: 'Mañana' },
   { kind: 'no_puedo', text: 'Hoy no puedo' },
   { kind: 'animo', text: '¡Ánimo con la racha ICA!' },
 ]
+
+/** Texto de cada mensaje ya enviado (incluye «¿A las…?», que ya no se manda pero sigue en el chat). */
+export const CHAT_MESSAGE_TEXT: Record<ChatMessageKind, string> = {
+  club: '¿Alguien se apunta al Club de DinámICA?',
+  propuesta: 'Club de DinámICA',
+  hola: '¡Hola!',
+  me_apunto: '¡Yo me apunto!',
+  hora: '¿A las {time}?',
+  genial: '¡Genial!',
+  nos_vemos: '¡Nos vemos allí!',
+  manana: 'Mañana',
+  no_puedo: 'Hoy no puedo',
+  animo: '¡Ánimo con la racha ICA!',
+}
+
+/** Days that can be proposed: today and the next 6 (the server accepts up to 14). */
+export const CHAT_PROPOSAL_DAYS = 7
 
 /** Como mucho 3 mensajes seguidos de la misma persona. */
 export const CHAT_MAX_IN_A_ROW = 3
@@ -147,4 +186,45 @@ export function timeInViewerZone(
 export function mustWaitForOthers(messages: ReadonlyArray<{ isMe: boolean }>): boolean {
   if (messages.length < CHAT_MAX_IN_A_ROW) return false
   return messages.slice(-CHAT_MAX_IN_A_ROW).every((message) => message.isMe)
+}
+
+/** AAAA-MM-DD of a day `offset` days after `from`, in this device's calendar. */
+export function localDayKey(from: Date, offset = 0): string {
+  const date = new Date(from.getFullYear(), from.getMonth(), from.getDate() + offset)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+export type ProposalInViewerZone = {
+  /** The moment of the proposal. */
+  at: Date
+  /** Day (AAAA-MM-DD) and time in the zone of whoever reads it. */
+  day: string
+  time: string
+  /** True when the reader's zone gives another day or time than the sender's. */
+  converted: boolean
+}
+
+/**
+ * A proposal «jueves 16 a las 19:30» (day and time in the sender's zone) in the reader's zone.
+ * Ej.: 19:30 of Madrid read in Bogotá → 12:30, same day.
+ */
+export function proposalInViewerZone(
+  dayValue: string,
+  timeValue: string,
+  senderZone: string | null | undefined,
+  viewerZone: string,
+): ProposalInViewerZone | null {
+  const [year, month, day] = dayValue.split('-').map(Number)
+  const [hours, minutes] = timeValue.split(':').map(Number)
+  if (![year, month, day, hours, minutes].every(Number.isFinite)) return null
+  const zone = senderZone || viewerZone
+  // The offset can change on that day (summer time): use the offset at that moment.
+  const guess = new Date(Date.UTC(year, month - 1, day, hours, minutes))
+  const senderOffset = zoneOffsetMinutes(zone, guess) ?? 0
+  const at = new Date(guess.getTime() - senderOffset * 60000)
+  const viewerOffset = zoneOffsetMinutes(viewerZone, at) ?? senderOffset
+  const viewerLocal = new Date(at.getTime() + viewerOffset * 60000)
+  const viewerDay = `${viewerLocal.getUTCFullYear()}-${String(viewerLocal.getUTCMonth() + 1).padStart(2, '0')}-${String(viewerLocal.getUTCDate()).padStart(2, '0')}`
+  const viewerTime = `${String(viewerLocal.getUTCHours()).padStart(2, '0')}:${String(viewerLocal.getUTCMinutes()).padStart(2, '0')}`
+  return { at, day: viewerDay, time: viewerTime, converted: viewerDay !== dayValue || viewerTime !== timeValue }
 }

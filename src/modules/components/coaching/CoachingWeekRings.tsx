@@ -104,7 +104,9 @@ export function CoachingWeekRingsStrip({
         const selected = ring.period === selectedPeriod
         const preparable = ring.state === 'locked' && ring.period === preparablePeriod
         const openable = canOpen(ring.period)
-        const caption = ring.state === 'locked' ? (preparable ? t('Preparar') : '') : ring.complete ? String(ring.period) : `${ring.answered}/6`
+        // A week the coach can open without having activated it says «Preparar» (Luis, 14 Oct).
+        const caption =
+          ring.state === 'locked' ? (preparable || openable ? t('Preparar') : '') : ring.complete ? String(ring.period) : `${ring.answered}/6`
         return (
           <button
             key={ring.period}

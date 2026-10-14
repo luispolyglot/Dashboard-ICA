@@ -3,7 +3,7 @@
 
 /** Máximo de cada fase ICA por día, sin gastar fichas. */
 export const DAILY_LIMITS = {
-  words: 10,
+  words: 15,
   phrases: 2,
   activations: 2,
 } as const
@@ -12,7 +12,7 @@ export type DailyLimitKey = keyof typeof DAILY_LIMITS
 
 /**
  * «Ampliar» una fase: por PHASE_BOOST_COST ICA Coins, ese día el límite de esa fase se
- * multiplica por 2 (Inmersión 20 palabras, Creación 4 frases o Activación 4 activaciones).
+ * multiplica por 2 (Inmersión 30 palabras, Creación 4 frases o Activación 4 activaciones).
  * Cada fase se compra por separado (Luis, 3 oct; antes era «Ampliar el día» todo junto por 50).
  */
 export const PHASE_BOOST_COST = 15

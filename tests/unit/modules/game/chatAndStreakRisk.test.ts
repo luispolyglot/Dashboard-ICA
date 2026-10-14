@@ -4,23 +4,47 @@ import {
   CHAT_TIME_OPTIONS,
   mustWaitForOthers,
   nextQuarter,
+  proposalInViewerZone,
   timeInViewerZone,
   zoneCity,
 } from '../../../../src/modules/game/icademerChat'
 import { getStreakRisk, msUntilMidnight } from '../../../../src/modules/game/streakRisk'
 
 describe('chat de icademers', () => {
-  it('tiene 8 mensajes cerrados con las claves que acepta el servidor', () => {
+  it('tiene los mensajes cerrados con las claves que acepta el servidor', () => {
+    // «Proponer día y hora» sustituye a «¿A las…?» y llega «Mañana» (Luis, 13 Oct).
     expect(CHAT_MESSAGES.map((item) => item.kind)).toEqual([
       'club',
+      'propuesta',
       'hola',
       'me_apunto',
-      'hora',
       'genial',
       'nos_vemos',
+      'manana',
       'no_puedo',
       'animo',
     ])
+  })
+
+  it('una propuesta de día y hora se ve en la hora de quien la lee', () => {
+    // 19:30 de Madrid el viernes 16 → 12:30 en Bogotá, el mismo día.
+    const bogota = proposalInViewerZone('2026-10-16', '19:30', 'Europe/Madrid', 'America/Bogota')
+    expect(bogota).toMatchObject({ day: '2026-10-16', time: '12:30', converted: true })
+    expect(bogota?.at.toISOString()).toBe('2026-10-16T17:30:00.000Z')
+    // Misma hora en Varsovia: nada que convertir.
+    expect(proposalInViewerZone('2026-10-16', '19:30', 'Europe/Madrid', 'Europe/Warsaw')).toMatchObject({
+      time: '19:30',
+      converted: false,
+    })
+    // 00:15 de Madrid → 23:15 del día anterior en Canarias.
+    expect(proposalInViewerZone('2026-10-17', '00:15', 'Europe/Madrid', 'Atlantic/Canary')).toMatchObject({
+      day: '2026-10-16',
+      time: '23:15',
+    })
+    // Después del cambio de hora (25 oct) se usa la hora de ese día.
+    expect(proposalInViewerZone('2026-10-26', '19:30', 'Europe/Madrid', 'Europe/Madrid')?.at.toISOString()).toBe(
+      '2026-10-26T18:30:00.000Z',
+    )
   })
 
   it('las horas van de 15 en 15 minutos', () => {

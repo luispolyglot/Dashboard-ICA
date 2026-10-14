@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LockIcon } from 'lucide-react'
+import { CheckIcon, LockIcon } from 'lucide-react'
 import { GOAL, getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
@@ -35,6 +35,8 @@ type GamesIcaViewProps = {
   pregunticaProgress: string
   /** Days 29-31: no PreguntICA until day 1. */
   pregunticaClosed?: boolean
+  /** This week's PreguntICA is already answered (Luis, 12 Oct: a small «Respondida» instead of the full bar). */
+  pregunticaAnswered?: boolean
 }
 
 function parseProgress(value: string): { current: number; total: number } {
@@ -56,6 +58,19 @@ function ProgressBar({ pct, color = 'var(--primary)' }: { pct: number; color?: s
         className='block h-full rounded-full transition-all duration-700'
         style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: color }}
       />
+    </span>
+  )
+}
+
+/** Small green «Respondida» mark for this week's PreguntICA (top right of its tile). */
+function AnsweredPill() {
+  return (
+    <span
+      className='inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-extrabold'
+      style={{ background: 'var(--ica-ok-soft)', color: 'var(--ica-ok-ink)' }}
+    >
+      <CheckIcon className='size-3' strokeWidth={3.2} aria-hidden='true' />
+      {t('Respondida')}
     </span>
   )
 }
@@ -123,6 +138,7 @@ export function GamesIcaView({
   pregunticaUnlocked,
   pregunticaProgress,
   pregunticaClosed = false,
+  pregunticaAnswered = false,
 }: GamesIcaViewProps) {
   const navigate = useNavigate()
   const { dailyProgress, config } = useDashboardContext()
@@ -200,11 +216,14 @@ export function GamesIcaView({
           status={
             pregunticaClosed
               ? t('Vuelve el día 1 del mes que viene')
-              : pregunticaUnlocked
-                ? t('Desbloqueada esta semana · extra: {PREGUNTICA_EXTRA_COST} ICA Coins', { PREGUNTICA_EXTRA_COST })
-                : t('{pregunticaProgress} palabras activadas esta semana', { pregunticaProgress })
+              : pregunticaAnswered
+                ? t('Ya la has hecho esta semana · extra: {PREGUNTICA_EXTRA_COST} ICA Coins', { PREGUNTICA_EXTRA_COST })
+                : pregunticaUnlocked
+                  ? t('Desbloqueada esta semana · extra: {PREGUNTICA_EXTRA_COST} ICA Coins', { PREGUNTICA_EXTRA_COST })
+                  : t('{pregunticaProgress} palabras activadas esta semana', { pregunticaProgress })
           }
-          progress={pregunticaPct}
+          badge={pregunticaAnswered && !pregunticaClosed ? <AnsweredPill /> : undefined}
+          progress={pregunticaAnswered && !pregunticaClosed ? undefined : pregunticaPct}
         />
 
         {challengeNoteEnabled ? (
@@ -214,14 +233,8 @@ export function GamesIcaView({
             tour='game-challenge-note'
             color='var(--ica-gold-edge)'
             locked={closedNotes !== null && !challengeReady}
-            // One new challenge waiting: straight to that note, with its «Empezar» button.
-            onClick={() =>
-              navigate(
-                pendingChallengeNotes.length === 1
-                  ? `${DASHBOARD_ROUTES.notaDesafiante}/${pendingChallengeNotes[0].id}`
-                  : DASHBOARD_ROUTES.notaDesafiante,
-              )
-            }
+            // Always to the list of notes, where the open challenge shows «Jugar» (Luis, 14 Oct).
+            onClick={() => navigate(DASHBOARD_ROUTES.notaDesafiante)}
             badge={
               pendingChallengeNotes.length > 0 ? <ChallengeNotePill count={pendingChallengeNotes.length} /> : undefined
             }

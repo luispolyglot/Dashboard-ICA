@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { AudioLinesIcon, ChevronRightIcon, ListMusicIcon, Loader2Icon, LockIcon, PauseIcon, PlayIcon } from 'lucide-react'
+import { AudioLinesIcon, ChevronDownIcon, ChevronRightIcon, ListMusicIcon, Loader2Icon, LockIcon, PauseIcon, PlayIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/auth/AuthContext'
 import { cn } from '@/lib/utils'
@@ -11,11 +11,11 @@ import { TargetGlyph } from '../game/icons'
 import { CHALLENGE_NOTE_MIN_CLOSED_NOTES } from '../game/rules'
 import { EmptyState, GameProgress, GamePage, IconTile, PageTitle, Panel, SectionLabel, tone } from '../game/ui'
 import { useClosedMasterNotes, type ClosedMasterNote } from '../game/useClosedMasterNotes'
-import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
-import { useStopSharedMasterNote } from '../components/MasterNotePlaybackProvider'
-import { useLoopedMasterNotePlayback } from '../hooks/useLoopedMasterNotePlayback'
+import { useSharedMasterNotePlayback } from '../components/MasterNotePlaybackProvider'
+import { useChallengeSequenceStore } from '../stores/challengeSequenceStore'
+import { MENU_CONTENT_CLASS, MENU_ITEM_CLASS } from '../components/MasterNoteGameUi'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { MasterNotePlaylistPlayerDock } from '../components/MasterNotePlaylistPlayerDock'
-import { speakNatural } from '../services/tts'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { useChallengeEnabled, type ChallengePhraseInput } from '../services/challengeChunks'
 import { CHALLENGE_UNLOCK_RATIO, markChallengeNoteSeen, useChallengeUnlock } from '../services/challengeUnlocks'
@@ -113,41 +113,8 @@ function NoteCard({ note, nowPlaying, isNew }: { note: ClosedMasterNote; nowPlay
   )
 }
 
-const ORDINALS = [
-  'Primera nota maestra',
-  'Segunda nota maestra',
-  'Tercera nota maestra',
-  'Cuarta nota maestra',
-  'Quinta nota maestra',
-  'Sexta nota maestra',
-  'Séptima nota maestra',
-  'Octava nota maestra',
-  'Novena nota maestra',
-  'Décima nota maestra',
-]
-
-/** Lo que dice la voz antes de cada nota: «Primera nota maestra», «Segunda nota maestra»… */
-export function sequenceAnnouncement(index: number): string {
-  return ORDINALS[index] ? t(ORDINALS[index]) : t('Nota maestra {n}', { n: index + 1 })
-}
-
-/** Dice la frase y espera a que termine (como mucho 5 segundos). */
-function speakAndWait(text: string, langName: string): Promise<void> {
-  return new Promise((resolve) => {
-    let done = false
-    const finish = () => {
-      if (done) return
-      done = true
-      resolve()
-    }
-    window.setTimeout(finish, 5000)
-    try {
-      speakNatural(text, langName, finish)
-    } catch {
-      finish()
-    }
-  })
-}
+// The voice between notes now lives with the shared «todas seguidas» (components/ChallengeNoteSequence).
+export { sequenceAnnouncement } from '../components/ChallengeNoteSequence'
 
 /** Lista de notas maestras terminadas para hacer su nota desafiante. */
 export function NotaDesafianteListView() {
@@ -163,11 +130,11 @@ export function NotaDesafianteListView() {
   const pendingNotes = usePendingChallengeNotes(notes, ready)
   const pendingIds = useMemo(() => new Set(pendingNotes.map((note) => note.id)), [pendingNotes])
 
-  // Escuchar todas seguidas: de la primera a la última, con una voz que las presenta.
-  const { play, stop, pause, resume, seekBack10, seekForward10, isPaused, playingNoteId, positionSec, durationSec } =
-    useMasterNotePlayback()
-  // This screen has its own player: a master note playing in the background stops.
-  useStopSharedMasterNote()
+  // Escuchar todas seguidas: de la primera a la última (o desde la que elijas), con una voz que las
+  // presenta. Luis, 12 Oct: suena en el reproductor de toda la app, así que sigue sonando aunque
+  // vayas a Inicio u otra pantalla (antes se cortaba al salir de aquí).
+  const { pause, resume, seekBack10, seekForward10, isPaused, positionSec, durationSec } = useSharedMasterNotePlayback()
+  const sequence = useChallengeSequenceStore()
   const [fullNotes, setFullNotes] = useState<MasterNote[]>([])
   useEffect(() => {
     if (!ready || !config?.targetLang) return
@@ -183,55 +150,29 @@ export function NotaDesafianteListView() {
   }, [config?.nativeLang, config?.targetLang, ready])
   const fullById = useMemo(() => new Map(fullNotes.map((note) => [note.id, note])), [fullNotes])
   // Orden de la escucha: de la más antigua a la más nueva.
-  const sequenceIds = useMemo(
+  const sequenceNotes = useMemo(
     () =>
       [...playable]
         .sort((x, y) => (x.closedAt || '').localeCompare(y.closedAt || ''))
-        .map((note) => note.id)
-        .filter((id) => fullById.has(id)),
+        .map((note) => fullById.get(note.id))
+        .filter((note): note is MasterNote => Boolean(note)),
     [fullById, playable],
   )
-
-  const playNoteById = useCallback(
-    async (noteId: string) => {
-      const note = fullById.get(noteId)
-      if (note) await play(note)
-    },
-    [fullById, play],
-  )
-  const announce = useCallback(
-    async (kind: 'start' | 'step' | 'finish', index?: number) => {
-      if (kind === 'finish') return
-      stop()
-      await speakAndWait(sequenceAnnouncement(index ?? 0), nativeLang)
-    },
-    [nativeLang, stop],
-  )
-  const sequence = useLoopedMasterNotePlayback({
-    playingNoteId,
-    isPaused,
-    playNoteById,
-    playTransitionCue: announce,
-    pausePlayback: pause,
-    resumePlayback: resume,
-    seekBack10,
-    seekForward10,
-    resolveNowPlayingMetadata: (noteId) => {
-      const note = fullById.get(noteId)
-      return note ? { title: formatMasterNoteLabel(note.name), artist: t('Nota maestra'), album: 'ICADEMY' } : null
-    },
-    stopPlayback: stop,
-  })
-  const { setRepeatEnabled, stopLoop } = sequence
-  // De seguido, no en bucle: al acabar la última, se para.
-  useEffect(() => setRepeatEnabled(false), [setRepeatEnabled])
-  // Al salir de la pantalla, deja de sonar (solo al salir, no en cada pintado).
-  const stopLoopRef = useRef(stopLoop)
-  stopLoopRef.current = stopLoop
-  useEffect(() => () => stopLoopRef.current(true), [])
+  // Desde qué nota empezar (Luis, 12 Oct: la opción había desaparecido). Por defecto, la primera.
+  const [startNoteId, setStartNoteId] = useState<string | null>(null)
+  const startIndex = Math.max(0, sequenceNotes.findIndex((note) => note.id === startNoteId))
+  const startNote = sequenceNotes[startIndex] ?? null
+  const startSequenceFrom = (index: number) => {
+    if (sequenceNotes.length === 0) return
+    sequence.start(sequenceNotes, index, nativeLang)
+  }
 
   const currentSequenceId = sequence.looping ? sequence.loopIds[sequence.loopIndex] : null
   const currentSequenceNote = currentSequenceId ? fullById.get(currentSequenceId) : null
+  const stopSequence = () => sequence.controls?.stop()
+  // «3 de 5» counts among all the notes, also when it started at the 3rd.
+  const sequenceOffset = sequence.request?.startIndex ?? 0
+  const sequenceTotal = sequence.request?.notes.length ?? sequence.loopIds.length
 
   return (
     <GamePage className={sequence.looping ? 'pb-40' : undefined}>
@@ -267,9 +208,9 @@ export function NotaDesafianteListView() {
                 else pause()
                 return
               }
-              void sequence.startLoop(sequenceIds)
+              startSequenceFrom(startIndex)
             }}
-            disabled={sequenceIds.length === 0}
+            disabled={sequenceNotes.length === 0}
             className='ica-press flex w-full items-center gap-3 rounded-3xl px-4 py-3.5 text-left disabled:opacity-60'
             style={{ background: tone('gold').solid, boxShadow: `0 5px 0 ${tone('gold').edge}`, color: '#4a3200' }}
           >
@@ -286,12 +227,48 @@ export function NotaDesafianteListView() {
               </span>
               <span className='block text-xs font-bold opacity-80'>
                 {sequence.looping
-                  ? t('{n} de {total}', { n: sequence.loopIndex + 1, total: sequence.loopIds.length })
-                  : t('De la primera a la última, una detrás de otra.')}
+                  ? t('{n} de {total}', { n: sequenceOffset + sequence.loopIndex + 1, total: sequenceTotal })
+                  : startIndex > 0
+                    ? t('Desde la {n}.ª, una detrás de otra.', { n: startIndex + 1 })
+                    : t('De la primera a la última, una detrás de otra.')}
               </span>
             </span>
             <ListMusicIcon className='size-6 shrink-0 opacity-80' strokeWidth={2.4} aria-hidden='true' />
           </button>
+
+          {/* Empezar desde: elegir la nota con la que empieza (y empezar ya). */}
+          {sequenceNotes.length > 1 ? (
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type='button'
+                  className='-mt-2 flex w-full items-center justify-between gap-3 rounded-2xl border-2 border-border bg-card px-4 py-2.5 text-left text-sm font-extrabold transition-colors hover:bg-muted/60'
+                >
+                  <span className='min-w-0 truncate'>
+                    <span className='text-muted-foreground'>{t('Empezar desde')}: </span>
+                    {startNote ? formatMasterNoteLabel(startNote.name) : '…'}
+                  </span>
+                  <ChevronDownIcon className='size-5 shrink-0 text-muted-foreground' strokeWidth={2.6} aria-hidden='true' />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='start' className={cn(MENU_CONTENT_CLASS, 'max-h-80')}>
+                <p className='ica-label m-0 px-2.5 pt-1.5 pb-1'>{t('Empezar desde')}</p>
+                {sequenceNotes.map((note, index) => (
+                  <DropdownMenuItem
+                    key={note.id}
+                    className={MENU_ITEM_CLASS}
+                    onSelect={() => {
+                      setStartNoteId(note.id)
+                      startSequenceFrom(index)
+                    }}
+                  >
+                    <PlayIcon strokeWidth={2.4} />
+                    {formatMasterNoteLabel(note.name)}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
 
           <div>
             <SectionLabel>{t('Tus notas maestras terminadas')}</SectionLabel>
@@ -318,17 +295,17 @@ export function NotaDesafianteListView() {
         noteName={currentSequenceNote?.name || ''}
         progressSec={positionSec}
         durationSec={durationSec}
-        currentIndex={sequence.loopIndex}
-        totalCount={sequence.loopIds.length}
+        currentIndex={sequenceOffset + sequence.loopIndex}
+        totalCount={sequenceTotal}
         paused={isPaused}
         repeatEnabled={sequence.repeatEnabled}
         onTogglePause={() => (isPaused ? void resume() : pause())}
-        onToggleRepeat={() => sequence.setRepeatEnabled(!sequence.repeatEnabled)}
+        onToggleRepeat={() => sequence.controls?.setRepeatEnabled(!sequence.repeatEnabled)}
         onSeekBack10={seekBack10}
         onSeekForward10={seekForward10}
-        onPrevious={() => void sequence.playPrevious()}
-        onNext={() => void sequence.playNext()}
-        onClose={() => stopLoop(true)}
+        onPrevious={() => sequence.controls?.playPrevious()}
+        onNext={() => sequence.controls?.playNext()}
+        onClose={stopSequence}
       />
     </GamePage>
   )
@@ -342,10 +319,11 @@ export function NotaDesafiantePlayerView() {
   const { config } = useDashboardContext()
   const targetLang = config?.targetLang || ''
   const challengeEnabled = useChallengeEnabled()
+  // Luis, 12 Oct: the app's shared player, so the note keeps playing if you go to another screen
+  // (the small player at the top brings you back here).
   const { play, stop, togglePause, isPaused, playingNoteId, positionSec, durationSec, error: playError } =
-    useMasterNotePlayback()
-  // This screen has its own player: a master note playing in the background stops.
-  useStopSharedMasterNote()
+    useSharedMasterNotePlayback()
+  const setSequenceOrigin = useChallengeSequenceStore((state) => state.setOrigin)
 
   const [note, setNote] = useState<MasterNote | null>(null)
   const [chunkCount, setChunkCount] = useState(0)
@@ -396,12 +374,6 @@ export function NotaDesafiantePlayerView() {
     }
   }, [noteId, targetLang])
 
-  // Al salir de la pantalla, la nota deja de sonar. `stop` is a new function on every render, so it
-  // is read from a ref: with [stop] as dependency the cleanup ran on every render and stopped the
-  // note right after it started (Luis, 12 Oct: no master note could be listened to).
-  const stopRef = useRef(stop)
-  stopRef.current = stop
-  useEffect(() => () => stopRef.current(), [])
 
   const { progress, unlocked } = useChallengeUnlock(user?.id, note?.id, note?.total_duration_ms || 0, challengeEnabled)
   const isPlaying = Boolean(note) && playingNoteId === note?.id
@@ -414,6 +386,7 @@ export function NotaDesafiantePlayerView() {
       togglePause()
       return
     }
+    setSequenceOrigin({ noteId: note.id, path: `${DASHBOARD_ROUTES.notaDesafiante}/${note.id}` })
     void play(note, chunkCount)
   }
 

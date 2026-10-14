@@ -8,7 +8,7 @@ import {
   ArrowRightIcon,
   CheckIcon,
   CornerDownLeftIcon,
-  KeyboardIcon,
+  Loader2Icon,
   MicIcon,
   PlusIcon,
   RotateCcwIcon,
@@ -131,11 +131,17 @@ export function QuestionPrompt({
   nativeLang,
   targetLang,
   onReplayAudio,
+  preparingAudio = false,
+  revealedWord = null,
 }: {
   data: IcaChallengePublicQuestion
   nativeLang: string
   targetLang: string
   onReplayAudio?: () => void
+  /** Escucha: the voice is still being prepared (the options and the clock wait for it). */
+  preparingAudio?: boolean
+  /** Escucha, after answering: the word that was heard, written (Luis, 13 Oct). */
+  revealedWord?: string | null
 }) {
   if (data.kind === 'listen') {
     return (
@@ -143,13 +149,22 @@ export function QuestionPrompt({
         <button
           type='button'
           onClick={onReplayAudio}
-          className='mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-primary text-primary-foreground transition active:translate-y-1'
+          disabled={preparingAudio}
+          className='mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-primary text-primary-foreground transition active:translate-y-1 disabled:opacity-70'
           style={{ boxShadow: '0 5px 0 color-mix(in oklab, var(--primary) 70%, black)' }}
           aria-label={t('Escuchar otra vez')}
         >
-          <Volume2Icon className='h-9 w-9' />
+          {preparingAudio ? <Loader2Icon className='h-9 w-9 animate-spin' /> : <Volume2Icon className='h-9 w-9' />}
         </button>
-        <p className='mt-3 text-xs text-muted-foreground'>{t('Toca para escuchar otra vez')}</p>
+        {revealedWord ? (
+          <p className='ica-pop mt-3 font-display text-2xl font-extrabold tracking-tight' lang={LANG_CODES[targetLang] || undefined}>
+            {revealedWord}
+          </p>
+        ) : (
+          <p className='mt-3 text-xs text-muted-foreground'>
+            {preparingAudio ? t('Preparando la voz…') : t('Toca para escuchar otra vez')}
+          </p>
+        )}
       </PromptCard>
     )
   }
@@ -235,6 +250,7 @@ export function WriteAnswerForm({
   disabled,
   onSubmit,
   onSkip,
+  onTextChange,
   submitLabel = t('Comprobar'),
   autoFocusKey,
 }: {
@@ -243,16 +259,21 @@ export function WriteAnswerForm({
   disabled: boolean
   onSubmit: (text: string) => void
   onSkip: () => void
+  /** What is written right now, so it can still be checked when the time runs out. */
+  onTextChange?: (text: string) => void
   submitLabel?: string
   autoFocusKey: string | number
 }) {
   const [text, setText] = useState('')
+  const onTextChangeRef = useRef(onTextChange)
+  onTextChangeRef.current = onTextChange
   const formRef = useRef<HTMLFormElement>(null)
   // El Input de la app no recibe ref (React 18): se busca dentro del formulario.
   const focusInput = () => formRef.current?.querySelector('input')?.focus()
 
   useEffect(() => {
     setText('')
+    onTextChangeRef.current?.('')
     // Con un pequeño retraso para que el teclado del móvil se abra bien.
     const id = window.setTimeout(focusInput, 30)
     return () => window.clearTimeout(id)
@@ -271,15 +292,8 @@ export function WriteAnswerForm({
 
   return (
     <form ref={formRef} onSubmit={handleSubmit} className='space-y-2'>
-      {/* Attention before typing (Luis, 8 Oct): the accents and special letters count. */}
-      <p
-        className='m-0 flex items-center justify-center gap-1.5 rounded-xl px-3 py-1.5 text-center text-xs font-bold'
-        style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
-        role='note'
-      >
-        <KeyboardIcon className='size-3.5 shrink-0' strokeWidth={2.6} aria-hidden='true' />
-        {t('Pon tu teclado en {lang}: las tildes y letras especiales cuentan; las mayúsculas, no.', { lang: langName(targetLang) })}
-      </p>
+      {/* The keyboard notice (accents and special letters count) is shown once, before starting
+          (Luis, 13 Oct): not on screen during the whole game. */}
       {hint && (
         <p className='text-center text-sm text-muted-foreground'>
           {t('Empieza por')} <span className='font-semibold text-foreground'>{hint.replace('…', '')}</span>…
@@ -288,7 +302,10 @@ export function WriteAnswerForm({
       <div className='flex gap-2'>
         <Input
           value={text}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            setText(event.target.value)
+            onTextChangeRef.current?.(event.target.value)
+          }}
           // readOnly (y no disabled) para que el teclado del móvil no se cierre entre palabra y palabra
           readOnly={disabled}
           lang={LANG_CODES[targetLang] || undefined}
@@ -675,11 +692,14 @@ export function ReviewList({
   rivalFirstName,
   canAdd,
   onAdd,
+  renderMine,
 }: {
   items: IcaChallengeReviewItem[]
   rivalFirstName: string
   canAdd: (item: IcaChallengeReviewItem) => 'add' | 'owned' | 'hidden'
   onAdd: (item: IcaChallengeReviewItem) => void
+  /** Extra action for the words of your own Baúl (the ⚡ Potenciar button). */
+  renderMine?: (item: IcaChallengeReviewItem) => ReactNode
 }) {
   return (
     <ul className='divide-y-2 rounded-2xl border-2'>
@@ -728,6 +748,7 @@ export function ReviewList({
             {addState === 'owned' && (
               <span className='shrink-0 text-[11px] text-muted-foreground'>{t('En tu baúl')}</span>
             )}
+            {!item.fromRival && renderMine ? renderMine(item) : null}
           </li>
         )
       })}

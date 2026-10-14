@@ -1,3 +1,4 @@
+// Redeploy 13 Oct: the develop deploy of PR #104 stopped at a migration and skipped this function.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
 import { sendIcaChallengeJobNotices } from '../_shared/ica-challenge-job-notices.ts'
@@ -402,7 +403,7 @@ Deno.serve(async (req) => {
         localDay: local.day,
         payload: {
           title: `Te quedan ${STREAK_RISK_HOURS} horas`,
-          body: 'Salva tu racha ICA antes de que sea muy tarde.',
+          body: 'Salva tu racha ICA antes de que sea demasiado tarde.',
           url: '/',
           tag: `ica-streak-risk-${local.day}`,
           icon: '/push-clock-192.png',

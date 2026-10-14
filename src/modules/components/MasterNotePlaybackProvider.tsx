@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { HeadphonesIcon, PauseIcon, PlayIcon, XIcon } from 'lucide-react'
 import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
 import { DASHBOARD_ROUTES } from '../routes/paths'
+import { useChallengeSequenceStore } from '../stores/challengeSequenceStore'
 import { t } from '@/i18n'
 
 // MASTER NOTE IN THE BACKGROUND (Luis, 5 Oct): a master note keeps playing while the student
@@ -10,7 +11,13 @@ import { t } from '@/i18n'
 // (it is not destroyed when the screen changes), and on the other screens a small player stays at
 // the top. The challenge game keeps its own player (useMasterNotePlayback) and stops this one.
 
-type SharedPlayback = ReturnType<typeof useMasterNotePlayback>
+type SharedPlayback = ReturnType<typeof useMasterNotePlayback> & {
+  /** Stops without telling anyone (used between notes of «todas seguidas»). */
+  stopQuietly: () => void
+}
+
+/** Sent when someone presses «stop» on the shared player (Nota desafiante's «todas seguidas» ends). */
+export const SHARED_MASTER_NOTE_STOPPED_EVENT = 'ica:shared-master-note-stopped'
 
 // One context for the whole page, even when the local dev server reloads this file on its own
 // (hot reload): otherwise the layout keeps the old context, the screens read a new empty one and
@@ -24,7 +31,15 @@ const SharedPlaybackContext =
 
 export function MasterNotePlaybackProvider({ children }: { children: ReactNode }) {
   const playback = useMasterNotePlayback()
-  return <SharedPlaybackContext.Provider value={playback}>{children}</SharedPlaybackContext.Provider>
+  const value: SharedPlayback = {
+    ...playback,
+    stopQuietly: playback.stop,
+    stop: () => {
+      playback.stop()
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event(SHARED_MASTER_NOTE_STOPPED_EVENT))
+    },
+  }
+  return <SharedPlaybackContext.Provider value={value}>{children}</SharedPlaybackContext.Provider>
 }
 
 /** The master note player shared by the whole app (needs MasterNotePlaybackProvider). */
@@ -62,9 +77,16 @@ export function MasterNoteMiniPlayer() {
   const playback = useOptionalSharedMasterNotePlayback()
   const location = useLocation()
   const navigate = useNavigate()
+  // Subscribed (not read once), so the bar follows «todas seguidas» as it starts and ends.
+  const sequence = useChallengeSequenceStore()
   if (!playback?.playingNoteId) return null
 
-  const notePath = `${DASHBOARD_ROUTES.masterNotes}/note/${playback.playingNoteId}`
+  // Played from Nota desafiante (Luis, 12 Oct): the bar takes you back there, not to Activación.
+  const inSequence = Boolean(sequence.request) && sequence.loopIds.includes(playback.playingNoteId)
+  const origin = sequence.origin?.noteId === playback.playingNoteId ? sequence.origin : null
+  const notePath = inSequence
+    ? DASHBOARD_ROUTES.notaDesafiante
+    : origin?.path || `${DASHBOARD_ROUTES.masterNotes}/note/${playback.playingNoteId}`
   // The list and the note itself already have their own controls.
   const path = location.pathname.replace(/\/$/, '')
   if (path === DASHBOARD_ROUTES.masterNotes || path === notePath) return null
@@ -77,7 +99,7 @@ export function MasterNoteMiniPlayer() {
       durationSec={playback.durationSec}
       onOpen={() => navigate(notePath)}
       onTogglePause={playback.togglePause}
-      onStop={playback.stop}
+      onStop={inSequence && sequence.controls ? sequence.controls.stop : playback.stop}
     />
   )
 }

@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
 import { sendIcaChallengeJobNotices } from '../_shared/ica-challenge-job-notices.ts'
 import { sendCalendarChangeNotices } from '../_shared/calendar-change-notices.ts'
+import { sendClubDinamicaReminders } from './club-dinamica.ts'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -281,6 +282,8 @@ Deno.serve(async (req) => {
   await sendIcaChallengeJobNotices({ adminClient, webpush })
   // Classes moved to another day or time: notice to the people who follow them (Luis, 9 Oct).
   await sendCalendarChangeNotices({ adminClient, webpush })
+  // Club de DinámICA proposed in the icademers chat: reminder 2 hours before (Luis, 14 Oct).
+  await sendClubDinamicaReminders({ adminClient, webpush })
   const now = new Date()
   const minDate = new Date(now.getTime() - 10 * 60 * 1000)
   const maxDate = new Date(now.getTime() + 120 * 60 * 1000)

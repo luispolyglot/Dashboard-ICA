@@ -33,6 +33,11 @@ export function useFeaturedBadge(userId: string | null | undefined) {
   const [badge, setBadge] = useState<FeaturedBadge | null>(() =>
     userId ? peekQuick<FeaturedBadge | null>(`${CACHE_PREFIX}${userId}`) ?? null : null,
   )
+  // True once we know for sure (from the cache or the server) whether there is one, so a screen
+  // can ask «¿destacas una?» without flashing it to someone who already has one.
+  const [loaded, setLoaded] = useState(() =>
+    userId ? peekQuick<FeaturedBadge | null>(`${CACHE_PREFIX}${userId}`) !== undefined : false,
+  )
 
   const refresh = useCallback(async () => {
     if (!supabase || !userId) {
@@ -47,12 +52,15 @@ export function useFeaturedBadge(userId: string | null | undefined) {
     if (error) throw error
     const next = parseFeaturedBadge(data?.badge)
     setBadge(next)
+    setLoaded(true)
     storeQuick(`${CACHE_PREFIX}${userId}`, next)
     return next
   }, [userId])
 
   useEffect(() => {
-    setBadge(userId ? peekQuick<FeaturedBadge | null>(`${CACHE_PREFIX}${userId}`) ?? null : null)
+    const cached = userId ? peekQuick<FeaturedBadge | null>(`${CACHE_PREFIX}${userId}`) : undefined
+    setBadge(cached ?? null)
+    setLoaded(cached !== undefined)
     void refresh().catch(() => undefined)
     const onChange = () => { void refresh().catch(() => undefined) }
     window.addEventListener(CHANGED_EVENT, onChange)
@@ -60,8 +68,8 @@ export function useFeaturedBadge(userId: string | null | undefined) {
   }, [refresh, userId])
 
   const choose = useCallback(
-    async (next: FeaturedBadge | null) => {
-      if (!supabase || !userId) return
+    async (next: FeaturedBadge | null): Promise<boolean> => {
+      if (!supabase || !userId) return false
       const { error } = await supabase.rpc('set_my_featured_badge', {
         p_badge: next ? serializeFeaturedBadge(next) : null,
       })
@@ -69,14 +77,15 @@ export function useFeaturedBadge(userId: string | null | undefined) {
         toast.error(error.message.includes('FEATURED_BADGE_NOT_EARNED')
           ? t('Aún no has conseguido esa insignia.')
           : t('No se pudo guardar la insignia destacada.'))
-        return
+        return false
       }
       setBadge(next)
       storeQuick(`${CACHE_PREFIX}${userId}`, next)
       window.dispatchEvent(new Event(CHANGED_EVENT))
+      return true
     },
     [userId],
   )
 
-  return { badge, choose, refresh }
+  return { badge, loaded, choose, refresh }
 }

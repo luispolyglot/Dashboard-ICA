@@ -452,6 +452,9 @@ async function deleteWordRecord(userId: string, id: string): Promise<void> {
     .eq('id', id)
   if (error) throw error
   notifyCreationMetricsChanged()
+  // A word added today and deleted frees its place in «Palabras de hoy» (Luis, 12 Oct): the
+  // server forgets it, and the daily counters (read with the ICA Coins state) are reloaded.
+  signalIcaCoinsStateChanged()
 }
 
 async function loadConfig(userId: string): Promise<AppConfig | null> {

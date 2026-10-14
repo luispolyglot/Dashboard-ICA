@@ -1,4 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { useAuth } from '@/auth/AuthContext'
+import { useFeaturedBadge } from '../game/featuredBadge'
 import { GraduationCapIcon } from 'lucide-react'
 import { ACHIEVEMENT_CATALOG, reachableAchievements, useAchievements, type AchievementCategoryDef } from '../game/achievements'
 import { LockedMedal, Medal, MedalDefs } from '../game/Medal'
@@ -13,8 +16,31 @@ import { t } from '@/i18n'
  * Lo que llevas y lo que te falta sale al tocar una insignia, con su barra de avance.
  */
 export function InsigniasView() {
-  const { byCategory, totalEarned, coachingLocked } = useAchievements()
+  const { byCategory, totalEarned, coachingLocked, loading } = useAchievements()
   const [selection, setSelection] = useState<MedalSelection>(null)
+  const [searchParams] = useSearchParams()
+  const { user } = useAuth()
+  const { badge: featured } = useFeaturedBadge(user?.id)
+  const choosingFeatured = searchParams.get('destacar') === '1'
+  const openedForFeatured = useRef(false)
+
+  // From the ranking's «Destaca una insignia» (Luis, 13 Oct): opens your best badge so one tap on
+  // «Mostrar junto a mi nombre» is enough. You can close it and pick another one.
+  useEffect(() => {
+    if (!choosingFeatured || loading || openedForFeatured.current) return
+    openedForFeatured.current = true
+    let best: MedalSelection = null
+    let bestEarned = 0
+    for (const def of ACHIEVEMENT_CATALOG) {
+      if (coachingLocked && def.key === 'coaching') continue
+      const earned = Math.min(byCategory[def.key].earned, def.levels.length)
+      if (earned > bestEarned) {
+        bestEarned = earned
+        best = { def, tier: def.levels[earned - 1].tier }
+      }
+    }
+    if (best) setSelection(best)
+  }, [byCategory, choosingFeatured, coachingLocked, loading])
 
   return (
     <section className='mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 px-4 pt-4 pb-28 lg:py-10'>
@@ -25,6 +51,12 @@ export function InsigniasView() {
           {totalEarned} / {reachableAchievements(coachingLocked)}
         </Pill>
       </div>
+
+      {choosingFeatured && !featured ? (
+        <p className='m-0 -mt-2 text-sm font-semibold text-muted-foreground'>
+          {t('Toca una insignia que tengas y pulsa «Mostrar junto a mi nombre». Saldrá a tu lado en el ranking.')}
+        </p>
+      ) : null}
 
       {ACHIEVEMENT_CATALOG.map((def) => (
         <CategoryCard

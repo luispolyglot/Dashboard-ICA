@@ -38,13 +38,14 @@ import {
 import { LanguageSetup } from '../views/LanguageSetup'
 import { CycleCelebration } from '../game/CycleCelebration'
 import { NewBadgeCelebration } from '../game/NewBadgeCelebration'
-import { ProfileGuide, WelcomeTour } from '../game/WelcomeTour'
+import { FirstChestGuide, MasterNoteClosedGuideHost, ProfileGuide, WelcomeTour } from '../game/WelcomeTour'
 import { TapHaptics } from '../game/TapHaptics'
 import { ChallengesUnlockWatcher } from '../game/ChallengesUnlocked'
 import { prefetchAchievementStats } from '../game/achievements'
 import { fetchMonthlyStreakLeaderboard } from '../services/leaderboard'
 import { StreakDayCelebrationHost } from '../game/StreakDayCelebration'
 import { MasterNoteMiniPlayer, MasterNotePlaybackProvider } from '../components/MasterNotePlaybackProvider'
+import { ChallengeSequenceHost } from '../components/ChallengeNoteSequence'
 import { VaultListeningMiniPlayer, VaultListeningProvider } from '../components/VaultListeningProvider'
 import { StreakRewardsWatcher } from '../game/StreakExtras'
 
@@ -431,6 +432,8 @@ export function DashboardLayout() {
             Abajo deja sitio a la barra del móvil (y a la zona segura del iPhone). */}
         {/* A master note that is playing keeps playing on every screen, with this player on top. */}
         <MasterNoteMiniPlayer />
+        {/* Nota desafiante «todas seguidas» keeps going on every screen (Luis, 12 Oct). */}
+        <ChallengeSequenceHost />
         {/* Escuchar mi Baúl ICA (Luis, 11 Oct): the same on every screen while the words play. */}
         <VaultListeningMiniPlayer />
         <main className='flex flex-1 flex-col overflow-y-auto pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:pb-0'>
@@ -446,6 +449,8 @@ export function DashboardLayout() {
         <NewBadgeCelebration />
         <WelcomeTour />
         <ProfileGuide />
+        <FirstChestGuide />
+        <MasterNoteClosedGuideHost />
         <TapHaptics />
         <ChallengesUnlockWatcher />
         <StreakDayCelebrationHost />

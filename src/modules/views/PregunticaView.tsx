@@ -21,6 +21,7 @@ import {
 } from '../services/preguntica'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { AddIcaSuggestionModal } from '../components/AddIcaSuggestionModal'
+import { useLexicardBoost } from '../hooks/useLexicardBoost'
 import { speakNatural, stopTTS } from '../services/tts'
 import { Button } from '@/components/ui/button'
 import {
@@ -212,6 +213,8 @@ export function PregunticaView({
   const navigate = useNavigate()
   const { user: authUser } = useAuth()
   const { total: headerCoins } = useFichas(authUser?.id)
+  // Potenciar (Luis, 12 Oct): suggested words that are already in the Baúl ICA can be boosted.
+  const wordBoost = useLexicardBoost({ cards, setCards, config, source: 'preguntica' })
   const [status, setStatus] = useState<PregunticaWeekStatus | null>(null)
   const [tokenSummary, setTokenSummary] = useState<PregunticaTokenSummary | null>(null)
   const [attempt, setAttempt] = useState<PregunticaAttempt | null>(null)
@@ -1450,7 +1453,12 @@ export function PregunticaView({
                       {t('Sugerencias ICA')}
                     </SectionLabel>
                     <p className='m-0 mb-2.5 text-xs font-semibold text-muted-foreground'>{t('Toca una para añadirla al Baúl ICA.')}</p>
-                    <SuggestionChips suggestions={suggestions} isAdded={isSuggestionAdded} onPick={handleOpenSuggestionModal} />
+                    <SuggestionChips
+                      suggestions={suggestions}
+                      isAdded={isSuggestionAdded}
+                      onPick={handleOpenSuggestionModal}
+                      boost={{ stateOf: wordBoost.stateOf, isBusy: wordBoost.isBusy, onBoost: (word) => void wordBoost.boost(word) }}
+                    />
                   </div>
 
                   <Button

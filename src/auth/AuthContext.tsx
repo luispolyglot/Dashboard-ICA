@@ -143,10 +143,44 @@ export function AuthProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     if (!supabase || !user?.id) return
 
+    // Ask the server only when the device's zone is not the one already sent, one request at a
+    // time, and not again for a day after the server says «too many changes today» (Luis, 13 Oct:
+    // two students got that error 84 times on launch day because every focus asked again).
+    let inFlight = false
+    let lastSynced: string | null = null
+    const blockedKey = `ica-timezone-blocked:${user.id}`
+    const isBlocked = (): boolean => {
+      try {
+        const until = Number(window.localStorage.getItem(blockedKey) || 0)
+        return until > Date.now()
+      } catch {
+        return false
+      }
+    }
+    const block = () => {
+      try {
+        window.localStorage.setItem(blockedKey, String(Date.now() + 24 * 60 * 60 * 1000))
+      } catch {
+        // Without storage, the in-memory lastSynced still stops the retries in this tab.
+      }
+    }
+
     const syncTimezone = () => {
       const timezone = detectUserTimezone()
+      if (inFlight || timezone === lastSynced || isBlocked()) return
+      inFlight = true
       void supabase!.rpc('set_my_timezone', { p_timezone: timezone }).then(({ error }) => {
-        if (error) console.warn('No se pudo sincronizar timezone de perfil', error)
+        inFlight = false
+        if (!error) {
+          lastSynced = timezone
+          return
+        }
+        if (String(error.message || '').includes('TIMEZONE_CHANGE_RATE_LIMIT')) {
+          lastSynced = timezone
+          block()
+          return
+        }
+        console.warn('No se pudo sincronizar timezone de perfil', error)
       })
     }
     const onVisible = () => {

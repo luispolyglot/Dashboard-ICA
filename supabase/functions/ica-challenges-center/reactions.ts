@@ -1,3 +1,4 @@
+// Redeploy 13 Oct: the develop deploy of PR #104 stopped at a migration and skipped this function.
 import { jsonResponse } from '../_shared/http.ts'
 import type { AdminClient } from './types.ts'
 
@@ -22,7 +23,8 @@ export async function listChallengeReactions(input: {
   if (!challenge || (challenge.challenger_user_id !== input.userId && challenge.challenged_user_id !== input.userId)) {
     return jsonResponse(404, { error: 'Desafío no encontrado.', code: 'ICA_CHALLENGE_NOT_FOUND' })
   }
-  if (challenge.status !== 'completed') {
+  // Also while it is in progress (Luis, 12 Oct): the one who finished their rounds can already talk.
+  if (challenge.status !== 'completed' && challenge.status !== 'in_progress') {
     return jsonResponse(400, { error: 'Las reacciones aparecen cuando termina el desafío.', code: 'REACTION_CHALLENGE_NOT_COMPLETED' })
   }
 

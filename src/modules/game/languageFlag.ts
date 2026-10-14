@@ -36,6 +36,10 @@ export function useMyFlags(userId: string | null | undefined) {
   const [flags, setFlags] = useState<MyFlags>(() =>
     userId ? peekQuick<MyFlags>(`${CACHE_PREFIX}${userId}`) ?? EMPTY : EMPTY,
   )
+  // True once we know (cache or server) which flags the student has.
+  const [loaded, setLoaded] = useState(() =>
+    userId ? peekQuick<MyFlags>(`${CACHE_PREFIX}${userId}`) !== undefined : false,
+  )
 
   const refresh = useCallback(async () => {
     if (!userId) {
@@ -44,12 +48,15 @@ export function useMyFlags(userId: string | null | undefined) {
     }
     const next = await loadMyFlags(userId)
     setFlags(next)
+    setLoaded(true)
     storeQuick(`${CACHE_PREFIX}${userId}`, next)
     return next
   }, [userId])
 
   useEffect(() => {
-    setFlags(userId ? peekQuick<MyFlags>(`${CACHE_PREFIX}${userId}`) ?? EMPTY : EMPTY)
+    const cached = userId ? peekQuick<MyFlags>(`${CACHE_PREFIX}${userId}`) : undefined
+    setFlags(cached ?? EMPTY)
+    setLoaded(cached !== undefined)
     void refresh().catch(() => undefined)
     const onChange = () => {
       void refresh().catch(() => undefined)
@@ -85,5 +92,5 @@ export function useMyFlags(userId: string | null | undefined) {
     [flags, userId],
   )
 
-  return { ...flags, buy, show, refresh }
+  return { ...flags, loaded, buy, show, refresh }
 }

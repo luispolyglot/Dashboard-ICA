@@ -23,6 +23,12 @@ export type IcademerChatMessage = {
   isMe: boolean
   senderKey: string
   senderName: string
+  /** «Proponer día y hora»: the day (sender's calendar, AAAA-MM-DD). */
+  dayValue: string | null
+  /** «Proponer día y hora»: who is going (whoever proposed it, too). */
+  goingCount: number
+  goingNames: string[]
+  iAmGoing: boolean
 }
 
 export type IcademerChat = {
@@ -40,6 +46,10 @@ const ERRORS: Record<string, string> = {
   CHAT_TOO_FAST: 'Despacio: espera un momento antes de mandar otro.',
   CHAT_NOT_MEMBER: 'Primero únete al chat.',
   CHAT_NOT_YOUR_LANGUAGE: 'Este chat es para quien aprende este idioma.',
+  CHAT_DAY_INVALID: 'Elige un día de hoy en adelante.',
+  CHAT_PROPOSAL_NOT_FOUND: 'Esa propuesta ya no está.',
+  // The server is older than this message (its migration arrives a few minutes later).
+  icademer_chat_messages_kind_check: 'Este mensaje aún no está disponible. Prueba en unos minutos.',
 }
 
 function chatError(error: { message?: string } | null): Error {
@@ -100,6 +110,10 @@ export async function fetchIcademerChat(targetLang: string): Promise<IcademerCha
       isMe: message.is_me === true,
       senderKey: String(message.sender_key || ''),
       senderName: String(message.sender_name || 'Icademer'),
+      dayValue: typeof message.day_value === 'string' ? message.day_value : null,
+      goingCount: Number(message.going_count || 0),
+      goingNames: Array.isArray(message.going_names) ? message.going_names.map(String) : [],
+      iAmGoing: message.i_am_going === true,
     })),
   }
 }
@@ -109,13 +123,30 @@ export async function sendIcademerChatMessage(input: {
   kind: ChatMessageKind
   timeValue?: string
   timeZone?: string
-}): Promise<void> {
-  const { data, error } = await client().rpc('send_icademer_chat_message', {
+  /** «Proponer día y hora»: AAAA-MM-DD. */
+  dayValue?: string
+}): Promise<{ sentAsTimeOnly: boolean }> {
+  const withTime = input.kind === 'hora' || input.kind === 'propuesta'
+  let sentAsTimeOnly = false
+  let { data, error } = await client().rpc('send_icademer_chat_message', {
     p_target_lang: chatLangKey(input.targetLang),
     p_kind: input.kind,
-    p_time_value: input.kind === 'hora' ? input.timeValue ?? null : null,
-    p_time_zone: input.kind === 'hora' ? input.timeZone ?? null : null,
+    p_time_value: withTime ? input.timeValue ?? null : null,
+    p_time_zone: withTime ? input.timeZone ?? null : null,
+    ...(input.kind === 'propuesta' ? { p_day_value: input.dayValue ?? null } : {}),
   })
+  // The server does not know «Proponer día y hora» yet (its migration is not applied: the minutes
+  // between the new app and the database, or a development database). Instead of «No se pudo
+  // conectar», the old «¿A las…?» goes out with the same time (Luis, 13 Oct).
+  if (error && input.kind === 'propuesta' && proposalNotSupported(error)) {
+    sentAsTimeOnly = true
+    ;({ data, error } = await client().rpc('send_icademer_chat_message', {
+      p_target_lang: chatLangKey(input.targetLang),
+      p_kind: 'hora',
+      p_time_value: input.timeValue ?? null,
+      p_time_zone: input.timeZone ?? null,
+    }))
+  }
   if (error) throw chatError(error)
   // Avisa a los demás (función icademer-chat-push). Si falla, el mensaje ya está enviado.
   if (data) {
@@ -123,4 +154,19 @@ export async function sendIcademerChatMessage(input: {
       .functions.invoke('icademer-chat-push', { body: { messageId: String(data) } })
       .catch(() => undefined)
   }
+  return { sentAsTimeOnly }
+}
+
+/** The server's chat functions are older than «Proponer día y hora». */
+function proposalNotSupported(error: { message?: string; code?: string } | null): boolean {
+  const text = `${error?.code || ''} ${error?.message || ''}`
+  return /PGRST202|Could not find the function|p_day_value|icademer_chat_messages_kind_check|icademer_chat_messages_time_check/i.test(text)
+}
+
+/** «Me apunto» (true) or «Ya no voy» (false) to a proposal. */
+export async function setIcademerChatRsvp(messageId: string, going: boolean): Promise<{ goingCount: number; iAmGoing: boolean }> {
+  const { data, error } = await client().rpc('set_icademer_chat_rsvp', { p_message_id: messageId, p_going: going })
+  if (error) throw chatError(error)
+  const row = (data || {}) as { going_count?: number; i_am_going?: boolean }
+  return { goingCount: Number(row.going_count || 0), iAmGoing: row.i_am_going === true }
 }

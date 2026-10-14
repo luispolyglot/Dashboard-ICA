@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import { ArrowRightIcon, CheckIcon, PlusIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { t } from '@/i18n'
+import { BoostButton } from '../components/BoostButton'
+import type { WordBoostState } from '../hooks/useLexicardBoost'
 import { coinsText } from '../game/fichas'
 import { FichaIcon, TrophyIcon } from '../game/icons'
 import { GameProgress, Pill, SectionLabel, tone, type Tone } from '../game/ui'
@@ -302,42 +304,59 @@ export function SuggestionChips({
   suggestions,
   isAdded,
   onPick,
+  boost,
 }: {
   suggestions: PregunticaWordSuggestion[]
   isAdded: (word: string) => boolean
   onPick: (suggestion: PregunticaWordSuggestion) => void
+  /** Potenciar (Luis, 12 Oct): the words already in the Baúl ICA get a yellow ⚡ next to them. */
+  boost?: {
+    stateOf: (word: string) => WordBoostState
+    isBusy: (word: string) => boolean
+    onBoost: (word: string) => void
+  }
 }) {
   return (
     <div className='flex flex-wrap gap-2'>
       {suggestions.map((item) => {
         const added = isAdded(item.word)
+        const boostState = boost ? boost.stateOf(item.word) : 'none'
         return (
-          <button
-            type='button'
-            key={`${item.word}-${item.reason}`}
-            onClick={() => onPick(item)}
-            disabled={added}
-            className='inline-flex max-w-full items-center gap-1.5 rounded-2xl border-2 px-3 py-1.5 text-left text-sm transition-transform active:translate-y-[2px] disabled:cursor-not-allowed'
-            style={
-              added
-                ? { background: 'var(--ica-ok-soft)', color: 'var(--ica-ok-ink)', borderColor: 'transparent' }
-                : {
-                    background: 'var(--ica-gold-soft)',
-                    borderColor: 'color-mix(in oklab, var(--ica-gold) 55%, transparent)',
-                    boxShadow: '0 2px 0 color-mix(in oklab, var(--ica-gold) 55%, transparent)',
-                  }
-            }
-          >
-            {added ? (
-              <CheckIcon className='size-3.5 shrink-0' strokeWidth={3} aria-hidden='true' />
-            ) : (
-              <PlusIcon className='size-3.5 shrink-0' strokeWidth={3} style={{ color: 'var(--ica-gold-ink)' }} aria-hidden='true' />
-            )}
-            <span className='min-w-0'>
-              <span className='font-extrabold'>{item.word}</span>
-              {item.translation ? <span className='font-semibold text-muted-foreground'> · {item.translation}</span> : null}
-            </span>
-          </button>
+          <span key={`${item.word}-${item.reason}`} className='inline-flex max-w-full items-center gap-1.5'>
+            <button
+              type='button'
+              onClick={() => onPick(item)}
+              disabled={added}
+              className='inline-flex max-w-full items-center gap-1.5 rounded-2xl border-2 px-3 py-1.5 text-left text-sm transition-transform active:translate-y-[2px] disabled:cursor-not-allowed'
+              style={
+                added
+                  ? { background: 'var(--ica-ok-soft)', color: 'var(--ica-ok-ink)', borderColor: 'transparent' }
+                  : {
+                      background: 'var(--ica-gold-soft)',
+                      borderColor: 'color-mix(in oklab, var(--ica-gold) 55%, transparent)',
+                      boxShadow: '0 2px 0 color-mix(in oklab, var(--ica-gold) 55%, transparent)',
+                    }
+              }
+            >
+              {added ? (
+                <CheckIcon className='size-3.5 shrink-0' strokeWidth={3} aria-hidden='true' />
+              ) : (
+                <PlusIcon className='size-3.5 shrink-0' strokeWidth={3} style={{ color: 'var(--ica-gold-ink)' }} aria-hidden='true' />
+              )}
+              <span className='min-w-0'>
+                <span className='font-extrabold'>{item.word}</span>
+                {item.translation ? <span className='font-semibold text-muted-foreground'> · {item.translation}</span> : null}
+              </span>
+            </button>
+            {boost && boostState !== 'none' ? (
+              <BoostButton
+                compact
+                state={boostState}
+                busy={boost.isBusy(item.word)}
+                onBoost={() => boost.onBoost(item.word)}
+              />
+            ) : null}
+          </span>
         )
       })}
     </div>

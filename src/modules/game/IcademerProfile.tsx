@@ -196,9 +196,12 @@ function useIcademerProfile(summary: IcademerSummary | null, isMe: boolean): Loa
 export function IcademerProfileDialog({
   summary,
   onClose,
+  onChallenge,
 }: {
   summary: IcademerSummary | null
   onClose: () => void
+  /** «Retar a …» opens on top of this screen instead of going to Desafíos ICA (Luis, 13 Oct). */
+  onChallenge?: (userId: string) => void
 }) {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -266,7 +269,8 @@ export function IcademerProfileDialog({
       new Promise((resolve) => window.setTimeout(resolve, 4000)),
     ])
     onClose()
-    navigate(`${DASHBOARD_ROUTES.challengesIca}?retar=${encodeURIComponent(summary.userId)}`)
+    if (onChallenge) onChallenge(summary.userId)
+    else navigate(`${DASHBOARD_ROUTES.challengesIca}?retar=${encodeURIComponent(summary.userId)}`)
   }
 
   return (
