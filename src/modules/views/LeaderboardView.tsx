@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { AwardIcon, BadgePercentIcon, XIcon, CameraIcon, ChevronLeftIcon, ChevronRightIcon, ClipboardCheckIcon, EyeIcon, GiftIcon, GraduationCapIcon, HeadphonesIcon, InfoIcon, MicIcon, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,8 +25,9 @@ import { getIcaTestWindowStartDay } from "../services/icaTests";
 import { parseFeaturedBadge, useFeaturedBadge } from "../game/featuredBadge";
 import { useMyFlags } from "../game/languageFlag";
 import { Medal, MedalDefs } from "../game/Medal";
+import { tierName } from "../game/medals";
+import { TourGuide } from "../game/WelcomeTour";
 import { ACHIEVEMENT_CATALOG, useAchievements } from "../game/achievements";
-import { DASHBOARD_ROUTES } from "../routes/paths";
 import { FichaIcon, FlameIcon, TargetGlyph, TrophyIcon } from "../game/icons";
 import { LeaderboardRow, MyRankCard, Podium, RankingFadeOut, rankingFadeOpacity } from "../game/ranking";
 import { IcademerProfileDialog, type IcademerSummary } from "../game/IcademerProfile";
@@ -590,11 +591,31 @@ function readPromptClosed(userId: string): boolean {
  * best one open. It goes away when you choose one, or for good with the X.
  */
 function FeaturedBadgePrompt({ userId }: { userId: string }) {
-  const navigate = useNavigate();
-  const { badge, loaded } = useFeaturedBadge(userId);
+  const { badge, loaded, choose } = useFeaturedBadge(userId);
   const { byCategory, totalEarned, loading, coachingLocked } = useAchievements();
   const [closed, setClosed] = useState(() => readPromptClosed(userId));
+  // The badge is chosen here, in a window over the ranking, without going to Insignias (Luis, 14 Oct).
+  const [picking, setPicking] = useState(false);
+  const [saving, setSaving] = useState(false);
   if (closed || !loaded || badge || loading || totalEarned === 0) return null;
+
+  // Every badge you have, the highest of each category first.
+  const earnedBadges = ACHIEVEMENT_CATALOG.flatMap((def) => {
+    if (coachingLocked && def.key === "coaching") return [];
+    const earned = Math.min(byCategory[def.key].earned, def.levels.length);
+    return def.levels.slice(0, earned).reverse().map((level) => ({ def, level }));
+  });
+
+  const pick = async (category: (typeof ACHIEVEMENT_CATALOG)[number]["key"], tier: (typeof ACHIEVEMENT_CATALOG)[number]["levels"][number]["tier"]) => {
+    if (saving) return;
+    setSaving(true);
+    const ok = await choose({ category, tier });
+    setSaving(false);
+    if (ok) {
+      setPicking(false);
+      toast.success(t("¡Hecho! Tu insignia ya sale junto a tu nombre en el ranking."));
+    }
+  };
 
   // Your best badge, so you see what would go next to your name.
   let best: { def: (typeof ACHIEVEMENT_CATALOG)[number]; level: (typeof ACHIEVEMENT_CATALOG)[number]["levels"][number] } | null = null;
@@ -624,7 +645,7 @@ function FeaturedBadgePrompt({ userId }: { userId: string }) {
     >
       <button
         type="button"
-        onClick={() => navigate(`${DASHBOARD_ROUTES.insignias}?destacar=1`)}
+        onClick={() => setPicking(true)}
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
       >
         {best ? (
@@ -652,6 +673,43 @@ function FeaturedBadgePrompt({ userId }: { userId: string }) {
       >
         <XIcon className="size-4" strokeWidth={2.8} aria-hidden="true" />
       </button>
+
+      <Dialog open={picking} onOpenChange={setPicking}>
+        <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-md">
+          <div className="flex items-end gap-3">
+            <TourGuide className="w-16 shrink-0" />
+            <div className="relative rounded-2xl border-2 border-border bg-card px-3 py-2">
+              <DialogTitle className="text-base font-extrabold">{t("Elige tu insignia")}</DialogTitle>
+              <DialogDescription className="mt-0.5 text-sm font-semibold">
+                {t("Muestra tus logros a los demás icademers: la insignia que elijas saldrá junto a tu nombre en el ranking.")}
+              </DialogDescription>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {earnedBadges.map(({ def, level }) => (
+              <button
+                key={`${def.key}:${level.tier}`}
+                type="button"
+                disabled={saving}
+                onClick={() => void pick(def.key, level.tier)}
+                className="flex flex-col items-center gap-1 rounded-2xl border-2 border-transparent p-1.5 text-center transition hover:border-primary hover:bg-primary/10 disabled:opacity-60"
+              >
+                <Medal
+                  category={def.key}
+                  tier={level.tier}
+                  ribbon={level.ribbon}
+                  label={`${t(def.title)} · ${tierName(level.tier)}`}
+                  earned
+                  className="w-full max-w-[84px]"
+                />
+                <span className="text-[11px] leading-tight font-bold text-muted-foreground">
+                  {t(def.title)} · {tierName(level.tier)}
+                </span>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

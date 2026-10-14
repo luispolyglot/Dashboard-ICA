@@ -277,6 +277,10 @@ export function IcaChallengePlayView({
   // Parejas: lo que lleva unido (para mandarlo si se acaba el tiempo).
   const pairMatchesRef = useRef<Array<number | null>>([])
   const onQuestionTimeoutRef = useRef<(() => void) | null>(null)
+  const onSessionTimeoutRef = useRef<(() => void) | null>(null)
+  // What is written in the box right now (Escritura): when the time runs out it is still checked,
+  // even if the arrow was not pressed (Luis, 13 Oct).
+  const writeTextRef = useRef('')
 
   useEffect(() => {
     mountedRef.current = true
@@ -483,11 +487,21 @@ export function IcaChallengePlayView({
   }
 
   const submit = useCallback(
-    async (response: AnswerResponse, options?: { timedOut?: boolean }) => {
+    async (
+      response: AnswerResponse,
+      options?: {
+        timedOut?: boolean
+        /** Sent when the clock ran out: the text was written in time, so it counts at most the limit. */
+        maxClientMs?: number
+        /** Modo Relámpago, last word when the minute ends: show ✓ / ✗ but do not open another word. */
+        final?: boolean
+      },
+    ) => {
       if (!question || submitting) return
       setSubmitting(true)
       const answeredQuestion = question
-      const clientMs = Date.now() - questionShownAt
+      const elapsedMs = Date.now() - questionShownAt
+      const clientMs = options?.maxClientMs !== undefined ? Math.min(elapsedMs, options.maxClientMs) : elapsedMs
       try {
         const step = await answerIcaChallengeQuestion({
           challengeId,
@@ -521,7 +535,7 @@ export function IcaChallengePlayView({
               later(() => void speakAsync(word, lang), 250)
             }
           }
-          applyStep(step)
+          if (!options?.final) applyStep(step)
           return
         }
 
@@ -691,7 +705,25 @@ export function IcaChallengePlayView({
       void submit(text ? { transcripts: [text] } : {}, { timedOut: !text })
       return
     }
+    if (question.kind === 'write') {
+      // Se corrige lo que haya escrito, aunque no le haya dado tiempo a pulsar la flecha.
+      const text = writeTextRef.current.trim()
+      void submit(text ? { text } : {}, { timedOut: !text, maxClientMs: question.limitMs ?? undefined })
+      return
+    }
     void submit({}, { timedOut: true })
+  }
+
+  // Modo Relámpago: al acabarse el minuto, la última palabra escrita (sin pulsar Intro) también cuenta.
+  onSessionTimeoutRef.current = () => {
+    const text = writeTextRef.current.trim()
+    if (isLightning && phase === 'question' && question && !submitting && text) {
+      writeTextRef.current = ''
+      void submit({ text }, { final: true }).finally(() => void endLightning())
+      return
+    }
+    // El servidor conserva una pequeña gracia para respuestas que llegan al vencer el reloj.
+    later(() => void endLightning(), LIGHTNING_END_GRACE_MS)
   }
 
   const questionCountdown = useCountdown({
@@ -705,8 +737,7 @@ export function IcaChallengePlayView({
   const sessionCountdown = useCountdown({
     endsAt: isLightning && phase === 'question' ? sessionEndsAt : null,
     totalMs: sessionTotalMs,
-    // El servidor conserva una pequeña gracia para respuestas que llegan al vencer el reloj.
-    onExpire: () => later(() => void endLightning(), LIGHTNING_END_GRACE_MS),
+    onExpire: () => onSessionTimeoutRef.current?.(),
   })
 
   // -------------------------------------------------------------------------
@@ -1011,19 +1042,27 @@ export function IcaChallengePlayView({
               {challenge.wordSource === 'mixed' && (
                 <li className='flex gap-2'><ShuffleIcon className='mt-0.5 h-4 w-4 shrink-0 text-primary' /><span>{t('Las mismas palabras para los dos: la mitad de tu baúl y la mitad del de {name}.', { name: firstName(names.rival) })}</span></li>
               )}
-              {challenge.kind === 'write' && (
-                <li className='flex gap-1.5'>
-                  <KeyboardIcon className='mt-0.5 h-3.5 w-3.5 shrink-0' />
-                  <span>
-                    {t('Las tildes y letras especiales cuentan. Pon el teclado de {lang} en tu móvil antes de empezar.', {
-                      lang: langName(config.targetLang),
-                    })}
-                  </span>
-                </li>
-              )}
               {challenge.kind === 'listen' && (<li className='flex gap-2'><Volume2Icon className='mt-0.5 h-4 w-4 shrink-0 text-primary' /><span>{t('Sube el volumen.')}</span></li>)}
               {challenge.kind === 'speak' && (<li className='flex gap-2'><MicIcon className='mt-0.5 h-4 w-4 shrink-0 text-primary' /><span>{t('Te pediremos permiso para usar el micrófono.')}</span></li>)}
             </ul>
+            {challenge.kind === 'write' && (
+              // Aviso antes de escribir (Luis, 13 Oct): sale aquí, al empezar, y no durante la partida.
+              <div
+                className='flex items-start gap-3 rounded-2xl border-2 px-4 py-3'
+                style={{ borderColor: 'var(--ica-gold-edge)', background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
+                role='note'
+              >
+                <KeyboardIcon className='mt-0.5 size-5 shrink-0' strokeWidth={2.4} aria-hidden='true' />
+                <div className='space-y-0.5'>
+                  <p className='m-0 text-sm font-extrabold'>{t('Antes de empezar')}</p>
+                  <p className='m-0 text-sm font-semibold'>
+                    {t('Pon tu teclado en {lang}: las tildes y letras especiales cuentan; las mayúsculas, no.', {
+                      lang: langName(config.targetLang),
+                    })}
+                  </p>
+                </div>
+              </div>
+            )}
             {micMessage && (
               <p className='rounded-lg border border-amber-300/60 bg-amber-50/70 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/35 dark:text-amber-200'>
                 {micMessage}
@@ -1422,6 +1461,9 @@ export function IcaChallengePlayView({
               disabled={locked}
               onSubmit={(text) => void submit({ text })}
               onSkip={() => void submit({ text: '' })}
+              onTextChange={(text) => {
+                writeTextRef.current = text
+              }}
               submitLabel={isLightning ? t('Siguiente') : t('Comprobar')}
               autoFocusKey={current.index}
             />

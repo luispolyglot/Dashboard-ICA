@@ -258,12 +258,19 @@ describe('LeaderboardView · Destaca una insignia (Luis, 13 Oct)', () => {
     }
   })
 
-  it('con insignias y ninguna destacada, invita a destacar una y lleva a Insignias', async () => {
+  it('con insignias y ninguna destacada, invita a destacar una y se elige sin salir del ranking (14 Oct)', async () => {
     achievementsMock.mockReturnValue(achievements(2))
-    featuredBadgeMock.mockReturnValue({ badge: null, loaded: true })
+    const choose = vi.fn().mockResolvedValue(true)
+    featuredBadgeMock.mockReturnValue({ badge: null, loaded: true, choose })
     render(<LeaderboardView />)
     fireEvent.click(await screen.findByText('Destaca una insignia'))
-    expect(navigateMock).toHaveBeenCalledWith('/insignias?destacar=1')
+    expect(navigateMock).not.toHaveBeenCalled()
+    expect(await screen.findByText('Elige tu insignia')).toBeTruthy()
+    // The two «Racha ICA» badges earned, the highest first.
+    const options = screen.getAllByRole('button', { name: /Racha ICA/ })
+    expect(options.length).toBeGreaterThanOrEqual(2)
+    fireEvent.click(options[0])
+    await waitFor(() => expect(choose).toHaveBeenCalledWith({ category: 'rachaICA', tier: 'plata' }))
   })
 
   it('no sale si ya tiene una destacada, si no tiene ninguna insignia o si la cerró', async () => {

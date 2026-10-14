@@ -8,7 +8,6 @@ import {
   ArrowRightIcon,
   CheckIcon,
   CornerDownLeftIcon,
-  KeyboardIcon,
   Loader2Icon,
   MicIcon,
   PlusIcon,
@@ -251,6 +250,7 @@ export function WriteAnswerForm({
   disabled,
   onSubmit,
   onSkip,
+  onTextChange,
   submitLabel = t('Comprobar'),
   autoFocusKey,
 }: {
@@ -259,16 +259,21 @@ export function WriteAnswerForm({
   disabled: boolean
   onSubmit: (text: string) => void
   onSkip: () => void
+  /** What is written right now, so it can still be checked when the time runs out. */
+  onTextChange?: (text: string) => void
   submitLabel?: string
   autoFocusKey: string | number
 }) {
   const [text, setText] = useState('')
+  const onTextChangeRef = useRef(onTextChange)
+  onTextChangeRef.current = onTextChange
   const formRef = useRef<HTMLFormElement>(null)
   // El Input de la app no recibe ref (React 18): se busca dentro del formulario.
   const focusInput = () => formRef.current?.querySelector('input')?.focus()
 
   useEffect(() => {
     setText('')
+    onTextChangeRef.current?.('')
     // Con un pequeño retraso para que el teclado del móvil se abra bien.
     const id = window.setTimeout(focusInput, 30)
     return () => window.clearTimeout(id)
@@ -287,15 +292,8 @@ export function WriteAnswerForm({
 
   return (
     <form ref={formRef} onSubmit={handleSubmit} className='space-y-2'>
-      {/* Attention before typing (Luis, 8 Oct): the accents and special letters count. */}
-      <p
-        className='m-0 flex items-center justify-center gap-1.5 rounded-xl px-3 py-1.5 text-center text-xs font-bold'
-        style={{ background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
-        role='note'
-      >
-        <KeyboardIcon className='size-3.5 shrink-0' strokeWidth={2.6} aria-hidden='true' />
-        {t('Pon tu teclado en {lang}: las tildes y letras especiales cuentan; las mayúsculas, no.', { lang: langName(targetLang) })}
-      </p>
+      {/* The keyboard notice (accents and special letters count) is shown once, before starting
+          (Luis, 13 Oct): not on screen during the whole game. */}
       {hint && (
         <p className='text-center text-sm text-muted-foreground'>
           {t('Empieza por')} <span className='font-semibold text-foreground'>{hint.replace('…', '')}</span>…
@@ -304,7 +302,10 @@ export function WriteAnswerForm({
       <div className='flex gap-2'>
         <Input
           value={text}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            setText(event.target.value)
+            onTextChangeRef.current?.(event.target.value)
+          }}
           // readOnly (y no disabled) para que el teclado del móvil no se cierre entre palabra y palabra
           readOnly={disabled}
           lang={LANG_CODES[targetLang] || undefined}

@@ -70,6 +70,8 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     const root = document.documentElement
     root.classList.toggle('dark', resolvedTheme === 'dark')
     root.dataset.theme = resolvedTheme
+    // The phone's top bar follows the theme too (index.html sets it the same way when opening).
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolvedTheme === 'dark' ? '#0b1924' : '#ffffff')
   }, [resolvedTheme])
 
   const setTheme = (value: ThemePreference) => {

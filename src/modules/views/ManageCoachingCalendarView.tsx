@@ -377,6 +377,17 @@ function formatHourLabel(time: string): string {
   return time.endsWith(':00') ? `${time.slice(0, 2)}h` : time.replace(':', 'h')
 }
 
+/** Text on a class chip in its language colour: dark on the light colours, white on the rest. */
+function chipTextColor(toneName: string): string {
+  return ['i', 'gold', 'fire', 'primary', 'ok'].includes(toneName) ? '#0f2233' : '#fff'
+}
+
+/** «W06_1» → «W6_1»: the week and class of a calendar class, short (Luis, 14 Oct). */
+function shortClassKey(weekKey: string): string {
+  const match = weekKey.match(/^W0*(\d+)\D+(\d)$/i)
+  return match ? `W${match[1]}_${match[2]}` : weekKey
+}
+
 /** «W03» → «Semana 3»; «W03-C2» → «Semana 3 · clase 2». */
 function formatWeekLabel(weekKey: string): string {
   const match = weekKey.match(/W(\d+)(?:\D+(\d))?/i)
@@ -1190,7 +1201,7 @@ export function ManageCoachingCalendarView() {
             {isMine ? <Pill tone='ok'>Tú</Pill> : null}
           </span>
           <span className='mt-0.5 block text-xs font-semibold text-muted-foreground'>
-            {entry.targetLang} {entry.level} · {formatWeekLabel(entry.sessionWeekKey)}
+            {entry.targetLang} {entry.level} · {formatWeekLabel(entry.sessionWeekKey)} ({shortClassKey(entry.sessionWeekKey)})
           </span>
           {entry.coachDisplayName ? (
             <span className='block text-xs font-bold text-muted-foreground'>con {entry.coachDisplayName}</span>
@@ -1320,16 +1331,26 @@ export function ManageCoachingCalendarView() {
                 {visibleEntries.map((entry) => {
                   const meta = coachingLangMeta(entry.targetLang)
                   const colors = tone(meta.tone)
+                  // Upcoming classes stand out in the language colour; past ones stay soft (Luis, 14 Oct).
                   return (
                     <span
                       key={entry.id}
-                      className='flex min-w-0 items-center gap-1 rounded-lg px-1 py-0.5 text-[11px] leading-4 font-extrabold'
-                      style={{ background: colors.soft, color: colors.ink }}
-                      title={`${entry.studentName} · ${entry.targetLang} ${entry.level} · ${formatHourLabel(entry.timeLabel)}`}
+                      className='flex min-w-0 flex-col rounded-lg px-1.5 py-1 text-[11px] leading-4 font-extrabold'
+                      style={
+                        isPastDay
+                          ? { background: colors.soft, color: colors.ink }
+                          : { background: colors.solid, color: chipTextColor(meta.tone), boxShadow: `0 2px 0 ${colors.edge}` }
+                      }
+                      title={`${entry.studentName} · ${entry.targetLang} ${entry.level} · ${formatHourLabel(entry.timeLabel)} · ${formatWeekLabel(entry.sessionWeekKey)}`}
                     >
-                      <ClassFlag meta={meta} className='text-xs' />
-                      <span className='shrink-0 tabular-nums'>{formatHourLabel(entry.timeLabel)}</span>
-                      <span className='truncate font-bold opacity-80'>{firstName(entry.studentName)}</span>
+                      <span className='flex min-w-0 items-center gap-1'>
+                        <ClassFlag meta={meta} className='text-xs' />
+                        <span className='shrink-0 tabular-nums'>{formatHourLabel(entry.timeLabel)}</span>
+                        <span className='truncate font-bold'>{firstName(entry.studentName)}</span>
+                      </span>
+                      <span className='text-[10px] font-black tracking-[0.04em] tabular-nums opacity-85'>
+                        {shortClassKey(entry.sessionWeekKey)}
+                      </span>
                     </span>
                   )
                 })}

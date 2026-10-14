@@ -68,8 +68,8 @@ export function useFeaturedBadge(userId: string | null | undefined) {
   }, [refresh, userId])
 
   const choose = useCallback(
-    async (next: FeaturedBadge | null) => {
-      if (!supabase || !userId) return
+    async (next: FeaturedBadge | null): Promise<boolean> => {
+      if (!supabase || !userId) return false
       const { error } = await supabase.rpc('set_my_featured_badge', {
         p_badge: next ? serializeFeaturedBadge(next) : null,
       })
@@ -77,11 +77,12 @@ export function useFeaturedBadge(userId: string | null | undefined) {
         toast.error(error.message.includes('FEATURED_BADGE_NOT_EARNED')
           ? t('Aún no has conseguido esa insignia.')
           : t('No se pudo guardar la insignia destacada.'))
-        return
+        return false
       }
       setBadge(next)
       storeQuick(`${CACHE_PREFIX}${userId}`, next)
       window.dispatchEvent(new Event(CHANGED_EVENT))
+      return true
     },
     [userId],
   )
