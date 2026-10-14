@@ -7,16 +7,44 @@
 --   - the reminders: whoever had fr_conv now has fr_basico, with the reminder as it was (if they
 --     had both, it stays on if either was on); then fr_conv is removed;
 --   - the pending class-change notices and the hidden sessions, so nothing points to fr_conv.
--- Already applied by hand in production on 13 Oct at Luis's request: running it again changes
--- nothing (everything is already fr_basico).
+-- Running it again changes nothing (everything is already fr_basico).
+--
+-- Old sessions (June) have no teacher_id. calendar_icademy_teacher_id_required is NOT VALID, so it
+-- lets them exist but Postgres still checks it on any UPDATE of those rows, and the rename failed
+-- (develop, 13 Oct). So the constraint is dropped for this update only and added back exactly as
+-- it was (NOT VALID, or validated if it was), all in this same transaction.
 
 begin;
 
-update public.calendar_icademy
-   set class_key = 'fr_basico',
-       class_name = 'Francés'
- where class_key in ('fr_conv', 'fr_basico')
-   and (class_key <> 'fr_basico' or class_name <> 'Francés');
+do $$
+declare
+  was_validated boolean;
+begin
+  select c.convalidated into was_validated
+    from pg_constraint c
+   where c.conname = 'calendar_icademy_teacher_id_required'
+     and c.conrelid = 'public.calendar_icademy'::regclass;
+
+  if was_validated is not null then
+    alter table public.calendar_icademy drop constraint calendar_icademy_teacher_id_required;
+  end if;
+
+  update public.calendar_icademy
+     set class_key = 'fr_basico',
+         class_name = 'Francés'
+   where class_key in ('fr_conv', 'fr_basico')
+     and (class_key <> 'fr_basico' or class_name <> 'Francés');
+
+  if was_validated is not null then
+    alter table public.calendar_icademy
+      add constraint calendar_icademy_teacher_id_required
+      check (teacher_id is not null) not valid;
+    if was_validated then
+      alter table public.calendar_icademy validate constraint calendar_icademy_teacher_id_required;
+    end if;
+  end if;
+end
+$$;
 
 update public.users_calendar_icademy_session_blacklist
    set class_key = 'fr_basico'

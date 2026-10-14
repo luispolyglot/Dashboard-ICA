@@ -1,3 +1,4 @@
+// Redeploy 13 Oct: the develop deploy of PR #104 stopped at a migration and skipped this function.
 import { jsonResponse } from '../_shared/http.ts'
 import type { AdminClient } from './types.ts'
 
