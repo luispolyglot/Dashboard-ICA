@@ -421,5 +421,12 @@ const en: Record<string, string> = {
   "Muestra tus logros a los demás icademers: la insignia que elijas saldrá junto a tu nombre en el ranking.":
     "Show your achievements to the other icademers: the badge you choose will appear next to your name in the ranking.",
   "¡Hecho! Tu insignia ya sale junto a tu nombre en el ranking.": "Done! Your badge now appears next to your name in the ranking.",
+  "Desafío aleatorio": "Random challenge",
+  "Reta a un icademer al azar, ahora mismo.": "Challenge a random icademer, right now.",
+  "Ahora mismo no hay ningún icademer libre para desafiar. Prueba en un rato.": "There is no icademer free to challenge right now. Try again in a while.",
+  "un icademer": "an icademer",
+  "¡Te ha tocado {name}! También aprende {lang}: jugarán con la mezcla de sus Baúles ICA.":
+    "You got {name}! They also learn {lang}: you will play with a mix of both ICA Vaults.",
+  "¡Te ha tocado {name}! Cada uno jugará con sus propias palabras ICA.": "You got {name}! Each of you will play with your own ICA words.",
 }
 export default en

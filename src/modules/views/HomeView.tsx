@@ -15,7 +15,7 @@ import { CardsIcon, MicGlyph, SwordsIcon, TargetGlyph } from '../game/icons'
 import { IcaPath } from '../game/IcaPath'
 import { LevelCard } from '../game/LevelCard'
 import { LevelStrip } from '../game/LevelStrip'
-import { RankingSnippetCard } from '../game/RankingSnippetCard'
+import { RandomChallengeCard } from '../game/RandomChallengeCard'
 import { isIcaCycleDone } from '../game/streak'
 import { StreakRiskBanner } from '../game/StreakRiskBanner'
 import { ChatInvite } from '../game/ChatInvite'
@@ -217,8 +217,9 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           {hasCoaching ? (
             <div className='mt-9 grid grid-cols-3 gap-5'>
               <div className='col-span-2'>{coachingCard}</div>
+              {/* Luis, 14 Oct: no ranking on Inicio; a big «Desafío aleatorio» instead. */}
               <div className='row-span-2 flex flex-col [&>*]:flex-1'>
-                <RankingSnippetCard />
+                <RandomChallengeCard config={config} />
               </div>
               <div className='flex flex-col [&>*]:flex-1'>
                 <LevelCard config={config} />
@@ -234,7 +235,7 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
                 </div>
                 <div className='flex flex-col [&>*]:flex-1'>{gamesCard}</div>
                 <div className='flex flex-col [&>*]:flex-1'>
-                  <RankingSnippetCard maxRows={3} />
+                  <RandomChallengeCard config={config} />
                 </div>
               </div>
             </>
@@ -265,11 +266,16 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
             <p className='m-0 mt-0.5 text-sm font-medium text-muted-foreground'>{subtitle}</p>
           </div>
           <IcaPath />
+          {!isLg ? (
+            <div className='mt-3'>
+              <RandomChallengeCard config={config} compact />
+            </div>
+          ) : null}
         </div>
 
         <aside className='hidden flex-col gap-4 lg:sticky lg:top-6 lg:flex'>
           <LevelCard config={config} />
-          <RankingSnippetCard />
+          <RandomChallengeCard config={config} compact />
           {gamesCard}
           {isLg ? coachingCard : null}
         </aside>

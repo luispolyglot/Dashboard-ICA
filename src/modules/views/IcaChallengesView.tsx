@@ -69,6 +69,9 @@ import type {
   IcaChallengeWordSource,
 } from '../types'
 
+/** `embeddedRivalId` for «Desafío aleatorio» (Luis, 14 Oct): a random icademer who can be challenged now. */
+export const RANDOM_RIVAL = '__random__'
+
 type IcaChallengesViewProps = {
   targetLang: string
   nativeLang: string
@@ -610,16 +613,37 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
         { replace: true },
       )
     }
-    const rival = availableUsers.find((item) => item.userId === retarParam)
+    const randomPick = retarParam === RANDOM_RIVAL
+    const candidates = randomPick
+      ? availableUsers.filter((item) => item.canChallenge && item.userId !== currentUserId && !activeRivalIds.has(item.userId))
+      : []
+    const rival = randomPick
+      ? candidates[Math.floor(Math.random() * candidates.length)]
+      : availableUsers.find((item) => item.userId === retarParam)
     if (!isEnrolled) {
       toast.error(t('Activa Desafíos ICA para poder retar.'))
       onEmbeddedDone?.()
       return
     }
     if (!rival) {
-      toast.error(t('Ahora mismo no se puede desafiar a este icademer.'))
+      toast.error(
+        randomPick
+          ? t('Ahora mismo no hay ningún icademer libre para desafiar. Prueba en un rato.')
+          : t('Ahora mismo no se puede desafiar a este icademer.'),
+      )
       onEmbeddedDone?.()
       return
+    }
+    if (randomPick) {
+      const name = (rival.displayName || rival.username || '').trim().split(/\s+/)[0] || t('un icademer')
+      toast.success(
+        rival.samePair && rival.mixedAllowed
+          ? t('¡Te ha tocado {name}! También aprende {lang}: jugarán con la mezcla de sus Baúles ICA.', {
+              name,
+              lang: langName(targetLang),
+            })
+          : t('¡Te ha tocado {name}! Cada uno jugará con sus propias palabras ICA.', { name }),
+      )
     }
     const onlyMyLimit =
       !rival.canChallenge &&
