@@ -417,5 +417,9 @@ const en: Record<string, string> = {
   "20 ICA Coins": "20 ICA Coins",
   "10 ICA Coins": "10 ICA Coins",
   "Premio del top 3 del ranking": "Ranking top 3 prize",
+  "Elige tu insignia": "Choose your badge",
+  "Muestra tus logros a los demás icademers: la insignia que elijas saldrá junto a tu nombre en el ranking.":
+    "Show your achievements to the other icademers: the badge you choose will appear next to your name in the ranking.",
+  "¡Hecho! Tu insignia ya sale junto a tu nombre en el ranking.": "Done! Your badge now appears next to your name in the ranking.",
 }
 export default en

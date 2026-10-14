@@ -111,11 +111,8 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
       icon: <TargetGlyph size={isLg ? 36 : 26} />,
       label: isLg ? 'Nota desafiante' : 'Nota desaf.',
       color: 'var(--ica-gold-edge)',
-      // One new challenge waiting: straight to that note (as in Juegos ICA).
-      to:
-        pendingChallengeNotes.length === 1
-          ? `${DASHBOARD_ROUTES.notaDesafiante}/${pendingChallengeNotes[0].id}`
-          : DASHBOARD_ROUTES.notaDesafiante,
+      // To the list of notes, as in Juegos ICA (Luis, 14 Oct).
+      to: DASHBOARD_ROUTES.notaDesafiante,
     },
   ]
   const gamesClickable = isLg && cardCount > 0

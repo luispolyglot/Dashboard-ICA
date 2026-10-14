@@ -233,14 +233,8 @@ export function GamesIcaView({
             tour='game-challenge-note'
             color='var(--ica-gold-edge)'
             locked={closedNotes !== null && !challengeReady}
-            // One new challenge waiting: straight to that note, with its «Empezar» button.
-            onClick={() =>
-              navigate(
-                pendingChallengeNotes.length === 1
-                  ? `${DASHBOARD_ROUTES.notaDesafiante}/${pendingChallengeNotes[0].id}`
-                  : DASHBOARD_ROUTES.notaDesafiante,
-              )
-            }
+            // Always to the list of notes, where the open challenge shows «Jugar» (Luis, 14 Oct).
+            onClick={() => navigate(DASHBOARD_ROUTES.notaDesafiante)}
             badge={
               pendingChallengeNotes.length > 0 ? <ChallengeNotePill count={pendingChallengeNotes.length} /> : undefined
             }
