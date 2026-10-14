@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   ChevronDownIcon,
   Loader2Icon,
@@ -11,85 +11,85 @@ import {
   SquareIcon,
   StarIcon,
   Volume2Icon,
-} from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   MasterNotePlaylistEditorDialog,
   type PlaylistEditorNoteOption,
-} from '../components/MasterNotePlaylistEditorDialog'
-import { MasterNotePlaylistPlayerDock } from '../components/MasterNotePlaylistPlayerDock'
+} from "../components/MasterNotePlaylistEditorDialog";
+import { MasterNotePlaylistPlayerDock } from "../components/MasterNotePlaylistPlayerDock";
 import {
   getLoopCuePlaybackSource,
   warmLoopCueOfflineCache,
-} from '../audio/loopCueCache'
-import { useOfflineMasterNotePlaylists } from '../hooks/useOfflineMasterNotePlaylists'
-import { useLoopedMasterNotePlayback } from '../hooks/useLoopedMasterNotePlayback'
-import { useMasterNotePlayback } from '../hooks/useMasterNotePlayback'
+} from "../audio/loopCueCache";
+import { useOfflineMasterNotePlaylists } from "../hooks/useOfflineMasterNotePlaylists";
+import { useLoopedMasterNotePlayback } from "../hooks/useLoopedMasterNotePlayback";
+import { useMasterNotePlayback } from "../hooks/useMasterNotePlayback";
 import {
   OFFLINE_SAFE_LAST_PATH_STORAGE_KEY,
   registerOfflineSafeAutoReturn,
   resetOfflineSafeAutoReturns,
-} from '../offline/events'
-import { DASHBOARD_ROUTES } from '../routes/paths'
+} from "../offline/events";
+import { DASHBOARD_ROUTES } from "../routes/paths";
 import {
   listOfflineClosedMasterNotes,
   type OfflineClosedMasterNote,
-} from '../services/masterNotesOfflineStore'
-import type { MasterNote } from '../types'
-import { formatDate } from '../utils'
-import { langName, t } from '@/i18n'
-import { ListLoading } from '@/components/ui/loading-state'
+} from "../services/masterNotesOfflineStore";
+import type { MasterNote } from "../types";
+import { formatDate } from "../utils";
+import { langName, t } from "@/i18n";
+import { ListLoading } from "@/components/ui/loading-state";
 
 function getCurrentPath(): string {
-  if (typeof window === 'undefined') return DASHBOARD_ROUTES.home
+  if (typeof window === "undefined") return DASHBOARD_ROUTES.home;
 
-  const candidate = `${window.location.pathname}${window.location.search}${window.location.hash}`
+  const candidate = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   if (!candidate || candidate === DASHBOARD_ROUTES.offlineSafe) {
-    return DASHBOARD_ROUTES.home
+    return DASHBOARD_ROUTES.home;
   }
 
-  return candidate
+  return candidate;
 }
 
 export function OfflineSafeView() {
-  const navigate = useNavigate()
+  const navigate = useNavigate();
   const [isOnline, setIsOnline] = useState(
-    typeof navigator === 'undefined' ? true : navigator.onLine,
-  )
-  const [loadingNotes, setLoadingNotes] = useState(true)
-  const [notes, setNotes] = useState<OfflineClosedMasterNote[]>([])
-  const [notesError, setNotesError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'notes' | 'playlists'>('notes')
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
+  const [loadingNotes, setLoadingNotes] = useState(true);
+  const [notes, setNotes] = useState<OfflineClosedMasterNote[]>([]);
+  const [notesError, setNotesError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"notes" | "playlists">("notes");
   const [activePlayerPlaylistId, setActivePlayerPlaylistId] = useState<
     string | null
-  >(null)
-  const [playlistDialogOpen, setPlaylistDialogOpen] = useState(false)
+  >(null);
+  const [playlistDialogOpen, setPlaylistDialogOpen] = useState(false);
   const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(
     null,
-  )
+  );
   const [playlistDraftById, setPlaylistDraftById] = useState<
     Record<string, string[]>
-  >({})
-  const [selectedGroupKey, setSelectedGroupKey] = useState<string>('')
+  >({});
+  const [selectedGroupKey, setSelectedGroupKey] = useState<string>("");
   const [playAllStartNoteId, setPlayAllStartNoteId] = useState<string | null>(
     null,
-  )
+  );
 
   const {
     playlists,
@@ -97,7 +97,7 @@ export function OfflineSafeView() {
     loading: playlistsLoading,
     error: playlistsError,
     refresh: refreshPlaylists,
-  } = useOfflineMasterNotePlaylists()
+  } = useOfflineMasterNotePlaylists();
 
   const {
     error: playbackError,
@@ -113,212 +113,208 @@ export function OfflineSafeView() {
     isPaused,
     positionSec,
     durationSec,
-  } = useMasterNotePlayback()
+  } = useMasterNotePlayback();
 
   useEffect(() => {
-    let isMounted = true
+    let isMounted = true;
 
     const loadOfflineNotes = async () => {
-      setLoadingNotes(true)
+      setLoadingNotes(true);
       try {
-        const rows = await listOfflineClosedMasterNotes()
-        if (!isMounted) return
-        setNotes(rows)
-        setNotesError(null)
+        const rows = await listOfflineClosedMasterNotes();
+        if (!isMounted) return;
+        setNotes(rows);
+        setNotesError(null);
       } catch {
-        if (!isMounted) return
-        setNotesError(t('No se pudo cargar tu caché local de notas maestras'))
+        if (!isMounted) return;
+        setNotesError(t("No se pudo cargar tu caché local de notas maestras"));
       } finally {
-        if (!isMounted) return
-        setLoadingNotes(false)
+        if (!isMounted) return;
+        setLoadingNotes(false);
       }
-    }
+    };
 
-    void loadOfflineNotes()
-
-    return () => {
-      isMounted = false
-    }
-  }, [])
-
-  useEffect(() => {
-    void refreshPlaylists()
-  }, [refreshPlaylists])
-
-  useEffect(() => {
-    void warmLoopCueOfflineCache()
-  }, [])
-
-  useEffect(() => {
-    const onOnline = () => setIsOnline(true)
-    const onOffline = () => setIsOnline(false)
-
-    window.addEventListener('online', onOnline)
-    window.addEventListener('offline', onOffline)
+    void loadOfflineNotes();
 
     return () => {
-      window.removeEventListener('online', onOnline)
-      window.removeEventListener('offline', onOffline)
-    }
-  }, [])
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    void refreshPlaylists();
+  }, [refreshPlaylists]);
+
+  useEffect(() => {
+    void warmLoopCueOfflineCache();
+  }, []);
+
+  useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
 
   const returnPath = useMemo(() => {
-    if (typeof window === 'undefined') return DASHBOARD_ROUTES.home
+    if (typeof window === "undefined") return DASHBOARD_ROUTES.home;
     const stored = window.sessionStorage.getItem(
       OFFLINE_SAFE_LAST_PATH_STORAGE_KEY,
-    )
+    );
     if (stored && stored !== DASHBOARD_ROUTES.offlineSafe) {
-      return stored
+      return stored;
     }
-    return getCurrentPath()
-  }, [])
+    return getCurrentPath();
+  }, []);
 
   const shouldAutoReturn = useMemo(() => {
-    if (typeof window === 'undefined') return false
+    if (typeof window === "undefined") return false;
     return Boolean(
       window.sessionStorage.getItem(OFFLINE_SAFE_LAST_PATH_STORAGE_KEY),
-    )
-  }, [])
+    );
+  }, []);
 
   // Retraso de la vuelta automática para este montaje. `undefined` = aún no
   // calculado; `null` = se alcanzó el máximo de vueltas seguidas (evita el
   // bucle offline → pantalla principal → offline si una request falla siempre).
-  const autoReturnDelayRef = useRef<number | null | undefined>(undefined)
-  const [autoReturnBlocked, setAutoReturnBlocked] = useState(false)
+  const autoReturnDelayRef = useRef<number | null | undefined>(undefined);
+  const [autoReturnBlocked, setAutoReturnBlocked] = useState(false);
 
   useEffect(() => {
-    if (!isOnline || !shouldAutoReturn) return
+    if (!isOnline || !shouldAutoReturn) return;
 
     if (autoReturnDelayRef.current === undefined) {
-      autoReturnDelayRef.current = registerOfflineSafeAutoReturn()
+      autoReturnDelayRef.current = registerOfflineSafeAutoReturn();
     }
-    const delay = autoReturnDelayRef.current
+    const delay = autoReturnDelayRef.current;
     if (delay === null) {
-      setAutoReturnBlocked(true)
-      return
+      setAutoReturnBlocked(true);
+      return;
     }
 
     const timeoutId = window.setTimeout(() => {
-      window.sessionStorage.removeItem(OFFLINE_SAFE_LAST_PATH_STORAGE_KEY)
-      navigate(returnPath, { replace: true })
-    }, delay)
+      window.sessionStorage.removeItem(OFFLINE_SAFE_LAST_PATH_STORAGE_KEY);
+      navigate(returnPath, { replace: true });
+    }, delay);
 
     return () => {
-      window.clearTimeout(timeoutId)
-    }
-  }, [isOnline, navigate, returnPath, shouldAutoReturn])
+      window.clearTimeout(timeoutId);
+    };
+  }, [isOnline, navigate, returnPath, shouldAutoReturn]);
 
   const handleRetry = () => {
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.removeItem(OFFLINE_SAFE_LAST_PATH_STORAGE_KEY)
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(OFFLINE_SAFE_LAST_PATH_STORAGE_KEY);
     }
-    resetOfflineSafeAutoReturns()
-    navigate(returnPath, { replace: true })
-  }
+    resetOfflineSafeAutoReturns();
+    navigate(returnPath, { replace: true });
+  };
 
   const handleGoHome = () => {
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.removeItem(OFFLINE_SAFE_LAST_PATH_STORAGE_KEY)
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(OFFLINE_SAFE_LAST_PATH_STORAGE_KEY);
     }
-    resetOfflineSafeAutoReturns()
-    navigate(DASHBOARD_ROUTES.home, { replace: true })
-  }
+    resetOfflineSafeAutoReturns();
+    navigate(DASHBOARD_ROUTES.home, { replace: true });
+  };
 
   const languageGroups = useMemo(() => {
     const groupsMap = new Map<
       string,
       {
-        key: string
-        label: string
-        notes: OfflineClosedMasterNote[]
+        key: string;
+        label: string;
+        notes: OfflineClosedMasterNote[];
       }
-    >()
+    >();
 
     for (const note of notes) {
-      const target = (note.targetLang || '').trim() || 'Sin idioma objetivo'
-      const native = (note.nativeLang || '').trim() || 'Sin idioma nativo'
-      const key = `${target}::${native}`
-      const label = `${langName(t(target))} -> ${langName(t(native))}`
+      const target = (note.targetLang || "").trim() || "Sin idioma objetivo";
+      const native = (note.nativeLang || "").trim() || "Sin idioma nativo";
+      const key = `${target}::${native}`;
+      const label = `${langName(t(target))} -> ${langName(t(native))}`;
 
-      const current = groupsMap.get(key)
+      const current = groupsMap.get(key);
       if (current) {
-        current.notes.push(note)
+        current.notes.push(note);
       } else {
         groupsMap.set(key, {
           key,
           label,
           notes: [note],
-        })
+        });
       }
     }
 
-    return Array.from(groupsMap.values())
-  }, [notes])
+    return Array.from(groupsMap.values());
+  }, [notes]);
 
   useEffect(() => {
     if (languageGroups.length === 0) {
-      setSelectedGroupKey('')
-      return
+      setSelectedGroupKey("");
+      return;
     }
 
     const hasSelected = languageGroups.some(
       (group) => group.key === selectedGroupKey,
-    )
-    if (hasSelected) return
-    setSelectedGroupKey(languageGroups[0]?.key || '')
-  }, [languageGroups, selectedGroupKey])
+    );
+    if (hasSelected) return;
+    setSelectedGroupKey(languageGroups[0]?.key || "");
+  }, [languageGroups, selectedGroupKey]);
 
   const visibleNotes = useMemo(() => {
     if (languageGroups.length <= 1) {
-      return notes
+      return notes;
     }
 
     const selected = languageGroups.find(
       (group) => group.key === selectedGroupKey,
-    )
-    return selected?.notes || []
-  }, [languageGroups, notes, selectedGroupKey])
+    );
+    return selected?.notes || [];
+  }, [languageGroups, notes, selectedGroupKey]);
 
   const notesById = useMemo(() => {
-    return new Map(notes.map((note) => [note.noteId, note]))
-  }, [notes])
+    return new Map(notes.map((note) => [note.noteId, note]));
+  }, [notes]);
 
   const playableOfflineNotes = useMemo(
     () => visibleNotes.filter((note) => note.audioAvailable),
     [visibleNotes],
-  )
+  );
 
   const playableOfflineNoteIds = useMemo(
     () => playableOfflineNotes.map((note) => note.noteId),
     [playableOfflineNotes],
-  )
-  const defaultPlayAllStartNoteId = playableOfflineNoteIds[0] || null
+  );
+  const defaultPlayAllStartNoteId = playableOfflineNoteIds[0] || null;
 
   useEffect(() => {
     if (!defaultPlayAllStartNoteId) {
-      setPlayAllStartNoteId(null)
-      return
+      setPlayAllStartNoteId(null);
+      return;
     }
 
     if (
       playAllStartNoteId &&
       playableOfflineNoteIds.includes(playAllStartNoteId)
     ) {
-      return
+      return;
     }
 
-    setPlayAllStartNoteId(defaultPlayAllStartNoteId)
-  }, [
-    defaultPlayAllStartNoteId,
-    playAllStartNoteId,
-    playableOfflineNoteIds,
-  ])
+    setPlayAllStartNoteId(defaultPlayAllStartNoteId);
+  }, [defaultPlayAllStartNoteId, playAllStartNoteId, playableOfflineNoteIds]);
 
   const selectedPlayAllStartNote = useMemo(() => {
-    const selectedId = playAllStartNoteId || defaultPlayAllStartNoteId
-    if (!selectedId) return null
-    return visibleNotes.find((note) => note.noteId === selectedId) || null
-  }, [defaultPlayAllStartNoteId, playAllStartNoteId, visibleNotes])
+    const selectedId = playAllStartNoteId || defaultPlayAllStartNoteId;
+    if (!selectedId) return null;
+    return visibleNotes.find((note) => note.noteId === selectedId) || null;
+  }, [defaultPlayAllStartNoteId, playAllStartNoteId, visibleNotes]);
 
   const closedNoteOptions = useMemo<PlaylistEditorNoteOption[]>(() => {
     return visibleNotes
@@ -326,66 +322,69 @@ export function OfflineSafeView() {
       .map((note) => ({
         id: note.noteId,
         name: note.name,
-      }))
-  }, [visibleNotes])
+      }));
+  }, [visibleNotes]);
 
   const editingPlaylist = useMemo(() => {
-    if (!editingPlaylistId) return null
+    if (!editingPlaylistId) return null;
     return (
       playlists.find((playlist) => playlist.id === editingPlaylistId) || null
-    )
-  }, [editingPlaylistId, playlists])
+    );
+  }, [editingPlaylistId, playlists]);
 
   const editingPlaylistNoteIds = useMemo(() => {
-    if (!editingPlaylist) return []
+    if (!editingPlaylist) return [];
 
     const stored = (itemsByPlaylistId.get(editingPlaylist.id) || [])
       .map((item) => item.masterNoteId)
-      .filter((noteId) => notesById.has(noteId))
+      .filter((noteId) => notesById.has(noteId));
 
-    const draft = playlistDraftById[editingPlaylist.id]
+    const draft = playlistDraftById[editingPlaylist.id];
     if (draft && draft.length >= 0) {
-      return draft.filter((noteId) => notesById.has(noteId))
+      return draft.filter((noteId) => notesById.has(noteId));
     }
 
-    return stored
-  }, [editingPlaylist, itemsByPlaylistId, notesById, playlistDraftById])
+    return stored;
+  }, [editingPlaylist, itemsByPlaylistId, notesById, playlistDraftById]);
 
   const activePlayerPlaylist = useMemo(() => {
-    if (!activePlayerPlaylistId) return null
+    if (!activePlayerPlaylistId) return null;
     return (
       playlists.find((playlist) => playlist.id === activePlayerPlaylistId) ||
       null
-    )
-  }, [activePlayerPlaylistId, playlists])
+    );
+  }, [activePlayerPlaylistId, playlists]);
 
   const playNoteById = useCallback(
     async (noteId: string): Promise<void> => {
-      const note = notesById.get(noteId)
-      if (!note || !note.audioAvailable) return
-      await play(toMasterNote(note))
+      const note = notesById.get(noteId);
+      if (!note || !note.audioAvailable) return;
+      await play(toMasterNote(note));
     },
     [notesById, play],
-  )
+  );
 
-  const resolveNowPlayingMetadata = useCallback((noteId: string) => {
-    const note = notesById.get(noteId)
-    if (!note) return null
+  const resolveNowPlayingMetadata = useCallback(
+    (noteId: string) => {
+      const note = notesById.get(noteId);
+      if (!note) return null;
 
-    return {
-      title: note.name,
-      artist: t('Nota maestra'),
-      album: 'ICADEMY Offline',
-    }
-  }, [notesById])
+      return {
+        title: note.name,
+        artist: t("Nota maestra"),
+        album: "ICADEMY Offline",
+      };
+    },
+    [notesById],
+  );
 
   const playCue = useCallback(
-    async (kind: 'start' | 'step' | 'finish'): Promise<unknown> => {
-      const source = await getLoopCuePlaybackSource(kind)
-      return await playTransitionCue(source)
+    async (kind: "start" | "step" | "finish"): Promise<unknown> => {
+      const source = await getLoopCuePlaybackSource(kind);
+      return await playTransitionCue(source);
     },
     [playTransitionCue],
-  )
+  );
 
   const {
     looping: loopingClosed,
@@ -409,19 +408,19 @@ export function OfflineSafeView() {
     seekForward10,
     resolveNowPlayingMetadata,
     stopPlayback: stop,
-  })
+  });
 
   const activeLoopNote = useMemo(() => {
-    const noteId = loopIds[loopIndex]
-    if (!noteId) return null
-    return notesById.get(noteId) || null
-  }, [loopIds, loopIndex, notesById])
+    const noteId = loopIds[loopIndex];
+    if (!noteId) return null;
+    return notesById.get(noteId) || null;
+  }, [loopIds, loopIndex, notesById]);
 
   const toMasterNote = (note: OfflineClosedMasterNote): MasterNote => {
     return {
       id: note.noteId,
       name: note.name,
-      state: 'closed',
+      state: "closed",
       close_type: note.closeType,
       closed_level: note.closedLevel,
       total_duration_ms: note.totalDurationMs,
@@ -431,182 +430,188 @@ export function OfflineSafeView() {
       created_at: note.createdAt,
       updated_at: note.updatedAt,
       closed_at: note.closedAt,
-    }
-  }
+    };
+  };
 
   const disableLoopPlayback = (stopCurrent = false): void => {
-    stopLoop(stopCurrent)
-    setActivePlayerPlaylistId(null)
-  }
+    stopLoop(stopCurrent);
+    setActivePlayerPlaylistId(null);
+  };
 
   useEffect(() => {
-    if (!loopingClosed) return
-    if (activePlayerPlaylistId) return
-    disableLoopPlayback(true)
-  }, [activePlayerPlaylistId, selectedGroupKey])
+    if (!loopingClosed) return;
+    if (activePlayerPlaylistId) return;
+    disableLoopPlayback(true);
+  }, [activePlayerPlaylistId, selectedGroupKey]);
 
   useEffect(() => {
-    if (!loopingClosed) return
-    if (!activePlayerPlaylistId) return
-    if (activeTab === 'playlists') return
-    disableLoopPlayback(true)
-  }, [activePlayerPlaylistId, activeTab, loopingClosed])
+    if (!loopingClosed) return;
+    if (!activePlayerPlaylistId) return;
+    if (activeTab === "playlists") return;
+    disableLoopPlayback(true);
+  }, [activePlayerPlaylistId, activeTab, loopingClosed]);
 
   const handlePlay = async (note: OfflineClosedMasterNote): Promise<void> => {
-    if (!note.audioAvailable) return
+    if (!note.audioAvailable) return;
 
     if (playingNoteId === note.noteId) {
       if (loopingClosed) {
-        disableLoopPlayback(true)
+        disableLoopPlayback(true);
       } else {
-        stop()
+        stop();
       }
-      return
+      return;
     }
 
     if (loopingClosed) {
-      disableLoopPlayback(false)
+      disableLoopPlayback(false);
     }
 
-    await play(toMasterNote(note))
-  }
+    await play(toMasterNote(note));
+  };
 
   const handleClosedLoopFrom = async (startNoteId: string): Promise<void> => {
     if (playableOfflineNotes.length === 0) {
-      return
+      return;
     }
 
-    const ids = playableOfflineNotes.map((note) => note.noteId)
-    const startIndex = ids.indexOf(startNoteId)
+    const ids = playableOfflineNotes.map((note) => note.noteId);
+    const startIndex = ids.indexOf(startNoteId);
     if (startIndex === -1) {
-      return
+      return;
     }
 
-    const idsFromStart = ids.slice(startIndex)
+    const idsFromStart = ids.slice(startIndex);
     if (idsFromStart.length === 0) {
-      return
+      return;
     }
 
-    setPlayAllStartNoteId(startNoteId)
-    setPlaylistRepeatEnabled(false)
-    const started = await startLoop(idsFromStart)
-    if (!started) return
-    setActivePlayerPlaylistId(null)
-  }
+    setPlayAllStartNoteId(startNoteId);
+    setPlaylistRepeatEnabled(false);
+    const started = await startLoop(idsFromStart);
+    if (!started) return;
+    setActivePlayerPlaylistId(null);
+  };
 
   const handlePlayPlaylist = async (playlistId: string): Promise<void> => {
     const ids = (
       playlistDraftById[playlistId] ||
       (itemsByPlaylistId.get(playlistId) || []).map((item) => item.masterNoteId)
     ).filter((noteId) => {
-      const note = notesById.get(noteId)
-      return Boolean(note?.audioAvailable)
-    })
+      const note = notesById.get(noteId);
+      return Boolean(note?.audioAvailable);
+    });
 
-    if (ids.length === 0) return
+    if (ids.length === 0) return;
 
-    setPlaylistRepeatEnabled(true)
-    const started = await startLoop(ids)
-    if (!started) return
-    setActivePlayerPlaylistId(playlistId)
-  }
+    setPlaylistRepeatEnabled(true);
+    const started = await startLoop(ids);
+    if (!started) return;
+    setActivePlayerPlaylistId(playlistId);
+  };
 
   const handleEditPlaylistClick = (playlistId: string): void => {
-    setEditingPlaylistId(playlistId)
-    setPlaylistDialogOpen(true)
-  }
+    setEditingPlaylistId(playlistId);
+    setPlaylistDialogOpen(true);
+  };
 
   const handlePlaylistDialogSubmit = async (payload: {
-    name: string
-    noteIds: string[]
+    name: string;
+    noteIds: string[];
   }): Promise<void> => {
-    if (!editingPlaylistId) return
+    if (!editingPlaylistId) return;
 
     setPlaylistDraftById((prev) => ({
       ...prev,
       [editingPlaylistId]: payload.noteIds,
-    }))
-    setPlaylistDialogOpen(false)
-    setEditingPlaylistId(null)
-  }
+    }));
+    setPlaylistDialogOpen(false);
+    setEditingPlaylistId(null);
+  };
 
   const handleTogglePlaylistPause = async (): Promise<void> => {
-    if (!loopingClosed || loopIds.length === 0) return
+    if (!loopingClosed || loopIds.length === 0) return;
 
     if (playingNoteId) {
-      togglePause()
-      return
+      togglePause();
+      return;
     }
 
     if (isPaused) {
-      await resume()
-      return
+      await resume();
+      return;
     }
 
-    await replayCurrent()
-  }
+    await replayCurrent();
+  };
 
   const formatDuration = (durationMs: number): string => {
-    const totalSeconds = Math.max(0, Math.round(durationMs / 1000))
-    const minutes = Math.floor(totalSeconds / 60)
-    const seconds = totalSeconds % 60
-    return `${minutes}:${String(seconds).padStart(2, '0')}`
-  }
+    const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  };
 
   return (
-    <section className='mx-auto w-full max-w-3xl flex-1 px-5 pt-8 pb-24 lg:pb-8'>
-      <h2 className='mb-2 font-display tracking-tight text-2xl font-extrabold lg:text-3xl'>
-        {t('Modo seguro offline')}
+    <section className="mx-auto w-full max-w-3xl flex-1 px-5 pt-8 pb-24 lg:pb-8">
+      <h2 className="mb-2 font-display tracking-tight text-2xl font-extrabold lg:text-3xl">
+        {t("Modo seguro offline")}
       </h2>
-      <p className='mb-5 text-sm text-muted-foreground'>
-        {t('Detectamos problemas de conectividad. Te llevamos a un modo seguro para mantener disponible Notas Maestras cuando no hay red.')}
+      <p className="mb-5 text-sm text-muted-foreground">
+        {t(
+          "Detectamos problemas de conectividad. Te llevamos a un modo seguro para mantener disponible Notas Maestras cuando no hay red.",
+        )}
       </p>
 
-      <Card className='rounded-2xl'>
-        <CardContent className='space-y-4'>
-          <div className='flex flex-wrap items-center gap-2'>
-            <p className='text-sm font-semibold'>{t('Estado de red:')}</p>
+      <Card className="rounded-2xl">
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold">{t("Estado de red:")}</p>
             <Badge
-              variant='outline'
+              variant="outline"
               className={
                 isOnline
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
-                  : 'border-amber-500/30 bg-amber-500/10 text-amber-700'
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
+                  : "border-amber-500/30 bg-amber-500/10 text-amber-700"
               }
             >
-              {isOnline ? t('Conexión disponible') : t('Sin conexión')}
+              {isOnline ? t("Conexión disponible") : t("Sin conexión")}
             </Badge>
           </div>
 
-          <p className='text-sm text-muted-foreground'>
+          <p className="text-sm text-muted-foreground">
             {autoReturnBlocked
-              ? t('No pudimos cargar la pantalla anterior después de varios intentos. Puedes reintentar o volver al inicio.')
-              : t('Si la conexión vuelve, puedes reintentar para regresar a la pantalla anterior.')}
+              ? t(
+                  "No pudimos cargar la pantalla anterior después de varios intentos. Puedes reintentar o volver al inicio.",
+                )
+              : t(
+                  "Si la conexión vuelve, puedes reintentar para regresar a la pantalla anterior.",
+                )}
           </p>
 
-          <div className='flex flex-wrap gap-2'>
-            <Button type='button' onClick={handleRetry} disabled={!isOnline}>
-              {t('Reintentar y volver')}
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={handleRetry} disabled={!isOnline}>
+              {t("Reintentar y volver")}
             </Button>
             {autoReturnBlocked ? (
-              <Button type='button' variant='outline' onClick={handleGoHome}>
-                {t('Ir al inicio')}
+              <Button type="button" variant="outline" onClick={handleGoHome}>
+                {t("Ir al inicio")}
               </Button>
             ) : null}
             <Button
-              type='button'
-              variant='outline'
+              type="button"
+              variant="outline"
               onClick={() => navigate(DASHBOARD_ROUTES.masterNotes)}
             >
-              {t('Ir a Notas maestras')}
+              {t("Ir a Notas maestras")}
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      <div className='mt-4'>
+      <div className="mt-4">
         {(playbackError || notesError || playlistsError) && (
-          <p className='mb-3 text-sm text-red-400'>
+          <p className="mb-3 text-sm text-red-400">
             {playbackError || notesError || playlistsError}
           </p>
         )}
@@ -614,30 +619,30 @@ export function OfflineSafeView() {
         <Tabs
           value={activeTab}
           onValueChange={(value) =>
-            setActiveTab(value as 'notes' | 'playlists')
+            setActiveTab(value as "notes" | "playlists")
           }
         >
           <TabsList>
-            <TabsTrigger value='notes'>{t('Mis Notas Maestras')}</TabsTrigger>
-            <TabsTrigger value='playlists'>
-              {t('Mis Listas de Reproducción')}
+            <TabsTrigger value="notes">{t("Mis Notas Maestras")}</TabsTrigger>
+            <TabsTrigger value="playlists">
+              {t("Mis Listas de Reproducción")}
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value='notes' className='space-y-3'>
-            <p className='text-xs font-semibold tracking-wide text-muted-foreground'>
-              {t('Notas maestras cerradas en caché local')}
+          <TabsContent value="notes" className="space-y-3">
+            <p className="text-xs font-semibold tracking-wide text-muted-foreground">
+              {t("Notas maestras cerradas en caché local")}
             </p>
 
             {languageGroups.length > 1 && (
-              <div className='flex items-center gap-2'>
-                <p className='text-xs text-muted-foreground'>{t('Idioma:')}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-muted-foreground">{t("Idioma:")}</p>
                 <Select
                   value={selectedGroupKey}
                   onValueChange={setSelectedGroupKey}
                 >
-                  <SelectTrigger size='sm' className='min-w-56'>
-                    <SelectValue placeholder={t('Selecciona idioma')} />
+                  <SelectTrigger size="sm" className="min-w-56">
+                    <SelectValue placeholder={t("Selecciona idioma")} />
                   </SelectTrigger>
                   <SelectContent>
                     {languageGroups.map((group) => (
@@ -654,26 +659,28 @@ export function OfflineSafeView() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    type='button'
+                    type="button"
                     variant={
                       loopingClosed && !activePlayerPlaylistId
-                        ? 'outline'
-                        : 'default'
+                        ? "outline"
+                        : "default"
                     }
-                    className='h-auto max-w-full whitespace-normal py-2 text-left'
+                    className="h-auto max-w-full whitespace-normal py-2 text-left"
                   >
-                    <PlayIcon className='mr-1 size-4' />
-                    <span className='min-w-0 break-words'>
-                      {t('Reproducir todas una vez desde: {note}', { note: selectedPlayAllStartNote?.name || '...' })}
+                    <PlayIcon className="mr-1 size-4" />
+                    <span className="min-w-0 break-words">
+                      {t("Reproducir todas una vez desde: {note}", {
+                        note: selectedPlayAllStartNote?.name || "...",
+                      })}
                     </span>
-                    <ChevronDownIcon className='ml-1 size-4' />
+                    <ChevronDownIcon className="ml-1 size-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align='start'>
+                <DropdownMenuContent align="start">
                   {loopingClosed && !activePlayerPlaylistId && (
                     <DropdownMenuItem onClick={() => disableLoopPlayback(true)}>
-                      <SquareIcon className='mr-2 size-4' />
-                      {t('Detener reproducción total')}
+                      <SquareIcon className="mr-2 size-4" />
+                      {t("Detener reproducción total")}
                     </DropdownMenuItem>
                   )}
                   {visibleNotes.map((note) => (
@@ -681,7 +688,7 @@ export function OfflineSafeView() {
                       key={note.noteId}
                       disabled={!note.audioAvailable}
                       onClick={() => {
-                        void handleClosedLoopFrom(note.noteId)
+                        void handleClosedLoopFrom(note.noteId);
                       }}
                     >
                       {note.name}
@@ -691,101 +698,111 @@ export function OfflineSafeView() {
               </DropdownMenu>
             )}
 
-            {loadingNotes && <ListLoading label={t('Cargando notas offline...')} rows={3} />}
+            {loadingNotes && (
+              <ListLoading label={t("Cargando notas offline...")} rows={3} />
+            )}
 
             {!loadingNotes && !notesError && visibleNotes.length === 0 && (
-              <p className='text-sm text-muted-foreground'>
-                {t('Aún no hay notas cerradas guardadas en este dispositivo.')}
+              <p className="text-sm text-muted-foreground">
+                {t("Aún no hay notas cerradas guardadas en este dispositivo.")}
               </p>
             )}
 
             {!loadingNotes &&
               !notesError &&
               visibleNotes.map((note) => (
-                <Card key={note.noteId} className='rounded-2xl'>
-                  <CardContent className='flex flex-wrap items-center justify-between gap-3'>
+                <Card key={note.noteId} className="rounded-2xl">
+                  <CardContent className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <div className='flex flex-wrap items-center gap-2'>
-                        <p className='flex items-center gap-1.5 font-semibold'><StarIcon className='size-4 shrink-0 fill-amber-400 text-amber-500' aria-hidden='true' />{note.name}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="flex items-center gap-1.5 font-semibold">
+                          <StarIcon
+                            className="size-4 shrink-0 fill-amber-400 text-amber-500"
+                            aria-hidden="true"
+                          />
+                          {note.name}
+                        </p>
                         <Badge
-                          variant='outline'
-                          className='border-amber-500/30 bg-amber-500/10 text-amber-700'
+                          variant="outline"
+                          className="border-amber-500/30 bg-amber-500/10 text-amber-700"
                         >
-                          {t('Cerrada')}
+                          {t("Cerrada")}
                         </Badge>
                         <Badge
-                          variant='outline'
+                          variant="outline"
                           className={
                             note.audioAvailable
-                              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
-                              : 'border-zinc-500/30 bg-zinc-500/10 text-zinc-700'
+                              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
+                              : "border-zinc-500/30 bg-zinc-500/10 text-zinc-700"
                           }
                         >
                           {note.audioAvailable
-                            ? t('Audio offline listo')
-                            : t('Audio offline pendiente')}
+                            ? t("Audio offline listo")
+                            : t("Audio offline pendiente")}
                         </Badge>
                       </div>
-                      <div className='mt-1 text-xs text-muted-foreground'>
-                        {t('Duración: {time}', { time: formatDuration(note.totalDurationMs) })}
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {t("Duración: {time}", {
+                          time: formatDuration(note.totalDurationMs),
+                        })}
                         {note.closedAt
-                          ? ` · ${t('Cerrada el: {date}', { date: formatDate(note.closedAt) })}`
-                          : ''}
+                          ? ` · ${t("Cerrada el: {date}", { date: formatDate(note.closedAt) })}`
+                          : ""}
                       </div>
                     </div>
 
-                    <div className='flex gap-2'>
+                    <div className="flex gap-2 flex-wrap">
                       {playingNoteId !== note.noteId ? (
                         <Button
-                          type='button'
+                          type="button"
                           onClick={() => void handlePlay(note)}
                           disabled={!note.audioAvailable}
                         >
-                          <Volume2Icon className='mr-1 size-4' />
-                          {t('Escuchar')}
+                          <Volume2Icon className="mr-1 size-4" />
+                          {t("Escuchar")}
                         </Button>
                       ) : (
                         <>
                           <Button
-                            type='button'
+                            type="button"
                             onClick={() => void handlePlay(note)}
                           >
-                            <SquareIcon className='mr-1 size-4' />
-                            {t('Detener')}
+                            <SquareIcon className="mr-1 size-4" />
+                            {t("Detener")}
                           </Button>
                           <Button
-                            type='button'
-                            size='icon'
-                            variant='outline'
+                            type="button"
+                            size="icon"
+                            variant="outline"
                             onClick={seekBack10}
-                            aria-label={t('Retroceder 10 segundos')}
+                            aria-label={t("Retroceder 10 segundos")}
                           >
-                            <RotateCcwIcon className='size-4' />
+                            <RotateCcwIcon className="size-4" />
                           </Button>
                           <Button
-                            type='button'
-                            size='icon'
-                            variant='outline'
+                            type="button"
+                            size="icon"
+                            variant="outline"
                             onClick={togglePause}
-                            aria-label={isPaused ? t('Reanudar') : t('Pausar')}
+                            aria-label={isPaused ? t("Reanudar") : t("Pausar")}
                           >
                             {isPaused ? (
-                              <PlayIcon className='size-4' />
+                              <PlayIcon className="size-4" />
                             ) : (
-                              <PauseIcon className='size-4' />
+                              <PauseIcon className="size-4" />
                             )}
                           </Button>
                           <Button
-                            type='button'
-                            size='icon'
-                            variant='outline'
+                            type="button"
+                            size="icon"
+                            variant="outline"
                             onClick={seekForward10}
-                            aria-label={t('Adelantar 10 segundos')}
+                            aria-label={t("Adelantar 10 segundos")}
                           >
-                            <RotateCwIcon className='size-4' />
+                            <RotateCwIcon className="size-4" />
                           </Button>
-                          <span className='inline-flex min-w-18 items-center justify-end text-xs text-muted-foreground'>
-                            {formatDuration(positionSec * 1000)} /{' '}
+                          <span className="inline-flex min-w-18 items-center justify-end text-xs text-muted-foreground">
+                            {formatDuration(positionSec * 1000)} /{" "}
                             {formatDuration(durationSec * 1000)}
                           </span>
                         </>
@@ -793,12 +810,12 @@ export function OfflineSafeView() {
 
                       {!note.audioAvailable && (
                         <Button
-                          type='button'
-                          size='icon'
-                          variant='outline'
+                          type="button"
+                          size="icon"
+                          variant="outline"
                           disabled
                         >
-                          <Loader2Icon className='size-4' />
+                          <Loader2Icon className="size-4" />
                         </Button>
                       )}
                     </div>
@@ -807,79 +824,84 @@ export function OfflineSafeView() {
               ))}
           </TabsContent>
 
-          <TabsContent value='playlists' className='space-y-3'>
-            <p className='text-xs font-semibold tracking-wide text-muted-foreground'>
-              {t('Listas de reproducción disponibles offline')}
+          <TabsContent value="playlists" className="space-y-3">
+            <p className="text-xs font-semibold tracking-wide text-muted-foreground">
+              {t("Listas de reproducción disponibles offline")}
             </p>
 
-            {playlistsLoading && <ListLoading label={t('Cargando listas offline...')} rows={2} />}
+            {playlistsLoading && (
+              <ListLoading label={t("Cargando listas offline...")} rows={2} />
+            )}
 
             {!playlistsLoading && playlists.length === 0 && (
-              <p className='text-sm text-muted-foreground'>
-                {t('Aún no hay listas guardadas offline para este usuario.')}
+              <p className="text-sm text-muted-foreground">
+                {t("Aún no hay listas guardadas offline para este usuario.")}
               </p>
             )}
 
             {playlists.length > 0 && (
-              <Card className='rounded-2xl'>
-                <CardContent className='space-y-2'>
+              <Card className="rounded-2xl">
+                <CardContent className="space-y-2">
                   {playlists.map((playlist) => {
                     const storedIds = (
                       itemsByPlaylistId.get(playlist.id) || []
-                    ).map((item) => item.masterNoteId)
-                    const ids = playlistDraftById[playlist.id] || storedIds
+                    ).map((item) => item.masterNoteId);
+                    const ids = playlistDraftById[playlist.id] || storedIds;
                     const playableCount = ids.filter((noteId) => {
-                      const note = notesById.get(noteId)
-                      return Boolean(note?.audioAvailable)
-                    }).length
+                      const note = notesById.get(noteId);
+                      return Boolean(note?.audioAvailable);
+                    }).length;
                     const isThisPlaying =
-                      activePlayerPlaylistId === playlist.id && loopingClosed
+                      activePlayerPlaylistId === playlist.id && loopingClosed;
 
                     return (
                       <div
                         key={playlist.id}
-                        className='flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3'
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
                       >
                         <div>
-                          <p className='font-semibold'>{playlist.name}</p>
-                          <p className='text-xs text-muted-foreground'>
-                            {t('{n} notas ({playable} reproducibles)', { n: ids.length, playable: playableCount })}
+                          <p className="font-semibold">{playlist.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {t("{n} notas ({playable} reproducibles)", {
+                              n: ids.length,
+                              playable: playableCount,
+                            })}
                           </p>
                         </div>
 
-                        <div className='flex items-center gap-2'>
+                        <div className="flex items-center gap-2">
                           <Button
-                            type='button'
-                            size='sm'
-                            variant={isThisPlaying ? 'secondary' : 'default'}
+                            type="button"
+                            size="sm"
+                            variant={isThisPlaying ? "secondary" : "default"}
                             onClick={() => {
                               if (isThisPlaying) {
-                                disableLoopPlayback(true)
-                                return
+                                disableLoopPlayback(true);
+                                return;
                               }
-                              void handlePlayPlaylist(playlist.id)
+                              void handlePlayPlaylist(playlist.id);
                             }}
                           >
                             {isThisPlaying ? (
-                              <SquareIcon className='mr-1 size-4' />
+                              <SquareIcon className="mr-1 size-4" />
                             ) : (
-                              <Volume2Icon className='mr-1 size-4' />
+                              <Volume2Icon className="mr-1 size-4" />
                             )}
-                            {isThisPlaying ? t('Detener') : t('Escuchar')}
+                            {isThisPlaying ? t("Detener") : t("Escuchar")}
                           </Button>
 
                           <Button
-                            type='button'
-                            size='icon'
-                            variant='outline'
+                            type="button"
+                            size="icon"
+                            variant="outline"
                             onClick={() => handleEditPlaylistClick(playlist.id)}
-                            aria-label={t('Editar cola offline de lista')}
+                            aria-label={t("Editar cola offline de lista")}
                           >
-                            <PencilIcon className='size-4' />
+                            <PencilIcon className="size-4" />
                           </Button>
                         </div>
                       </div>
-                    )
+                    );
                   })}
                 </CardContent>
               </Card>
@@ -889,15 +911,15 @@ export function OfflineSafeView() {
 
         <MasterNotePlaylistEditorDialog
           open={playlistDialogOpen}
-          mode='edit'
-          initialName={editingPlaylist?.name || ''}
+          mode="edit"
+          initialName={editingPlaylist?.name || ""}
           initialNoteIds={editingPlaylistNoteIds}
           closedNotes={closedNoteOptions}
           submitting={false}
           onOpenChange={(open) => {
-            setPlaylistDialogOpen(open)
+            setPlaylistDialogOpen(open);
             if (!open) {
-              setEditingPlaylistId(null)
+              setEditingPlaylistId(null);
             }
           }}
           onSubmit={handlePlaylistDialogSubmit}
@@ -905,8 +927,8 @@ export function OfflineSafeView() {
 
         <MasterNotePlaylistPlayerDock
           open={Boolean(activePlayerPlaylist && loopIds.length > 0)}
-          playlistName={activePlayerPlaylist?.name || t('Lista offline')}
-          noteName={activeLoopNote?.name || t('Sin nota en reproducción')}
+          playlistName={activePlayerPlaylist?.name || t("Lista offline")}
+          noteName={activeLoopNote?.name || t("Sin nota en reproducción")}
           progressSec={positionSec}
           durationSec={durationSec}
           currentIndex={loopIndex}
@@ -915,20 +937,20 @@ export function OfflineSafeView() {
           repeatEnabled={playlistRepeatEnabled}
           onToggleRepeat={() => setPlaylistRepeatEnabled((prev) => !prev)}
           onTogglePause={() => {
-            void handleTogglePlaylistPause()
+            void handleTogglePlaylistPause();
           }}
           onSeekBack10={seekBack10}
           onSeekForward10={seekForward10}
           onPrevious={() => {
-            void playPrevious()
+            void playPrevious();
           }}
           onNext={() => {
-            void playNext()
+            void playNext();
           }}
           onClose={() => disableLoopPlayback(true)}
-          extraClassname='bottom-0! z-50!'
+          extraClassname="bottom-0! z-50!"
         />
       </div>
     </section>
-  )
+  );
 }
