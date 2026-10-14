@@ -12,22 +12,36 @@ import { useChallengeSequenceStore, type SequenceRequest } from '../stores/chall
 // and the «one after the other» logic lives here, mounted in the layout only while it runs. The
 // list screen just reads this store and sends orders.
 
-const ORDINALS = [
-  'Primera nota maestra',
-  'Segunda nota maestra',
-  'Tercera nota maestra',
-  'Cuarta nota maestra',
-  'Quinta nota maestra',
-  'Sexta nota maestra',
-  'Séptima nota maestra',
-  'Octava nota maestra',
-  'Novena nota maestra',
-  'Décima nota maestra',
+// What the voice says before each note, in Spanish for Spanish speakers and in English for anyone
+// else (Nahuel, 14 Oct): the text and the voice go in the same language. Before, the text followed
+// the app's language (t) while the voice used the native language, so they could not match.
+const ORDINALS: Array<{ es: string; en: string }> = [
+  { es: 'Primera nota maestra', en: 'First master note' },
+  { es: 'Segunda nota maestra', en: 'Second master note' },
+  { es: 'Tercera nota maestra', en: 'Third master note' },
+  { es: 'Cuarta nota maestra', en: 'Fourth master note' },
+  { es: 'Quinta nota maestra', en: 'Fifth master note' },
+  { es: 'Sexta nota maestra', en: 'Sixth master note' },
+  { es: 'Séptima nota maestra', en: 'Seventh master note' },
+  { es: 'Octava nota maestra', en: 'Eighth master note' },
+  { es: 'Novena nota maestra', en: 'Ninth master note' },
+  { es: 'Décima nota maestra', en: 'Tenth master note' },
 ]
 
-/** Lo que dice la voz antes de cada nota: «Primera nota maestra», «Segunda nota maestra»… */
-export function sequenceAnnouncement(index: number): string {
-  return ORDINALS[index] ? t(ORDINALS[index]) : t('Nota maestra {n}', { n: index + 1 })
+/** Spanish natives hear Spanish; everyone else, English. */
+function announcementLanguage(nativeLang: string): { key: 'es' | 'en'; voiceLang: string } {
+  return nativeLang === 'Español' ? { key: 'es', voiceLang: 'Español' } : { key: 'en', voiceLang: 'Inglés' }
+}
+
+/**
+ * What the voice says before each note: «Primera nota maestra», «Segunda nota maestra»… (or
+ * «First master note»…), and the language of the voice that says it.
+ */
+export function sequenceAnnouncement(index: number, nativeLang: string): { text: string; voiceLang: string } {
+  const { key, voiceLang } = announcementLanguage(nativeLang)
+  const ordinal = ORDINALS[index]
+  const text = ordinal ? ordinal[key] : key === 'es' ? `Nota maestra ${index + 1}` : `Master note ${index + 1}`
+  return { text, voiceLang }
 }
 
 /** Dice la frase y espera a que termine (como mucho 5 segundos). */
@@ -78,7 +92,8 @@ function ChallengeSequenceRunner({ request }: { request: SequenceRequest }) {
       }
       playbackRef.current.stopQuietly()
       // The voice says the note's place among all of them (starting at the 3rd says «Tercera»).
-      await speakAndWait(sequenceAnnouncement(startIndex + (index ?? 0)), nativeLang)
+      const announcement = sequenceAnnouncement(startIndex + (index ?? 0), nativeLang)
+      await speakAndWait(announcement.text, announcement.voiceLang)
     },
     pausePlayback: playback.pause,
     resumePlayback: playback.resume,
