@@ -14,8 +14,8 @@ import { useDailyGame } from '../game/dailyGame'
 import { CardsIcon, MicGlyph, SwordsIcon, TargetGlyph } from '../game/icons'
 import { IcaPath } from '../game/IcaPath'
 import { LevelCard } from '../game/LevelCard'
-import { LevelStrip } from '../game/LevelStrip'
-import { RankingSnippetCard } from '../game/RankingSnippetCard'
+import { LevelChip } from '../game/LevelStrip'
+import { RandomChallengeCard } from '../game/RandomChallengeCard'
 import { isIcaCycleDone } from '../game/streak'
 import { StreakRiskBanner } from '../game/StreakRiskBanner'
 import { ChatInvite } from '../game/ChatInvite'
@@ -153,12 +153,12 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           const content = (
             <>
               <span
-                className='flex size-12 items-center justify-center rounded-2xl transition-transform group-hover:scale-105 lg:aspect-square lg:size-auto lg:w-full lg:max-w-[76px] lg:rounded-3xl'
+                className='flex size-12 items-center justify-center rounded-2xl transition-transform group-hover:scale-110 lg:aspect-square lg:size-auto lg:w-full lg:max-w-[76px] lg:rounded-3xl'
                 style={{ background: `color-mix(in oklab, ${item.color} 16%, transparent)` }}
               >
                 {item.icon}
               </span>
-              <span className='text-center text-[11px] font-bold text-muted-foreground lg:text-sm lg:leading-tight'>{t(item.label)}</span>
+              <span className='text-center text-[11px] font-bold text-muted-foreground transition-colors group-hover:text-foreground lg:text-sm lg:leading-tight'>{t(item.label)}</span>
             </>
           )
           return gamesClickable ? (
@@ -166,7 +166,9 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
               key={item.key}
               type='button'
               onClick={() => navigate(item.to)}
-              className='group flex flex-col items-center gap-2 rounded-2xl p-1 transition-colors hover:bg-background/80'
+              // Luis, 15 Oct: no dark box on hover (it reached down to the name); the icon grows and
+              // the name gets darker instead.
+              className='group flex flex-col items-center gap-2 rounded-2xl p-1 focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:outline-none'
             >
               {content}
             </button>
@@ -214,31 +216,18 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
               profile). One row instead: your level, ICA games and a short ranking (3 people), all
               the same height. The coaching card is still mounted, hidden, to find out if you have one. */}
           {/* Luis, 8 Oct: the cards 1 cm (36 px) further from the path. */}
-          {hasCoaching ? (
-            <div className='mt-9 grid grid-cols-3 gap-5'>
-              <div className='col-span-2'>{coachingCard}</div>
-              <div className='row-span-2 flex flex-col [&>*]:flex-1'>
-                <RankingSnippetCard />
-              </div>
-              <div className='flex flex-col [&>*]:flex-1'>
-                <LevelCard config={config} />
-              </div>
-              <div className='flex flex-col [&>*]:flex-1'>{gamesCard}</div>
+          {/* Luis, 15 Oct: the coaching (if you have one) across the whole width and, under it, three
+              boxes of the same size: your level, ICA games and «Desafío aleatorio». */}
+          {hasCoaching ? <div className='mt-9'>{coachingCard}</div> : <div className='hidden'>{coachingCard}</div>}
+          <div className={`grid grid-cols-3 gap-5 ${hasCoaching ? '' : 'mt-9'}`}>
+            <div className='flex flex-col [&>*]:flex-1'>
+              <LevelCard config={config} />
             </div>
-          ) : (
-            <>
-              <div className='hidden'>{coachingCard}</div>
-              <div className='mt-9 grid grid-cols-3 gap-5'>
-                <div className='flex flex-col [&>*]:flex-1'>
-                  <LevelCard config={config} />
-                </div>
-                <div className='flex flex-col [&>*]:flex-1'>{gamesCard}</div>
-                <div className='flex flex-col [&>*]:flex-1'>
-                  <RankingSnippetCard maxRows={3} />
-                </div>
-              </div>
-            </>
-          )}
+            <div className='flex flex-col [&>*]:flex-1'>{gamesCard}</div>
+            <div className='flex flex-col [&>*]:flex-1'>
+              <RandomChallengeCard config={config} />
+            </div>
+          </div>
         </div>
         <ChatInvite />
       </section>
@@ -246,30 +235,39 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
   }
 
   return (
-    <section className='flex flex-1 justify-center px-2.5 pt-3 pb-6 md:px-6 lg:px-8 lg:pt-8'>
-      <div className='grid w-full max-w-[1040px] grid-cols-[minmax(0,1fr)] items-start gap-8 lg:grid-cols-[minmax(0,1fr)_360px]'>
+    <section className='flex flex-1 justify-center px-2.5 pt-1 pb-4 md:px-6 lg:px-8 lg:pt-8'>
+      {/* Admins, 15 Oct: on the phone everything looked squeezed to the top with a lot of air
+          below. Less space under the logo, and «Desafío aleatorio» goes to the bottom of the
+          screen, so the page fills the phone. */}
+      <div className='grid w-full max-w-[1040px] grid-cols-[minmax(0,1fr)] items-stretch gap-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start'>
         {/* Móvil (Luis, 5 oct): poco margen a los lados para aprovechar el ancho de cada pantalla. */}
-        <div className='mx-auto flex w-full max-w-[480px] min-w-0 flex-col gap-3'>
-          {/* Tu nivel real, en una línea (en ordenador va en la columna derecha) */}
-          <div className='lg:hidden'>
-            <LevelStrip config={config} />
-          </div>
+        <div className='mx-auto flex w-full max-w-[480px] min-w-0 flex-col gap-4'>
           {/* Coaching arriba en el móvil, como prioridad (Luis, 5 oct, maqueta B6). Se monta
               siempre para saber si lo tienes. */}
           {!isLg ? <div className={hasCoaching ? '' : 'hidden'}>{coachingCard}</div> : null}
           <StreakRiskBanner />
+          {/* Luis, 15 Oct (his screenshot): no level bar at the top on the phone. «Tu ciclo ICA hoy»
+              right under the logo and, to its right, the level in small (option A). */}
           <div>
-            <h1 className='m-0 font-display tracking-tight text-2xl leading-tight font-extrabold lg:text-3xl'>
-              {t('Tu ciclo ICA de hoy')}
-            </h1>
+            <div className='flex items-center justify-between gap-3'>
+              <h1 className='m-0 min-w-0 font-display text-[1.7rem] leading-tight font-extrabold tracking-tight lg:text-3xl'>
+                {t('Tu ciclo ICA hoy')}
+              </h1>
+              <LevelChip config={config} />
+            </div>
             <p className='m-0 mt-0.5 text-sm font-medium text-muted-foreground'>{subtitle}</p>
           </div>
           <IcaPath />
+          {!isLg ? (
+            <div className='mt-auto pt-2'>
+              <RandomChallengeCard config={config} compact />
+            </div>
+          ) : null}
         </div>
 
         <aside className='hidden flex-col gap-4 lg:sticky lg:top-6 lg:flex'>
           <LevelCard config={config} />
-          <RankingSnippetCard />
+          <RandomChallengeCard config={config} compact />
           {gamesCard}
           {isLg ? coachingCard : null}
         </aside>

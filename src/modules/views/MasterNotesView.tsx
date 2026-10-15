@@ -176,6 +176,7 @@ export function MasterNotesView({
     playingNoteId,
     canPlay,
     play,
+    prefetch,
     playTransitionCue,
     stop,
     pause,
@@ -292,6 +293,14 @@ export function MasterNotesView({
     [itemsById, play],
   )
 
+  const prefetchNoteById = useCallback(
+    (noteId: string): void => {
+      const note = itemsById.get(noteId)
+      if (note) prefetch(note)
+    },
+    [itemsById, prefetch],
+  )
+
   const resolveNowPlayingMetadata = useCallback((noteId: string) => {
     const note = itemsById.get(noteId)
     if (!note) return null
@@ -323,6 +332,7 @@ export function MasterNotesView({
     playingNoteId,
     isPaused,
     playNoteById,
+    prefetchNoteById,
     playTransitionCue: playCue,
     pausePlayback: pause,
     resumePlayback: resume,

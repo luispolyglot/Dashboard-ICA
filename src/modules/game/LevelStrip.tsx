@@ -120,3 +120,59 @@ export function LevelDialog({
     </Dialog>
   )
 }
+
+/**
+ * OPTION A (Luis, 15 Oct): your level, tiny, to the right of «Tu ciclo ICA hoy» on the phone:
+ * «B2+ → C1» and a thin bar under it. A tap opens the full level, like the strip did.
+ */
+export function LevelChip({ config }: { config: AppConfig }) {
+  const { profile: metaTrackerProfile, loading } = useLevelProfile(config)
+  const [open, setOpen] = useState(false)
+  if (loading) return <span className='h-9 w-20 shrink-0' aria-hidden='true' />
+  const confirmed = Boolean(metaTrackerProfile?.confirmedAt)
+
+  let content
+  if (confirmed && metaTrackerProfile) {
+    const total = getMetaTrackerTotalWords(metaTrackerProfile, config.targetLang)
+    const pos = computeLevelPosition(total, getLevelThresholds(config.targetLang))
+    const color = getMetaTrackerLevelColor(pos.currentLevelKey)
+    const nextColor = pos.isNativePath ? '#A855F7' : getMetaTrackerLevelColor(pos.nextLevelKey)
+    content = (
+      <>
+        <span className='flex items-center gap-1 text-[11px] leading-none font-extrabold'>
+          <span className='rounded-full px-1.5 py-0.5 text-white' style={{ background: color }}>
+            {pos.currentLevelKey}
+          </span>
+          <span className='text-muted-foreground' aria-hidden='true'>→</span>
+          <span className='rounded-full border-[1.5px] px-1.5 py-[1px]' style={{ borderColor: nextColor, color: nextColor }}>
+            {pos.isNativePath ? t('Nativo') : pos.nextLevelKey}
+          </span>
+        </span>
+        <span className='block h-1 w-full overflow-hidden rounded-full bg-muted'>
+          <span className='block h-full rounded-full' style={{ width: `${Math.round(pos.pctWithin * 100)}%`, background: color }} />
+        </span>
+      </>
+    )
+  } else {
+    content = (
+      <span className='flex items-center gap-1 text-[11px] font-extrabold text-primary'>
+        <BarChart3Icon className='size-3.5' strokeWidth={2.6} aria-hidden='true' />
+        {t('Tu nivel')}
+      </span>
+    )
+  }
+
+  return (
+    <>
+      <button
+        type='button'
+        onClick={() => setOpen(true)}
+        className='flex w-[5.5rem] shrink-0 flex-col items-end gap-1 rounded-lg py-1 focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:outline-none'
+        aria-label={t('Tu nivel real en {lang}. Ver detalle', { lang: langName(config.targetLang) })}
+      >
+        {content}
+      </button>
+      <LevelDialog config={config} open={open} onOpenChange={setOpen} />
+    </>
+  )
+}

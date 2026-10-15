@@ -150,6 +150,8 @@ export const ActivationGuide = forwardRef<HTMLDivElement, ActivationGuideProps>(
           step={current}
           highlight={{ background: 'var(--ica-i-soft)', color: 'var(--ica-i-ink)', ring: 'var(--ica-i)' }}
           className='mt-2 font-black'
+          // Luis, 15 Oct: while recording too, a tapped word is pronounced.
+          onTokenClick={onTokenClick}
         />
 
         {paused && onResume ? (

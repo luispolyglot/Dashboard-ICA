@@ -37,6 +37,7 @@ import { consumeLexicardBoosts } from '../services/lexicardBoost'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import {
   buildDailyGame,
+  reshuffleDailyGame,
   DAILY_GAME_MIN_WORDS,
   DAILY_GAME_PASS,
   DAILY_GAME_QUESTIONS,
@@ -314,13 +315,17 @@ const stopConfettiRef = useRef<(() => void) | null>(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, index])
 
+  // The first round uses today's game as it is; «Jugar otra vez» shuffles it (Luis, 15 Oct).
+  const roundsStartedRef = useRef(0)
   const start = () => {
     if (!available) return
     unlockChallengeAudio()
     stopConfettiRef.current?.()
-    setGame(available)
+    const round = roundsStartedRef.current > 0 ? reshuffleDailyGame(available) : available
+    roundsStartedRef.current += 1
+    setGame(round)
     setPlayed([])
-    startQuestion(0, available)
+    startQuestion(0, round)
     // Boosted words (Potenciar) that came up today: one daily challenge less to go.
     const boostedIds = new Set(
       available.questions

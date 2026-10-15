@@ -11,6 +11,7 @@ import { gameSfx } from './sfx'
 import { COIN_WALLET_CAP } from './rules'
 import { getIcaStreakState } from './streak'
 import { t, tn } from '@/i18n'
+import { toast } from 'sonner'
 
 const OPEN_EVENT = 'ica:open-cycle-celebration'
 /** Se lanza al cerrar la celebración (el camino de Inicio espera a esto para rellenarse). */
@@ -43,6 +44,20 @@ const LETTERS = [
 
 type Phase = 'shaking' | 'open'
 type Flyer = { id: number; x: number; y: number; dx: number; dy: number; delay: number }
+/** One tap on the chest of the path: coins and «+N» come out of it right there (admins, 15 Oct). */
+type InlineBurst = { id: number; x: number; y: number; total: number; count: number }
+
+/** The chest on the path of Inicio that is on screen now, if any. */
+function visibleChestRect(): DOMRect | null {
+  const rects = Array.from(document.querySelectorAll<HTMLElement>('[data-ica-step="chest"]')).map((element) =>
+    element.getBoundingClientRect(),
+  )
+  return (
+    rects.find(
+      (rect) => rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight,
+    ) ?? null
+  )
+}
 
 const FLY_MS = 750
 const FLY_STAGGER_MS = 110
@@ -79,11 +94,74 @@ export function CycleCelebration() {
   const [detail, setDetail] = useState<CelebrationDetail | null>(null)
   const [phase, setPhase] = useState<Phase>('open')
   const [flyers, setFlyers] = useState<Flyer[]>([])
+  const [inline, setInline] = useState<InlineBurst | null>(null)
   const coinsRef = useRef<HTMLDivElement>(null)
+
+  // Coins fly from (x, y) to the counter at the top and are added there.
+  const flyCoins = (startXCenter: number, startYCenter: number, total: number) => {
+    const target = Array.from(document.querySelectorAll<HTMLElement>('[data-coin-target]'))
+      .map((element) => element.getBoundingClientRect())
+      .find((rect) => rect.width > 0 && rect.height > 0)
+    if (!target || prefersReducedMotion() || total <= 0) {
+      releaseCoinsDisplay(0)
+      return
+    }
+    const count = Math.max(1, Math.min(total, 8))
+    const startX = startXCenter - 14
+    const startY = startYCenter - 14
+    const endX = target.left + target.width / 2 - 14
+    const endY = target.top + target.height / 2 - 14
+    setFlyers(
+      Array.from({ length: count }, (_, index) => ({
+        id: Date.now() + index,
+        x: startX + (index - (count - 1) / 2) * 12,
+        y: startY,
+        dx: endX - (startX + (index - (count - 1) / 2) * 12),
+        dy: endY - startY,
+        delay: index * FLY_STAGGER_MS,
+      })),
+    )
+    for (let index = 0; index < count; index += 1) {
+      window.setTimeout(() => gameSfx.coin(), FLY_MS + index * FLY_STAGGER_MS)
+    }
+    window.setTimeout(() => releaseCoinsDisplay(60), FLY_MS)
+    window.setTimeout(() => setFlyers([]), FLY_MS + count * FLY_STAGGER_MS + 100)
+  }
 
   useEffect(() => {
     const onOpen = (event: Event) => {
       const next = (event as CustomEvent<CelebrationDetail>).detail
+      // ADMINS, 15 Oct: a fresh chest opens with one tap, right on the path: it sounds, the coins
+      // jump out with «+N» and fly to the counter. No window with «Recoger» (the streak and the
+      // cycle are already on screen). Only without a visible chest is the window still used.
+      const chest = next.fresh ? visibleChestRect() : null
+      if (chest) {
+        const total = next.chestFichas + next.milestoneFichas
+        const x = chest.left + chest.width / 2
+        const y = chest.top + chest.height / 2
+        gameSfx.chest()
+        try {
+          void confetti({
+            particleCount: 50,
+            spread: 70,
+            startVelocity: 26,
+            origin: { x: x / window.innerWidth, y: y / window.innerHeight },
+            zIndex: 120,
+          })
+        } catch {
+          // Sin confeti no pasa nada.
+        }
+        setInline({ id: Date.now(), x, y, total, count: Math.max(1, Math.min(total, 5)) })
+        if (next.walletFull) {
+          toast(t('Tu hucha está llena (máximo {n}). Gasta ICA Coins en la tienda para que el cofre vuelva a sumar.', { n: COIN_WALLET_CAP }))
+        }
+        window.setTimeout(() => flyCoins(x, y - 30, total), 900)
+        window.setTimeout(() => {
+          setInline(null)
+          notifyClosed()
+        }, 1800)
+        return
+      }
       setDetail(next)
       const animate = Boolean(next.fresh) && !prefersReducedMotion()
       setPhase(animate ? 'shaking' : 'open')
@@ -113,41 +191,51 @@ export function CycleCelebration() {
   const collect = () => {
     if (!detail) return
     const source = coinsRef.current?.getBoundingClientRect()
-    const target = Array.from(document.querySelectorAll<HTMLElement>('[data-coin-target]'))
-      .map((element) => element.getBoundingClientRect())
-      .find((rect) => rect.width > 0 && rect.height > 0)
     setDetail(null)
     notifyClosed()
-    if (!source || !target || prefersReducedMotion() || totalFichas <= 0) {
+    if (!source) {
       releaseCoinsDisplay(0)
       return
     }
-    const count = Math.max(1, Math.min(totalFichas, 8))
-    const startX = source.left + source.width / 2 - 14
-    const startY = source.top + source.height / 2 - 14
-    const endX = target.left + target.width / 2 - 14
-    const endY = target.top + target.height / 2 - 14
-    setFlyers(
-      Array.from({ length: count }, (_, index) => ({
-        id: Date.now() + index,
-        x: startX + (index - (count - 1) / 2) * 12,
-        y: startY,
-        dx: endX - (startX + (index - (count - 1) / 2) * 12),
-        dy: endY - startY,
-        delay: index * FLY_STAGGER_MS,
-      })),
-    )
-    // Cada moneda que llega suena; al final el contador suma lo que faltaba.
-    for (let index = 0; index < count; index += 1) {
-      window.setTimeout(() => gameSfx.coin(), FLY_MS + index * FLY_STAGGER_MS)
-    }
-    window.setTimeout(() => releaseCoinsDisplay(60), FLY_MS)
-    window.setTimeout(() => setFlyers([]), FLY_MS + count * FLY_STAGGER_MS + 100)
+    flyCoins(source.left + source.width / 2, source.top + source.height / 2, totalFichas)
   }
 
+  const inlineLayer = inline ? (
+    <div key={inline.id} className='pointer-events-none fixed inset-0 z-[130]' aria-hidden='true'>
+      <div className='absolute' style={{ left: inline.x, top: inline.y - 20 }}>
+        {Array.from({ length: inline.count }, (_, index) => {
+          const { bx, by } = burstOffset(index, inline.count)
+          return (
+            <span
+              key={index}
+              className='ica-coin-burst absolute -translate-x-1/2'
+              style={{ '--bx': bx, '--by': by, animationDelay: `${index * 70}ms` } as CSSProperties}
+            >
+              <FichaIcon size={30} />
+            </span>
+          )
+        })}
+      </div>
+      <span
+        className='ica-plus-rise absolute flex items-center gap-1.5 rounded-full px-3 py-1 text-2xl font-black whitespace-nowrap tabular-nums'
+        style={{
+          left: inline.x,
+          top: inline.y - 96,
+          background: 'var(--ica-gold)',
+          color: '#4a3200',
+          boxShadow: '0 4px 0 var(--ica-gold-edge)',
+        }}
+      >
+        +{fichasFormatter.format(inline.total)}
+        <span className='text-sm font-extrabold'>{inline.total === 1 ? 'ICA Coin' : 'ICA Coins'}</span>
+      </span>
+    </div>
+  ) : null
+
   const flyerLayer =
-    flyers.length > 0 ? (
+    flyers.length > 0 || inline ? (
       <div className='pointer-events-none fixed inset-0 z-[140]' aria-hidden='true'>
+        {inlineLayer}
         {flyers.map((flyer) => (
           <span
             key={flyer.id}

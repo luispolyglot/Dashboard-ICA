@@ -22,7 +22,8 @@ import { SegmentedTabs } from '../game/ui'
 import { openIcaWrapped } from '../game/wrapped/IcaWrapped'
 import { availableWrappedYears } from '../game/wrapped/wrappedSlides'
 import { useIcaSummary } from '../services/icaSummary'
-import { t, uiLocale } from '@/i18n'
+import { langName, t, uiLocale } from '@/i18n'
+import { inSentence } from '../services/activationGuide'
 
 function shiftMonth(monthStart: string, delta: number): string {
   const [year, month] = monthStart.split('-').map(Number)
@@ -157,7 +158,7 @@ export function MyAnalyticsView() {
   return (
     <section className='mx-auto w-full max-w-3xl flex-1 px-4 pt-4 pb-28 lg:py-10'>
       <h2 className='mb-1 font-display tracking-tight text-2xl font-extrabold lg:text-3xl'>{t('Estadísticas')}</h2>
-      <p className='text-sm text-muted-foreground'>{t('Tus cifras en {n}.', { n: config.targetLang.toLowerCase() })}</p>
+      <p className='text-sm text-muted-foreground'>{t('Tus cifras en {n}.', { n: inSentence(langName(config.targetLang)) })}</p>
 
       <h3 className='mt-6 mb-2 text-xs font-extrabold tracking-[0.08em] text-muted-foreground uppercase'>
         {t('Ahora mismo')}
@@ -392,7 +393,7 @@ export function MyAnalyticsView() {
         <StatTile
           icon={<PercentIcon className='size-5' strokeWidth={2.8} />}
           value={summary.efficacy !== null ? `${summary.efficacy} %` : summary.loading ? '…' : '–'}
-          label='Eficacia'
+          label={t('Eficacia')}
           hint={t('Puntos del ranking conseguidos entre los posibles')}
           color='var(--ica-ok)'
         />

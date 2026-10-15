@@ -4,6 +4,8 @@ type UseLoopedMasterNotePlaybackParams = {
   playingNoteId: string | null
   isPaused?: boolean
   playNoteById: (noteId: string) => Promise<void>
+  /** Prepares a note ahead of time (the next one, while the current one plays). Optional. */
+  prefetchNoteById?: (noteId: string) => void
   /** Suena entre nota y nota. `index` es la posición (desde 0) de la nota que va a sonar. */
   playTransitionCue: (kind: 'start' | 'step' | 'finish', index?: number) => Promise<unknown>
   pausePlayback?: () => void
@@ -19,21 +21,11 @@ type UseLoopedMasterNotePlaybackParams = {
   autoAdvanceDelayMs?: number
 }
 
-function isLikelyIOS(): boolean {
-  if (typeof navigator === 'undefined') return false
-
-  const userAgent = navigator.userAgent || ''
-  const platform = navigator.platform || ''
-  const maxTouchPoints = navigator.maxTouchPoints || 0
-
-  return /iPad|iPhone|iPod/.test(userAgent)
-    || (platform === 'MacIntel' && maxTouchPoints > 1)
-}
-
 export function useLoopedMasterNotePlayback({
   playingNoteId,
   isPaused = false,
   playNoteById,
+  prefetchNoteById,
   playTransitionCue,
   pausePlayback,
   resumePlayback,
@@ -51,7 +43,6 @@ export function useLoopedMasterNotePlayback({
   const tokenRef = useRef(0)
   const previousPlayingNoteIdRef = useRef<string | null>(null)
   const suppressAutoAdvanceRef = useRef(false)
-  const isIOSRef = useRef(isLikelyIOS())
 
   const stopLoop = useCallback((stopCurrent = false): void => {
     tokenRef.current += 1
@@ -155,10 +146,10 @@ export function useLoopedMasterNotePlayback({
 
       const token = tokenRef.current
       const nextIndex = (loopIndex + 1) % loopIds.length
-      const shouldUseImmediateAutoAdvance =
-        isIOSRef.current
-        && typeof document !== 'undefined'
-        && document.hidden
+      // With the phone locked or the app in the background, the next one goes on at once, on every
+      // phone (before only on iPhone): Android delays or freezes the timers of a page in the
+      // background, and a silent gap can make it stop the sound (alumna con Android, 15 Oct).
+      const shouldUseImmediateAutoAdvance = typeof document !== 'undefined' && document.hidden
       const delayBeforeCueMs = shouldUseImmediateAutoAdvance ? 0 : autoAdvanceDelayMs
       void playLoopNoteAt(nextIndex, loopIds, token, 'step', delayBeforeCueMs)
     }
@@ -174,6 +165,19 @@ export function useLoopedMasterNotePlayback({
     playingNoteId,
     repeatEnabled,
   ])
+
+  // While a note of the list plays, the next one is prepared, so the change needs no download.
+  const prefetchRef = useRef(prefetchNoteById)
+  prefetchRef.current = prefetchNoteById
+  useEffect(() => {
+    const prefetchNoteById = prefetchRef.current
+    if (!looping || !playingNoteId || !prefetchNoteById || loopIds.length < 2) return
+    const index = loopIds.indexOf(playingNoteId)
+    if (index < 0) return
+    if (!repeatEnabled && index === loopIds.length - 1) return
+    const nextId = loopIds[(index + 1) % loopIds.length]
+    if (nextId && nextId !== playingNoteId) prefetchNoteById(nextId)
+  }, [looping, playingNoteId, loopIds, repeatEnabled])
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return

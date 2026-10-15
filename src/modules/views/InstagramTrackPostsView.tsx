@@ -263,6 +263,66 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
             <GameProgress value={postedDays.length / DAYS_LIMIT} color='var(--ica-a)' />
           </HeroBlock>
 
+          {/* El día elegido */}
+          {active && activeDay ? (
+            // Admins, 15 Oct: on some iPhones «Guardar» was hidden at the bottom (keyboard and menu
+            // on top). The day now goes first, under the month, and the keyboard's «Ir» saves too.
+            <form
+              onSubmit={(event) => {
+                event.preventDefault()
+                void handleSave(activeDay)
+              }}
+            >
+            <Panel className='flex flex-col gap-3'>
+              <div className='flex items-start justify-between gap-3'>
+                <div>
+                  <p className='m-0 text-lg font-extrabold'>{t('Día {n}', { n: activeDay })}</p>
+                  <p className='m-0 text-xs font-semibold text-muted-foreground'>{active.stateText}</p>
+                </div>
+                <Pill tone={active.isEditable ? 'ok' : 'neutral'}>{active.stateBadgeLabel}</Pill>
+              </div>
+              <Input
+                value={active.draftValue}
+                placeholder='https://www.instagram.com/...'
+                disabled={!active.isEditable || savingDay !== null}
+                onChange={(event) => {
+                  const value = event.target.value
+                  setDraftsByDay((prev) => ({ ...prev, [activeDay]: value }))
+                }}
+                aria-label={t('Link de Instagram')}
+                inputMode='url'
+                enterKeyHint='done'
+                onFocus={(event) => {
+                  const field = event.currentTarget
+                  window.setTimeout(() => field.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300)
+                }}
+              />
+              <Button
+                type='submit'
+                size='lg'
+                variant={active.isEditable ? 'a' : 'outline'}
+                className='w-full'
+                disabled={!active.isEditable || savingDay !== null}
+              >
+                {active.isRowSaving ? (
+                  <>
+                    <Loader2Icon className='animate-spin' data-icon='inline-start' />
+                    {t('Guardando...')}
+                  </>
+                ) : (
+                  active.buttonLabel
+                )}
+              </Button>
+            </Panel>
+            </form>
+          ) : (
+            <EmptyState
+              icon={<CameraIcon className='size-10 text-muted-foreground' strokeWidth={2.2} />}
+              title={t('Toca un día')}
+              text={t('Cada día se abre a su hora y tienes 48 horas para pegar el link de tu post.')}
+            />
+          )}
+
           {/* Los 28 días como círculos (como en Rachas) */}
           <div>
             <SectionLabel>{t('Toca un día')}</SectionLabel>
@@ -303,51 +363,6 @@ export function InstagramTrackPostsView({ targetLang, nativeLang }: InstagramTra
             </div>
           </div>
 
-          {/* El día elegido */}
-          {active && activeDay ? (
-            <Panel className='flex flex-col gap-3'>
-              <div className='flex items-start justify-between gap-3'>
-                <div>
-                  <p className='m-0 text-lg font-extrabold'>{t('Día {n}', { n: activeDay })}</p>
-                  <p className='m-0 text-xs font-semibold text-muted-foreground'>{active.stateText}</p>
-                </div>
-                <Pill tone={active.isEditable ? 'ok' : 'neutral'}>{active.stateBadgeLabel}</Pill>
-              </div>
-              <Input
-                value={active.draftValue}
-                placeholder='https://www.instagram.com/...'
-                disabled={!active.isEditable || savingDay !== null}
-                onChange={(event) => {
-                  const value = event.target.value
-                  setDraftsByDay((prev) => ({ ...prev, [activeDay]: value }))
-                }}
-                aria-label={t('Link de Instagram')}
-              />
-              <Button
-                type='button'
-                size='lg'
-                variant={active.isEditable ? 'a' : 'outline'}
-                className='w-full'
-                onClick={() => void handleSave(activeDay)}
-                disabled={!active.isEditable || savingDay !== null}
-              >
-                {active.isRowSaving ? (
-                  <>
-                    <Loader2Icon className='animate-spin' data-icon='inline-start' />
-                    {t('Guardando...')}
-                  </>
-                ) : (
-                  active.buttonLabel
-                )}
-              </Button>
-            </Panel>
-          ) : (
-            <EmptyState
-              icon={<CameraIcon className='size-10 text-muted-foreground' strokeWidth={2.2} />}
-              title={t('Toca un día')}
-              text={t('Cada día se abre a su hora y tienes 48 horas para pegar el link de tu post.')}
-            />
-          )}
         </>
       ) : null}
     </GamePage>

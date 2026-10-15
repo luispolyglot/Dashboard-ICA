@@ -483,6 +483,16 @@ export function prefetchSpeech(text: string, langName: string): Promise<void> {
 }
 
 /**
+ * The ready premium audio of a text (it can be played on another audio element), or null when there
+ * is no premium voice or it does not arrive within `timeoutMs`.
+ */
+export function getPremiumSpeechUrl(text: string, langName: string, timeoutMs = 4000): Promise<string | null> {
+  if (!PREMIUM_TTS_ENDPOINT || premiumAvailable === false || !text.trim()) return Promise.resolve(null)
+  const code = LANG_CODES[langName] || 'en-US'
+  return Promise.race([fetchPremiumAudio(text, code, 'now'), sleep(timeoutMs).then(() => null)]).catch(() => null)
+}
+
+/**
  * Prepares many texts in order, a few at a time (the first ones are ready first).
  * Returns one promise per text, resolved when that text is ready (or failed).
  */
