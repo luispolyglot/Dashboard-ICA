@@ -27,7 +27,7 @@ import {
 } from './achievements'
 import type { FeaturedBadge } from './featuredBadge'
 import { badgesToShow, fetchProfileBadges, useMyProfileBadges } from './profileBadges'
-import { SwordsIcon } from './icons'
+import { FlameIcon, SwordsIcon } from './icons'
 import type { MedalCategory } from './medals'
 import { FeaturedBadgeMini, UserInitial } from './ranking'
 
@@ -38,7 +38,12 @@ export type IcademerSummary = {
   badge?: FeaturedBadge | null
   /** Bandera comprada que enseña (nombre del idioma). */
   flag?: string | null
+  /** Días de racha ICA que lleva ahora (del ranking del mes en curso). */
+  streakDays?: number | null
 }
+
+/** Si algo tarda más que esto, se enseña lo que ya haya llegado (no se espera para siempre). */
+const REVEAL_TIMEOUT_MS = 5000
 
 type ChallengeState =
   | { kind: 'loading' }
@@ -209,8 +214,13 @@ export function IcademerProfileDialog({
   const isMe = Boolean(summary && user?.id === summary.userId)
   const loaded = useIcademerProfile(summary, isMe)
   const [challengePending, setChallengePending] = useState(false)
+  const [revealAnyway, setRevealAnyway] = useState(false)
   useEffect(() => {
     setChallengePending(false)
+    setRevealAnyway(false)
+    if (!summary?.userId) return
+    const id = window.setTimeout(() => setRevealAnyway(true), REVEAL_TIMEOUT_MS)
+    return () => window.clearTimeout(id)
   }, [summary?.userId])
   // Tus propias insignias salen de tus datos (igual que en tu perfil).
   const mine = useAchievements()
@@ -258,6 +268,10 @@ export function IcademerProfileDialog({
     return def ? [{ def, badge }] : []
   })
   const badgesLoading = topBadges.length === 0 && (earned === null || (!isMe && chosen === null))
+  // Everything appears at once (Luis, 15 Oct): language, level, «Desafiar» and badges wait for
+  // each other instead of popping in one by one. After REVEAL_TIMEOUT_MS, whatever is there shows.
+  const allLoaded = !badgesLoading && (isMe || loaded.challenge.kind !== 'loading')
+  const ready = allLoaded || revealAnyway
 
   // «Desafiar»: el botón espera un momento (cargando) mientras se precargan los datos de
   // Desafíos, y luego se va directo a «Retar a …» con el modo para elegir. Como mucho 4 s.
@@ -287,7 +301,19 @@ export function IcademerProfileDialog({
             {summary.badge ? <FeaturedBadgeMini badge={summary.badge} size={34} /> : null}
           </div>
           <DialogDescription className='sr-only'>{t('Perfil de este icademer')}</DialogDescription>
-          {targetLang || level ? (
+          {typeof summary.streakDays === 'number' ? (
+            // La racha en grande: es lo primero que se ve de cada icademer (Luis, 15 Oct).
+            <div className='flex items-center justify-center gap-2 pt-1'>
+              <FlameIcon size={44} tone={summary.streakDays > 0 ? 'fire' : 'off'} />
+              <span className='flex flex-col items-start leading-none'>
+                <span className='text-4xl font-black tabular-nums'>{summary.streakDays}</span>
+                <span className='text-xs font-extrabold tracking-[0.06em] text-muted-foreground uppercase'>
+                  {summary.streakDays === 1 ? t('día de racha') : t('días de racha')}
+                </span>
+              </span>
+            </div>
+          ) : null}
+          {!ready ? null : targetLang || level ? (
             <div className='flex flex-wrap items-center justify-center gap-2'>
               {targetLang ? (
                 // El idioma que aprende, con su bandera (sin texto: «Aprende …» solo para lectores de pantalla).
@@ -305,13 +331,24 @@ export function IcademerProfileDialog({
                 </span>
               ) : null}
             </div>
-          ) : loaded.challenge.kind === 'loading' && !isMe ? (
-            <span className='h-6 w-40 animate-pulse rounded-full bg-muted' aria-hidden='true' />
           ) : null}
         </div>
 
+        {!ready ? (
+          // Un solo hueco mientras carga: idioma, botón e insignias salen juntos.
+          <div className='space-y-3' aria-hidden='true'>
+            <span className='mx-auto block h-6 w-40 animate-pulse rounded-full bg-muted' />
+            {!isMe ? <span className='block h-12 w-full animate-pulse rounded-2xl bg-muted' /> : null}
+            <div className='grid grid-cols-3 gap-2'>
+              {Array.from({ length: 3 }, (_, index) => (
+                <span key={index} className='h-24 animate-pulse rounded-2xl bg-muted' />
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {/* Desafiar */}
-        {loaded.challenge.kind === 'loading' && !isMe ? (
+        {!ready ? null : loaded.challenge.kind === 'loading' && !isMe ? (
           <span className='h-12 w-full animate-pulse rounded-2xl bg-muted' aria-hidden='true' />
         ) : loaded.challenge.kind === 'can' ? (
           <Button
@@ -338,6 +375,7 @@ export function IcademerProfileDialog({
         ) : null}
 
         {/* Insignias */}
+        {ready ? (
         <div>
           <div className='mb-2 flex items-baseline justify-between gap-2'>
             <p className='m-0 text-xs font-extrabold tracking-[0.08em] text-muted-foreground uppercase'>{t('Insignias destacadas')}</p>
@@ -368,6 +406,7 @@ export function IcademerProfileDialog({
             </p>
           ) : null}
         </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   )

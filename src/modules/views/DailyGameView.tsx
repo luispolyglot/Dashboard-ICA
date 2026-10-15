@@ -26,6 +26,7 @@ import {
   useChallengeSounds,
 } from '../components/IcaChallenges/challengeFeedback'
 import {
+  deviceBeepsOnMicOpen,
   listenOnce,
   sayAnswerThenContinue,
   speakAsync,
@@ -256,12 +257,15 @@ const stopConfettiRef = useRef<(() => void) | null>(null)
     cancelListenRef.current?.()
     setMicMessage(null)
     setSpeakStatus('starting')
-    // The mic stays open for the whole turn: silence never stops it or asks to tap anything.
+    // On the computer the mic stays open for the whole turn (people often think before speaking).
+    // On the phone it opens once per word, because each opening beeps (Luis, 15 Oct).
     let stopped = false
+    const quietMic = deviceBeepsOnMicOpen()
     for (;;) {
       const remaining = endsAt - Date.now()
       if (remaining < 900) return
       const session = listenOnce(config.targetLang, {
+        reopenWhenClosed: !quietMic,
         noSpeechMs: remaining,
         endSilenceMs: 900,
         maxMs: remaining,
@@ -291,7 +295,18 @@ const stopConfettiRef = useRef<(() => void) | null>(null)
         setMicMessage(t(outcome.message))
         return
       }
-      // Silence or nothing understood: keep listening quietly while time is left.
+      // On the phone every reopening of the mic beeps (2 or 3 beeps per word, Luis 15 Oct): there
+      // the mic opens once per word, and to try again they tap «Repetir».
+      if (quietMic) {
+        setSpeakStatus('idle')
+        setMicMessage(
+          outcome.status === 'unclear'
+            ? t('No te he oído bien. Toca «Repetir» y dila otra vez.')
+            : t('No te he oído. Toca «Repetir» cuando quieras decirla.'),
+        )
+        return
+      }
+      // Silence or nothing understood (computer): keep listening quietly while time is left.
       cancelListenRef.current = () => {
         stopped = true
       }

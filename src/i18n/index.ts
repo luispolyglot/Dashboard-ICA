@@ -33,7 +33,15 @@ function readInitial(): UiLang {
   } catch {
     // Sin almacenamiento: español.
   }
-  // La primera vez (login, registro…) siempre en español. Al entrar, manda el idioma nativo del alumno.
+  // La primera vez (login, registro…): el idioma del navegador. Español si el navegador está en
+  // español o catalán; en otro idioma, inglés (Luis, 15 Oct: un alumno inglés lo vio todo en
+  // español, también el email de bienvenida). Al entrar, manda el idioma nativo del alumno.
+  try {
+    const browser = (window.navigator.languages?.[0] || window.navigator.language || '').toLowerCase()
+    if (browser && !browser.startsWith('es') && !browser.startsWith('ca')) return 'en'
+  } catch {
+    // Sin navegador: español.
+  }
   return 'es'
 }
 

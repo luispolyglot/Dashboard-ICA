@@ -27,10 +27,9 @@ import {
 import { saveData, updateWord } from '../services/storage'
 import { recordReviewEvent } from '../services/reviewTracking'
 import { prefetchSpeech, stopTTS } from '../services/tts'
-import { buildReviewRound, getStreak, todayKey, updateCardAfterReview } from '../utils'
+import { buildReviewRound, todayKey, updateCardAfterReview } from '../utils'
 import type { AppConfig, Lexicard, ReviewMode } from '../types'
 import {
-  BlocksIcon,
   CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -39,13 +38,13 @@ import {
   LightbulbIcon,
   PackagePlusIcon,
   RotateCcwIcon,
-  SproutIcon,
   TargetIcon,
   XIcon,
 } from 'lucide-react'
 import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal'
 import { FrequencyDot, FrequencyGlyph, SpeakWordButton, modeColors } from '../game/flashcardsUi'
-import { CardsIcon, FlameIcon, TrophyIcon } from '../game/icons'
+import { CardsIcon, FlameIcon } from '../game/icons'
+import { TourGuide } from '../game/WelcomeTour'
 import { gameSfx } from '../game/sfx'
 import { SoundToggleButton } from '../game/SoundToggleButton'
 import { PronunciationHint } from '../pronunciation/PronunciationHint'
@@ -79,19 +78,6 @@ type AnswerFeedback = {
   updated: Lexicard
   /** Tarjeta a la que se pasa al continuar (null = se queda o se acaba la ronda). */
   nextIndex: number | null
-}
-
-/** Icono grande en un cuadrado de color con canto (resultado de la ronda). */
-function BigTile({ t, children }: { t: Tone; children: ReactNode }) {
-  const colors = tone(t)
-  return (
-    <span
-      className='flex size-24 items-center justify-center rounded-[1.75rem] text-white'
-      style={{ background: colors.solid, boxShadow: `0 6px 0 ${colors.edge}` }}
-    >
-      {children}
-    </span>
-  )
 }
 
 /** Dato del resultado, en una caja de color al terminar la partida. */
@@ -242,49 +228,15 @@ export function ReviewView({
   const canPlayAnotherRound =
     !pendingOnly || replayEligibleCount >= replayMinimumRequired
 
-  const roundFeedback: { icon: ReactNode; tone: Tone; title: string; message: string } = (() => {
-    if (correct <= 2) {
-      return {
-        icon: (
-          <BigTile t='i'>
-            <BlocksIcon className='size-12' strokeWidth={2.4} aria-hidden='true' />
-          </BigTile>
-        ),
-        tone: 'i',
-        title: t('Base en construcción'),
-        message: t('Hoy tocaba sembrar. Lo importante es seguir, no hacerlo perfecto.'),
-      }
-    }
-
-    if (correct <= 5) {
-      return {
-        icon: (
-          <BigTile t='ok'>
-            <SproutIcon className='size-12' strokeWidth={2.4} aria-hidden='true' />
-          </BigTile>
-        ),
-        tone: 'ok',
-        title: t('Buen avance'),
-        message: t('Ya hay progreso real. En la siguiente ronda esto sube rápido.'),
-      }
-    }
-
-    if (correct <= 8) {
-      return {
-        icon: <FlameIcon size={104} />,
-        tone: 'fire',
-        title: t('Muy buena ronda'),
-        message: t('Estás consolidando vocabulario. Te queda muy poco para dominarla.'),
-      }
-    }
-
-    return {
-      icon: <TrophyIcon size={104} />,
-      tone: 'gold',
-      title: t('Ronda excelente'),
-      message: t('Nivel altísimo. Estás en modo imparable.'),
-    }
-  })()
+  // Only the title and its colour now; the mascot Ica goes on top (Luis, 15 Oct).
+  const roundFeedback: { tone: Tone; title: string } =
+    correct <= 2
+      ? { tone: 'i', title: t('Base en construcción') }
+      : correct <= 5
+        ? { tone: 'ok', title: t('Buen avance') }
+        : correct <= 8
+          ? { tone: 'fire', title: t('Muy buena ronda') }
+          : { tone: 'gold', title: t('Ronda excelente') }
 
   useEffect(() => {
     setRoundCards(
@@ -554,7 +506,6 @@ export function ReviewView({
   if (showResults) {
     const answeredTotal = answeredByIndex.filter((value) => value !== undefined).length
     const accuracy = answeredTotal > 0 ? Math.round((correct / answeredTotal) * 100) : 0
-    const flashStreak = getStreak(completedDays)
     const todayCorrect = Math.max(0, globalCorrectToday)
     const dailyDone = todayCorrect >= GOAL
     const dailyMissing = Math.max(GOAL - todayCorrect, 0)
@@ -568,7 +519,12 @@ export function ReviewView({
             style={{ background: `color-mix(in oklab, ${resultTone.solid} 24%, transparent)` }}
             aria-hidden='true'
           />
-          <span className='ica-pop relative'>{roundFeedback.icon}</span>
+          {/* Luis, 15 Oct: the mascot Ica on top, not the flame (it looked like the ICA streak),
+              just the title, and only hits and precision (no «Racha 0» while today's goal is
+              still open: the goal panel below already says it). */}
+          <span className='ica-pop relative'>
+            <TourGuide className='h-32 w-auto' />
+          </span>
         </div>
 
         <div>
@@ -578,12 +534,9 @@ export function ReviewView({
           >
             {roundFeedback.title}
           </h1>
-          <p className='m-0 mx-auto mt-1.5 max-w-sm text-base font-semibold text-muted-foreground'>
-            {roundFeedback.message}
-          </p>
         </div>
 
-        <div className='grid w-full grid-cols-3 gap-2.5'>
+        <div className='grid w-full grid-cols-2 gap-2.5'>
           <ResultStat
             t='ok'
             label={t('Aciertos')}
@@ -596,7 +549,6 @@ export function ReviewView({
             value={`${accuracy} %`}
             icon={<TargetIcon className='size-5' strokeWidth={2.6} style={{ color: 'var(--ica-i)' }} aria-hidden='true' />}
           />
-          <ResultStat t='fire' label={t('Racha')} value={flashStreak} icon={<FlameIcon size={22} />} />
         </div>
 
         <Panel className='text-left'>

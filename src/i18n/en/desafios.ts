@@ -24,6 +24,8 @@ const en: Record<string, string> = {
   "No se pudo actualizar tu inscripción.": "Couldn't update your sign-up.",
   "Desafío aceptado. ¡Te toca empezar!": "Challenge accepted. You're up first!",
   "Desafío rechazado.": "Challenge declined.",
+  "Entrando…": "Opening…",
+  "No te he oído. Toca «Repetir» cuando quieras decirla.": "I didn't hear you. Tap \"Retry\" when you're ready to say it.",
   "No se pudo responder el desafío.": "Couldn't reply to the challenge.",
   "Elige un modo antes de enviar.": "Pick a mode before sending.",
   "Reto enviado. Avisamos al competidor por notificación.": "Challenge sent. We'll notify your opponent.",

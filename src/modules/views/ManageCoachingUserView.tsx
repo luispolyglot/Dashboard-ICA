@@ -1545,9 +1545,23 @@ export function ManageCoachingUserView({
   const activeWeekNumber =
     selectedMembership?.weekActivation?.currentActiveWeek || null
 
-  const v3CoachNotesPeriodClamped = Math.min(4, Math.max(1, v3CoachCurrentPeriod))
+  // Up to week 12 (it stopped at week 4, from the old program: from week 5 on, the coach saw the
+  // notes of week 4 and not the new ones).
+  const v3CoachNotesPeriodClamped = Math.min(12, Math.max(1, v3CoachCurrentPeriod))
   const v3CoachNotesWeekKey = weekKeyFromNumber(v3CoachNotesPeriodClamped)
-  const v3CoachNotes = closedNotesByWeek.get(v3CoachNotesWeekKey) || []
+  // Notes of other weeks still without feedback go first, wherever the board is: the «N por
+  // revisar» of the Coaching menu counts them, and before they could only be found week by week
+  // (Luis, 15 Oct: «1 por revisar» and nothing to review on screen).
+  const v3CoachNotes = [
+    ...[...closedNotesByWeek.entries()]
+      .filter(([weekKey]) => weekKey !== v3CoachNotesWeekKey)
+      .flatMap(([weekKey, notes]) =>
+        notes
+          .filter((note) => !note.feedbackLoomUrl?.trim() && !note.feedbackNotes?.trim())
+          .map((note) => ({ ...note, waitingFromWeek: Number(weekKey.slice(1)) || null })),
+      ),
+    ...(closedNotesByWeek.get(v3CoachNotesWeekKey) || []).map((note) => ({ ...note, waitingFromWeek: null })),
+  ]
 
   const previewMembership = useMemo(() => {
     if (!selectedMembership || !insights) return null
@@ -1882,6 +1896,14 @@ export function ManageCoachingUserView({
                                 key={`v3-note-${note.id}`}
                                 className='space-y-2 rounded-md border p-3'
                               >
+                                {note.waitingFromWeek ? (
+                                  <span
+                                    className='inline-flex rounded-full px-2.5 py-0.5 text-xs font-black'
+                                    style={{ background: 'var(--ica-gold)', color: '#4a3200' }}
+                                  >
+                                    Semana {note.waitingFromWeek} · esperando tu feedback
+                                  </span>
+                                ) : null}
                                 <p>
                                   {note.name} · {formatDateTime(note.closedAt)}
                                 </p>

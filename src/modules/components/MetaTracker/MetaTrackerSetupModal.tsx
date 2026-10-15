@@ -106,6 +106,13 @@ export function MetaTrackerSetupModal({ targetLang, saving, onClose, onSave }: M
                   {t('¿Por qué {n} palabras? Convertimos tu nivel en las palabras ICA que ya tendrías si hubieras aplicado ICA desde el principio. Así tu barra empieza donde estás de verdad.', {
                     n: preview.total.toLocaleString(uiLocale()),
                   })}
+                  {/* Luis, 15 Oct: a new student did not understand where the words came from. */}
+                  <span className='mt-1 block font-extrabold text-foreground'>
+                    {t('Por haber elegido {level}, el sistema estima que ya sabes aproximadamente {n} palabras.', {
+                      level: t(OPTIONS.find((option) => option.key === startLevel)?.label ?? startLevel),
+                      n: preview.total.toLocaleString(uiLocale()),
+                    })}
+                  </span>
                 </span>
               </p>
             ) : null}

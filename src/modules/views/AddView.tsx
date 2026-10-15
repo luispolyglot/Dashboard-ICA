@@ -344,6 +344,32 @@ export function AddView({
     }, 900)
   }
 
+  // «Usar» replaces the word on one side with the translation of the other side: whatever the
+  // old word had asked for on that side goes away (Luis, 15 Oct: write «Schatz», then «valorar»
+  // below, use «schätzen»… and the translation of «Schatz» was still offered under it).
+  const clearTargetSideHelp = (): void => {
+    if (targetDebounceRef.current !== null) {
+      window.clearTimeout(targetDebounceRef.current)
+      targetDebounceRef.current = null
+    }
+    targetRequestRef.current += 1
+    setSuggestionNative(null)
+    setLoadingNative(false)
+    setCheckingSpelling(false)
+    setSpellingSuggestion(null)
+    setTargetWrongLang(null)
+  }
+  const clearNativeSideHelp = (): void => {
+    if (nativeDebounceRef.current !== null) {
+      window.clearTimeout(nativeDebounceRef.current)
+      nativeDebounceRef.current = null
+    }
+    nativeRequestRef.current += 1
+    setSuggestionTarget(null)
+    setLoadingTarget(false)
+    setNativeWrongLang(null)
+  }
+
   const handleNativeChange = (value: string): void => {
     setNative(value)
     setSuggestionTarget(null)
@@ -912,6 +938,7 @@ export function AddView({
                 if (suggestionNative) {
                   setNative(suggestionNative)
                   setSuggestionNative(null)
+                  clearNativeSideHelp()
                 }
               }}
             />
@@ -955,8 +982,9 @@ export function AddView({
               label={t('En {lang}', { lang: langName(config.targetLang) })}
               onAccept={() => {
                 if (suggestionTarget) {
-                  setTarget(suggestionTarget)
+                  setTarget(clampTarget(suggestionTarget))
                   setSuggestionTarget(null)
+                  clearTargetSideHelp()
                 }
               }}
             />

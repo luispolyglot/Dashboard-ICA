@@ -347,21 +347,22 @@ export function useIcaChallengesOverview({
 
   const respondInvitation = useCallback(async (challengeId: string, accept: boolean, extraSlot = false) => {
     setIsResponding(true)
-    // Se ve al momento: el reto sale de «Pendientes» sin esperar al servidor.
-    setChallenges((previous) =>
-      previous.map((challenge) =>
-        challenge.id === challengeId
-          ? {
-              ...challenge,
-              status: accept ? 'in_progress' : 'not_accepted',
-              resultType: accept ? challenge.resultType : 'not_accepted',
-            }
-          : challenge,
-      ),
-    )
+    // Rechazar se ve al momento: el reto sale de «Pendientes» sin esperar al servidor. Al aceptar,
+    // la fila se queda donde está («Entrando…») hasta que se abre la partida (Luis, 15 Oct): si
+    // desaparecía, parecía que había que ir a «Activos» y la partida saltaba a mitad de camino.
+    if (!accept) {
+      setChallenges((previous) =>
+        previous.map((challenge) =>
+          challenge.id === challengeId
+            ? { ...challenge, status: 'not_accepted', resultType: 'not_accepted' }
+            : challenge,
+        ),
+      )
+    }
     try {
       await respondIcaChallengeInvitation(challengeId, accept, extraSlot)
-      await refresh()
+      // La lista se pone al día por detrás: no hace falta esperarla para abrir la partida.
+      void refresh()
     } catch (respondError) {
       // Si falla (p. ej. el reto ya caducó), se vuelve a lo que diga el servidor.
       void refresh()

@@ -411,6 +411,14 @@ export function MasterNoteDetailView({
     setNoteClosedGuide(null)
     if (!challengeOpen) requestMasterNoteClosedGuide(closedNotesWithThis)
   }, [celebration, challengeOpen, closedNotesWithThis, noteClosedGuide])
+  // «¡Genial!» goes back to Inicio (Luis, 15 Oct): staying on the note, in the middle of
+  // Activación, was confusing. The guide about the finished notes opens there, in Inicio.
+  const closeCelebrationToHome = () => {
+    setNoteClosedGuide(null)
+    setCelebration(null)
+    requestMasterNoteClosedGuide(closedNotesWithThis, DASHBOARD_ROUTES.home)
+    navigate(DASHBOARD_ROUTES.home)
+  }
   const hasChallengePhrases =
     challengeEnabled && challengePhrases.length > 0 && enoughClosedNotes
   const challengeLockedByCount =
@@ -884,7 +892,7 @@ export function MasterNoteDetailView({
       <Dialog
         open={Boolean(celebration)}
         onOpenChange={(open) => {
-          if (!open) setCelebration(null)
+          if (!open) closeCelebrationToHome()
         }}
       >
         <DialogContent className='text-center sm:max-w-sm'>
@@ -910,7 +918,7 @@ export function MasterNoteDetailView({
             </p>
           )}
           <DialogFooter className='flex-col gap-3 sm:flex-col'>
-            <Button type='button' size='xl' variant='a' className='w-full' onClick={() => setCelebration(null)}>
+            <Button type='button' size='xl' variant='a' className='w-full' onClick={closeCelebrationToHome}>
               {t('¡Genial!')}
             </Button>
             {showChallenge && (

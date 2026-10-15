@@ -448,6 +448,8 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
   const [extraOfferUserId, setExtraOfferUserId] = useState<string | null>(null)
   // The same «desafío extra» to accept a 4th challenge (Luis, 11 Oct): the invitation waiting for it.
   const [acceptOfferId, setAcceptOfferId] = useState<string | null>(null)
+  // The invitation being accepted: its row stays and says «Entrando…» until the game opens.
+  const [acceptingId, setAcceptingId] = useState<string | null>(null)
   const [buyingExtraPass, setBuyingExtraPass] = useState(false)
 
   const isEnrolled = Boolean(enrollment?.isActive)
@@ -875,13 +877,19 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
         return
       }
     }
+    if (accept) setAcceptingId(challengeId)
     try {
       await respondInvitation(challengeId, accept, extraSlot)
-      if (extraSlot) await refreshCoins()
-      toast.success(accept ? t('Desafío aceptado. ¡Te toca empezar!') : t('Desafío rechazado.'))
       // Accepting starts the game right away (Luis, 6 Oct), instead of going to «Activos» first.
-      if (accept) navigate(getIcaChallengePlayRoute(challengeId))
+      if (accept) {
+        navigate(getIcaChallengePlayRoute(challengeId))
+        if (extraSlot) void refreshCoins()
+        return
+      }
+      if (extraSlot) await refreshCoins()
+      toast.success(t('Desafío rechazado.'))
     } catch (respondError) {
+      setAcceptingId(null)
       // The list here only has the most recent challenges, so the server may count a 4th one that
       // the app did not see: then offer the extra challenge instead of leaving a dead end.
       const code = (respondError as { code?: unknown } | null)?.code
@@ -1640,17 +1648,17 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
                         type='button'
                         size='sm'
                         className='shrink-0 rounded-xl font-extrabold'
-                        disabled={isResponding}
+                        disabled={isResponding || acceptingId !== null}
                         onClick={() => void handleRespondInvitation(challenge.id, true)}
                       >
-                        {t('Aceptar')}
+                        {acceptingId === challenge.id ? t('Entrando…') : t('Aceptar')}
                       </Button>
                       <Button
                         type='button'
                         size='icon-sm'
                         variant='ghost'
                         className='shrink-0 text-muted-foreground'
-                        disabled={isResponding}
+                        disabled={isResponding || acceptingId !== null}
                         aria-label={t('Rechazar el reto de {name}', { name: rival.displayName })}
                         onClick={() => void handleRespondInvitation(challenge.id, false)}
                       >

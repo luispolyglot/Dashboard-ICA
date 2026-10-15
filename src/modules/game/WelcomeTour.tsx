@@ -309,8 +309,11 @@ export function ShopFlagGuide({ lang }: { lang: string | null }) {
  */
 const NOTE_CLOSED_REQUEST_EVENT = 'ica:master-note-closed-guide'
 
-export function requestMasterNoteClosedGuide(closedNotes: number): void {
-  window.dispatchEvent(new CustomEvent<{ closedNotes: number }>(NOTE_CLOSED_REQUEST_EVENT, { detail: { closedNotes } }))
+/** `route`: the screen where the guide appears (by default, the one on screen right now). */
+export function requestMasterNoteClosedGuide(closedNotes: number, route?: string): void {
+  window.dispatchEvent(
+    new CustomEvent<{ closedNotes: number; route?: string }>(NOTE_CLOSED_REQUEST_EVENT, { detail: { closedNotes, route } }),
+  )
 }
 
 export function MasterNoteClosedGuideHost() {
@@ -322,8 +325,8 @@ export function MasterNoteClosedGuideHost() {
 
   useEffect(() => {
     const onRequest = (event: Event) => {
-      const closedNotes = (event as CustomEvent<{ closedNotes: number }>).detail?.closedNotes ?? 0
-      setRequest({ closedNotes, route: pathnameRef.current })
+      const detail = (event as CustomEvent<{ closedNotes: number; route?: string }>).detail
+      setRequest({ closedNotes: detail?.closedNotes ?? 0, route: detail?.route || pathnameRef.current })
     }
     window.addEventListener(NOTE_CLOSED_REQUEST_EVENT, onRequest)
     return () => window.removeEventListener(NOTE_CLOSED_REQUEST_EVENT, onRequest)
