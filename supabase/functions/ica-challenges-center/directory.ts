@@ -35,6 +35,9 @@ type DirectoryInput = {
 }
 
 /** Lista rivales, filtra inactivos y carga sus métricas mediante una RPC agrupada. */
+/** Words activated in the app that a rival needs to show up (Luis, 15 Oct). */
+export const MIN_ACTIVATED_TO_PLAY = 20
+
 export async function listAvailableUsers(input: DirectoryInput): Promise<Response> {
   const { adminClient, userId, targetLang, nativeLang, scope, toText } = input
   const activeCount = await input.countActiveChallenges(adminClient, userId)
@@ -136,7 +139,7 @@ export async function listAvailableUsers(input: DirectoryInput): Promise<Respons
 
   const nowMs = Date.now()
   const candidateIdList = candidateIds.join(',')
-  const [directoryMetricsResult, metricsResult, activityResult, flagsResult] = await Promise.all([
+  const [directoryMetricsResult, metricsResult, activityResult, flagsResult, activatedResult] = await Promise.all([
     directoryMetricsPromise,
     adminClient
       .from('daily_metrics')
@@ -151,7 +154,21 @@ export async function listAvailableUsers(input: DirectoryInput): Promise<Respons
       .limit(3000),
     // The flag each one shows in the profile («Desafío aleatorio» shows it; Luis, 15 Oct).
     adminClient.from('ica_display_flags').select('user_id, lang').in('user_id', candidateIds),
+    // Words activated in the app, per language (Luis, 15 Oct: only icademers with 20 or more).
+    adminClient
+      .from('user_meta_tracker')
+      .select('user_id, target_lang, native_lang, activation_words_total')
+      .in('user_id', candidateIds),
   ])
+  const activatedByUserPair = new Map<string, number>()
+  for (const row of (activatedResult.data || []) as Array<Record<string, unknown>>) {
+    activatedByUserPair.set(
+      `${toText(row.user_id)}|${toText(row.target_lang)}|${toText(row.native_lang)}`,
+      Number(row.activation_words_total) || 0,
+    )
+  }
+  // If it cannot be read, nobody is hidden for it.
+  const activatedKnown = !activatedResult.error
   const flagByUser = new Map<string, string>()
   for (const row of (flagsResult.data || []) as Array<Record<string, unknown>>) {
     const candidateId = toText(row.user_id)
@@ -205,6 +222,15 @@ export async function listAvailableUsers(input: DirectoryInput): Promise<Respons
 
     const candidatePair = candidatePairs.get(candidateId)
     if (!candidatePair) return null
+    // LUIS, 15 Oct: you can only challenge icademers with at least MIN_ACTIVATED_TO_PLAY words
+    // activated (in the language they would play), a stronger filter than the 20 in the vault.
+    if (
+      activatedKnown &&
+      (activatedByUserPair.get(`${candidateId}|${candidatePair.targetLang}|${candidatePair.nativeLang}`) ?? 0) <
+        MIN_ACTIVATED_TO_PLAY
+    ) {
+      return null
+    }
     const directoryMetrics = directoryMetricsByUser.get(candidateId)
     if (wordsMissingToJoin(Number(directoryMetrics?.word_count || 0)) > 0) return null
 

@@ -86,7 +86,19 @@ const FIELD_CLASS =
 
 /** Día (AAAA-MM-DD) de una fecha en milisegundos, en hora local. */
 /** «Esto parece alemán»: the text is in the other field's language (admins, 15 Oct). */
-function WrongLanguageNotice({ lang, moveLabel, onMove }: { lang: string; moveLabel: string; onMove: () => void }) {
+function WrongLanguageNotice({
+  kind,
+  fieldLang,
+  otherLang,
+  moveLabel,
+  onMove,
+}: {
+  kind: 'move' | 'other'
+  fieldLang: string
+  otherLang: string
+  moveLabel: string
+  onMove: () => void
+}) {
   return (
     <div
       className='mt-2 flex items-center gap-2.5 rounded-2xl border-2 px-3 py-2'
@@ -94,11 +106,15 @@ function WrongLanguageNotice({ lang, moveLabel, onMove }: { lang: string; moveLa
       role='status'
     >
       <span className='min-w-0 flex-1 text-sm font-semibold break-words' style={{ color: 'var(--ica-gold-ink)' }}>
-        {t('Esto parece {lang}. Va en el otro campo.', { lang: inSentence(lang) })}
+        {kind === 'move'
+          ? t('Esto parece {lang}. Va en el otro campo.', { lang: inSentence(otherLang) })
+          : t('Esto no parece {lang}. Revisa lo que has escrito.', { lang: inSentence(fieldLang) })}
       </span>
-      <Button type='button' size='sm' variant='gold' className='h-9 px-4' onClick={onMove}>
-        {moveLabel}
-      </Button>
+      {kind === 'move' ? (
+        <Button type='button' size='sm' variant='gold' className='h-9 px-4' onClick={onMove}>
+          {moveLabel}
+        </Button>
+      ) : null}
     </div>
   )
 }
@@ -195,8 +211,9 @@ export function AddView({
   const [suggestionTarget, setSuggestionTarget] = useState<string | null>(null)
   // Admins, 15 Oct: «einsam» typed in the Spanish field gave «solitario» as the German word. Now
   // the AI says when a field has the other language, and the app offers to move it.
-  const [targetWrongLang, setTargetWrongLang] = useState(false)
-  const [nativeWrongLang, setNativeWrongLang] = useState(false)
+  // null = fine; 'move' = it is the other field's language; 'other' = some other language.
+  const [targetWrongLang, setTargetWrongLang] = useState<null | 'move' | 'other'>(null)
+  const [nativeWrongLang, setNativeWrongLang] = useState<null | 'move' | 'other'>(null)
   const [loadingNative, setLoadingNative] = useState(false)
   const [loadingTarget, setLoadingTarget] = useState(false)
   const [spellingSuggestion, setSpellingSuggestion] = useState<string | null>(
@@ -286,7 +303,7 @@ export function AddView({
     const nextValue = clampTarget(value)
     setTarget(nextValue)
     setSuggestionNative(null)
-    setTargetWrongLang(false)
+    setTargetWrongLang(null)
     setSpellingSuggestion(null)
     targetRequestRef.current += 1
 
@@ -314,7 +331,7 @@ export function AddView({
         config.nativeLang,
       )
       if (requestId !== targetRequestRef.current) return
-      setTargetWrongLang(result.wrongLanguage)
+      setTargetWrongLang(result.wrongLanguage ? (result.wrongLanguageIsTarget ? 'move' : 'other') : null)
       setSuggestionNative(result.wrongLanguage ? null : result.translation)
       setLoadingNative(false)
       const suggestion = wantsSpelling ? result.spellingSuggestion : null
@@ -330,7 +347,7 @@ export function AddView({
   const handleNativeChange = (value: string): void => {
     setNative(value)
     setSuggestionTarget(null)
-    setNativeWrongLang(false)
+    setNativeWrongLang(null)
     nativeRequestRef.current += 1
 
     if (nativeDebounceRef.current !== null) {
@@ -351,7 +368,7 @@ export function AddView({
         config.targetLang,
       )
       if (requestId !== nativeRequestRef.current) return
-      setNativeWrongLang(result.wrongLanguage)
+      setNativeWrongLang(result.wrongLanguage ? (result.wrongLanguageIsTarget ? 'move' : 'other') : null)
       setSuggestionTarget(result.wrongLanguage ? null : result.translation)
       setLoadingTarget(false)
     }, 900)
@@ -874,12 +891,14 @@ export function AddView({
             )}
             {targetWrongLang && !loadingNative ? (
               <WrongLanguageNotice
-                lang={langName(config.nativeLang)}
+                kind={targetWrongLang}
+                fieldLang={langName(config.targetLang)}
+                otherLang={langName(config.nativeLang)}
                 moveLabel={t('Pasarlo abajo')}
                 onMove={() => {
                   const text = target.trim()
                   setTarget('')
-                  setTargetWrongLang(false)
+                  setTargetWrongLang(null)
                   setSpellingSuggestion(null)
                   handleNativeChange(text)
                 }}
@@ -918,12 +937,14 @@ export function AddView({
             />
             {nativeWrongLang && !loadingTarget ? (
               <WrongLanguageNotice
-                lang={langName(config.targetLang)}
+                kind={nativeWrongLang}
+                fieldLang={langName(config.nativeLang)}
+                otherLang={langName(config.targetLang)}
                 moveLabel={t('Pasarlo arriba')}
                 onMove={() => {
                   const text = native.trim()
                   setNative('')
-                  setNativeWrongLang(false)
+                  setNativeWrongLang(null)
                   handleTargetChange(text)
                 }}
               />

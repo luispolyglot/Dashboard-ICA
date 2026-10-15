@@ -469,5 +469,8 @@ const en: Record<string, string> = {
   "Pasarlo abajo": "Move it down",
   "Pasarlo arriba": "Move it up",
   "Esto parece {lang}. Va en el otro campo.": "This looks like {lang}. It goes in the other field.",
+  "Esto no parece {lang}. Revisa lo que has escrito.": "This doesn't look like {lang}. Check what you wrote.",
+  "Necesitas al menos {n} palabras ICA activadas para retar. Llevas {have}.": "You need at least {n} activated ICA words to challenge. You have {have}.",
+  "Se abre con {n} palabras ICA activadas ({have}/{n}).": "Opens with {n} activated ICA words ({have}/{n}).",
 }
 export default en

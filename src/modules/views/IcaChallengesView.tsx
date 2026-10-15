@@ -37,6 +37,7 @@ import {
   getIcaChallengeConfigLabel,
   hasCompletedMyPart,
   isLightningChallenge,
+  listAvailableIcaChallengeUsers,
   translateChallengeMessage,
 } from '../services/icaChallenges'
 import { getIcaChallengePlayRoute } from '../routes/paths'
@@ -62,8 +63,6 @@ import {
 import { FichaIcon, FlameIcon, SwordsIcon } from '../game/icons'
 import { RANDOM_SEARCH_MS, RandomMatchOverlay, type RandomMatchState } from '../game/RandomMatchOverlay'
 import { gameSfx } from '../game/sfx'
-import { useMyFlags } from '../game/languageFlag'
-import { fetchMonthlyStreakLeaderboard } from '../services/leaderboard'
 import { inSentence } from '../services/activationGuide'
 import { isSpeechRecognitionSupported } from '../components/NotaDesafiante/challengeEngine'
 import { EXTRA_CHALLENGE_COST } from '../game/rules'
@@ -442,7 +441,6 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
   // Desafío extra: con 3 en curso, EXTRA_CHALLENGE_COST ICA Coins para retar a una 4.ª persona.
   const { user: authUser } = useAuth()
   const { total: coinBalance, unusedPasses: extraPasses, refresh: refreshCoins } = useFichas(authUser?.id)
-  const myFlags = useMyFlags(authUser?.id)
   const [useExtraForNext, setUseExtraForNext] = useState(false)
   const [extraOfferUserId, setExtraOfferUserId] = useState<string | null>(null)
   // The same «desafío extra» to accept a 4th challenge (Luis, 11 Oct): the invitation waiting for it.
@@ -630,15 +628,10 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
   }
   const randomPickRef = useRef<RandomPick | null>(null)
 
-  // The flag each one shows in the profile; without one, the flag of the language they learn, so
-  // you see at once if it is someone of your language (Luis, 15 Oct).
-  const rivalFlagFor = (rival: (typeof availableUsers)[number]): Promise<string | null> => {
-    if (rival.displayFlag) return Promise.resolve(rival.displayFlag)
-    return fetchMonthlyStreakLeaderboard(200)
-      .then((rows) => rows.find((row) => row.user_id === rival.userId)?.display_flag ?? null)
-      .catch(() => null)
-      .then((flag) => flag ?? rival.targetLang ?? null)
-  }
+  // Luis, 15 Oct: the flag of the language each one PLAYS in (not the one chosen for the profile,
+  // which can be another language they learn). Same flag on both sides = «Por idioma».
+  const rivalFlagFor = (rival: (typeof availableUsers)[number]): Promise<string | null> =>
+    Promise.resolve(rival.targetLang ?? null)
 
   const sendRandomChallenge = (pick: RandomPick, extraSlot: boolean) => {
     void pick.flag.then((rivalFlag) => {
@@ -646,7 +639,7 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
       setRandomMatch({
         phase: 'found',
         rivalName: pick.rivalName,
-        myFlag: myFlags.shown ?? targetLang,
+        myFlag: targetLang,
         rivalFlag,
         tile: pick.mode.tile,
         modeName: t(pick.mode.type.name),
@@ -696,23 +689,32 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
     }
   }
 
-  const runRandomMatch = () => {
+  const runRandomMatch = async () => {
     const fail = (message: string) => afterSearch(() => setRandomMatch({ phase: 'error', message }))
     if (!isEnrolled) {
       fail(t('Activa Desafíos ICA para poder retar.'))
       return
     }
-    // The server only lists icademers who came in during the last 30 days. Anyone free, or anyone
-    // you could challenge with «Un desafío más» when you already have 3.
+    // Always the list as it is NOW (Luis, 15 Oct: after cancelling a challenge with Nahuel the
+    // search did not find him, because it used the list saved a moment before). The server already
+    // leaves out whoever you have a challenge with, and lists only icademers who came in during the
+    // last 30 days with 20 or more words activated.
+    let rows = availableUsers
+    let myActive = myActiveChallengesCount
+    try {
+      const fresh = await listAvailableIcaChallengeUsers({ targetLang, nativeLang, scope: 'global' })
+      rows = fresh.rows
+      myActive = fresh.myActiveChallengesCount
+    } catch {
+      // Without a connection, the list we have.
+    }
+    // Anyone free, or anyone you could challenge with «Un desafío más» when you already have 3.
     const myLimit = (item: (typeof availableUsers)[number]) =>
       !item.canChallenge &&
-      extraSlotPossible &&
+      myActive === 3 &&
       (item.blockedReason === 'Tu máximo de desafíos activos es 3.' || !item.blockedReason)
-    const candidates = availableUsers.filter(
-      (item) =>
-        item.userId !== currentUserId &&
-        !activeRivalIds.has(item.userId) &&
-        (item.canChallenge || myLimit(item)),
+    const candidates = rows.filter(
+      (item) => item.userId !== currentUserId && (item.canChallenge || myLimit(item)),
     )
     const rival = candidates[Math.floor(Math.random() * candidates.length)]
     if (!rival) {
@@ -764,7 +766,7 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
       )
     }
     if (retarParam === RANDOM_RIVAL) {
-      runRandomMatch()
+      void runRandomMatch()
       return
     }
     const rival = availableUsers.find((item) => item.userId === retarParam)

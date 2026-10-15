@@ -357,6 +357,11 @@ export function PhraseView({
   const resultRef = useRef<HTMLDivElement | null>(null)
   // Full-screen Creación window (Luis, 15 Oct): opens with «Generar frase», closes with the X.
   const [creationSheetOpen, setCreationSheetOpen] = useState(false)
+  // Its mascot, downloaded beforehand so it shows at once.
+  useEffect(() => {
+    const image = new Image()
+    image.src = '/guia-ica.png'
+  }, [])
 
   // Al salir la frase, la llevamos a la vista (la tarjeta de resultado queda abajo).
   useEffect(() => {
