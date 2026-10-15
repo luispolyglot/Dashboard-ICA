@@ -94,7 +94,7 @@ type CallAnthropicOptions = {
   tool?: AnthropicToolDefinition
 }
 
-type TranslationStatus = 'ok' | 'corrected' | 'ambiguous' | 'not_a_word'
+type TranslationStatus = 'ok' | 'corrected' | 'ambiguous' | 'not_a_word' | 'wrong_language'
 
 type TranslationCandidate = {
   detectedLang: string
@@ -678,6 +678,7 @@ function normalizeTranslationStatus(value: unknown): TranslationStatus {
   if (normalized === 'corrected') return 'corrected'
   if (normalized === 'ambiguous') return 'ambiguous'
   if (normalized === 'not_a_word') return 'not_a_word'
+  if (normalized === 'wrong_language') return 'wrong_language'
   return 'not_a_word'
 }
 
@@ -858,6 +859,14 @@ Deno.serve(async (req) => {
           'el mas frecuente y pones los demas en alternatives.',
           'Nunca devuelves vacio, ni un guion, ni te niegas por ambiguedad.',
           '',
+          'IDIOMA EQUIVOCADO (Luis, 15 Oct):',
+          '- detected_lang es el idioma REAL en que esta escrito el texto, aunque no sea fromLang.',
+          '- Si el texto esta claramente escrito en OTRO idioma (toLang o cualquier otro) y no es una',
+          '  palabra ni frase de fromLang, status: "wrong_language" y translation: "".',
+          '  in_to_lang: true solo si ese otro idioma es toLang (lo escribio en el campo equivocado).',
+          '- Ante la duda, o si la palabra existe en fromLang, NO es wrong_language: traduce como siempre.',
+          '- En los demas casos in_to_lang: false.',
+          '',
           'REGLA DE DIRECCION:',
           '- Nunca inviertas idiomas.',
           '- Nunca respondas en fromLang.',
@@ -879,6 +888,10 @@ Deno.serve(async (req) => {
           '-> detected_lang: "es" | input_corrected: "pan" | had_correction: false | translation: "chleb" | alternatives: [] | status: "ok"',
           'Input: "Entshuldigung" | fromLang=de | toLang=es',
           '-> detected_lang: "de" | input_corrected: "Entschuldigung" | had_correction: true | translation: "perdón" | alternatives: ["disculpa"] | status: "corrected"',
+          'Input: "einsam" | fromLang=es | toLang=de',
+          '-> detected_lang: "de" | input_corrected: "einsam" | had_correction: false | translation: "" | alternatives: [] | status: "wrong_language" | in_to_lang: true',
+          'Input: "einsam" | fromLang=es | toLang=pl',
+          '-> detected_lang: "de" | input_corrected: "einsam" | had_correction: false | translation: "" | alternatives: [] | status: "wrong_language" | in_to_lang: false',
         ].join('\n'),
         payload.text,
         {
@@ -901,8 +914,9 @@ Deno.serve(async (req) => {
                 },
                 status: {
                   type: 'string',
-                  enum: ['ok', 'corrected', 'ambiguous', 'not_a_word'],
+                  enum: ['ok', 'corrected', 'ambiguous', 'not_a_word', 'wrong_language'],
                 },
+                in_to_lang: { type: 'boolean' },
               },
               required: [
                 'detected_lang',
@@ -919,7 +933,8 @@ Deno.serve(async (req) => {
       )
 
       const parsed = parseTranslationCandidate(translated.toolInput, translated.text)
-      const finalTranslation = parsed.status === 'not_a_word'
+      const wrongLanguage = parsed.status === 'wrong_language'
+      const finalTranslation = parsed.status === 'not_a_word' || wrongLanguage
         ? null
         : (parsed.translation || parsed.translationFallback)
 
@@ -933,7 +948,11 @@ Deno.serve(async (req) => {
 
       return jsonResponse(200, {
         translation: finalTranslation,
-        spellingSuggestion,
+        spellingSuggestion: wrongLanguage ? null : spellingSuggestion,
+        wrongLanguage,
+        // The text is in the OTHER field's language (so it can be moved there).
+        wrongLanguageIsTarget:
+          wrongLanguage && (translated.toolInput as Record<string, unknown> | null)?.in_to_lang === true,
         detectedLang: parsed.detectedLang,
         inputCorrected: parsed.inputCorrected,
         hadCorrection: parsed.hadCorrection,

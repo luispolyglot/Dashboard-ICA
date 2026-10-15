@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
 import {
   CheckIcon,
   Loader2Icon,
@@ -498,6 +499,9 @@ export function MasterNoteActivatePhraseView({
       target instanceof Element &&
       Boolean(target.closest('button, a, input, textarea, select, audio, [role="dialog"], [role="note"]'))
     const onClick = (event: MouseEvent): void => {
+      // Only real taps: the iPhone vibration trick makes fake clicks, and one tap on «Siguiente
+      // parte» skipped a part (Luis, 15 Oct, video of the admins).
+      if (!event.isTrusted) return
       if (event.defaultPrevented || event.button !== 0 || ignore(event.target)) return
       nextGuideStep()
     }
@@ -866,7 +870,15 @@ export function MasterNoteActivatePhraseView({
         }
       }
 
-      navigate(rerecordMode ? `${noteUrl}?rerecordUpdated=1` : noteUrl)
+      if (rerecordMode) {
+        navigate(`${noteUrl}?rerecordUpdated=1`)
+        return
+      }
+      // Luis, 15 Oct: after saving an activation (the 1st, 2nd or 3rd of the day) you go back to
+      // Inicio, where the ICA path shows what is left. The note page («Tu próxima frase…») confused.
+      // A note that has just been completed still opens its celebration on the note page (above).
+      toast.success(t('Frase activada en Nota Maestra'))
+      navigate(DASHBOARD_ROUTES.home)
     } catch (err) {
       console.error(err)
       const rawMessage = String((err as { message?: unknown } | null)?.message ?? '')
@@ -893,9 +905,10 @@ export function MasterNoteActivatePhraseView({
   }
 
   // Luis, 12 Oct: while listening to your recording, a tapped word is only pronounced (no AI
-  // explanation). Before recording, tapping still opens «Explorar palabra».
+  // explanation). Before recording, tapping still opens «Explorar palabra». Luis, 15 Oct: the
+  // same while recording, so you can hear a word you are not sure about.
   const handleTokenTap = (token: string): void => {
-    if (recordingDraft && !recording) {
+    if (recording || recordingDraft) {
       const word = token.trim()
       if (word) speakNatural(word, targetLang)
       return

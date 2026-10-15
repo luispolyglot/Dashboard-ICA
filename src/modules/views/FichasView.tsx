@@ -55,12 +55,16 @@ const LIMIT_ROWS: Array<{ key: DailyLimitKey; letter: 'I' | 'C' | 'A'; color: st
 ]
 
 function entryLabel(entry: IcaCoinEntry): string {
-  if (entry.type === 'cycle_chest') return entry.rolled ? t('Cofre del ciclo (hucha llena)') : t('Cofre del ciclo')
+  // «Hucha llena» only when the chest gave less than it rolled (the 100 cap). `rolled` is saved on
+  // every chest, so before it said «hucha llena» on all of them (feedback, Luis 15 Oct).
+  if (entry.type === 'cycle_chest') {
+    return entry.rolled != null && entry.delta < entry.rolled ? t('Cofre del ciclo (hucha llena)') : t('Cofre del ciclo')
+  }
   if (entry.type === 'streak_milestone') return t('Hito de racha ICA: {milestoneDays} días', { milestoneDays: entry.milestoneDays })
   if (entry.type === 'flash_milestone') return t('Hito de racha de flashcards: {milestoneDays} días', { milestoneDays: entry.milestoneDays })
   if (entry.type === 'challenge_win') return entry.delta > 0 ? t('Desafío ICA ganado') : t('Desafío ICA ganado (tope alcanzado)')
-  if (entry.type === 'challenge_slot') return entry.used ? t('Desafío extra (usado)') : t('Desafío extra')
-  if (entry.type === 'phase_boost' && entry.phase) return t('Ampliar {phase}', { phase: t(LIMIT_PHASE[entry.phase].name) })
+  if (entry.type === 'challenge_slot') return entry.used ? t('Un desafío más (usado)') : t('Un desafío más')
+  if (entry.type === 'phase_boost' && entry.phase) return t('Duplica tu {phase}', { phase: t(LIMIT_PHASE[entry.phase].name) })
   if (entry.type === 'monthly_earn') return t('Recompensa del ranking mensual')
   if (entry.type === 'ranking_prize') return t('Premio del top 3 del ranking')
   if (entry.type === 'redeem_unlock') return t('PreguntICA extra')
@@ -232,6 +236,11 @@ export function FichasView() {
   const balance = total ?? 0
   const progress = nextCoinProgress(realBalance)
   const winCoinsThisWeek = challengeWinsThisWeek
+  // A month that closed with less than 1 ranking point leaves a «+0» row: it only confused
+  // (feedback, Luis 15 Oct), so it is not listed.
+  const visibleMoves = [...entries]
+    .filter((entry) => !(entry.type === 'monthly_earn' && entry.delta === 0))
+    .sort((a, b) => b.createdAt - a.createdAt)
   const walletPercent = Math.min(100, (balance / COIN_WALLET_CAP) * 100)
 
   // «Ampliar» una fase solo hoy: primer toque pide confirmar, el segundo compra.
@@ -285,8 +294,8 @@ export function FichasView() {
       if (!(await buyChallengeSlot(user?.id, balance))) throw new Error('PURCHASE_FAILED')
       await refresh()
       gameSfx.celebrate()
-      toast.success(t('Desafío extra listo'), {
-        description: t('Úsalo en Desafíos ICA para retar o aceptar a una 4.ª persona.'),
+      toast.success(t('¡Listo! Tienes un desafío más'), {
+        description: t('Aunque ya tengas 3 desafíos en marcha, podrás retar o aceptar a alguien más.'),
       })
     } catch (error) {
       toast.error(error instanceof Error && error.message.includes('INSUFFICIENT_TOKENS')
@@ -398,11 +407,11 @@ export function FichasView() {
                 <SwordsIcon size={30} />
               </span>
             }
-            title={t('Desafío extra')}
+            title={t('Un desafío más')}
             text={
               slots > 0
-                ? t('Tienes {slots} sin usar. Sirve para retar o aceptar a una 4.ª persona.', { slots })
-                : t('Con 3 desafíos en curso, reta o acepta el reto de una 4.ª persona.')
+                ? t('Tienes {slots} sin usar. Si ya tienes 3 desafíos en marcha, podrás retar o aceptar a alguien más.', { slots })
+                : t('Si ya tienes 3 desafíos en marcha, podrás retar o aceptar a alguien más.')
             }
             right={<PriceButton cost={EXTRA_CHALLENGE_COST} onClick={tryChallenge} confirming={confirming === 'challenge'} disabled={purchaseBusy} />}
           />
@@ -414,7 +423,7 @@ export function FichasView() {
                   <PhaseBoostGlyph letter={row.letter} size={32} />
                 </span>
               }
-              title={t('Ampliar {phase} hoy', { phase: t(LIMIT_PHASE[row.key].name) })}
+              title={t('Duplica tu {phase}', { phase: t(LIMIT_PHASE[row.key].name) })}
               text={t('Solo hoy: {n} {what} en vez de {base}.', {
                 n: DAILY_LIMITS[row.key] * PHASE_BOOST_MULTIPLIER,
                 base: DAILY_LIMITS[row.key],
@@ -584,10 +593,14 @@ export function FichasView() {
           <Row
             icon={<SwordsIcon size={38} />}
             title={t('Desafíos ICA')}
-            text={t('Cada desafío que ganas, hasta {cap} por semana. Llevas {n}.', {
-              cap: CHALLENGE_WIN_WEEKLY_CAP,
-              n: winCoinsThisWeek,
-            })}
+            text={
+              <>
+                {t('Por cada desafío que ganes (máx. {cap} por semana).', { cap: CHALLENGE_WIN_WEEKLY_CAP })}
+                <span className='mt-0.5 block font-extrabold text-foreground tabular-nums'>
+                  {t('Esta semana: {n}/{cap}', { n: winCoinsThisWeek, cap: CHALLENGE_WIN_WEEKLY_CAP })}
+                </span>
+              </>
+            }
             right={
               <span className='shrink-0 text-base font-extrabold' style={{ color: 'var(--ica-gold-ink)' }}>
                 +{CHALLENGE_WIN_REWARD}
@@ -637,13 +650,12 @@ export function FichasView() {
         </div>
       </div>
 
-      {entries.length > 0 ? (
+      {visibleMoves.length > 0 ? (
         <div>
           <p className='mb-1 text-xs font-extrabold tracking-[0.08em] text-muted-foreground uppercase'>{t('Movimientos')}</p>
           <div className='ica-group divide-y-2 divide-border'>
             {/* Los 4 últimos a la vista; el resto, al desplegar. */}
-            {[...entries]
-              .sort((a, b) => b.createdAt - a.createdAt)
+            {visibleMoves
               .slice(0, showAllMoves ? 40 : 4)
               .map((entry) => (
                 <div key={entry.id} className='flex items-center justify-between gap-3 py-2.5 text-sm'>
@@ -658,14 +670,14 @@ export function FichasView() {
                 </div>
               ))}
           </div>
-          {entries.length > 4 ? (
+          {visibleMoves.length > 4 ? (
             <button
               type='button'
               onClick={() => setShowAllMoves((value) => !value)}
               aria-expanded={showAllMoves}
               className='mt-1 flex w-full items-center justify-center gap-1 rounded-xl py-2 text-sm font-extrabold text-primary hover:bg-muted/60'
             >
-              {showAllMoves ? t('Ver menos') : t('Ver todos ({n})', { n: Math.min(entries.length, 40) })}
+              {showAllMoves ? t('Ver menos') : t('Ver todos ({n})', { n: Math.min(visibleMoves.length, 40) })}
               <ChevronDownIcon className={`size-4 transition-transform ${showAllMoves ? 'rotate-180' : ''}`} aria-hidden='true' />
             </button>
           ) : null}

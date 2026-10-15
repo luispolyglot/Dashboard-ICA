@@ -3,6 +3,7 @@ import { BookOpenIcon, HeadphonesIcon, Link2Icon, MicIcon, PencilIcon, type Luci
 import {
   generateQuestions,
   type EngineCard,
+  PAIRS_PER_BOARD as PAIRS_BOARD_SIZE,
   type GeneratedQuestion,
 } from '../../../supabase/functions/ica-challenges-center/engine.ts'
 import { isSpeechRecognitionSupported } from '../components/NotaDesafiante/challengeEngine'
@@ -114,6 +115,70 @@ export function buildDailyGame(
     }
   }
   return null
+}
+
+/** Fisher-Yates on a copy. */
+function shuffled<T>(items: T[], rng: () => number): T[] {
+  const copy = items.slice()
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rng() * (i + 1))
+    ;[copy[i], copy[j]] = [copy[j], copy[i]]
+  }
+  return copy
+}
+
+/**
+ * REPETIR EL RETO (feedback de una usuaria nueva, Luis 15 Oct): the same words, in a new order and
+ * with the options in new places, so you remember the word and not where its answer was.
+ */
+export function reshuffleDailyGame(
+  game: { mode: DailyGameMode; questions: GeneratedQuestion[] },
+  rng: () => number = Math.random,
+): { mode: DailyGameMode; questions: GeneratedQuestion[] } {
+  const { questions } = game
+  if (questions.length === 0) return game
+
+  if (questions[0].kind === 'pairs') {
+    const boards: GeneratedQuestion[][] = []
+    for (let start = 0; start < questions.length; start += PAIRS_BOARD_SIZE) {
+      boards.push(questions.slice(start, start + PAIRS_BOARD_SIZE))
+    }
+    const next = shuffled(boards, rng).flatMap((board) => {
+      const first = board[0].question
+      if (first.kind !== 'pairs' || board.some((item) => item.answer.correctOptionIndex === null)) return board
+      const entries = board.map((item, position) => ({
+        item,
+        word: first.words[position],
+        meaning: first.options[item.answer.correctOptionIndex as number],
+      }))
+      const left = shuffled(entries, rng)
+      const right = shuffled(entries, rng)
+      const words = left.map((entry) => entry.word)
+      const options = right.map((entry) => entry.meaning)
+      return left.map((entry) => ({
+        ...entry.item,
+        question: { kind: 'pairs' as const, words, options },
+        answer: { ...entry.item.answer, correctOptionIndex: right.indexOf(entry) },
+      }))
+    })
+    return { mode: game.mode, questions: next }
+  }
+
+  const next = shuffled(questions, rng).map((item) => {
+    const question = item.question
+    const correct = item.answer.correctOptionIndex
+    if (!('options' in question) || correct === null || !question.options[correct]) return item
+    const order = shuffled(
+      question.options.map((_, index) => index),
+      rng,
+    )
+    return {
+      ...item,
+      question: { ...question, options: order.map((index) => question.options[index]) },
+      answer: { ...item.answer, correctOptionIndex: order.indexOf(correct) },
+    }
+  })
+  return { mode: game.mode, questions: next }
 }
 
 export type DailyGameResult = {

@@ -34,11 +34,17 @@ const SPEAK_TONES = {
   bad: { solid: 'var(--ica-bad-strong)', soft: 'var(--ica-bad-soft)', ink: 'var(--ica-bad-ink)' },
 }
 
-function getInitialRate(): 0.75 | 1 {
+// Luis, 15 Oct (feedback): ×0.75 sounded almost like ×1, so the slow option is ×0.5. Someone who
+// had ×0.75 saved keeps the slow option.
+function getInitialRate(): 0.5 | 1 {
   if (typeof window === 'undefined') return 1
 
-  const stored = window.localStorage.getItem(SPEAK_RATE_STORAGE_KEY)
-  return stored === '0.75' ? 0.75 : 1
+  try {
+    const stored = window.localStorage.getItem(SPEAK_RATE_STORAGE_KEY)
+    return stored === '0.5' || stored === '0.75' ? 0.5 : 1
+  } catch {
+    return 1
+  }
 }
 
 export function SpeakButton({
@@ -54,7 +60,7 @@ export function SpeakButton({
   prefetch = true,
 }: SpeakButtonProps) {
   const [internalPlaying, setInternalPlaying] = useState(false)
-  const [rate, setRate] = useState<0.75 | 1>(getInitialRate)
+  const [rate, setRate] = useState<0.5 | 1>(getInitialRate)
   const playing = isPlaying ?? internalPlaying
 
   const setPlaying = (next: boolean) => {
@@ -114,7 +120,7 @@ export function SpeakButton({
     speakNatural(text, langName, handleEnd, rate)
   }
 
-  const handleRate = (e: MouseEvent<HTMLButtonElement>, nextRate: 0.75 | 1) => {
+  const handleRate = (e: MouseEvent<HTMLButtonElement>, nextRate: 0.5 | 1) => {
     e.stopPropagation()
     setRate(nextRate)
 
@@ -148,10 +154,10 @@ export function SpeakButton({
     )
   }
 
-  // Selector de velocidad (x1 / x0.75) en dos mitades, como las pestañas del modo juego.
+  // Selector de velocidad (x1 / x0.5) en dos mitades, como las pestañas del modo juego.
   const rateToggle = (
     <div className='inline-flex h-10 overflow-hidden rounded-xl border-2 border-border bg-card dark:bg-transparent' role='group' aria-label={t('Velocidad')}>
-      {([1, 0.75] as const).map((option) => (
+      {([1, 0.5] as const).map((option) => (
         <button
           key={option}
           type='button'
@@ -160,7 +166,7 @@ export function SpeakButton({
           aria-pressed={rate === option}
           className={cn(
             'min-w-11 px-2.5 text-xs font-extrabold tabular-nums transition-colors disabled:opacity-60',
-            option === 0.75 && 'border-l-2 border-border',
+            option === 0.5 && 'border-l-2 border-border',
             rate === option ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/60',
           )}
         >

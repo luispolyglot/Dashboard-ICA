@@ -255,6 +255,12 @@ function iosTick(times = 1): void {
       label.appendChild(input)
       label.setAttribute('aria-hidden', 'true')
       label.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none'
+      label.setAttribute('data-ios-haptic', '')
+      // Its fake clicks must not reach the page (Luis, 15 Oct): in Activación «tap anywhere for the
+      // next part» counted them too, and one tap on «Siguiente parte» skipped a whole part.
+      const stop = (event: Event) => event.stopPropagation()
+      label.addEventListener('click', stop)
+      input.addEventListener('click', stop)
       document.body.appendChild(label)
       hiddenSwitch = label
     }

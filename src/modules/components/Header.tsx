@@ -272,7 +272,7 @@ export function Header({
 }: HeaderProps) {
   return (
     <header className='bg-background md:sticky md:top-0 md:z-30 md:border-b-2 md:border-border md:bg-background/90 md:backdrop-blur'>
-      <div className='relative mx-auto flex h-16 w-full max-w-[1240px] items-center justify-between gap-3 px-4 md:h-[72px] lg:px-8'>
+      <div className='relative mx-auto flex h-14 w-full max-w-[1240px] items-center justify-between gap-3 px-4 md:h-[72px] lg:px-8'>
         <div className='flex min-w-0 items-center gap-4 lg:flex-1'>
           <WelcomeBrand />
         </div>

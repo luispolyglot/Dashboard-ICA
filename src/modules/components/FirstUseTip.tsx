@@ -38,6 +38,8 @@ export function useFirstUseTip(id: string): [boolean, () => void] {
  * Small speech bubble that floats above its anchor (the parent must be `relative`), with an
  * arrow pointing down at it. It takes no room in the layout, so the screen still fits.
  */
+const TIP_BLUE = '#0a72a3'
+
 export function FirstUseTip({
   children,
   onClose,
@@ -62,7 +64,9 @@ export function FirstUseTip({
         align === 'center' ? 'left-1/2 w-max -translate-x-1/2' : align === 'end' ? 'right-0' : 'left-0',
         className,
       )}
-      style={{ background: 'var(--ica-i-ink)' }}
+      // Admins, 15 Oct: in dark mode the light blue made the white text hard to read. The dark
+      // blue of the logo, the same in both themes.
+      style={{ background: TIP_BLUE }}
     >
       <span className='min-w-0 flex-1'>{children}</span>
       <button
@@ -79,7 +83,7 @@ export function FirstUseTip({
           side === 'bottom' ? 'bottom-full border-b-8' : 'top-full border-t-8',
           align === 'center' ? 'left-1/2 -translate-x-1/2' : align === 'end' ? 'right-10' : 'left-6',
         )}
-        style={side === 'bottom' ? { borderBottomColor: 'var(--ica-i-ink)' } : { borderTopColor: 'var(--ica-i-ink)' }}
+        style={side === 'bottom' ? { borderBottomColor: TIP_BLUE } : { borderTopColor: TIP_BLUE }}
         aria-hidden='true'
       />
     </div>

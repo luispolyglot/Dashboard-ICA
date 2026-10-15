@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ComponentType, CSSProperties, ReactNode } from 'react'
 import {
   CheckIcon,
@@ -72,6 +72,7 @@ import { getEffectiveStudyLevel } from '../utils/studyLevel'
 import { DailyLimitNotice } from '../game/DailyLimitNotice'
 import { PendingActivationCard } from '../components/PendingActivationCard'
 import { CreatingPhraseProgress } from '../components/CreatingPhraseProgress'
+import { CreationSheet } from '../components/CreationSheet'
 import { FirstUseTip, useFirstUseTip } from '../components/FirstUseTip'
 import { usePendingActivationPhrase } from '../hooks/usePendingActivationPhrase'
 import type { DailyLimitsState } from '../game/limits'
@@ -354,6 +355,13 @@ export function PhraseView({
   const [levelUpCelebration, setLevelUpCelebration] =
     useState<MetaTrackerLevelUpCelebration | null>(null)
   const resultRef = useRef<HTMLDivElement | null>(null)
+  // Full-screen Creación window (Luis, 15 Oct): opens with «Generar frase», closes with the X.
+  const [creationSheetOpen, setCreationSheetOpen] = useState(false)
+  // Its mascot, downloaded beforehand so it shows at once.
+  useEffect(() => {
+    const image = new Image()
+    image.src = '/guia-ica.png'
+  }, [])
 
   // Al salir la frase, la llevamos a la vista (la tarjeta de resultado queda abajo).
   useEffect(() => {
@@ -544,6 +552,7 @@ export function PhraseView({
     if (selectedWords.length < minWordsRequired) return
 
     setLoading(true)
+    setCreationSheetOpen(true)
     setResult(null)
     setResultPhraseId(null)
     setManualPhraseApproved(false)
@@ -568,6 +577,7 @@ export function PhraseView({
       }
 
       setResult(response)
+      if (!response) setCreationSheetOpen(false)
       if (response) {
         setCreatedThisVisit(true)
         if (isRegeneration) {
@@ -646,6 +656,7 @@ export function PhraseView({
       }
     } catch (error) {
       console.error(error)
+      setCreationSheetOpen(false)
       const message = error instanceof Error ? error.message : ''
       if (message.includes('DAILY_LIMIT_PHRASES')) {
         setResult(null)
@@ -684,8 +695,11 @@ export function PhraseView({
 
   const openActivateModal = (): void => {
     if (!resultPhraseId) return
+    setCreationSheetOpen(false)
     setActivateModalOpen(true)
   }
+
+  const closeCreationSheet = useCallback(() => setCreationSheetOpen(false), [])
 
   const handlePrimaryAction = (): void => {
     if (mode === 'manualPhrase' && manualPhraseApproved) {
@@ -807,6 +821,96 @@ export function PhraseView({
       onRemove={options.onRemove}
     />
   )
+
+  // The created phrase: on the page and in the full-screen Creación window (Luis, 15 Oct).
+  const resultCard = result ? (
+    <article className='ica-panel p-5'>
+      <div className='flex items-center gap-3'>
+        <span
+          className='hidden size-9 shrink-0 items-center justify-center rounded-full sm:flex'
+          style={{ background: 'var(--ica-c-soft)', color: 'var(--ica-c)' }}
+          aria-hidden='true'
+        >
+          <CheckIcon className='size-5' strokeWidth={3.2} />
+        </span>
+        <div className='min-w-0 flex-1'>
+          <p className='m-0 text-base leading-tight font-black tracking-tight whitespace-nowrap sm:text-lg'>
+            {isManualPhrase ? t('¡Frase guardada!') : t('¡Frase creada!')}
+          </p>
+          <p className='m-0 text-xs font-bold text-muted-foreground'>
+            {langName(config.targetLang)}
+            {result.words_used?.length
+              ? ` · ${tn(result.words_used.length, '{n} palabra ICA', '{n} palabras ICA')}`
+              : ''}
+          </p>
+        </div>
+        {mode !== 'manualPhrase' && extraGenerationsCount < MAX_EXTRA_GENERATIONS ? (
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            className='shrink-0 rounded-xl'
+            onClick={() => void handleGenerate({ isRegeneration: true })}
+            disabled={loading}
+            aria-label={t('Quedan {n}', { n: regenerationsLeft })}
+          >
+            <RefreshCwIcon strokeWidth={2.6} aria-hidden='true' />
+            {t('No me convence')}
+          </Button>
+        ) : null}
+      </div>
+      {/* Admins, 15 Oct: the phrase was much bigger than the Spanish; now the sizes of Activación. */}
+      <p className='m-0 mt-4 text-[1.2rem] leading-snug font-black tracking-tight break-words lg:text-2xl'>
+        {highlightUsedWords(result.phrase, result.words_used)}
+      </p>
+      <RomanizationHint text={result.phrase} language={config.targetLang} />
+
+      <p className='m-0 mt-3 text-[11px] font-extrabold tracking-[0.08em] text-muted-foreground uppercase'>
+        {langName(config.nativeLang)}
+      </p>
+      <p className='m-0 mt-0.5 text-base leading-relaxed font-semibold text-muted-foreground'>
+        {result.translation}
+      </p>
+
+      {result.words_used && result.words_used.length > 0 && (
+        <div className='mt-3 flex flex-wrap gap-1.5'>
+          {result.words_used.map((word) => (
+            <Pill key={word} tone='c'>
+              <CheckIcon className='size-3' strokeWidth={3.4} aria-hidden='true' />
+              {word}
+            </Pill>
+          ))}
+        </div>
+      )}
+
+      <div className='mt-4 flex flex-wrap items-end justify-between gap-2 border-t-2 border-border pt-1'>
+        <SpeakButton
+          text={result.phrase}
+          langName={config.targetLang}
+          color='#3B82F6'
+          label={t('Escuchar {lang}', { lang: langName(config.targetLang) })}
+          className='mt-3'
+        />
+        <Button
+          type='button'
+          onClick={() => void handleCopyResultPhrase()}
+          variant='outline'
+          size='sm'
+        >
+          {resultCopied ? (
+            <CheckIcon strokeWidth={3} aria-hidden='true' />
+          ) : (
+            <CopyIcon aria-hidden='true' />
+          )}
+          {copyingResult
+            ? t('Copiando...')
+            : resultCopied
+              ? t('Copiadas')
+              : t('Copiar frases')}
+        </Button>
+      </div>
+    </article>
+  ) : null
 
   return (
     <GamePage>
@@ -1286,91 +1390,7 @@ export function PhraseView({
       {/* Resultado: la frase y, justo debajo, el siguiente paso (Activación) */}
       {result && (
         <div ref={resultRef} className='ica-pop flex scroll-mt-4 flex-col gap-4'>
-          <article className='ica-panel p-5'>
-            <div className='flex items-center gap-3'>
-              <span
-                className='hidden size-9 shrink-0 items-center justify-center rounded-full sm:flex'
-                style={{ background: 'var(--ica-c-soft)', color: 'var(--ica-c)' }}
-                aria-hidden='true'
-              >
-                <CheckIcon className='size-5' strokeWidth={3.2} />
-              </span>
-              <div className='min-w-0 flex-1'>
-                <p className='m-0 text-base leading-tight font-black tracking-tight whitespace-nowrap sm:text-lg'>
-                  {isManualPhrase ? t('¡Frase guardada!') : t('¡Frase creada!')}
-                </p>
-                <p className='m-0 text-xs font-bold text-muted-foreground'>
-                  {langName(config.targetLang)}
-                  {result.words_used?.length
-                    ? ` · ${tn(result.words_used.length, '{n} palabra ICA', '{n} palabras ICA')}`
-                    : ''}
-                </p>
-              </div>
-              {mode !== 'manualPhrase' && extraGenerationsCount < MAX_EXTRA_GENERATIONS ? (
-                <Button
-                  type='button'
-                  variant='outline'
-                  size='sm'
-                  className='shrink-0 rounded-xl'
-                  onClick={() => void handleGenerate({ isRegeneration: true })}
-                  disabled={loading}
-                  aria-label={t('Quedan {n}', { n: regenerationsLeft })}
-                >
-                  <RefreshCwIcon strokeWidth={2.6} aria-hidden='true' />
-                  {t('No me convence')}
-                </Button>
-              ) : null}
-            </div>
-            <p className='m-0 mt-4 font-display text-2xl leading-snug font-extrabold tracking-tight break-words'>
-              {highlightUsedWords(result.phrase, result.words_used)}
-            </p>
-            <RomanizationHint text={result.phrase} language={config.targetLang} />
-
-            <p className='m-0 mt-3 text-[11px] font-extrabold tracking-[0.08em] text-muted-foreground uppercase'>
-              {langName(config.nativeLang)}
-            </p>
-            <p className='m-0 mt-0.5 text-base leading-relaxed font-semibold text-muted-foreground'>
-              {result.translation}
-            </p>
-
-            {result.words_used && result.words_used.length > 0 && (
-              <div className='mt-3 flex flex-wrap gap-1.5'>
-                {result.words_used.map((word) => (
-                  <Pill key={word} tone='c'>
-                    <CheckIcon className='size-3' strokeWidth={3.4} aria-hidden='true' />
-                    {word}
-                  </Pill>
-                ))}
-              </div>
-            )}
-
-            <div className='mt-4 flex flex-wrap items-end justify-between gap-2 border-t-2 border-border pt-1'>
-              <SpeakButton
-                text={result.phrase}
-                langName={config.targetLang}
-                color='#3B82F6'
-                label={t('Escuchar {lang}', { lang: langName(config.targetLang) })}
-                className='mt-3'
-              />
-              <Button
-                type='button'
-                onClick={() => void handleCopyResultPhrase()}
-                variant='outline'
-                size='sm'
-              >
-                {resultCopied ? (
-                  <CheckIcon strokeWidth={3} aria-hidden='true' />
-                ) : (
-                  <CopyIcon aria-hidden='true' />
-                )}
-                {copyingResult
-                  ? t('Copiando...')
-                  : resultCopied
-                    ? t('Copiadas')
-                    : t('Copiar frases')}
-              </Button>
-            </div>
-          </article>
+          {resultCard}
 
           {resultPhraseId && (
             <div>
@@ -1427,6 +1447,36 @@ export function PhraseView({
           </div>
         </>
       ) : null}
+
+      <CreationSheet
+        open={creationSheetOpen && (loading || Boolean(result))}
+        waiting={!result}
+        manual={isManualPhrase}
+        onClose={closeCreationSheet}
+        footer={
+          <>
+            <p className='ica-label m-0 mb-2' style={{ color: 'var(--ica-a-ink)' }}>
+              {t('Siguiente paso · Activación')}
+            </p>
+            <Button
+              type='button'
+              size='xl'
+              variant='a'
+              className='w-full'
+              disabled={!resultPhraseId}
+              onClick={() => {
+                if (activateTipPending) closeActivateTip()
+                openActivateModal()
+              }}
+            >
+              <MicIcon className='size-5' strokeWidth={2.6} aria-hidden='true' />
+              {resultPhraseId ? t('Activar frase') : t('Guardando...')}
+            </Button>
+          </>
+        }
+      >
+        {resultCard}
+      </CreationSheet>
 
       <ActivatePhraseInMasterNoteModal
         open={activateModalOpen}

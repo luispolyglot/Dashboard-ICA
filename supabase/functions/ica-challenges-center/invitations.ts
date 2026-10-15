@@ -342,9 +342,14 @@ export async function createChallenge(
     adminClient,
     userId: challengedUserId,
     title: 'Nuevo desafío ICA',
-    body: challengerName
-      ? `${challengerName} te retó a «${challengeType.nombre}». Respóndelo para empezar.`
-      : `Te retaron a «${challengeType.nombre}». Respóndelo para empezar.`,
+    body:
+      (challengerName
+        ? `${challengerName} te retó a «${challengeType.nombre}». Respóndelo para empezar.`
+        : `Te retaron a «${challengeType.nombre}». Respóndelo para empezar.`) +
+      // Luis, 15 Oct: with someone of your language, say that you will share words.
+      (wordSource === 'mixed' && targetLang
+        ? ` Los dos aprenden ${String(targetLang).toLowerCase()}: jugarán con palabras de sus dos Baúles ICA.`
+        : ''),
     tag: `ica-challenge-created-${challengeId}`,
     url: '/desafios-ica',
   })

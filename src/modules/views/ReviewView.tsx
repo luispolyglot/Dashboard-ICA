@@ -429,7 +429,10 @@ export function ReviewView({
 
     if (knew) gameSfx.correct()
     else gameSfx.wrong()
-    setFeedback({ knew, card: sourceCard, updated, nextIndex })
+    // Admins, 15 Oct: no band coming up with «¡Bien!» / «A repasar» and «Continuar». The sound
+    // (and the vibration) says if you knew it, and the next card comes at once.
+    setFlipped(false)
+    if (nextIndex !== null) setCurrentIndex(nextIndex)
 
     if (shouldComplete) {
       setFinishing(true)

@@ -263,9 +263,16 @@ export function CalendarIcademyView() {
   const activeSpecialReminder = activeReminderPreferences.some(
     (item) => item.classKey === SPECIAL_CLASS_KEY,
   )
+  // Admins, 15 Oct: «up to 2 classes» but the 2nd one could not be turned on. Reminders of classes
+  // that are no longer in the calendar (hidden from this list) were still counted. Only the classes
+  // you can see count now; the hidden ones are switched off when they get in the way.
+  const visibleClassKeys = new Set(classOptions.map((option) => option.classKey))
   const activeNonSpecialReminderCount = activeReminderPreferences.filter(
-    (item) => item.classKey !== SPECIAL_CLASS_KEY,
+    (item) => item.classKey !== SPECIAL_CLASS_KEY && visibleClassKeys.has(item.classKey),
   ).length
+  const hiddenActiveReminders = activeReminderPreferences.filter(
+    (item) => item.classKey !== SPECIAL_CLASS_KEY && !visibleClassKeys.has(item.classKey),
+  )
   const hasReachedNonSpecialReminderLimit =
     activeNonSpecialReminderCount >= MAX_NON_SPECIAL_ACTIVE_REMINDERS
   const activePushDevicesCount = pushDevices.filter(
@@ -371,6 +378,22 @@ export function CalendarIcademyView() {
     const existing = preferencesByClass.get(classKey)
 
     try {
+      // The server counts every active reminder: hidden ones (classes no longer in the calendar)
+      // are switched off first, so they do not take the place of one you can see.
+      if (
+        enabled &&
+        classKey !== SPECIAL_CLASS_KEY &&
+        activeNonSpecialReminderCount + hiddenActiveReminders.length >= MAX_NON_SPECIAL_ACTIVE_REMINDERS
+      ) {
+        for (const hidden of hiddenActiveReminders) {
+          await savePreference({
+            classKey: hidden.classKey,
+            languageCode: hidden.languageCode,
+            notificationsEnabled: false,
+            minutesBefore: hidden.minutesBefore || 30,
+          }).catch(() => null)
+        }
+      }
       const saved = await savePreference({
         classKey,
         languageCode,

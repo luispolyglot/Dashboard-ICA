@@ -539,6 +539,12 @@ function ScoreBreakdownContent({
           <span className="text-sm font-extrabold opacity-70"> / {formatPoints(breakdown.totalMaxPoints)}</span>
         </span>
       </div>
+      {/* Feedback of a new icademer (Luis, 15 Oct): where the % comes from. */}
+      <p className="-mt-2 m-0 text-xs font-semibold text-muted-foreground">
+        {t("Eficacia: los puntos que llevas entre los que podrías llevar hasta hoy ({n} %). Abajo ves qué suma cada parte.", {
+          n: efficacy.replace("%", "").trim(),
+        })}
+      </p>
 
       <div className="flex flex-col gap-3">
         {items.map((item) => {

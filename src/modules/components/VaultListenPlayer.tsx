@@ -32,7 +32,7 @@ type Props = {
   nativeLang: string
 }
 
-const RATES = [1, 0.75] as const
+const RATES = [1, 0.5] as const
 /** «Empezar ya» appears once this many words are ready and others are still being prepared. */
 const START_NOW_MIN_READY = 3
 

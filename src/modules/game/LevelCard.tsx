@@ -112,10 +112,12 @@ export function LevelCard({ config, bare = false }: { config: AppConfig; bare?: 
       <div className='flex items-center gap-2'>
         <span className='relative h-3.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted'>
           <span
-            className='absolute inset-y-0 left-0 rounded-full transition-[width] duration-700'
+            className='absolute inset-y-0 left-0 overflow-hidden rounded-full transition-[width] duration-700'
             style={{ width: `${Math.max(4, Math.round(pos.pctWithin * 100))}%`, background: color }}
-          />
-          <span className='absolute inset-x-2 top-[3px] h-1 rounded-full bg-white/35' aria-hidden='true' />
+          >
+            {/* The shine only over the coloured part, not over the empty track (Luis, 15 Oct). */}
+            <span className='absolute inset-x-2 top-[3px] h-1 rounded-full bg-white/35' aria-hidden='true' />
+          </span>
         </span>
         <span
           className='flex h-7 min-w-11 shrink-0 items-center justify-center rounded-lg border-2 px-1.5 text-xs font-extrabold'
