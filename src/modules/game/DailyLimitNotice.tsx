@@ -98,7 +98,7 @@ export function DailyLimitNotice({
             ? t('Ampliando...')
             : confirming
               ? t('Toca otra vez para pagar {n} ICA Coins', { n: PHASE_BOOST_COST })
-              : t('Ampliar {phase} hoy · {n} ICA Coins', { phase, n: PHASE_BOOST_COST })}
+              : t('Duplica tu {phase} · {n} ICA Coins', { phase, n: PHASE_BOOST_COST })}
         </button>
       ) : (
         <p className='m-0 mt-2 text-xs font-bold' style={{ color: 'var(--ica-gold-ink)' }}>

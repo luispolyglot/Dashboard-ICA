@@ -994,7 +994,7 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
           <DialogHeader>
             <DialogTitle className='flex items-center gap-2'>
               <SwordsIcon size={26} />
-              {t('Desafío extra')}
+              {t('Un desafío más')}
             </DialogTitle>
             <DialogDescription>
               {acceptOfferId !== null
@@ -1260,7 +1260,7 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
                               }}
                             >
                               <FichaIcon size={14} />
-                              {extraPasses > 0 ? t('Desafío extra') : `${t('Extra')} · ${EXTRA_CHALLENGE_COST}`}
+                              {extraPasses > 0 ? t('Un desafío más') : `${t('Extra')} · ${EXTRA_CHALLENGE_COST}`}
                             </Button>
                           )
                         }

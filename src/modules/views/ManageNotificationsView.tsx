@@ -561,8 +561,8 @@ export function ManageNotificationsView() {
             id='manage-ica-reminder-switch'
             icon={<FlameIcon size={30} />}
             iconTone='fire'
-            title={t('Racha ICA')}
-            text={t('Si aún no has completado I·C·A hoy.')}
+            title={t('Recuérdame hacer mi ciclo ICA')}
+            text={t('Solo si aún no lo he completado hoy.')}
             checked={reminderPrefs.icaStreakEnabled}
             disabled={isLoadingReminderPrefs || isSavingReminderPrefs}
             onCheckedChange={(checked) => void handleUpdateReminderPreferences({ icaStreakEnabled: checked })}
@@ -575,8 +575,8 @@ export function ManageNotificationsView() {
             id='manage-streak-risk-switch'
             icon={<StreakClockIcon size={30} />}
             iconTone='fire'
-            title={t('Racha en peligro')}
-            text={t('«Te quedan 5 horas» si ayer hiciste I·C·A y hoy aún no.')}
+            title={t('Avísame 5 horas antes de perder mi racha')}
+            text={t('Si ayer hice I·C·A y hoy aún no.')}
             checked={reminderPrefs.streakRiskEnabled}
             disabled={isLoadingReminderPrefs || isSavingReminderPrefs}
             onCheckedChange={(checked) => void handleUpdateReminderPreferences({ streakRiskEnabled: checked })}
@@ -585,8 +585,8 @@ export function ManageNotificationsView() {
             id='manage-flash-reminder-switch'
             icon={<FlameIcon size={30} tone='flash' />}
             iconTone='i'
-            title={t('Racha de flashcards')}
-            text={t('Si aún no has acertado tus 10 flashcards hoy.')}
+            title={t('Recuérdame hacer mis flashcards')}
+            text={t('Solo si aún no he acertado mis 10 flashcards de hoy.')}
             checked={reminderPrefs.flashcardsStreakEnabled}
             disabled={isLoadingReminderPrefs || isSavingReminderPrefs}
             onCheckedChange={(checked) => void handleUpdateReminderPreferences({ flashcardsStreakEnabled: checked })}
@@ -599,8 +599,8 @@ export function ManageNotificationsView() {
             id='manage-habit-reminder-switch'
             icon={<HourglassIcon className='size-6' strokeWidth={2.4} aria-hidden='true' />}
             iconTone='c'
-            title={t('Si dejas de entrar')}
-            text={t('Te avisamos tras 36 horas, 3 días y 7 días sin entrar.')}
+            title={t('Avísame si dejo de entrar')}
+            text={t('A las 36 horas, a los 3 días y a los 7 días sin entrar.')}
             checked={reminderPrefs.habitLossEnabled}
             disabled={isLoadingReminderPrefs || isSavingReminderPrefs}
             onCheckedChange={(checked) => void handleUpdateReminderPreferences({ habitLossEnabled: checked })}

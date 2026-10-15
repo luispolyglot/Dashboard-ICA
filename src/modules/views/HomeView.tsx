@@ -153,12 +153,12 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
           const content = (
             <>
               <span
-                className='flex size-12 items-center justify-center rounded-2xl transition-transform group-hover:scale-105 lg:aspect-square lg:size-auto lg:w-full lg:max-w-[76px] lg:rounded-3xl'
+                className='flex size-12 items-center justify-center rounded-2xl transition-transform group-hover:scale-110 lg:aspect-square lg:size-auto lg:w-full lg:max-w-[76px] lg:rounded-3xl'
                 style={{ background: `color-mix(in oklab, ${item.color} 16%, transparent)` }}
               >
                 {item.icon}
               </span>
-              <span className='text-center text-[11px] font-bold text-muted-foreground lg:text-sm lg:leading-tight'>{t(item.label)}</span>
+              <span className='text-center text-[11px] font-bold text-muted-foreground transition-colors group-hover:text-foreground lg:text-sm lg:leading-tight'>{t(item.label)}</span>
             </>
           )
           return gamesClickable ? (
@@ -166,7 +166,9 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
               key={item.key}
               type='button'
               onClick={() => navigate(item.to)}
-              className='group flex flex-col items-center gap-2 rounded-2xl p-1 transition-colors hover:bg-background/80'
+              // Luis, 15 Oct: no dark box on hover (it reached down to the name); the icon grows and
+              // the name gets darker instead.
+              className='group flex flex-col items-center gap-2 rounded-2xl p-1 focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:outline-none'
             >
               {content}
             </button>
