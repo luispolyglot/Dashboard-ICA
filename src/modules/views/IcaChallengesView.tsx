@@ -63,6 +63,8 @@ import {
 import { FichaIcon, FlameIcon, SwordsIcon } from '../game/icons'
 import { RANDOM_SEARCH_MS, RandomMatchOverlay, type RandomMatchState } from '../game/RandomMatchOverlay'
 import { gameSfx } from '../game/sfx'
+import { useMyFlags } from '../game/languageFlag'
+import { fetchMonthlyStreakLeaderboard } from '../services/leaderboard'
 import { inSentence } from '../services/activationGuide'
 import { isSpeechRecognitionSupported } from '../components/NotaDesafiante/challengeEngine'
 import { EXTRA_CHALLENGE_COST } from '../game/rules'
@@ -441,6 +443,7 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
   // Desafío extra: con 3 en curso, EXTRA_CHALLENGE_COST ICA Coins para retar a una 4.ª persona.
   const { user: authUser } = useAuth()
   const { total: coinBalance, unusedPasses: extraPasses, refresh: refreshCoins } = useFichas(authUser?.id)
+  const myFlags = useMyFlags(authUser?.id)
   const [useExtraForNext, setUseExtraForNext] = useState(false)
   const [extraOfferUserId, setExtraOfferUserId] = useState<string | null>(null)
   // The same «desafío extra» to accept a 4th challenge (Luis, 11 Oct): the invitation waiting for it.
@@ -628,10 +631,15 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
   }
   const randomPickRef = useRef<RandomPick | null>(null)
 
-  // Luis, 15 Oct: the flag of the language each one PLAYS in (not the one chosen for the profile,
-  // which can be another language they learn). Same flag on both sides = «Por idioma».
-  const rivalFlagFor = (rival: (typeof availableUsers)[number]): Promise<string | null> =>
-    Promise.resolve(rival.targetLang ?? null)
+  // Luis, 15 Oct: each avatar as in the ranking (the flag bought for the profile, or just the
+  // initial), and next to each name the flag of the language they PLAY in.
+  const rivalFlagFor = (rival: (typeof availableUsers)[number]): Promise<string | null> => {
+    if (rival.displayFlag) return Promise.resolve(rival.displayFlag)
+    // Not sent (older server): the ranking of the month also says which flag each one shows.
+    return fetchMonthlyStreakLeaderboard(200)
+      .then((rows) => rows.find((row) => row.user_id === rival.userId)?.display_flag ?? null)
+      .catch(() => null)
+  }
 
   const sendRandomChallenge = (pick: RandomPick, extraSlot: boolean) => {
     void pick.flag.then((rivalFlag) => {
@@ -639,8 +647,10 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
       setRandomMatch({
         phase: 'found',
         rivalName: pick.rivalName,
-        myFlag: targetLang,
+        myFlag: myFlags.shown ?? null,
         rivalFlag,
+        myLang: targetLang,
+        rivalLang: pick.rival.targetLang ?? null,
         tile: pick.mode.tile,
         modeName: t(pick.mode.type.name),
         sharedVault: pick.scope === 'language',

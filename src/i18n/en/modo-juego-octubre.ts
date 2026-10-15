@@ -472,5 +472,6 @@ const en: Record<string, string> = {
   "Esto no parece {lang}. Revisa lo que has escrito.": "This doesn't look like {lang}. Check what you wrote.",
   "Necesitas al menos {n} palabras ICA activadas para retar. Llevas {have}.": "You need at least {n} activated ICA words to challenge. You have {have}.",
   "Se abre con {n} palabras ICA activadas ({have}/{n}).": "Opens with {n} activated ICA words ({have}/{n}).",
+  "Tu ciclo ICA hoy": "Your ICA cycle today",
 }
 export default en

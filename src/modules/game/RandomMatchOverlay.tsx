@@ -6,6 +6,7 @@ import { t } from '@/i18n'
 import { ModeGlyphBadge, type ChallengeModeTile } from '../components/IcaChallenges/ChallengeModePicker'
 import { FichaIcon, SwordsIcon } from './icons'
 import { FlagInitial } from './ranking'
+import { LanguageFlag } from '../components/LanguagePicker'
 import { EXTRA_CHALLENGE_COST } from './rules'
 
 export type RandomMatchState =
@@ -13,9 +14,12 @@ export type RandomMatchState =
   | {
       phase: 'found'
       rivalName: string
-      /** Flag shown in each profile (or the language each one learns). */
+      /** The flag each one bought and shows in the profile (null = none: just the initial). */
       myFlag: string | null
       rivalFlag: string | null
+      /** The language each one plays in: a small flag next to the name. */
+      myLang: string | null
+      rivalLang: string | null
       tile: ChallengeModeTile | null
       modeName: string
       /** Same language: they play with words from both vaults. */
@@ -30,7 +34,10 @@ export type RandomMatchState =
 /** How long «Buscando rival…» stays at least, so it feels like a search (Luis, 15 Oct: 3-4 s). */
 export const RANDOM_SEARCH_MS = 3400
 
-/** Like in the profile and the ranking: the initial on the flag (Luis, 15 Oct: no random colours). */
+/**
+ * Like in the profile and the ranking (Luis, 15 Oct): the initial on the flag you bought, or just the
+ * initial when you have none, so the bought flag stays special. No random colours.
+ */
 function Avatar({ name, flag }: { name: string; flag: string | null }) {
   const initial = name.trim().charAt(0).toUpperCase() || '?'
   return (
@@ -46,6 +53,16 @@ function Avatar({ name, flag }: { name: string; flag: string | null }) {
           {initial}
         </span>
       )}
+    </span>
+  )
+}
+
+/** The name with the flag of the language that person plays in (same flags = «Por idioma»). */
+function NameWithLanguage({ name, language }: { name: string; language: string | null }) {
+  return (
+    <span className='flex max-w-28 items-center gap-1.5 text-sm font-extrabold'>
+      {language ? <LanguageFlag language={language} size={18} /> : null}
+      <span className='truncate'>{name}</span>
     </span>
   )
 }
@@ -130,7 +147,7 @@ export function RandomMatchOverlay({
             <div className='ica-pop flex items-center gap-4'>
               <div className='flex flex-col items-center gap-2'>
                 <Avatar name={myName} flag={state.myFlag} />
-                <span className='max-w-24 truncate text-sm font-extrabold'>{t('Tú')}</span>
+                <NameWithLanguage name={t('Tú')} language={state.myLang} />
               </div>
               {/* The swords in the middle bounce slowly (Luis, 15 Oct). */}
               <span
@@ -142,7 +159,7 @@ export function RandomMatchOverlay({
               </span>
               <div className='flex flex-col items-center gap-2'>
                 <Avatar name={state.rivalName} flag={state.rivalFlag} />
-                <span className='max-w-24 truncate text-sm font-extrabold'>{state.rivalName}</span>
+                <NameWithLanguage name={state.rivalName} language={state.rivalLang} />
               </div>
             </div>
             <h1 className='m-0 font-display text-3xl font-black tracking-tight text-balance'>

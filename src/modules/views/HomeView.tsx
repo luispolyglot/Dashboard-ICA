@@ -14,7 +14,7 @@ import { useDailyGame } from '../game/dailyGame'
 import { CardsIcon, MicGlyph, SwordsIcon, TargetGlyph } from '../game/icons'
 import { IcaPath } from '../game/IcaPath'
 import { LevelCard } from '../game/LevelCard'
-import { LevelStrip } from '../game/LevelStrip'
+import { LevelChip } from '../game/LevelStrip'
 import { RandomChallengeCard } from '../game/RandomChallengeCard'
 import { isIcaCycleDone } from '../game/streak'
 import { StreakRiskBanner } from '../game/StreakRiskBanner'
@@ -242,18 +242,19 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
       <div className='grid w-full max-w-[1040px] grid-cols-[minmax(0,1fr)] items-stretch gap-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start'>
         {/* Móvil (Luis, 5 oct): poco margen a los lados para aprovechar el ancho de cada pantalla. */}
         <div className='mx-auto flex w-full max-w-[480px] min-w-0 flex-col gap-4'>
-          {/* Tu nivel real, en una línea (en ordenador va en la columna derecha) */}
-          <div className='lg:hidden'>
-            <LevelStrip config={config} />
-          </div>
           {/* Coaching arriba en el móvil, como prioridad (Luis, 5 oct, maqueta B6). Se monta
               siempre para saber si lo tienes. */}
           {!isLg ? <div className={hasCoaching ? '' : 'hidden'}>{coachingCard}</div> : null}
           <StreakRiskBanner />
+          {/* Luis, 15 Oct (his screenshot): no level bar at the top on the phone. «Tu ciclo ICA hoy»
+              right under the logo and, to its right, the level in small (option A). */}
           <div>
-            <h1 className='m-0 font-display tracking-tight text-2xl leading-tight font-extrabold lg:text-3xl'>
-              {t('Tu ciclo ICA de hoy')}
-            </h1>
+            <div className='flex items-center justify-between gap-3'>
+              <h1 className='m-0 min-w-0 font-display text-[1.7rem] leading-tight font-extrabold tracking-tight lg:text-3xl'>
+                {t('Tu ciclo ICA hoy')}
+              </h1>
+              <LevelChip config={config} />
+            </div>
             <p className='m-0 mt-0.5 text-sm font-medium text-muted-foreground'>{subtitle}</p>
           </div>
           <IcaPath />
