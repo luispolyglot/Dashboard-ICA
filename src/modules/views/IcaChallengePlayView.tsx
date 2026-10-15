@@ -11,6 +11,7 @@ import {
 } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
+import { inSentence } from '../services/activationGuide'
 import {
   BookOpenIcon,
   CheckIcon,
@@ -1039,12 +1040,27 @@ export function IcaChallengePlayView({
               {roundLabel && (
                 <li className='flex gap-2'><RepeatIcon className='mt-0.5 h-4 w-4 shrink-0 text-primary' /><span>{roundLabel} {t('Después le toca a {name}.', { name: firstName(names.rival) })}</span></li>
               )}
-              {challenge.wordSource === 'mixed' && (
-                <li className='flex gap-2'><ShuffleIcon className='mt-0.5 h-4 w-4 shrink-0 text-primary' /><span>{t('Las mismas palabras para los dos: la mitad de tu baúl y la mitad del de {name}.', { name: firstName(names.rival) })}</span></li>
-              )}
               {challenge.kind === 'listen' && (<li className='flex gap-2'><Volume2Icon className='mt-0.5 h-4 w-4 shrink-0 text-primary' /><span>{t('Sube el volumen.')}</span></li>)}
               {challenge.kind === 'speak' && (<li className='flex gap-2'><MicIcon className='mt-0.5 h-4 w-4 shrink-0 text-primary' /><span>{t('Te pediremos permiso para usar el micrófono.')}</span></li>)}
             </ul>
+            {challenge.wordSource === 'mixed' && (
+              // Luis, 15 Oct: when you play «Por idioma», both players see it clearly at the start.
+              <div
+                className='flex items-start gap-3 rounded-2xl border-2 px-4 py-3'
+                style={{ borderColor: 'var(--ica-i)', background: 'var(--ica-i-soft)', color: 'var(--ica-i-ink)' }}
+                role='note'
+              >
+                <ShuffleIcon className='mt-0.5 size-5 shrink-0' strokeWidth={2.4} aria-hidden='true' />
+                <div className='space-y-0.5'>
+                  <p className='m-0 text-sm font-extrabold'>
+                    {t('{name} también aprende {lang}', { name: firstName(names.rival), lang: inSentence(langName(config.targetLang)) })}
+                  </p>
+                  <p className='m-0 text-sm font-semibold'>
+                    {t('Comparten Baúl ICA en este desafío: las mismas palabras para los dos, la mitad de tu baúl y la mitad del suyo.')}
+                  </p>
+                </div>
+              </div>
+            )}
             {challenge.kind === 'write' && (
               // Aviso antes de escribir (Luis, 13 Oct): sale aquí, al empezar, y no durante la partida.
               <div

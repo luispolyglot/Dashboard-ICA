@@ -449,5 +449,18 @@ const en: Record<string, string> = {
   "Solo si aún no he acertado mis 10 flashcards de hoy.": "Only if I haven't got my 10 flashcards right today.",
   "Avísame si dejo de entrar": "Let me know if I stop coming in",
   "A las 36 horas, a los 3 días y a los 7 días sin entrar.": "After 36 hours, 3 days and 7 days without coming in.",
+  "Buscando rival…": "Looking for a rival…",
+  "Entre los icademers que han entrado en los últimos 30 días.": "Among the icademers who came in during the last 30 days.",
+  "¡Rival encontrado!": "Rival found!",
+  "¡A jugar con {name}!": "Let's play with {name}!",
+  "Modo elegido al azar": "Mode chosen at random",
+  "{name} también aprende {lang}: comparten Baúl ICA, con palabras de los dos.": "{name} also learns {lang}: you share the ICA Vault, with words from both of you.",
+  "Cada uno jugará con sus propias palabras ICA.": "Each of you will play with your own ICA words.",
+  "Reto enviado. Te avisamos cuando lo acepte.": "Challenge sent. We'll let you know when they accept it.",
+  "Enviando el reto…": "Sending the challenge…",
+  "Ya tienes 3 desafíos en marcha. Con «Un desafío más» de la tienda puedes retar a alguien más.": "You already have 3 challenges under way. With «One more challenge» from the shop you can challenge one more person.",
+  "Ahora mismo no se puede crear el desafío. Prueba en un rato.": "The challenge can't be created right now. Try again in a while.",
+  "{name} también aprende {lang}": "{name} also learns {lang}",
+  "Comparten Baúl ICA en este desafío: las mismas palabras para los dos, la mitad de tu baúl y la mitad del suyo.": "You share the ICA Vault in this challenge: the same words for both of you, half from your vault and half from theirs.",
 }
 export default en

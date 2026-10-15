@@ -39,7 +39,7 @@ import {
   isLightningChallenge,
   translateChallengeMessage,
 } from '../services/icaChallenges'
-import { getIcaChallengePlayRoute } from '../routes/paths'
+import { DASHBOARD_ROUTES, getIcaChallengePlayRoute } from '../routes/paths'
 import { resetIcaChallengesLocal } from '../services/icaChallengesLocalBridge'
 import { ICA_CHALLENGES_LOCAL } from '../services/icaChallengesLocalMode'
 import {
@@ -60,6 +60,10 @@ import {
   useFichas,
 } from '../game/fichas'
 import { FichaIcon, FlameIcon, SwordsIcon } from '../game/icons'
+import { RANDOM_SEARCH_MS, RandomMatchOverlay, type RandomMatchState } from '../game/RandomMatchOverlay'
+import { gameSfx } from '../game/sfx'
+import { inSentence } from '../services/activationGuide'
+import { isSpeechRecognitionSupported } from '../components/NotaDesafiante/challengeEngine'
 import { EXTRA_CHALLENGE_COST } from '../game/rules'
 import type {
   IcaChallengePlayRecord,
@@ -82,6 +86,8 @@ type IcaChallengesViewProps = {
    */
   embeddedRivalId?: string
   onEmbeddedDone?: () => void
+  /** «Desafío aleatorio»: when the search started (Date.now()), so it lasts 3-4 s in total. */
+  randomStartedAt?: number
 }
 
 type TabKey = 'active' | 'pending' | 'history'
@@ -371,7 +377,7 @@ function renderAvatar(name: string, avatarUrl: string | null, seed: string) {
   )
 }
 
-export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onEmbeddedDone }: IcaChallengesViewProps) {
+export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onEmbeddedDone, randomStartedAt }: IcaChallengesViewProps) {
   const embedded = Boolean(embeddedRivalId)
   const navigate = useNavigate()
   const {
@@ -441,6 +447,23 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
   const [buyingExtraPass, setBuyingExtraPass] = useState(false)
 
   const isEnrolled = Boolean(enrollment?.isActive)
+
+  // DESAFÍO ALEATORIO (Luis, 15 Oct): a full screen that searches 3-4 s, then the app chooses the
+  // rival AND the mode and sends the challenge by itself.
+  const randomMode = embeddedRivalId === RANDOM_RIVAL
+  const [randomMatch, setRandomMatch] = useState<RandomMatchState>({ phase: 'searching' })
+  const randomStartedAtRef = useRef(randomStartedAt || Date.now())
+  const randomTimerRef = useRef<number | null>(null)
+  useEffect(
+    () => () => {
+      if (randomTimerRef.current !== null) window.clearTimeout(randomTimerRef.current)
+    },
+    [],
+  )
+  const afterSearch = (run: () => void) => {
+    const wait = Math.max(0, RANDOM_SEARCH_MS - (Date.now() - randomStartedAtRef.current))
+    randomTimerRef.current = window.setTimeout(run, wait)
+  }
   // Hacen falta 20 palabras en el Baúl ICA de este idioma para entrar en los retos.
   const wordsLocked = myWordCount !== null && myWordCount < minWordsToJoin
   const selectedUser = availableUsers.find((user) => user.userId === selectedUserId) ?? null
@@ -595,6 +618,82 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
     setIsChallengeModalOpen(true)
   }
 
+  const runRandomMatch = () => {
+    const fail = (message: string, showShop = false) =>
+      afterSearch(() => setRandomMatch({ phase: 'error', message, showShop }))
+    if (!isEnrolled) {
+      fail(t('Activa Desafíos ICA para poder retar.'))
+      return
+    }
+    // The server only lists icademers who came in during the last 30 days. Anyone free, or anyone
+    // you could challenge with «Un desafío más» when you already have 3.
+    const myLimit = (item: (typeof availableUsers)[number]) =>
+      !item.canChallenge &&
+      extraSlotPossible &&
+      (item.blockedReason === 'Tu máximo de desafíos activos es 3.' || !item.blockedReason)
+    const candidates = availableUsers.filter(
+      (item) =>
+        item.userId !== currentUserId &&
+        !activeRivalIds.has(item.userId) &&
+        (item.canChallenge || myLimit(item)),
+    )
+    const rival = candidates[Math.floor(Math.random() * candidates.length)]
+    if (!rival) {
+      fail(t('Ahora mismo no hay ningún icademer libre para desafiar. Prueba en un rato.'))
+      return
+    }
+    const needsExtra = !rival.canChallenge
+    if (needsExtra && extraPasses <= 0) {
+      fail(
+        t('Ya tienes 3 desafíos en marcha. Con «Un desafío más» de la tienda puedes retar a alguien más.'),
+        true,
+      )
+      return
+    }
+    const scope: IcaChallengeScope = rival.samePair && rival.mixedAllowed ? 'language' : 'global'
+    const canSpeak = isSpeechRecognitionSupported()
+    const modes = CHALLENGE_MODE_TILES.filter((tile) => tile.id !== 'habla' || canSpeak).flatMap((tile) =>
+      availableTypesForTile(tile, challengeTypes, scope).map((type) => ({ tile, type })),
+    )
+    const mode = modes[Math.floor(Math.random() * modes.length)]
+    if (!mode) {
+      fail(t('Ahora mismo no se puede crear el desafío. Prueba en un rato.'))
+      return
+    }
+    const rivalName = (rival.displayName || rival.username || '').trim().split(/\s+/)[0] || t('un icademer')
+    afterSearch(() => {
+      gameSfx.celebrate()
+      setRandomMatch({
+        phase: 'found',
+        rivalName,
+        tile: mode.tile,
+        modeName: t(mode.type.name),
+        sharedVault: scope === 'language',
+        languageLabel: inSentence(langName(targetLang)),
+        status: 'sending',
+      })
+      void createChallenge({
+        challengeTypeId: mode.type.id,
+        challengedUserId: rival.userId,
+        scope,
+        config: { rounds: 2, responseSeconds: READING_SECONDS, wordSource: scope === 'language' ? 'mixed' : 'own' },
+        durationSeconds: CHALLENGE_DAYS * 24 * 60 * 60,
+        extraSlot: needsExtra,
+      })
+        .then(async () => {
+          setRandomMatch((current) => (current.phase === 'found' ? { ...current, status: 'sent' } : current))
+          await refreshCoins()
+        })
+        .catch((createError: unknown) => {
+          setRandomMatch({
+            phase: 'error',
+            message:
+              createError instanceof Error ? translateChallengeMessage(createError.message) : t('No se pudo crear el desafío.'),
+          })
+        })
+    })
+  }
+
   // ?retar=<id>: llega desde el perfil de un icademer en el ranking. Se abre el reto con esa
   // persona (o se explica por qué ahora no se puede) y se quita el parámetro.
   const retarParam = embeddedRivalId ?? searchParams.get('retar')
@@ -613,37 +712,20 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
         { replace: true },
       )
     }
-    const randomPick = retarParam === RANDOM_RIVAL
-    const candidates = randomPick
-      ? availableUsers.filter((item) => item.canChallenge && item.userId !== currentUserId && !activeRivalIds.has(item.userId))
-      : []
-    const rival = randomPick
-      ? candidates[Math.floor(Math.random() * candidates.length)]
-      : availableUsers.find((item) => item.userId === retarParam)
+    if (retarParam === RANDOM_RIVAL) {
+      runRandomMatch()
+      return
+    }
+    const rival = availableUsers.find((item) => item.userId === retarParam)
     if (!isEnrolled) {
       toast.error(t('Activa Desafíos ICA para poder retar.'))
       onEmbeddedDone?.()
       return
     }
     if (!rival) {
-      toast.error(
-        randomPick
-          ? t('Ahora mismo no hay ningún icademer libre para desafiar. Prueba en un rato.')
-          : t('Ahora mismo no se puede desafiar a este icademer.'),
-      )
+      toast.error(t('Ahora mismo no se puede desafiar a este icademer.'))
       onEmbeddedDone?.()
       return
-    }
-    if (randomPick) {
-      const name = (rival.displayName || rival.username || '').trim().split(/\s+/)[0] || t('un icademer')
-      toast.success(
-        rival.samePair && rival.mixedAllowed
-          ? t('¡Te ha tocado {name}! También aprende {lang}: jugarán con la mezcla de sus Baúles ICA.', {
-              name,
-              lang: langName(targetLang),
-            })
-          : t('¡Te ha tocado {name}! Cada uno jugará con sus propias palabras ICA.', { name }),
-      )
     }
     const onlyMyLimit =
       !rival.canChallenge &&
@@ -1086,6 +1168,24 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
 
     </>
   )
+
+  if (randomMode) {
+    return (
+      <RandomMatchOverlay
+        state={randomMatch}
+        myName={String(authUser?.user_metadata?.display_name || authUser?.email || '')}
+        names={availableUsers
+          .filter((item) => item.userId !== currentUserId)
+          .map((item) => (item.displayName || item.username || '').trim().split(/\s+/)[0])
+          .filter(Boolean)}
+        onClose={() => onEmbeddedDone?.()}
+        onShop={() => {
+          onEmbeddedDone?.()
+          navigate(DASHBOARD_ROUTES.fichas)
+        }}
+      />
+    )
+  }
 
   if (embedded) return dialogs
 

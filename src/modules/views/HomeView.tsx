@@ -216,32 +216,18 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
               profile). One row instead: your level, ICA games and a short ranking (3 people), all
               the same height. The coaching card is still mounted, hidden, to find out if you have one. */}
           {/* Luis, 8 Oct: the cards 1 cm (36 px) further from the path. */}
-          {hasCoaching ? (
-            <div className='mt-9 grid grid-cols-3 gap-5'>
-              <div className='col-span-2'>{coachingCard}</div>
-              {/* Luis, 14 Oct: no ranking on Inicio; a big «Desafío aleatorio» instead. */}
-              <div className='row-span-2 flex flex-col [&>*]:flex-1'>
-                <RandomChallengeCard config={config} />
-              </div>
-              <div className='flex flex-col [&>*]:flex-1'>
-                <LevelCard config={config} />
-              </div>
-              <div className='flex flex-col [&>*]:flex-1'>{gamesCard}</div>
+          {/* Luis, 15 Oct: the coaching (if you have one) across the whole width and, under it, three
+              boxes of the same size: your level, ICA games and «Desafío aleatorio». */}
+          {hasCoaching ? <div className='mt-9'>{coachingCard}</div> : <div className='hidden'>{coachingCard}</div>}
+          <div className={`grid grid-cols-3 gap-5 ${hasCoaching ? '' : 'mt-9'}`}>
+            <div className='flex flex-col [&>*]:flex-1'>
+              <LevelCard config={config} />
             </div>
-          ) : (
-            <>
-              <div className='hidden'>{coachingCard}</div>
-              <div className='mt-9 grid grid-cols-3 gap-5'>
-                <div className='flex flex-col [&>*]:flex-1'>
-                  <LevelCard config={config} />
-                </div>
-                <div className='flex flex-col [&>*]:flex-1'>{gamesCard}</div>
-                <div className='flex flex-col [&>*]:flex-1'>
-                  <RandomChallengeCard config={config} />
-                </div>
-              </div>
-            </>
-          )}
+            <div className='flex flex-col [&>*]:flex-1'>{gamesCard}</div>
+            <div className='flex flex-col [&>*]:flex-1'>
+              <RandomChallengeCard config={config} />
+            </div>
+          </div>
         </div>
         <ChatInvite />
       </section>
