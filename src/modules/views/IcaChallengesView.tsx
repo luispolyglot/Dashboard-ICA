@@ -742,15 +742,19 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
     if (randomCancelledRef.current) return
     // Anyone free, or anyone you could challenge with «Un desafío más» when you already have 3.
     // With 3, the server only says «your maximum» and hides the other reasons, so they are checked
-    // here as in the normal list: no second challenge with the same person, and they have fewer than 4.
+    // here as in the normal list: no second challenge with the same person.
     const myLimit = (item: (typeof availableUsers)[number]) =>
       !item.canChallenge &&
       myActive === 3 &&
       !activeRivalIds.has(item.userId) &&
-      item.activeChallengesCount < 4 &&
       (item.blockedReason === 'Tu máximo de desafíos activos es 3.' || !item.blockedReason)
+    // Never someone who already has 3 (Luis, 15 Oct): accepting would be their 4th, which costs 15
+    // ICA Coins, and the random challenge must not put them in that spot.
     const candidates = rows.filter(
-      (item) => item.userId !== currentUserId && (item.canChallenge || myLimit(item)),
+      (item) =>
+        item.userId !== currentUserId &&
+        item.activeChallengesCount < 3 &&
+        (item.canChallenge || myLimit(item)),
     )
     const rival = candidates[Math.floor(Math.random() * candidates.length)]
     if (!rival) {

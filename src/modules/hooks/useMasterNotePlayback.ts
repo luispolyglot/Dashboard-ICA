@@ -25,6 +25,8 @@ type PlaybackTrack = {
 }
 
 const LISTENING_FLUSH_EVERY_MS = 30_000
+/** Notes kept ready in memory (the one playing, the next one and one more). */
+const MAX_READY_TRACKS = 3
 
 type UnifiedChunkCacheEntry = {
   url: string
@@ -103,8 +105,56 @@ function encodeAudioBufferToWav(buffer: AudioBuffer): Blob {
   return new Blob([wavBuffer], { type: 'audio/wav' })
 }
 
+// A recorded voice at 24 kHz and one channel sounds the same and weighs a quarter of 48 kHz stereo.
+// On Android a 3-4 minute note merged at 48 kHz stereo took ~45 MB (plus the decoded copies), and
+// with two notes in a row the phone could close the app in the background: the 2nd note stopped
+// (alumna con Android, Luis 15 Oct).
+const MERGE_SAMPLE_RATE = 24000
+
+type OfflineCtor = typeof OfflineAudioContext
+
+function offlineAudioContextCtor(): OfflineCtor | null {
+  return (
+    globalThis.OfflineAudioContext
+    || (globalThis as typeof globalThis & { webkitOfflineAudioContext?: OfflineCtor }).webkitOfflineAudioContext
+    || null
+  )
+}
+
+/** Merges the recordings at 24 kHz mono without opening a real (sounding) AudioContext. */
+async function mergeAudioBlobsToLightWav(blobs: Blob[]): Promise<{ blob: Blob; durationSec: number } | null> {
+  const Ctor = offlineAudioContextCtor()
+  if (!Ctor) return null
+  const decoder = new Ctor(1, 1, MERGE_SAMPLE_RATE)
+  const settled = await Promise.allSettled(
+    blobs.map(async (blob) => decoder.decodeAudioData(await blob.arrayBuffer())),
+  )
+  const decoded = settled.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []))
+  if (decoded.length === 0) return null
+  const totalDurationSec = decoded.reduce((sum, buffer) => sum + buffer.duration, 0)
+  const frames = Math.max(1, Math.ceil(totalDurationSec * MERGE_SAMPLE_RATE))
+  const offline = new Ctor(1, frames, MERGE_SAMPLE_RATE)
+  let cursorSec = 0
+  for (const buffer of decoded) {
+    const source = offline.createBufferSource()
+    source.buffer = buffer
+    source.connect(offline.destination)
+    source.start(cursorSec)
+    cursorSec += buffer.duration
+  }
+  const rendered = await offline.startRendering()
+  return { blob: encodeAudioBufferToWav(rendered), durationSec: rendered.duration }
+}
+
 async function mergeAudioBlobsToWav(blobs: Blob[]): Promise<{ blob: Blob; durationSec: number } | null> {
   if (blobs.length === 0) return null
+
+  try {
+    const light = await mergeAudioBlobsToLightWav(blobs)
+    if (light) return light
+  } catch {
+    // Older browsers that cannot decode on an offline context: the way it was before.
+  }
 
   const AudioContextCtor =
     globalThis.AudioContext
@@ -227,6 +277,29 @@ export function useMasterNotePlayback() {
     }
   }
 
+  // The url the audio element is using now: never freed while it plays.
+  const currentTrackUrlRef = useRef<string | null>(null)
+  // Notes being prepared, so play() and prefetch() share the same work.
+  const pendingTracksRef = useRef<Map<string, Promise<PlaybackTrack | null>>>(new Map())
+  // «Go on when the app comes back» after a refused play() in the background (see playTrack).
+  const resumeOnVisibleRef = useRef<(() => void) | null>(null)
+  const cancelResumeOnVisible = (): void => {
+    if (resumeOnVisibleRef.current && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', resumeOnVisibleRef.current)
+    }
+    resumeOnVisibleRef.current = null
+  }
+
+  /** Frees the oldest ready notes beyond MAX_READY_TRACKS (Map keeps the order they were added). */
+  const trimReadyTracks = (cache: Map<string, { url: string }>): void => {
+    for (const [noteId, entry] of cache) {
+      if (cache.size <= MAX_READY_TRACKS) break
+      if (entry.url === currentTrackUrlRef.current) continue
+      URL.revokeObjectURL(entry.url)
+      cache.delete(noteId)
+    }
+  }
+
   const clearUnifiedChunkCache = (): void => {
     for (const cachedTrack of unifiedChunkCacheRef.current.values()) {
       URL.revokeObjectURL(cachedTrack.url)
@@ -260,6 +333,7 @@ export function useMasterNotePlayback() {
   }
 
   const stop = (): void => {
+    cancelResumeOnVisible()
     flushChallengeListening()
     challengeNoteRef.current = null
     challengeLastAudioTimeRef.current = null
@@ -277,6 +351,7 @@ export function useMasterNotePlayback() {
   }
 
   const pause = (): void => {
+    cancelResumeOnVisible()
     if (!audioRef.current || !playingNoteId) return
     if (!audioRef.current.paused) {
       flushChallengeListening()
@@ -288,6 +363,7 @@ export function useMasterNotePlayback() {
   }
 
   const resume = async (): Promise<void> => {
+    cancelResumeOnVisible()
     if (!audioRef.current || !playingNoteId) return
     if (!audioRef.current.paused) return
 
@@ -339,6 +415,8 @@ export function useMasterNotePlayback() {
         audioRef.current.onerror = null
         audioRef.current.ontimeupdate = null
         audioRef.current.onloadedmetadata = null
+        audioRef.current.onpause = null
+        audioRef.current.onplaying = null
         audioRef.current.src = ''
         audioRef.current = null
       }
@@ -473,6 +551,7 @@ export function useMasterNotePlayback() {
       URL.revokeObjectURL(cachedTrack.url)
     }
 
+    offlineTrackCacheRef.current.delete(note.id)
     offlineTrackCacheRef.current.set(note.id, {
       url: blobUrl,
       durationSec: nextDurationSec,
@@ -480,6 +559,7 @@ export function useMasterNotePlayback() {
       totalDurationMs: note.total_duration_ms,
       closeType: note.close_type,
     })
+    trimReadyTracks(offlineTrackCacheRef.current)
 
     return {
       url: blobUrl,
@@ -509,6 +589,7 @@ export function useMasterNotePlayback() {
   ): Promise<void> => {
     if (token !== tokenRef.current) return
 
+    cancelResumeOnVisible()
     const audio = getOrCreateAudioElement()
     audio.pause()
     audio.currentTime = 0
@@ -516,7 +597,10 @@ export function useMasterNotePlayback() {
     audio.onerror = null
     audio.ontimeupdate = null
     audio.onloadedmetadata = null
+    audio.onpause = null
+    audio.onplaying = null
     audio.src = track.url
+    currentTrackUrlRef.current = track.url
 
     const onEnded = () => {
       if (token !== tokenRef.current) return
@@ -543,6 +627,23 @@ export function useMasterNotePlayback() {
 
     audio.onended = onEnded
     audio.onerror = onError
+    // Paused by the phone (another app or voice took the sound, a call…): the player shows «En
+    // pausa» and ▶ goes on, instead of saying «Escuchando» while nothing sounds.
+    // (The app's own pauses arrive late too, but by then it is playing again or the token changed.)
+    audio.onpause = () => {
+      if (token !== tokenRef.current || !audio.paused || audio.ended) return
+      flushChallengeListening()
+      checkpointListening(true)
+      stopListeningTicker()
+      setIsPaused(true)
+    }
+    // …and when the phone gives the sound back by itself, the player follows it.
+    audio.onplaying = () => {
+      if (token !== tokenRef.current) return
+      cancelResumeOnVisible()
+      startListeningTicker()
+      setIsPaused(false)
+    }
     audio.ontimeupdate = () => {
       if (token !== tokenRef.current) return
       trackChallengeListening(audio)
@@ -579,6 +680,25 @@ export function useMasterNotePlayback() {
     } catch (err) {
       if (token !== tokenRef.current) return
       pushDebugEvent('audio.play() rechazado', err)
+      // With the phone locked or the app in the background, some phones (Android) refuse to start
+      // the next note on their own. Instead of stopping, the note stays ready and paused: it goes
+      // on by itself when the app comes back (or with ▶ in the player).
+      if (typeof document !== 'undefined' && document.hidden) {
+        setIsPaused(true)
+        const onVisible = () => {
+          if (document.hidden) return
+          cancelResumeOnVisible()
+          if (token !== tokenRef.current || !audio.paused) return
+          void audio.play().then(() => {
+            if (token !== tokenRef.current) return
+            startListeningTicker()
+            setIsPaused(false)
+          }).catch(() => {})
+        }
+        resumeOnVisibleRef.current = onVisible
+        document.addEventListener('visibilitychange', onVisible)
+        return
+      }
       setError(t('No se pudo reproducir la nota maestra'))
       setPlayingNoteId(null)
       setIsPaused(false)
@@ -603,6 +723,8 @@ export function useMasterNotePlayback() {
     audio.onerror = null
     audio.ontimeupdate = null
     audio.onloadedmetadata = null
+    audio.onpause = null
+    audio.onplaying = null
     audio.src = cueUrl
 
     setPlayingNoteId(null)
@@ -728,6 +850,7 @@ export function useMasterNotePlayback() {
       URL.revokeObjectURL(cachedTrack.url)
     }
 
+    unifiedChunkCacheRef.current.delete(note.id)
     unifiedChunkCacheRef.current.set(note.id, {
       url: mergedUrl,
       durationSec: nextDurationSec,
@@ -735,6 +858,7 @@ export function useMasterNotePlayback() {
       totalDurationMs: note.total_duration_ms,
       chunkCount: chunks.length,
     })
+    trimReadyTracks(unifiedChunkCacheRef.current)
 
     if (note.state === 'closed') {
       void upsertOfflineClosedMasterNoteAudio(note, mergedBlob).catch(() => {})
@@ -769,6 +893,49 @@ export function useMasterNotePlayback() {
     return chunkCount > 0 || note.total_duration_ms > 0
   }
 
+  /** Finds or prepares the audio of a note (the same work is shared by play and prefetch). */
+  const resolveTrack = (note: MasterNote, preloadedChunkCount: number): Promise<PlaybackTrack | null> => {
+    const pending = pendingTracksRef.current.get(note.id)
+    if (pending) return pending
+    const job = (async (): Promise<PlaybackTrack | null> => {
+      const offline = await getOfflineClosedTrack(note)
+      if (offline) return offline
+      if (note.close_type === 'final' && note.final_audio_path) {
+        const signedUrl = await createSignedMasterNoteAudioUrl(note.final_audio_path)
+        if (note.state === 'closed') {
+          void (async () => {
+            try {
+              const response = await fetch(signedUrl)
+              if (!response.ok) return
+              const blob = await response.blob()
+              await upsertOfflineClosedMasterNoteAudio(note, blob)
+            } catch {
+              // noop
+            }
+          })()
+        }
+        return { url: signedUrl, durationSec: Math.max(1, note.total_duration_ms / 1000) }
+      }
+      return await getUnifiedChunkTrack(note, preloadedChunkCount)
+    })()
+    pendingTracksRef.current.set(note.id, job)
+    const forget = () => {
+      if (pendingTracksRef.current.get(note.id) === job) pendingTracksRef.current.delete(note.id)
+    }
+    job.then(forget, forget)
+    return job
+  }
+
+  /**
+   * Prepares the next note while this one plays (Luis, 15 Oct): when one ends, the next starts at
+   * once, with nothing to download or merge with the phone locked. Never fails.
+   */
+  const prefetch = (note: MasterNote): void => {
+    if (note.state !== 'closed' || note.id === playingNoteId) return
+    if (note.close_type === 'final' && note.final_audio_path) return
+    void resolveTrack(note, 0).catch(() => {})
+  }
+
   const play = async (note: MasterNote, preloadedChunkCount = 0): Promise<void> => {
     if (playingNoteId === note.id) return
 
@@ -779,32 +946,7 @@ export function useMasterNotePlayback() {
     let track: PlaybackTrack | null = null
 
     try {
-      track = await getOfflineClosedTrack(note)
-
-      if (!track) {
-        if (note.close_type === 'final' && note.final_audio_path) {
-          const signedUrl = await createSignedMasterNoteAudioUrl(note.final_audio_path)
-          track = {
-            url: signedUrl,
-            durationSec: Math.max(1, note.total_duration_ms / 1000),
-          }
-
-          if (note.state === 'closed') {
-            void (async () => {
-              try {
-                const response = await fetch(signedUrl)
-                if (!response.ok) return
-                const blob = await response.blob()
-                await upsertOfflineClosedMasterNoteAudio(note, blob)
-              } catch {
-                // noop
-              }
-            })()
-          }
-        } else {
-          track = await getUnifiedChunkTrack(note, preloadedChunkCount)
-        }
-      }
+      track = await resolveTrack(note, preloadedChunkCount)
     } catch (err) {
       if (token !== tokenRef.current) return
       pushDebugEvent('Fallo al resolver pista de reproducción', err)
@@ -845,6 +987,7 @@ export function useMasterNotePlayback() {
     playingNoteName,
     canPlay,
     play,
+    prefetch,
     playTransitionCue,
     stop,
     pause,

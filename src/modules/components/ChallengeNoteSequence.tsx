@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { t } from '@/i18n'
 import { useLoopedMasterNotePlayback } from '../hooks/useLoopedMasterNotePlayback'
-import { speakNatural } from '../services/tts'
+import { getPremiumSpeechUrl, prefetchSpeech, speakNatural, stopTTS } from '../services/tts'
 import { formatMasterNoteLabel } from '../services/masterNotes'
 import { SHARED_MASTER_NOTE_STOPPED_EVENT, useSharedMasterNotePlayback } from './MasterNotePlaybackProvider'
 import { useChallengeSequenceStore, type SequenceRequest } from '../stores/challengeSequenceStore'
@@ -53,7 +53,13 @@ function speakAndWait(text: string, langName: string): Promise<void> {
       done = true
       resolve()
     }
-    window.setTimeout(finish, 5000)
+    // After 5 s the voice is cut, not just left behind: on Android a late device voice took the
+    // sound from the next note and stopped it (alumna con Android, 15 Oct).
+    window.setTimeout(() => {
+      if (done) return
+      stopTTS()
+      finish()
+    }, 5000)
     try {
       speakNatural(text, langName, finish)
     } catch {
@@ -76,6 +82,10 @@ function ChallengeSequenceRunner({ request }: { request: SequenceRequest }) {
   const byId = useRef(new Map(notes.map((note) => [note.id, note]))).current
   const playbackRef = useRef(playback)
   playbackRef.current = playback
+  // False once «todas seguidas» is stopped or replaced: a late announcement must not cut another note.
+  const activeRef = useRef(true)
+  const stillRunning = () =>
+    activeRef.current && useChallengeSequenceStore.getState().request?.token === request.token
 
   const sequence = useLoopedMasterNotePlayback({
     playingNoteId: playback.playingNoteId,
@@ -83,6 +93,10 @@ function ChallengeSequenceRunner({ request }: { request: SequenceRequest }) {
     playNoteById: async (noteId) => {
       const note = byId.get(noteId)
       if (note) await playbackRef.current.play(note)
+    },
+    prefetchNoteById: (noteId) => {
+      const note = byId.get(noteId)
+      if (note) playbackRef.current.prefetch(note)
     },
     playTransitionCue: async (kind, index) => {
       if (kind === 'finish') {
@@ -93,6 +107,17 @@ function ChallengeSequenceRunner({ request }: { request: SequenceRequest }) {
       playbackRef.current.stopQuietly()
       // The voice says the note's place among all of them (starting at the 3rd says «Tercera»).
       const announcement = sequenceAnnouncement(startIndex + (index ?? 0), nativeLang)
+      // Android, phone locked (15 Oct): the voice now sounds on the same audio element as the notes,
+      // so the sound never stops between one note and the next. Only without the premium voice
+      // does it use the device voice, and not with the app in the background, where that voice
+      // can leave the next note without starting.
+      const url = await getPremiumSpeechUrl(announcement.text, announcement.voiceLang)
+      if (!stillRunning()) return
+      if (url) {
+        await playbackRef.current.playTransitionCue(url)
+        return
+      }
+      if (typeof document !== 'undefined' && document.hidden) return
       await speakAndWait(announcement.text, announcement.voiceLang)
     },
     pausePlayback: playback.pause,
@@ -108,11 +133,20 @@ function ChallengeSequenceRunner({ request }: { request: SequenceRequest }) {
   const sequenceRef = useRef(sequence)
   sequenceRef.current = sequence
 
-  // Start once, one after the other (no loop: after the last one it stops).
+  // Start once, one after the other (no loop: after the last one it stops). The announcements are
+  // prepared first, while the screen is still on.
   useEffect(() => {
+    ids.forEach((_, position) => {
+      const announcement = sequenceAnnouncement(startIndex + position, nativeLang)
+      void prefetchSpeech(announcement.text, announcement.voiceLang)
+    })
     sequenceRef.current.setRepeatEnabled(false)
+    activeRef.current = true
     void sequenceRef.current.startLoop(ids)
-    return () => sequenceRef.current.stopLoop(false)
+    return () => {
+      activeRef.current = false
+      sequenceRef.current.stopLoop(false)
+    }
   }, [ids])
 
   // Share the state and the buttons with the list screen and the small player.
