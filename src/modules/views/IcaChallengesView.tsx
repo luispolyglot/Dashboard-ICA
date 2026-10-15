@@ -458,15 +458,22 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
   const [randomMatch, setRandomMatch] = useState<RandomMatchState>({ phase: 'searching' })
   const randomStartedAtRef = useRef(randomStartedAt || Date.now())
   const randomTimerRef = useRef<number | null>(null)
-  useEffect(
-    () => () => {
+  // Closing the screen cancels everything still on its way (list, flag, send), not only the timer.
+  const randomCancelledRef = useRef(false)
+  useEffect(() => {
+    // Set again on mount: React's StrictMode mounts twice in development.
+    randomCancelledRef.current = false
+    return () => {
+      randomCancelledRef.current = true
       if (randomTimerRef.current !== null) window.clearTimeout(randomTimerRef.current)
-    },
-    [],
-  )
+    }
+  }, [])
   const afterSearch = (run: () => void) => {
+    if (randomCancelledRef.current) return
     const wait = Math.max(0, RANDOM_SEARCH_MS - (Date.now() - randomStartedAtRef.current))
-    randomTimerRef.current = window.setTimeout(run, wait)
+    randomTimerRef.current = window.setTimeout(() => {
+      if (!randomCancelledRef.current) run()
+    }, wait)
   }
   // Hacen falta 20 palabras en el Baúl ICA de este idioma para entrar en los retos.
   const wordsLocked = myWordCount !== null && myWordCount < minWordsToJoin
@@ -627,14 +634,16 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
     rivalName: string
     scope: IcaChallengeScope
     mode: { tile: (typeof CHALLENGE_MODE_TILES)[number]; type: IcaChallengeTypeRecord }
-    flag: Promise<string | null>
+    /** Known at once when the server sends it; otherwise it arrives later and the screen updates. */
+    flag: string | null | Promise<string | null>
   }
   const randomPickRef = useRef<RandomPick | null>(null)
 
   // Luis, 15 Oct: each avatar as in the ranking (the flag bought for the profile, or just the
   // initial), and next to each name the flag of the language they PLAY in.
-  const rivalFlagFor = (rival: (typeof availableUsers)[number]): Promise<string | null> => {
-    if (rival.displayFlag) return Promise.resolve(rival.displayFlag)
+  const rivalFlagFor = (rival: (typeof availableUsers)[number]): string | null | Promise<string | null> => {
+    // null = the server says they have none; undefined = an older server that does not send it.
+    if (rival.displayFlag !== undefined) return rival.displayFlag
     // Not sent (older server): the ranking of the month also says which flag each one shows.
     return fetchMonthlyStreakLeaderboard(200)
       .then((rows) => rows.find((row) => row.user_id === rival.userId)?.display_flag ?? null)
@@ -642,41 +651,49 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
   }
 
   const sendRandomChallenge = (pick: RandomPick, extraSlot: boolean) => {
-    void pick.flag.then((rivalFlag) => {
-      gameSfx.celebrate()
-      setRandomMatch({
-        phase: 'found',
-        rivalName: pick.rivalName,
-        myFlag: myFlags.shown ?? null,
-        rivalFlag,
-        myLang: targetLang,
-        rivalLang: pick.rival.targetLang ?? null,
-        tile: pick.mode.tile,
-        modeName: t(pick.mode.type.name),
-        sharedVault: pick.scope === 'language',
-        languageLabel: inSentence(langName(targetLang)),
-        status: 'sending',
-      })
-      void createChallenge({
-        challengeTypeId: pick.mode.type.id,
-        challengedUserId: pick.rival.userId,
-        scope: pick.scope,
-        config: { rounds: 2, responseSeconds: READING_SECONDS, wordSource: pick.scope === 'language' ? 'mixed' : 'own' },
-        durationSeconds: CHALLENGE_DAYS * 24 * 60 * 60,
-        extraSlot,
-      })
-        .then(async () => {
-          setRandomMatch((current) => (current.phase === 'found' ? { ...current, status: 'sent' } : current))
-          await refreshCoins()
-        })
-        .catch((createError: unknown) => {
-          setRandomMatch({
-            phase: 'error',
-            message:
-              createError instanceof Error ? translateChallengeMessage(createError.message) : t('No se pudo crear el desafío.'),
-          })
-        })
+    if (randomCancelledRef.current) return
+    gameSfx.celebrate()
+    setRandomMatch({
+      phase: 'found',
+      rivalName: pick.rivalName,
+      myFlag: myFlags.shown ?? null,
+      rivalFlag: typeof pick.flag === 'string' ? pick.flag : null,
+      myLang: targetLang,
+      rivalLang: pick.rival.targetLang ?? null,
+      tile: pick.mode.tile,
+      modeName: t(pick.mode.type.name),
+      sharedVault: pick.scope === 'language',
+      languageLabel: inSentence(langName(targetLang)),
+      status: 'sending',
     })
+    // The send does not wait for the flag (older server: it comes from the ranking, later).
+    if (pick.flag instanceof Promise) {
+      void pick.flag.then((rivalFlag) => {
+        if (randomCancelledRef.current || !rivalFlag) return
+        setRandomMatch((current) => (current.phase === 'found' ? { ...current, rivalFlag } : current))
+      })
+    }
+    void createChallenge({
+      challengeTypeId: pick.mode.type.id,
+      challengedUserId: pick.rival.userId,
+      scope: pick.scope,
+      config: { rounds: 2, responseSeconds: READING_SECONDS, wordSource: pick.scope === 'language' ? 'mixed' : 'own' },
+      durationSeconds: CHALLENGE_DAYS * 24 * 60 * 60,
+      extraSlot,
+    })
+      .then(async () => {
+        if (randomCancelledRef.current) return
+        setRandomMatch((current) => (current.phase === 'found' ? { ...current, status: 'sent' } : current))
+        await refreshCoins()
+      })
+      .catch((createError: unknown) => {
+        if (randomCancelledRef.current) return
+        setRandomMatch({
+          phase: 'error',
+          message:
+            createError instanceof Error ? translateChallengeMessage(createError.message) : t('No se pudo crear el desafío.'),
+        })
+      })
   }
 
   // «Un desafío más» bought on the same screen; then the challenge goes on by itself.
@@ -687,8 +704,11 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
     try {
       if (!(await buyChallengeSlot(authUser?.id, coinBalance ?? undefined))) throw new Error('PURCHASE_FAILED')
       await refreshCoins()
+      // Closed while paying: the pass stays bought for the next challenge.
+      if (randomCancelledRef.current) return
       sendRandomChallenge(pick, true)
     } catch (buyError) {
+      if (randomCancelledRef.current) return
       setRandomMatch({
         phase: 'error',
         message:
@@ -700,15 +720,16 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
   }
 
   const runRandomMatch = async () => {
+    // One tick first, so StrictMode's second mount (development) cannot clear the first timer.
+    await Promise.resolve()
     const fail = (message: string) => afterSearch(() => setRandomMatch({ phase: 'error', message }))
     if (!isEnrolled) {
       fail(t('Activa Desafíos ICA para poder retar.'))
       return
     }
     // Always the list as it is NOW (Luis, 15 Oct: after cancelling a challenge with Nahuel the
-    // search did not find him, because it used the list saved a moment before). The server already
-    // leaves out whoever you have a challenge with, and lists only icademers who came in during the
-    // last 30 days with 20 or more words activated.
+    // search did not find him, because it used the list saved a moment before). The server lists
+    // only icademers who came in during the last 30 days with 20 or more words activated.
     let rows = availableUsers
     let myActive = myActiveChallengesCount
     try {
@@ -718,10 +739,15 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
     } catch {
       // Without a connection, the list we have.
     }
+    if (randomCancelledRef.current) return
     // Anyone free, or anyone you could challenge with «Un desafío más» when you already have 3.
+    // With 3, the server only says «your maximum» and hides the other reasons, so they are checked
+    // here as in the normal list: no second challenge with the same person, and they have fewer than 4.
     const myLimit = (item: (typeof availableUsers)[number]) =>
       !item.canChallenge &&
       myActive === 3 &&
+      !activeRivalIds.has(item.userId) &&
+      item.activeChallengesCount < 4 &&
       (item.blockedReason === 'Tu máximo de desafíos activos es 3.' || !item.blockedReason)
     const candidates = rows.filter(
       (item) => item.userId !== currentUserId && (item.canChallenge || myLimit(item)),

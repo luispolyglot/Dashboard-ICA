@@ -211,11 +211,22 @@ begin
   -- Luis, 15 Oct: a boosted word counts as one of today's ICA words: «Palabras de hoy» goes up
   -- (unless today's maximum is already reached, which never blocks the boost) and so does the
   -- minimum of 5 for the cycle. A word created today is already counted.
-  begin
-    perform public.ica_record_daily_limit_usage(v_user, 'words', p_id);
-  exception when others then
-    null;
-  end;
+  -- The usage row cannot use the word id: ica_daily_limit_usage_source_once_idx allows one row per
+  -- (user, kind, source) across ALL days, and the word already has the one from the day it was
+  -- created. So the boost uses its own id per word and day (boosting it again today adds nothing).
+  if not exists (
+    select 1 from public.ica_daily_limit_usage u
+     where u.user_id = v_user and u.usage_day = v_day
+       and u.usage_kind = 'words' and u.source_id = p_id
+  ) then
+    begin
+      perform public.ica_record_daily_limit_usage(
+        v_user, 'words', md5(p_id::text || ':boost:' || v_day::text)::uuid
+      );
+    exception when others then
+      null;
+    end;
+  end if;
   perform public.recompute_daily_creation_metrics_for_user_day(v_user, v_day);
 
   v_used := v_used + 1;
