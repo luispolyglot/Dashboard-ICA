@@ -854,7 +854,8 @@ export function PhraseView({
           </Button>
         ) : null}
       </div>
-      <p className='m-0 mt-4 font-display text-2xl leading-snug font-extrabold tracking-tight break-words'>
+      {/* Admins, 15 Oct: the phrase was much bigger than the Spanish; now the sizes of Activación. */}
+      <p className='m-0 mt-4 text-[1.2rem] leading-snug font-black tracking-tight break-words lg:text-2xl'>
         {highlightUsedWords(result.phrase, result.words_used)}
       </p>
       <RomanizationHint text={result.phrase} language={config.targetLang} />

@@ -113,6 +113,7 @@ type AvailableUsersResponse = {
     blockedReason: string | null
     winStreak?: number
     recentChallenges?: number
+    displayFlag?: string | null
   }>
   myActiveChallengesCount?: number
   myLevel?: string | null
@@ -908,6 +909,7 @@ export async function listAvailableIcaChallengeUsers(input: {
         blockedReason: row.blockedReason || null,
         winStreak: Math.max(0, Number(row.winStreak) || 0),
         recentChallenges: Math.max(0, Number(row.recentChallenges) || 0),
+        displayFlag: row.displayFlag || null,
       })) || [],
     myActiveChallengesCount: Number(data?.myActiveChallengesCount || 0),
     myLevel: data?.myLevel || null,

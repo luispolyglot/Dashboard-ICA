@@ -499,6 +499,9 @@ export function MasterNoteActivatePhraseView({
       target instanceof Element &&
       Boolean(target.closest('button, a, input, textarea, select, audio, [role="dialog"], [role="note"]'))
     const onClick = (event: MouseEvent): void => {
+      // Only real taps: the iPhone vibration trick makes fake clicks, and one tap on «Siguiente
+      // parte» skipped a part (Luis, 15 Oct, video of the admins).
+      if (!event.isTrusted) return
       if (event.defaultPrevented || event.button !== 0 || ignore(event.target)) return
       nextGuideStep()
     }

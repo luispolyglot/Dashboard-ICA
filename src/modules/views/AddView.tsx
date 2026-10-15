@@ -17,10 +17,8 @@ import {
   getImportance,
   getTodayProgress,
 } from '../constants'
-import {
-  fetchTranslation,
-  fetchTranslationWithSpelling,
-} from '../services/anthropic'
+import { fetchTranslationWithSpelling } from '../services/anthropic'
+import { inSentence } from '../services/activationGuide'
 import { recordWordAddedEvent } from '../services/gamification'
 import { kickLexicardExampleWorker } from '../services/lexicardExampleJobs'
 import { insertWord } from '../services/storage'
@@ -87,6 +85,24 @@ const FIELD_CLASS =
   'h-12 rounded-2xl px-4 text-base font-bold md:text-base lg:h-14 lg:text-lg placeholder:font-semibold placeholder:text-muted-foreground/75 focus-visible:border-[var(--ica-i)] focus-visible:ring-[color-mix(in_oklab,var(--ica-i)_22%,transparent)]'
 
 /** Día (AAAA-MM-DD) de una fecha en milisegundos, en hora local. */
+/** «Esto parece alemán»: the text is in the other field's language (admins, 15 Oct). */
+function WrongLanguageNotice({ lang, moveLabel, onMove }: { lang: string; moveLabel: string; onMove: () => void }) {
+  return (
+    <div
+      className='mt-2 flex items-center gap-2.5 rounded-2xl border-2 px-3 py-2'
+      style={{ background: 'var(--ica-gold-soft)', borderColor: 'color-mix(in oklab, var(--ica-gold) 45%, transparent)' }}
+      role='status'
+    >
+      <span className='min-w-0 flex-1 text-sm font-semibold break-words' style={{ color: 'var(--ica-gold-ink)' }}>
+        {t('Esto parece {lang}. Va en el otro campo.', { lang: inSentence(lang) })}
+      </span>
+      <Button type='button' size='sm' variant='gold' className='h-9 px-4' onClick={onMove}>
+        {moveLabel}
+      </Button>
+    </div>
+  )
+}
+
 function dayKeyOf(ms: number | null | undefined): string {
   if (!ms) return ''
   const d = new Date(ms)
@@ -177,6 +193,10 @@ export function AddView({
   const [boostedWord, setBoostedWord] = useState<string | null>(null)
   const [suggestionNative, setSuggestionNative] = useState<string | null>(null)
   const [suggestionTarget, setSuggestionTarget] = useState<string | null>(null)
+  // Admins, 15 Oct: «einsam» typed in the Spanish field gave «solitario» as the German word. Now
+  // the AI says when a field has the other language, and the app offers to move it.
+  const [targetWrongLang, setTargetWrongLang] = useState(false)
+  const [nativeWrongLang, setNativeWrongLang] = useState(false)
   const [loadingNative, setLoadingNative] = useState(false)
   const [loadingTarget, setLoadingTarget] = useState(false)
   const [spellingSuggestion, setSpellingSuggestion] = useState<string | null>(
@@ -239,13 +259,19 @@ export function AddView({
 
   /**
    * POTENCIAR: instead of saving the same word again, it becomes Vital and comes first in the next
-   * 2 flashcards rounds, 2 daily challenges and 2 Desafíos. It does not count as a new word.
+   * 2 flashcards rounds, 2 daily challenges and 2 Desafíos. Admins, 15 Oct: it now counts as one
+   * of today's ICA words (0/5 → 1/5); the server adds it, here the counters catch up at once.
    */
   const handleBoost = async (): Promise<void> => {
     if (!duplicateWord) return
     const word = duplicateWord.target
+    const fromToday = dayKeyOf(duplicateWord.createdAt) === todayKey()
     const done = await wordBoost.boostCard(duplicateWord)
     if (!done) return
+    if (!fromToday) setSavesThisVisit((count) => count + 1)
+    void onWordAdded().catch((error) => {
+      console.error(error)
+    })
     setBoostedWord(word)
     setTarget('')
     setNative('')
@@ -260,6 +286,7 @@ export function AddView({
     const nextValue = clampTarget(value)
     setTarget(nextValue)
     setSuggestionNative(null)
+    setTargetWrongLang(false)
     setSpellingSuggestion(null)
     targetRequestRef.current += 1
 
@@ -287,7 +314,8 @@ export function AddView({
         config.nativeLang,
       )
       if (requestId !== targetRequestRef.current) return
-      setSuggestionNative(result.translation)
+      setTargetWrongLang(result.wrongLanguage)
+      setSuggestionNative(result.wrongLanguage ? null : result.translation)
       setLoadingNative(false)
       const suggestion = wantsSpelling ? result.spellingSuggestion : null
       setSpellingSuggestion(
@@ -302,6 +330,7 @@ export function AddView({
   const handleNativeChange = (value: string): void => {
     setNative(value)
     setSuggestionTarget(null)
+    setNativeWrongLang(false)
     nativeRequestRef.current += 1
 
     if (nativeDebounceRef.current !== null) {
@@ -316,13 +345,14 @@ export function AddView({
     const requestId = nativeRequestRef.current
     nativeDebounceRef.current = window.setTimeout(async () => {
       setLoadingTarget(true)
-      const result = await fetchTranslation(
+      const result = await fetchTranslationWithSpelling(
         value.trim(),
         config.nativeLang,
         config.targetLang,
       )
       if (requestId !== nativeRequestRef.current) return
-      setSuggestionTarget(result)
+      setNativeWrongLang(result.wrongLanguage)
+      setSuggestionTarget(result.wrongLanguage ? null : result.translation)
       setLoadingTarget(false)
     }, 900)
   }
@@ -842,6 +872,19 @@ export function AddView({
                 )}
               </div>
             )}
+            {targetWrongLang && !loadingNative ? (
+              <WrongLanguageNotice
+                lang={langName(config.nativeLang)}
+                moveLabel={t('Pasarlo abajo')}
+                onMove={() => {
+                  const text = target.trim()
+                  setTarget('')
+                  setTargetWrongLang(false)
+                  setSpellingSuggestion(null)
+                  handleNativeChange(text)
+                }}
+              />
+            ) : null}
             <TranslationSuggestion
               suggestion={suggestionNative}
               loading={loadingNative}
@@ -873,6 +916,18 @@ export function AddView({
               placeholder={t('Escribe en {lang}...', { lang: langName(config.nativeLang) })}
               className={FIELD_CLASS}
             />
+            {nativeWrongLang && !loadingTarget ? (
+              <WrongLanguageNotice
+                lang={langName(config.targetLang)}
+                moveLabel={t('Pasarlo arriba')}
+                onMove={() => {
+                  const text = native.trim()
+                  setNative('')
+                  setNativeWrongLang(false)
+                  handleTargetChange(text)
+                }}
+              />
+            ) : null}
             <TranslationSuggestion
               suggestion={suggestionTarget}
               loading={loadingTarget}

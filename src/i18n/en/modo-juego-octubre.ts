@@ -462,5 +462,12 @@ const en: Record<string, string> = {
   "Ahora mismo no se puede crear el desafío. Prueba en un rato.": "The challenge can't be created right now. Try again in a while.",
   "{name} también aprende {lang}": "{name} also learns {lang}",
   "Comparten Baúl ICA en este desafío: las mismas palabras para los dos, la mitad de tu baúl y la mitad del suyo.": "You share the ICA Vault in this challenge: the same words for both of you, half from your vault and half from theirs.",
+  "Ya tienes 3 desafíos en marcha": "You already have 3 challenges under way",
+  "Con «Un desafío más» puedes retar a alguien más ahora mismo.": "With «One more challenge» you can challenge one more person right now.",
+  "Retar por {n} ICA Coins": "Challenge for {n} ICA Coins",
+  "Tienes {n} ICA Coins: aún no te llega.": "You have {n} ICA Coins: not enough yet.",
+  "Pasarlo abajo": "Move it down",
+  "Pasarlo arriba": "Move it up",
+  "Esto parece {lang}. Va en el otro campo.": "This looks like {lang}. It goes in the other field.",
 }
 export default en

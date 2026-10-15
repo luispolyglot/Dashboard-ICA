@@ -136,7 +136,7 @@ export async function listAvailableUsers(input: DirectoryInput): Promise<Respons
 
   const nowMs = Date.now()
   const candidateIdList = candidateIds.join(',')
-  const [directoryMetricsResult, metricsResult, activityResult] = await Promise.all([
+  const [directoryMetricsResult, metricsResult, activityResult, flagsResult] = await Promise.all([
     directoryMetricsPromise,
     adminClient
       .from('daily_metrics')
@@ -149,7 +149,15 @@ export async function listAvailableUsers(input: DirectoryInput): Promise<Respons
       .or(`challenger_user_id.in.(${candidateIdList}),challenged_user_id.in.(${candidateIdList})`)
       .order('created_at', { ascending: false })
       .limit(3000),
+    // The flag each one shows in the profile («Desafío aleatorio» shows it; Luis, 15 Oct).
+    adminClient.from('ica_display_flags').select('user_id, lang').in('user_id', candidateIds),
   ])
+  const flagByUser = new Map<string, string>()
+  for (const row of (flagsResult.data || []) as Array<Record<string, unknown>>) {
+    const candidateId = toText(row.user_id)
+    const lang = toText(row.lang)
+    if (candidateId && lang) flagByUser.set(candidateId, lang)
+  }
   if (directoryMetricsResult.error) return jsonResponse(500, { error: directoryMetricsResult.error.message })
 
   const directoryMetricsByUser = new Map<string, Record<string, unknown>>()
@@ -231,6 +239,7 @@ export async function listAvailableUsers(input: DirectoryInput): Promise<Respons
       blockedReason,
       winStreak: activity.winStreak,
       recentChallenges: activity.recentChallenges,
+      displayFlag: flagByUser.get(candidateId) ?? null,
     }
   })
 

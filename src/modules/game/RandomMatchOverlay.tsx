@@ -1,16 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { CheckIcon, ShuffleIcon, XIcon } from 'lucide-react'
+import { CheckIcon, Loader2Icon, ShuffleIcon, XIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { t } from '@/i18n'
 import { ModeGlyphBadge, type ChallengeModeTile } from '../components/IcaChallenges/ChallengeModePicker'
-import { SwordsIcon } from './icons'
+import { FichaIcon, SwordsIcon } from './icons'
+import { FlagInitial } from './ranking'
+import { EXTRA_CHALLENGE_COST } from './rules'
 
 export type RandomMatchState =
   | { phase: 'searching' }
   | {
       phase: 'found'
       rivalName: string
+      /** Flag shown in each profile (or the language each one learns). */
+      myFlag: string | null
+      rivalFlag: string | null
       tile: ChallengeModeTile | null
       modeName: string
       /** Same language: they play with words from both vaults. */
@@ -18,22 +23,29 @@ export type RandomMatchState =
       languageLabel: string
       status: 'sending' | 'sent'
     }
-  | { phase: 'error'; message: string; showShop?: boolean }
+  /** You already have 3: pay «Un desafío más» right here and the challenge goes on (Luis, 15 Oct). */
+  | { phase: 'needsPass'; balance: number | null; buying: boolean }
+  | { phase: 'error'; message: string }
 
 /** How long «Buscando rival…» stays at least, so it feels like a search (Luis, 15 Oct: 3-4 s). */
 export const RANDOM_SEARCH_MS = 3400
 
-function Avatar({ name, tone }: { name: string; tone: 'me' | 'rival' }) {
+/** Like in the profile and the ranking: the initial on the flag (Luis, 15 Oct: no random colours). */
+function Avatar({ name, flag }: { name: string; flag: string | null }) {
+  const initial = name.trim().charAt(0).toUpperCase() || '?'
   return (
-    <span
-      className='flex size-20 items-center justify-center rounded-full text-3xl font-black text-white'
-      style={{
-        background: tone === 'me' ? 'var(--ica-me)' : 'var(--ica-a)',
-        boxShadow: `0 5px 0 ${tone === 'me' ? 'var(--ica-me-edge)' : 'var(--ica-a-edge)'}`,
-      }}
-      aria-hidden='true'
-    >
-      {name.trim().charAt(0).toUpperCase() || '?'}
+    <span className='rounded-full p-1' style={{ background: 'var(--border)', boxShadow: '0 5px 0 var(--border)' }}>
+      {flag ? (
+        <FlagInitial initial={initial} flag={flag} size={80} />
+      ) : (
+        <span
+          className='flex size-20 items-center justify-center rounded-full text-3xl font-black'
+          style={{ background: 'var(--muted)' }}
+          aria-hidden='true'
+        >
+          {initial}
+        </span>
+      )}
     </span>
   )
 }
@@ -46,24 +58,14 @@ function Avatar({ name, tone }: { name: string; tone: 'me' | 'rival' }) {
 export function RandomMatchOverlay({
   state,
   myName,
-  names,
   onClose,
-  onShop,
+  onBuyPass,
 }: {
   state: RandomMatchState
   myName: string
-  /** First names of possible rivals, shown one after another while searching. */
-  names: string[]
   onClose: () => void
-  onShop?: () => void
+  onBuyPass?: () => void
 }) {
-  const [tick, setTick] = useState(0)
-  useEffect(() => {
-    if (state.phase !== 'searching') return
-    const id = window.setInterval(() => setTick((value) => value + 1), 140)
-    return () => window.clearInterval(id)
-  }, [state.phase])
-
   useEffect(() => {
     if (typeof document === 'undefined') return
     const previous = document.body.style.overflow
@@ -74,7 +76,6 @@ export function RandomMatchOverlay({
   }, [])
 
   if (typeof document === 'undefined') return null
-  const passing = names.length > 0 ? names[tick % names.length] : '· · ·'
 
   return createPortal(
     <div
@@ -111,10 +112,8 @@ export function RandomMatchOverlay({
               </span>
             </div>
             <div className='flex flex-col items-center gap-2' role='status'>
+              {/* No names here: who it is shows on the next screen (Luis, 15 Oct). */}
               <p className='m-0 font-display text-3xl font-black tracking-tight'>{t('Buscando rival…')}</p>
-              <p className='m-0 h-7 text-xl font-extrabold tabular-nums' style={{ color: 'var(--ica-a-ink)' }}>
-                {passing}
-              </p>
               <p className='m-0 max-w-xs text-sm font-semibold text-muted-foreground'>
                 {t('Entre los icademers que han entrado en los últimos 30 días.')}
               </p>
@@ -130,18 +129,19 @@ export function RandomMatchOverlay({
             </p>
             <div className='ica-pop flex items-center gap-4'>
               <div className='flex flex-col items-center gap-2'>
-                <Avatar name={myName} tone='me' />
+                <Avatar name={myName} flag={state.myFlag} />
                 <span className='max-w-24 truncate text-sm font-extrabold'>{t('Tú')}</span>
               </div>
+              {/* The swords in the middle bounce slowly (Luis, 15 Oct). */}
               <span
-                className='flex size-14 items-center justify-center rounded-full'
-                style={{ background: 'var(--ica-gold)', boxShadow: '0 4px 0 var(--ica-gold-edge)' }}
+                className='ica-bob flex size-14 items-center justify-center rounded-full'
+                style={{ background: 'var(--ica-gold)', boxShadow: '0 4px 0 var(--ica-gold-edge)', animationDuration: '2.4s' }}
                 aria-hidden='true'
               >
                 <SwordsIcon size={34} />
               </span>
               <div className='flex flex-col items-center gap-2'>
-                <Avatar name={state.rivalName} tone='rival' />
+                <Avatar name={state.rivalName} flag={state.rivalFlag} />
                 <span className='max-w-24 truncate text-sm font-extrabold'>{state.rivalName}</span>
               </div>
             </div>
@@ -200,16 +200,41 @@ export function RandomMatchOverlay({
               {t('¡Genial!')}
             </Button>
           </>
+        ) : state.phase === 'needsPass' ? (
+          <>
+            <img src='/guia-ica.png' alt='' aria-hidden='true' draggable={false} className='ica-bob size-32 select-none object-contain' />
+            <div className='flex max-w-sm flex-col gap-2'>
+              <p className='m-0 font-display text-2xl font-black tracking-tight'>{t('Ya tienes 3 desafíos en marcha')}</p>
+              <p className='m-0 text-base font-semibold text-muted-foreground'>
+                {t('Con «Un desafío más» puedes retar a alguien más ahora mismo.')}
+              </p>
+            </div>
+            <div className='flex w-full max-w-xs flex-col gap-2'>
+              <Button
+                type='button'
+                variant='gold'
+                size='xl'
+                disabled={state.buying || (state.balance !== null && state.balance < EXTRA_CHALLENGE_COST)}
+                onClick={onBuyPass}
+              >
+                {state.buying ? <Loader2Icon className='animate-spin' aria-hidden='true' /> : <FichaIcon size={24} />}
+                {t('Retar por {n} ICA Coins', { n: EXTRA_CHALLENGE_COST })}
+              </Button>
+              {state.balance !== null && state.balance < EXTRA_CHALLENGE_COST ? (
+                <p className='m-0 text-sm font-bold' style={{ color: 'var(--ica-gold-ink)' }}>
+                  {t('Tienes {n} ICA Coins: aún no te llega.', { n: state.balance })}
+                </p>
+              ) : null}
+              <Button type='button' variant='outline' size='lg' onClick={onClose}>
+                {t('Ahora no')}
+              </Button>
+            </div>
+          </>
         ) : (
           <>
             <img src='/guia-ica.png' alt='' aria-hidden='true' draggable={false} className='size-32 select-none object-contain opacity-80' />
             <p className='m-0 max-w-sm text-lg font-extrabold'>{state.message}</p>
             <div className='flex w-full max-w-xs flex-col gap-2'>
-              {state.showShop && onShop ? (
-                <Button type='button' variant='a' size='lg' onClick={onShop}>
-                  {t('Ir a la tienda')}
-                </Button>
-              ) : null}
               <Button type='button' variant='outline' size='lg' onClick={onClose}>
                 {t('Cerrar')}
               </Button>

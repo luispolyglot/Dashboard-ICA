@@ -58,7 +58,7 @@ export function RandomChallengeCard({ config, compact = false }: { config: AppCo
       </button>
       {open && config ? (
         <Suspense
-          fallback={<RandomMatchOverlay state={{ phase: 'searching' }} myName='' names={[]} onClose={() => setOpen(false)} />}
+          fallback={<RandomMatchOverlay state={{ phase: 'searching' }} myName='' onClose={() => setOpen(false)} />}
         >
           <IcaChallengesView
             key={draw}

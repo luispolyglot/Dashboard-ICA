@@ -411,6 +411,29 @@ button:disabled {
   }
 }
 
+/* «+2 ICA Coins» que sube desde el cofre al abrirlo con un toque (admins, 15 Oct) */
+@keyframes ica-plus-rise {
+  0% {
+    transform: translate(-50%, 12px) scale(0.6);
+    opacity: 0;
+  }
+
+  18% {
+    transform: translate(-50%, -14px) scale(1.18);
+    opacity: 1;
+  }
+
+  70% {
+    transform: translate(-50%, -44px) scale(1);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translate(-50%, -70px) scale(0.95);
+    opacity: 0;
+  }
+}
+
 /* Monedas que vuelan al contador de arriba (--dx, --dy) */
 @keyframes ica-coin-fly {
   0% {
@@ -815,6 +838,10 @@ button:disabled {
 
   .ica-coin-fly {
     animation: ica-coin-fly 0.75s cubic-bezier(0.55, 0, 0.75, 0.4) both;
+  }
+
+  .ica-plus-rise {
+    animation: ica-plus-rise 1.7s cubic-bezier(0.2, 0.9, 0.3, 1) both;
   }
 
   /* Al tocar algo bloqueado: tiembla de lado a lado (usa «translate» para no pisar otras animaciones) */

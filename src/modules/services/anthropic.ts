@@ -10,6 +10,7 @@ type TranslateResponse = {
   translation?: string | null
   /** Corrected spelling of what was typed, or null when it was already right. */
   spellingSuggestion?: string | null
+  wrongLanguage?: boolean
 }
 
 type ManualPhraseSuggestionResponse = {
@@ -48,6 +49,8 @@ type PhraseTokenInsightResponse = {
 export type TranslationWithSpelling = {
   translation: string | null
   spellingSuggestion: string | null
+  /** The text is in the other language (written in the wrong field; admins, 15 Oct). */
+  wrongLanguage: boolean
 }
 
 /**
@@ -59,7 +62,7 @@ export async function fetchTranslationWithSpelling(
   fromLang: string,
   toLang: string,
 ): Promise<TranslationWithSpelling> {
-  const empty = { translation: null, spellingSuggestion: null }
+  const empty = { translation: null, spellingSuggestion: null, wrongLanguage: false }
   if (!supabase) return empty
 
   try {
@@ -79,7 +82,7 @@ export async function fetchTranslationWithSpelling(
 
     const translation = data?.translation?.trim() || null
     const spellingSuggestion = data?.spellingSuggestion?.trim() || null
-    return { translation, spellingSuggestion }
+    return { translation, spellingSuggestion, wrongLanguage: data?.wrongLanguage === true }
   } catch (error) {
     console.error(error)
     return empty

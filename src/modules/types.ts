@@ -455,6 +455,8 @@ export interface IcaChallengeAvailableUser {
   winStreak: number
   /** Desafíos de los últimos 30 días (los que más juegan salen arriba). */
   recentChallenges: number
+  /** The flag they show in their profile (bought in the shop), if any. */
+  displayFlag?: string | null
 }
 
 export type IcaChallengeQuestionKind = 'choice' | 'write' | 'speak' | 'listen' | 'cloze' | 'pairs'
