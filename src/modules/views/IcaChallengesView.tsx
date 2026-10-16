@@ -380,6 +380,28 @@ function renderAvatar(name: string, avatarUrl: string | null, seed: string) {
   )
 }
 
+/** Whole days between a YYYY-MM-DD day and today (local). */
+function daysSince(day: string, now = new Date()): number {
+  const [year, month, date] = day.split('-').map(Number)
+  if (!year || !month || !date) return Number.POSITIVE_INFINITY
+  const then = new Date(year, month - 1, date)
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  return Math.round((today.getTime() - then.getTime()) / 86_400_000)
+}
+
+/**
+ * «Desafío aleatorio» (Luis, 16 Oct): someone active in the last 48 h (today or yesterday), else
+ * 72 h (2 days), else 100 h (about 4 days), else anyone in the list.
+ */
+export function pickActivePool<T extends { lastActiveDay?: string | null }>(candidates: T[], now = new Date()): T[] {
+  if (candidates.some((item) => item.lastActiveDay === undefined)) return candidates
+  for (const maxDays of [1, 2, 4]) {
+    const pool = candidates.filter((item) => item.lastActiveDay && daysSince(item.lastActiveDay, now) <= maxDays)
+    if (pool.length > 0) return pool
+  }
+  return candidates
+}
+
 export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onEmbeddedDone, randomStartedAt }: IcaChallengesViewProps) {
   const embedded = Boolean(embeddedRivalId)
   const navigate = useNavigate()
@@ -758,7 +780,11 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
         item.activeChallengesCount < 3 &&
         (item.canChallenge || myLimit(item)),
     )
-    const rival = candidates[Math.floor(Math.random() * candidates.length)]
+    // Active people first (Luis, 16 Oct): nobody accepted when they had not been in the app for
+    // 2 days or more. Whoever was in the app in the last 48 h; if nobody, 72 h; then 100 h; then
+    // anyone. (An older server does not say the day: then everyone counts.)
+    const pool = pickActivePool(candidates)
+    const rival = pool[Math.floor(Math.random() * pool.length)]
     if (!rival) {
       fail(t('Ahora mismo no hay ningún icademer libre para desafiar. Prueba en un rato.'))
       return

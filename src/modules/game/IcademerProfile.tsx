@@ -27,7 +27,8 @@ import {
 } from './achievements'
 import type { FeaturedBadge } from './featuredBadge'
 import { badgesToShow, fetchProfileBadges, useMyProfileBadges } from './profileBadges'
-import { FlameIcon, SwordsIcon } from './icons'
+import { FichaIcon, FlameIcon, SwordsIcon } from './icons'
+import { EXTRA_CHALLENGE_COST } from './rules'
 import type { MedalCategory } from './medals'
 import { FeaturedBadgeMini, UserInitial } from './ranking'
 
@@ -49,7 +50,19 @@ type ChallengeState =
   | { kind: 'loading' }
   | { kind: 'hidden' }
   | { kind: 'can' }
+  /** You have 3 open: a 4th one with a «desafío extra» (EXTRA_CHALLENGE_COST ICA Coins). */
+  | { kind: 'extra' }
   | { kind: 'blocked'; reason: string | null }
+
+/**
+ * Luis, 16 Oct: with 3 open challenges you can still challenge for EXTRA_CHALLENGE_COST ICA Coins
+ * (a 4th one); only with 4 is it «No se puede desafiar». The server says it with its own code,
+ * or (older server) with the «3 desafíos activos» message.
+ */
+function isExtraSlotCase(code: string | null, reason: string | null): boolean {
+  if (code === 'ICA_CHALLENGE_EXTRA_SLOT_NEEDED') return true
+  return code === 'ICA_CHALLENGE_ACTIVE_LIMIT_REACHED' && Boolean(reason?.includes('3 desafíos'))
+}
 
 type LoadedProfile = {
   name: string | null
@@ -111,7 +124,9 @@ function useIcademerProfile(summary: IcademerSummary | null, isMe: boolean): Loa
               ? { kind: 'hidden' }
               : challenge.canChallenge
                 ? { kind: 'can' }
-                : { kind: 'blocked', reason: challenge.blockedReason },
+                : isExtraSlotCase(challenge.blockedCode, challenge.blockedReason)
+                  ? { kind: 'extra' }
+                  : { kind: 'blocked', reason: challenge.blockedReason },
         }))
       },
       () => undefined,
@@ -172,9 +187,10 @@ function useIcademerProfile(summary: IcademerSummary | null, isMe: boolean): Loa
           if (row) {
             targetLang = row.targetLang
             level = row.level
-            challengeState =
-              row.canChallenge || row.blockedReason === 'Tu máximo de desafíos activos es 3.'
-                ? { kind: 'can' }
+            challengeState = row.canChallenge
+              ? { kind: 'can' }
+              : row.blockedReason === 'Tu máximo de desafíos activos es 3.'
+                ? { kind: 'extra' }
                 : { kind: 'blocked', reason: row.blockedReason }
           } else {
             challengeState = { kind: 'blocked', reason: null }
@@ -350,16 +366,29 @@ export function IcademerProfileDialog({
         {/* Desafiar */}
         {!ready ? null : loaded.challenge.kind === 'loading' && !isMe ? (
           <span className='h-12 w-full animate-pulse rounded-2xl bg-muted' aria-hidden='true' />
-        ) : loaded.challenge.kind === 'can' ? (
-          <Button
-            type='button'
-            className='h-12 gap-2 rounded-2xl text-base font-black'
-            onClick={() => void challenge()}
-            aria-busy={challengePending || undefined}
-          >
-            {challengePending ? <Loader2Icon className='size-5 animate-spin' aria-hidden='true' /> : <SwordsIcon size={22} />}
-            {t('Desafiar a {name}', { name: firstName })}
-          </Button>
+        ) : loaded.challenge.kind === 'can' || loaded.challenge.kind === 'extra' ? (
+          <div className='flex flex-col gap-1.5'>
+            <Button
+              type='button'
+              className='h-12 gap-2 rounded-2xl text-base font-black'
+              onClick={() => void challenge()}
+              aria-busy={challengePending || undefined}
+            >
+              {challengePending ? <Loader2Icon className='size-5 animate-spin' aria-hidden='true' /> : <SwordsIcon size={22} />}
+              {t('Desafiar a {name}', { name: firstName })}
+              {loaded.challenge.kind === 'extra' ? (
+                <span className='inline-flex items-center gap-1 rounded-full bg-black/15 px-2 py-0.5 text-sm'>
+                  <FichaIcon size={16} />
+                  {EXTRA_CHALLENGE_COST}
+                </span>
+              ) : null}
+            </Button>
+            {loaded.challenge.kind === 'extra' ? (
+              <p className='m-0 text-center text-xs font-semibold text-muted-foreground'>
+                {t('Ya tienes 3 desafíos activos: el 4.º cuesta {n} ICA Coins.', { n: EXTRA_CHALLENGE_COST })}
+              </p>
+            ) : null}
+          </div>
         ) : loaded.challenge.kind === 'blocked' ? (
           <div className='flex items-center gap-3 rounded-2xl border-2 border-border px-3 py-2.5'>
             <span className='flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted opacity-60 grayscale'>

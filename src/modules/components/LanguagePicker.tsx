@@ -23,14 +23,33 @@ function star(cx: number, cy: number, r: number, rotation = -90): string {
   return points.join(' ')
 }
 
+/**
+ * Stripes of the same colour side by side are drawn as one band, and each band runs a little
+ * under the next one (Luis, 16 Oct: at small sizes a thin line showed in the middle of the
+ * yellow of Spain, the seam between its two yellow stripes).
+ */
+function mergeStripes(colors: string[]): Array<{ color: string; start: number; count: number }> {
+  const bands: Array<{ color: string; start: number; count: number }> = []
+  colors.forEach((color, index) => {
+    const last = bands[bands.length - 1]
+    if (last && last.color === color) last.count += 1
+    else bands.push({ color, start: index, count: 1 })
+  })
+  return bands
+}
+
 function hStripes(colors: string[]) {
   const h = H / colors.length
-  return colors.map((color, index) => <rect key={index} x='0' y={index * h} width={W} height={h + 0.05} fill={color} />)
+  return mergeStripes(colors).map((band, index, all) => (
+    <rect key={index} x='0' y={band.start * h} width={W} height={band.count * h + (index < all.length - 1 ? 0.6 : 0)} fill={band.color} />
+  ))
 }
 
 function vStripes(colors: string[]) {
   const w = W / colors.length
-  return colors.map((color, index) => <rect key={index} x={index * w} y='0' width={w + 0.05} height={H} fill={color} />)
+  return mergeStripes(colors).map((band, index, all) => (
+    <rect key={index} x={band.start * w} y='0' width={band.count * w + (index < all.length - 1 ? 0.6 : 0)} height={H} fill={band.color} />
+  ))
 }
 
 function nordicCross(bg: string, cross: string, inner?: string) {

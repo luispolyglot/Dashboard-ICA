@@ -373,5 +373,16 @@ const en: Record<string, string> = {
   "Ese icademer ya tiene 4 desafíos abiertos.": "That icademer already has 4 open challenges.",
   "Este usuario ya tiene 4 desafíos abiertos.": "This user already has 4 open challenges.",
   "Ya tiene 4 desafíos abiertos.": "Already has 4 open challenges.",
+  "Ya tienes 3 desafíos activos: el 4.º cuesta {n} ICA Coins.": "You already have 3 active challenges: the 4th costs {n} ICA Coins.",
+  "Ya tienes 3 desafíos activos: el 4.º cuesta 15 ICA Coins.": "You already have 3 active challenges: the 4th costs 15 ICA Coins.",
+  "Ya tienes 4 desafíos activos. Termina uno para retar de nuevo.": "You already have 4 active challenges. Finish one to challenge again.",
+  "Quedan {n} h para aceptar": "{n} h left to accept",
+  "Quedan {n} min para aceptar": "{n} min left to accept",
+  "Un icademer": "An icademer",
+  "{name} te ha retado": "{name} has challenged you",
+  "Un desafío 1 contra 1 con tus palabras ICA.": "A 1 vs 1 challenge with your ICA words.",
+  "Y {n} reto más esperándote": "And {n} more challenge waiting for you",
+  "Y {n} retos más esperándote": "And {n} more challenges waiting for you",
+  "Aceptar el reto": "Accept the challenge",
 }
 export default en
