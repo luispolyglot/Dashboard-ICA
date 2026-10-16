@@ -858,14 +858,6 @@ export function evaluatePairsBoard(input: {
 // Corregir
 // ---------------------------------------------------------------------------
 
-function containsSequence(haystack: string[], needle: string[]): boolean {
-  if (needle.length === 0 || needle.length > haystack.length) return false
-  for (let i = 0; i + needle.length <= haystack.length; i += 1) {
-    if (needle.every((word, k) => haystack[i + k] === word)) return true
-  }
-  return false
-}
-
 /** Letters to add, remove or change to go from one word to the other (stops above `limit`). */
 function letterDistance(a: string, b: string, limit: number): number {
   const x = Array.from(a)
