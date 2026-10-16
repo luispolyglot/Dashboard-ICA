@@ -158,6 +158,9 @@ export function NotaDesafianteOverlay({
   /** Waits until the answer is said (button released) or «Volver a oír». */
   const waitForAnswer = () =>
     new Promise<TurnInput>((resolve) => {
+      // The button starts each answer ready to press. Without this it kept «Comprobando…» from
+      // the previous chunk and could not be pressed (Luis, 16 Oct: stuck on chunk 2).
+      holdRef.current.reset()
       answerWaiterRef.current = resolve
       cancelListenRef.current = () => {
         holdRef.current.cancel()
