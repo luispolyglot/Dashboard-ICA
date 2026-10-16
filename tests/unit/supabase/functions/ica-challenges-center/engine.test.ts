@@ -156,6 +156,16 @@ describe('Dilo en voz alta: corrección', () => {
     expect(evaluateResponse({ kind: 'speak', answer, response: { transcripts: ['5'] }, language: 'Polaco' })).toBe(false)
   })
 
+  it('perdona una letra mal escrita por el micrófono en palabras de 5 letras o más', () => {
+    const phrase = secret('Può ripetere, per favore?', ['Può ripetere, per favore?'])
+    expect(evaluateResponse({ kind: 'speak', answer: phrase, response: { transcripts: ['puo ripetere per favori'] }, language: 'Italiano' })).toBe(true)
+    expect(evaluateResponse({ kind: 'speak', answer: phrase, response: { transcripts: ['può ripetere perfavore'] }, language: 'Italiano' })).toBe(true)
+    // Una palabra que falta no se perdona.
+    expect(evaluateResponse({ kind: 'speak', answer: phrase, response: { transcripts: ['può ripetere per'] }, language: 'Italiano' })).toBe(false)
+    // En palabras cortas tiene que salir exacta («per» / «pre»).
+    expect(evaluateResponse({ kind: 'speak', answer: phrase, response: { transcripts: ['può ripetere pre favore'] }, language: 'Italiano' })).toBe(false)
+  })
+
   it('funciona con expresiones de varias palabras y mira todas las alternativas', () => {
     const phrase = secret('dzień dobry', ['dzień dobry'])
     expect(
