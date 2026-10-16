@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/auth/AuthContext'
 import { getUiLang, langName, t } from '@/i18n'
 import { turnOnRemindersOnThisDevice } from '../services/notificationOnboarding'
-import { getPushPermissionState } from '../services/pushNotifications'
+import { enablePushOnCurrentDevice, getPushPermissionState } from '../services/pushNotifications'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { CHALLENGE_NOTE_MIN_CLOSED_NOTES, FLASHCARDS_MIN_ACTIVATED_WORDS } from './rules'
 import { FLAG_COST } from './languageFlag'
@@ -118,7 +118,8 @@ function buildSteps(name: string, lang: string, levelConfirmed: boolean): TourSt
       route: home,
       targets: ['[data-tour="wallet"]'],
       title: t('Tu racha y tus ICA Coins'),
-      body: t('Aquí arriba ves tu racha (los días seguidos que completas el ciclo) y tus ICA Coins. Las monedas se gastan en la tienda: intentos extra de PreguntICA, ampliar el día o la bandera de tu idioma.'),
+      // Luis, 16 Oct: short.
+      body: t('Aquí arriba ves tu racha ICA y tus ICA Coins. Las monedas se gastan en la tienda.'),
     },
   ]
   if (!levelConfirmed) {
@@ -153,13 +154,6 @@ function buildSecondSteps(): TourStep[] {
       targets: ['[data-tour="game-flashcards"]'],
       title: t('Juegos ICA: Flashcards'),
       body: t('Repasa tus palabras ICA para no olvidarlas. Se abren cuando tienes {n} palabras activadas.', { n: FLASHCARDS_MIN_ACTIVATED_WORDS }),
-    },
-    {
-      id: 'challenges',
-      route: games,
-      targets: ['[data-tour="game-challenges"]'],
-      title: t('Juegos ICA: Desafíos ICA'),
-      body: t('Reta 1 contra 1 a otros icademers con tus palabras ICA y gana ICA Coins.'),
     },
     {
       id: 'preguntica',
@@ -249,6 +243,107 @@ function unionBox(elements: HTMLElement[]): Box {
     width: right - left + SPOT_PADDING * 2,
     height: bottom - top + SPOT_PADDING * 2,
   }
+}
+
+/** When the welcome guide ended on this device (ms), or null. */
+const WELCOME_DONE_AT_KEY = 'ica-welcome-done-at'
+function writeWelcomeDoneAt(userId: string): void {
+  try {
+    window.localStorage.setItem(`${WELCOME_DONE_AT_KEY}:${userId}`, String(Date.now()))
+  } catch {
+    /* nothing to do */
+  }
+}
+function readWelcomeDoneAt(userId: string): number | null {
+  try {
+    const value = Number(window.localStorage.getItem(`${WELCOME_DONE_AT_KEY}:${userId}`))
+    return Number.isFinite(value) && value > 0 ? value : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Desafíos ICA (Luis, 16 Oct): they are on Inicio now («Desafío aleatorio»), so Ica explains them
+ * there instead of in the welcome guide, 4 hours after the welcome guide (read or skipped):
+ * the random challenge on Inicio, challenging someone in particular in Juegos ICA, and turning on
+ * the notifications (without them many challenges get no answer). New accounts only, once per
+ * account and device; `?tour=desafios` shows it again.
+ */
+const CHALLENGES_GUIDE_KEY = 'ica-guide-challenges-v1'
+const CHALLENGES_GUIDE_DELAY_MS = 4 * 60 * 60 * 1000
+
+export function ChallengesGuide() {
+  const { user } = useAuth()
+  const location = useLocation()
+  const forced = wantsTourFromUrl(location.search, 'desafios')
+  const isNew = isNewAccount((user as { created_at?: string } | null)?.created_at)
+  const onHome = location.pathname === DASHBOARD_ROUTES.home
+  const [due, setDue] = useState(false)
+
+  useEffect(() => {
+    if (!user?.id || !isNew) return
+    const check = () => {
+      const doneAt = readWelcomeDoneAt(user.id)
+      // Welcome guide seen before this time was saved: it ended long ago, so it is due now.
+      if (doneAt === null) setDue(readSeen(WELCOME_KEY, user.id))
+      else setDue(Date.now() - doneAt >= CHALLENGES_GUIDE_DELAY_MS)
+    }
+    check()
+    const timer = window.setInterval(check, 60_000)
+    return () => window.clearInterval(timer)
+  }, [isNew, user?.id])
+
+  const steps = useMemo<TourStep[]>(() => {
+    const permission = getPushPermissionState()
+    const canTurnOnPush = permission !== 'unsupported' && permission !== 'granted'
+    return [
+      {
+        id: 'challenges-home',
+        route: DASHBOARD_ROUTES.home,
+        targets: ['[data-tour="random-challenge"]'],
+        title: t('Los Desafíos ICA'),
+        body: t('Reta 1 contra 1 a otro icademer con tus palabras ICA. Con este botón, a alguien al azar, ahora mismo. Si ganas, te llevas ICA Coins.'),
+      },
+      {
+        id: 'challenges-games',
+        route: DASHBOARD_ROUTES.gamesIca,
+        targets: ['[data-tour="game-challenges"]'],
+        title: t('O a alguien en concreto'),
+        body: t('En Juegos ICA, en Desafíos ICA, eliges a quién retar y cómo: lectura, escucha, escritura, habla o parejas.'),
+      },
+      {
+        id: 'challenges-notifications',
+        route: DASHBOARD_ROUTES.gamesIca,
+        title: t('Activa los avisos'),
+        body: canTurnOnPush
+          ? t('Así sabrás cuándo alguien te reta y cuándo te responden. Sin avisos, muchos retos se quedan sin contestar.')
+          : t('Ya tienes los avisos activados en este dispositivo: te avisaremos cuando alguien te rete y cuando te respondan.'),
+        action: canTurnOnPush
+          ? {
+              label: t('Activar avisos en este dispositivo'),
+              doneLabel: t('Avisos activados'),
+              successText: t('Notificaciones activadas en este dispositivo.'),
+              errorText: t('No se pudieron activar las notificaciones.'),
+              run: async () => {
+                const result = await enablePushOnCurrentDevice()
+                if (result !== 'granted') throw new Error(t('No se pudieron activar las notificaciones.'))
+              },
+            }
+          : undefined,
+      },
+    ]
+  }, [])
+
+  return (
+    <GuideTour
+      guideKey={CHALLENGES_GUIDE_KEY}
+      steps={steps}
+      shouldStart={(onHome && isNew && due) || forced}
+      force={forced}
+      lastLabel={t('Entendido')}
+    />
+  )
 }
 
 /** The level window, opened from anywhere (the guide, the level chip): see LevelSetupHost. */
@@ -390,7 +485,7 @@ function PhaseIntroGuide({ phase }: { phase: 'I' | 'C' | 'A' }) {
         {
           id: 'phase-c',
           route,
-          title: t('Ahora, la Creación'),
+          title: t('Ahora toca la Creación'),
           body: t('Con las palabras que has filtrado, vas a crear frases contextualizadas, para tenerlas en contexto y que no se te olviden.'),
         },
       ]
@@ -399,8 +494,8 @@ function PhaseIntroGuide({ phase }: { phase: 'I' | 'C' | 'A' }) {
       {
         id: 'phase-a',
         route,
-        title: t('Ahora toca la parte más importante'),
-        body: t('Activa tu conocimiento con tu propia voz para inmortalizarlo aquí, en tus notas maestras.'),
+        title: t('Ahora toca la Activación'),
+        body: t('Es la parte más importante: activa tu conocimiento con tu propia voz para inmortalizarlo aquí, en tus notas maestras.'),
       },
     ]
     // The route is the screen where it opened; it does not follow later navigation.
@@ -778,6 +873,8 @@ function GuideTour({
   const finish = useCallback(
     (goHome: boolean) => {
       if (user?.id) writeSeen(guideKey, user.id)
+      // When the welcome guide ended (read or skipped): the challenges guide comes 4 hours later.
+      if (user?.id && guideKey === WELCOME_KEY) writeWelcomeDoneAt(user.id)
       if (activeGuide === guideKey) activeGuide = null
       window.dispatchEvent(new Event(GUIDE_FINISHED_EVENT))
       setIndex(null)

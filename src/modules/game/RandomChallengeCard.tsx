@@ -43,6 +43,7 @@ export function RandomChallengeCard({ config, compact = false }: { config: AppCo
     <>
       <button
         type='button'
+        data-tour='random-challenge'
         onClick={() => {
           if (locked) {
             toast(t('Necesitas al menos {n} palabras ICA activadas para retar. Llevas {have}.', {
