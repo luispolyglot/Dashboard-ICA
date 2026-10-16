@@ -189,5 +189,6 @@ const en: Record<string, string> = {
   "Creando tu frase…": "Creating your phrase…",
   "Revisando tu frase…": "Checking your phrase…",
   "Progreso": "Progress",
+  "Hoy ya has borrado 2 frases de hoy. Mañana podrás volver a borrar.": "You've already deleted 2 of today's phrases. You can delete again tomorrow.",
 }
 export default en
