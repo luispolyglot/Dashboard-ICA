@@ -62,6 +62,7 @@ import {
 } from '../game/fichas'
 import { FichaIcon, FlameIcon, SwordsIcon } from '../game/icons'
 import { RANDOM_SEARCH_MS, RandomMatchOverlay, type RandomMatchState } from '../game/RandomMatchOverlay'
+import { logRandomChallengeTap, type RandomChallengeTapEvent } from '../services/randomChallengeTaps'
 import { gameSfx } from '../game/sfx'
 import { useMyFlags } from '../game/languageFlag'
 import { fetchMonthlyStreakLeaderboard } from '../services/leaderboard'
@@ -91,6 +92,8 @@ type IcaChallengesViewProps = {
   onEmbeddedDone?: () => void
   /** «Desafío aleatorio»: when the search started (Date.now()), so it lasts 3-4 s in total. */
   randomStartedAt?: number
+  /** «Desafío aleatorio»: the id of this tap, to count how it ended (Luis, 16 Oct). */
+  randomTapId?: string | null
 }
 
 type TabKey = 'active' | 'pending' | 'history'
@@ -402,7 +405,14 @@ export function pickActivePool<T extends { lastActiveDay?: string | null }>(cand
   return candidates
 }
 
-export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onEmbeddedDone, randomStartedAt }: IcaChallengesViewProps) {
+export function IcaChallengesView({
+  targetLang,
+  nativeLang,
+  embeddedRivalId,
+  onEmbeddedDone,
+  randomStartedAt,
+  randomTapId,
+}: IcaChallengesViewProps) {
   const embedded = Boolean(embeddedRivalId)
   const navigate = useNavigate()
   const {
@@ -492,6 +502,13 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
       if (randomTimerRef.current !== null) window.clearTimeout(randomTimerRef.current)
     }
   }, [])
+  // How this tap ended, counted once (Luis, 16 Oct: to know if people use the random challenge).
+  const randomOutcomeRef = useRef<RandomChallengeTapEvent | null>(null)
+  const countRandomOutcome = (event: RandomChallengeTapEvent) => {
+    if (!randomMode || randomOutcomeRef.current) return
+    randomOutcomeRef.current = event
+    logRandomChallengeTap(randomTapId, event)
+  }
   const afterSearch = (run: () => void) => {
     if (randomCancelledRef.current) return
     const wait = Math.max(0, RANDOM_SEARCH_MS - (Date.now() - randomStartedAtRef.current))
@@ -706,12 +723,14 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
       extraSlot,
     })
       .then(async () => {
+        countRandomOutcome('sent')
         if (randomCancelledRef.current) return
         setRandomMatch((current) => (current.phase === 'found' ? { ...current, status: 'sent' } : current))
         await refreshCoins()
       })
       .catch((createError: unknown) => {
         if (randomCancelledRef.current) return
+        countRandomOutcome('error')
         setRandomMatch({
           phase: 'error',
           message:
@@ -733,6 +752,7 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
       sendRandomChallenge(pick, true)
     } catch (buyError) {
       if (randomCancelledRef.current) return
+      countRandomOutcome('error')
       setRandomMatch({
         phase: 'error',
         message:
@@ -746,7 +766,11 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
   const runRandomMatch = async () => {
     // One tick first, so StrictMode's second mount (development) cannot clear the first timer.
     await Promise.resolve()
-    const fail = (message: string) => afterSearch(() => setRandomMatch({ phase: 'error', message }))
+    const fail = (message: string, outcome: RandomChallengeTapEvent = 'error') =>
+      afterSearch(() => {
+        countRandomOutcome(outcome)
+        setRandomMatch({ phase: 'error', message })
+      })
     if (!isEnrolled) {
       fail(t('Activa Desafíos ICA para poder retar.'))
       return
@@ -786,7 +810,7 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
     const pool = pickActivePool(candidates)
     const rival = pool[Math.floor(Math.random() * pool.length)]
     if (!rival) {
-      fail(t('Ahora mismo no hay ningún icademer libre para desafiar. Prueba en un rato.'))
+      fail(t('Ahora mismo no hay ningún icademer libre para desafiar. Prueba en un rato.'), 'no_rival')
       return
     }
     const scope: IcaChallengeScope = rival.samePair && rival.mixedAllowed ? 'language' : 'global'
@@ -809,7 +833,11 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
     randomPickRef.current = pick
     const needsExtra = !rival.canChallenge
     if (needsExtra && extraPasses <= 0) {
-      afterSearch(() => setRandomMatch({ phase: 'needsPass', balance: coinBalance ?? null, buying: false }))
+      afterSearch(() => {
+        // Not the end yet: if they buy «Un desafío más», «sent» is counted after it.
+        logRandomChallengeTap(randomTapId, 'needs_pass')
+        setRandomMatch({ phase: 'needsPass', balance: coinBalance ?? null, buying: false })
+      })
       return
     }
     afterSearch(() => sendRandomChallenge(pick, needsExtra))
@@ -1301,7 +1329,12 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
       <RandomMatchOverlay
         state={randomMatch}
         myName={String(authUser?.user_metadata?.display_name || authUser?.email || '')}
-        onClose={() => onEmbeddedDone?.()}
+        onClose={() => {
+          // Closed before the challenge went out (searching, or offered «Un desafío más»). Once
+          // found, it is already on its way: «sent» is counted when the server answers.
+          if (randomMatch.phase !== 'found') countRandomOutcome('cancelled')
+          onEmbeddedDone?.()
+        }}
         onBuyPass={() => void buyPassAndSend()}
       />
     )

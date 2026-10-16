@@ -74,8 +74,21 @@ async function loadPublicProfile(input: ProfileInput): Promise<Response> {
   const profileFields = profileRow as Record<string, unknown>
 
   const setting = settingsByUser.get(profileUserId)
-  const targetLang = setting?.targetLang || null
-  const nativeLang = setting?.nativeLang || null
+  let targetLang = setting?.targetLang || null
+  let nativeLang = setting?.nativeLang || null
+  // Without saved settings (Luis, 16 Oct: Marina showed no flag), the language of their latest
+  // level bar (user_meta_tracker), the same place the app reads the level from.
+  if (!targetLang) {
+    const { data: trackerRow } = await adminClient
+      .from('user_meta_tracker')
+      .select('target_lang, native_lang')
+      .eq('user_id', profileUserId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    targetLang = toText(trackerRow?.target_lang) || null
+    nativeLang = nativeLang || toText(trackerRow?.native_lang) || null
+  }
   const levels =
     targetLang && nativeLang
       ? await input.fetchLevelsForPair({
@@ -153,13 +166,18 @@ async function loadPublicProfile(input: ProfileInput): Promise<Response> {
         if (activePair) {
           blockedCode = 'ICA_CHALLENGE_ACTIVE_PAIR_EXISTS'
           blockedReason = 'Ya tienen un desafío activo entre ustedes.'
-        } else if (myActive >= input.maxActiveChallenges) {
+        } else if (myActive >= input.maxActiveChallenges + 1) {
           blockedCode = 'ICA_CHALLENGE_ACTIVE_LIMIT_REACHED'
-          blockedReason = 'Ya tienes 3 desafíos activos. Termina uno para retar de nuevo.'
+          blockedReason = 'Ya tienes 4 desafíos activos. Termina uno para retar de nuevo.'
         } else if (rivalActive >= input.maxActiveChallenges + 1) {
           // With 3 they can still accept a 4th one with a «desafío extra» (Luis, 11 Oct).
           blockedCode = 'ICA_CHALLENGE_OPPONENT_ACTIVE_LIMIT_REACHED'
           blockedReason = 'Ya tiene 4 desafíos abiertos.'
+        } else if (myActive >= input.maxActiveChallenges) {
+          // With 3 you can still challenge with a «desafío extra» (Luis, 16 Oct): the app shows
+          // «Desafiar» with its price; only with 4 is it «No se puede desafiar».
+          blockedCode = 'ICA_CHALLENGE_EXTRA_SLOT_NEEDED'
+          blockedReason = 'Ya tienes 3 desafíos activos: el 4.º cuesta 15 ICA Coins.'
         }
       }
     }
