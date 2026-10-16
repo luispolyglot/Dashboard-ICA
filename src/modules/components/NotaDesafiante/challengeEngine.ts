@@ -569,7 +569,24 @@ type ListenOptions = {
    * acaba ahí y se devuelve lo que haya (silencio si no dijo nada).
    */
   reopenWhenClosed?: boolean
+  /**
+   * With `reopenWhenClosed: false` (phone): if the phone closes the mic by itself while the
+   * person is still in the middle of the answer («può ripetere per…», Luis 16 Oct), it is opened
+   * once more so the rest is not lost (one more beep, better than a wrong answer). It gets what was
+   * heard so far and says whether to keep listening (false = it is already complete). At most
+   * MAX_CUT_REOPENS times per word.
+   */
+  keepListeningAfterCut?: (heardSoFar: string) => boolean
+  /**
+   * Mantener pulsado para hablar (Luis y Nahuel, 16 Oct): el micro se abre al pulsar y escucha
+   * hasta que se suelta (`release()` de listenOnce), sin cortar por silencios. Si el navegador lo
+   * cierra solo mientras sigue pulsado, se abre otra vez. Tope de seguridad: maxMs.
+   */
+  holdToTalk?: boolean
 }
+
+/** Times the mic is opened again on the phone when it was cut in the middle of an answer. */
+const MAX_CUT_REOPENS = 2
 
 /**
  * El móvil (Android e iPhone) ya pita él solo cada vez que se abre el micro. Ahí no ponemos
@@ -584,12 +601,15 @@ const START_TIMEOUT_MS = 4000
 // Si tras pedir que pare el navegador no contesta, se evalúa lo que haya igualmente.
 const STOP_TIMEOUT_MS = 2500
 
+type SessionControls = { cancel: () => void; release: () => void }
+
 function listenSession(
   Ctor: RecognitionConstructor,
   langName: string,
   options: ListenOptions | undefined,
-  registerCancel: (cancel: () => void) => void,
+  registerControls: (controls: SessionControls) => void,
 ): Promise<SessionOutcome> {
+  const holdToTalk = options?.holdToTalk === true
   const noSpeechMs = options?.noSpeechMs ?? 5000
   // Somos humanos: al responder, a veces hay que pararse a pensar.
   // Se permiten 4 s de silencio a mitad de la respuesta antes de darla por terminada.
@@ -619,6 +639,8 @@ function listenSession(
     let interimText = ''
     let shownText = ''
     let timer = 0
+    let cutReopensLeft = MAX_CUT_REOPENS
+    let released = false // mantener pulsado: ya ha soltado el botón
 
     const finish = (outcome: SessionOutcome) => {
       if (settled) return
@@ -757,8 +779,52 @@ function listenSession(
       if (!alive && !cancelled && !errorOutcome) {
         // Se ha cerrado sin llegar a abrir el micro.
         release()
-        finish({ status: 'not-started' })
+        finish(holdToTalk && released ? { status: 'silence' } : { status: 'not-started' })
         return
+      }
+      // Mantener pulsado: mientras no suelte el botón, el micro sigue abierto aunque el navegador
+      // lo cierre solo en una pausa.
+      if (holdToTalk && !released && !cancelled && !errorOutcome && Date.now() - startedAt < maxMs) {
+        committed = [...committed, ...sessionFinals]
+        if (interimText.trim()) committed.push([interimText.trim()])
+        sessionFinals = []
+        interimText = ''
+        stopRequested = false
+        try {
+          recognition.start()
+          return
+        } catch {
+          // si no se puede reabrir, se evalúa lo que haya
+        }
+      }
+      // En el móvil, el micro se ha cortado solo a mitad de la respuesta (una pausa entre dos
+      // palabras): se abre otra vez para no perder el resto, si quien llama dice que aún falta.
+      if (
+        !cancelled &&
+        !stopRequested &&
+        !errorOutcome &&
+        options?.reopenWhenClosed === false &&
+        options.keepListeningAfterCut &&
+        cutReopensLeft > 0 &&
+        speechStarted
+      ) {
+        const now = Date.now()
+        const soFar = composeRecognitionText([...committed, ...sessionFinals], interimText)
+        if (now - startedAt < maxMs && soFar && options.keepListeningAfterCut(soFar)) {
+          cutReopensLeft -= 1
+          committed = [...committed, ...sessionFinals]
+          if (interimText.trim()) committed.push([interimText.trim()])
+          sessionFinals = []
+          interimText = ''
+          // El tiempo de silencio vuelve a contar desde ahora (el nuevo pitido).
+          lastActivity = now
+          try {
+            recognition.start()
+            return
+          } catch {
+            // si no se puede reabrir, se evalúa lo que haya
+          }
+        }
       }
       // El navegador a veces cierra el micro por su cuenta tras un silencio corto.
       // Si aún no se ha cumplido el tiempo para pensar, se vuelve a abrir y se sigue escuchando.
@@ -799,6 +865,7 @@ function listenSession(
 
       if (!alive) {
         // El micro no se abre (iPhone recién abierto): se tira y se abre otro.
+        if (holdToTalk && released) return
         if (now - createdAt > START_TIMEOUT_MS) {
           requestStop('abort')
           window.setTimeout(() => {
@@ -808,11 +875,11 @@ function listenSession(
         }
         return
       }
-      if (!speechStarted && now - startedAt > noSpeechMs) {
+      if (!holdToTalk && !speechStarted && now - startedAt > noSpeechMs) {
         requestStop('abort')
         return
       }
-      if (speechStarted && now - lastActivity > endSilenceMs) {
+      if (!holdToTalk && speechStarted && now - lastActivity > endSilenceMs) {
         requestStop('stop')
         return
       }
@@ -821,17 +888,30 @@ function listenSession(
       }
     }, 200)
 
-    registerCancel(() => {
-      cancelled = true
-      try {
-        recognition.abort()
-      } catch {
-        // ya estaba parado
-      }
-      window.setTimeout(() => {
-        release()
-        finish({ status: 'cancelled' })
-      }, 300)
+    registerControls({
+      cancel: () => {
+        cancelled = true
+        try {
+          recognition.abort()
+        } catch {
+          // ya estaba parado
+        }
+        window.setTimeout(() => {
+          release()
+          finish({ status: 'cancelled' })
+        }, 300)
+      },
+      // Ha soltado el botón: se para y se corrige lo que haya (stop deja llegar los últimos
+      // resultados; si el navegador no contesta, STOP_TIMEOUT_MS).
+      release: () => {
+        if (released) return
+        released = true
+        if (!alive) {
+          requestStop('abort')
+          return
+        }
+        requestStop('stop')
+      },
     })
 
     try {
@@ -847,7 +927,7 @@ function listenSession(
 export function listenOnce(
   langName: string,
   options?: ListenOptions,
-): { promise: Promise<ListenOutcome>; cancel: () => void } {
+): { promise: Promise<ListenOutcome>; cancel: () => void; release: () => void } {
   const Ctor = getRecognitionConstructor()
   if (!Ctor) {
     return {
@@ -856,11 +936,14 @@ export function listenOnce(
         message: t('Tu navegador no tiene reconocimiento de voz. Abre la app en Google Chrome.'),
       }),
       cancel: () => {},
+      release: () => {},
     }
   }
 
   let cancelled = false
+  let released = false
   let cancelCurrent: () => void = () => {}
+  let releaseCurrent: () => void = () => {}
 
   const run = async (): Promise<ListenOutcome> => {
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -870,11 +953,15 @@ export function listenOnce(
       await wait(isIOSDevice() ? 300 : 60)
       if (cancelled) return { status: 'cancelled' }
 
-      const outcome = await listenSession(Ctor, langName, options, (cancel) => {
-        cancelCurrent = cancel
+      if (released) return { status: 'silence' }
+      const outcome = await listenSession(Ctor, langName, options, (controls) => {
+        cancelCurrent = controls.cancel
+        releaseCurrent = controls.release
       })
       if (cancelled) return { status: 'cancelled' }
       if (outcome.status !== 'not-started') return outcome
+      // Soltó el botón antes de que el micro llegara a abrirse.
+      if (released) return { status: 'silence' }
       // El micro no se abrió: se intenta una vez más con uno nuevo.
       await wait(400)
     }
@@ -892,6 +979,10 @@ export function listenOnce(
       cancelled = true
       cancelCurrent()
       window.setTimeout(() => resolveCancelled({ status: 'cancelled' }), 350)
+    },
+    release: () => {
+      released = true
+      releaseCurrent()
     },
   }
 }

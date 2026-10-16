@@ -26,9 +26,8 @@ import {
   SoundToggleButton,
   useChallengeSounds,
 } from '../components/IcaChallenges/challengeFeedback'
+import { useHoldToTalk } from '../components/NotaDesafiante/HoldToTalk'
 import {
-  deviceBeepsOnMicOpen,
-  listenOnce,
   sayAnswerThenContinue,
   speakAsync,
   stopSpeaking,
@@ -256,89 +255,62 @@ const stopConfettiRef = useRef<(() => void) | null>(null)
     },
   })
 
-  // Habla: el micrófono se abre solo con cada palabra nueva.
-  const [speakStatus, setSpeakStatus] = useState<'starting' | 'listening' | 'checking' | 'idle'>('idle')
+  // Habla: mantén pulsado el micro mientras la dices y suéltalo al terminar (Luis y Nahuel, 16 Oct).
   const [heard, setHeard] = useState('')
   const [micMessage, setMicMessage] = useState<string | null>(null)
   const heardRef = useRef('')
   const cancelListenRef = useRef<(() => void) | null>(null)
   const answerRef = useRef(answerSingle)
   answerRef.current = answerSingle
+  const isRightSpoken = (text: string) =>
+    question?.kind === 'speak' &&
+    evaluateResponse({ kind: 'speak', answer: question.answer, response: { transcripts: [text] }, language: config.targetLang })
 
-  const startListening = useCallback(async () => {
-    if (question?.kind !== 'speak' || !endsAt) return
-    cancelListenRef.current?.()
-    setMicMessage(null)
-    setSpeakStatus('starting')
-    // On the computer the mic stays open for the whole turn (people often think before speaking).
-    // On the phone it opens once per word, because each opening beeps (Luis, 15 Oct).
-    let stopped = false
-    const quietMic = deviceBeepsOnMicOpen()
-    for (;;) {
-      const remaining = endsAt - Date.now()
-      if (remaining < 900) return
-      const session = listenOnce(config.targetLang, {
-        reopenWhenClosed: !quietMic,
-        noSpeechMs: remaining,
-        endSilenceMs: 900,
-        maxMs: remaining,
-        onInterim: (text) => {
-          heardRef.current = text
-          setHeard(text)
-          setSpeakStatus('listening')
-        },
-      })
-      cancelListenRef.current = () => {
-        stopped = true
-        session.cancel()
-      }
-      setSpeakStatus('listening')
-      const outcome = await session.promise
-      if (stopped || outcome.status === 'cancelled') return
-      cancelListenRef.current = null
+  const hold = useHoldToTalk({
+    lang: config.targetLang,
+    onInterim: (text) => {
+      heardRef.current = text
+      setHeard(text)
+    },
+    // As soon as what is heard is right, it counts (no need to release).
+    acceptEarly: isRightSpoken,
+    onOutcome: (outcome, { shortTap }) => {
       if (outcome.status === 'heard') {
         heardRef.current = outcome.transcript
         setHeard(outcome.transcript)
-        setSpeakStatus('checking')
         answerRef.current({ transcripts: outcome.candidates.length ? outcome.candidates : [outcome.transcript] })
         return
       }
       if (outcome.status === 'error') {
-        setSpeakStatus('idle')
         setMicMessage(t(outcome.message))
         return
       }
-      // On the phone every reopening of the mic beeps (2 or 3 beeps per word, Luis 15 Oct): there
-      // the mic opens once per word, and to try again they tap «Repetir».
-      if (quietMic) {
-        setSpeakStatus('idle')
-        setMicMessage(
-          outcome.status === 'unclear'
-            ? t('No te he oído bien. Toca «Repetir» y dila otra vez.')
-            : t('No te he oído. Toca «Repetir» cuando quieras decirla.'),
-        )
-        return
-      }
-      // Silence or nothing understood (computer): keep listening quietly while time is left.
-      cancelListenRef.current = () => {
-        stopped = true
-      }
-      await new Promise((resolve) => window.setTimeout(resolve, 250))
-      if (stopped) return
-    }
-  }, [config.targetLang, endsAt, question?.kind])
+      setMicMessage(
+        shortTap
+          ? t('Mantén pulsado el botón mientras hablas y suéltalo al terminar.')
+          : outcome.status === 'unclear'
+            ? t('No te he oído bien. Mantén pulsado y dila otra vez.')
+            : t('No te he oído. Mantén pulsado y dila otra vez.'),
+      )
+    },
+  })
+  const speakStatus = hold.status
+  cancelListenRef.current = hold.cancel
+
+  const pressToSpeak = () => {
+    if (phase !== 'question' || question?.kind !== 'speak') return
+    setMicMessage(null)
+    heardRef.current = ''
+    setHeard('')
+    hold.press()
+  }
 
   useEffect(() => {
     if (phase !== 'question' || question?.kind !== 'speak') return
     heardRef.current = ''
     setHeard('')
     setMicMessage(null)
-    const id = window.setTimeout(() => void startListening(), 250)
-    return () => {
-      window.clearTimeout(id)
-      cancelListenRef.current?.()
-      cancelListenRef.current = null
-    }
+    hold.reset()
     // Solo al aparecer cada palabra nueva.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, index])
@@ -611,7 +583,8 @@ const stopConfettiRef = useRef<(() => void) | null>(null)
               heard={heard}
               message={micMessage}
               disabled={phase !== 'question'}
-              onRetry={() => void startListening()}
+              onPress={pressToSpeak}
+              onRelease={hold.release}
               onSkip={() => answerSingle({ transcripts: [] })}
             />
           ) : 'options' in data ? (
