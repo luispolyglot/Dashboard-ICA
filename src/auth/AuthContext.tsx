@@ -5,7 +5,7 @@ import { hasSupabaseConfig, supabase } from '../lib/supabase'
 import { getSessionSafe } from '../lib/supabaseAuthSafe'
 import { recordBootstrapDiagnostic } from '@/modules/utils/bootstrapDiagnostics'
 import { checkLoginEmail, normalizeEmail } from './whitelist'
-import { t } from '@/i18n'
+import { getUiLang, t } from '@/i18n'
 import { authErrorMessage } from './authErrors'
 import { clearQuickCache } from '@/modules/services/quickCache'
 
@@ -228,7 +228,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
           email: normalizeEmail(email),
           password,
           options: {
-            data: cleanNickname ? { display_name: cleanNickname } : undefined,
+            // ui_lang: el idioma en el que se registra (es / en). La plantilla del email de
+            // confirmación de Supabase lo lee con {{ .Data.ui_lang }} para escribir en ese idioma.
+            data: { ...(cleanNickname ? { display_name: cleanNickname } : {}), ui_lang: getUiLang() },
           },
         })
         if (error) throw error

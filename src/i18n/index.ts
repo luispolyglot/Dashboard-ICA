@@ -33,7 +33,10 @@ function readInitial(): UiLang {
   } catch {
     // Sin almacenamiento: español.
   }
-  // La primera vez (login, registro…) siempre en español. Al entrar, manda el idioma nativo del alumno.
+  // La primera vez (login, registro…): español. No se mira el idioma del navegador (Luis, 16 Oct):
+  // muchos alumnos ponen el móvil en el idioma que aprenden (italiano, inglés…) y aun así quieren
+  // la app en español. Quien la quiera en inglés pulsa «English» arriba, en la pantalla de entrada;
+  // ese idioma es también el del email de bienvenida. Al entrar, manda el idioma nativo del alumno.
   return 'es'
 }
 

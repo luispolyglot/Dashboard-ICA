@@ -348,5 +348,7 @@ const en: Record<string, string> = {
   "Confirmar nueva contraseña": "Confirm new password",
   "{n} sesión": "{n} session",
   "{n} sesiones": "{n} sessions",
+  "Avísame si voy a perder mi racha": "Warn me if I'm about to lose my streak",
+  "5 horas antes de perderla, y si llevo 36 horas, 3 días o 7 días sin entrar.": "5 hours before I lose it, and if I haven't opened the app for 36 hours, 3 days or 7 days.",
 }
 export default en

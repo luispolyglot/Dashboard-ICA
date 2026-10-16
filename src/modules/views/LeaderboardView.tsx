@@ -933,6 +933,8 @@ const [tiebreakOpen, setTiebreakOpen] = useState(false);
       name: row.display_name || row.username || "Usuario",
       badge: row.user_id === user?.id ? myBadge : parseFeaturedBadge(row.featured_badge),
       flag: row.user_id === user?.id ? myFlag : row.display_flag ?? null,
+      // La racha de hoy solo en el mes en curso (la de un mes pasado ya no es la de ahora).
+      streakDays: isCurrentMonth ? row.ica_streak_days || 0 : null,
     });
   };
 

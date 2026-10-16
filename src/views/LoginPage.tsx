@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { LockIcon, MailIcon } from 'lucide-react'
+import { LockIcon, MailIcon, UserPlusIcon } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { Button } from '@/components/ui/button'
 import { AuthField, AuthNotice, AuthShell } from './components/AuthShell'
@@ -55,6 +55,34 @@ export function LoginPage() {
       <form className='flex flex-col gap-4' onSubmit={handleSubmit}>
         {!hasSupabaseConfig && <AuthNotice tone='warning'>{t('Faltan variables de entorno de Supabase.')}</AuthNotice>}
 
+        {/* Lo primero que se ve: quien llega por primera vez aún no tiene cuenta (Luis, 15 Oct:
+            un alumno nuevo intentó entrar con email y contraseña sin haberla creado). */}
+        <Link
+          to='/register'
+          className='flex items-center gap-3 rounded-2xl border-2 px-3.5 py-3 text-left no-underline transition-colors'
+          style={{
+            borderColor: 'color-mix(in oklab, var(--ica-a) 45%, transparent)',
+            background: 'var(--ica-a-soft)',
+            color: 'inherit',
+          }}
+        >
+          <span
+            className='flex size-10 shrink-0 items-center justify-center rounded-xl text-white'
+            style={{ background: 'var(--ica-a)' }}
+          >
+            <UserPlusIcon className='size-5' strokeWidth={2.6} aria-hidden='true' />
+          </span>
+          <span className='min-w-0 flex-1'>
+            <span className='block text-sm font-black'>{t('¿Es tu primera vez?')}</span>
+            <span className='block text-xs font-bold text-muted-foreground'>
+              {t('Antes de entrar, crea tu cuenta con el email de ICADEMY.')}
+            </span>
+          </span>
+          <span className='shrink-0 text-sm font-black' style={{ color: 'var(--ica-a)' }}>
+            {t('Crear cuenta')} →
+          </span>
+        </Link>
+
         <AuthField
           id='login-email'
           label={t('Email')}
@@ -85,7 +113,14 @@ export function LoginPage() {
           }
         />
 
-        {error && <AuthNotice tone='error'>{error}</AuthNotice>}
+        {error && (
+          <AuthNotice tone='error'>
+            {error}{' '}
+            <Link to='/register' className='font-black underline'>
+              {t('¿Aún no tienes cuenta? Créala aquí.')}
+            </Link>
+          </AuthNotice>
+        )}
 
         <Button type='submit' size='xl' disabled={busy || !hasSupabaseConfig} className='mt-1 w-full'>
           {busy ? t('Entrando...') : t('Entrar')}

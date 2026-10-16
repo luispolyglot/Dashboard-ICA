@@ -66,6 +66,8 @@ const en: Record<string, string> = {
   "Tu próxima frase": "Your next phrase",
   "No quedan frases por grabar. Crea una frase nueva en la C y vuelve para grabarla.": "No phrases left to record. Create a new phrase in C and come back to record it.",
   "Límite de hoy alcanzado": "Today's limit reached",
+  "Vuelve mañana para grabar": "Come back tomorrow to record",
+  "Ver las frases de esta nota": "See the phrases of this note",
   "Elegir otra frase": "Choose another phrase",
   "Ver más frases": "Show more phrases",
   // Desafíos · Pendientes

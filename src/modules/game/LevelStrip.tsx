@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { BarChart3Icon, ChevronRightIcon } from 'lucide-react'
+import { requestLevelSetup } from './WelcomeTour'
 import {
   Dialog,
   DialogContent,
@@ -154,11 +155,27 @@ export function LevelChip({ config }: { config: AppConfig }) {
       </>
     )
   } else {
-    content = (
-      <span className='flex items-center gap-1 text-[11px] font-extrabold text-primary'>
-        <BarChart3Icon className='size-3.5' strokeWidth={2.6} aria-hidden='true' />
-        {t('Tu nivel')}
-      </span>
+    // Without a level yet (Luis, 16 Oct: for instance after skipping the welcome guide), the chip
+    // calls for attention until it is tapped: it opens «¿Qué nivel tienes…?» directly.
+    return (
+      <button
+        type='button'
+        data-tour='level'
+        onClick={() => requestLevelSetup()}
+        className='ica-attention relative flex shrink-0 items-center gap-1.5 rounded-xl border-2 px-2.5 py-1.5 text-xs font-black focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:outline-none'
+        style={{ borderColor: 'var(--ica-gold)', background: 'var(--ica-gold-soft)', color: 'var(--ica-gold-ink)' }}
+        aria-label={t('Elige tu nivel de {lang}', { lang: langName(config.targetLang) })}
+      >
+        <BarChart3Icon className='size-4' strokeWidth={2.6} aria-hidden='true' />
+        {t('Elige tu nivel')}
+        <span
+          className='absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full text-[10px] font-black text-white'
+          style={{ background: 'var(--ica-bad, #e5484d)' }}
+          aria-hidden='true'
+        >
+          !
+        </span>
+      </button>
     )
   }
 
@@ -166,6 +183,7 @@ export function LevelChip({ config }: { config: AppConfig }) {
     <>
       <button
         type='button'
+        data-tour='level'
         onClick={() => setOpen(true)}
         className='flex w-[5.5rem] shrink-0 flex-col items-end gap-1 rounded-lg py-1 focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:outline-none'
         aria-label={t('Tu nivel real en {lang}. Ver detalle', { lang: langName(config.targetLang) })}

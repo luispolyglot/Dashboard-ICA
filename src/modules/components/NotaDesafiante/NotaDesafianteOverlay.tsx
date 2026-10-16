@@ -39,7 +39,7 @@ import {
   isSpeechRecognitionSupported,
   listenOnce,
   playBeep,
-  isAndroidDevice,
+  deviceBeepsOnMicOpen,
   playFailTone,
   speakAsync,
   stopSpeaking,
@@ -295,7 +295,7 @@ export function NotaDesafianteOverlay({
         // Our beep only where the device makes no sound of its own when the mic opens (the
         // computer). iPhone and Android already beep, and with ours it sounded twice in a row
         // (icademers and Luis, 13 Oct).
-        if (!isAndroidDevice() && !isIOSDevice()) await playBeep()
+        if (!deviceBeepsOnMicOpen()) await playBeep()
         if (cancelled()) return
 
         setStep('listening')

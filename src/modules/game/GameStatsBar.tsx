@@ -65,6 +65,7 @@ export const GameStatsBar = forwardRef<HTMLButtonElement>(function GameStatsBar(
           <button
             ref={flameRef}
             type='button'
+            data-tour='streak'
             onClick={() => navigate(DASHBOARD_ROUTES.streaks)}
             className={statClass}
             style={{

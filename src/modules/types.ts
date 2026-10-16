@@ -457,6 +457,8 @@ export interface IcaChallengeAvailableUser {
   recentChallenges: number
   /** The flag they show in their profile (bought in the shop), if any. */
   displayFlag?: string | null
+  /** Last day (YYYY-MM-DD) with activity in the app; undefined = older server that does not send it. */
+  lastActiveDay?: string | null
 }
 
 export type IcaChallengeQuestionKind = 'choice' | 'write' | 'speak' | 'listen' | 'cloze' | 'pairs'
