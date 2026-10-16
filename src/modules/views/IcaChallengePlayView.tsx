@@ -1292,7 +1292,8 @@ export function IcaChallengePlayView({
               rivalFirstName={firstName(names.rival)}
               canAdd={canAdd}
               onAdd={(item) => setWordToAdd(item)}
-              renderMine={(item) => (
+              // ⚡ only next to the words you missed (Luis, 16 Oct).
+              renderMine={(item) => item.isCorrect ? null : (
                 <BoostButton
                   state={wordBoost.stateOf(item.target)}
                   busy={wordBoost.busyId === wordBoost.findCard(item.target)?.id}

@@ -68,6 +68,8 @@ import { useSharedMasterNotePlayback } from '../components/MasterNotePlaybackPro
 import { NotaDesafianteOverlay } from '../components/NotaDesafiante/NotaDesafianteOverlay'
 import { NotaDesafianteCard } from '../components/NotaDesafiante/NotaDesafianteCard'
 import { CHALLENGE_NOTE_MIN_CLOSED_NOTES } from '../game/rules'
+import { useDailyLimits } from '../game/limits'
+import { DailyLimitNotice } from '../game/DailyLimitNotice'
 import { useClosedMasterNotes } from '../game/useClosedMasterNotes'
 import { requestMasterNoteClosedGuide } from '../game/WelcomeTour'
 import {
@@ -375,7 +377,11 @@ export function MasterNoteDetailView({
 
   const canClose =
     !!note && note.state === 'open' && note.total_duration_ms >= MIN_DURATION_MS
-  const canActivateMorePhrases = !!note && note.state === 'open'
+  // Luis, 16 Oct: with today's activations done, the note does not let you start recording
+  // (as Creación does not let you create): the limit stops you here, not at the end.
+  const dailyLimits = useDailyLimits()
+  const activationsAtLimit = dailyLimits.isAtLimit('activations')
+  const canActivateMorePhrases = !!note && note.state === 'open' && !activationsAtLimit
   const canPlayNote = !!note && canPlay(note, chunks.length)
 
   // Nota desafiante: se desbloquea al escuchar el 80 % de esta nota hoy
@@ -813,6 +819,8 @@ export function MasterNoteDetailView({
                   </Link>
                 </Button>
               </div>
+            ) : activationsAtLimit ? (
+              <DailyLimitNotice kind='activations' state={dailyLimits} className='mt-4' />
             ) : (
               <Button type='button' size='xl' variant='outline' className='mt-4 w-full' disabled>
                 {t('Límite de hoy alcanzado')}

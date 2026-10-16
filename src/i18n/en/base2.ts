@@ -353,7 +353,7 @@ const en: Record<string, string> = {
   "Objetivos semanales en la app": "Weekly goals in the app",
   "Todo queda guardado para siempre en icademy.app.": "Everything stays saved forever on icademy.app.",
   "¿Por qué {n} palabras? Convertimos tu nivel en las palabras ICA que ya tendrías si hubieras aplicado ICA desde el principio. Así tu barra empieza donde estás de verdad.": "Why {n} words? We convert your level into the ICA words you would already have if you had used ICA from the start. That way your bar starts where you really are.",
-  "Por haber elegido {level}, el sistema estima que ya sabes aproximadamente {n} palabras.": "Because you chose {level}, we estimate you already know about {n} words.",
+  "Por haber elegido {level} en {lang}, el sistema estima que ya sabes aproximadamente {n} palabras.": "Because you chose {level} in {lang}, we estimate you already know about {n} words.",
   "mi nivel ({level})": "my level ({level})",
   "mi nivel": "my level",
   "Eres mi profesor/a de {target}. Arriba tienes mis palabras ICA: las he sacado de lo que veo y escucho cada día. Mi idioma nativo es {native}.": "You are my {target} teacher. Above are my ICA words: I picked them from what I watch and hear every day. My native language is {native}.",

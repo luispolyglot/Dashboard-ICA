@@ -522,6 +522,18 @@ button:disabled {
   }
 }
 
+/* Something that still needs a tap (the level chip without a level, Luis 16 Oct): a soft gold glow. */
+@keyframes ica-attention {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--ica-gold) 70%, transparent);
+  }
+
+  60% {
+    box-shadow: 0 0 0 8px color-mix(in oklab, var(--ica-gold) 0%, transparent);
+  }
+}
+
 @keyframes ica-tour-ring {
   0%,
   100% {
@@ -853,6 +865,10 @@ button:disabled {
     animation: ica-tour-ring 1.6s ease-in-out infinite;
   }
 
+  .ica-attention {
+    animation: ica-attention 1.8s ease-out infinite;
+  }
+
   .ica-pop {
     animation: ica-pop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both;
   }
@@ -920,6 +936,7 @@ button:disabled {
   @media (prefers-reduced-motion: reduce) {
     .ica-bob,
     .ica-tour-ring,
+    .ica-attention,
     .ica-wiggle,
     .ica-chest-ready,
     .ica-pop,

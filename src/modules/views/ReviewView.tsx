@@ -45,6 +45,7 @@ import { ExtractWordsToVaultModal } from '../components/ExtractWordsToVaultModal
 import { FrequencyDot, FrequencyGlyph, SpeakWordButton, modeColors } from '../game/flashcardsUi'
 import { CardsIcon, FlameIcon } from '../game/icons'
 import { TourGuide } from '../game/WelcomeTour'
+import { isStreakDayCelebrationOpen } from '../game/StreakDayCelebration'
 import { gameSfx } from '../game/sfx'
 import { SoundToggleButton } from '../game/SoundToggleButton'
 import { PronunciationHint } from '../pronunciation/PronunciationHint'
@@ -78,6 +79,13 @@ type AnswerFeedback = {
   updated: Lexicard
   /** Tarjeta a la que se pasa al continuar (null = se queda o se acaba la ronda). */
   nextIndex: number | null
+}
+
+/** A window or a celebration is on screen (a visible element with role=dialog or aria-modal). */
+function someWindowOnTop(): boolean {
+  return Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"], [aria-modal="true"]')).some(
+    (element) => element.getClientRects().length > 0,
+  )
 }
 
 /** Dato del resultado, en una caja de color al terminar la partida. */
@@ -459,6 +467,9 @@ export function ReviewView({
     keyHandlerRef.current = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.repeat) return
       if (pendingAnswer !== null || extractWordsModalOpen || showResults || showSaving || !currentCard) return
+      // Not while a celebration or a window is on top (Luis, 16 Oct: with the streak animation on
+      // screen, Space, 1 and 2 still played the cards behind it).
+      if (isStreakDayCelebrationOpen() || someWindowOnTop()) return
       const target = event.target as HTMLElement | null
       const tag = target?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return

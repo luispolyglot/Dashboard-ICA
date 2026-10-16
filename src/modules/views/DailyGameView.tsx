@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { CheckIcon, XIcon } from 'lucide-react'
@@ -35,6 +36,8 @@ import {
 } from '../components/NotaDesafiante/challengeEngine'
 import { prefetchSpeechQueue } from '../services/tts'
 import { consumeLexicardBoosts } from '../services/lexicardBoost'
+import { useLexicardBoost } from '../hooks/useLexicardBoost'
+import { BoostButton } from '../components/BoostButton'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import {
   buildDailyGame,
@@ -84,13 +87,23 @@ function scoreMessage(correct: number, total: number): string {
  * RETO DEL DÍA: minijuego de 10 palabras con tu Baúl ICA; se abre al completar el ciclo, a la vez que el cofre.
  * Mismas piezas y motor que Desafíos ICA, pero sin rival. Cuenta como hecho con 5 aciertos.
  */
-export function DailyGameView({ config, cards }: { config: AppConfig; cards: Lexicard[] }) {
+export function DailyGameView({
+  config,
+  cards,
+  setCards,
+}: {
+  config: AppConfig
+  cards: Lexicard[]
+  setCards: Dispatch<SetStateAction<Lexicard[]>>
+}) {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { result: todayResult } = useDailyGame(user?.id)
   const todayMode = dailyGameModeFor()
   const { muted, toggleMuted, playAnswer } = useChallengeSounds()
   const engineCards = useMemo(() => toEngineCards(cards, user?.id || 'me'), [cards, user?.id])
+  // ⚡ Potenciar next to each missed word (Luis, 16 Oct), as in the results of a Desafío ICA.
+  const wordBoost = useLexicardBoost({ cards, setCards, config, source: 'challenge' })
   const [game, setGame] = useState<{ mode: DailyGameMode; questions: GeneratedQuestion[] } | null>(null)
 const [phase, setPhase] = useState<Phase>('intro')
 const [index, setIndex] = useState(0)
@@ -466,6 +479,11 @@ const stopConfettiRef = useRef<(() => void) | null>(null)
                     {item.question.answer.target}
                     <span className='font-semibold text-muted-foreground'> · {item.question.answer.native}</span>
                   </span>
+                  <BoostButton
+                    state={wordBoost.stateOf(item.question.answer.target)}
+                    busy={wordBoost.busyId === wordBoost.findCard(item.question.answer.target)?.id}
+                    onBoost={() => void wordBoost.boost(item.question.answer.target)}
+                  />
                 </li>
               ))}
             </ul>

@@ -65,6 +65,7 @@ import { CHALLENGE_UNLOCK_RATIO } from '../services/challengeUnlocks'
 import { CHALLENGE_NOTE_MIN_CLOSED_NOTES, PHASE_BOOST_COST } from '../game/rules'
 import { FichaIcon, TargetGlyph } from '../game/icons'
 import { useDailyLimits } from '../game/limits'
+import { DailyLimitNotice } from '../game/DailyLimitNotice'
 import {
   EmptyState,
   GamePage,
@@ -780,7 +781,7 @@ export function MasterNotesView({
               currentOpenNote,
               <DropdownMenuItem
                 className={MENU_ITEM_CLASS}
-                disabled={creating}
+                disabled={creating || atDailyLimit}
                 onSelect={() => void handleCreate()}
               >
                 <PlusIcon strokeWidth={2.6} />
@@ -808,11 +809,18 @@ export function MasterNotesView({
         </div>
       ) : null}
       <div className='relative mt-5 flex items-center gap-3'>
-        {recordTipPending ? (
+        {recordTipPending && !atDailyLimit ? (
           <FirstUseTip onClose={closeRecordTip}>
             {t('Toca aquí para grabar tu frase en voz alta. Cada frase grabada suma tiempo a tu nota maestra hasta llegar a 3:00.')}
           </FirstUseTip>
         ) : null}
+        {atDailyLimit ? (
+          // Luis, 16 Oct: with today's activations done there is nothing to record here (like Creación).
+          <Button type='button' size='xl' variant='outline' className='min-w-0 flex-1' disabled>
+            <MicIcon className='size-5' strokeWidth={2.6} />
+            {t('Vuelve mañana para grabar')}
+          </Button>
+        ) : (
         <Button asChild size='xl' variant='a' className='min-w-0 flex-1'>
           <Link
             onClick={() => (recordTipPending ? closeRecordTip() : undefined)}
@@ -830,6 +838,7 @@ export function MasterNotesView({
                 : t('Empezar a grabar')}
           </Link>
         </Button>
+        )}
         {canPlay(currentOpenNote, currentOpenNote.total_duration_ms > 0 ? 1 : 0) ||
         playingNoteId === currentOpenNote.id
           ? renderPlayButton(currentOpenNote, 52)
@@ -845,6 +854,7 @@ export function MasterNotesView({
         </Link>
       ) : null}
       {renderPlayer(currentOpenNote)}
+      {atDailyLimit ? <DailyLimitNotice kind='activations' state={dailyLimits} className='mt-4' /> : null}
     </Panel>
   ) : pendingPhraseToRecord ? (
     // Sin nota abierta: el aviso crea la nota y lleva directo a grabar la frase.
@@ -861,7 +871,7 @@ export function MasterNotesView({
         </p>
       </div>
       <div className='relative mt-1 w-full'>
-        {createTipPending ? (
+        {createTipPending && !atDailyLimit ? (
           <FirstUseTip onClose={closeCreateTip}>
             {t('Empieza aquí: crea tu primera nota maestra. En ella grabarás tus frases en voz alta.')}
           </FirstUseTip>
@@ -875,12 +885,13 @@ export function MasterNotesView({
             if (createTipPending) closeCreateTip()
             void handleCreate()
           }}
-          disabled={creating}
+          disabled={creating || atDailyLimit}
         >
           <PlusIcon className='size-5' strokeWidth={2.8} />
           {creating ? t('Creando...') : t('Crear nota maestra')}
         </Button>
       </div>
+      {atDailyLimit ? <DailyLimitNotice kind='activations' state={dailyLimits} className='w-full' /> : null}
     </Panel>
   )
 

@@ -51,4 +51,23 @@ export default {
   'Activa el recordatorio de tu clase': 'Turn on your class reminder',
   'Pulsa la campana y escoge la clase a la que vas. Activa su recordatorio y te avisamos unos minutos antes.':
     'Tap the bell and pick the class you go to. Turn on its reminder and we will notify you a few minutes before.',
+  // Ica onboarding (Luis, 16 Oct)
+  "¡Hola, {name}! Soy Ica": "Hi, {name}! I'm Ica",
+  "¡Hola! Soy Ica": "Hi! I'm Ica",
+  "ICA es un método diario: unos minutos cada día. Por eso tienes una racha, que sube cada día que completas tu ciclo.": "ICA is a daily method: a few minutes every day. That's why you have a streak, which grows every day you complete your cycle.",
+  "Este es el método: la I, la C y la A": "This is the method: I, C and A",
+  "El objetivo: sumergirte en el idioma, filtrar vocabulario útil, crearlo en frases contextualizadas y activarlo con tu propia voz.": "The goal: immerse yourself in the language, filter useful vocabulary, create it in phrases with context and activate it with your own voice.",
+  "Y cada día, tu premio": "And every day, your prize",
+  "Ahora vamos a situarte con tu nivel": "Now let's find your level",
+  "Dime qué nivel tienes de {lang} y tu barra de nivel empezará donde estás de verdad.": "Tell me your level of {lang} and your level bar will start where you really are.",
+  "Dime qué nivel tienes y tu barra de nivel empezará donde estás de verdad.": "Tell me your level and your level bar will start where you really are.",
+  "Elegir mi nivel": "Choose my level",
+  "Esto es la Inmersión": "This is Immersion",
+  "A lo largo del día, sumérgete en el idioma: en una conversación, en un vídeo de YouTube, por la calle… Aquí vas guardando las palabras que te interesen.": "Throughout the day, immerse yourself in the language: in a conversation, a YouTube video, out in the street… Here you save the words you find interesting.",
+  "Ahora, la Creación": "Now, Creation",
+  "Con las palabras que has filtrado, vas a crear frases contextualizadas, para tenerlas en contexto y que no se te olviden.": "With the words you have filtered, you will create phrases with context, so you keep them in context and don't forget them.",
+  "Ahora toca la parte más importante": "Now comes the most important part",
+  "Activa tu conocimiento con tu propia voz para inmortalizarlo aquí, en tus notas maestras.": "Activate your knowledge with your own voice to make it last forever here, in your master notes.",
+  "Elige tu nivel de {lang}": "Choose your {lang} level",
+  "Elige tu nivel": "Choose your level",
 } as Record<string, string>

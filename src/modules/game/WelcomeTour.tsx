@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/auth/AuthContext'
-import { langName, t } from '@/i18n'
+import { getUiLang, langName, t } from '@/i18n'
 import { turnOnRemindersOnThisDevice } from '../services/notificationOnboarding'
 import { getPushPermissionState } from '../services/pushNotifications'
 import { DASHBOARD_ROUTES } from '../routes/paths'
@@ -12,6 +12,8 @@ import { CHALLENGE_NOTE_MIN_CLOSED_NOTES, FLASHCARDS_MIN_ACTIVATED_WORDS } from 
 import { FLAG_COST } from './languageFlag'
 import { useFichas } from './fichas'
 import { CYCLE_CELEBRATION_CLOSED_EVENT } from './CycleCelebration'
+import { useDashboardContext } from '../context/DashboardContext'
+import { MetaTrackerSetupModal } from '../components/MetaTracker/MetaTrackerSetupModal'
 
 /**
  * WELCOME TOUR (Luis, 7 Oct): like the guide in Clash of Clans, a friendly character walks a new
@@ -76,30 +78,39 @@ type TourStep = {
   onlyIf?: { step: string; answer: boolean }
   /** An extra button on the card, for something that needs a tap (for example a browser permission). */
   action?: { label: string; doneLabel: string; errorText: string; successText: string; run: () => Promise<void> }
+  /** No «Saltar guía» on this step (Luis, 16 Oct: when Ica introduces itself, only «Siguiente»). */
+  noSkip?: boolean
 }
 
-function buildSteps(name: string): TourStep[] {
+/**
+ * Part 1 (Luis, 16 Oct): Ica introduces itself (a daily method, hence the streak), the method
+ * I·C·A and what it is for, the prizes of the day and the coins, and then «let's place you at
+ * your level» on the level chip. «Elegir mi nivel» opens the level window; when it is saved,
+ * part 2 (ranking and ICA games) follows.
+ */
+function buildSteps(name: string, lang: string, levelConfirmed: boolean): TourStep[] {
   const home = DASHBOARD_ROUTES.home
-  const games = DASHBOARD_ROUTES.gamesIca
-  return [
+  const steps: TourStep[] = [
     {
       id: 'hello',
       route: home,
-      title: name ? t('¡Hola, {name}! Te doy la bienvenida a ICA', { name }) : t('¡Hola! Te doy la bienvenida a ICA'),
-      body: t('En un minuto te enseño lo más importante para que no te pierdas.'),
+      targets: ['[data-tour="streak"]'],
+      noSkip: true,
+      title: name ? t('¡Hola, {name}! Soy Ica', { name }) : t('¡Hola! Soy Ica'),
+      body: t('ICA es un método diario: unos minutos cada día. Por eso tienes una racha, que sube cada día que completas tu ciclo.'),
     },
     {
       id: 'cycle',
       route: home,
       targets: ['[data-ica-step="I"]', '[data-ica-step="C"]', '[data-ica-step="A"]'],
-      title: t('Tu ciclo ICA de cada día'),
-      body: t('Tres pasos, en orden: Inmersión (guarda 5 palabras nuevas), Creación (crea 1 frase con ellas) y Activación (grábala con tu voz). Cada día que lo completas, tu racha sube.'),
+      title: t('Este es el método: la I, la C y la A'),
+      body: t('El objetivo: sumergirte en el idioma, filtrar vocabulario útil, crearlo en frases contextualizadas y activarlo con tu propia voz.'),
     },
     {
       id: 'rewards',
       route: home,
       targets: ['[data-ica-step="chest"]', '[data-ica-step="review"]'],
-      title: t('Tus premios del día'),
+      title: t('Y cada día, tu premio'),
       body: t('Al completar I·C·A se abren el cofre, con ICA Coins, y el reto del día: un minijuego con tus palabras ICA.'),
     },
     {
@@ -109,6 +120,26 @@ function buildSteps(name: string): TourStep[] {
       title: t('Tu racha y tus ICA Coins'),
       body: t('Aquí arriba ves tu racha (los días seguidos que completas el ciclo) y tus ICA Coins. Las monedas se gastan en la tienda: intentos extra de PreguntICA, ampliar el día o la bandera de tu idioma.'),
     },
+  ]
+  if (!levelConfirmed) {
+    steps.push({
+      id: 'level',
+      route: home,
+      targets: ['[data-tour="level"]'],
+      title: t('Ahora vamos a situarte con tu nivel'),
+      body: lang
+        ? t('Dime qué nivel tienes de {lang} y tu barra de nivel empezará donde estás de verdad.', { lang: getUiLang() === 'en' ? langName(lang) : langName(lang).toLowerCase() })
+        : t('Dime qué nivel tienes y tu barra de nivel empezará donde estás de verdad.'),
+    })
+  }
+  return steps
+}
+
+/** Part 2: the monthly ranking and the ICA games, after the level is saved. */
+function buildSecondSteps(): TourStep[] {
+  const home = DASHBOARD_ROUTES.home
+  const games = DASHBOARD_ROUTES.gamesIca
+  return [
     {
       id: 'ranking',
       route: DASHBOARD_ROUTES.leaderboard,
@@ -220,26 +251,168 @@ function unionBox(elements: HTMLElement[]): Box {
   }
 }
 
+/** The level window, opened from anywhere (the guide, the level chip): see LevelSetupHost. */
+const LEVEL_SETUP_EVENT = 'ica:open-level-setup'
+/** The level was saved from the welcome guide: part 2 of the guide can start. */
+const WELCOME_PART2_EVENT = 'ica:welcome-part-2'
+const WELCOME_PART2_KEY = 'ica-welcome-tour-2-v1'
+
+export function requestLevelSetup(options?: { fromWelcomeTour?: boolean }): void {
+  window.dispatchEvent(new CustomEvent<{ fromWelcomeTour: boolean }>(LEVEL_SETUP_EVENT, { detail: { fromWelcomeTour: Boolean(options?.fromWelcomeTour) } }))
+}
+
 /** The welcome tour, on Home, for new accounts (or with ?tour=1). */
 export function WelcomeTour() {
   const { user } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+  const { config, metaTrackerProfile } = useDashboardContext()
   const forced = wantsTourFromUrl(location.search)
   const firstName = String(user?.user_metadata?.display_name || '').trim().split(/\s+/)[0] ?? ''
-  const steps = useMemo(() => buildSteps(firstName), [firstName])
+  const levelConfirmed = Boolean(metaTrackerProfile?.confirmedAt)
+  const steps = useMemo(
+    () => buildSteps(firstName, config?.targetLang || '', levelConfirmed),
+    // The level step is decided when the guide starts; saving the level mid-guide must not change it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [firstName, config?.targetLang],
+  )
+  const secondSteps = useMemo(() => buildSecondSteps(), [])
+  const [secondPart, setSecondPart] = useState(false)
   const onHome = location.pathname === DASHBOARD_ROUTES.home
   const isNew = isNewAccount((user as { created_at?: string } | null)?.created_at)
+  const lastIsLevel = steps[steps.length - 1]?.id === 'level'
+
+  useEffect(() => {
+    const onPart2 = () => setSecondPart(true)
+    window.addEventListener(WELCOME_PART2_EVENT, onPart2)
+    return () => window.removeEventListener(WELCOME_PART2_EVENT, onPart2)
+  }, [])
+
+  return (
+    <>
+      <GuideTour
+        guideKey={WELCOME_KEY}
+        steps={steps}
+        shouldStart={onHome && (forced || isNew)}
+        force={forced}
+        homeOnSkip
+        lastLabel={lastIsLevel ? t('Elegir mi nivel') : t('Siguiente')}
+        onLastStep={() => {
+          if (lastIsLevel) requestLevelSetup({ fromWelcomeTour: true })
+          else setSecondPart(true)
+        }}
+      />
+      <GuideTour
+        guideKey={WELCOME_PART2_KEY}
+        steps={secondSteps}
+        shouldStart={secondPart}
+        force={forced && secondPart}
+        homeOnSkip
+        lastLabel={t('¡A por ello!')}
+        // Last step: straight to Inmersión, where the day starts.
+        onLastStep={() => navigate(DASHBOARD_ROUTES.newIcaWords)}
+      />
+    </>
+  )
+}
+
+/**
+ * The level window for the whole app (Luis, 16 Oct): the welcome guide and the level chip open it
+ * with requestLevelSetup. Saved from the guide, the second part of the guide follows.
+ */
+export function LevelSetupHost() {
+  const { config, metaTrackerSaving, saveMetaTracker } = useDashboardContext()
+  const [request, setRequest] = useState<{ fromWelcomeTour: boolean } | null>(null)
+
+  useEffect(() => {
+    const onRequest = (event: Event) => {
+      setRequest({ fromWelcomeTour: Boolean((event as CustomEvent<{ fromWelcomeTour?: boolean }>).detail?.fromWelcomeTour) })
+    }
+    window.addEventListener(LEVEL_SETUP_EVENT, onRequest)
+    return () => window.removeEventListener(LEVEL_SETUP_EVENT, onRequest)
+  }, [])
+
+  if (!request || !config) return null
+  return (
+    <MetaTrackerSetupModal
+      targetLang={config.targetLang}
+      saving={metaTrackerSaving}
+      onClose={() => setRequest(null)}
+      onSave={async (payload) => {
+        await saveMetaTracker(payload)
+        const fromTour = request.fromWelcomeTour
+        setRequest(null)
+        if (fromTour) window.setTimeout(() => window.dispatchEvent(new Event(WELCOME_PART2_EVENT)), 500)
+      }}
+    />
+  )
+}
+
+/**
+ * Ica explains each phase the first time a new icademer opens it (Luis, 16 Oct), before the small
+ * first-use bubbles of that screen. Only for new accounts (or with `?tour=fase`).
+ */
+const PHASE_INTRO_KEYS = { I: 'ica-guide-phase-i-v1', C: 'ica-guide-phase-c-v1', A: 'ica-guide-phase-a-v1' } as const
+
+/** In the layout: on Inmersión, Creación or Activación, that phase's introduction (first time only). */
+export function PhaseIntroHost() {
+  const location = useLocation()
+  const phase =
+    location.pathname === DASHBOARD_ROUTES.newIcaWords
+      ? 'I'
+      : location.pathname === DASHBOARD_ROUTES.activationPhrase
+        ? 'C'
+        : location.pathname === DASHBOARD_ROUTES.masterNotes
+          ? 'A'
+          : null
+  return phase ? <PhaseIntroGuide key={phase} phase={phase} /> : null
+}
+
+function PhaseIntroGuide({ phase }: { phase: 'I' | 'C' | 'A' }) {
+  const { user } = useAuth()
+  const location = useLocation()
+  const forced = wantsTourFromUrl(location.search, 'fase')
+  const isNew = isNewAccount((user as { created_at?: string } | null)?.created_at)
+  const steps = useMemo<TourStep[]>(() => {
+    const route = location.pathname
+    if (phase === 'I') {
+      return [
+        {
+          id: 'phase-i',
+          route,
+          title: t('Esto es la Inmersión'),
+          body: t('A lo largo del día, sumérgete en el idioma: en una conversación, en un vídeo de YouTube, por la calle… Aquí vas guardando las palabras que te interesen.'),
+        },
+      ]
+    }
+    if (phase === 'C') {
+      return [
+        {
+          id: 'phase-c',
+          route,
+          title: t('Ahora, la Creación'),
+          body: t('Con las palabras que has filtrado, vas a crear frases contextualizadas, para tenerlas en contexto y que no se te olviden.'),
+        },
+      ]
+    }
+    return [
+      {
+        id: 'phase-a',
+        route,
+        title: t('Ahora toca la parte más importante'),
+        body: t('Activa tu conocimiento con tu propia voz para inmortalizarlo aquí, en tus notas maestras.'),
+      },
+    ]
+    // The route is the screen where it opened; it does not follow later navigation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase])
   return (
     <GuideTour
-      guideKey={WELCOME_KEY}
+      guideKey={PHASE_INTRO_KEYS[phase]}
       steps={steps}
-      shouldStart={onHome && (forced || isNew)}
+      shouldStart={forced || isNew}
       force={forced}
-      homeOnSkip
-      lastLabel={t('¡A por ello!')}
-      // Last step: straight to Inmersión, where the day starts.
-      onLastStep={() => navigate(DASHBOARD_ROUTES.newIcaWords)}
+      lastLabel={t('Entendido')}
     />
   )
 }
@@ -682,11 +855,11 @@ function GuideTour({
   useEffect(() => {
     if (index === null) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') finish(true)
+      if (event.key === 'Escape' && !visibleSteps[index]?.noSkip) finish(true)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [finish, index])
+  }, [finish, index, visibleSteps])
 
   if (index === null || !step || typeof document === 'undefined') return null
 
@@ -720,9 +893,23 @@ function GuideTour({
   }
   const single = visibleSteps.length === 1
 
-  // The card goes where there is more room: under the light, or above it.
+  // Ica stands right next to what it is talking about (Luis, 16 Oct): just under the light, or
+  // just above it when there is no room below. Without a light, in the middle of the screen.
   const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800
-  const cardAtTop = box ? box.top + box.height / 2 > viewportHeight * 0.55 : false
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 400
+  const CARD_ROOM = 240
+  const GAP = 14
+  const below = box ? box.top + box.height + GAP : 0
+  const placeBelow = box ? below + CARD_ROOM <= viewportHeight || box.top < CARD_ROOM : false
+  const cardWidth = Math.min(448, viewportWidth - 24)
+  const cardLeft = box
+    ? Math.round(Math.min(Math.max(12, box.left + box.width / 2 - cardWidth / 2), viewportWidth - cardWidth - 12))
+    : 0
+  const cardStyle: CSSProperties | undefined = box
+    ? placeBelow
+      ? { top: Math.min(below, viewportHeight - CARD_ROOM), left: cardLeft, width: cardWidth }
+      : { bottom: Math.max(12, viewportHeight - box.top + GAP), left: cardLeft, width: cardWidth }
+    : undefined
   const titleId = `ica-tour-title-${step.id}`
 
   return createPortal(
@@ -747,13 +934,8 @@ function GuideTour({
 
       {ready ? (
         <div
-          className={`pointer-events-none absolute inset-x-0 flex justify-center px-3 ${
-            box
-              ? cardAtTop
-                ? 'top-[max(env(safe-area-inset-top),0.75rem)]'
-                : 'bottom-[max(calc(env(safe-area-inset-bottom)+0.75rem),0.75rem)]'
-              : 'inset-y-0 items-center'
-          }`}
+          className={box ? 'pointer-events-none absolute flex' : 'pointer-events-none absolute inset-0 flex items-center justify-center px-3'}
+          style={cardStyle}
         >
           <div key={step.id} className='ica-pop pointer-events-auto flex w-full max-w-md items-center gap-1.5'>
             <TourGuide className='w-[88px] shrink-0 sm:w-[104px]' />
@@ -784,7 +966,7 @@ function GuideTour({
                 </Button>
               ) : null}
               <div className='mt-3 flex flex-wrap items-center justify-between gap-2'>
-                {isLast ? (
+                {isLast || step.noSkip ? (
                   <span />
                 ) : (
                   <button
@@ -806,7 +988,7 @@ function GuideTour({
                   </div>
                 ) : (
                   <Button ref={nextRef} type='button' onClick={goNext} className='min-w-28'>
-                    {isLast ? lastLabel : step.id === 'hello' ? t('Empezar') : t('Siguiente')}
+                    {isLast ? lastLabel : t('Siguiente')}
                   </Button>
                 )}
               </div>
