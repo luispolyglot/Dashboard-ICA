@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase'
+import { signalIcaCoinsStateChanged } from '../game/fichas'
 import {
   notifyActivationMetricsChanged,
   notifyCreationMetricsChanged,
@@ -164,6 +165,9 @@ export async function deletePhraseHistoryEntry(id: string): Promise<void> {
 
   notifyCreationMetricsChanged()
   notifyActivationMetricsChanged()
+  // Deleting a phrase from today frees its place in Creación (migration 20261016190000): the
+  // daily limits are read again so «crear frase» opens at once (Luis, 16 Oct).
+  signalIcaCoinsStateChanged()
 }
 
 export async function fetchPhraseHistoryEntry(
