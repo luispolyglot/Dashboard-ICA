@@ -121,9 +121,10 @@ const BUTTON_BY_TONE: Record<Tone, 'i' | 'c' | 'a' | 'gold' | 'fire' | 'success'
   gold: 'gold',
   fire: 'fire',
   ok: 'success',
-  bad: 'a',
+  bad: 'default',
   primary: 'default',
   neutral: 'default',
+  violet: 'default',
 }
 
 function getMonthKey(sessionDate: string): string {

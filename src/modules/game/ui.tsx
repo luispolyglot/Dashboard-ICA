@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
  * Todas las pantallas nuevas se montan con estas piezas para que se vean iguales.
  */
 
-export type Tone = 'i' | 'c' | 'a' | 'fire' | 'gold' | 'ok' | 'bad' | 'primary' | 'neutral'
+export type Tone = 'i' | 'c' | 'a' | 'fire' | 'gold' | 'ok' | 'bad' | 'primary' | 'neutral' | 'violet'
 
 type ToneColors = { solid: string; edge: string; soft: string; ink: string }
 
@@ -27,6 +27,13 @@ const TONES: Record<Tone, ToneColors> = {
     ink: 'color-mix(in oklab, var(--primary) 78%, var(--foreground))',
   },
   neutral: { solid: 'var(--muted-foreground)', edge: 'var(--border-strong)', soft: 'var(--muted)', ink: 'var(--foreground)' },
+  // For the calendar's «Destripando Niveles» (Luis, 16 Oct: every class with its own colour).
+  violet: {
+    solid: '#8b5cf6',
+    edge: '#6d28d9',
+    soft: 'color-mix(in oklab, #8b5cf6 16%, var(--card))',
+    ink: 'color-mix(in oklab, #8b5cf6 72%, var(--foreground))',
+  },
 }
 
 /** Los colores de un tono (para usarlos en `style`). */

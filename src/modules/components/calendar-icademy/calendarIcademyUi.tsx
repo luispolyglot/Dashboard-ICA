@@ -10,14 +10,15 @@ import type { CalendarIcademyEntry } from '../../types'
  * Cada idioma tiene su color de la paleta ICA para que se reconozca de un vistazo.
  */
 
-// Color de cada idioma (los mismos matices que antes: cian, azul, rojo, verde, ámbar, morado)
+// Color de cada idioma, todos distintos (Luis, 16 Oct: polaco, francés, inglés y Destripando
+// Niveles eran todos azules y se confundían con el día elegido, que es cian).
 const LANGUAGE_TONE: Record<string, Tone> = {
-  pl: 'primary',
-  fr: 'i',
-  en: 'a',
-  it: 'ok',
-  de: 'gold',
-  destripando_niveles: 'c',
+  pl: 'bad', // rojo
+  fr: 'a', // azul oscuro
+  en: 'fire', // naranja
+  it: 'ok', // verde
+  de: 'gold', // ámbar
+  destripando_niveles: 'violet', // morado
 }
 
 const LANGUAGE_NAMES: Record<string, string> = {

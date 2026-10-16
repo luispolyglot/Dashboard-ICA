@@ -1915,6 +1915,28 @@ export function ManageCoachingUserView({
                                   totalDurationMs={note.totalDurationMs}
                                 />
 
+                                {/* Luis, 16 Oct: as in the old coaching, the phrases the student used in this note. */}
+                                <div className='space-y-1.5'>
+                                  <Label>Frases de la nota maestra</Label>
+                                  {note.activatedPhrases.length === 0 ? (
+                                    <p className='text-xs text-muted-foreground'>No hay frases activadas en esta nota.</p>
+                                  ) : (
+                                    <ol className='m-0 list-none space-y-2 rounded-md border p-2 lg:max-h-96 lg:overflow-y-auto'>
+                                      {note.activatedPhrases.map((phrase, index) => (
+                                        <li key={phrase.chunkId} className='rounded-md border border-border/70 p-2'>
+                                          <p className='text-xs text-muted-foreground'>
+                                            #{index + 1} · {formatSeconds(Math.round(phrase.durationMs / 1000))}
+                                          </p>
+                                          <p className='font-display text-base leading-tight font-extrabold'>
+                                            {phrase.generatedPhrase || 'Sin frase registrada'}
+                                          </p>
+                                          <p className='text-xs text-muted-foreground'>{phrase.translation || 'Sin traducción'}</p>
+                                        </li>
+                                      ))}
+                                    </ol>
+                                  )}
+                                </div>
+
                                 <div className='space-y-1.5'>
                                   <Label>Video feedback (Loom)</Label>
                                   <Input
