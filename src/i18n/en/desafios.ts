@@ -384,5 +384,15 @@ const en: Record<string, string> = {
   "Y {n} reto más esperándote": "And {n} more challenge waiting for you",
   "Y {n} retos más esperándote": "And {n} more challenges waiting for you",
   "Aceptar el reto": "Accept the challenge",
+  // Mantener pulsado para hablar (16 Oct)
+  "Mantén pulsado para hablar": "Hold to speak",
+  "Suelta cuando termines": "Release when you're done",
+  "Mantén pulsado el botón mientras hablas y suéltalo al terminar.": "Hold the button while you speak and let go when you're done.",
+  "No te he oído bien. Mantén pulsado y dila otra vez.": "I didn't hear you well. Hold and say it again.",
+  "No te he oído. Mantén pulsado y dila otra vez.": "I didn't hear you. Hold and say it again.",
+  "No te he oído. Mantén pulsado y dilo otra vez.": "I didn't hear you. Hold and say it again.",
+  "No te he entendido. Mantén pulsado y dilo otra vez.": "I didn't understand you. Hold and say it again.",
+  "Volver a oír": "Listen again",
+  "Mantén pulsado el micro y dilo en voz alta en {lang}, de memoria. Suéltalo al terminar.": "Hold the mic and say it out loud in {lang}, from memory. Let go when you're done.",
 }
 export default en
