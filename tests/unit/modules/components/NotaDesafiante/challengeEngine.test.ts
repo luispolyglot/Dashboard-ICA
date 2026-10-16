@@ -89,6 +89,44 @@ describe('listenOnce', () => {
     vi.useRealTimers()
   })
 
+  it('móvil: si el micro se corta a mitad de la frase, se abre otra vez y no se pierde el resto', async () => {
+    const listening = listenOnce('Italiano', {
+      reopenWhenClosed: false,
+      endSilenceMs: 1700,
+      keepListeningAfterCut: (soFar) => soFar.split(' ').length < 4,
+    })
+    await vi.advanceTimersByTimeAsync(300)
+    const rec = FakeRecognition.instances[0]
+    rec.emit([{ text: 'può ripetere per', final: true }])
+    await vi.advanceTimersByTimeAsync(200)
+    // El móvil cierra el micro él solo en la pausa.
+    rec.onend?.()
+    await vi.advanceTimersByTimeAsync(300)
+    rec.emit([{ text: 'favore', final: true }])
+    await vi.advanceTimersByTimeAsync(2500)
+    const outcome = await listening.promise
+    expect(outcome.status).toBe('heard')
+    if (outcome.status !== 'heard') return
+    expect(outcome.transcript).toBe('può ripetere per favore')
+  })
+
+  it('móvil: si lo dicho ya está completo, no se vuelve a abrir el micro', async () => {
+    const listening = listenOnce('Italiano', {
+      reopenWhenClosed: false,
+      keepListeningAfterCut: () => false,
+    })
+    await vi.advanceTimersByTimeAsync(300)
+    const rec = FakeRecognition.instances[0]
+    rec.emit([{ text: 'grazie', final: true }])
+    await vi.advanceTimersByTimeAsync(200)
+    rec.onend?.()
+    await vi.advanceTimersByTimeAsync(300)
+    const outcome = await listening.promise
+    expect(outcome.status).toBe('heard')
+    if (outcome.status !== 'heard') return
+    expect(outcome.transcript).toBe('grazie')
+  })
+
   it('Android: resultados acumulados no duplican las palabras', async () => {
     const shown: string[] = []
     const listening = listenOnce('Francés', { onInterim: (text) => shown.push(text) })

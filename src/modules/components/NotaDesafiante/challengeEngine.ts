@@ -569,7 +569,18 @@ type ListenOptions = {
    * acaba ahí y se devuelve lo que haya (silencio si no dijo nada).
    */
   reopenWhenClosed?: boolean
+  /**
+   * With `reopenWhenClosed: false` (phone): if the phone closes the mic by itself while the
+   * person is still in the middle of the answer («può ripetere per…», Luis 16 Oct), it is opened
+   * once more so the rest is not lost (one more beep, better than a wrong answer). It gets what was
+   * heard so far and says whether to keep listening (false = it is already complete). At most
+   * MAX_CUT_REOPENS times per word.
+   */
+  keepListeningAfterCut?: (heardSoFar: string) => boolean
 }
+
+/** Times the mic is opened again on the phone when it was cut in the middle of an answer. */
+const MAX_CUT_REOPENS = 2
 
 /**
  * El móvil (Android e iPhone) ya pita él solo cada vez que se abre el micro. Ahí no ponemos
@@ -619,6 +630,7 @@ function listenSession(
     let interimText = ''
     let shownText = ''
     let timer = 0
+    let cutReopensLeft = MAX_CUT_REOPENS
 
     const finish = (outcome: SessionOutcome) => {
       if (settled) return
@@ -759,6 +771,35 @@ function listenSession(
         release()
         finish({ status: 'not-started' })
         return
+      }
+      // En el móvil, el micro se ha cortado solo a mitad de la respuesta (una pausa entre dos
+      // palabras): se abre otra vez para no perder el resto, si quien llama dice que aún falta.
+      if (
+        !cancelled &&
+        !stopRequested &&
+        !errorOutcome &&
+        options?.reopenWhenClosed === false &&
+        options.keepListeningAfterCut &&
+        cutReopensLeft > 0 &&
+        speechStarted
+      ) {
+        const now = Date.now()
+        const soFar = composeRecognitionText([...committed, ...sessionFinals], interimText)
+        if (now - startedAt < maxMs && soFar && options.keepListeningAfterCut(soFar)) {
+          cutReopensLeft -= 1
+          committed = [...committed, ...sessionFinals]
+          if (interimText.trim()) committed.push([interimText.trim()])
+          sessionFinals = []
+          interimText = ''
+          // El tiempo de silencio vuelve a contar desde ahora (el nuevo pitido).
+          lastActivity = now
+          try {
+            recognition.start()
+            return
+          } catch {
+            // si no se puede reabrir, se evalúa lo que haya
+          }
+        }
       }
       // El navegador a veces cierra el micro por su cuenta tras un silencio corto.
       // Si aún no se ha cumplido el tiempo para pensar, se vuelve a abrir y se sigue escuchando.

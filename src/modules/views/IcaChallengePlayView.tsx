@@ -239,6 +239,17 @@ function markWinCoinCollected(challengeId: string): void {
   }
 }
 
+/** Silence that ends an answer in «Dilo en voz alta» (Luis, 16 Oct: 0.9 s cut answers in two). */
+const SPEAK_END_SILENCE_MS = 1700
+
+/** Words in a phrase as said out loud («¿Puede repetir, por favor?» = 4). */
+function countSpokenWords(text: string): number {
+  return text
+    .replace(/[^\p{L}\p{N}\s'’-]/gu, ' ')
+    .split(/\s+/)
+    .filter(Boolean).length
+}
+
 export function IcaChallengePlayView({
   challengeId,
   config,
@@ -637,9 +648,15 @@ export function IcaChallengePlayView({
       if (remaining < 900) return
       const session = listenOnce(question.language.target, {
         reopenWhenClosed: !quietMic,
+        // Luis, 16 Oct: with 0.9 s, a short pause between two words («può ripetere per… favore»)
+        // ended the answer and it counted as wrong.
+        endSilenceMs: SPEAK_END_SILENCE_MS,
         noSpeechMs: remaining,
-        endSilenceMs: 900,
         maxMs: remaining,
+        // The phone cut the mic in a pause: listen again while fewer words were heard than the word
+        // or phrase asked has (the answer is checked on the server, so the count is the guide).
+        keepListeningAfterCut: (soFar) =>
+          countSpokenWords(soFar) < countSpokenWords(question.data.kind === 'speak' ? question.data.prompt : ''),
         onInterim: (text) => {
           heardRef.current = text
           setHeard(text)

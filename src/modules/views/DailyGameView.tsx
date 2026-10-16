@@ -83,6 +83,9 @@ function scoreMessage(correct: number, total: number): string {
   return t('¡Sigue practicando!')
 }
 
+/** Silence that ends an answer in «Habla» (Luis, 16 Oct: 0.9 s cut answers in two). */
+const SPEAK_END_SILENCE_MS = 1700
+
 /**
  * RETO DEL DÍA: minijuego de 10 palabras con tu Baúl ICA; se abre al completar el ciclo, a la vez que el cofre.
  * Mismas piezas y motor que Desafíos ICA, pero sin rival. Cuenta como hecho con 5 aciertos.
@@ -277,15 +280,27 @@ const stopConfettiRef = useRef<(() => void) | null>(null)
     for (;;) {
       const remaining = endsAt - Date.now()
       if (remaining < 900) return
+      const isRight = (text: string) =>
+        evaluateResponse({ kind: 'speak', answer: question.answer, response: { transcripts: [text] }, language: config.targetLang })
       const session = listenOnce(config.targetLang, {
         reopenWhenClosed: !quietMic,
+        // Luis, 16 Oct: with 0.9 s, a short pause between two words («può ripetere per… favore»)
+        // ended the answer and it counted as wrong. Now it waits longer, and as soon as what is
+        // heard is right it is counted at once (no waiting).
+        endSilenceMs: SPEAK_END_SILENCE_MS,
         noSpeechMs: remaining,
-        endSilenceMs: 900,
         maxMs: remaining,
+        // The phone cut the mic in a pause: listen again while what was heard is not right yet.
+        keepListeningAfterCut: (soFar) => !isRight(soFar),
         onInterim: (text) => {
           heardRef.current = text
           setHeard(text)
           setSpeakStatus('listening')
+          if (!stopped && isRight(text)) {
+            stopped = true
+            setSpeakStatus('checking')
+            answerRef.current({ transcripts: [text] })
+          }
         },
       })
       cancelListenRef.current = () => {
@@ -326,7 +341,7 @@ const stopConfettiRef = useRef<(() => void) | null>(null)
       await new Promise((resolve) => window.setTimeout(resolve, 250))
       if (stopped) return
     }
-  }, [config.targetLang, endsAt, question?.kind])
+  }, [config.targetLang, endsAt, question])
 
   useEffect(() => {
     if (phase !== 'question' || question?.kind !== 'speak') return
