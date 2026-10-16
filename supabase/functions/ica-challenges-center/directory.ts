@@ -266,6 +266,9 @@ export async function listAvailableUsers(input: DirectoryInput): Promise<Respons
       winStreak: activity.winStreak,
       recentChallenges: activity.recentChallenges,
       displayFlag: flagByUser.get(candidateId) ?? null,
+      // Last day with activity in the app (within the last 30 days): «Desafío aleatorio» prefers
+      // whoever was in the app in the last 48 h, then 72 h, then 100 h (Luis, 16 Oct).
+      lastActiveDay: lastAppDayByUser.get(candidateId) ?? null,
     }
   })
 

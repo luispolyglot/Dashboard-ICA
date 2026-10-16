@@ -58,6 +58,7 @@ import {
 } from '../components/IcaChallenges/challengeFeedback'
 import {
   isSpeechRecognitionSupported,
+  deviceBeepsOnMicOpen,
   listenOnce,
   sayAnswerThenContinue,
   speakAsync,
@@ -627,13 +628,15 @@ export function IcaChallengePlayView({
     cancelListenRef.current?.()
     setMicMessage(null)
     setSpeakStatus('starting')
-    // The mic stays open for the whole turn: people often think for a few seconds
-    // before speaking, so silence never stops the turn or asks them to tap anything.
+    // On the computer the mic stays open for the whole turn (people often think before speaking).
+    // On the phone it opens once per word, because each opening beeps (Luis, 15 Oct).
     let stopped = false
+    const quietMic = deviceBeepsOnMicOpen()
     for (;;) {
       const remaining = (questionEndsAt ?? Date.now()) - Date.now()
       if (remaining < 900) return
       const session = listenOnce(question.language.target, {
+        reopenWhenClosed: !quietMic,
         noSpeechMs: remaining,
         endSilenceMs: 900,
         maxMs: remaining,
@@ -664,7 +667,18 @@ export function IcaChallengePlayView({
         setMicMessage(t(outcome.message))
         return
       }
-      // Silence or nothing understood: keep listening quietly while time is left.
+      // On the phone every reopening of the mic beeps (2 or 3 beeps per word, Luis 15 Oct): there
+      // the mic opens once per word, and to try again they tap «Repetir».
+      if (quietMic) {
+        setSpeakStatus('idle')
+        setMicMessage(
+          outcome.status === 'unclear'
+            ? t('No te he oído bien. Toca «Repetir» y dila otra vez.')
+            : t('No te he oído. Toca «Repetir» cuando quieras decirla.'),
+        )
+        return
+      }
+      // Silence or nothing understood (computer): keep listening quietly while time is left.
       cancelListenRef.current = () => {
         stopped = true
       }
@@ -1278,7 +1292,8 @@ export function IcaChallengePlayView({
               rivalFirstName={firstName(names.rival)}
               canAdd={canAdd}
               onAdd={(item) => setWordToAdd(item)}
-              renderMine={(item) => (
+              // ⚡ only next to the words you missed (Luis, 16 Oct).
+              renderMine={(item) => item.isCorrect ? null : (
                 <BoostButton
                   state={wordBoost.stateOf(item.target)}
                   busy={wordBoost.busyId === wordBoost.findCard(item.target)?.id}

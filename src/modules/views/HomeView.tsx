@@ -223,10 +223,11 @@ export function HomeView({ config, cardCount, dailyProgress }: HomeViewProps) {
             <div className='flex flex-col [&>*]:flex-1'>
               <LevelCard config={config} />
             </div>
-            <div className='flex flex-col [&>*]:flex-1'>{gamesCard}</div>
+            {/* Luis, 15 Oct (night): «Desafío aleatorio» in the middle, between your level and ICA games. */}
             <div className='flex flex-col [&>*]:flex-1'>
               <RandomChallengeCard config={config} />
             </div>
+            <div className='flex flex-col [&>*]:flex-1'>{gamesCard}</div>
           </div>
         </div>
         <ChatInvite />

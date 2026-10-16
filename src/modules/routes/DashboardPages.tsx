@@ -322,11 +322,11 @@ export function IcaChallengesPage() {
 }
 
 export function DailyGamePage() {
-  const { config, cards } = useDashboardContext()
+  const { config, cards, setCards } = useDashboardContext()
   if (!config) return null
   return (
     <PageLayout flush withBackButton={false}>
-      <DailyGameView config={config} cards={cards} />
+      <DailyGameView config={config} cards={cards} setCards={setCards} />
     </PageLayout>
   )
 }

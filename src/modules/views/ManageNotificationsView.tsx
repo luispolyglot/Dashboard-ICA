@@ -9,7 +9,6 @@ import {
   CalendarDaysIcon,
   ClockIcon,
   GraduationCapIcon,
-  HourglassIcon,
   PresentationIcon,
   SmartphoneIcon,
 } from 'lucide-react'
@@ -571,15 +570,19 @@ export function ManageNotificationsView() {
               void handleUpdateReminderPreferences({ icaStreakHour: hour }),
             )}
           </ReminderRow>
+          {/* Luis, 16 Oct: «5 horas antes de perder mi racha» and «si dejo de entrar» in one option
+              (too many options). One switch turns both on or off. */}
           <ReminderRow
             id='manage-streak-risk-switch'
             icon={<StreakClockIcon size={30} />}
             iconTone='fire'
-            title={t('Avísame 5 horas antes de perder mi racha')}
-            text={t('Si ayer hice I·C·A y hoy aún no.')}
-            checked={reminderPrefs.streakRiskEnabled}
+            title={t('Avísame si voy a perder mi racha')}
+            text={t('5 horas antes de perderla, y si llevo 36 horas, 3 días o 7 días sin entrar.')}
+            checked={reminderPrefs.streakRiskEnabled || reminderPrefs.habitLossEnabled}
             disabled={isLoadingReminderPrefs || isSavingReminderPrefs}
-            onCheckedChange={(checked) => void handleUpdateReminderPreferences({ streakRiskEnabled: checked })}
+            onCheckedChange={(checked) =>
+              void handleUpdateReminderPreferences({ streakRiskEnabled: checked, habitLossEnabled: checked })
+            }
           />
           <ReminderRow
             id='manage-flash-reminder-switch'
@@ -595,16 +598,6 @@ export function ManageNotificationsView() {
               void handleUpdateReminderPreferences({ flashcardsStreakHour: hour }),
             )}
           </ReminderRow>
-          <ReminderRow
-            id='manage-habit-reminder-switch'
-            icon={<HourglassIcon className='size-6' strokeWidth={2.4} aria-hidden='true' />}
-            iconTone='c'
-            title={t('Avísame si dejo de entrar')}
-            text={t('A las 36 horas, a los 3 días y a los 7 días sin entrar.')}
-            checked={reminderPrefs.habitLossEnabled}
-            disabled={isLoadingReminderPrefs || isSavingReminderPrefs}
-            onCheckedChange={(checked) => void handleUpdateReminderPreferences({ habitLossEnabled: checked })}
-          />
         </RowGroup>
       </div>
 

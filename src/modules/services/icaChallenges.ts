@@ -114,6 +114,7 @@ type AvailableUsersResponse = {
     winStreak?: number
     recentChallenges?: number
     displayFlag?: string | null
+    lastActiveDay?: string | null
   }>
   myActiveChallengesCount?: number
   myLevel?: string | null
@@ -911,6 +912,7 @@ export async function listAvailableIcaChallengeUsers(input: {
         recentChallenges: Math.max(0, Number(row.recentChallenges) || 0),
         // undefined = older server that does not send it (the app then asks the ranking).
         displayFlag: row.displayFlag === undefined ? undefined : row.displayFlag || null,
+        lastActiveDay: row.lastActiveDay === undefined ? undefined : row.lastActiveDay || null,
       })) || [],
     myActiveChallengesCount: Number(data?.myActiveChallengesCount || 0),
     myLevel: data?.myLevel || null,

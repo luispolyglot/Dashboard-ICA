@@ -130,10 +130,8 @@ export function RandomMatchOverlay({
             </div>
             <div className='flex flex-col items-center gap-2' role='status'>
               {/* No names here: who it is shows on the next screen (Luis, 15 Oct). */}
+              {/* Luis, 16 Oct: only «Buscando rival…», no explanation under it. */}
               <p className='m-0 font-display text-3xl font-black tracking-tight'>{t('Buscando rival…')}</p>
-              <p className='m-0 max-w-xs text-sm font-semibold text-muted-foreground'>
-                {t('Entre los icademers que han entrado en los últimos 30 días.')}
-              </p>
             </div>
             <Button type='button' variant='outline' size='lg' className='w-full max-w-xs' onClick={onClose}>
               {t('Cancelar')}

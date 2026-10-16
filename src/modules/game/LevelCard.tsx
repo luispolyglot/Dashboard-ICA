@@ -49,13 +49,14 @@ export function LevelCard({ config, bare = false }: { config: AppConfig; bare?: 
 
   if (!metaTrackerProfile?.confirmedAt) {
     return (
-      <div className={cn('flex flex-col gap-3', frame)}>
+      <div className={cn('flex flex-col gap-3', frame)} data-tour='level'>
         {setup}
         <p className='m-0 text-xs font-extrabold tracking-[0.08em] text-muted-foreground uppercase'>{t('Tu nivel en {lang}', { lang: language })}</p>
         <p className='m-0 text-sm font-semibold text-muted-foreground'>
           {t('Elige tu nivel y te situamos en la barra de nivel, de A1 a C1.')}
         </p>
-        <Button type='button' className='h-11 font-extrabold' onClick={() => setShowSetup(true)}>
+        {/* Luis, 16 Oct: until the level is chosen, the button calls for attention. */}
+        <Button type='button' className='ica-attention h-11 font-extrabold' onClick={() => setShowSetup(true)}>
           {t('Situar mi nivel')}
         </Button>
       </div>

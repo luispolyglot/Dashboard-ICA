@@ -27,7 +27,8 @@ import {
 } from './achievements'
 import type { FeaturedBadge } from './featuredBadge'
 import { badgesToShow, fetchProfileBadges, useMyProfileBadges } from './profileBadges'
-import { SwordsIcon } from './icons'
+import { FichaIcon, FlameIcon, SwordsIcon } from './icons'
+import { EXTRA_CHALLENGE_COST } from './rules'
 import type { MedalCategory } from './medals'
 import { FeaturedBadgeMini, UserInitial } from './ranking'
 
@@ -38,13 +39,30 @@ export type IcademerSummary = {
   badge?: FeaturedBadge | null
   /** Bandera comprada que enseña (nombre del idioma). */
   flag?: string | null
+  /** Días de racha ICA que lleva ahora (del ranking del mes en curso). */
+  streakDays?: number | null
 }
+
+/** Si algo tarda más que esto, se enseña lo que ya haya llegado (no se espera para siempre). */
+const REVEAL_TIMEOUT_MS = 5000
 
 type ChallengeState =
   | { kind: 'loading' }
   | { kind: 'hidden' }
   | { kind: 'can' }
+  /** You have 3 open: a 4th one with a «desafío extra» (EXTRA_CHALLENGE_COST ICA Coins). */
+  | { kind: 'extra' }
   | { kind: 'blocked'; reason: string | null }
+
+/**
+ * Luis, 16 Oct: with 3 open challenges you can still challenge for EXTRA_CHALLENGE_COST ICA Coins
+ * (a 4th one); only with 4 is it «No se puede desafiar». The server says it with its own code,
+ * or (older server) with the «3 desafíos activos» message.
+ */
+function isExtraSlotCase(code: string | null, reason: string | null): boolean {
+  if (code === 'ICA_CHALLENGE_EXTRA_SLOT_NEEDED') return true
+  return code === 'ICA_CHALLENGE_ACTIVE_LIMIT_REACHED' && Boolean(reason?.includes('3 desafíos'))
+}
 
 type LoadedProfile = {
   name: string | null
@@ -106,7 +124,9 @@ function useIcademerProfile(summary: IcademerSummary | null, isMe: boolean): Loa
               ? { kind: 'hidden' }
               : challenge.canChallenge
                 ? { kind: 'can' }
-                : { kind: 'blocked', reason: challenge.blockedReason },
+                : isExtraSlotCase(challenge.blockedCode, challenge.blockedReason)
+                  ? { kind: 'extra' }
+                  : { kind: 'blocked', reason: challenge.blockedReason },
         }))
       },
       () => undefined,
@@ -167,9 +187,10 @@ function useIcademerProfile(summary: IcademerSummary | null, isMe: boolean): Loa
           if (row) {
             targetLang = row.targetLang
             level = row.level
-            challengeState =
-              row.canChallenge || row.blockedReason === 'Tu máximo de desafíos activos es 3.'
-                ? { kind: 'can' }
+            challengeState = row.canChallenge
+              ? { kind: 'can' }
+              : row.blockedReason === 'Tu máximo de desafíos activos es 3.'
+                ? { kind: 'extra' }
                 : { kind: 'blocked', reason: row.blockedReason }
           } else {
             challengeState = { kind: 'blocked', reason: null }
@@ -209,8 +230,13 @@ export function IcademerProfileDialog({
   const isMe = Boolean(summary && user?.id === summary.userId)
   const loaded = useIcademerProfile(summary, isMe)
   const [challengePending, setChallengePending] = useState(false)
+  const [revealAnyway, setRevealAnyway] = useState(false)
   useEffect(() => {
     setChallengePending(false)
+    setRevealAnyway(false)
+    if (!summary?.userId) return
+    const id = window.setTimeout(() => setRevealAnyway(true), REVEAL_TIMEOUT_MS)
+    return () => window.clearTimeout(id)
   }, [summary?.userId])
   // Tus propias insignias salen de tus datos (igual que en tu perfil).
   const mine = useAchievements()
@@ -258,6 +284,10 @@ export function IcademerProfileDialog({
     return def ? [{ def, badge }] : []
   })
   const badgesLoading = topBadges.length === 0 && (earned === null || (!isMe && chosen === null))
+  // Everything appears at once (Luis, 15 Oct): language, level, «Desafiar» and badges wait for
+  // each other instead of popping in one by one. After REVEAL_TIMEOUT_MS, whatever is there shows.
+  const allLoaded = !badgesLoading && (isMe || loaded.challenge.kind !== 'loading')
+  const ready = allLoaded || revealAnyway
 
   // «Desafiar»: el botón espera un momento (cargando) mientras se precargan los datos de
   // Desafíos, y luego se va directo a «Retar a …» con el modo para elegir. Como mucho 4 s.
@@ -287,7 +317,19 @@ export function IcademerProfileDialog({
             {summary.badge ? <FeaturedBadgeMini badge={summary.badge} size={34} /> : null}
           </div>
           <DialogDescription className='sr-only'>{t('Perfil de este icademer')}</DialogDescription>
-          {targetLang || level ? (
+          {typeof summary.streakDays === 'number' ? (
+            // La racha en grande: es lo primero que se ve de cada icademer (Luis, 15 Oct).
+            <div className='flex items-center justify-center gap-2 pt-1'>
+              <FlameIcon size={44} tone={summary.streakDays > 0 ? 'fire' : 'off'} />
+              <span className='flex flex-col items-start leading-none'>
+                <span className='text-4xl font-black tabular-nums'>{summary.streakDays}</span>
+                <span className='text-xs font-extrabold tracking-[0.06em] text-muted-foreground uppercase'>
+                  {summary.streakDays === 1 ? t('día de racha') : t('días de racha')}
+                </span>
+              </span>
+            </div>
+          ) : null}
+          {!ready ? null : targetLang || level ? (
             <div className='flex flex-wrap items-center justify-center gap-2'>
               {targetLang ? (
                 // El idioma que aprende, con su bandera (sin texto: «Aprende …» solo para lectores de pantalla).
@@ -305,24 +347,48 @@ export function IcademerProfileDialog({
                 </span>
               ) : null}
             </div>
-          ) : loaded.challenge.kind === 'loading' && !isMe ? (
-            <span className='h-6 w-40 animate-pulse rounded-full bg-muted' aria-hidden='true' />
           ) : null}
         </div>
 
+        {!ready ? (
+          // Un solo hueco mientras carga: idioma, botón e insignias salen juntos.
+          <div className='space-y-3' aria-hidden='true'>
+            <span className='mx-auto block h-6 w-40 animate-pulse rounded-full bg-muted' />
+            {!isMe ? <span className='block h-12 w-full animate-pulse rounded-2xl bg-muted' /> : null}
+            <div className='grid grid-cols-3 gap-2'>
+              {Array.from({ length: 3 }, (_, index) => (
+                <span key={index} className='h-24 animate-pulse rounded-2xl bg-muted' />
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {/* Desafiar */}
-        {loaded.challenge.kind === 'loading' && !isMe ? (
+        {!ready ? null : loaded.challenge.kind === 'loading' && !isMe ? (
           <span className='h-12 w-full animate-pulse rounded-2xl bg-muted' aria-hidden='true' />
-        ) : loaded.challenge.kind === 'can' ? (
-          <Button
-            type='button'
-            className='h-12 gap-2 rounded-2xl text-base font-black'
-            onClick={() => void challenge()}
-            aria-busy={challengePending || undefined}
-          >
-            {challengePending ? <Loader2Icon className='size-5 animate-spin' aria-hidden='true' /> : <SwordsIcon size={22} />}
-            {t('Desafiar a {name}', { name: firstName })}
-          </Button>
+        ) : loaded.challenge.kind === 'can' || loaded.challenge.kind === 'extra' ? (
+          <div className='flex flex-col gap-1.5'>
+            <Button
+              type='button'
+              className='h-12 gap-2 rounded-2xl text-base font-black'
+              onClick={() => void challenge()}
+              aria-busy={challengePending || undefined}
+            >
+              {challengePending ? <Loader2Icon className='size-5 animate-spin' aria-hidden='true' /> : <SwordsIcon size={22} />}
+              {t('Desafiar a {name}', { name: firstName })}
+              {loaded.challenge.kind === 'extra' ? (
+                <span className='inline-flex items-center gap-1 rounded-full bg-black/15 px-2 py-0.5 text-sm'>
+                  <FichaIcon size={16} />
+                  {EXTRA_CHALLENGE_COST}
+                </span>
+              ) : null}
+            </Button>
+            {loaded.challenge.kind === 'extra' ? (
+              <p className='m-0 text-center text-xs font-semibold text-muted-foreground'>
+                {t('Ya tienes 3 desafíos activos: el 4.º cuesta {n} ICA Coins.', { n: EXTRA_CHALLENGE_COST })}
+              </p>
+            ) : null}
+          </div>
         ) : loaded.challenge.kind === 'blocked' ? (
           <div className='flex items-center gap-3 rounded-2xl border-2 border-border px-3 py-2.5'>
             <span className='flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted opacity-60 grayscale'>
@@ -338,6 +404,7 @@ export function IcademerProfileDialog({
         ) : null}
 
         {/* Insignias */}
+        {ready ? (
         <div>
           <div className='mb-2 flex items-baseline justify-between gap-2'>
             <p className='m-0 text-xs font-extrabold tracking-[0.08em] text-muted-foreground uppercase'>{t('Insignias destacadas')}</p>
@@ -368,6 +435,7 @@ export function IcademerProfileDialog({
             </p>
           ) : null}
         </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   )

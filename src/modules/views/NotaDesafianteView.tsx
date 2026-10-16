@@ -331,6 +331,8 @@ export function NotaDesafiantePlayerView() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [challengeOpen, setChallengeOpen] = useState(false)
+  // Luis, 16 Oct: a fold-out with the note's phrases (both languages), only to read them.
+  const [phrasesOpen, setPhrasesOpen] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -473,6 +475,43 @@ export function NotaDesafiantePlayerView() {
       >
         {unlocked ? t('Empezar la nota desafiante') : t('Escucha el {n} % para empezar', { n: UNLOCK_PERCENT })}
       </Button>
+
+      {/* Las frases de la nota: solo para leerlas (sin regrabar). */}
+      {phrases.length > 0 ? (
+        <Panel className='p-0'>
+          <button
+            type='button'
+            aria-expanded={phrasesOpen}
+            onClick={() => setPhrasesOpen((open) => !open)}
+            className='flex w-full items-center gap-3 px-4 py-3.5 text-left'
+          >
+            <span className='min-w-0 flex-1 font-extrabold'>
+              {t('Ver las frases de esta nota')}{' '}
+              <span className='text-sm font-bold text-muted-foreground tabular-nums'>({phrases.length})</span>
+            </span>
+            <ChevronDownIcon
+              className={cn('size-5 shrink-0 text-muted-foreground transition-transform', phrasesOpen && 'rotate-180')}
+              strokeWidth={2.6}
+              aria-hidden='true'
+            />
+          </button>
+          {phrasesOpen ? (
+            <ol className='m-0 list-none space-y-3 border-t-2 border-border px-4 pt-3 pb-4'>
+              {phrases.map((phrase, index) => (
+                <li key={`${phrase.phraseId}-${index}`} className='flex gap-3'>
+                  <span className='w-5 shrink-0 pt-0.5 text-right text-xs font-black text-muted-foreground tabular-nums'>
+                    {index + 1}
+                  </span>
+                  <span className='min-w-0'>
+                    <span className='block leading-snug font-extrabold'>{phrase.target}</span>
+                    <span className='mt-0.5 block text-sm font-semibold text-muted-foreground'>{phrase.native}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </Panel>
+      ) : null}
 
       {challengeOpen ? (
         <NotaDesafianteOverlay

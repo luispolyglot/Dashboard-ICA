@@ -563,6 +563,20 @@ type ListenOptions = {
   endSilenceMs?: number // se corta tras 4 s de silencio (tiempo para pensar)
   maxMs?: number // máximo 30 s
   onInterim?: (text: string) => void
+  /**
+   * Si el navegador cierra el micro por su cuenta tras un silencio, se vuelve a abrir (por
+   * defecto, sí). En el móvil cada apertura suena con el pitido del sistema: con `false` se
+   * acaba ahí y se devuelve lo que haya (silencio si no dijo nada).
+   */
+  reopenWhenClosed?: boolean
+}
+
+/**
+ * El móvil (Android e iPhone) ya pita él solo cada vez que se abre el micro. Ahí no ponemos
+ * nuestro pitido ni reabrimos el micro solos, o suena pitido tras pitido (icademers, 13 y 15 Oct).
+ */
+export function deviceBeepsOnMicOpen(): boolean {
+  return isAndroidDevice() || isIOSDevice()
 }
 
 // Si en este tiempo el micro no se ha abierto, se da por colgado y se abre otro.
@@ -748,7 +762,7 @@ function listenSession(
       }
       // El navegador a veces cierra el micro por su cuenta tras un silencio corto.
       // Si aún no se ha cumplido el tiempo para pensar, se vuelve a abrir y se sigue escuchando.
-      if (!cancelled && !stopRequested && !errorOutcome) {
+      if (!cancelled && !stopRequested && !errorOutcome && options?.reopenWhenClosed !== false) {
         const now = Date.now()
         const stillThinking = speechStarted
           ? now - lastActivity < endSilenceMs

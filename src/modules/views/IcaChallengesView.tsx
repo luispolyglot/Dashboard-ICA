@@ -62,6 +62,7 @@ import {
 } from '../game/fichas'
 import { FichaIcon, FlameIcon, SwordsIcon } from '../game/icons'
 import { RANDOM_SEARCH_MS, RandomMatchOverlay, type RandomMatchState } from '../game/RandomMatchOverlay'
+import { logRandomChallengeTap, type RandomChallengeTapEvent } from '../services/randomChallengeTaps'
 import { gameSfx } from '../game/sfx'
 import { useMyFlags } from '../game/languageFlag'
 import { fetchMonthlyStreakLeaderboard } from '../services/leaderboard'
@@ -91,6 +92,8 @@ type IcaChallengesViewProps = {
   onEmbeddedDone?: () => void
   /** «Desafío aleatorio»: when the search started (Date.now()), so it lasts 3-4 s in total. */
   randomStartedAt?: number
+  /** «Desafío aleatorio»: the id of this tap, to count how it ended (Luis, 16 Oct). */
+  randomTapId?: string | null
 }
 
 type TabKey = 'active' | 'pending' | 'history'
@@ -380,7 +383,36 @@ function renderAvatar(name: string, avatarUrl: string | null, seed: string) {
   )
 }
 
-export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onEmbeddedDone, randomStartedAt }: IcaChallengesViewProps) {
+/** Whole days between a YYYY-MM-DD day and today (local). */
+function daysSince(day: string, now = new Date()): number {
+  const [year, month, date] = day.split('-').map(Number)
+  if (!year || !month || !date) return Number.POSITIVE_INFINITY
+  const then = new Date(year, month - 1, date)
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  return Math.round((today.getTime() - then.getTime()) / 86_400_000)
+}
+
+/**
+ * «Desafío aleatorio» (Luis, 16 Oct): someone active in the last 48 h (today or yesterday), else
+ * 72 h (2 days), else 100 h (about 4 days), else anyone in the list.
+ */
+export function pickActivePool<T extends { lastActiveDay?: string | null }>(candidates: T[], now = new Date()): T[] {
+  if (candidates.some((item) => item.lastActiveDay === undefined)) return candidates
+  for (const maxDays of [1, 2, 4]) {
+    const pool = candidates.filter((item) => item.lastActiveDay && daysSince(item.lastActiveDay, now) <= maxDays)
+    if (pool.length > 0) return pool
+  }
+  return candidates
+}
+
+export function IcaChallengesView({
+  targetLang,
+  nativeLang,
+  embeddedRivalId,
+  onEmbeddedDone,
+  randomStartedAt,
+  randomTapId,
+}: IcaChallengesViewProps) {
   const embedded = Boolean(embeddedRivalId)
   const navigate = useNavigate()
   const {
@@ -448,6 +480,8 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
   const [extraOfferUserId, setExtraOfferUserId] = useState<string | null>(null)
   // The same «desafío extra» to accept a 4th challenge (Luis, 11 Oct): the invitation waiting for it.
   const [acceptOfferId, setAcceptOfferId] = useState<string | null>(null)
+  // The invitation being accepted: its row stays and says «Entrando…» until the game opens.
+  const [acceptingId, setAcceptingId] = useState<string | null>(null)
   const [buyingExtraPass, setBuyingExtraPass] = useState(false)
 
   const isEnrolled = Boolean(enrollment?.isActive)
@@ -468,6 +502,13 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
       if (randomTimerRef.current !== null) window.clearTimeout(randomTimerRef.current)
     }
   }, [])
+  // How this tap ended, counted once (Luis, 16 Oct: to know if people use the random challenge).
+  const randomOutcomeRef = useRef<RandomChallengeTapEvent | null>(null)
+  const countRandomOutcome = (event: RandomChallengeTapEvent) => {
+    if (!randomMode || randomOutcomeRef.current) return
+    randomOutcomeRef.current = event
+    logRandomChallengeTap(randomTapId, event)
+  }
   const afterSearch = (run: () => void) => {
     if (randomCancelledRef.current) return
     const wait = Math.max(0, RANDOM_SEARCH_MS - (Date.now() - randomStartedAtRef.current))
@@ -682,12 +723,14 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
       extraSlot,
     })
       .then(async () => {
+        countRandomOutcome('sent')
         if (randomCancelledRef.current) return
         setRandomMatch((current) => (current.phase === 'found' ? { ...current, status: 'sent' } : current))
         await refreshCoins()
       })
       .catch((createError: unknown) => {
         if (randomCancelledRef.current) return
+        countRandomOutcome('error')
         setRandomMatch({
           phase: 'error',
           message:
@@ -709,6 +752,7 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
       sendRandomChallenge(pick, true)
     } catch (buyError) {
       if (randomCancelledRef.current) return
+      countRandomOutcome('error')
       setRandomMatch({
         phase: 'error',
         message:
@@ -722,7 +766,11 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
   const runRandomMatch = async () => {
     // One tick first, so StrictMode's second mount (development) cannot clear the first timer.
     await Promise.resolve()
-    const fail = (message: string) => afterSearch(() => setRandomMatch({ phase: 'error', message }))
+    const fail = (message: string, outcome: RandomChallengeTapEvent = 'error') =>
+      afterSearch(() => {
+        countRandomOutcome(outcome)
+        setRandomMatch({ phase: 'error', message })
+      })
     if (!isEnrolled) {
       fail(t('Activa Desafíos ICA para poder retar.'))
       return
@@ -756,9 +804,13 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
         item.activeChallengesCount < 3 &&
         (item.canChallenge || myLimit(item)),
     )
-    const rival = candidates[Math.floor(Math.random() * candidates.length)]
+    // Active people first (Luis, 16 Oct): nobody accepted when they had not been in the app for
+    // 2 days or more. Whoever was in the app in the last 48 h; if nobody, 72 h; then 100 h; then
+    // anyone. (An older server does not say the day: then everyone counts.)
+    const pool = pickActivePool(candidates)
+    const rival = pool[Math.floor(Math.random() * pool.length)]
     if (!rival) {
-      fail(t('Ahora mismo no hay ningún icademer libre para desafiar. Prueba en un rato.'))
+      fail(t('Ahora mismo no hay ningún icademer libre para desafiar. Prueba en un rato.'), 'no_rival')
       return
     }
     const scope: IcaChallengeScope = rival.samePair && rival.mixedAllowed ? 'language' : 'global'
@@ -781,7 +833,11 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
     randomPickRef.current = pick
     const needsExtra = !rival.canChallenge
     if (needsExtra && extraPasses <= 0) {
-      afterSearch(() => setRandomMatch({ phase: 'needsPass', balance: coinBalance ?? null, buying: false }))
+      afterSearch(() => {
+        // Not the end yet: if they buy «Un desafío más», «sent» is counted after it.
+        logRandomChallengeTap(randomTapId, 'needs_pass')
+        setRandomMatch({ phase: 'needsPass', balance: coinBalance ?? null, buying: false })
+      })
       return
     }
     afterSearch(() => sendRandomChallenge(pick, needsExtra))
@@ -875,13 +931,19 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
         return
       }
     }
+    if (accept) setAcceptingId(challengeId)
     try {
       await respondInvitation(challengeId, accept, extraSlot)
-      if (extraSlot) await refreshCoins()
-      toast.success(accept ? t('Desafío aceptado. ¡Te toca empezar!') : t('Desafío rechazado.'))
       // Accepting starts the game right away (Luis, 6 Oct), instead of going to «Activos» first.
-      if (accept) navigate(getIcaChallengePlayRoute(challengeId))
+      if (accept) {
+        navigate(getIcaChallengePlayRoute(challengeId))
+        if (extraSlot) void refreshCoins()
+        return
+      }
+      if (extraSlot) await refreshCoins()
+      toast.success(t('Desafío rechazado.'))
     } catch (respondError) {
+      setAcceptingId(null)
       // The list here only has the most recent challenges, so the server may count a 4th one that
       // the app did not see: then offer the extra challenge instead of leaving a dead end.
       const code = (respondError as { code?: unknown } | null)?.code
@@ -1267,7 +1329,12 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
       <RandomMatchOverlay
         state={randomMatch}
         myName={String(authUser?.user_metadata?.display_name || authUser?.email || '')}
-        onClose={() => onEmbeddedDone?.()}
+        onClose={() => {
+          // Closed before the challenge went out (searching, or offered «Un desafío más»). Once
+          // found, it is already on its way: «sent» is counted when the server answers.
+          if (randomMatch.phase !== 'found') countRandomOutcome('cancelled')
+          onEmbeddedDone?.()
+        }}
         onBuyPass={() => void buyPassAndSend()}
       />
     )
@@ -1640,17 +1707,17 @@ export function IcaChallengesView({ targetLang, nativeLang, embeddedRivalId, onE
                         type='button'
                         size='sm'
                         className='shrink-0 rounded-xl font-extrabold'
-                        disabled={isResponding}
+                        disabled={isResponding || acceptingId !== null}
                         onClick={() => void handleRespondInvitation(challenge.id, true)}
                       >
-                        {t('Aceptar')}
+                        {acceptingId === challenge.id ? t('Entrando…') : t('Aceptar')}
                       </Button>
                       <Button
                         type='button'
                         size='icon-sm'
                         variant='ghost'
                         className='shrink-0 text-muted-foreground'
-                        disabled={isResponding}
+                        disabled={isResponding || acceptingId !== null}
                         aria-label={t('Rechazar el reto de {name}', { name: rival.displayName })}
                         onClick={() => void handleRespondInvitation(challenge.id, false)}
                       >
