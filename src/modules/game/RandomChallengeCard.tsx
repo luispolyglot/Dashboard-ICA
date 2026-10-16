@@ -6,6 +6,7 @@ import { useDashboardContext } from '../context/DashboardContext'
 import { SwordsIcon } from './icons'
 import { RandomMatchOverlay } from './RandomMatchOverlay'
 import { gameSfx } from './sfx'
+import { logRandomChallengeTap, newRandomChallengeTapId } from '../services/randomChallengeTaps'
 import type { AppConfig } from '../types'
 
 const IcaChallengesView = lazy(() =>
@@ -38,6 +39,8 @@ export function RandomChallengeCard({ config, compact = false }: { config: AppCo
   // When the search started: the «Buscando rival…» screen shows at once, even while Desafíos ICA
   // loads, and the search lasts the same 3-4 s in total.
   const [startedAt, setStartedAt] = useState(0)
+  // Each tap is counted (Luis, 16 Oct): the tap, and then how it ended (see randomChallengeTaps).
+  const [tapId, setTapId] = useState<string | null>(null)
 
   return (
     <>
@@ -45,13 +48,17 @@ export function RandomChallengeCard({ config, compact = false }: { config: AppCo
         type='button'
         data-tour='random-challenge'
         onClick={() => {
+          const id = newRandomChallengeTapId()
           if (locked) {
+            logRandomChallengeTap(id, 'locked')
             toast(t('Necesitas al menos {n} palabras ICA activadas para retar. Llevas {have}.', {
               n: MIN_ACTIVATED_TO_CHALLENGE,
               have: activated ?? 0,
             }))
             return
           }
+          logRandomChallengeTap(id, 'tap')
+          setTapId(id)
           gameSfx.tap()
           setDraw((value) => value + 1)
           setStartedAt(Date.now())
@@ -89,11 +96,22 @@ export function RandomChallengeCard({ config, compact = false }: { config: AppCo
       </button>
       {open && config ? (
         <Suspense
-          fallback={<RandomMatchOverlay state={{ phase: 'searching' }} myName='' onClose={() => setOpen(false)} />}
+          fallback={
+            <RandomMatchOverlay
+              state={{ phase: 'searching' }}
+              myName=''
+              onClose={() => {
+                // Closed while Desafíos ICA was still loading.
+                logRandomChallengeTap(tapId, 'cancelled')
+                setOpen(false)
+              }}
+            />
+          }
         >
           <IcaChallengesView
             key={draw}
             randomStartedAt={startedAt}
+            randomTapId={tapId}
             targetLang={config.targetLang}
             nativeLang={config.nativeLang}
             // RANDOM_RIVAL of IcaChallengesView (written here so that screen still loads only when used).
