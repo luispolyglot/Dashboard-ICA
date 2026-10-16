@@ -858,10 +858,56 @@ export function evaluatePairsBoard(input: {
 // Corregir
 // ---------------------------------------------------------------------------
 
-function containsSequence(haystack: string[], needle: string[]): boolean {
-  if (needle.length === 0 || needle.length > haystack.length) return false
-  for (let i = 0; i + needle.length <= haystack.length; i += 1) {
-    if (needle.every((word, k) => haystack[i + k] === word)) return true
+/** Letters to add, remove or change to go from one word to the other (stops above `limit`). */
+function letterDistance(a: string, b: string, limit: number): number {
+  const x = Array.from(a)
+  const y = Array.from(b)
+  if (Math.abs(x.length - y.length) > limit) return limit + 1
+  let previous = Array.from({ length: y.length + 1 }, (_, index) => index)
+  for (let i = 1; i <= x.length; i += 1) {
+    const current = [i]
+    let rowBest = i
+    for (let j = 1; j <= y.length; j += 1) {
+      const cost = x[i - 1] === y[j - 1] ? 0 : 1
+      current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost)
+      rowBest = Math.min(rowBest, current[j])
+    }
+    if (rowBest > limit) return limit + 1
+    previous = current
+  }
+  return previous[y.length]
+}
+
+/**
+ * Dilo en voz alta (Luis, 16 Oct: icademers who said the word well and got it wrong): the phone's
+ * speech recognition sometimes writes one letter wrong. A word of 5 or more letters still counts
+ * with one letter different, as in the nota desafiante. Not when the heard word is the expected
+ * one plus an ending («samochodem» for «samochód»): that is another form of the word.
+ */
+export function spokenWordMatches(heard: string, expected: string): boolean {
+  if (heard === expected) return true
+  if (Array.from(expected).length < 5) return false
+  if (heard.startsWith(expected) || expected.startsWith(heard)) return false
+  return letterDistance(heard, expected, 1) <= 1
+}
+
+/**
+ * The expected words, one after another, somewhere in what was heard: word by word (with the
+ * slip above), or with the spaces in other places («perfavore» for «per favore», «dzień do bry»
+ * for «dzień dobry»).
+ */
+function containsSpokenSequence(heard: string[], expected: string[]): boolean {
+  if (expected.length === 0 || heard.length === 0) return false
+  for (let i = 0; i + expected.length <= heard.length; i += 1) {
+    if (expected.every((word, k) => spokenWordMatches(heard[i + k], word))) return true
+  }
+  const joinedExpected = expected.join('')
+  for (let i = 0; i < heard.length; i += 1) {
+    let joined = ''
+    for (let j = i; j < heard.length && joined.length < joinedExpected.length; j += 1) {
+      joined += heard[j]
+      if (joined === joinedExpected) return true
+    }
   }
   return false
 }
@@ -905,7 +951,7 @@ export function evaluateResponse(input: {
 
   return transcripts.some((transcript) => {
     const heard = normalizeLoose(transcript).split(' ').filter(Boolean)
-    return accepted.some((form) => containsSequence(heard, normalizeLoose(form).split(' ').filter(Boolean)))
+    return accepted.some((form) => containsSpokenSequence(heard, normalizeLoose(form).split(' ').filter(Boolean)))
   })
 }
 

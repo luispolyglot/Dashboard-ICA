@@ -9,9 +9,7 @@ import {
   CheckIcon,
   CornerDownLeftIcon,
   Loader2Icon,
-  MicIcon,
   PlusIcon,
-  RotateCcwIcon,
   SkipForwardIcon,
   Volume2Icon,
   XIcon,
@@ -20,6 +18,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { langName, t } from '@/i18n'
 import { LANG_CODES } from '../../constants'
+import { HoldToTalkButton, type HoldStatus } from '../NotaDesafiante/HoldToTalk'
 import type {
   IcaChallengePairsResult,
   IcaChallengePublicQuestion,
@@ -333,46 +332,37 @@ export function WriteAnswerForm({
   )
 }
 
+/**
+ * «Dilo en voz alta»: mantén pulsado el micro mientras hablas y suéltalo al terminar (Luis y
+ * Nahuel, 16 Oct). Debajo, lo que se va entendiendo.
+ */
 export function SpeakPanel({
   status,
   heard,
   message,
   disabled,
-  onRetry,
+  onPress,
+  onRelease,
   onSkip,
 }: {
-  status: 'starting' | 'listening' | 'checking' | 'idle'
+  status: HoldStatus
   heard: string
   message: string | null
   disabled: boolean
-  onRetry: () => void
+  onPress: () => void
+  onRelease: () => void
   onSkip: () => void
 }) {
-  const listening = status === 'listening'
+  const holding = status === 'starting' || status === 'listening'
   return (
     <div className='space-y-3 text-center'>
-      <div className='relative mx-auto flex h-20 w-20 items-center justify-center'>
-        {listening && (
-          <span className='absolute inset-0 animate-ping rounded-full bg-primary/25' aria-hidden='true' />
-        )}
-        <span
-          className={`relative flex h-20 w-20 items-center justify-center rounded-full border ${
-            listening ? 'border-primary bg-primary/20 text-primary' : 'border-border bg-muted/40 text-muted-foreground'
-          }`}
-        >
-          <MicIcon className='h-8 w-8' />
-        </span>
-      </div>
-      <p className='min-h-[1.5rem] text-lg font-medium'>
-        {heard || (listening ? t('Te escucho…') : status === 'starting' ? t('Abriendo el micrófono…') : ' ')}
+      <HoldToTalkButton status={status} disabled={disabled} onPress={onPress} onRelease={onRelease} />
+      <p className='min-h-[1.75rem] text-lg font-semibold'>
+        {heard || (holding ? t('Te escucho…') : ' ')}
       </p>
-      {message && <p className='text-sm text-amber-600 dark:text-amber-400'>{message}</p>}
-      <div className='flex justify-center gap-2'>
-        <Button type='button' variant='outline' size='sm' disabled={disabled || listening} onClick={onRetry}>
-          <RotateCcwIcon className='mr-1 h-3.5 w-3.5' />
-          {t('Repetir')}
-        </Button>
-        <Button type='button' variant='ghost' size='sm' disabled={disabled} onClick={onSkip}>
+      {message && <p className='text-sm font-semibold text-amber-600 dark:text-amber-400'>{message}</p>}
+      <div className='flex justify-center'>
+        <Button type='button' variant='ghost' size='sm' disabled={disabled || holding} onClick={onSkip}>
           <SkipForwardIcon className='mr-1 h-3.5 w-3.5' />
           {t('No la sé')}
         </Button>

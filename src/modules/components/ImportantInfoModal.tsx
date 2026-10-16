@@ -13,16 +13,43 @@ import { t } from '@/i18n'
 const IMPORTANT_INFO_VERSION = 'masterclass_monday_v1'
 const DISMISS_STORAGE_KEY = `important_info_calendar_notifications_modal_dismissed_${IMPORTANT_INFO_VERSION}`
 const MASTERCLASS_SIGNUP_URL = 'https://www.skool.com/icademy/masterclass-incominnn-apuntate'
+/**
+ * Last day the notice is shown (Luis, 16 Oct): the day of the event, as YYYY-MM-DD. From the next
+ * day, in each student's own time zone, it never appears again, without having to remove it by
+ * hand. The masterclass was on Monday 12 Oct. For a new notice: change the version, the texts,
+ * the image and this date (for an event on the 19th, '2026-10-19': on the 20th it is gone).
+ */
+export const IMPORTANT_INFO_LAST_DAY = '2026-10-12'
+
+/** Today in the device's time zone, as YYYY-MM-DD. */
+function localDay(now: Date): string {
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${now.getFullYear()}-${month}-${day}`
+}
+
+export function isImportantInfoOver(now: Date = new Date(), lastDay: string = IMPORTANT_INFO_LAST_DAY): boolean {
+  return localDay(now) > lastDay
+}
 
 function getInitialOpenState(): boolean {
   if (typeof window === 'undefined') return false
-  return window.localStorage.getItem(DISMISS_STORAGE_KEY) !== '1'
+  if (isImportantInfoOver()) return false
+  try {
+    return window.localStorage.getItem(DISMISS_STORAGE_KEY) !== '1'
+  } catch {
+    return true
+  }
 }
 
 export function ImportantInfoModal() {
   const [open, setOpen] = useState(getInitialOpenState)
   const dismiss = (): void => {
-    window.localStorage.setItem(DISMISS_STORAGE_KEY, '1')
+    try {
+      window.localStorage.setItem(DISMISS_STORAGE_KEY, '1')
+    } catch {
+      /* without storage it may show again until the event is over */
+    }
     setOpen(false)
   }
 

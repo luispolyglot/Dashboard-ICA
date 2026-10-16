@@ -37,9 +37,6 @@ import {
   isIOSDevice,
   isMicrophoneWarm,
   isSpeechRecognitionSupported,
-  listenOnce,
-  playBeep,
-  deviceBeepsOnMicOpen,
   playFailTone,
   speakAsync,
   stopSpeaking,
@@ -47,8 +44,10 @@ import {
   wait,
   waitMicrophoneReleased,
   warmUpMicrophone,
+  type ListenOutcome,
   type WordMark,
 } from './challengeEngine'
+import { HoldToTalkButton, useHoldToTalk, type HoldStatus } from './HoldToTalk'
 import { getUiLang, langName, t, tn } from '@/i18n'
 
 /** Nombre de idioma dentro de una frase: «en italiano» / "in Italian". */
@@ -67,8 +66,9 @@ type Props = {
 }
 
 type Phase = 'preparing' | 'error' | 'intro' | 'mic' | 'running' | 'paused' | 'finished'
-/** Time to start answering after the beep (Luis, 13 Oct: one second more, 5 → 6 s). */
-const ANSWER_START_MS = 6000
+
+/** What ends the wait for an answer: what was said, or «Volver a oír». */
+type TurnInput = ListenOutcome | { status: 'replay' }
 
 type Step = 'prompt' | 'listening' | 'feedback'
 
@@ -140,6 +140,35 @@ export function NotaDesafianteOverlay({
   const cancelListenRef = useRef<(() => void) | null>(null)
   const wakeLockRef = useRef<WakeLockSentinelLike | null>(null)
   const resultsRef = useRef<Array<boolean | null>>([])
+  // Mantener pulsado para hablar (Luis y Nahuel, 16 Oct): the turn waits here for the answer.
+  const answerWaiterRef = useRef<((input: TurnInput) => void) | null>(null)
+  const [holdHint, setHoldHint] = useState<string | null>(null)
+  const hold = useHoldToTalk({
+    lang: targetLang,
+    onInterim: setInterim,
+    onOutcome: (outcome, { shortTap }) => {
+      if (shortTap) setHoldHint(t('Mantén pulsado el botón mientras hablas y suéltalo al terminar.'))
+      const resolve = answerWaiterRef.current
+      answerWaiterRef.current = null
+      resolve?.(outcome)
+    },
+  })
+  const holdRef = useRef(hold)
+  holdRef.current = hold
+  /** Waits until the answer is said (button released) or «Volver a oír». */
+  const waitForAnswer = () =>
+    new Promise<TurnInput>((resolve) => {
+      // The button starts each answer ready to press. Without this it kept «Comprobando…» from
+      // the previous chunk and could not be pressed (Luis, 16 Oct: stuck on chunk 2).
+      holdRef.current.reset()
+      answerWaiterRef.current = resolve
+      cancelListenRef.current = () => {
+        holdRef.current.cancel()
+        const pending = answerWaiterRef.current
+        answerWaiterRef.current = null
+        pending?.({ status: 'cancelled' })
+      }
+    })
 
   const rounds = prepared?.rounds ?? []
   const score = results.filter((value) => value === true).length
@@ -283,28 +312,31 @@ export function NotaDesafianteOverlay({
       setFeedback(null)
       setInterim('')
 
-      let repeatedAfterSilence = false
       let usedFreeRetry = false
       let outcomeFeedback: Feedback | null = null
+      let playPrompt = true
 
       while (!outcomeFeedback) {
-        setStep('prompt')
-        setInterim('')
-        await speakAsync(round.native, nativeLang)
-        if (cancelled()) return
-        // Our beep only where the device makes no sound of its own when the mic opens (the
-        // computer). iPhone and Android already beep, and with ours it sounded twice in a row
-        // (icademers and Luis, 13 Oct).
-        if (!deviceBeepsOnMicOpen()) await playBeep()
-        if (cancelled()) return
+        if (playPrompt) {
+          setStep('prompt')
+          setInterim('')
+          setHoldHint(null)
+          await speakAsync(round.native, nativeLang)
+          if (cancelled()) return
+        }
+        playPrompt = false
 
+        // Mantener pulsado para hablar (Luis y Nahuel, 16 Oct): no hay pitido ni tiempo límite;
+        // se espera a que pulse, lo diga y suelte (o a «Volver a oír»).
         setStep('listening')
-        // One second more to start answering: 6 s instead of 5 (icademers, 13 Oct).
-        const listening = listenOnce(targetLang, { onInterim: setInterim, noSpeechMs: ANSWER_START_MS })
-        cancelListenRef.current = listening.cancel
-        const outcome = await listening.promise
+        const outcome = await waitForAnswer()
         cancelListenRef.current = null
         if (cancelled() || outcome.status === 'cancelled') return
+
+        if (outcome.status === 'replay') {
+          playPrompt = true
+          continue
+        }
 
         if (outcome.status === 'error') {
           setErrorMessage(outcome.message)
@@ -314,26 +346,18 @@ export function NotaDesafianteOverlay({
         }
 
         if (outcome.status === 'silence') {
-          // Si no empieza a hablar en ANSWER_START_MS, se repite el trozo una vez.
-          if (!repeatedAfterSilence) {
-            repeatedAfterSilence = true
-            continue
-          }
-          outcomeFeedback = {
-            correct: false,
-            marks: round.target.split(/\s+/).map((word) => ({ word, ok: false })),
-            heard: '',
-            note: t('No has respondido.'),
-          }
-          break
+          // Soltó sin decir nada (o fue un toque corto): se espera otra vez, sin penalizar.
+          setInterim('')
+          setHoldHint((current) => current || t('No te he oído. Mantén pulsado y dilo otra vez.'))
+          continue
         }
 
         if (outcome.status === 'unclear') {
           // Ruido: intento extra que no penaliza.
           if (!usedFreeRetry) {
             usedFreeRetry = true
-            await speakAsync(t('No te he entendido.'), nativeLang)
-            if (cancelled()) return
+            setInterim('')
+            setHoldHint(t('No te he entendido. Mantén pulsado y dilo otra vez.'))
             continue
           }
           outcomeFeedback = {
@@ -580,7 +604,7 @@ export function NotaDesafianteOverlay({
                 <IntroStep
                   icon={<MicIcon className='size-6' strokeWidth={2.4} />}
                   toneName='a'
-                  text={t('Tras el pitido, dilo en voz alta en {lang}, de memoria.', { lang: langInSentence(targetLang) })}
+                  text={t('Mantén pulsado el micro y dilo en voz alta en {lang}, de memoria. Suéltalo al terminar.', { lang: langInSentence(targetLang) })}
                 />
                 <IntroStep
                   icon={<CheckIcon className='size-6' strokeWidth={3} />}
@@ -642,6 +666,19 @@ export function NotaDesafianteOverlay({
               interim={interim}
               feedback={feedback}
               targetLang={targetLang}
+              holdStatus={hold.status}
+              holdHint={holdHint}
+              onHoldPress={() => {
+                setHoldHint(null)
+                setInterim('')
+                hold.press()
+              }}
+              onHoldRelease={hold.release}
+              onReplay={() => {
+                const resolve = answerWaiterRef.current
+                answerWaiterRef.current = null
+                resolve?.({ status: 'replay' })
+              }}
               onPause={pause}
               onResume={resume}
               onSkip={skip}
@@ -745,6 +782,11 @@ export function ChallengeTurnView({
   interim,
   feedback,
   targetLang,
+  holdStatus = 'idle',
+  holdHint = null,
+  onHoldPress,
+  onHoldRelease,
+  onReplay,
   onPause,
   onResume,
   onSkip,
@@ -758,10 +800,16 @@ export function ChallengeTurnView({
   interim: string
   feedback: ChallengeFeedback | null
   targetLang: string
+  holdStatus?: HoldStatus
+  holdHint?: string | null
+  onHoldPress?: () => void
+  onHoldRelease?: () => void
+  onReplay?: () => void
   onPause: () => void
   onResume: () => void
   onSkip: () => void
 }) {
+  const holding = holdStatus === 'starting' || holdStatus === 'listening'
   const verdict = feedback
     ? feedback.correct
       ? { tone: tone('ok'), label: `✓ ${t('Correcto')}` }
@@ -798,18 +846,34 @@ export function ChallengeTurnView({
 
       {step !== 'feedback' || !feedback || !verdict ? (
         <div className='flex flex-col items-center gap-4 py-2 text-center'>
-          <StatusCircle
-            kind={paused ? 'paused' : step === 'listening' ? 'listening' : 'prompt'}
-            live={!paused && step === 'listening'}
-          />
-          <p
-            className='m-0 text-xl font-black tracking-tight'
-            style={{ color: paused ? undefined : step === 'listening' ? tone('a').ink : tone('i').ink }}
-          >
-            {paused ? t('En pausa') : step === 'listening' ? t('Tu turno: dilo en {lang}', { lang: langInSentence(targetLang) }) : t('Escucha…')}
-          </p>
+          {!paused && step === 'listening' && onHoldPress && onHoldRelease ? (
+            <>
+              <p className='m-0 text-xl font-black tracking-tight' style={{ color: tone('a').ink }}>
+                {t('Tu turno: dilo en {lang}', { lang: langInSentence(targetLang) })}
+              </p>
+              <HoldToTalkButton status={holdStatus} onPress={onHoldPress} onRelease={onHoldRelease} size={112} />
+            </>
+          ) : (
+            <>
+              <StatusCircle kind={paused ? 'paused' : 'prompt'} live={false} />
+              <p className='m-0 text-xl font-black tracking-tight' style={{ color: paused ? undefined : tone('i').ink }}>
+                {paused ? t('En pausa') : t('Escucha…')}
+              </p>
+            </>
+          )}
           {interim && step === 'listening' && (
             <p className='m-0 text-base font-semibold text-muted-foreground italic'>{interim}</p>
+          )}
+          {holdHint && step === 'listening' && !holding && (
+            <p className='m-0 text-sm font-bold' style={{ color: 'var(--ica-gold-ink)' }}>
+              {holdHint}
+            </p>
+          )}
+          {!paused && step === 'listening' && onReplay && !holding && (
+            <Button type='button' variant='ghost' size='sm' onClick={onReplay}>
+              <Volume2Icon className='size-4' strokeWidth={2.4} />
+              {t('Volver a oír')}
+            </Button>
           )}
         </div>
       ) : (
