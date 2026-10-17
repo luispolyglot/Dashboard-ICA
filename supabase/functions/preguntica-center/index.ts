@@ -222,11 +222,12 @@ async function resolveStudyLevelForPair(
   adminClient: any,
   userId: string,
   targetLang: string,
-  nativeLang: string,
+  _nativeLang: string,
   fallbackLevel: string,
 ): Promise<string> {
   const normalizedFallback = normalizeStudyLevel(fallbackLevel)
-  if (!targetLang || !nativeLang) return normalizedFallback
+  // Level per target language, with any native one (Baúl ICA por idioma objetivo, 17 Oct).
+  if (!targetLang) return normalizedFallback
 
   try {
     const { data, error } = await adminClient
@@ -234,7 +235,6 @@ async function resolveStudyLevelForPair(
       .select('start_level, prior_ica_words, activation_words_total, confirmed_at')
       .eq('user_id', userId)
       .eq('target_lang', targetLang)
-      .eq('native_lang', nativeLang)
       .maybeSingle<MetaTrackerRow>()
 
     if (error || !data || !data.confirmed_at) {
@@ -756,16 +756,16 @@ async function fetchLexicardWords(
   adminClient: any,
   userId: string,
   targetLang: string,
-  nativeLang: string,
+  _nativeLang: string,
 ): Promise<LexicardWordRow[]> {
   const baseQuery = () => adminClient
     .from('lexicards')
     .select('target, importance')
     .eq('user_id', userId)
 
+  // Words of the target language, saved with any native one (Baúl ICA por idioma objetivo).
   const withLang = await baseQuery()
     .eq('target_lang', targetLang)
-    .eq('native_lang', nativeLang)
     .limit(600)
 
   if (withLang.error) {

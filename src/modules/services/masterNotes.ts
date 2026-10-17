@@ -64,7 +64,6 @@ export async function renameMasterNote(noteId: string, number: number): Promise<
     .from('master_notes')
     .select('id, name')
     .eq('target_lang', current.target_lang)
-    .eq('native_lang', current.native_lang)
   if (sameLanguageError) throw sameLanguageError
 
   const taken = (sameLanguage || []).some((row) => row.id !== noteId && getMasterNoteNumber(row.name) === number)
@@ -126,9 +125,6 @@ export async function fetchMasterNotes(
   if (targetLang) {
     query = query.eq('target_lang', targetLang)
   }
-  if (nativeLang) {
-    query = query.eq('native_lang', nativeLang)
-  }
 
   const { data, error } = await query
 
@@ -152,7 +148,6 @@ export async function createMasterNote(
     .from('master_notes')
     .select('name')
     .eq('target_lang', targetLang)
-    .eq('native_lang', nativeLang)
 
   if (existingError) throw existingError
 
@@ -497,12 +492,12 @@ export async function addMasterNoteChunk({
   const phraseTargetLang = typeof phraseRow.target_lang === 'string' ? phraseRow.target_lang.trim() : ''
   const phraseNativeLang = typeof phraseRow.native_lang === 'string' ? phraseRow.native_lang.trim() : ''
 
-  if (noteTargetLang && noteNativeLang && phraseTargetLang && phraseNativeLang) {
+  // Only the language you learn has to match: a note can mix phrases made with different native
+  // languages (Luis, 17 Oct, «Baúl ICA por idioma objetivo»: a half-done note is finished with the
+  // phrases made after changing your native language). Each phrase keeps its own native_lang.
+  if (noteTargetLang && phraseTargetLang) {
     // Case-insensitive: some phrases were saved as "polaco" while the note says "Polaco".
-    if (
-      noteTargetLang.toLowerCase() !== phraseTargetLang.toLowerCase() ||
-      noteNativeLang.toLowerCase() !== phraseNativeLang.toLowerCase()
-    ) {
+    if (noteTargetLang.toLowerCase() !== phraseTargetLang.toLowerCase()) {
       throw new Error('La frase pertenece a otro idioma y no puede activarse en esta nota')
     }
   }
@@ -659,7 +654,7 @@ export async function closeMasterNote(noteId: string): Promise<CloseMasterNoteRe
  */
 export async function fetchNextMasterNoteLabel(
   targetLang: string,
-  nativeLang: string,
+  _nativeLang: string,
 ): Promise<string> {
   if (!supabase) return t('una nueva Nota Maestra')
 
@@ -667,7 +662,6 @@ export async function fetchNextMasterNoteLabel(
     .from('master_notes')
     .select('name, state, created_at')
     .eq('target_lang', targetLang)
-    .eq('native_lang', nativeLang)
     .order('created_at', { ascending: true })
 
   if (error) throw error

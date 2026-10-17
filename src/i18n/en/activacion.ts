@@ -303,6 +303,7 @@ const en: Record<string, string> = {
   "trozos": "chunks",
   "minutos": "minutes",
   "Oirás un trozo de tu frase en {lang}.": "You'll hear a chunk of your sentence in {lang}.",
+  "Oirás un trozo de tu frase en tu idioma.": "You'll hear a chunk of your sentence in your language.",
   "Tras el pitido, dilo en voz alta en {lang}, de memoria.": "After the beep, say it out loud in {lang}, from memory.",
   "Si no falla ninguna palabra, es correcto. Si no, oirás la versión buena.": "If you get every word right, it's correct. If not, you'll hear the right version.",
   "{n} frase queda fuera · ver por qué": "{n} sentence left out · see why",

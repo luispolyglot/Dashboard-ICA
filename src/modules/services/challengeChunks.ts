@@ -143,10 +143,13 @@ export type ChallengePhraseInput = {
   phraseId: string
   target: string
   native: string
+  /** The native language the phrase was made with: its pieces are said in that voice (a note can
+   *  mix phrases made with different native languages, Baúl ICA por idioma objetivo, 17 Oct). */
+  nativeLang?: string | null
 }
 
 export type PreparedChallenge = {
-  rounds: Array<PhraseChunk & { phraseId: string; phraseIndex: number }>
+  rounds: Array<PhraseChunk & { phraseId: string; phraseIndex: number; nativeLang?: string | null }>
   excluded: Array<{ phraseIndex: number; target: string; reason: string }>
 }
 
@@ -189,7 +192,7 @@ export async function prepareNoteChallenge(params: {
     const data = stored[item.phraseId]
     if (data?.ready && data.chunks?.length) {
       data.chunks.forEach((chunk) => {
-        rounds.push({ ...chunk, phraseId: item.phraseId, phraseIndex })
+        rounds.push({ ...chunk, phraseId: item.phraseId, phraseIndex, nativeLang: item.nativeLang ?? null })
       })
       return
     }

@@ -328,7 +328,8 @@ export function VaultListeningProvider({ children }: { children: ReactNode }) {
     let settled = 0
     for (const word of words) {
       void Promise.all([
-        getSpeechAudioUrl(word.native, options.nativeLang),
+        // Each word in the native language it was saved with (Baúl ICA por idioma objetivo).
+        getSpeechAudioUrl(word.native, word.nativeLang || options.nativeLang),
         getSpeechAudioUrl(word.target, options.targetLang),
       ]).then(([nativeUrl, targetUrl]) => {
         if (session !== sessionRef.current) return

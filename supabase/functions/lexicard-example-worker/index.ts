@@ -84,7 +84,6 @@ async function resolveEffectiveLevel(
       .select('start_level, prior_ica_words, activation_words_total, confirmed_at')
       .eq('user_id', userId)
       .eq('target_lang', job.target_lang)
-      .eq('native_lang', job.native_lang)
       .maybeSingle<MetaTrackerLevelRow>()
 
     if (error || !data || !data.confirmed_at) return fallbackLevel

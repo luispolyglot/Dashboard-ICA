@@ -204,7 +204,7 @@ function compareByCreatedAtAsc(
 export async function syncClosedMasterNotesOfflineSnapshot(
   allFetchedNotes: MasterNote[],
   targetLang?: string,
-  nativeLang?: string,
+  _nativeLang?: string,
 ): Promise<void> {
   const userId = await getCurrentUserId()
   if (!userId) return
@@ -224,9 +224,9 @@ export async function syncClosedMasterNotesOfflineSnapshot(
     for (const row of existing) {
       if (row.userId !== userId) continue
 
+      // Per target language, with any native one (Baúl ICA por idioma objetivo).
       const matchesTarget = targetLang ? row.targetLang === targetLang : true
-      const matchesNative = nativeLang ? row.nativeLang === nativeLang : true
-      if (!matchesTarget || !matchesNative) continue
+      if (!matchesTarget) continue
 
       if (!closedNoteIds.has(row.noteId)) {
         store.delete(row.noteId)
@@ -389,7 +389,7 @@ export async function syncMasterNotePlaylistsOfflineSnapshot(
   playlists: MasterNotePlaylist[],
   items: MasterNotePlaylistItem[],
   targetLang?: string,
-  nativeLang?: string,
+  _nativeLang?: string,
 ): Promise<void> {
   const userId = await getCurrentUserId()
   if (!userId) return
@@ -410,9 +410,9 @@ export async function syncMasterNotePlaylistsOfflineSnapshot(
     for (const row of existingPlaylists) {
       if (row.userId !== userId) continue
 
+      // Per target language, with any native one (Baúl ICA por idioma objetivo).
       const matchesTarget = targetLang ? row.targetLang === targetLang : true
-      const matchesNative = nativeLang ? row.nativeLang === nativeLang : true
-      if (!matchesTarget || !matchesNative) continue
+      if (!matchesTarget) continue
 
       if (!playlistIds.has(row.id)) {
         playlistsStore.delete(row.id)
@@ -443,7 +443,7 @@ export async function syncMasterNotePlaylistsOfflineSnapshot(
 
 export async function listOfflineMasterNotePlaylists(
   targetLang?: string,
-  nativeLang?: string,
+  _nativeLang?: string,
 ): Promise<OfflineMasterNotePlaylist[]> {
   const userId = await getCurrentUserId()
   if (!userId) return []
@@ -459,7 +459,6 @@ export async function listOfflineMasterNotePlaylists(
     const filtered = rows
       .filter((row) => row.userId === userId)
       .filter((row) => (targetLang ? row.targetLang === targetLang : true))
-      .filter((row) => (nativeLang ? row.nativeLang === nativeLang : true))
       .sort((a, b) => {
         const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime()
         const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime()

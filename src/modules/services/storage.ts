@@ -161,10 +161,10 @@ async function loadWordsBase(userId: string): Promise<Lexicard[]> {
         .order('id', { ascending: true })
         .range(from, to)
 
-      if (scope === 'active' && activeNative && activeTarget) {
-        query = query
-          .eq('native_lang', activeNative)
-          .eq('target_lang', activeTarget)
+      // BAÚL ICA POR IDIOMA OBJETIVO (Luis, 17 Oct): your words of the language you learn, saved
+      // with any native language. Changing your native language no longer hides them.
+      if (scope === 'active' && activeTarget) {
+        query = query.eq('target_lang', activeTarget)
       }
 
       if (scope === 'legacy') {
@@ -186,7 +186,7 @@ async function loadWordsBase(userId: string): Promise<Lexicard[]> {
   try {
     const scopedRows = await fetchLexicardRows(
       baseSelection,
-      activeNative && activeTarget ? 'active' : 'all',
+      activeTarget ? 'active' : 'all',
     )
     const mapped = mapRows(scopedRows)
     if (mapped.length > 0 || !activeNative || !activeTarget) {
@@ -218,7 +218,7 @@ async function loadWordsBase(userId: string): Promise<Lexicard[]> {
     try {
       const legacyScopedRows = await fetchLexicardRows(
         legacySelectionWithLang,
-        activeNative && activeTarget ? 'active' : 'all',
+        activeTarget ? 'active' : 'all',
       )
       return mapRows(legacyScopedRows)
     } catch {
@@ -245,7 +245,9 @@ async function replaceWordsSnapshot(userId: string, cards: Lexicard[]): Promise<
     .eq('user_id', userId)
     .maybeSingle()
 
-  const scopedNative = settings?.native_lang || cards[0]?.nativeLang || null
+  // Same scope as loadWordsBase (Baúl ICA por idioma objetivo): the words of the target language,
+  // with any native one. The delete below only touches words in that same scope, and it MUST
+  // match the load, or words of another native language would be deleted as «not in the list».
   const scopedTarget = settings?.target_lang || cards[0]?.targetLang || null
 
   const payload = cards.map((card) => ({
@@ -295,10 +297,8 @@ async function replaceWordsSnapshot(userId: string, cards: Lexicard[]): Promise<
     .select('id')
     .eq('user_id', userId)
 
-  if (scopedNative && scopedTarget) {
-    existingRowsQuery = existingRowsQuery
-      .eq('native_lang', scopedNative)
-      .eq('target_lang', scopedTarget)
+  if (scopedTarget) {
+    existingRowsQuery = existingRowsQuery.eq('target_lang', scopedTarget)
   } else {
     existingRowsQuery = existingRowsQuery
       .is('native_lang', null)
@@ -327,10 +327,8 @@ async function replaceWordsSnapshot(userId: string, cards: Lexicard[]): Promise<
       .delete()
       .eq('user_id', userId)
 
-    if (scopedNative && scopedTarget) {
-      deleteQuery = deleteQuery
-        .eq('native_lang', scopedNative)
-        .eq('target_lang', scopedTarget)
+    if (scopedTarget) {
+      deleteQuery = deleteQuery.eq('target_lang', scopedTarget)
     } else {
       deleteQuery = deleteQuery
         .is('native_lang', null)

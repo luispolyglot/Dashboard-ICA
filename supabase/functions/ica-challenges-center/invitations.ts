@@ -82,7 +82,12 @@ type InvitationDependencies = {
     userId: string,
   ) => Promise<LanguagePair | null>
   countWordsForPair: (adminClient: AdminClient, userId: string, pair: LanguagePair) => Promise<number>
-  fetchCards: (adminClient: AdminClient, userId: string, pair: LanguagePair) => Promise<EngineCard[]>
+  fetchCards: (
+    adminClient: AdminClient,
+    userId: string,
+    pair: LanguagePair,
+    options?: { sameNativeOnly?: boolean },
+  ) => Promise<EngineCard[]>
   hasPlayableQuestionSet: (input: { settings: ModeSettings; pools: EngineCard[][]; language: string }) => boolean
   notEnoughWordsToJoinMessage: (wordCount: number, action: 'retar' | 'aceptar') => string
   kindRequirement: Record<QuestionKind, string>
@@ -253,8 +258,9 @@ export async function createChallenge(
   }
 
   const [myCards, rivalCards] = await Promise.all([
-    deps.fetchCards(adminClient, userId, myPair),
-    deps.fetchCards(adminClient, challengedUserId, rivalPair),
+    // Baúles mezclados: solo las palabras con el materno del desafío (Baúl ICA por idioma objetivo).
+    deps.fetchCards(adminClient, userId, myPair, { sameNativeOnly: wordSource === 'mixed' }),
+    deps.fetchCards(adminClient, challengedUserId, rivalPair, { sameNativeOnly: wordSource === 'mixed' }),
   ])
   const minWords = minWordsForKind(settings.kind)
   const myEligible = countEligible(settings.kind, myCards, myPair.targetLang)
@@ -457,8 +463,12 @@ export async function respondInvitation(
       return jsonResponse(400, { error: 'No se pudo validar el modo o los idiomas del desafío.' })
     }
     const [challengerCards, challengedCards] = await Promise.all([
-      deps.fetchCards(adminClient, deps.toText(existing.challenger_user_id), challengerPair),
-      deps.fetchCards(adminClient, deps.toText(existing.challenged_user_id), challengedPair),
+      deps.fetchCards(adminClient, deps.toText(existing.challenger_user_id), challengerPair, {
+        sameNativeOnly: settings.wordSource === 'mixed',
+      }),
+      deps.fetchCards(adminClient, deps.toText(existing.challenged_user_id), challengedPair, {
+        sameNativeOnly: settings.wordSource === 'mixed',
+      }),
     ])
     const minWords = minWordsForKind(settings.kind)
     if (settings.wordSource === 'mixed') {

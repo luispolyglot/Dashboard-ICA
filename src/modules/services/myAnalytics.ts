@@ -55,7 +55,6 @@ export async function fetchMyMonthlyAnalytics(
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
       .eq('target_lang', targetLang)
-      .eq('native_lang', nativeLang)
       .gte('created_at', startIso)
       .lt('created_at', endIso),
     supabase
@@ -65,7 +64,6 @@ export async function fetchMyMonthlyAnalytics(
       .eq('success', true)
       // Case-insensitive (see phraseHistory.ts): some phrases were saved in lower case.
       .ilike('target_lang', targetLang.replace(/[\\%_]/g, (char) => `\\${char}`))
-      .ilike('native_lang', nativeLang.replace(/[\\%_]/g, (char) => `\\${char}`))
       .gte('created_at', startIso)
       .lt('created_at', endIso),
     supabase
@@ -74,7 +72,6 @@ export async function fetchMyMonthlyAnalytics(
       .eq('user_id', userId)
       .eq('state', 'closed')
       .eq('target_lang', targetLang)
-      .eq('native_lang', nativeLang)
       .gte('closed_at', startIso)
       .lt('closed_at', endIso),
     supabase
@@ -83,7 +80,6 @@ export async function fetchMyMonthlyAnalytics(
       .eq('user_id', userId)
       .eq('knew', true)
       .eq('lexicards.target_lang', targetLang)
-      .eq('lexicards.native_lang', nativeLang)
       .gte('created_at', startIso)
       .lt('created_at', endIso),
     supabase.rpc('get_my_monthly_listening_seconds', {
