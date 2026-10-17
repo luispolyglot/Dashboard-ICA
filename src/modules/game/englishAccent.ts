@@ -45,7 +45,8 @@ export function getEnglishAccent(): EnglishAccent {
 }
 
 /** Applies the accent saved in the account (on login). Does not write anything. */
-export function syncEnglishAccentFromAccount(value: unknown): void {
+export function syncEnglishAccentFromAccount(value: unknown, userId?: string | null): void {
+  if (isAccent(value) && userId) void publishAccent(userId, value)
   if (!isAccent(value) || value === current) return
   apply(value)
   try {
@@ -69,9 +70,33 @@ export async function setEnglishAccent(accent: EnglishAccent): Promise<void> {
   }
   if (!supabase) return
   try {
-    await supabase.auth.updateUser({ data: { english_accent: accent } })
+    const { data } = await supabase.auth.updateUser({ data: { english_accent: accent } })
+    if (data.user?.id) await publishAccent(data.user.id, accent)
   } catch {
     /* kept in this device; the account gets it next time */
+  }
+}
+
+// What the others see (ica_english_accents): your accent, so your English flag is the right one
+// for them too. Written once per accent and device (not on every visit).
+const PUBLISHED_KEY = 'ica-english-accent-published'
+
+async function publishAccent(userId: string, accent: EnglishAccent): Promise<void> {
+  if (!supabase) return
+  const mark = `${userId}:${accent}`
+  try {
+    if (window.localStorage.getItem(PUBLISHED_KEY) === mark) return
+  } catch {
+    /* no storage: write it */
+  }
+  const { error } = await supabase
+    .from('ica_english_accents')
+    .upsert({ user_id: userId, accent, updated_at: new Date().toISOString() })
+  if (error) return
+  try {
+    window.localStorage.setItem(PUBLISHED_KEY, mark)
+  } catch {
+    /* written again next visit: harmless */
   }
 }
 
@@ -92,13 +117,58 @@ export function englishFlagKey(accent: EnglishAccent): string {
 
 /**
  * The flag of ANOTHER student (ranking, rivals, their profile). A bare «Inglés» would be drawn with
- * YOUR accent, so it gets theirs. For now everyone else's English shows the American flag (the
- * default accent): which accent each one chose is saved in their own account, which nobody else can
- * read. Other languages are returned as they are.
+ * YOUR accent, so it gets theirs (ica_english_accents; no row = American, the default). The accents
+ * are asked in one go for everyone on screen, and the flags update when they arrive. Other
+ * languages are returned as they are.
  */
+const othersAccent = new Map<string, EnglishAccent>()
+const othersWanted = new Set<string>()
+const OTHERS_EVENT = 'ica:others-english-accents'
+let othersTimer: ReturnType<typeof setTimeout> | null = null
+
+function askOthersAccent(userId: string): void {
+  if (othersAccent.has(userId) || othersWanted.has(userId)) return
+  othersWanted.add(userId)
+  if (othersTimer) return
+  othersTimer = setTimeout(() => {
+    othersTimer = null
+    void loadOthersAccents()
+  }, 30)
+}
+
+async function loadOthersAccents(): Promise<void> {
+  const ids = Array.from(othersWanted)
+  othersWanted.clear()
+  if (!supabase || ids.length === 0) return
+  for (let index = 0; index < ids.length; index += 200) {
+    const chunk = ids.slice(index, index + 200)
+    const { data, error } = await supabase.from('ica_english_accents').select('user_id, accent').in('user_id', chunk)
+    if (error) continue // older server without the table: they stay American
+    const found = new Map((data ?? []).map((row) => [String(row.user_id), row.accent]))
+    for (const id of chunk) {
+      const accent = found.get(id)
+      othersAccent.set(id, isAccent(accent) ? accent : 'us')
+    }
+  }
+  window.dispatchEvent(new Event(OTHERS_EVENT))
+}
+
 export function useOthersLanguageFlag(): (lang: string | null | undefined, userId: string | null | undefined) => string | null {
-  return useCallback((lang: string | null | undefined) => {
-    if (!lang) return null
-    return lang === 'Inglés' ? englishFlagKey('us') : lang
+  const [version, setVersion] = useState(0)
+  useEffect(() => {
+    const onChange = () => setVersion((value) => value + 1)
+    window.addEventListener(OTHERS_EVENT, onChange)
+    return () => window.removeEventListener(OTHERS_EVENT, onChange)
   }, [])
+  return useCallback(
+    (lang: string | null | undefined, userId: string | null | undefined) => {
+      if (!lang) return null
+      if (lang !== 'Inglés') return lang
+      const accent = userId ? othersAccent.get(userId) : undefined
+      if (userId && !accent) askOthersAccent(userId)
+      return englishFlagKey(accent ?? 'us')
+    },
+    // A new function when accents arrive, so the screens that use it draw again.
+    [version],
+  )
 }

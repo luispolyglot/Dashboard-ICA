@@ -182,8 +182,8 @@ export function DashboardLayout() {
   // English accent saved in the account (Luis, 17 Oct): the same voice on every device.
   const savedEnglishAccent = (user?.user_metadata as { english_accent?: unknown } | undefined)?.english_accent
   useEffect(() => {
-    syncEnglishAccentFromAccount(savedEnglishAccent)
-  }, [savedEnglishAccent])
+    syncEnglishAccentFromAccount(savedEnglishAccent, user?.id)
+  }, [savedEnglishAccent, user?.id])
   const [hasPendingCoachingReview, setHasPendingCoachingReview] = useState(
     () => readStoredCoachingNav(user?.id)?.hasPendingReviews ?? false,
   )
