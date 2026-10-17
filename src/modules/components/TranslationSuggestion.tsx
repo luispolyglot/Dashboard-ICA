@@ -32,7 +32,7 @@ export function TranslationSuggestion({ suggestion, loading, onAccept, label }: 
       {loading ? (
         <span className='min-w-0 flex-1'>
           <span className='block text-xs font-extrabold' style={{ color: 'var(--ica-i-ink)' }}>
-            {t('Ika está traduciendo…')}
+            {t('Traduciendo…')}
           </span>
           <span className='mt-1.5 block h-3 w-2/3 animate-pulse rounded-full bg-[color-mix(in_oklab,var(--ica-i)_22%,var(--card))]' />
         </span>
