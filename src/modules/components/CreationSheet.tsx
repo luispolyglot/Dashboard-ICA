@@ -76,7 +76,7 @@ export function CreationSheet({
               <CreatingPhraseProgress manual={manual} className='w-full max-w-xs' />
               {!manual ? (
                 <p className='m-0 max-w-xs text-sm font-bold text-muted-foreground'>
-                  {t('Está creando una frase coherente para ti.')}
+                  {t('Está juntando tus palabras ICA en una frase coherente para ti.')}
                 </p>
               ) : null}
             </div>
