@@ -876,7 +876,7 @@ export function ManageView({
                                 <SparklesIcon strokeWidth={2.4} style={{ color: "var(--ica-i)" }} />
                               )}
                               {generatingExampleId === card.id
-                                ? t("Generando ejemplo...")
+                                ? t("Ika está creando un ejemplo…")
                                 : t("Generar ejemplo con IA")}
                             </Button>
                             {exampleErrorById[card.id] && (

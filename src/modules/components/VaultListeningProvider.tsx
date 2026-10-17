@@ -1,11 +1,18 @@
 import { createContext, useContext, useEffect, useRef, useState, type Context, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { HeadphonesIcon, PauseIcon, PlayIcon, XIcon } from 'lucide-react'
+import { HeadphonesIcon, PauseIcon, PlayIcon, SkipBackIcon, XIcon } from 'lucide-react'
 import { t } from '@/i18n'
 import { holdWhilePlaying } from '../services/audioSession'
 import { getSpeechAudioUrl, premiumVoiceDayLimited, premiumVoiceUsable, stopTTS } from '../services/tts'
 import { VAULT_LISTEN_PAUSE_MS, markWordListened } from '../services/vaultListening'
-import { joinClips, segmentAt, silentAudioUrl, type ListeningTrack, type TrackPhase } from '../services/vaultListeningTrack'
+import {
+  joinClips,
+  segmentAt,
+  silentAudioUrl,
+  type ListeningTrack,
+  type TrackPhase,
+  type TrackSegment,
+} from '../services/vaultListeningTrack'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { useOptionalSharedMasterNotePlayback } from './MasterNotePlaybackProvider'
 import type { Lexicard } from '../types'
@@ -49,6 +56,8 @@ export type VaultListeningApi = VaultListeningState & {
   pause: () => void
   resume: () => void
   stop: () => void
+  /** Back to the previous word (or the start of the one that just sounded), from your language. */
+  previous: () => void
 }
 
 const INITIAL: VaultListeningState = {
@@ -76,9 +85,33 @@ export function useVaultListening(): VaultListeningApi | null {
   return useContext(VaultListeningContext)
 }
 
+/**
+ * Speed at `time` (Luis, 17 Oct): your language always sounds at normal speed; only the language
+ * you learn (and the pause before it, to repeat it) goes at the slow speed chosen.
+ */
+export function playbackRateAt(segments: TrackSegment[], time: number, slowRate: number): number {
+  const segment = segmentAt(segments, time)
+  if (!segment) return 1
+  if (segment.phase === 'native') return time >= segment.end ? slowRate : 1
+  return time < segment.end ? slowRate : 1
+}
+
+/**
+ * Where «back» goes (Luis, 17 Oct): while your language of a word is sounding, to the word before;
+ * once its other half has started (or in the pause after it), to the start of that same word: the
+ * one you probably want to hear again. Always from its first half (your language).
+ */
+export function previousWordStart(segments: TrackSegment[], time: number): number {
+  const segment = segmentAt(segments, time)
+  if (!segment) return 0
+  const word = segment.phase === 'native' && time < segment.end ? segment.word - 1 : segment.word
+  const start = segments.find((item) => item.word === Math.max(0, word) && item.phase === 'native')
+  return start ? start.start : 0
+}
+
 function setMediaSession(
   title: string,
-  handlers: { play: () => void; pause: () => void; stop: () => void } | null,
+  handlers: { play: () => void; pause: () => void; stop: () => void; previous?: () => void } | null,
   state: MediaSessionPlaybackState,
 ): void {
   if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return
@@ -92,6 +125,7 @@ function setMediaSession(
     ['play', handlers?.play ?? null],
     ['pause', handlers?.pause ?? null],
     ['stop', handlers?.stop ?? null],
+    ['previoustrack', handlers?.previous ?? null],
   ]
   for (const [action, handler] of actions) {
     try {
@@ -168,6 +202,18 @@ export function VaultListeningProvider({ children }: { children: ReactNode }) {
     void audio.play().catch(() => undefined)
   }
 
+  const previous = (): void => {
+    const audio = audioRef.current
+    const track = trackRef.current
+    if (!audio || !track) return
+    // After the end, «back» plays the last word again.
+    const time = audio.ended ? track.duration : audio.currentTime
+    audio.currentTime = previousWordStart(track.segments, time)
+    audio.playbackRate = 1
+    setState((current) => (current.status === 'done' ? { ...current, status: 'playing' } : current))
+    void audio.play().catch(() => undefined)
+  }
+
   const playWords = async (session: number, words: Lexicard[]): Promise<void> => {
     const urls = words.flatMap((word) => clipsRef.current.get(word.id) ?? [])
     const track = await joinClips(urls, VAULT_LISTEN_PAUSE_MS)
@@ -184,10 +230,13 @@ export function VaultListeningProvider({ children }: { children: ReactNode }) {
     const audio = ensureAudio()
     audio.loop = false
     audio.src = track.url
-    audio.defaultPlaybackRate = rateRef.current
-    audio.playbackRate = rateRef.current
+    // Starts with your language: normal speed (the slow one is only for the language you learn).
+    audio.defaultPlaybackRate = 1
+    audio.playbackRate = 1
     audio.preservesPitch = true
     audio.ontimeupdate = () => {
+      const wantedRate = playbackRateAt(track.segments, audio.currentTime, rateRef.current)
+      if (audio.playbackRate !== wantedRate) audio.playbackRate = wantedRate
       const segment = segmentAt(track.segments, audio.currentTime)
       if (!segment) return
       setState((previous) =>
@@ -212,7 +261,7 @@ export function VaultListeningProvider({ children }: { children: ReactNode }) {
       setState((previous) => ({ ...previous, status: 'done', index: words.length }))
       setMediaSession('', null, 'none')
     }
-    setMediaSession(t('Escuchar mis palabras'), { play: resume, pause, stop }, 'playing')
+    setMediaSession(t('Escuchar mis palabras'), { play: resume, pause, stop, previous }, 'playing')
     setState((previous) => ({ ...previous, status: 'playing', playable: words, index: 0, phase: 'native' }))
     void audio.play().catch(() => {
       // The phone did not allow it (no tap): the student only has to press play.
@@ -318,7 +367,7 @@ export function VaultListeningProvider({ children }: { children: ReactNode }) {
     [],
   )
 
-  const api: VaultListeningApi = { ...state, start, startNow, pause, resume, stop }
+  const api: VaultListeningApi = { ...state, start, startNow, pause, resume, stop, previous }
   return <VaultListeningContext.Provider value={api}>{children}</VaultListeningContext.Provider>
 }
 
@@ -369,6 +418,16 @@ export function VaultListeningMiniPlayer() {
             </span>
           ) : null}
         </button>
+        {status !== 'preparing' ? (
+          <button
+            type='button'
+            onClick={listening.previous}
+            className='flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted'
+            aria-label={t('Palabra anterior')}
+          >
+            <SkipBackIcon className='size-5 fill-current' strokeWidth={2.4} />
+          </button>
+        ) : null}
         {status !== 'preparing' ? (
           <button
             type='button'

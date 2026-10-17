@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { ChevronDownIcon, PauseIcon, PlayIcon, SquareIcon } from 'lucide-react'
+import { ChevronDownIcon, PauseIcon, PlayIcon, SkipBackIcon, SquareIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { langName, t } from '@/i18n'
@@ -246,10 +246,15 @@ function ActiveSession() {
             : t('{n} palabras se escucharán la próxima vez: su voz aún se está preparando.', { n: skipped })}
         </p>
       ) : null}
-      <div className='grid w-full grid-cols-2 gap-2'>
+      <div className='grid w-full grid-cols-3 gap-2'>
         <Button type='button' variant='outline' onClick={listening.stop}>
           <SquareIcon className='size-4 fill-current' strokeWidth={2.4} aria-hidden='true' />
           {t('Parar')}
+        </Button>
+        {/* Luis, 17 Oct: to hear a word again (from your language, then the one you learn). */}
+        <Button type='button' variant='outline' onClick={listening.previous}>
+          <SkipBackIcon className='size-4 fill-current' strokeWidth={2.4} aria-hidden='true' />
+          {t('Anterior')}
         </Button>
         {status === 'playing' ? (
           <Button type='button' variant='i' onClick={listening.pause}>

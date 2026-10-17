@@ -47,7 +47,7 @@ export function CreationSheet({
     <div
       role='dialog'
       aria-modal='true'
-      aria-label={manual ? t('Tu frase') : t('Creando tu frase…')}
+      aria-label={manual ? t('Tu frase') : t('Ika está creando tu frase…')}
       className='fixed inset-0 z-50 flex flex-col bg-background pt-[env(safe-area-inset-top)] animate-in fade-in-0'
     >
       <div className='flex justify-end px-3 pt-3'>
@@ -75,7 +75,7 @@ export function CreationSheet({
               <CreatingPhraseProgress manual={manual} className='w-full max-w-xs' />
               {!manual ? (
                 <p className='m-0 max-w-xs text-sm font-bold text-muted-foreground'>
-                  {t('La IA está juntando tus palabras ICA en una frase para ti.')}
+                  {t('Está juntando tus palabras ICA en una frase para ti.')}
                 </p>
               ) : null}
             </div>

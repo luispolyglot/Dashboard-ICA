@@ -52,8 +52,8 @@ export default {
   'Pulsa la campana y escoge la clase a la que vas. Activa su recordatorio y te avisamos unos minutos antes.':
     'Tap the bell and pick the class you go to. Turn on its reminder and we will notify you a few minutes before.',
   // Ica onboarding (Luis, 16 Oct)
-  "¡Hola, {name}! Soy Ica": "Hi, {name}! I'm Ica",
-  "¡Hola! Soy Ica": "Hi! I'm Ica",
+  "¡Hola, {name}! Soy Ika": "Hi, {name}! I'm Ika",
+  "¡Hola! Soy Ika": "Hi! I'm Ika",
   "ICA es un método diario: unos minutos cada día. Por eso tienes una racha, que sube cada día que completas tu ciclo.": "ICA is a daily method: a few minutes every day. That's why you have a streak, which grows every day you complete your cycle.",
   "Este es el método: la I, la C y la A": "This is the method: I, C and A",
   "El objetivo: sumergirte en el idioma, filtrar vocabulario útil, crearlo en frases contextualizadas y activarlo con tu propia voz.": "The goal: immerse yourself in the language, filter useful vocabulary, create it in phrases with context and activate it with your own voice.",

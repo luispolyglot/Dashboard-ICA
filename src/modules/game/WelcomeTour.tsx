@@ -96,7 +96,7 @@ function buildSteps(name: string, lang: string, levelConfirmed: boolean): TourSt
       route: home,
       targets: ['[data-tour="streak"]'],
       noSkip: true,
-      title: name ? t('¡Hola, {name}! Soy Ica', { name }) : t('¡Hola! Soy Ica'),
+      title: name ? t('¡Hola, {name}! Soy Ika', { name }) : t('¡Hola! Soy Ika'),
       body: t('ICA es un método diario: unos minutos cada día. Por eso tienes una racha, que sube cada día que completas tu ciclo.'),
     },
     {
