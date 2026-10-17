@@ -260,12 +260,13 @@ export function AddView({
   )
   const trimmedTarget = target.trim()
   const targetCharsCount = Array.from(target).length
+  // A repeated word is the same word in the language you learn, whatever native language it was
+  // saved with (Luis, 17 Oct: «bottle» when «bottiglia» is already there → Potenciar).
   const duplicateWord = cards.find(
     (card) =>
       normalizeComparableText(card.target) ===
         normalizeComparableText(trimmedTarget) &&
-      (card.targetLang || '') === config.targetLang &&
-      (card.nativeLang || '') === config.nativeLang,
+      (card.targetLang || '') === config.targetLang,
   )
   const isDuplicate = Boolean(trimmedTarget && duplicateWord)
   const showDuplicateWarning = isDuplicate && !saving && !saved
@@ -789,7 +790,7 @@ export function AddView({
           <div>
             <div className='relative mb-1.5 flex items-baseline justify-between gap-2 lg:mb-2'>
               {translateTipPending ? (
-                <FirstUseTip onClose={closeTranslateTip}>{t('Escribe en un campo y la IA traduce el otro.')}</FirstUseTip>
+                <FirstUseTip onClose={closeTranslateTip}>{t('Escribe en un campo e Ika traduce el otro.')}</FirstUseTip>
               ) : null}
               <Label htmlFor='ica-add-target' className='text-base font-extrabold'>
                 {langName(config.targetLang)}
@@ -884,7 +885,7 @@ export function AddView({
                 {checkingSpelling && (
                   <span className='inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground'>
                     <LoaderCircleIcon className='size-3.5 animate-spin' strokeWidth={2.6} aria-hidden='true' />
-                    {t('Revisando ortografía...')}
+                    {t('Ika está revisando la ortografía…')}
                   </span>
                 )}
                 {!checkingSpelling && spellingSuggestion && (

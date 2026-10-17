@@ -6,7 +6,7 @@ import { FichaIcon } from './icons'
 import { LIMIT_LABELS, type DailyLimitsState } from './limits'
 import { buyPhaseBoost, coinsText, useFichas } from './fichas'
 import { gameSfx } from './sfx'
-import { DAILY_LIMITS, LIMIT_PHASE, PHASE_BOOST_COST, PHASE_BOOST_MULTIPLIER, type DailyLimitKey } from './rules'
+import { LIMIT_PHASE, PHASE_BOOST_COST, PHASE_BOOST_MULTIPLIER, type DailyLimitKey } from './rules'
 import { t } from '@/i18n'
 
 const REACHED_TEXT: Record<DailyLimitKey, (limit: number) => string> = {
@@ -54,7 +54,7 @@ export function DailyLimitNotice({
       gameSfx.celebrate()
       toast.success(t('{phase} ampliada hoy', { phase }), {
         description: t('Hoy puedes llegar a {n} {what}.', {
-          n: DAILY_LIMITS[kind] * PHASE_BOOST_MULTIPLIER,
+          n: state.base[kind] * PHASE_BOOST_MULTIPLIER,
           what: t(LIMIT_LABELS[kind].many),
         }),
       })

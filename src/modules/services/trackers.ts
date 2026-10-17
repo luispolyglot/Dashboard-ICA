@@ -90,7 +90,7 @@ export function getTrackerUpdateErrorMessage(error: unknown): string {
 
 export async function listImprovementTrackers(
   targetLang: string,
-  nativeLang: string,
+  _nativeLang: string,
 ): Promise<ImprovementTracker[]> {
   if (!supabase) return []
   const userId = await getCurrentUserId()
@@ -101,7 +101,6 @@ export async function listImprovementTrackers(
     .select('id, tracker_month, pronunciation_pct, fluency_pct, improvisation_pct, created_at')
     .eq('user_id', userId)
     .eq('target_lang', targetLang)
-    .eq('native_lang', nativeLang)
     .order('tracker_month', { ascending: false })
 
   if (error) {
@@ -149,7 +148,7 @@ export async function createImprovementTracker(
 export async function getImprovementTrackerById(
   trackerId: string,
   targetLang: string,
-  nativeLang: string,
+  _nativeLang: string,
 ): Promise<ImprovementTracker | null> {
   if (!supabase) return null
   const userId = await getCurrentUserId()
@@ -161,7 +160,6 @@ export async function getImprovementTrackerById(
     .eq('id', trackerId)
     .eq('user_id', userId)
     .eq('target_lang', targetLang)
-    .eq('native_lang', nativeLang)
     .maybeSingle()
 
   if (error) {
@@ -198,7 +196,6 @@ export async function updateImprovementTracker(
     .eq('id', trackerId)
     .eq('user_id', userId)
     .eq('target_lang', input.targetLang)
-    .eq('native_lang', input.nativeLang)
     .select('id, tracker_month, pronunciation_pct, fluency_pct, improvisation_pct, created_at')
     .single()
 
@@ -212,7 +209,7 @@ export async function updateImprovementTracker(
 export async function deleteImprovementTracker(
   trackerId: string,
   targetLang: string,
-  nativeLang: string,
+  _nativeLang: string,
 ): Promise<void> {
   if (!supabase) {
     throw new Error(t('Falta configurar Supabase'))
@@ -229,7 +226,6 @@ export async function deleteImprovementTracker(
     .eq('id', trackerId)
     .eq('user_id', userId)
     .eq('target_lang', targetLang)
-    .eq('native_lang', nativeLang)
 
   if (error) {
     throw error

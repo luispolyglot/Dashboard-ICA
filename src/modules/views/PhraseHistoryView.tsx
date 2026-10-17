@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import {
   CheckIcon,
@@ -293,7 +294,15 @@ export function PhraseHistoryView({
       setDeleteCandidate(null)
     } catch (err) {
       console.error(err)
-      setError(t('No se pudo eliminar la frase'))
+      // At most 2 phrases created today can be deleted per day (Luis, 16 Oct; migration
+      // 20261016190000): so nobody creates, deletes and creates again without end.
+      const message = String((err as { message?: unknown } | null)?.message ?? '')
+      if (message.includes('DAILY_PHRASE_DELETE_LIMIT')) {
+        setDeleteCandidate(null)
+        toast.error(t('Hoy ya has borrado 2 frases de hoy. Mañana podrás volver a borrar.'))
+      } else {
+        setError(t('No se pudo eliminar la frase'))
+      }
     } finally {
       setDeletingId(null)
     }

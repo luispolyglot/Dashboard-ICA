@@ -111,6 +111,9 @@ export function LangEditModal({
   >(readRecentLanguagePairs);
   const [step, setStep] = useState<PickerStep>("overview");
   const previousConfigRef = useRef<AppConfig | null>(null);
+  // Baúl ICA por idioma objetivo (Luis, 17 Oct): changing your native language keeps everything.
+  const initialNativeRef = useRef(config.nativeLang);
+  const nativeChanged = config.nativeLang !== initialNativeRef.current;
 
   const availableTargetLanguages = useMemo(
     () => LANGUAGES.filter((language) => language !== config.nativeLang),
@@ -207,6 +210,14 @@ export function LangEditModal({
                 onClick={() => setStep("native")}
               />
             </div>
+
+            {nativeChanged ? (
+              <p className="m-0 rounded-2xl bg-muted px-3 py-2.5 text-sm font-semibold text-muted-foreground">
+                {t("Tus palabras, frases y notas maestras se quedan. Lo nuevo se traducirá a {lang}.", {
+                  lang: getUiLang() === "en" ? langName(config.nativeLang) : config.nativeLang.toLowerCase(),
+                })}
+              </p>
+            ) : null}
 
             {quickLanguagePairs.length > 1 ? (
               <div>

@@ -451,7 +451,7 @@ export function getIcaTestWordsUsed(questions: IcaTestQuestion[]): string[] {
 
 export async function listIcaTests(
   targetLang: string,
-  nativeLang: string,
+  _nativeLang: string,
 ): Promise<IcaTestRecord[]> {
   if (!supabase) return []
   const userId = await getCurrentUserId()
@@ -464,7 +464,6 @@ export async function listIcaTests(
     )
     .eq('user_id', userId)
     .eq('target_lang', targetLang)
-    .eq('native_lang', nativeLang)
     .order('test_month', { ascending: false })
 
   if (error) throw error
@@ -473,7 +472,7 @@ export async function listIcaTests(
 
 export async function getIcaTestByMonth(
   targetLang: string,
-  nativeLang: string,
+  _nativeLang: string,
   testMonth: string,
   options?: { autoFailIfRunning?: boolean },
 ): Promise<IcaTestRecord | null> {
@@ -489,7 +488,6 @@ export async function getIcaTestByMonth(
     )
     .eq('user_id', userId)
     .eq('target_lang', targetLang)
-    .eq('native_lang', nativeLang)
     .eq('test_month', testMonth)
     .maybeSingle()
 

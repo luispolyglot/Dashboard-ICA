@@ -82,6 +82,11 @@ const VOICES_MAX_WAIT_MS = 10_000
 /** Fixed lines the game may say (prepared ahead too). */
 const CHALLENGE_FIXED_LINES = ['¡Genial!', 'Casi.', 'No te he entendido.']
 
+/** The app's own spoken lines («¡Genial!», the closing…) are written in the interface language
+ *  (Spanish or English), so they are said with that voice. The pieces of each phrase use the
+ *  native language of their phrase (a note can mix them, Baúl ICA por idioma objetivo, 17 Oct). */
+const appVoice = (): string => (getUiLang() === 'en' ? 'Inglés' : 'Español')
+
 /**
  * End of the game (Luis, 5 Oct): after «You got X out of Y», a few words that depend on the result.
  * All right: congratulations. Half or more: keep it up. Less than half: next time will be better.
@@ -172,6 +177,11 @@ export function NotaDesafianteOverlay({
 
   const rounds = prepared?.rounds ?? []
   const score = results.filter((value) => value === true).length
+  // A note can mix phrases made with different native languages (Baúl ICA por idioma objetivo):
+  // each piece is said in its own language, and the intro says «en tu idioma» then.
+  const roundNatives = Array.from(new Set(rounds.map((round) => round.nativeLang).filter(Boolean)))
+  const mixedNatives = roundNatives.length > 1
+  const roundsNative = roundNatives.length === 1 ? roundNatives[0] : null
 
   // ---------------------------------------------------------------- preparar
   // Se prepara solo cuando cambian de verdad las frases, no cada vez que la página
@@ -215,16 +225,16 @@ export function NotaDesafianteOverlay({
         // and the rest keep loading ahead of the student. Also on iPhone (Luis, 9 Oct).
         const { nativeLang: native, targetLang: target } = langsRef.current
         for (const line of CHALLENGE_FIXED_LINES) {
-          void prefetchSpeech(t(line), native)
+          void prefetchSpeech(t(line), appVoice())
         }
         // The closing line («You got 3 out of 4…») for every possible score, so it is said at once
         // when the game ends (Luis, 9 Oct: it took 5 seconds or more).
         for (let score = 0; score <= result.rounds.length; score += 1) {
-          void prefetchSpeech(closingLine(score, result.rounds.length), native)
+          void prefetchSpeech(closingLine(score, result.rounds.length), appVoice())
         }
         const ready = prefetchSpeechQueue(
           result.rounds.flatMap((round) => [
-            { text: round.native, langName: native },
+            { text: round.native, langName: round.nativeLang || native },
             { text: round.target, langName: target },
           ]),
         )
@@ -304,7 +314,7 @@ export function NotaDesafianteOverlay({
         // Se guarda la partida: escuchar una nota + hacer su nota desafiante suma el punto del día.
         if (noteId) void recordChallengePlay(noteId, correct, total)
         await wait(300)
-        if (!cancelled()) await speakAsync(closingLine(correct, total), nativeLang)
+        if (!cancelled()) await speakAsync(closingLine(correct, total), appVoice())
         return
       }
 
@@ -321,7 +331,7 @@ export function NotaDesafianteOverlay({
           setStep('prompt')
           setInterim('')
           setHoldHint(null)
-          await speakAsync(round.native, nativeLang)
+          await speakAsync(round.native, round.nativeLang || nativeLang)
           if (cancelled()) return
         }
         playPrompt = false
@@ -384,13 +394,13 @@ export function NotaDesafianteOverlay({
 
       if (outcomeFeedback.correct) {
         // The voice says «¡Genial!» instead of the chime (Luis, 9 Oct).
-        await speakAsync(t('¡Genial!'), nativeLang)
+        await speakAsync(t('¡Genial!'), appVoice())
         await wait(400)
       } else {
         // «Casi» si ha dicho bien varias palabras; si no, tono de fallo.
         // Después, en los dos casos, suena la versión correcta como siempre.
         if (outcomeFeedback.almost) {
-          await speakAsync(t('Casi.'), nativeLang)
+          await speakAsync(t('Casi.'), appVoice())
         } else {
           await playFailTone()
         }
@@ -599,7 +609,11 @@ export function NotaDesafianteOverlay({
                 <IntroStep
                   icon={<Volume2Icon className='size-6' strokeWidth={2.4} />}
                   toneName='i'
-                  text={t('Oirás un trozo de tu frase en {lang}.', { lang: langInSentence(nativeLang) })}
+                  text={
+                    mixedNatives
+                      ? t('Oirás un trozo de tu frase en tu idioma.')
+                      : t('Oirás un trozo de tu frase en {lang}.', { lang: langInSentence(roundsNative || nativeLang) })
+                  }
                 />
                 <IntroStep
                   icon={<MicIcon className='size-6' strokeWidth={2.4} />}

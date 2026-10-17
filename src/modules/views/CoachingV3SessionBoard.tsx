@@ -90,6 +90,10 @@ import { buildWeekRings, isTaskAnswered } from "../game/coachingRings";
 import { gameSfx } from "../game/sfx";
 import { CoachingWeekRingsStrip } from "../components/coaching/CoachingWeekRings";
 import { CoachTaskAudioFeedback, StudentTaskAudio } from "../components/coaching/CoachingTaskAudio";
+import { ClassTranscriptPanel, ReportAiPanel, useClassAiMaterial } from "../components/coaching/CoachingClassAi";
+import { StudentMasterNotes } from "../components/coaching/CoachingMasterNotes";
+import { CoachingWeeklyReportTeaser, CoachingWeeklyReportView, focusBaselineFromSnapshot } from "../components/coaching/CoachingWeeklyReport";
+import { FocusStairs } from "../components/coaching/FocusStairs";
 import type { CoachingTaskAudioAnswer } from "../services/coaching";
 import { PendingReviewDot } from "../components/PendingReviewDot";
 
@@ -153,6 +157,23 @@ const PHASE_INFO: Array<{
       "Te sale sola. Tu coach te lanza una pregunta en clase y sale bien.",
   },
 ];
+
+// «Entendido» already means «Got it» in the English dictionary, so the phase names go here.
+const PHASE_LABELS_EN = ["Explained", "Trained", "Understood", "Mastered"] as const;
+function phaseName(index: number): string {
+  return uiLocale().startsWith("en")
+    ? PHASE_LABELS_EN[index] || ""
+    : PHASE_LABELS[index] || "";
+}
+
+/* Student: what each phase asks of them, in their words (Luis, 16 Oct: it has to be clear
+   which phase they are in and what it means). */
+const STUDENT_PHASE_TODO = [
+  "Tu coach te explica el foco en clase: qué es y para qué sirve. Cuando lo haga, lo marcará.",
+  "Haz el ejercicio de entrenamiento de este foco. Al superarlo, se marca solo.",
+  "Explícale a tu coach en clase, con tus palabras, cómo y cuándo se usa. Si lo explicas bien, lo marcará.",
+  "Úsalo en clase sin pensarlo. Cuando te salga solo, tu coach lo marca y se abre un foco nuevo.",
+] as const;
 
 function focusProgress(focus: CoachingV2Focus): number {
   return [
@@ -262,6 +283,8 @@ export function CoachingV3SessionBoard({
   }, [mode, board, pendingAudioPeriods, selectedPeriod]);
   const [openFocusComment, setOpenFocusComment] = useState<string | null>(null);
   const [savingReport, setSavingReport] = useState(false);
+  // Coach: Loom transcripts and the AI report draft of the week on screen (Luis, 15 Oct).
+  const classAi = useClassAiMaterial(sessionId, selectedPeriod, mode === "coach");
   const [reportDraftImageFile, setReportDraftImageFile] = useState<File | null>(
     null,
   );
@@ -304,6 +327,10 @@ export function CoachingV3SessionBoard({
       }
     >
   >({});
+  // Which server version (updatedAt) each class draft was built from, and the latest drafts.
+  const classDraftSourceRef = useRef<Record<string, string>>({});
+  const classDraftsRef = useRef(classDrafts);
+  classDraftsRef.current = classDrafts;
   const [savingClassKey, setSavingClassKey] = useState<string | null>(null);
   // Week whose ring was just completed here: it pops once with a sound.
   const [sealedPopPeriod, setSealedPopPeriod] = useState<number | null>(null);
@@ -395,9 +422,17 @@ export function CoachingV3SessionBoard({
         taskAudio: [boolean, boolean, boolean];
       }
     > = {};
+    const keepUnsaved: Record<string, (typeof nextDrafts)[string]> = {};
     for (const classRow of board.classes) {
       if (classRow.periodNumber !== selectedPeriod) continue;
       const key = `${classRow.periodNumber}-${classRow.classIndex}`;
+      // A refresh of the board (publishing the report, the 8 s poll…) keeps what the coach typed or
+      // the AI proposed and is not saved yet, unless the class itself changed on the server (15 Oct).
+      if (classDraftSourceRef.current[key] === classRow.updatedAt && classDraftsRef.current[key]) {
+        keepUnsaved[key] = classDraftsRef.current[key];
+        continue;
+      }
+      classDraftSourceRef.current[key] = classRow.updatedAt;
       const scheduled = toDateAndTimeFromIso(classRow.scheduledAt);
       const defaultTitle = `Clase ${classRow.classIndex}`;
       nextDrafts[key] = {
@@ -419,7 +454,7 @@ export function CoachingV3SessionBoard({
         taskAudio: classRow.taskAudio || [false, false, true],
       };
     }
-    setClassDrafts(nextDrafts);
+    setClassDrafts({ ...nextDrafts, ...keepUnsaved });
   }, [board, selectedPeriod]);
 
   const durationPeriods = board?.session.durationPeriods || 10;
@@ -427,6 +462,21 @@ export function CoachingV3SessionBoard({
     (focus) => focus.periodNumber === selectedPeriod && !focus.archivedAt,
   );
   const activeFocuses = selectedFocuses.filter((focus) => !isCompleted(focus));
+  // Report: the focos as they were when the week opened (saved when the previous one closed).
+  const focusBaseline = useMemo(
+    () => focusBaselineFromSnapshot(selectedPeriod, board?.previousSnapshot),
+    [board?.previousSnapshot, selectedPeriod],
+  );
+  // The report waits for the saved Loom of both classes (Luis, 16 Oct).
+  const savedLooms = useMemo(() => {
+    const has = (classIndex: number) =>
+      Boolean(
+        (board?.classes || [])
+          .find((row) => row.periodNumber === selectedPeriod && row.classIndex === classIndex)
+          ?.loomUrl?.trim(),
+      );
+    return { 1: has(1), 2: has(2) } as Record<1 | 2, boolean>;
+  }, [board?.classes, selectedPeriod]);
   const focusSlots: Array<CoachingV2Focus | null> = [
     ...activeFocuses.slice(0, 3),
     ...Array(Math.max(0, 3 - activeFocuses.length)).fill(null),
@@ -492,6 +542,11 @@ export function CoachingV3SessionBoard({
         ? "available"
         : "preparing";
   const reportUnlocked = completedTasks >= 6;
+  // Luis, 16 Oct: for the student the report is its own game card (locked or open), with no frame.
+  const studentBareReport =
+    mode !== "coach" &&
+    (reportStatus === "blocked" ||
+      (reportStatus === "available" && Boolean(board?.periodReport?.reportData) && !board?.periodReport?.reportImageUrl));
 
   const selectedExercises = (board?.focusExercises || []).filter(
     (row) => row.periodNumber === selectedPeriod,
@@ -607,9 +662,6 @@ export function CoachingV3SessionBoard({
       ? "live"
       : "with-link";
   const nextPendingTask = aggregatedTasks.find((task) => !task.done) || null;
-  const pendingTaskLabels = aggregatedTasks
-    .filter((task) => !task.done)
-    .map((task) => t(task.title).toLowerCase());
   const openReviewAttempt = openReviewFocusId
     ? attemptByFocusId.get(openReviewFocusId) || null
     : null;
@@ -1550,7 +1602,9 @@ export function CoachingV3SessionBoard({
                 {t("Los tres focos")}
               </h2>
               <p className="m-0 text-sm font-semibold" style={{ color: "var(--v3-muted)" }}>
-                {t("Un foco nuevo se abre cuando uno llega a dominado.")}
+                {mode === "student"
+                  ? t("Sube los cuatro escalones y llega a la diana.")
+                  : t("Un foco nuevo se abre cuando uno llega a dominado.")}
               </p>
             </div>
           </div>
@@ -1609,8 +1663,6 @@ export function CoachingV3SessionBoard({
               }
 
               const progress = focusProgress(focus);
-              const currentPhaseIdx =
-                progress > 0 ? Math.max(0, Math.min(3, progress - 1)) : null;
               const suggestedPhaseIdx = getSuggestedPhaseIndex(focus);
               const hasManualPhaseSelection =
                 typeof selectedFocusPhase[focus.id] === "number";
@@ -1982,83 +2034,66 @@ export function CoachingV3SessionBoard({
                     >
                       {t("Abierto en semana {n}", { n: focus.periodNumber })}
                     </span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold">
-                        {progress}/4
-                      </span>
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        className="size-6 rounded-full"
-                        onClick={() => setOpenFocusComment(focus.id)}
-                      >
-                        <MessageCircleIcon className="size-3.5" />
-                      </Button>
-                    </div>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="size-6 rounded-full"
+                      aria-label={t("Nota del foco")}
+                      onClick={() => setOpenFocusComment(focus.id)}
+                    >
+                      <MessageCircleIcon className="size-3.5" />
+                    </Button>
                   </div>
                   <h3 className="mt-2 text-lg font-semibold leading-tight">
                     {focus.focusTitle}
                   </h3>
 
-                  <div className="mt-3 grid grid-cols-4 gap-1.5">
-                    {PHASE_LABELS.map((phaseLabel, phaseIdx) => {
-                      const done = phaseIdx < progress;
-                      const isCurrent =
-                        currentPhaseIdx !== null && phaseIdx === currentPhaseIdx;
-                      const isSelected = phaseIdx === selectedPhaseIdx;
-                      const isManuallySelected =
-                        hasManualPhaseSelection && isSelected;
-                      return (
-                        <button
-                          key={`${focus.id}-${phaseLabel}`}
-                          type="button"
-                          className="rounded px-0.5 text-left"
-                          onClick={() =>
-                            setSelectedFocusPhase((prev) => ({
-                              ...prev,
-                              [focus.id]: phaseIdx,
-                            }))
-                          }
-                        >
-                          <span
-                            className="block h-1.5 rounded-full"
-                            style={{
-                              background:
-                                done || isManuallySelected
-                                  ? "var(--v3-cyan)"
-                                  : "color-mix(in oklab, var(--v3-line) 88%, black 12%)",
-                              boxShadow: isManuallySelected
-                                ? "0 0 0 3px color-mix(in oklab, var(--v3-cyan) 22%, transparent 78%)"
-                                : "none",
-                            }}
-                          />
-                          <span
-                            className="mt-1 block text-[10px]"
-                            style={{
-                              color: isManuallySelected
-                                ? "var(--v3-cyan)"
-                                : isCurrent
-                                  ? "var(--v3-text)"
-                                  : "var(--v3-muted)",
-                              fontWeight: isManuallySelected || isCurrent ? 600 : 400,
-                            }}
-                          >
-                            {t(phaseLabel)}
-                          </span>
-                        </button>
-                      );
-                    })}
+                  {/* Luis, 16 Oct: the four phases as steps with the target at the top. */}
+                  <div className="mt-3">
+                    <FocusStairs
+                      states={PHASE_KEYS.map((key, phaseIdx) =>
+                        focus[key] ? "before" : phaseIdx === suggestedPhaseIdx ? "next" : "pending",
+                      )}
+                      mastered={progress >= 4}
+                      showIca
+                      selected={hasManualPhaseSelection ? selectedPhaseIdx : undefined}
+                      onSelect={(phaseIdx) =>
+                        setSelectedFocusPhase((prev) => ({ ...prev, [focus.id]: phaseIdx }))
+                      }
+                    />
                   </div>
 
-                  <p
-                    className="mt-3 min-h-14 text-xs leading-relaxed"
-                    style={{ color: "var(--v3-muted)" }}
+                  <div
+                    className="mt-3 min-h-16 rounded-2xl border-2 px-3 py-2.5"
+                    style={{
+                      borderColor: "color-mix(in oklab, var(--ica-i) 35%, var(--v3-line))",
+                      background: "color-mix(in oklab, var(--ica-i) 6%, var(--v3-card))",
+                    }}
                   >
-                    <b style={{ color: "var(--v3-text)" }}>
-                      {t(selectedPhaseInfo.label)}.
-                    </b>{" "}
-                    {t(selectedPhaseInfo.description)}
-                  </p>
+                    <p className="m-0 flex flex-wrap items-center gap-2 text-sm font-black" style={{ color: "var(--v3-text)" }}>
+                      {progress >= 4 ? (
+                        t("Foco dominado")
+                      ) : selectedPhaseIdx === suggestedPhaseIdx ? (
+                        <>
+                          <span
+                            className="rounded-full px-2 py-0.5 text-[10px] font-black tracking-[0.08em] uppercase"
+                            style={{ background: "var(--ica-i)", color: "#ffffff" }}
+                          >
+                            {/* Only Entrenado depends on the student alone; the rest happen in class. */}
+                            {suggestedPhaseIdx === 1 ? t("Te toca") : t("Toca")}
+                          </span>
+                          {t("Escalón {n}: {phase}", { n: suggestedPhaseIdx + 1, phase: phaseName(suggestedPhaseIdx) })}
+                        </>
+                      ) : selectedPhaseIdx < progress ? (
+                        t("{phase}: conseguido", { phase: phaseName(selectedPhaseIdx) })
+                      ) : (
+                        t("{phase}: más adelante", { phase: phaseName(selectedPhaseIdx) })
+                      )}
+                    </p>
+                    <p className="m-0 mt-1 text-xs leading-relaxed font-semibold" style={{ color: "var(--v3-muted)" }}>
+                      {t(STUDENT_PHASE_TODO[selectedPhaseIdx] || STUDENT_PHASE_TODO[suggestedPhaseIdx])}
+                    </p>
+                  </div>
 
                   {mode === "student" && canUseTrainedActions && (
                     <>
@@ -2235,10 +2270,9 @@ export function CoachingV3SessionBoard({
               />
               <div className="relative grid grid-cols-7 items-start gap-2">
                 {Array.from({ length: 6 }, (_, idx) => {
-                  const task = aggregatedTasks.find(
-                    (item) => item.index === idx + 1,
-                  );
-                  const done = Boolean(task?.done);
+                  // The bar counts tasks, it doesn't map them (Luis, 15 Oct): the first task done,
+                  // whichever it is, fills circle 1, the second fills circle 2, and so on.
+                  const done = idx < completedTasks;
                   return (
                     <div
                       key={`spine-${idx + 1}`}
@@ -2257,9 +2291,6 @@ export function CoachingV3SessionBoard({
                         }}
                       >
                         {done ? <CheckIcon className="size-5" /> : idx + 1}
-                      </span>
-                      <span style={{ color: "var(--v3-muted)" }}>
-                        {t("Clase {n}", { n: idx < 3 ? 1 : 2 })}
                       </span>
                     </div>
                   );
@@ -2718,6 +2749,28 @@ export function CoachingV3SessionBoard({
                       />
                       </div>
                       ) : null}
+                      <ClassTranscriptPanel
+                        sessionId={sessionId}
+                        periodNumber={selectedPeriod}
+                        classIndex={slot as 1 | 2}
+                        savedTranscript={classAi.transcripts[slot as 1 | 2]}
+                        onSaved={(text) => classAi.setTranscript(slot as 1 | 2, text)}
+                        disabled={!canEditSelectedPeriod}
+                        onTasks={(tasks) =>
+                          setClassDrafts((prev) => {
+                            // Only tasks the student has not answered yet change (Luis reviews and saves).
+                            const current = prev[key] || draft;
+                            const next = { ...current, taskAudio: [...current.taskAudio] as [boolean, boolean, boolean] };
+                            const keys = ["coachGuideline1", "coachGuideline2", "coachGuideline3"] as const;
+                            tasks.slice(0, 3).forEach((task, index) => {
+                              if (isTaskAnswered(classRow, (index + 1) as 1 | 2 | 3)) return;
+                              next[keys[index]] = task.text;
+                              next.taskAudio[index] = task.audio;
+                            });
+                            return { ...prev, [key]: next };
+                          })
+                        }
+                      />
                       <p className="pt-1 text-xs font-medium" style={{ color: "var(--v3-muted)" }}>
                         {t("Tareas de esta clase (el alumno las responde en su tablero)")}
                       </p>
@@ -2868,8 +2921,12 @@ export function CoachingV3SessionBoard({
 
           <div ref={reportSectionRef}>
             <Card
-              className="mt-4 rounded-2xl border p-5"
-              style={{
+              className={
+                studentBareReport
+                  ? "mt-4 border-0! bg-transparent! p-0! shadow-none!"
+                  : "mt-4 rounded-2xl border p-5"
+              }
+              style={studentBareReport ? undefined : {
                 // Colores con variables del tablero: se lee bien en modo claro y oscuro.
                 borderColor:
                   reportStatus === "blocked"
@@ -2885,46 +2942,26 @@ export function CoachingV3SessionBoard({
               }}
             >
               {reportStatus === "blocked" ? (
-                <div className="flex items-center gap-4">
-                  <span
-                    className="inline-flex size-14 items-center justify-center rounded-2xl border"
-                    style={{
-                      borderColor:
-                        "color-mix(in oklab, var(--v3-line) 70%, var(--v3-cyan) 30%)",
-                      background:
-                        "color-mix(in oklab, var(--v3-card) 86%, black 14%)",
-                      color: "var(--v3-muted)",
-                    }}
-                  >
-                    <LockIcon className="size-6" />
-                  </span>
-                  <div>
-                    <h3 className="text-3xl font-semibold leading-tight">
-                      {t("Tu reporte se abre con las seis tareas")}
-                    </h3>
-                    <p
-                      className="mt-1 text-sm"
-                      style={{ color: "var(--v3-muted)" }}
-                    >
-                      {t("Te faltan {n}:", { n: pendingTaskLabels.length })}{" "}
-                      {pendingTaskLabels.length > 0
-                        ? `${pendingTaskLabels.join(", ")}.`
-                        : t("ninguna tarea.")}
-                    </p>
-                  </div>
-                </div>
+                <CoachingWeeklyReportTeaser
+                  periodNumber={selectedPeriod}
+                  hasReport={Boolean(board.periodReport)}
+                  pendingTasks={Math.max(0, 6 - completedTasks)}
+                />
               ) : (
                 <>
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-xl font-semibold">
-                      {t("Reporte de la semana {n}", { n: selectedPeriod })}
-                    </h3>
-                    <Badge variant="outline" className="rounded-full">
-                      {reportStatus === "available"
-                        ? t("Disponible")
-                        : t("En preparación")}
-                    </Badge>
-                  </div>
+                  {/* The AI report has its own title («Semana N · tu reporte»): no second one for the student. */}
+                  {mode !== "coach" && reportStatus === "available" && board.periodReport?.reportData ? null : (
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-xl font-semibold">
+                        {t("Reporte de la semana {n}", { n: selectedPeriod })}
+                      </h3>
+                      <Badge variant="outline" className="rounded-full">
+                        {reportStatus === "available"
+                          ? t("Disponible")
+                          : t("En preparación")}
+                      </Badge>
+                    </div>
+                  )}
 
                   {reportStatus === "preparing" && (
                     <p
@@ -2938,7 +2975,18 @@ export function CoachingV3SessionBoard({
                   )}
 
                   {reportStatus === "available" && (
-                    <div className="mt-3 space-y-3">
+                    <div className={studentBareReport ? "space-y-3" : "mt-3 space-y-3"}>
+                      {/* The coach sees and edits it in the panel below («Reporte con IA»). */}
+                      {board.periodReport?.reportData && mode !== "coach" ? (
+                        <CoachingWeeklyReportView
+                          data={board.periodReport.reportData}
+                          targetLang={board.session.targetLang || targetLang}
+                          focuses={selectedFocuses}
+                          baseline={focusBaseline}
+                          periodNumber={selectedPeriod}
+                          canAddWords={mode === "student" && fetchAsStudent !== false}
+                        />
+                      ) : null}
                       {board.periodReport?.reportImageUrl ? (
                         <>
                           <button
@@ -2971,7 +3019,7 @@ export function CoachingV3SessionBoard({
                             {t("Descargar imagen")}
                           </a>
                         </>
-                      ) : (
+                      ) : board.periodReport?.reportData ? null : (
                         <p
                           className="text-sm"
                           style={{ color: "var(--v3-muted)" }}
@@ -2984,13 +3032,36 @@ export function CoachingV3SessionBoard({
                 </>
               )}
 
+              {mode === "coach" ? (
+                <div className="mt-4">
+                  <ReportAiPanel
+                    key={`report-ai-${selectedPeriod}`}
+                    sessionId={sessionId}
+                    periodNumber={selectedPeriod}
+                    transcripts={classAi.transcripts}
+                    looms={savedLooms}
+                    materialLoaded={classAi.loaded}
+                    draft={classAi.draft}
+                    onDraft={classAi.setDraft}
+                    publishedData={board.periodReport?.reportData || null}
+                    onPublished={(report) =>
+                      setBoard((prev) => (prev ? { ...prev, periodReport: report } : prev))
+                    }
+                    targetLang={board.session.targetLang || targetLang}
+                    focuses={selectedFocuses}
+                    baseline={focusBaseline}
+                    disabled={false}
+                  />
+                </div>
+              ) : null}
+
               {mode === "coach" && (
                 <div
                   className="mt-4 space-y-3 rounded-xl border p-3"
                   style={{ borderColor: "var(--v3-line)" }}
                 >
                   <p className="text-sm font-medium">
-                    {t("Editar reporte de la semana")}
+                    {t("Editar reporte de la semana (imagen)")}
                   </p>
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 relative">
@@ -3091,6 +3162,17 @@ export function CoachingV3SessionBoard({
             </Card>
           </div>
         </section>
+
+        {/* Luis, 17 Oct: the coach's feedback on each master note (it was saved but never shown here). */}
+        {mode !== "coach" ? (
+          <section className="mt-6">
+            <StudentMasterNotes
+              notes={board.masterNotes || []}
+              periods={board.periodActivations}
+              coachName={coachDisplayName || null}
+            />
+          </section>
+        ) : null}
 
         {mode === "coach" && coachExtraContent ? (
           <section className="mt-10">{coachExtraContent}</section>

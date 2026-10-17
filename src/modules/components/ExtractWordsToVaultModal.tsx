@@ -47,14 +47,14 @@ function hasDuplicateWord(
   cards: Lexicard[],
   target: string,
   targetLang: string,
-  nativeLang: string,
+  _nativeLang: string,
 ): boolean {
   const normalizedTarget = normalizeComparableText(target)
   return cards.some(
     (card) =>
+      // Same word in the language you learn, with any native language (Baúl ICA por idioma objetivo).
       normalizeComparableText(card.target) === normalizedTarget &&
-      (card.targetLang || '') === targetLang &&
-      (card.nativeLang || '') === nativeLang,
+      (card.targetLang || '') === targetLang,
   )
 }
 
@@ -382,7 +382,7 @@ export function ExtractWordsToVaultModal({
             />
             {loadingTranslation && (
               <p className='m-0 mt-1.5 text-xs font-semibold text-muted-foreground'>
-                {t('Traduciendo selección...')}
+                {t('Traduciendo tu selección…')}
               </p>
             )}
             {!loadingTranslation && translationError && (

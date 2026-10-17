@@ -65,6 +65,7 @@ import { RANDOM_SEARCH_MS, RandomMatchOverlay, type RandomMatchState } from '../
 import { logRandomChallengeTap, type RandomChallengeTapEvent } from '../services/randomChallengeTaps'
 import { gameSfx } from '../game/sfx'
 import { useMyFlags } from '../game/languageFlag'
+import { useOthersLanguageFlag } from '../game/englishAccent'
 import { fetchMonthlyStreakLeaderboard } from '../services/leaderboard'
 import { inSentence } from '../services/activationGuide'
 import { isSpeechRecognitionSupported } from '../components/NotaDesafiante/challengeEngine'
@@ -476,6 +477,7 @@ export function IcaChallengesView({
   const { user: authUser } = useAuth()
   const { total: coinBalance, unusedPasses: extraPasses, refresh: refreshCoins } = useFichas(authUser?.id)
   const myFlags = useMyFlags(authUser?.id)
+  const othersFlag = useOthersLanguageFlag()
   const [useExtraForNext, setUseExtraForNext] = useState(false)
   const [extraOfferUserId, setExtraOfferUserId] = useState<string | null>(null)
   // The same «desafío extra» to accept a 4th challenge (Luis, 11 Oct): the invitation waiting for it.
@@ -698,9 +700,9 @@ export function IcaChallengesView({
       phase: 'found',
       rivalName: pick.rivalName,
       myFlag: myFlags.shown ?? null,
-      rivalFlag: typeof pick.flag === 'string' ? pick.flag : null,
+      rivalFlag: typeof pick.flag === 'string' ? othersFlag(pick.flag, pick.rival.userId) : null,
       myLang: targetLang,
-      rivalLang: pick.rival.targetLang ?? null,
+      rivalLang: othersFlag(pick.rival.targetLang, pick.rival.userId),
       tile: pick.mode.tile,
       modeName: t(pick.mode.type.name),
       sharedVault: pick.scope === 'language',
@@ -711,7 +713,9 @@ export function IcaChallengesView({
     if (pick.flag instanceof Promise) {
       void pick.flag.then((rivalFlag) => {
         if (randomCancelledRef.current || !rivalFlag) return
-        setRandomMatch((current) => (current.phase === 'found' ? { ...current, rivalFlag } : current))
+        setRandomMatch((current) =>
+          current.phase === 'found' ? { ...current, rivalFlag: othersFlag(rivalFlag, pick.rival.userId) } : current,
+        )
       })
     }
     void createChallenge({

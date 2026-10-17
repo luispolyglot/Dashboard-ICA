@@ -11,6 +11,7 @@ const en: Record<string, string> = {
   "Aprendes": "You're learning",
   "Tu idioma nativo": "Your native language",
   "Cambio rápido": "Quick switch",
+  "Tus palabras, frases y notas maestras se quedan. Lo nuevo se traducirá a {lang}.": "Your words, phrases and master notes stay. New ones will be translated into {lang}.",
   "{native} a {target}": "{native} to {target}",
   "Activo": "Active",
   "ICA Coins": "ICA Coins",

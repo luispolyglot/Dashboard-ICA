@@ -31,6 +31,7 @@ import { FichaIcon, FlameIcon, SwordsIcon } from './icons'
 import { EXTRA_CHALLENGE_COST } from './rules'
 import type { MedalCategory } from './medals'
 import { FeaturedBadgeMini, UserInitial } from './ranking'
+import { useOthersLanguageFlag } from './englishAccent'
 
 /** Lo mínimo que ya sabemos por el ranking (se enseña al momento, antes de cargar el resto). */
 export type IcademerSummary = {
@@ -228,6 +229,7 @@ export function IcademerProfileDialog({
   const { user } = useAuth()
   const { config, metaTrackerProfile } = useDashboardContext()
   const isMe = Boolean(summary && user?.id === summary.userId)
+  const othersFlag = useOthersLanguageFlag()
   const loaded = useIcademerProfile(summary, isMe)
   const [challengePending, setChallengePending] = useState(false)
   const [revealAnyway, setRevealAnyway] = useState(false)
@@ -334,7 +336,7 @@ export function IcademerProfileDialog({
               {targetLang ? (
                 // El idioma que aprende, con su bandera (sin texto: «Aprende …» solo para lectores de pantalla).
                 <span className='inline-flex overflow-hidden rounded-[6px] ring-1 ring-black/10 dark:ring-white/20'>
-                  <LanguageFlag language={targetLang} size={36} />
+                  <LanguageFlag language={isMe ? targetLang : othersFlag(targetLang, summary?.userId) ?? targetLang} size={36} />
                   <span className='sr-only'>{t('Aprende {lang}', { lang: langName(targetLang) })}</span>
                 </span>
               ) : null}

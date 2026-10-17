@@ -525,12 +525,8 @@ export function PhraseView({
         typeof word.targetLang === 'string' &&
         word.targetLang.trim() !== '' &&
         word.targetLang !== config.targetLang
-      const mismatchedNative =
-        typeof word.nativeLang === 'string' &&
-        word.nativeLang.trim() !== '' &&
-        word.nativeLang !== config.nativeLang
-
-      return mismatchedTarget || mismatchedNative
+      // Words saved with another native language are fine (Baúl ICA por idioma objetivo).
+      return mismatchedTarget
     })
 
     if (hasLanguageMismatch) {
@@ -1229,7 +1225,7 @@ export function PhraseView({
             <div className='relative mt-3 flex flex-wrap items-center justify-between gap-2'>
               {reviewTipPending && !manualSuggestionLoading ? (
                 <FirstUseTip align='end' side='bottom' onClose={closeReviewTip}>
-                  {t('Cuando escribas tu frase y su traducción, toca aquí y la IA revisa tu gramática.')}
+                  {t('Cuando escribas tu frase y su traducción, toca aquí e Ika revisa tu gramática.')}
                 </FirstUseTip>
               ) : null}
               <span className='text-xs font-semibold text-muted-foreground'>{t('Opcional')}</span>
@@ -1249,7 +1245,7 @@ export function PhraseView({
                 }
               >
                 <SparklesIcon strokeWidth={2.6} aria-hidden='true' />
-                {manualSuggestionLoading ? t('Analizando frase...') : t('Revisar gramática con IA')}
+                {manualSuggestionLoading ? t('Ika está revisando tu frase…') : t('Revisar gramática con Ika')}
               </Button>
             </div>
           </div>
@@ -1349,7 +1345,7 @@ export function PhraseView({
       !result &&
       !loading ? (
         <FirstUseTip onClose={mode === 'automatic' ? closeGenerateTip : closeGeneratePickedTip}>
-          {t('Toca aquí y la IA crea tu frase con estas palabras.')}
+          {t('Toca aquí e Ika crea tu frase con estas palabras.')}
         </FirstUseTip>
       ) : null}
       <Button
@@ -1508,7 +1504,7 @@ export function PhraseView({
               <DialogTitle>{t('Revisión IA de tu frase')}</DialogTitle>
             </div>
             <DialogDescription>
-              {t('Te mostramos feedback en ambos idiomas y una sugerencia opcional. La IA puede flexionar palabras ICA para que la gramática sea natural.')}
+              {t('Te mostramos feedback en ambos idiomas y una sugerencia opcional. Ika puede flexionar palabras ICA para que la gramática sea natural.')}
             </DialogDescription>
           </DialogHeader>
 

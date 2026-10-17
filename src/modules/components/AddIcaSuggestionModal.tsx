@@ -80,11 +80,11 @@ export function AddIcaSuggestionModal({
 
   const duplicateWord = useMemo(
     () => cards.find((card) => {
+      // Same word in the language you learn, whatever native language it was saved with.
       return normalizeComparableText(card.target) === normalizeComparableText(trimmedTarget)
         && (card.targetLang || '') === config.targetLang
-        && (card.nativeLang || '') === config.nativeLang
     }),
-    [cards, config.nativeLang, config.targetLang, trimmedTarget],
+    [cards, config.targetLang, trimmedTarget],
   )
   const showDuplicateWarning = Boolean(duplicateWord) && !saving && trimmedTarget.length > 0
 

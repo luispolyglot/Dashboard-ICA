@@ -24,7 +24,7 @@ export function CreatingPhraseProgress({ manual = false, className }: { manual?:
   return (
     <div className={className} role='status'>
       <p className='m-0 mb-2 text-center text-sm font-extrabold' style={{ color: 'var(--ica-c-ink)' }}>
-        {manual ? t('Revisando tu frase…') : t('Creando tu frase…')}
+        {manual ? t('Ika está revisando tu frase…') : t('Ika está creando tu frase…')}
       </p>
       <GameProgress value={value} color='var(--ica-c)' height={12} label={t('Progreso')} />
     </div>

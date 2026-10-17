@@ -454,7 +454,6 @@ export async function fetchMyIcaChallengeEnrollment(
     .select('id, user_id, target_lang, native_lang, is_active, created_at, updated_at')
     .eq('user_id', userId)
     .eq('target_lang', targetLang)
-    .eq('native_lang', nativeLang)
     .maybeSingle()
 
   if (error) throw error
@@ -492,7 +491,9 @@ export async function upsertMyIcaChallengeEnrollment(input: {
         native_lang: input.nativeLang,
         is_active: input.isActive,
       },
-      { onConflict: 'user_id,target_lang,native_lang' },
+      // One enrollment per target language; native_lang keeps your current one (Baúl ICA por
+      // idioma objetivo: it is what «por idioma» matches on).
+      { onConflict: 'user_id,target_lang' },
     )
     .select('id, user_id, target_lang, native_lang, is_active, created_at, updated_at')
     .single()
@@ -503,7 +504,7 @@ export async function upsertMyIcaChallengeEnrollment(input: {
 
 export async function listMyIcaChallenges(
   targetLang: string,
-  nativeLang: string,
+  _nativeLang: string,
   limit = 20,
 ): Promise<IcaChallengeRecord[]> {
   if (ICA_CHALLENGES_LOCAL) {
@@ -512,7 +513,7 @@ export async function listMyIcaChallenges(
       .filter(
         (challenge) =>
           challenge.scope === 'global' ||
-          (challenge.targetLang === targetLang && challenge.nativeLang === nativeLang),
+          challenge.targetLang === targetLang,
       )
       .slice(0, limit)
   }
@@ -536,7 +537,7 @@ export async function listMyIcaChallenges(
     .filter(
       (challenge) =>
         challenge.scope === 'global' ||
-        (challenge.targetLang === targetLang && challenge.nativeLang === nativeLang),
+        challenge.targetLang === targetLang,
     )
 }
 

@@ -357,6 +357,7 @@ export function NotaDesafiantePlayerView() {
               phraseId: row.id,
               target: (row.generated_phrase || '').trim(),
               native: (row.translation || '').trim(),
+              nativeLang: row.native_lang ?? null,
             }))
             .filter((item) => item.target && item.native),
         )

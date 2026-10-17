@@ -48,6 +48,8 @@ export type IcaCoinsServerState = {
   icaStreak: number
   flashStreak: number
   usageToday: Record<DailyLimitKey, number>
+  /** 2 for a student with an active coaching: double daily limits (Luis, 16 Oct). */
+  dailyLimitMultiplier: number
   entries: IcaCoinEntry[]
 }
 
@@ -120,6 +122,8 @@ function parseState(value: unknown): IcaCoinsServerState | null {
         activations: numeric(usage?.activations),
       }
     })(),
+    // Older servers do not send it: 1, the normal limits.
+    dailyLimitMultiplier: Math.max(1, Math.round(numeric(row.dailyLimitMultiplier)) || 1),
     entries: Array.isArray(row.entries)
       ? row.entries.map(parseEntry).filter((entry): entry is IcaCoinEntry => entry !== null)
       : [],
@@ -272,6 +276,7 @@ export type FichasState = {
   icaStreak: number
   flashStreak: number
   usageToday: Record<DailyLimitKey, number>
+  dailyLimitMultiplier: number
   refresh: () => Promise<IcaCoinsServerState | null>
 }
 
@@ -333,6 +338,7 @@ export function useFichas(userId: string | null | undefined): FichasState {
     icaStreak: serverState?.icaStreak ?? 0,
     flashStreak: serverState?.flashStreak ?? 0,
     usageToday: serverState?.usageToday ?? { words: 0, phrases: 0, activations: 0 },
+    dailyLimitMultiplier: serverState?.dailyLimitMultiplier ?? 1,
     refresh,
   }
 }

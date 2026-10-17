@@ -190,15 +190,14 @@ Deno.serve(async (req) => {
 
   let closedLevel: string | null = null
   const targetLang = typeof note.target_lang === 'string' ? note.target_lang.trim() : ''
-  const nativeLang = typeof note.native_lang === 'string' ? note.native_lang.trim() : ''
 
-  if (targetLang && nativeLang) {
+  // Level per target language (Baúl ICA por idioma objetivo, 17 Oct).
+  if (targetLang) {
     const { data: tracker } = await adminClient
       .from('user_meta_tracker')
       .select('start_level, prior_ica_words, activation_words_total')
       .eq('user_id', user.id)
       .eq('target_lang', targetLang)
-      .eq('native_lang', nativeLang)
       .maybeSingle()
 
     if (tracker) {
