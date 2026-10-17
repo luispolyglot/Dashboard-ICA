@@ -9,6 +9,7 @@ import { CREATION_WORDS_GOAL, getTodayProgress } from '../constants'
 import { useDashboardContext } from '../context/DashboardContext'
 import { DASHBOARD_ROUTES } from '../routes/paths'
 import { CYCLE_CELEBRATION_CLOSED_EVENT, openCycleCelebration } from './CycleCelebration'
+import { OPEN_CYCLE_CHEST_EVENT, hasOpenCycleChestRequest, takeOpenCycleChestRequest } from './chestRequest'
 import { STREAK_DAY_CELEBRATION_EVENT, isStreakDayCelebrationOpen } from './StreakDayCelebration'
 import {
   claimCycleChest,
@@ -644,6 +645,29 @@ export function IcaPath() {
       })
     }
   }
+
+  // «Abrir» in the «¡Ciclo ICA completado!» notice (Luis, 17 Oct): the chest opens by itself as soon
+  // as it is ready here (after the path fills and the streak celebration closes).
+  const [chestRequested, setChestRequested] = useState(hasOpenCycleChestRequest)
+  useEffect(() => {
+    const onRequest = () => setChestRequested(true)
+    window.addEventListener(OPEN_CYCLE_CHEST_EVENT, onRequest)
+    return () => window.removeEventListener(OPEN_CYCLE_CHEST_EVENT, onRequest)
+  }, [])
+  const openChestRef = useRef(openChest)
+  openChestRef.current = openChest
+  useEffect(() => {
+    if (!chestRequested) return
+    if (chestOpened) {
+      // Already open (from another tab or a moment ago): nothing to do.
+      takeOpenCycleChestRequest()
+      setChestRequested(false)
+      return
+    }
+    if (!chestReady || celebrationOpen || streakDayOpen) return
+    setChestRequested(false)
+    if (takeOpenCycleChestRequest()) void openChestRef.current()
+  }, [chestRequested, chestOpened, chestReady, celebrationOpen, streakDayOpen])
 
   // ORDENADOR: el camino va en horizontal, como una línea con 5 estaciones bien separadas.
   if (isLg) {
