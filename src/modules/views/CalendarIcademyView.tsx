@@ -122,6 +122,10 @@ export function CalendarIcademyView() {
   const [preferences, setPreferences] = useState<CalendarIcademyPreference[]>(
     [],
   )
+  // Reminders of classes that are no longer taught (EN avanzado, DE básico…). They are not shown,
+  // but the server still counts them if they are on (Luis, 17 Oct: Polaco + Destripando, and the
+  // 2nd class gave «máximo 2 recordatorios» because an old EN avanzado reminder was still on).
+  const [retiredActiveReminders, setRetiredActiveReminders] = useState<CalendarIcademyPreference[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showLocalTime, setShowLocalTime] = useState<boolean>(() => {
@@ -175,6 +179,11 @@ export function CalendarIcademyView() {
         setPreferences(
           preferenceEntries.filter(
             (item) => !isCalendarIcademyClassRetired(item.classKey),
+          ),
+        )
+        setRetiredActiveReminders(
+          preferenceEntries.filter(
+            (item) => item.notificationsEnabled && isCalendarIcademyClassRetired(item.classKey),
           ),
         )
         setMutedSessions(mutedSessionEntries)
@@ -270,9 +279,13 @@ export function CalendarIcademyView() {
   const activeNonSpecialReminderCount = activeReminderPreferences.filter(
     (item) => item.classKey !== SPECIAL_CLASS_KEY && visibleClassKeys.has(item.classKey),
   ).length
-  const hiddenActiveReminders = activeReminderPreferences.filter(
-    (item) => item.classKey !== SPECIAL_CLASS_KEY && !visibleClassKeys.has(item.classKey),
-  )
+  const hiddenActiveReminders = [
+    ...activeReminderPreferences.filter(
+      (item) => item.classKey !== SPECIAL_CLASS_KEY && !visibleClassKeys.has(item.classKey),
+    ),
+    // The retired ones are kept apart (see above) but take a place on the server all the same.
+    ...retiredActiveReminders,
+  ]
   const hasReachedNonSpecialReminderLimit =
     activeNonSpecialReminderCount >= MAX_NON_SPECIAL_ACTIVE_REMINDERS
   const activePushDevicesCount = pushDevices.filter(
@@ -386,12 +399,17 @@ export function CalendarIcademyView() {
         activeNonSpecialReminderCount + hiddenActiveReminders.length >= MAX_NON_SPECIAL_ACTIVE_REMINDERS
       ) {
         for (const hidden of hiddenActiveReminders) {
-          await savePreference({
+          const switchedOff = await savePreference({
             classKey: hidden.classKey,
             languageCode: hidden.languageCode,
             notificationsEnabled: false,
             minutesBefore: hidden.minutesBefore || 30,
           }).catch(() => null)
+          if (switchedOff && isCalendarIcademyClassRetired(hidden.classKey)) {
+            // Saved, but it must not appear in the list: keep it out of the visible preferences.
+            setPreferences((prev) => prev.filter((item) => item.classKey !== hidden.classKey))
+            setRetiredActiveReminders((prev) => prev.filter((item) => item.classKey !== hidden.classKey))
+          }
         }
       }
       const saved = await savePreference({
