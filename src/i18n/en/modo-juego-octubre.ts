@@ -431,7 +431,7 @@ const en: Record<string, string> = {
     "You got {name}! They also learn {lang}: you will play with a mix of both ICA Vaults.",
   "¡Te ha tocado {name}! Cada uno jugará con sus propias palabras ICA.": "You got {name}! Each of you will play with your own ICA words.",
   "Tu frase": "Your phrase",
-  "Está juntando tus palabras ICA en una frase para ti.": "Ika is putting your ICA words together into a phrase for you.",
+  "Está juntando tus palabras ICA en una frase coherente para ti.": "Ika is putting your ICA words together into a coherent phrase for you.",
   "Un desafío más": "One more challenge",
   "Un desafío más (usado)": "One more challenge (used)",
   "Duplica tu {phase}": "Double your {phase}",

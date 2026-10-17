@@ -382,7 +382,7 @@ export function ExtractWordsToVaultModal({
             />
             {loadingTranslation && (
               <p className='m-0 mt-1.5 text-xs font-semibold text-muted-foreground'>
-                {t('Ika está traduciendo tu selección…')}
+                {t('Traduciendo tu selección…')}
               </p>
             )}
             {!loadingTranslation && translationError && (
