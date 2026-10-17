@@ -5,6 +5,7 @@ import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, SearchIcon } from 'lucide
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { Panel, tone as toneColors, type Tone } from '../game/ui'
+import { setEnglishAccent, useEnglishAccent, type EnglishAccent } from '../game/englishAccent'
 
 // Banderas dibujadas en SVG (los emojis de bandera no se ven en Windows).
 // Una por idioma de LANGUAGES; formato 3:2 con esquinas redondeadas.
@@ -77,6 +78,17 @@ const FLAGS: Record<string, () => ReactNode> = {
       <path d='M0 0L30 20M30 0L0 20' stroke='#C8102E' strokeWidth='1.5' />
       <path d='M15 0V20M0 10H30' stroke='#fff' strokeWidth='6' />
       <path d='M15 0V20M0 10H30' stroke='#C8102E' strokeWidth='3.4' />
+    </>
+  ),
+  // American English (Luis, 17 Oct): 13 stripes and the blue corner with a few stars.
+  'Inglés:us': () => (
+    <>
+      <rect width={W} height={H} fill='#FFFFFF' />
+      {Array.from({ length: 7 }, (_, index) => (
+        <rect key={index} x='0' y={(index * 2 * H) / 13} width={W} height={H / 13 + 0.05} fill='#B22234' />
+      ))}
+      <rect width='13' height={(7 * H) / 13} fill='#3C3B6E' />
+      {[2, 5, 8, 11].flatMap((x) => [2.2, 5.4, 8.6].map((y) => <circle key={`${x}-${y}`} cx={x} cy={y} r='0.75' fill='#FFFFFF' />))}
     </>
   ),
   Polaco: () => hStripes(['#FFFFFF', '#DC143C']),
@@ -243,9 +255,11 @@ export function LanguageCard({
   hint?: string
 }) {
   const colors = tone ? toneColors(tone) : null
+  const accent = useEnglishAccent()
+  const shownName = language === 'Inglés' ? englishName(accent) : langName(language)
   return (
-    <Panel as='button' tone={tone} onClick={onClick} ariaLabel={`${label}: ${langName(language)}. ${t(hint)}`} className='flex items-center gap-4 px-4 py-4'>
-      <LanguageFlag language={language} size={60} className='rounded-md' />
+    <Panel as='button' tone={tone} onClick={onClick} ariaLabel={`${label}: ${shownName}. ${t(hint)}`} className='flex items-center gap-4 px-4 py-4'>
+      <LanguageFlag language={language === 'Inglés' ? englishFlag(accent) : language} size={60} className='rounded-md' />
       <span className='min-w-0 flex-1'>
         <span
           className='block text-xs font-extrabold tracking-[0.08em] uppercase'
@@ -253,7 +267,7 @@ export function LanguageCard({
         >
           {label}
         </span>
-        <span className='block truncate font-display text-2xl leading-tight font-extrabold tracking-tight'>{langName(language)}</span>
+        <span className='block truncate font-display text-2xl leading-tight font-extrabold tracking-tight'>{shownName}</span>
       </span>
       {/* Solo la flecha: el texto "Cambiar" va en el aria-label (así cabe el nombre entero) */}
       <span className='flex size-9 shrink-0 items-center justify-center rounded-full bg-card/70 text-muted-foreground'>
@@ -261,6 +275,15 @@ export function LanguageCard({
       </span>
     </Panel>
   )
+}
+
+/** «Inglés americano» / «Inglés británico» (Luis, 17 Oct). */
+function englishName(accent: EnglishAccent): string {
+  return accent === 'uk' ? t('Inglés británico') : t('Inglés americano')
+}
+
+function englishFlag(accent: EnglishAccent): string {
+  return accent === 'uk' ? 'Inglés' : 'Inglés:us'
 }
 
 function normalize(value: string): string {
@@ -288,14 +311,30 @@ export function LanguageListPicker({
   listClassName?: string
 }) {
   const [query, setQuery] = useState('')
+  const accent = useEnglishAccent()
+  // Luis, 17 Oct: English is two rows, American and British (the same language for the app; the
+  // accent changes the voice and the speech recognition).
+  const rows = useMemo(
+    () =>
+      options.flatMap((language): Array<{ language: string; accent: EnglishAccent | null; name: string }> =>
+        language === 'Inglés'
+          ? [
+              { language, accent: 'us', name: englishName('us') },
+              { language, accent: 'uk', name: englishName('uk') },
+            ]
+          : [{ language, accent: null, name: langName(language) }],
+      ),
+    [options],
+  )
   const filtered = useMemo(() => {
     const clean = normalize(query)
-    if (!clean) return options
+    if (!clean) return rows
     // Busca por el nombre que se ve (idioma de la interfaz) y también por el nombre en español
-    return options.filter(
-      (language) => normalize(langName(language)).includes(clean) || normalize(language).includes(clean),
+    return rows.filter(
+      (row) =>
+        normalize(row.name).includes(clean) || normalize(langName(row.language)).includes(clean) || normalize(row.language).includes(clean),
     )
-  }, [options, query])
+  }, [rows, query])
 
   return (
     <div className='flex min-h-0 flex-col gap-3'>
@@ -332,13 +371,16 @@ export function LanguageListPicker({
         {filtered.length === 0 ? (
           <p className='m-0 py-6 text-center text-sm font-bold text-muted-foreground'>{t('No encontramos ese idioma.')}</p>
         ) : (
-          filtered.map((language) => {
-            const selected = language === value
+          filtered.map(({ language, accent: rowAccent, name }) => {
+            const selected = language === value && (rowAccent === null || rowAccent === accent)
             return (
               <button
-                key={language}
+                key={`${language}:${rowAccent ?? ''}`}
                 type='button'
-                onClick={() => onPick(language)}
+                onClick={() => {
+                  if (rowAccent) void setEnglishAccent(rowAccent)
+                  onPick(language)
+                }}
                 aria-pressed={selected}
                 className={cn(
                   'ica-press flex min-h-14 w-full items-center gap-3 rounded-2xl border-2 px-3 py-2 text-left transition-colors',
@@ -354,8 +396,8 @@ export function LanguageListPicker({
                     : { boxShadow: '0 3px 0 var(--border)' }
                 }
               >
-                <LanguageFlag language={language} size={36} />
-                <span className='min-w-0 flex-1 truncate text-base font-extrabold'>{langName(language)}</span>
+                <LanguageFlag language={rowAccent ? englishFlag(rowAccent) : language} size={36} />
+                <span className='min-w-0 flex-1 truncate text-base font-extrabold'>{name}</span>
                 {selected ? (
                   <span
                     className='flex size-7 shrink-0 items-center justify-center rounded-full text-white'
