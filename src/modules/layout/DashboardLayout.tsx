@@ -4,6 +4,7 @@ import type { CSSProperties, RefObject } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
 import { syncEnglishAccentFromAccount } from '../game/englishAccent'
+import { requestOpenCycleChest } from '../game/chestRequest'
 import { toast } from 'sonner'
 import { FullscreenLoading } from '@/components/ui/fullscreen-loading'
 import { Header } from '../components/Header'
@@ -304,7 +305,10 @@ export function DashboardLayout() {
           description: t('Tu cofre del ciclo te espera en Inicio.'),
           action: {
             label: t('Abrir'),
-            onClick: () => navigate(DASHBOARD_ROUTES.home),
+            onClick: () => {
+              requestOpenCycleChest()
+              navigate(DASHBOARD_ROUTES.home)
+            },
           },
           duration: 8000,
         })
