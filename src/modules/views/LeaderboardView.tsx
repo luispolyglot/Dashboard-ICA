@@ -24,6 +24,7 @@ import { LISTENING_METRICS_CHANGED_EVENT } from "../services/creationMetricsSync
 import { getIcaTestWindowStartDay } from "../services/icaTests";
 import { parseFeaturedBadge, useFeaturedBadge } from "../game/featuredBadge";
 import { useMyFlags } from "../game/languageFlag";
+import { useOthersLanguageFlag } from "../game/englishAccent";
 import { Medal, MedalDefs } from "../game/Medal";
 import { tierName } from "../game/medals";
 import { TourGuide } from "../game/WelcomeTour";
@@ -729,6 +730,7 @@ export function LeaderboardView() {
   const { user } = useAuth();
   const { badge: myBadge } = useFeaturedBadge(user?.id);
   const { shown: myFlag } = useMyFlags(user?.id);
+  const othersFlag = useOthersLanguageFlag();
   const { config } = useDashboardContext();
   const [challengeRivalId, setChallengeRivalId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -932,7 +934,7 @@ const [tiebreakOpen, setTiebreakOpen] = useState(false);
       userId: row.user_id,
       name: row.display_name || row.username || "Usuario",
       badge: row.user_id === user?.id ? myBadge : parseFeaturedBadge(row.featured_badge),
-      flag: row.user_id === user?.id ? myFlag : row.display_flag ?? null,
+      flag: row.user_id === user?.id ? myFlag : othersFlag(row.display_flag, row.user_id),
       // La racha de hoy solo en el mes en curso (la de un mes pasado ya no es la de ahora).
       streakDays: isCurrentMonth ? row.ica_streak_days || 0 : null,
     });
@@ -949,7 +951,7 @@ const [tiebreakOpen, setTiebreakOpen] = useState(false);
         isMe={isMe}
         detail={rowDetail(row)}
         badge={isMe ? myBadge : parseFeaturedBadge(row.featured_badge)}
-        flag={isMe ? myFlag : row.display_flag ?? null}
+        flag={isMe ? myFlag : othersFlag(row.display_flag, row.user_id)}
         onRankClick={
           sharedRank <= 3
             ? () => setSelectedPrizeRank(sharedRank as LeaderboardPrizeRank)
@@ -1078,7 +1080,7 @@ const [tiebreakOpen, setTiebreakOpen] = useState(false);
                 points: getDisplayedTotalPoints(row, includeIcaTestInScoreExplanation),
                 isMe: row.user_id === user?.id,
                 badge: row.user_id === user?.id ? myBadge : parseFeaturedBadge(row.featured_badge),
-                flag: row.user_id === user?.id ? myFlag : row.display_flag ?? null,
+                flag: row.user_id === user?.id ? myFlag : othersFlag(row.display_flag, row.user_id),
                 onOpen: () => openScoreBreakdown(row),
                 onProfile: () => openProfile(row),
                 onPrize: () => setSelectedPrizeRank(Math.min(3, sharedRank) as LeaderboardPrizeRank),
