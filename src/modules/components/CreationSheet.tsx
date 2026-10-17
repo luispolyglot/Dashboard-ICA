@@ -8,8 +8,9 @@ import { CreatingPhraseProgress } from './CreatingPhraseProgress'
 /**
  * CREACIÓN A PANTALLA COMPLETA (Luis, 15 Oct): when you tap «Generar frase», a full-screen window
  * covers everything. First the mascot with «Creando tu frase…» and the bar; when the phrase
- * arrives, the phrase itself and, fixed at the bottom, «Activar frase». No scrolling to find the
- * next step. Closing it (X or Escape) leaves the phrase on the page, as before.
+ * arrives, the phrase itself and, right under it, «Activar frase» (Luis, 17 Oct: glued to the
+ * bottom of the screen it was too far down). No scrolling to find the next step. Closing it
+ * (X or Escape) leaves the phrase on the page, as before.
  */
 export function CreationSheet({
   open,
@@ -47,7 +48,7 @@ export function CreationSheet({
     <div
       role='dialog'
       aria-modal='true'
-      aria-label={manual ? t('Tu frase') : t('Creando tu frase…')}
+      aria-label={manual ? t('Tu frase') : t('Ika está creando tu frase…')}
       className='fixed inset-0 z-50 flex flex-col bg-background pt-[env(safe-area-inset-top)] animate-in fade-in-0'
     >
       <div className='flex justify-end px-3 pt-3'>
@@ -75,21 +76,18 @@ export function CreationSheet({
               <CreatingPhraseProgress manual={manual} className='w-full max-w-xs' />
               {!manual ? (
                 <p className='m-0 max-w-xs text-sm font-bold text-muted-foreground'>
-                  {t('La IA está juntando tus palabras ICA en una frase para ti.')}
+                  {t('Está juntando tus palabras ICA en una frase coherente para ti.')}
                 </p>
               ) : null}
             </div>
           ) : (
-            <div className='ica-pop'>{children}</div>
+            <div className='ica-pop flex flex-col gap-5'>
+              {children}
+              {footer ? <div className='pb-[env(safe-area-inset-bottom)]'>{footer}</div> : null}
+            </div>
           )}
         </div>
       </div>
-
-      {!waiting && footer ? (
-        <div className='border-t-2 border-border bg-card px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] dark:bg-background'>
-          <div className='mx-auto w-full max-w-lg'>{footer}</div>
-        </div>
-      ) : null}
     </div>,
     document.body,
   )
