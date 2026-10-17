@@ -22,7 +22,6 @@ import {
   CheckIcon,
   XIcon,
   UserIcon,
-  Volume2Icon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -86,7 +85,10 @@ import {
 } from '../services/coaching'
 import { CoachingProgramPreview } from './CoachingProgramPreview'
 import { CoachingV3SessionBoard } from './CoachingV3SessionBoard'
-import { Pill, SegmentedTabs } from '../game/ui'
+import { GameProgress, IconTile, Pill, SegmentedTabs } from '../game/ui'
+import { MicGlyph } from '../game/icons'
+import { MasterNoteBadge, MasterNoteChip, masterNotesFrame } from '../components/coaching/CoachingMasterNotes'
+import { getMasterNoteNumber } from '../services/masterNotes'
 import { PendingReviewDot } from '../components/PendingReviewDot'
 import { formatDateTime } from '../utils'
 import {
@@ -704,66 +706,53 @@ function MasterNoteCoachAudioPlayer({
     setPositionSec(audio.currentTime)
   }
 
+  const playing = playingId === noteId
+  const noAudio = !audioUrl && audioChunks.every((chunk) => !chunk.audioUrl)
+  const roundButton =
+    'ica-press grid size-9 shrink-0 place-items-center rounded-full border-2 bg-card text-foreground'
+  // Luis, 17 Oct: a player in the app's style (it was the old outline buttons).
   return (
-    <div className='rounded-md border p-2'>
-      <div className='flex flex-wrap items-center gap-2'>
-        {playingId !== noteId ? (
-          <Button
-            type='button'
-            size='sm'
-            variant='outline'
-            onClick={() => void play()}
-            disabled={
-              isPreparing ||
-              (!audioUrl && audioChunks.every((chunk) => !chunk.audioUrl))
-            }
-          >
-            <Volume2Icon className='mr-1 size-4' />
-            {isPreparing ? 'Preparando...' : 'Escuchar'}
-          </Button>
-        ) : (
-          <>
-            <Button type='button' size='sm' variant='outline' onClick={stop}>
-              <SquareIcon className='mr-1 size-4' /> Detener
-            </Button>
-            <Button
-              type='button'
-              size='sm'
-              variant='outline'
-              onClick={() => void togglePause()}
-            >
-              {isPaused ? (
-                <PlayIcon className='mr-1 size-4' />
-              ) : (
-                <PauseIcon className='mr-1 size-4' />
-              )}
-              {isPaused ? 'Reanudar' : 'Pausar'}
-            </Button>
-            <Button
-              type='button'
-              size='sm'
-              variant='outline'
-              onClick={() => seekBy(-10)}
-            >
+    <div className='flex flex-col gap-2 rounded-2xl p-3' style={{ background: 'var(--ica-a-soft)', color: 'var(--ica-a-ink)' }}>
+      <div className='flex items-center gap-3'>
+        <button
+          type='button'
+          onClick={() => void (playing ? togglePause() : play())}
+          disabled={isPreparing || noAudio}
+          aria-label={playing ? (isPaused ? 'Reanudar' : 'Pausar') : 'Escuchar la nota maestra'}
+          className='ica-press grid size-12 shrink-0 place-items-center rounded-full disabled:opacity-50'
+          style={{ background: 'var(--ica-a)', color: '#fff', boxShadow: '0 4px 0 var(--ica-a-edge)' }}
+        >
+          {playing && !isPaused ? <PauseIcon className='size-5' /> : <PlayIcon className='size-5 translate-x-px' />}
+        </button>
+        <div className='min-w-0 flex-1'>
+          <div className='mb-1 flex justify-between text-xs font-black'>
+            <span>{isPreparing ? 'Preparando...' : noAudio ? 'Sin audio' : playing ? 'Escuchando la nota maestra' : 'Escuchar la nota maestra'}</span>
+            <span>
+              {playing ? `${formatSeconds(positionSec)} / ${formatSeconds(durationSec)}` : formatSeconds(Math.round(expectedTotalSec))}
+            </span>
+          </div>
+          <GameProgress
+            value={playing && durationSec > 0 ? Math.min(1, positionSec / durationSec) : 0}
+            color='var(--ica-a)'
+            height={10}
+            label='Avance de la nota maestra'
+          />
+        </div>
+        {playing ? (
+          <span className='flex shrink-0 gap-1.5'>
+            <button type='button' onClick={() => seekBy(-10)} aria-label='Atrás 10 segundos' className={roundButton} style={{ borderColor: 'var(--border)' }}>
               <SeekBack10Icon />
-            </Button>
-            <Button
-              type='button'
-              size='sm'
-              variant='outline'
-              onClick={() => seekBy(10)}
-            >
+            </button>
+            <button type='button' onClick={() => seekBy(10)} aria-label='Adelante 10 segundos' className={roundButton} style={{ borderColor: 'var(--border)' }}>
               <SeekForward10Icon />
-            </Button>
-          </>
-        )}
+            </button>
+            <button type='button' onClick={stop} aria-label='Detener' className={roundButton} style={{ borderColor: 'var(--border)' }}>
+              <SquareIcon className='size-3.5' />
+            </button>
+          </span>
+        ) : null}
       </div>
-      {playingId === noteId && (
-        <p className='mt-2 text-xs text-muted-foreground'>
-          {formatSeconds(positionSec)} / {formatSeconds(durationSec)}
-        </p>
-      )}
-      {error && <p className='mt-1 text-xs text-destructive'>{error}</p>}
+      {error && <p className='m-0 text-xs text-destructive'>{error}</p>}
     </div>
   )
 }
@@ -1879,107 +1868,158 @@ export function ManageCoachingUserView({
                   onSelectedPeriodChange={setV3CoachCurrentPeriod}
                   pendingAudioPeriods={selectedMembership.pendingTaskAudioPeriods}
                   coachExtraContent={
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Notas maestras cerradas de esta semana</CardTitle>
-                      </CardHeader>
-                      <CardContent className='space-y-3'>
-                        {v3CoachNotes.length === 0 ? (
-                          <p className='text-sm text-muted-foreground'>
-                            No hay notas maestras cerradas para la semana{' '}
-                            {v3CoachNotesPeriodClamped}.
-                          </p>
-                        ) : (
-                          <div className='space-y-3 text-sm'>
-                            {v3CoachNotes.map((note) => (
-                              <div
-                                key={`v3-note-${note.id}`}
-                                className='space-y-2 rounded-md border p-3'
-                              >
-                                {note.waitingFromWeek ? (
-                                  <span
-                                    className='inline-flex rounded-full px-2.5 py-0.5 text-xs font-black'
-                                    style={{ background: 'var(--ica-gold)', color: '#4a3200' }}
-                                  >
-                                    Semana {note.waitingFromWeek} · esperando tu feedback
-                                  </span>
-                                ) : null}
-                                <p>
-                                  {note.name} · {formatDateTime(note.closedAt)}
-                                </p>
-
-                                <MasterNoteCoachAudioPlayer
-                                  noteId={note.id}
-                                  audioUrl={note.audioUrl}
-                                  audioChunks={note.audioChunks}
-                                  totalDurationMs={note.totalDurationMs}
-                                />
-
-                                {/* Luis, 16 Oct: as in the old coaching, the phrases the student used in this note. */}
-                                <div className='space-y-1.5'>
-                                  <Label>Frases de la nota maestra</Label>
-                                  {note.activatedPhrases.length === 0 ? (
-                                    <p className='text-xs text-muted-foreground'>No hay frases activadas en esta nota.</p>
-                                  ) : (
-                                    <ol className='m-0 list-none space-y-2 rounded-md border p-2 lg:max-h-96 lg:overflow-y-auto'>
-                                      {note.activatedPhrases.map((phrase, index) => (
-                                        <li key={phrase.chunkId} className='rounded-md border border-border/70 p-2'>
-                                          <p className='text-xs text-muted-foreground'>
-                                            #{index + 1} · {formatSeconds(Math.round(phrase.durationMs / 1000))}
-                                          </p>
-                                          <p className='font-display text-base leading-tight font-extrabold'>
-                                            {phrase.generatedPhrase || 'Sin frase registrada'}
-                                          </p>
-                                          <p className='text-xs text-muted-foreground'>{phrase.translation || 'Sin traducción'}</p>
-                                        </li>
-                                      ))}
-                                    </ol>
-                                  )}
-                                </div>
-
-                                <div className='space-y-1.5'>
-                                  <Label>Video feedback (Loom)</Label>
-                                  <Input
-                                    value={feedbackLoomDraftByNoteId[note.id] || ''}
-                                    onChange={(event) =>
-                                      setFeedbackLoomDraftByNoteId((prev) => ({
-                                        ...prev,
-                                        [note.id]: event.target.value,
-                                      }))
-                                    }
-                                    placeholder='Ej: https://www.loom.com/share/...'
-                                  />
-                                </div>
-
-                                <div className='space-y-1.5'>
-                                  <Label>Notas del coach</Label>
-                                  <Textarea
-                                    value={feedbackNotesDraftByNoteId[note.id] || ''}
-                                    onChange={(event) =>
-                                      setFeedbackNotesDraftByNoteId((prev) => ({
-                                        ...prev,
-                                        [note.id]: event.target.value,
-                                      }))
-                                    }
-                                    rows={5}
-                                  />
-                                </div>
-
-                                <Button
-                                  type='button'
-                                  onClick={() => void handleSaveFeedback(note.id)}
-                                  disabled={savingFeedbackNoteId === note.id}
-                                >
-                                  {savingFeedbackNoteId === note.id
-                                    ? 'Guardando...'
-                                    : 'Guardar feedback'}
-                                </Button>
-                              </div>
-                            ))}
+                    // Luis, 17 Oct: same game style as the board (it looked like the old app).
+                    <section className='@container'>
+                      <div className='overflow-hidden rounded-[28px] border-2' style={masterNotesFrame}>
+                        <header className='flex items-center gap-3 p-4 @2xl:px-5'>
+                          <IconTile tone='a' size={48}>
+                            <MicGlyph size={32} />
+                          </IconTile>
+                          <div className='min-w-0 flex-1'>
+                            <h3 className='m-0 font-display text-xl leading-tight font-extrabold'>
+                              Notas maestras de la semana {v3CoachNotesPeriodClamped}
+                            </h3>
+                            <p className='m-0 text-sm font-semibold text-muted-foreground'>
+                              Escúchala, graba tu Loom y guarda: {selectedMembership.userDisplayName || 'el alumno'} lo ve en su tablero y le llega un aviso.
+                            </p>
                           </div>
-                        )}
-                      </CardContent>
-                    </Card>
+                        </header>
+                        <div className='flex flex-col gap-3 px-3 pb-3 @2xl:px-4 @2xl:pb-4'>
+                          {v3CoachNotes.length === 0 ? (
+                            <p
+                              className='m-0 rounded-2xl border-2 border-dashed p-4 text-sm font-semibold text-muted-foreground'
+                              style={{ borderColor: 'var(--border)' }}
+                            >
+                              No hay notas maestras cerradas en la semana {v3CoachNotesPeriodClamped}.
+                            </p>
+                          ) : (
+                            v3CoachNotes.map((note) => {
+                              const sent = Boolean(note.feedbackLoomUrl?.trim() || note.feedbackNotes?.trim())
+                              const number = getMasterNoteNumber(note.name)
+                              return (
+                                <div
+                                  key={`v3-note-${note.id}`}
+                                  className='flex flex-col gap-3 rounded-2xl border-2 p-3'
+                                  style={{
+                                    borderColor: note.waitingFromWeek
+                                      ? 'color-mix(in oklab, var(--ica-gold) 55%, transparent)'
+                                      : 'var(--border)',
+                                  }}
+                                >
+                                  <div className='flex flex-wrap items-center gap-3'>
+                                    <MasterNoteBadge name={note.name} done={sent} />
+                                    <span className='min-w-0 flex-1 leading-tight'>
+                                      <b className='block font-display text-base font-extrabold'>
+                                        {number ? `Nota maestra ${number}` : note.name}
+                                      </b>
+                                      <span className='text-xs font-bold text-muted-foreground'>
+                                        Cerrada el {formatDateTime(note.closedAt)}
+                                      </span>
+                                    </span>
+                                    {note.waitingFromWeek ? (
+                                      <MasterNoteChip tone='gold'>
+                                        Semana {note.waitingFromWeek} · esperando tu feedback
+                                      </MasterNoteChip>
+                                    ) : sent ? (
+                                      <MasterNoteChip tone='ok'>Feedback enviado</MasterNoteChip>
+                                    ) : (
+                                      <MasterNoteChip tone='muted'>Sin feedback</MasterNoteChip>
+                                    )}
+                                  </div>
+
+                                  <MasterNoteCoachAudioPlayer
+                                    noteId={note.id}
+                                    audioUrl={note.audioUrl}
+                                    audioChunks={note.audioChunks}
+                                    totalDurationMs={note.totalDurationMs}
+                                  />
+
+                                  <div className='grid items-start gap-3 @3xl:grid-cols-2'>
+                                    {/* Luis, 16 Oct: as in the old coaching, the phrases the student used in this note. */}
+                                    <div className='flex flex-col gap-2'>
+                                      <p className='ica-label m-0'>Frases de la nota maestra</p>
+                                      {note.activatedPhrases.length === 0 ? (
+                                        <p className='m-0 text-sm font-semibold text-muted-foreground'>No hay frases activadas en esta nota.</p>
+                                      ) : (
+                                        <ol className='m-0 flex list-none flex-col gap-2 p-0 lg:max-h-96 lg:overflow-y-auto'>
+                                          {note.activatedPhrases.map((phrase, index) => (
+                                            <li
+                                              key={phrase.chunkId}
+                                              className='flex items-start gap-2.5 rounded-2xl p-2.5'
+                                              style={{ background: 'var(--muted)' }}
+                                            >
+                                              <span
+                                                className='grid size-7 shrink-0 place-items-center rounded-full text-xs font-black'
+                                                style={{ background: 'var(--ica-a-soft)', color: 'var(--ica-a-ink)' }}
+                                              >
+                                                {index + 1}
+                                              </span>
+                                              <span className='min-w-0 flex-1 leading-tight'>
+                                                <b className='block text-[15px]'>{phrase.generatedPhrase || 'Sin frase registrada'}</b>
+                                                <span className='text-xs font-semibold text-muted-foreground'>
+                                                  {phrase.translation || 'Sin traducción'} · {formatSeconds(Math.round(phrase.durationMs / 1000))}
+                                                </span>
+                                              </span>
+                                            </li>
+                                          ))}
+                                        </ol>
+                                      )}
+                                    </div>
+
+                                    <div className='flex flex-col gap-2.5 rounded-2xl p-3' style={{ background: 'var(--ica-gold-soft)' }}>
+                                      <p className='m-0 text-[11px] font-black tracking-[0.1em] uppercase' style={{ color: 'var(--ica-gold-ink)' }}>
+                                        Tu feedback
+                                      </p>
+                                      <label className='flex flex-col gap-1 text-sm font-bold'>
+                                        Vídeo de feedback (Loom)
+                                        <Input
+                                          value={feedbackLoomDraftByNoteId[note.id] || ''}
+                                          onChange={(event) =>
+                                            setFeedbackLoomDraftByNoteId((prev) => ({
+                                              ...prev,
+                                              [note.id]: event.target.value,
+                                            }))
+                                          }
+                                          placeholder='https://www.loom.com/share/...'
+                                          className='rounded-xl bg-card'
+                                        />
+                                      </label>
+                                      <label className='flex flex-col gap-1 text-sm font-bold'>
+                                        Notas para el alumno
+                                        <Textarea
+                                          value={feedbackNotesDraftByNoteId[note.id] || ''}
+                                          onChange={(event) =>
+                                            setFeedbackNotesDraftByNoteId((prev) => ({
+                                              ...prev,
+                                              [note.id]: event.target.value,
+                                            }))
+                                          }
+                                          rows={5}
+                                          className='rounded-xl bg-card'
+                                        />
+                                      </label>
+                                      <button
+                                        type='button'
+                                        onClick={() => void handleSaveFeedback(note.id)}
+                                        disabled={savingFeedbackNoteId === note.id}
+                                        className='ica-press inline-flex w-fit items-center rounded-xl px-5 py-2.5 text-sm font-black disabled:opacity-60'
+                                        style={{ background: 'var(--ica-gold)', color: '#3d2a00', boxShadow: '0 4px 0 var(--ica-gold-edge)' }}
+                                      >
+                                        {savingFeedbackNoteId === note.id
+                                          ? 'Guardando...'
+                                          : sent
+                                            ? 'Guardar cambios'
+                                            : 'Guardar feedback'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })
+                          )}
+                        </div>
+                      </div>
+                    </section>
                   }
                 />
               </>

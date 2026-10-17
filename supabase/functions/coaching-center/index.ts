@@ -920,6 +920,64 @@ async function fetchClosedNotesByWeekForSession(
   return output
 }
 
+/** Coaching v2 board: the student's closed master notes since week 1 opened, with the coach's
+ *  feedback. The student sees them in her board (Luis, 17 Oct: the feedback was saved but the
+ *  v2 board never showed it). Newest first; an error only leaves the list empty. */
+type CoachingV2BoardMasterNote = {
+  id: string
+  name: string
+  closedAt: string
+  feedbackLoomUrl: string | null
+  feedbackNotes: string | null
+}
+
+async function fetchV2BoardMasterNotes(
+  // deno-lint-ignore no-explicit-any
+  adminClient: any,
+  sessionRow: Pick<CoachingV2SessionRow, 'user_id' | 'target_lang'>,
+  activations: CoachingV2PeriodActivationRow[],
+): Promise<CoachingV2BoardMasterNote[]> {
+  const startedAt = activations
+    .map((row) => row.activated_at)
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .map((value) => new Date(value))
+    .filter((value) => !Number.isNaN(value.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime())[0]
+    ?.toISOString()
+  if (!startedAt) return []
+
+  const { data, error } = await adminClient
+    .from('master_notes')
+    .select('id, name, closed_at, updated_at, coaching_feedback_loom_url, coaching_feedback_notes')
+    .eq('user_id', sessionRow.user_id)
+    .eq('target_lang', sessionRow.target_lang)
+    .eq('state', 'closed')
+    .or(`closed_at.gte.${startedAt},and(closed_at.is.null,updated_at.gte.${startedAt})`)
+  if (error) return []
+
+  const notes: CoachingV2BoardMasterNote[] = []
+  for (const row of (data || []) as Array<{
+    id: string
+    name: string | null
+    closed_at: string | null
+    updated_at: string | null
+    coaching_feedback_loom_url: string | null
+    coaching_feedback_notes: string | null
+  }>) {
+    const closedAt = safeString(row.closed_at) || safeString(row.updated_at)
+    if (!closedAt) continue
+    notes.push({
+      id: String(row.id),
+      name: safeString(row.name) || 'Nota Maestra: Sin título',
+      closedAt,
+      feedbackLoomUrl: normalizeUrl(safeString(row.coaching_feedback_loom_url)),
+      feedbackNotes: safeString(row.coaching_feedback_notes),
+    })
+  }
+  notes.sort((a, b) => b.closedAt.localeCompare(a.closedAt))
+  return notes
+}
+
 function serializeWeeklyObjectives(
   rows: CoachingSessionWeeklyObjectiveRow[],
 ): Record<string, unknown> {
@@ -2919,6 +2977,7 @@ Deno.serve(async (req) => {
     }
     const focusExerciseAttempts = Array.from(latestAttemptByFocus.values())
     const periodFocuses = focuses.filter((row) => row.periodNumber === periodNumber)
+    const masterNotes = await fetchV2BoardMasterNotes(auth.adminClient, sessionRow, activations)
     return jsonResponse(200, {
       session: {
         id: sessionRow.id,
@@ -2951,6 +3010,7 @@ Deno.serve(async (req) => {
               reportImageUrl: periodReportImageSigned.data?.signedUrl || null,
             })
           : null,
+      masterNotes,
       coachers: buildV2CoachersMetadata({
         sessionRow,
         namesById: coachNamesById,
@@ -3367,6 +3427,7 @@ Deno.serve(async (req) => {
     }
     const focusExerciseAttempts = Array.from(latestAttemptByFocus.values())
     const periodFocuses = focuses.filter((row) => row.periodNumber === periodNumber)
+    const masterNotes = await fetchV2BoardMasterNotes(admin.adminClient, sessionRow, activations)
     return jsonResponse(200, {
       session: {
         id: sessionRow.id,
@@ -3399,6 +3460,7 @@ Deno.serve(async (req) => {
               reportImageUrl: periodReportImageSigned.data?.signedUrl || null,
             })
           : null,
+      masterNotes,
       coachers: buildV2CoachersMetadata({
         sessionRow,
         namesById: coachNamesById,

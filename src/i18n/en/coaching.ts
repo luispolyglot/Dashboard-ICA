@@ -594,5 +594,17 @@ const en: Record<string, string> = {
   "Guarda la transcripción para poder preparar las tareas con IA.": "Save the transcript to prepare the tasks with AI.",
   "… {n} líneas más …": "… {n} more lines …",
   "Esta función aún no está en el servidor: funcionará cuando se suba la nueva versión.": "This feature isn't on the server yet: it will work once the new version is uploaded.",
+  // Notas maestras en el tablero del coaching (Luis, 17 Oct)
+  "tu coach": "your coach",
+  "Cada nota maestra que cierras, {coach} la escucha y te deja su feedback aquí.": "{coach} listens to every master note you close and leaves you feedback here.",
+  "{n} con feedback": "{n} with feedback",
+  "Cuando cierres tu primera nota maestra, aquí verás el feedback de {coach}.": "When you close your first master note, the feedback from {coach} will appear here.",
+  "Semana {week} · cerrada el {date}": "Week {week} · closed on {date}",
+  "Feedback de {coach}": "Feedback from {coach}",
+  "Esperando feedback": "Waiting for feedback",
+  "Feedback de {name}": "Feedback on {name}",
+  "Ver el vídeo de tu feedback": "Watch your feedback video",
+  "Notas de {coach}": "Notes from {coach}",
+  "{coach} aún no la ha escuchado. Te llegará un aviso cuando deje su feedback.": "{coach} hasn't listened to it yet. You'll get a notice when the feedback is ready.",
 }
 export default en

@@ -91,6 +91,7 @@ import { gameSfx } from "../game/sfx";
 import { CoachingWeekRingsStrip } from "../components/coaching/CoachingWeekRings";
 import { CoachTaskAudioFeedback, StudentTaskAudio } from "../components/coaching/CoachingTaskAudio";
 import { ClassTranscriptPanel, ReportAiPanel, useClassAiMaterial } from "../components/coaching/CoachingClassAi";
+import { StudentMasterNotes } from "../components/coaching/CoachingMasterNotes";
 import { CoachingWeeklyReportTeaser, CoachingWeeklyReportView, focusBaselineFromSnapshot } from "../components/coaching/CoachingWeeklyReport";
 import { FocusStairs } from "../components/coaching/FocusStairs";
 import type { CoachingTaskAudioAnswer } from "../services/coaching";
@@ -3161,6 +3162,17 @@ export function CoachingV3SessionBoard({
             </Card>
           </div>
         </section>
+
+        {/* Luis, 17 Oct: the coach's feedback on each master note (it was saved but never shown here). */}
+        {mode !== "coach" ? (
+          <section className="mt-6">
+            <StudentMasterNotes
+              notes={board.masterNotes || []}
+              periods={board.periodActivations}
+              coachName={coachDisplayName || null}
+            />
+          </section>
+        ) : null}
 
         {mode === "coach" && coachExtraContent ? (
           <section className="mt-10">{coachExtraContent}</section>

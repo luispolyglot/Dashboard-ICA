@@ -423,6 +423,16 @@ export type CoachingV2SessionBoard = {
   coachers: CoachingV2Coachers
   snapshot: unknown[] | null
   previousSnapshot: unknown[] | null
+  /** Closed master notes since week 1, newest first, with the coach's feedback (Luis, 17 Oct). */
+  masterNotes?: CoachingV2MasterNote[]
+}
+
+export type CoachingV2MasterNote = {
+  id: string
+  name: string
+  closedAt: string
+  feedbackLoomUrl: string | null
+  feedbackNotes: string | null
 }
 
 export class CoachingRequestError extends Error {
