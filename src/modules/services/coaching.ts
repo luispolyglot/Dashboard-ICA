@@ -308,11 +308,40 @@ export type CoachingV2PeriodReport = {
   reportText: string | null
   reportImagePath: string | null
   reportImageUrl: string | null
+  /** Structured report written with the AI and published by the coach (Luis, 15 Oct). */
+  reportData?: CoachingWeeklyReportData | null
   createdBy: string | null
   updatedBy: string | null
   createdAt: string
   updatedAt: string
 }
+
+/* Weekly report written from the two class transcripts (Luis, 15 Oct). The server cleans it
+   (supabase/functions/coaching-center/class-ai.ts → parseWeeklyReport). */
+export type CoachingWeeklyReportData = {
+  version: 1
+  headline: string
+  wins: string[]
+  corrections: Array<{ said: string; better: string; note: string }>
+  suggestions: Array<{ title: string; detail: string }>
+  words: Array<{ target: string; native: string }>
+  focusNote: string
+}
+
+export type CoachingWeeklyReportDraft = {
+  data: CoachingWeeklyReportData
+  model: string | null
+  generatedAt: string
+  updatedAt: string
+}
+
+export type CoachingClassTranscript = {
+  classIndex: 1 | 2
+  transcript: string
+  updatedAt: string
+}
+
+export type CoachingProposedClassTask = { text: string; audio: boolean; why: string }
 
 export type CoachingV2Coachers = {
   primaryCoachDisplayName: string
@@ -394,6 +423,16 @@ export type CoachingV2SessionBoard = {
   coachers: CoachingV2Coachers
   snapshot: unknown[] | null
   previousSnapshot: unknown[] | null
+  /** Closed master notes since week 1, newest first, with the coach's feedback (Luis, 17 Oct). */
+  masterNotes?: CoachingV2MasterNote[]
+}
+
+export type CoachingV2MasterNote = {
+  id: string
+  name: string
+  closedAt: string
+  feedbackLoomUrl: string | null
+  feedbackNotes: string | null
 }
 
 export class CoachingRequestError extends Error {
@@ -1104,4 +1143,131 @@ export async function submitCoachingV2StudentClassReport(input: {
   )
 
   return data.class || null
+}
+
+
+/* ───────── AI tasks and weekly report from the class transcripts (Luis, 15 Oct) ───────── */
+
+/** Like invokeCoachingFunction, but shows the server's own message (e.g. «Pega primero la transcripción»). */
+async function invokeCoachingCenterWithMessage<T>(body: Record<string, unknown>, fallbackMessage: string): Promise<T> {
+  if (!supabase) throw new CoachingRequestError(t('Supabase no está configurado.'))
+  const { data, error } = await supabase.functions.invoke<T>('coaching-center', { body })
+  if (error) {
+    const status = getErrorStatus(error)
+    let message: string | null = null
+    const context = (error as { context?: unknown }).context
+    if (context && typeof (context as Response).json === 'function') {
+      try {
+        const parsed = (await (context as Response).clone().json()) as { error?: unknown }
+        if (typeof parsed?.error === 'string' && status !== 500) message = parsed.error
+      } catch {
+        message = null
+      }
+    }
+    if (status === 403) throw new CoachingRequestError(t('No tienes permisos para esta acción.'), 403)
+    // The server in use does not have this action yet (e.g. the app run locally against an older one).
+    if (message === 'Unknown action') {
+      throw new CoachingRequestError(t('Esta función aún no está en el servidor: funcionará cuando se suba la nueva versión.'), status)
+    }
+    throw new CoachingRequestError(message ? t(message) : t(fallbackMessage), status)
+  }
+  if (typeof data === 'undefined') throw new CoachingRequestError(t('Respuesta vacía del servidor.'))
+  return data as T
+}
+
+export async function fetchCoachingClassAiMaterial(input: { sessionId: string; periodNumber: number }): Promise<{
+  transcripts: CoachingClassTranscript[]
+  reportDraft: CoachingWeeklyReportDraft | null
+}> {
+  const data = await invokeCoachingCenterWithMessage<{
+    transcripts?: CoachingClassTranscript[]
+    reportDraft?: CoachingWeeklyReportDraft | null
+  }>({ action: 'v2-get-class-ai-material', ...input }, 'No se pudieron cargar las transcripciones.')
+  return { transcripts: data.transcripts || [], reportDraft: data.reportDraft || null }
+}
+
+export async function saveCoachingClassTranscript(input: {
+  sessionId: string
+  periodNumber: number
+  classIndex: 1 | 2
+  transcript: string
+}): Promise<void> {
+  await invokeCoachingCenterWithMessage({ action: 'v2-save-class-transcript', ...input }, 'No se pudo guardar la transcripción.')
+}
+
+/** Saves the transcript (when given) and returns the 3 tasks the AI proposes. Nothing is published. */
+export async function generateCoachingClassTasks(input: {
+  sessionId: string
+  periodNumber: number
+  classIndex: 1 | 2
+  transcript?: string
+}): Promise<CoachingProposedClassTask[]> {
+  const data = await invokeCoachingCenterWithMessage<{ tasks?: CoachingProposedClassTask[] }>(
+    { action: 'v2-generate-class-tasks', ...input },
+    'No se pudieron preparar las tareas.',
+  )
+  return data.tasks || []
+}
+
+/** The report as the coach keeps it and as the student sees it (Luis, 16 Oct: it publishes itself). */
+export type CoachingPeriodReportResult = {
+  draft: CoachingWeeklyReportDraft | null
+  /** Null when the report is withdrawn. */
+  periodReport: CoachingV2PeriodReport | null
+}
+
+type ReportResponse = { reportDraft?: CoachingWeeklyReportDraft | null; periodReport?: CoachingV2PeriodReport | null }
+
+function toReportResult(data: ReportResponse): CoachingPeriodReportResult {
+  return { draft: data.reportDraft || null, periodReport: data.periodReport || null }
+}
+
+/** Writes the weekly report with the AI and publishes it. */
+export async function generateCoachingPeriodReport(input: {
+  sessionId: string
+  periodNumber: number
+}): Promise<CoachingPeriodReportResult> {
+  const data = await invokeCoachingCenterWithMessage<ReportResponse>(
+    { action: 'v2-generate-period-report', ...input },
+    'No se pudo preparar el reporte.',
+  )
+  return toReportResult(data)
+}
+
+/** The coach asks the AI for a change («quita la corrección del pasado»); it goes live. */
+export async function reviseCoachingPeriodReport(input: {
+  sessionId: string
+  periodNumber: number
+  request: string
+}): Promise<CoachingPeriodReportResult> {
+  const data = await invokeCoachingCenterWithMessage<ReportResponse>(
+    { action: 'v2-revise-period-report', ...input },
+    'La IA no pudo cambiar el reporte.',
+  )
+  return toReportResult(data)
+}
+
+/** The coach's own edit; it goes live unless the report was withdrawn. */
+export async function saveCoachingPeriodReportDraft(input: {
+  sessionId: string
+  periodNumber: number
+  reportData: CoachingWeeklyReportData
+}): Promise<CoachingPeriodReportResult> {
+  const data = await invokeCoachingCenterWithMessage<ReportResponse>(
+    { action: 'v2-save-period-report-draft', ...input },
+    'No se pudo guardar el reporte.',
+  )
+  return toReportResult(data)
+}
+
+export async function publishCoachingPeriodReport(input: {
+  sessionId: string
+  periodNumber: number
+  unpublish?: boolean
+}): Promise<CoachingV2PeriodReport | null> {
+  const data = await invokeCoachingCenterWithMessage<{ periodReport?: CoachingV2PeriodReport | null }>(
+    { action: 'v2-publish-period-report', ...input },
+    'No se pudo publicar el reporte.',
+  )
+  return data.periodReport || null
 }

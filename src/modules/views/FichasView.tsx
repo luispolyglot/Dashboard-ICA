@@ -26,7 +26,6 @@ import {
   CYCLE_CHEST_MIN,
   FLASH_STREAK_MILESTONES,
   STREAK_MILESTONES,
-  DAILY_LIMITS,
   EXTRA_CHALLENGE_COST,
   LIMIT_PHASE,
   PHASE_BOOST_COST,
@@ -212,7 +211,7 @@ export function FichasView() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { total, realBalance, entries, unusedPasses: slots, challengeWinsThisWeek, refresh } = useFichas(user?.id)
-  const { limits, used, boosted } = useDailyLimits()
+  const { base, limits, used, boosted } = useDailyLimits()
   const [confirming, setConfirming] = useState<DailyLimitKey | 'challenge' | 'flag' | null>(null)
   const [flagWon, setFlagWon] = useState<string | null>(null)
   const [purchaseBusy, setPurchaseBusy] = useState(false)
@@ -265,7 +264,7 @@ export function FichasView() {
       gameSfx.celebrate()
       toast.success(t('{phase} ampliada hoy', { phase }), {
         description: t('Hoy puedes llegar a {n} {what}.', {
-          n: DAILY_LIMITS[kind] * PHASE_BOOST_MULTIPLIER,
+          n: base[kind] * PHASE_BOOST_MULTIPLIER,
           what: t(LIMIT_LABELS[kind].many),
         }),
       })
@@ -425,8 +424,8 @@ export function FichasView() {
               }
               title={t('Duplica tu {phase}', { phase: t(LIMIT_PHASE[row.key].name) })}
               text={t('Solo hoy: {n} {what} en vez de {base}.', {
-                n: DAILY_LIMITS[row.key] * PHASE_BOOST_MULTIPLIER,
-                base: DAILY_LIMITS[row.key],
+                n: base[row.key] * PHASE_BOOST_MULTIPLIER,
+                base: base[row.key],
                 what: t(LIMIT_LABELS[row.key].many),
               })}
               right={

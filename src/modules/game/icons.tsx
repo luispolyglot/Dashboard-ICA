@@ -465,3 +465,100 @@ export function ChatBubblesIcon({ size = 24, className }: IconProps) {
     </svg>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Coaching weekly report (Luis, 16 Oct: «que se vea como un juego»)
+// ---------------------------------------------------------------------------
+
+/** The weekly report: a sheet with ICA-blue header and a gold seal. Locked: greyed. */
+export function ReportGlyph({ size = 120, className, locked = false }: IconProps & { locked?: boolean }) {
+  return (
+    <svg viewBox='0 0 120 120' width={size} height={size} className={className} aria-hidden='true' style={{ flexShrink: 0, overflow: 'visible' }}>
+      <rect x='30' y='14' width='64' height='84' rx='10' fill={locked ? '#8a93b8' : '#cfe7f7'} transform='rotate(8 62 56)' />
+      <rect x='22' y='16' width='64' height='86' rx='10' fill={locked ? '#c3c9df' : '#e9f5fd'} />
+      <rect x='22' y='16' width='64' height='82' rx='10' fill={locked ? '#dfe3f0' : '#ffffff'} />
+      <path d='M22 26a10 10 0 0 1 10-10h44a10 10 0 0 1 10 10v8H22z' fill={locked ? '#9aa6c8' : '#3aaeee'} />
+      <rect x='30' y='22' width='26' height='5' rx='2.5' fill='#ffffff' opacity='0.85' />
+      <g stroke={locked ? '#b4bcd6' : '#bfdcf0'} strokeWidth='4' strokeLinecap='round'>
+        <path d='M32 46h44' />
+        <path d='M32 57h36' />
+        <path d='M32 68h40' />
+        <path d='M32 79h24' />
+      </g>
+      {!locked ? (
+        <g stroke='#1faf5b' strokeWidth='3.4' strokeLinecap='round' strokeLinejoin='round' fill='none'>
+          <path d='M71 55l3 3 6-7' />
+          <path d='M61 77l3 3 6-7' />
+        </g>
+      ) : null}
+      <g transform='translate(80 86)'>
+        <path d='M-9 6l-5 20 9-5 5 8 4-19z' fill={locked ? '#9aa6c8' : '#1e5fb4'} />
+        <path d='M9 6l5 20-9-5-5 8-4-19z' fill={locked ? '#7d89ad' : '#3aaeee'} />
+        <circle r='17' fill={locked ? '#b9a25a' : '#E0A500'} />
+        <circle r='15.5' cy='-1' fill={locked ? '#d8c27a' : '#FFC72C'} />
+        <circle r='11' cy='-1' fill='none' stroke='#FFF1B8' strokeWidth='1.6' strokeDasharray='2.2 2.6' opacity={locked ? 0.4 : 1} />
+        <path d='M0 -8.5l2.5 5 5.5.8-4 3.9.9 5.5L0 4.1l-4.9 2.6.9-5.5-4-3.9 5.5-.8z' fill={locked ? '#a8924a' : '#E0A500'} />
+      </g>
+      {!locked ? (
+        <g fill='#ffffff'>
+          <path d='M104 14l1.6 4 4 1.6-4 1.6-1.6 4-1.6-4-4-1.6 4-1.6z' />
+          <path d='M12 40l1.2 3 3 1.2-3 1.2-1.2 3-1.2-3-3-1.2 3-1.2z' />
+          <path d='M108 70l1 2.4 2.4 1-2.4 1-1 2.4-1-2.4-2.4-1 2.4-1z' />
+        </g>
+      ) : null}
+    </svg>
+  )
+}
+
+/** Light bulb (tips). */
+export function BulbGlyph({ size = 24, className }: IconProps) {
+  return (
+    <svg viewBox='0 0 24 24' width={size} height={size} className={className} aria-hidden='true' style={{ flexShrink: 0 }}>
+      <path d='M12 2.2a7 7 0 0 0-4.2 12.6c.7.6 1.2 1.4 1.2 2.3v.6h6v-.6c0-.9.5-1.7 1.2-2.3A7 7 0 0 0 12 2.2z' fill='#FFC72C' />
+      <path d='M8.2 6.4a4.6 4.6 0 0 1 3.4-2' stroke='#FFF1B8' strokeWidth='1.6' strokeLinecap='round' fill='none' />
+      <rect x='9' y='17.8' width='6' height='2' rx='0.8' fill='#94A3B8' />
+      <rect x='9.6' y='19.8' width='4.8' height='2' rx='0.9' fill='#64748B' />
+      <path d='M10.6 13.6 12 10.6l1.4 3' stroke='#E0A500' strokeWidth='1.3' strokeLinecap='round' strokeLinejoin='round' fill='none' />
+    </svg>
+  )
+}
+
+/** Gold star (what the student did well). */
+export function StarGlyph({ size = 24, className }: IconProps) {
+  return (
+    <svg viewBox='0 0 24 24' width={size} height={size} className={className} aria-hidden='true' style={{ flexShrink: 0 }}>
+      <path d='M12 2.4l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.2l-5.8 3.1 1.1-6.5L2.6 9.2l6.5-.9z' fill='#FFC72C' stroke='#E0A500' strokeWidth='1.2' strokeLinejoin='round' />
+      <path d='M9.2 9.8l1.5-.2' stroke='#FFF1B8' strokeWidth='1.5' strokeLinecap='round' />
+    </svg>
+  )
+}
+
+/** Gold padlock (locked report). */
+export function PadlockGlyph({ size = 24, className }: IconProps) {
+  return (
+    <svg viewBox='0 0 24 24' width={size} height={size} className={className} aria-hidden='true' style={{ flexShrink: 0 }}>
+      <path d='M7.5 10V7.6a4.5 4.5 0 0 1 9 0V10' stroke='#94A3B8' strokeWidth='2.4' fill='none' strokeLinecap='round' />
+      <rect x='4.5' y='10' width='15' height='11.5' rx='3' fill='#E0A500' />
+      <rect x='4.5' y='10' width='15' height='10' rx='3' fill='#FFC72C' />
+      <circle cx='12' cy='15' r='1.8' fill='#7A5000' />
+      <rect x='11.2' y='15.5' width='1.6' height='3' rx='0.8' fill='#7A5000' />
+    </svg>
+  )
+}
+
+/** Gold seal with a tick (all cards turned). */
+export function SealGlyph({ size = 96, className }: IconProps) {
+  const points = Array.from({ length: 16 }, (_, i) => {
+    const angle = (i / 16) * Math.PI * 2
+    const radius = i % 2 ? 40 : 46
+    return `${50 + radius * Math.cos(angle)},${50 + radius * Math.sin(angle)}`
+  }).join(' ')
+  return (
+    <svg viewBox='0 0 100 100' width={size} height={size} className={className} aria-hidden='true' style={{ flexShrink: 0 }}>
+      <polygon points={points} fill='#E0A500' />
+      <circle cx='50' cy='50' r='36' fill='#FFC72C' />
+      <circle cx='50' cy='50' r='29' fill='none' stroke='#FFF1B8' strokeWidth='2.5' strokeDasharray='3 4' />
+      <path d='M36 51l9 9 19-21' stroke='#1b2450' strokeWidth='8' strokeLinecap='round' strokeLinejoin='round' fill='none' />
+    </svg>
+  )
+}
