@@ -42,7 +42,19 @@ import {
 import {
   hasCoachGuidelinesCompleted,
 } from './v2-class.ts'
-import { evaluateCoachingFocusExerciseAttempt } from '../_shared/coaching-focus-exercise.ts'
+import { createAnthropicToolCaller, evaluateCoachingFocusExerciseAttempt } from '../_shared/coaching-focus-exercise.ts'
+import { trackAnthropicUsage } from '../_shared/ai-usage.ts'
+import {
+  CLASS_TASKS_TOOL,
+  WEEKLY_REPORT_TOOL,
+  buildClassTasksPrompt,
+  buildWeeklyReportPrompt,
+  normalizeTranscript,
+  parseClassTasks,
+  parseWeeklyReport,
+  type ClassAiContext,
+  type WeeklyReportData,
+} from './class-ai.ts'
 import {
   buildTaskAudioPath,
   clampAudioSeconds,
@@ -77,6 +89,12 @@ type CoachingCenterPayload = {
   /** Feedback a ganadores: search text (Luis, 11 Oct). */
   query?: string
   answers?: unknown
+  // AI tasks and weekly report from the class transcripts (Luis, 15 Oct)
+  transcript?: unknown
+  // v2-revise-period-report: the change the coach asks the AI for.
+  request?: unknown
+  reportData?: unknown
+  unpublish?: unknown
   // Audio tasks (Luis, 6 Oct)
   taskIndex?: number
   mimeType?: string
@@ -283,6 +301,7 @@ type CoachingV2PeriodReportRow = {
   period_number: number
   report_text: string | null
   report_image_path: string | null
+  report_data: unknown
   created_by: string | null
   updated_by: string | null
   created_at: string
@@ -314,6 +333,8 @@ type CoachingV2PeriodReport = {
   reportText: string | null
   reportImagePath: string | null
   reportImageUrl: string | null
+  /** Structured report written with the AI and published by the coach (15 Oct). */
+  reportData: WeeklyReportData | null
   createdBy: string | null
   updatedBy: string | null
   createdAt: string
@@ -1606,7 +1627,7 @@ async function fetchV2PeriodReport(input: {
   const { data, error } = await input.adminClient
     .from('coaching_v2_period_reports')
     .select(
-      'id, session_id, period_number, report_text, report_image_path, created_by, updated_by, created_at, updated_at',
+      'id, session_id, period_number, report_text, report_image_path, report_data, created_by, updated_by, created_at, updated_at',
     )
     .eq('session_id', input.sessionId)
     .eq('period_number', input.periodNumber)
@@ -1616,6 +1637,137 @@ async function fetchV2PeriodReport(input: {
   return { row: data || null, error: null }
 }
 
+
+/* ───────── AI tasks and weekly report from the class transcripts (Luis, 15 Oct) ───────── */
+
+const CLASS_AI_PHASE_LABELS: Array<[keyof CoachingV2FocusRow, string]> = [
+  ['phase_used', 'Dominado'],
+  ['phase_understood_explained', 'Entendido'],
+  ['phase_trained', 'Entrenado'],
+  ['phase_explained', 'Explicado'],
+]
+
+type ClassTranscriptRow = {
+  class_index: number
+  transcript: string
+  updated_at: string
+}
+
+type PeriodReportDraftRow = {
+  report_data: unknown
+  model: string | null
+  generated_at: string
+  updated_at: string
+}
+
+async function fetchClassTranscripts(
+  adminClient: any,
+  sessionId: string,
+  periodNumber: number,
+): Promise<{ rows: ClassTranscriptRow[]; error: string | null }> {
+  const { data, error } = await adminClient
+    .from('coaching_v2_class_transcripts')
+    .select('class_index, transcript, updated_at')
+    .eq('session_id', sessionId)
+    .eq('period_number', periodNumber)
+  if (error) return { rows: [], error: error.message }
+  return { rows: (data || []) as ClassTranscriptRow[], error: null }
+}
+
+async function saveClassTranscript(input: {
+  adminClient: any
+  sessionId: string
+  periodNumber: number
+  classIndex: number
+  transcript: string
+  userId: string
+}): Promise<string | null> {
+  const { error } = await input.adminClient.from('coaching_v2_class_transcripts').upsert(
+    {
+      session_id: input.sessionId,
+      period_number: input.periodNumber,
+      class_index: input.classIndex,
+      transcript: input.transcript,
+      created_by: input.userId,
+      updated_by: input.userId,
+    },
+    { onConflict: 'session_id,period_number,class_index' },
+  )
+  return error ? error.message : null
+}
+
+async function fetchPeriodReportDraft(
+  adminClient: any,
+  sessionId: string,
+  periodNumber: number,
+): Promise<{ row: PeriodReportDraftRow | null; error: string | null }> {
+  const { data, error } = await adminClient
+    .from('coaching_v2_period_report_drafts')
+    .select('report_data, model, generated_at, updated_at')
+    .eq('session_id', sessionId)
+    .eq('period_number', periodNumber)
+    .maybeSingle()
+  if (error) return { row: null, error: error.message }
+  return { row: (data as PeriodReportDraftRow | null) || null, error: null }
+}
+
+function toReportDraft(row: PeriodReportDraftRow | null) {
+  if (!row) return null
+  const data = parseWeeklyReport(row.report_data)
+  if (!data) return null
+  return { data, model: row.model, generatedAt: row.generated_at, updatedAt: row.updated_at }
+}
+
+/** Level, languages, student name and open focuses: what the AI needs besides the transcript. */
+async function buildClassAiBaseContext(input: {
+  adminClient: any
+  sessionRow: CoachingV2SessionRow
+  periodNumber: number
+}): Promise<Omit<ClassAiContext, 'classIndex' | 'teacherName' | 'previousTasks'>> {
+  const [namesResult, focusesResult] = await Promise.all([
+    fetchProfileDisplayNamesByIds(input.adminClient, [input.sessionRow.user_id]),
+    input.adminClient
+      .from('coaching_v2_focuses')
+      .select('id, session_id, period_number, focus_title, focus_comment, phase_explained, phase_trained, phase_understood_explained, phase_used, completed_at, archived_at, created_at, updated_at')
+      .eq('session_id', input.sessionRow.id)
+      .is('archived_at', null)
+      // Each week has its own copy of the focos: only this week's (all weeks gave old copies).
+      .eq('period_number', input.periodNumber)
+      .order('created_at', { ascending: true }),
+  ])
+  const studentName = namesResult.rows[0]?.displayName || null
+  const focusRows = ((focusesResult?.data || []) as CoachingV2FocusRow[]).slice(0, 6)
+  return {
+    targetLang: input.sessionRow.target_lang,
+    nativeLang: input.sessionRow.native_lang || 'Español',
+    level: input.sessionRow.level,
+    studentName: studentName && studentName !== 'Coach' ? firstWord(studentName) : null,
+    periodNumber: input.periodNumber,
+    focuses: focusRows.map((focus) => ({
+      title: focus.focus_title,
+      comment: safeString(focus.focus_comment),
+      phase: focus.completed_at
+        ? 'Dominado'
+        : CLASS_AI_PHASE_LABELS.find(([key]) => focus[key] === true)?.[1] || 'sin empezar',
+    })),
+  }
+}
+
+function getClassAiCaller(studentUserId: string, feature: string) {
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
+  if (!apiKey) return null
+  return createAnthropicToolCaller({
+    apiKey,
+    model: Deno.env.get('ANTHROPIC_COACHING_MODEL') || Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6',
+    baseUrl: Deno.env.get('ANTHROPIC_BASE_URL') || undefined,
+    timeoutMs: 140_000,
+    onUsage: (model, usage) => trackAnthropicUsage({ userId: studentUserId, feature }, model, usage),
+  })
+}
+
+function classAiModelName(): string {
+  return Deno.env.get('ANTHROPIC_COACHING_MODEL') || Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6'
+}
 
 type TaskAudioClassRow = {
   id: string
@@ -1706,6 +1858,7 @@ function toV2PeriodReport(input: {
     reportText: input.row.report_text,
     reportImagePath: safeString(input.row.report_image_path),
     reportImageUrl: input.reportImageUrl,
+    reportData: parseWeeklyReport(input.row.report_data),
     createdBy: input.row.created_by,
     updatedBy: input.row.updated_by,
     createdAt: input.row.created_at,
@@ -4441,14 +4594,28 @@ Deno.serve(async (req) => {
     const reportImagePath = safeString(payload.periodReportImagePath)
 
     if (!reportText && !reportImagePath) {
+      // A published AI report (report_data) stays: clearing the text and image only empties them.
       const { error: deleteError } = await admin.adminClient
         .from('coaching_v2_period_reports')
         .delete()
         .eq('session_id', sessionId)
         .eq('period_number', periodNumber)
-
+        .is('report_data', null)
       if (deleteError) return jsonResponse(500, { error: deleteError.message })
-      return jsonResponse(200, { ok: true, periodReport: null })
+
+      const { error: clearError } = await admin.adminClient
+        .from('coaching_v2_period_reports')
+        .update({ report_text: null, report_image_path: null, updated_by: admin.userId })
+        .eq('session_id', sessionId)
+        .eq('period_number', periodNumber)
+      if (clearError) return jsonResponse(500, { error: clearError.message })
+
+      const remaining = await fetchV2PeriodReport({ adminClient: admin.adminClient, sessionId, periodNumber })
+      if (remaining.error) return jsonResponse(500, { error: remaining.error })
+      return jsonResponse(200, {
+        ok: true,
+        periodReport: remaining.row ? toV2PeriodReport({ row: remaining.row, reportImageUrl: null }) : null,
+      })
     }
 
     const nowIso = new Date().toISOString()
@@ -4500,6 +4667,321 @@ Deno.serve(async (req) => {
         reportImageUrl: imageSigned.data?.signedUrl || null,
       }),
     })
+  }
+
+
+  // ── AI from the class transcripts (Luis, 15 Oct). Coach-only: the student never sees the
+  // transcripts or the drafts; tasks reach the student only when the coach saves the class, and
+  // the report only when the coach publishes it.
+  if (
+    action === 'v2-get-class-ai-material' ||
+    action === 'v2-save-class-transcript' ||
+    action === 'v2-generate-class-tasks' ||
+    action === 'v2-generate-period-report' ||
+    action === 'v2-revise-period-report' ||
+    action === 'v2-save-period-report-draft' ||
+    action === 'v2-publish-period-report'
+  ) {
+    const sessionId = safeString(payload.sessionId)
+    const periodNumber = normalizePeriodNumber(payload.periodNumber)
+    if (!sessionId || !periodNumber) {
+      return jsonResponse(400, { error: 'sessionId and periodNumber are required' })
+    }
+    const { row: sessionRow, error: sessionError } = await fetchCoachingV2Session(admin.adminClient, sessionId)
+    if (sessionError) return jsonResponse(500, { error: sessionError })
+    if (!sessionRow) return jsonResponse(404, { error: 'Coaching session not found' })
+    if (!canManageSession(admin, sessionRow.coach_user_id, sessionRow.support_coach_user_id)) {
+      return jsonResponse(403, { error: 'Forbidden' })
+    }
+    if (sessionRow.program_version !== 'v2') {
+      return jsonResponse(400, { error: 'Session is not v2' })
+    }
+
+    /** What the student sees: the structured report (null removes it; text and image stay). */
+    const publishPeriodReport = async (
+      reportData: WeeklyReportData | null,
+    ): Promise<{ periodReport: ReturnType<typeof toV2PeriodReport> | null; error: string | null }> => {
+      const existingReport = await fetchV2PeriodReport({ adminClient: admin.adminClient, sessionId, periodNumber })
+      if (existingReport.error) return { periodReport: null, error: existingReport.error }
+      if (existingReport.row) {
+        const { error } = await admin.adminClient
+          .from('coaching_v2_period_reports')
+          .update({ report_data: reportData, updated_by: admin.userId })
+          .eq('session_id', sessionId)
+          .eq('period_number', periodNumber)
+        if (error) return { periodReport: null, error: error.message }
+        if (!reportData && !safeString(existingReport.row.report_text) && !safeString(existingReport.row.report_image_path)) {
+          const { error: deleteError } = await admin.adminClient
+            .from('coaching_v2_period_reports')
+            .delete()
+            .eq('session_id', sessionId)
+            .eq('period_number', periodNumber)
+          if (deleteError) return { periodReport: null, error: deleteError.message }
+        }
+      } else if (reportData) {
+        const { error } = await admin.adminClient.from('coaching_v2_period_reports').insert({
+          session_id: sessionId,
+          period_number: periodNumber,
+          report_data: reportData,
+          created_by: admin.userId,
+          updated_by: admin.userId,
+        })
+        if (error) return { periodReport: null, error: error.message }
+      }
+      const published = await fetchV2PeriodReport({ adminClient: admin.adminClient, sessionId, periodNumber })
+      if (published.error) return { periodReport: null, error: published.error }
+      const imagePath = safeString(published.row?.report_image_path)
+      const imageSigned = imagePath
+        ? await admin.adminClient.storage.from('coaching-class-reports').createSignedUrl(imagePath, 60 * 60)
+        : { data: null }
+      return {
+        periodReport: published.row
+          ? toV2PeriodReport({ row: published.row, reportImageUrl: imageSigned.data?.signedUrl || null })
+          : null,
+        error: null,
+      }
+    }
+
+    if (action === 'v2-get-class-ai-material') {
+      const [transcripts, draft] = await Promise.all([
+        fetchClassTranscripts(admin.adminClient, sessionId, periodNumber),
+        fetchPeriodReportDraft(admin.adminClient, sessionId, periodNumber),
+      ])
+      if (transcripts.error) return jsonResponse(500, { error: transcripts.error })
+      if (draft.error) return jsonResponse(500, { error: draft.error })
+      return jsonResponse(200, {
+        ok: true,
+        transcripts: transcripts.rows.map((row) => ({
+          classIndex: row.class_index,
+          transcript: row.transcript,
+          updatedAt: row.updated_at,
+        })),
+        reportDraft: toReportDraft(draft.row),
+      })
+    }
+
+    if (action === 'v2-save-class-transcript' || action === 'v2-generate-class-tasks') {
+      const classIndex = normalizeClassIndex(payload.classIndex)
+      const hasNewTranscript = typeof payload.transcript === 'string'
+      let transcript: string | null = null
+
+      if (hasNewTranscript) {
+        if (!String(payload.transcript).trim() && action === 'v2-save-class-transcript') {
+          const { error } = await admin.adminClient
+            .from('coaching_v2_class_transcripts')
+            .delete()
+            .eq('session_id', sessionId)
+            .eq('period_number', periodNumber)
+            .eq('class_index', classIndex)
+          if (error) return jsonResponse(500, { error: error.message })
+          return jsonResponse(200, { ok: true, transcript: null })
+        }
+        transcript = normalizeTranscript(payload.transcript)
+        if (!transcript) {
+          return jsonResponse(400, { error: 'La transcripción es demasiado corta. Pega la transcripción completa de Loom.' })
+        }
+        const saveError = await saveClassTranscript({
+          adminClient: admin.adminClient,
+          sessionId,
+          periodNumber,
+          classIndex,
+          transcript,
+          userId: admin.userId,
+        })
+        if (saveError) return jsonResponse(500, { error: saveError })
+      }
+
+      if (action === 'v2-save-class-transcript') {
+        return jsonResponse(200, { ok: true, transcript: { classIndex, chars: transcript?.length || 0 } })
+      }
+
+      if (!transcript) {
+        const stored = await fetchClassTranscripts(admin.adminClient, sessionId, periodNumber)
+        if (stored.error) return jsonResponse(500, { error: stored.error })
+        transcript = stored.rows.find((row) => row.class_index === classIndex)?.transcript || null
+      }
+      if (!transcript) {
+        return jsonResponse(400, { error: 'Pega primero la transcripción de esta clase.' })
+      }
+
+      const caller = getClassAiCaller(sessionRow.user_id, 'coaching_class_tasks')
+      if (!caller) return jsonResponse(500, { error: 'Missing ANTHROPIC_API_KEY secret' })
+
+      const [baseContext, classResult, previousResult] = await Promise.all([
+        buildClassAiBaseContext({ adminClient: admin.adminClient, sessionRow, periodNumber }),
+        admin.adminClient
+          .from('coaching_session_classes')
+          .select('assigned_by_coach_user_id')
+          .eq('session_id', sessionId)
+          .eq('week_number', periodNumber)
+          .eq('class_index', classIndex)
+          .maybeSingle(),
+        periodNumber > 1
+          ? admin.adminClient
+              .from('coaching_session_classes')
+              .select('coach_guideline_1, coach_guideline_2, coach_guideline_3')
+              .eq('session_id', sessionId)
+              .eq('week_number', periodNumber - 1)
+              .eq('class_index', classIndex)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+      ])
+      const teacherId = safeString(classResult?.data?.assigned_by_coach_user_id)
+      const teacherNames = teacherId ? await fetchProfileDisplayNamesByIds(admin.adminClient, [teacherId]) : null
+      const previousRow = (previousResult?.data || null) as Record<string, unknown> | null
+      const previousTasks = previousRow
+        ? [previousRow.coach_guideline_1, previousRow.coach_guideline_2, previousRow.coach_guideline_3]
+            .map((value) => safeString(value))
+            .filter((value): value is string => Boolean(value))
+        : []
+
+      const context: ClassAiContext = {
+        ...baseContext,
+        classIndex: classIndex === 2 ? 2 : 1,
+        teacherName: teacherNames?.rows[0]?.displayName ? firstWord(teacherNames.rows[0].displayName) : null,
+        previousTasks,
+      }
+      const { system, prompt } = buildClassTasksPrompt(context, transcript)
+      let tasks = null
+      try {
+        tasks = parseClassTasks(
+          await caller({ system, prompt, tool: CLASS_TASKS_TOOL, maxTokens: 1500, temperature: 0.4 }),
+        )
+      } catch (error) {
+        console.error('coaching class tasks: AI failed', error instanceof Error ? error.message : error)
+        return jsonResponse(502, { error: 'La IA no ha respondido. Prueba otra vez en un momento.' })
+      }
+      if (!tasks) return jsonResponse(502, { error: 'La IA no ha devuelto 3 tareas válidas. Prueba otra vez.' })
+      return jsonResponse(200, { ok: true, tasks })
+    }
+
+    // Luis, 16 Oct: the report is published on its own; the coach can ask the AI for a change.
+    if (action === 'v2-generate-period-report' || action === 'v2-revise-period-report') {
+      const isRevision = action === 'v2-revise-period-report'
+      let revision: { current: WeeklyReportData; request: string } | null = null
+      if (isRevision) {
+        const request = safeString(payload.request)?.slice(0, 600) || null
+        if (!request) return jsonResponse(400, { error: 'Escribe qué quieres que cambie la IA.' })
+        const currentDraft = await fetchPeriodReportDraft(admin.adminClient, sessionId, periodNumber)
+        if (currentDraft.error) return jsonResponse(500, { error: currentDraft.error })
+        const current = toReportDraft(currentDraft.row)?.data || null
+        if (!current) return jsonResponse(404, { error: 'Aún no hay reporte de esta semana.' })
+        revision = { current, request }
+      }
+      const stored = await fetchClassTranscripts(admin.adminClient, sessionId, periodNumber)
+      if (stored.error) return jsonResponse(500, { error: stored.error })
+      const byClass = new Map(stored.rows.map((row) => [row.class_index, row.transcript]))
+      if (!byClass.get(1) || !byClass.get(2)) {
+        return jsonResponse(400, { error: 'Faltan transcripciones: el reporte se prepara con las dos clases de la semana.' })
+      }
+      const classesResult = await admin.adminClient
+        .from('coaching_session_classes')
+        .select('class_index, assigned_by_coach_user_id, loom_url')
+        .eq('session_id', sessionId)
+        .eq('week_number', periodNumber)
+      if (classesResult.error) return jsonResponse(500, { error: classesResult.error.message })
+      const classRows = (classesResult.data || []) as Array<{
+        class_index: number
+        assigned_by_coach_user_id: string | null
+        loom_url: string | null
+      }>
+      // Luis, 16 Oct: the report waits for the Loom of both classes, not only the transcripts.
+      const hasLoom = (classIndex: number) =>
+        Boolean(safeString(classRows.find((row) => row.class_index === classIndex)?.loom_url))
+      if (!hasLoom(1) || !hasLoom(2)) {
+        return jsonResponse(400, { error: 'Falta el Loom de alguna clase: el reporte se prepara con los dos Loom y sus transcripciones.' })
+      }
+      const caller = getClassAiCaller(sessionRow.user_id, 'coaching_weekly_report')
+      if (!caller) return jsonResponse(500, { error: 'Missing ANTHROPIC_API_KEY secret' })
+
+      const baseContext = await buildClassAiBaseContext({ adminClient: admin.adminClient, sessionRow, periodNumber })
+      const teacherIds = classRows.map((row) => safeString(row.assigned_by_coach_user_id)).filter((value): value is string => Boolean(value))
+      const teacherNames = await fetchProfileDisplayNamesByIds(admin.adminClient, teacherIds)
+      const nameById = new Map(teacherNames.rows.map((row) => [row.id, firstWord(row.displayName)]))
+      const teacherFor = (classIndex: number) => {
+        const id = safeString(classRows.find((row) => row.class_index === classIndex)?.assigned_by_coach_user_id)
+        return id ? nameById.get(id) || null : null
+      }
+
+      const { system, prompt } = buildWeeklyReportPrompt(
+        baseContext,
+        [
+          { classIndex: 1, teacherName: teacherFor(1), transcript: byClass.get(1) as string },
+          { classIndex: 2, teacherName: teacherFor(2), transcript: byClass.get(2) as string },
+        ],
+        revision,
+      )
+      let report: WeeklyReportData | null = null
+      try {
+        report = parseWeeklyReport(
+          await caller({ system, prompt, tool: WEEKLY_REPORT_TOOL, maxTokens: 4000, temperature: 0.4 }),
+        )
+      } catch (error) {
+        console.error('coaching weekly report: AI failed', error instanceof Error ? error.message : error)
+        return jsonResponse(502, { error: 'La IA no ha respondido. Prueba otra vez en un momento.' })
+      }
+      if (!report) return jsonResponse(502, { error: 'La IA no ha devuelto un reporte válido. Prueba otra vez.' })
+
+      const nowIso = new Date().toISOString()
+      const { error: draftError } = await admin.adminClient.from('coaching_v2_period_report_drafts').upsert(
+        {
+          session_id: sessionId,
+          period_number: periodNumber,
+          report_data: report,
+          model: classAiModelName(),
+          generated_by: admin.userId,
+          generated_at: nowIso,
+          updated_by: admin.userId,
+        },
+        { onConflict: 'session_id,period_number' },
+      )
+      if (draftError) return jsonResponse(500, { error: draftError.message })
+      const draft = await fetchPeriodReportDraft(admin.adminClient, sessionId, periodNumber)
+      if (draft.error) return jsonResponse(500, { error: draft.error })
+      const published = await publishPeriodReport(report)
+      if (published.error) return jsonResponse(500, { error: published.error })
+      return jsonResponse(200, { ok: true, reportDraft: toReportDraft(draft.row), periodReport: published.periodReport })
+    }
+
+    if (action === 'v2-save-period-report-draft') {
+      const report = parseWeeklyReport(payload.reportData)
+      if (!report) return jsonResponse(400, { error: 'El reporte necesita un título y al menos una corrección, sugerencia o palabra.' })
+      const existing = await fetchPeriodReportDraft(admin.adminClient, sessionId, periodNumber)
+      if (existing.error) return jsonResponse(500, { error: existing.error })
+      if (!existing.row) return jsonResponse(404, { error: 'No hay borrador de reporte para esta semana.' })
+      const { error } = await admin.adminClient
+        .from('coaching_v2_period_report_drafts')
+        .update({ report_data: report, updated_by: admin.userId })
+        .eq('session_id', sessionId)
+        .eq('period_number', periodNumber)
+      if (error) return jsonResponse(500, { error: error.message })
+      const draft = await fetchPeriodReportDraft(admin.adminClient, sessionId, periodNumber)
+      if (draft.error) return jsonResponse(500, { error: draft.error })
+      // The coach's edit goes live, unless the report was withdrawn («Retirar»).
+      const live = await fetchV2PeriodReport({ adminClient: admin.adminClient, sessionId, periodNumber })
+      if (live.error) return jsonResponse(500, { error: live.error })
+      let periodReport = null
+      if (live.row?.report_data) {
+        const published = await publishPeriodReport(report)
+        if (published.error) return jsonResponse(500, { error: published.error })
+        periodReport = published.periodReport
+      }
+      return jsonResponse(200, { ok: true, reportDraft: toReportDraft(draft.row), periodReport })
+    }
+
+    // v2-publish-period-report: publishes the saved report again (after «Retirar») or, with
+    // unpublish: true, removes the structured report (text and image stay).
+    const unpublish = payload.unpublish === true
+    let reportData: WeeklyReportData | null = null
+    if (!unpublish) {
+      const draft = await fetchPeriodReportDraft(admin.adminClient, sessionId, periodNumber)
+      if (draft.error) return jsonResponse(500, { error: draft.error })
+      reportData = toReportDraft(draft.row)?.data || null
+      if (!reportData) return jsonResponse(404, { error: 'No hay reporte para publicar.' })
+    }
+    const published = await publishPeriodReport(reportData)
+    if (published.error) return jsonResponse(500, { error: published.error })
+    return jsonResponse(200, { ok: true, periodReport: published.periodReport })
   }
 
   if (action === 'list-users') {
