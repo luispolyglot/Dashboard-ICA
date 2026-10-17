@@ -260,12 +260,13 @@ export function AddView({
   )
   const trimmedTarget = target.trim()
   const targetCharsCount = Array.from(target).length
+  // A repeated word is the same word in the language you learn, whatever native language it was
+  // saved with (Luis, 17 Oct: «bottle» when «bottiglia» is already there → Potenciar).
   const duplicateWord = cards.find(
     (card) =>
       normalizeComparableText(card.target) ===
         normalizeComparableText(trimmedTarget) &&
-      (card.targetLang || '') === config.targetLang &&
-      (card.nativeLang || '') === config.nativeLang,
+      (card.targetLang || '') === config.targetLang,
   )
   const isDuplicate = Boolean(trimmedTarget && duplicateWord)
   const showDuplicateWarning = isDuplicate && !saving && !saved

@@ -338,6 +338,7 @@ export function MasterNoteDetailView({
           phraseId: phrase?.id || '',
           target: (phrase?.generated_phrase || '').trim(),
           native: (phrase?.translation || '').trim(),
+          nativeLang: phrase?.native_lang ?? null,
         }))
         .filter((item) => item.phraseId && item.target && item.native),
     [activatedPhrasesInThisNote],

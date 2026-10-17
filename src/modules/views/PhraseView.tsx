@@ -525,12 +525,8 @@ export function PhraseView({
         typeof word.targetLang === 'string' &&
         word.targetLang.trim() !== '' &&
         word.targetLang !== config.targetLang
-      const mismatchedNative =
-        typeof word.nativeLang === 'string' &&
-        word.nativeLang.trim() !== '' &&
-        word.nativeLang !== config.nativeLang
-
-      return mismatchedTarget || mismatchedNative
+      // Words saved with another native language are fine (Baúl ICA por idioma objetivo).
+      return mismatchedTarget
     })
 
     if (hasLanguageMismatch) {

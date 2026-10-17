@@ -106,7 +106,7 @@ export function getDayUnlockWindow(trackMonth: string, dayIndex: number, now = n
 
 export async function listInstagramTrackMonths(
   targetLang: string,
-  nativeLang: string,
+  _nativeLang: string,
 ): Promise<string[]> {
   if (!supabase) return [getCurrentMonthDate()]
   const userId = await getCurrentUserId()
@@ -117,7 +117,6 @@ export async function listInstagramTrackMonths(
     .select('track_month')
     .eq('user_id', userId)
     .eq('target_lang', targetLang)
-    .eq('native_lang', nativeLang)
     .order('track_month', { ascending: false })
 
   if (error) {
@@ -132,7 +131,7 @@ export async function listInstagramTrackMonths(
 
 export async function listInstagramTrackPostsByMonth(
   targetLang: string,
-  nativeLang: string,
+  _nativeLang: string,
   trackMonth: string,
 ): Promise<InstagramTrackPostEntry[]> {
   if (!supabase) return []
@@ -144,7 +143,6 @@ export async function listInstagramTrackPostsByMonth(
     .select('id, track_month, day_index, post_url, created_at, updated_at')
     .eq('user_id', userId)
     .eq('target_lang', targetLang)
-    .eq('native_lang', nativeLang)
     .eq('track_month', trackMonth)
     .order('day_index', { ascending: true })
 
@@ -177,7 +175,7 @@ export async function upsertInstagramTrackPost(input: InstagramTrackPostInput): 
   const { data, error } = await supabase
     .from('instagram_track_posts')
     .upsert(payload, {
-      onConflict: 'user_id,target_lang,native_lang,track_month,day_index',
+      onConflict: 'user_id,target_lang,track_month,day_index',
     })
     .select('id, track_month, day_index, post_url, created_at, updated_at')
     .single()

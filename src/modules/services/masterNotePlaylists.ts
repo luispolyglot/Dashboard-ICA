@@ -91,9 +91,6 @@ export async function fetchMasterNotePlaylistsBundle(
   if (targetLang) {
     query = query.eq('target_lang', targetLang)
   }
-  if (nativeLang) {
-    query = query.eq('native_lang', nativeLang)
-  }
 
   const { data, error } = await query
   if (error) throw error

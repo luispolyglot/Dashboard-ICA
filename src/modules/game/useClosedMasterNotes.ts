@@ -31,7 +31,6 @@ export function useClosedMasterNotes(targetLang?: string, nativeLang?: string) {
         .eq('state', 'closed')
         .eq('target_lang', targetLang)
         .order('closed_at', { ascending: false })
-      if (nativeLang) query = query.eq('native_lang', nativeLang)
       const { data, error } = await query
       if (!active || error) return
       const next = (data || []).map((row) => ({

@@ -300,8 +300,9 @@ async function fetchSettingsByUser(
 }
 
 /**
- * Nivel de cada alumno para un par de idiomas: el de su barra de progreso
- * (user_meta_tracker). Si no la ha configurado, el nivel de sus ajustes (como PregúntICA).
+ * Nivel de cada alumno en un idioma objetivo: el de su barra de progreso (user_meta_tracker, uno
+ * por idioma objetivo: Baúl ICA por idioma objetivo, 17 Oct). Si no la ha configurado, el nivel de
+ * sus ajustes (como PregúntICA).
  */
 async function fetchLevelsForPair(input: {
   adminClient: AdminClient
@@ -312,14 +313,13 @@ async function fetchLevelsForPair(input: {
 }): Promise<Map<string, string | null>> {
   const levels = new Map<string, string | null>()
   const userIds = Array.from(new Set(input.userIds.filter(Boolean)))
-  if (userIds.length === 0 || !input.targetLang || !input.nativeLang) return levels
+  if (userIds.length === 0 || !input.targetLang) return levels
 
   const { data, error } = await input.adminClient
     .from('user_meta_tracker')
     .select('user_id, start_level, prior_ica_words, activation_words_total, confirmed_at')
     .in('user_id', userIds)
     .eq('target_lang', input.targetLang)
-    .eq('native_lang', input.nativeLang)
 
   if (error) throw new Error(error.message)
 
@@ -351,24 +351,30 @@ async function fetchLevelsForPair(input: {
 // Palabras ICA de cada alumno
 // ---------------------------------------------------------------------------
 
+/**
+ * Las palabras de un alumno en el idioma objetivo, guardadas con cualquier idioma materno (Baúl
+ * ICA por idioma objetivo, 17 Oct). Con `sameNativeOnly` (baúles mezclados: el rival ve tu
+ * traducción), solo las que tienen el materno del desafío, para que el rival las entienda.
+ */
 async function fetchCards(
   adminClient: AdminClient,
   userId: string,
   pair: LanguagePair,
+  options: { sameNativeOnly?: boolean } = {},
 ): Promise<EngineCard[]> {
   const selection = 'id, target, native, example_phrase, example_translation'
 
-  const scoped = await adminClient
+  let scopedQuery = adminClient
     .from('lexicards')
     .select(selection)
     .eq('user_id', userId)
     .eq('target_lang', pair.targetLang)
-    .eq('native_lang', pair.nativeLang)
-    .limit(MAX_CARDS_PER_PLAYER)
+  if (options.sameNativeOnly) scopedQuery = scopedQuery.eq('native_lang', pair.nativeLang)
+  const scoped = await scopedQuery.limit(MAX_CARDS_PER_PLAYER)
 
   if (scoped.error) throw new Error(scoped.error.message)
   let rows = (scoped.data || []) as Array<Record<string, unknown>>
-  const boostedRows = await fetchBoostedCards(adminClient, userId, pair)
+  const boostedRows = await fetchBoostedCards(adminClient, userId, pair, options)
   const boosted = new Set(boostedRows.map((row) => toText(row.id)))
   const loaded = new Set(rows.map((row) => toText(row.id)))
   rows = [...rows, ...boostedRows.filter((row) => !loaded.has(toText(row.id)))]
@@ -408,14 +414,16 @@ async function fetchBoostedCards(
   adminClient: AdminClient,
   userId: string,
   pair: LanguagePair,
+  options: { sameNativeOnly?: boolean } = {},
 ): Promise<Array<Record<string, unknown>>> {
   try {
-    const { data, error } = await adminClient
+    let query = adminClient
       .from('lexicards')
       .select('id, target, native, example_phrase, example_translation')
       .eq('user_id', userId)
       .eq('target_lang', pair.targetLang)
-      .eq('native_lang', pair.nativeLang)
+    if (options.sameNativeOnly) query = query.eq('native_lang', pair.nativeLang)
+    const { data, error } = await query
       .gt('boost_duel', 0)
       .limit(50)
     if (error) return []
@@ -507,12 +515,12 @@ async function countWordsForPair(
   userId: string,
   pair: LanguagePair,
 ): Promise<number> {
+  // Todas las palabras del idioma objetivo, con cualquier materno (Baúl ICA por idioma objetivo).
   const scoped = await adminClient
     .from('lexicards')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId)
     .eq('target_lang', pair.targetLang)
-    .eq('native_lang', pair.nativeLang)
   if (scoped.error) throw new Error(scoped.error.message)
   if ((scoped.count || 0) > 0) return scoped.count || 0
 
@@ -778,9 +786,10 @@ async function ensureQuestions(ctx: GameContext): Promise<QuestionRow[]> {
         ? { targetLang: ctx.challenge.target_lang, nativeLang: ctx.challenge.native_lang }
         : null
     if (!pair) throw new GameError(400, 'Faltan los idiomas del desafío.')
+    // Baúles mezclados: solo las palabras con el materno del desafío (el rival ve tu traducción).
     pools = await Promise.all([
-      fetchCards(ctx.adminClient, ctx.challenge.challenger_user_id, pair),
-      fetchCards(ctx.adminClient, ctx.challenge.challenged_user_id, pair),
+      fetchCards(ctx.adminClient, ctx.challenge.challenger_user_id, pair, { sameNativeOnly: true }),
+      fetchCards(ctx.adminClient, ctx.challenge.challenged_user_id, pair, { sameNativeOnly: true }),
     ])
   } else {
     pair = await resolvePlayerPair(ctx.adminClient, ctx.challenge, ctx.userId)

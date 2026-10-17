@@ -847,7 +847,6 @@ export async function fetchPregunticaHistory(
       'id, week_start, week_end, timezone, is_unlocked, unlocked_via, activation_words_count, required_activation_words, completed_at',
     )
     .eq('target_lang', normalizeLangKey(input.targetLang))
-    .eq('native_lang', normalizeLangKey(input.nativeLang))
     .order('week_start', { ascending: false })
     .limit(Math.max(1, limit))
 

@@ -70,7 +70,6 @@ export async function loadMetaTrackerProfile(
       .select('start_level, prior_ica_words, activation_words_total, confirmed_at')
       .eq('user_id', userId)
       .eq('target_lang', targetLang)
-      .eq('native_lang', nativeLang)
       .maybeSingle()
 
     if (error) throw error
@@ -97,7 +96,6 @@ export async function saveMetaTrackerProfile(
     .select('activation_words_total')
     .eq('user_id', userId)
     .eq('target_lang', targetLang)
-    .eq('native_lang', nativeLang)
     .maybeSingle()
 
   if (existingError) throw existingError
@@ -110,7 +108,6 @@ export async function saveMetaTrackerProfile(
         .select('id')
         .eq('user_id', userId)
         .eq('target_lang', targetLang)
-        .eq('native_lang', nativeLang)
         .gt('activation_count', 0)
         .order('created_at', { ascending: true })
         .order('id', { ascending: true })
@@ -132,7 +129,7 @@ export async function saveMetaTrackerProfile(
 
   const { data, error } = await client
     .from('user_meta_tracker')
-    .upsert(payload, { onConflict: 'user_id,target_lang,native_lang' })
+    .upsert(payload, { onConflict: 'user_id,target_lang' })
     .select('start_level, prior_ica_words, activation_words_total, confirmed_at')
     .single()
 
@@ -148,7 +145,7 @@ export async function saveMetaTrackerProfile(
 export async function fetchWordActivationCounts(
   lexicardIds: string[],
   targetLang: string,
-  nativeLang: string,
+  _nativeLang: string,
 ): Promise<Record<string, number>> {
   if (!supabase) return {}
   const userId = await getCurrentUserId()
@@ -165,7 +162,6 @@ export async function fetchWordActivationCounts(
         .select('id, activation_count')
         .eq('user_id', userId)
         .eq('target_lang', targetLang)
-        .eq('native_lang', nativeLang)
         .in('id', batchIds)
 
       if (error) throw error
@@ -218,7 +214,6 @@ export async function registerWordActivations(
             .select('id, target')
             .eq('user_id', userId)
             .eq('target_lang', targetLang)
-            .eq('native_lang', nativeLang)
             .order('created_at', { ascending: true })
             .order('id', { ascending: true })
             .range(from, to)
