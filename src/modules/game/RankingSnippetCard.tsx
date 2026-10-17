@@ -7,6 +7,7 @@ import { DASHBOARD_ROUTES } from '../routes/paths'
 import type { LeaderboardEntry } from '../types'
 import { parseFeaturedBadge, useFeaturedBadge } from './featuredBadge'
 import { useMyFlags } from './languageFlag'
+import { useOthersLanguageFlag } from './englishAccent'
 import { TrophyIcon } from './icons'
 import { MedalDefs } from './Medal'
 import { LeaderboardRow, rowName, rowTotalPoints } from './ranking'
@@ -21,6 +22,7 @@ export function RankingSnippetCard({ maxRows }: { maxRows?: number } = {}) {
   const { user } = useAuth()
   const { badge: myBadge } = useFeaturedBadge(user?.id)
   const { shown: myFlag } = useMyFlags(user?.id)
+  const othersFlag = useOthersLanguageFlag()
   // Lo último que se cargó sale al momento (al volver a Inicio no hay que esperar).
   const [rows, setRows] = useState<LeaderboardEntry[] | null>(() => peekMonthlyStreakLeaderboard(250) ?? null)
 
@@ -73,7 +75,7 @@ export function RankingSnippetCard({ maxRows }: { maxRows?: number } = {}) {
               points={rowTotalPoints(row)}
               isMe={row.user_id === user?.id}
               badge={row.user_id === user?.id ? myBadge : parseFeaturedBadge(row.featured_badge)}
-              flag={row.user_id === user?.id ? myFlag : row.display_flag ?? null}
+              flag={row.user_id === user?.id ? myFlag : othersFlag(row.display_flag, row.user_id)}
               dense={Boolean(maxRows)}
             />
           ))}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { LANG_CODES } from '../constants'
 
@@ -83,4 +83,22 @@ export function useEnglishAccent(): EnglishAccent {
     return () => window.removeEventListener(CHANGED_EVENT, onChange)
   }, [])
   return accent
+}
+
+/** The key of the English flag of an accent: 'Inglés:us' (American) or 'Inglés:uk' (British). */
+export function englishFlagKey(accent: EnglishAccent): string {
+  return accent === 'uk' ? 'Inglés:uk' : 'Inglés:us'
+}
+
+/**
+ * The flag of ANOTHER student (ranking, rivals, their profile). A bare «Inglés» would be drawn with
+ * YOUR accent, so it gets theirs. For now everyone else's English shows the American flag (the
+ * default accent): which accent each one chose is saved in their own account, which nobody else can
+ * read. Other languages are returned as they are.
+ */
+export function useOthersLanguageFlag(): (lang: string | null | undefined, userId: string | null | undefined) => string | null {
+  return useCallback((lang: string | null | undefined) => {
+    if (!lang) return null
+    return lang === 'Inglés' ? englishFlagKey('us') : lang
+  }, [])
 }

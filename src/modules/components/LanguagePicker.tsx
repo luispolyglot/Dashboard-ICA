@@ -5,7 +5,7 @@ import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, SearchIcon } from 'lucide
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { Panel, tone as toneColors, type Tone } from '../game/ui'
-import { setEnglishAccent, useEnglishAccent, type EnglishAccent } from '../game/englishAccent'
+import { englishFlagKey, setEnglishAccent, useEnglishAccent, type EnglishAccent } from '../game/englishAccent'
 
 // Banderas dibujadas en SVG (los emojis de bandera no se ven en Windows).
 // Una por idioma de LANGUAGES; formato 3:2 con esquinas redondeadas.
@@ -71,7 +71,8 @@ function nordicCross(bg: string, cross: string, inner?: string) {
 
 const FLAGS: Record<string, () => ReactNode> = {
   Español: () => hStripes(['#AA151B', '#F1BF00', '#F1BF00', '#AA151B']),
-  Inglés: () => (
+  // British English. A bare «Inglés» is drawn with YOUR accent (see LanguageFlag).
+  'Inglés:uk': () => (
     <>
       <rect width={W} height={H} fill='#012169' />
       <path d='M0 0L30 20M30 0L0 20' stroke='#fff' strokeWidth='4' />
@@ -207,10 +208,16 @@ const FLAGS: Record<string, () => ReactNode> = {
   ),
 }
 
-/** Bandera del idioma (rectángulo redondeado). `size` es el ancho en píxeles. */
+/**
+ * Bandera del idioma (rectángulo redondeado). `size` es el ancho en píxeles.
+ * Inglés (Luis, 17 Oct): «Inglés» a secas sale con TU acento (americano o británico): es tu idioma,
+ * tu perfil, tu bandera comprada… Para otra persona se pasa 'Inglés:us' o 'Inglés:uk'
+ * (useOthersLanguageFlag).
+ */
 export function LanguageFlag({ language, size = 32, className }: { language: string; size?: number; className?: string }) {
   const clipId = useId()
-  const draw = FLAGS[language]
+  const myAccent = useEnglishAccent()
+  const draw = FLAGS[language === 'Inglés' ? englishFlagKey(myAccent) : language]
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
@@ -283,7 +290,7 @@ function englishName(accent: EnglishAccent): string {
 }
 
 function englishFlag(accent: EnglishAccent): string {
-  return accent === 'uk' ? 'Inglés' : 'Inglés:us'
+  return englishFlagKey(accent)
 }
 
 function normalize(value: string): string {
