@@ -568,31 +568,6 @@ export async function savePregunticaQuestionTranslation(input: {
   if (error) throw error
 }
 
-export async function savePregunticaAttemptPromptData(input: {
-  attemptId: string
-  questionText: string
-  questionId?: string | null
-  icaWords: string[]
-  targetLang: string
-  nativeLang: string
-  level: string
-}): Promise<void> {
-  const client = requireSupabase()
-  const { error } = await client
-    .from('preguntica_attempts')
-    .update({
-      question_id: input.questionId ?? null,
-      question_text: input.questionText,
-      ica_words: input.icaWords,
-      target_lang: input.targetLang,
-      native_lang: input.nativeLang,
-      level: input.level,
-    })
-    .eq('id', input.attemptId)
-
-  if (error) throw error
-}
-
 export async function fetchLatestPregunticaAttempt(
   weekId: string,
 ): Promise<PregunticaAttempt | null> {

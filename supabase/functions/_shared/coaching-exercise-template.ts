@@ -1,6 +1,6 @@
 /* ══════════════════════════════════════════════════════════════════════
    COACHING ICA · EJERCICIO DE MUESTRA (plantilla oficial de Luis)
-   Ejemplo real (Gretta, modales, inglés A2). Se usa:
+   Ejemplo (alumna inventada, Nora; modales, inglés A2). Se usa:
    - como modelo en el prompt del generador (la IA copia su estructura),
    - en los tests del corrector.
    Si cambias la plantilla, cambia este objeto.
@@ -174,7 +174,7 @@ export const COACHING_EXERCISE_TEMPLATE_EXAMPLE = {
         "Una conversación con una compañera de la organización. Te doy el infinitivo y la pista en español; el modal y la forma los pones tú. Se corrige entera de una vez.",
       tipo: "dialogo",
       lineas: [
-        { quien: "Sarah", texto: "Hi Gretta! The summit report is still open." },
+        { quien: "Sarah", texto: "Hi Nora! The summit report is still open." },
         { quien: "Tú", texto: "Don't worry, I {0} it tonight." },
         { quien: "Sarah", texto: "Great. And Marta? She is very busy this week." },
         { quien: "Tú", texto: "Marta {1} to the meeting, but she {2} me the numbers before Friday." },
